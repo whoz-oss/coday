@@ -3,6 +3,15 @@
     <h1 class="case-home__headline">What can I help you with?</h1>
 
     <div class="case-home__composer">
+      @if (slashSuggestions().length > 0) {
+        <div class="case-home__autocomplete">
+          <agentos-prompt-autocomplete
+            [prompts]="slashSuggestions()"
+            (selected)="onPromptSelected($event)"
+            (dismissed)="closeAutocomplete()"
+          />
+        </div>
+      }
       <textarea
         #composerInput
         class="case-home__input"

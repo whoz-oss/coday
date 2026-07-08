@@ -321,10 +321,10 @@ class CaseRuntimeSpec : StringSpec() {
         // shouldContinue lambda contract
         // -------------------------------------------------------------------------
 
-        "shouldContinue lambda returns false after requestInterrupt is called" {
-            // Verifies that the lambda CaseRuntime passes to runAgent correctly reflects
-            // the interruptRequested flag. The runAgent callback captures the lambda and
-            // can poll it to decide whether to keep going.
+        "shouldContinue lambda returns true after requestInterrupt (interrupt does not stop mid-stream LLM)" {
+            // requestInterrupt() stops the run loop after the current agent turn completes,
+            // but does NOT signal the LLM to stop mid-stream. Only requestKill() does that.
+            // shouldContinue reflects killRequested only.
             val runtimeId = UUID.randomUUID()
             var capturedShouldContinue: (() -> Boolean)? = null
 
@@ -339,25 +339,16 @@ class CaseRuntimeSpec : StringSpec() {
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, _, _, _, shouldContinue ->
                         capturedShouldContinue = shouldContinue
-                        // Simulate a long-running agent: don't push AgentFinishedEvent
-                        // so we can inspect shouldContinue before the loop exits naturally.
                     },
                 )
 
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
 
-            // After run() returns the loop has exited. The lambda was captured during
-            // execution; reset flags and verify the expected behaviour.
-            // requestInterrupt sets interruptRequested = true; run() clears it at the
-            // start of the next run(), but we can verify via a fresh interrupt call.
             capturedShouldContinue shouldNotBe null
-
-            // Before any interrupt the runtime is idle — shouldContinue reads the flag
-            // which was reset to false at the top of run().
-            // Trigger a new interrupt and verify the lambda reflects it.
             runtime.requestInterrupt()
-            capturedShouldContinue!!.invoke() shouldBe false
+            // interrupt does not affect shouldContinue — only kill does
+            capturedShouldContinue!!.invoke() shouldBe true
         }
 
         "shouldContinue lambda returns false after requestKill is called" {
@@ -668,6 +659,108 @@ class CaseRuntimeSpec : StringSpec() {
             savedEvents.filterIsInstance<WarnEvent>().any {
                 it.message.contains(agentB)
             } shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // Command queue: sequential execution
+        // -------------------------------------------------------------------------
+
+        "enqueued commands are executed sequentially after the first agent turn" {
+            val runOrder = mutableListOf<String>()
+            val agentName = "seq-agent"
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val runtimeId = UUID.randomUUID()
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val agent = mockk<Agent>(name = "agent-$agentName") {
+                every { metadata } returns EntityMetadata(id = agentId)
+                every { this@mockk.name } returns agentName
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val events = firstArg<List<CaseEvent>>()
+                    val lastMsg = events.filterIsInstance<MessageEvent>().last()
+                    val text = lastMsg.content.filterIsInstance<MessageContent.Text>().first().content
+                    runOrder.add(text)
+                    flow {
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = lastMsg.caseId,
+                                agentId = agentId,
+                                agentName = agentName,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            val selectAgent = RecordingSelectAgent { _, _ -> listOf(agentSelectedEvent(runtimeId, agentName)) }
+
+            lateinit var runtime: CaseRuntime
+            val runAgent = RecordingRunAgent { _, events ->
+                agent.run(events).collect { event ->
+                    savedEvents.add(event)
+                    runtime.emitEvent(event)
+                    runtime.pushEvents(listOf(event))
+                }
+            }
+
+            runtime = CaseRuntime(
+                id = runtimeId,
+                namespaceId = namespaceId,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = selectAgent.asCallback,
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = runAgent.asCallback,
+            )
+
+            // First message via addUserMessage, two more via enqueueCommand
+            runtime.addUserMessage(userActor, listOf(MessageContent.Text("command-1")))
+            runtime.enqueueCommand(listOf(MessageContent.Text("command-2")))
+            runtime.enqueueCommand(listOf(MessageContent.Text("command-3")))
+            runtime.run()
+
+            runAgent.callCount shouldBe 3
+            runOrder shouldBe listOf("command-1", "command-2", "command-3")
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "command queue is cleared on kill" {
+            val runtimeId = UUID.randomUUID()
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = runtimeId,
+                namespaceId = namespaceId,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { it },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { _, _, _, _, _ ->
+                    // Kill during first agent turn
+                    runtime.requestKill()
+                },
+            )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.enqueueCommand(listOf(MessageContent.Text("should-not-run")))
+            runtime.run()
+
+            runtime.statusFlow.value shouldBe CaseStatus.KILLED
+        }
+
+        "command queue is cleared on error (max iterations)" {
+            val loopingAgent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = UUID.randomUUID())
+                every { name } returns "looping"
+                every { run(any<List<CaseEvent>>(), any()) } returns flow { /* never finishes */ }
+            }
+            val (runtime) = buildRuntime(agentName = "looping", agent = loopingAgent)
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.enqueueCommand(listOf(MessageContent.Text("should-not-run")))
+            runtime.run()
+
+            runtime.statusFlow.value shouldBe CaseStatus.ERROR
         }
 
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {

@@ -20,7 +20,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import mu.KLogging
 import java.util.UUID
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+
+/** Holds a pending command to be executed sequentially after the current agent turn. */
+private data class PendingCommand(val content: List<MessageContent>)
 
 /**
  * Runtime execution engine for a case.
@@ -76,19 +80,19 @@ class CaseRuntime(
 
     /**
      * Set by [processNextStep] when it finds an [AgentFinishedEvent] for the current
-     * turn (exits the loop, transitions to [CaseStatus.IDLE]), by [requestInterrupt]
-     * (same exit path, also transitions to [CaseStatus.IDLE]), and by [requestKill]
-     * (exits the loop, transitions to [CaseStatus.KILLED]).
-     * [killRequested] distinguishes the kill path from the idle path.
+     * turn (exits the inner loop), by [requestInterrupt] (same exit, transitions to
+     * [CaseStatus.IDLE]), and by [requestKill] (transitions to [CaseStatus.KILLED]).
      */
     private val interruptRequested = AtomicBoolean(false)
 
     /**
-     * Set only by [requestKill]. Lets [run] distinguish a normal turn-end
-     * (transition to [CaseStatus.IDLE], runtime stays alive) from an explicit kill
-     * (transition to [CaseStatus.KILLED], service evicts the runtime).
+     * Set only by [requestKill]. Distinguishes a normal turn-end (→ IDLE)
+     * from an explicit kill (→ KILLED).
      */
     private val killRequested = AtomicBoolean(false)
+
+    /** What [processNextStep] signals back to the run loop. */
+    private enum class StepResult { CONTINUE, AGENT_FINISHED, STOP }
 
     /**
      * Guards against concurrent [run] invocations.
@@ -100,6 +104,13 @@ class CaseRuntime(
 
     private val maxIterations = 100
     private var iterationCount = 0
+
+    /**
+     * Queue of commands to execute sequentially after each agent turn completes.
+     * Commands are already fully resolved by [CaseServiceImpl] before being enqueued —
+     * they are plain text, never slash-commands.
+     */
+    private val commandQueue = ConcurrentLinkedQueue<PendingCommand>()
 
     private val _statusFlow = MutableStateFlow(initialStatus)
 
@@ -118,18 +129,13 @@ class CaseRuntime(
     val statusFlow: StateFlow<CaseStatus> = _statusFlow.asStateFlow()
 
     /**
-     * Interrupt the current agent turn and return to [CaseStatus.IDLE].
+     * Interrupt the current agent turn, clear the command queue, and return to [CaseStatus.IDLE].
      *
-     * Sets [stopRequested] so the while-loop exits after the current [processNextStep]
-     * returns. [killRequested] is NOT set, so [run] transitions to [CaseStatus.IDLE]
-     * rather than [CaseStatus.KILLED] — the runtime stays alive and the SSE flow
-     * stays open for the next user message.
-     *
-     * Note: if [runAgent] is currently suspended mid-LLM-stream, the interrupt takes
-     * effect only after that stream completes. True mid-stream cancellation would
-     * require coroutine cancellation propagated into the agent flow.
+     * Takes effect after the current [processNextStep] returns. The runtime stays alive
+     * and the SSE flow stays open for the next user message.
      */
     fun requestInterrupt() {
+        commandQueue.clear()
         interruptRequested.set(true)
     }
 
@@ -137,10 +143,20 @@ class CaseRuntime(
      * Request permanent termination of this runtime.
      * Sets both [stopRequested] (to break the run loop) and [killRequested] (so
      * [run] transitions to [CaseStatus.KILLED] rather than [CaseStatus.IDLE]).
+     * Also clears the command queue so no orphaned commands are left behind.
      */
     fun requestKill() {
         killRequested.set(true)
         interruptRequested.set(true)
+        commandQueue.clear()
+    }
+
+    /**
+     * Enqueue a command for sequential execution after the current agent turn.
+     * Used when a prompt resolves to multiple commands.
+     */
+    fun enqueueCommand(content: List<MessageContent>) {
+        commandQueue.add(PendingCommand(content))
     }
 
     fun isRunning(): Boolean = runInFlight.get()
@@ -263,37 +279,54 @@ class CaseRuntime(
         iterationCount = 0
 
         try {
-            while (!interruptRequested.get() && iterationCount < maxIterations) {
-                logger.debug { "[CaseRuntime $id] Processing iteration $iterationCount" }
-                processNextStep()
-                iterationCount++
-            }
-            logger.info {
-                "[CaseRuntime $id] Exited loop - iterations: $iterationCount, " +
-                    "interrupt: ${interruptRequested.get()}, kill: ${killRequested.get()}"
-            }
-            when {
-                iterationCount >= maxIterations -> {
-                    logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
-                    updateStatus(CaseStatus.ERROR)
-                }
-
-                killRequested.get() -> {
-                    updateStatus(CaseStatus.KILLED)
-                }
-
-                else -> {
-                    // Normal turn-end: agent finished, waiting for next user message.
-                    // Non-terminal — runtime stays alive, SSE flow stays open.
-                    updateStatus(CaseStatus.IDLE)
-                }
-            }
+            val finalStatus = runTurns()
+            logger.info { "[CaseRuntime $id] Exited loop → $finalStatus, iterations: $iterationCount" }
+            if (finalStatus != CaseStatus.IDLE) commandQueue.clear()
+            updateStatus(finalStatus)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logger.error(e) { "[CaseRuntime $id] Error during execution" }
+            logger.error(e) { "[CaseRuntime $id] Unexpected error during execution" }
+            commandQueue.clear()
             updateStatus(CaseStatus.ERROR)
         } finally {
             runInFlight.set(false)
         }
+    }
+
+    /**
+     * Runs agent turns until a terminal condition is reached.
+     *
+     * Each call to [processNextStep] returns a [StepResult]:
+     * - [StepResult.CONTINUE]: agent is mid-turn, keep stepping.
+     * - [StepResult.AGENT_FINISHED]: agent completed its turn; drain the command queue.
+     * - [StepResult.STOP]: kill or unrecoverable error; exit immediately.
+     *
+     * @return the target [CaseStatus] to transition to.
+     */
+    private suspend fun runTurns(): CaseStatus {
+        while (iterationCount < maxIterations) {
+            if (interruptRequested.get()) return CaseStatus.IDLE
+            logger.debug { "[CaseRuntime $id] Processing iteration $iterationCount" }
+            when (processNextStep()) {
+                StepResult.CONTINUE -> iterationCount++
+                StepResult.STOP -> return CaseStatus.KILLED
+                StepResult.AGENT_FINISHED -> {
+                    if (interruptRequested.get()) return CaseStatus.IDLE
+                    val nextCommand = commandQueue.poll()
+                        ?: return CaseStatus.IDLE
+                    logger.info {
+                        "[CaseRuntime $id] Draining command queue, ${commandQueue.size} command(s) remaining"
+                    }
+                    val actor = resolveLastUserActor(eventList.getAll())
+                        ?: return CaseStatus.ERROR
+                    addUserMessage(actor, nextCommand.content)
+                    iterationCount = 0
+                }
+            }
+        }
+        logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
+        return CaseStatus.ERROR
     }
 
     private fun updateStatus(caseStatus: CaseStatus) {
@@ -303,7 +336,16 @@ class CaseRuntime(
         updateStatusCallback(id, caseStatus)
     }
 
-    private suspend fun processNextStep() {
+    /**
+     * Inspects the event history and executes the next logical step.
+     *
+     * Scans backward from the most recent event, skipping orchestration events that
+     * belong to prior turns. Returns:
+     * - [StepResult.CONTINUE] after running the agent (more steps may follow in this turn).
+     * - [StepResult.AGENT_FINISHED] when [AgentFinishedEvent] is found (turn is complete).
+     * - [StepResult.STOP] when a kill is requested or no agent can be found.
+     */
+    private suspend fun processNextStep(): StepResult {
         val events = eventList.getAll()
         logger.debug { "[CaseRuntime $id] processNextStep - total events: ${events.size}" }
 
@@ -325,32 +367,24 @@ class CaseRuntime(
 
             when (event) {
                 is AgentFinishedEvent -> {
-                    // Agent turn complete. Signal the while-loop to exit by setting
-                    // interruptRequested. killRequested is intentionally NOT set here,
-                    // so run() transitions to IDLE rather than KILLED.
                     logger.info { "[CaseRuntime $id] Agent finished turn, yielding until next user message" }
-                    interruptRequested.set(true)
-                    return
+                    return StepResult.AGENT_FINISHED
                 }
 
                 is AgentRunningEvent -> {
                     // Rehydration: agent was running when the case crashed.
-                    // Delegate to runAgent which inspects the event history
-                    // and skips the duplicate AgentRunningEvent emission.
                     logger.info { "[CaseRuntime $id] Rehydrating from AgentRunningEvent for agent: ${event.agentName}" }
                     runAgent(
                         event.agentName,
                         eventList.getAll(),
                         { eventList.getAll() },
                         resolveUserId(events),
-                    ) { !interruptRequested.get() }
-                    return
+                    ) { !killRequested.get() }
+                    return StepResult.CONTINUE
                 }
 
                 is AgentSelectedEvent -> {
-                    logger.info {
-                        "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}"
-                    }
+                    logger.info { "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}" }
                     val userId = resolveUserId(events)
                     if (!isAgentAuthorized(event.agentName, userId)) {
                         logger.warn {
@@ -364,16 +398,15 @@ class CaseRuntime(
                                 message = "Agent '${event.agentName}' is not accessible to the current user",
                             ),
                         )
-                        interruptRequested.set(true)
-                        return
+                        return StepResult.STOP
                     }
                     runAgent(
                         event.agentName,
                         eventList.getAll(),
                         { eventList.getAll() },
                         userId,
-                    ) { !interruptRequested.get() }
-                    return
+                    ) { !killRequested.get() }
+                    return if (killRequested.get()) StepResult.STOP else StepResult.CONTINUE
                 }
 
                 else -> { // keep scanning
@@ -382,11 +415,9 @@ class CaseRuntime(
         }
 
         // No AgentSelectedEvent found after the last user message.
-        // This happens when selectAgent could not resolve any agent (e.g. no AI model
-        // configured) and stored only a WarnEvent. Stop cleanly so the case returns
-        // to IDLE — the WarnEvent has already been streamed to the client.
+        // selectAgent stored only a WarnEvent — stop cleanly, return to IDLE.
         logger.warn { "[CaseRuntime $id] No agent selection found in history, stopping" }
-        interruptRequested.set(true)
+        return StepResult.AGENT_FINISHED
     }
 
     /**
@@ -394,12 +425,19 @@ class CaseRuntime(
      * or null if no user message is found or the actor id is not a valid UUID.
      */
     private fun resolveUserId(events: List<CaseEvent>): UUID? =
+        resolveLastUserActor(events)
+            ?.id
+            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+
+    /**
+     * Scans the event history backward and returns the last user [Actor],
+     * or null if no user message is found.
+     */
+    private fun resolveLastUserActor(events: List<CaseEvent>): Actor? =
         events
             .filterIsInstance<MessageEvent>()
             .lastOrNull { it.actor.role == ActorRole.USER }
             ?.actor
-            ?.id
-            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
     companion object : KLogging()
 }
