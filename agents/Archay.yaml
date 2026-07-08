@@ -17,6 +17,7 @@ integrations:
     - update_pull_request
   GIT:
   DELEGATE:
+    - Dev
     - Sway
     - Octopuss
     - Nxay
