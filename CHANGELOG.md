@@ -1,3 +1,13 @@
+## 0.206.0 (2026-07-08)
+
+### 🚀 Features
+
+- wz-32968 prompt call ([#1092](https://github.com/whoz-oss/coday/pull/1092))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.205.0 (2026-07-08)
 
 ### 🚀 Features
