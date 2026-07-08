@@ -12,20 +12,11 @@ export interface NamespaceListItem {
   id: string
   name: string
   description?: string
-  /**
-   * Optional filesystem path to a directory containing base configuration for this namespace
-   */
   configPath?: string
-  /**
-   * Optional external identifier for this namespace, e.g. a federation id from an external system
-   */
   externalId?: string
-  /**
-   * Logical name of the default agent for this namespace. Null means no default is configured. Name matching is case-insensitive.
-   */
   defaultAgentName?: string
   /**
-   * The caller\'s effective role on this namespace
+   * The caller\'s effective role on this namespace.
    */
   role: NamespaceListItemRoleEnum
 }

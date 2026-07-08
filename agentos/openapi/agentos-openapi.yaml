@@ -1869,28 +1869,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExchangeFileContent"
-  /api/namespaces/by-parentId/{parentId}:
-    get:
-      tags:
-      - namespace-controller
-      operationId: listByParentNamespace
-      parameters:
-      - name: parentId
-        in: path
-        description: Parent entity ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Namespace"
   /api/integration-types:
     get:
       tags:
@@ -3606,10 +3584,7 @@ components:
           type: string
         configSchema:
           $ref: "#/components/schemas/JsonNode"
-        builtIn:
-          type: boolean
       required:
-      - configSchema
       - description
       - displayName
       - type
