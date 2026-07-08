@@ -5,7 +5,7 @@
   emptyMessage="No namespaces yet. Create one to get started."
   cardMinWidth="400px"
   [itemTemplate]="namespaceItemTpl"
-  (itemSelected)="navigateToCases($event)"
+  (itemSelected)="navigateToHome($event)"
   (createRequested)="navigateToCreate()"
 />
 
@@ -14,7 +14,7 @@
   @if (namespacesById().get(item.id); as ns) {
     <agentos-namespace-item
       [namespace]="ns"
-      (selected)="navigateToCases($event.id ?? '')"
+      (selected)="navigateToHome($event.id ?? '')"
       (editRequested)="navigateToEdit($event)"
       (deleteRequested)="deleteNamespace($event)"
       (integrationsRequested)="openIntegrations($event)"
