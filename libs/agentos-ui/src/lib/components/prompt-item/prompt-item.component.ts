@@ -24,6 +24,11 @@ export class PromptItemComponent {
   @Input() namespaceId?: string
   /** When true, edit navigates to the admin platform route instead of the namespace route. */
   @Input() platformMode = false
+  /**
+   * When true, edit and delete actions are hidden.
+   * Used for platform-level prompts displayed in a namespace context (read-only visibility).
+   */
+  @Input() readOnly = false
 
   @Output() deleteRequested = new EventEmitter<Prompt>()
 
