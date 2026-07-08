@@ -15,6 +15,7 @@ api/integration-type-controller.service.ts
 api/namespace-controller.service.ts
 api/namespace-permission-endpoints.service.ts
 api/plugin-controller.service.ts
+api/prompt-controller.service.ts
 api/sse.service.ts
 api/user-controller.service.ts
 api/user-group-controller.service.ts
@@ -65,6 +66,8 @@ model/pending-confirmation-event.ts
 model/plugin-action-response.ts
 model/plugin-info.ts
 model/plugin-upload-response.ts
+model/prompt-parameter.ts
+model/prompt.ts
 model/question-event.ts
 model/sync-user-roles-request.ts
 model/text-chunk-event.ts
