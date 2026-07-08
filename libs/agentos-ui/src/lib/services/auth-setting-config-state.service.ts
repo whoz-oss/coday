@@ -6,13 +6,15 @@ import { UserStateService } from './user-state.service'
 
 /**
  * Scope of an auth setting row in the unified 3-section view.
+ * - `platform`  : setting defined at platform level (read-only for namespace admins)
  * - `namespace` : setting shared at the namespace level
  * - `userOnNs`  : the caller's personal override scoped to the current namespace
  * - `userGlobal`: the caller's personal override that applies cross-namespace
  */
-export type AuthSettingScope = 'namespace' | 'userOnNs' | 'userGlobal'
+export type AuthSettingScope = 'platform' | 'namespace' | 'userOnNs' | 'userGlobal'
 
 export interface AuthSettingConfigViewModel {
+  platform: AuthSetting[]
   namespace: AuthSetting[]
   userOnNs: AuthSetting[]
   userGlobal: AuthSetting[]
@@ -82,17 +84,27 @@ export class AuthSettingConfigStateService {
    */
   readonly vm$: Observable<AuthSettingConfigViewModel> = combineLatest([this.namespaceId$, this.refresh$]).pipe(
     switchMap(([namespaceId]) => {
+      const platform$ = this.loadPlatformSettings().pipe(catchError(() => of([] as AuthSetting[])))
       if (!namespaceId) {
         return combineLatest([
+          platform$,
           this.loadNamespaceSettings('').pipe(catchError(() => of([] as AuthSetting[]))),
           this.loadUserSettings('global').pipe(catchError(() => of([] as AuthSetting[]))),
-        ]).pipe(map(([namespace, userGlobal]) => ({ namespace, userOnNs: [] as AuthSetting[], userGlobal })))
+        ]).pipe(
+          map(([platform, namespace, userGlobal]) => ({
+            platform,
+            namespace,
+            userOnNs: [] as AuthSetting[],
+            userGlobal,
+          }))
+        )
       }
       return combineLatest([
+        platform$,
         this.loadNamespaceSettings(namespaceId).pipe(catchError(() => of([] as AuthSetting[]))),
         this.loadUserSettings(namespaceId).pipe(catchError(() => of([] as AuthSetting[]))),
         this.loadUserSettings('global').pipe(catchError(() => of([] as AuthSetting[]))),
-      ]).pipe(map(([namespace, userOnNs, userGlobal]) => ({ namespace, userOnNs, userGlobal })))
+      ]).pipe(map(([platform, namespace, userOnNs, userGlobal]) => ({ platform, namespace, userOnNs, userGlobal })))
     }),
     shareReplay({ bufferSize: 1, refCount: true })
   )
@@ -123,6 +135,11 @@ export class AuthSettingConfigStateService {
     () => this.loadUserSettings('global'),
     [] as AuthSetting[]
   )
+
+  /** Platform-level auth settings: no namespaceId, no userId → scope IS NULL for both. */
+  loadPlatformSettings(): Observable<AuthSetting[]> {
+    return this.controller.listAuthSetting()
+  }
 
   loadNamespaceSettings(namespaceId: string): Observable<AuthSetting[]> {
     if (!namespaceId) return of([])

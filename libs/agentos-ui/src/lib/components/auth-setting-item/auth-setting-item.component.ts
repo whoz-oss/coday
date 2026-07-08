@@ -17,6 +17,7 @@ interface ScopeBadge {
  * Same convention as AiProviderItemComponent (story 6.6).
  */
 const SCOPE_BADGES: Readonly<Record<AuthSettingScope, ScopeBadge>> = Object.freeze({
+  platform: { label: 'PLATFORM', ariaLabel: 'Configuration plateforme (lecture seule)', variant: 'neutral' },
   namespace: { label: 'NS', ariaLabel: 'Configuration partagée du namespace', variant: 'neutral' },
   userOnNs: { label: 'USER × NS', ariaLabel: 'Configuration utilisateur sur ce namespace', variant: 'info' },
   userGlobal: { label: 'USER GLOBAL', ariaLabel: 'Configuration utilisateur globale', variant: 'warning' },

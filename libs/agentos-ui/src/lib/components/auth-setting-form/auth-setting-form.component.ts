@@ -9,6 +9,7 @@ import { NamespaceRoleStateService } from '../../services/namespace-role-state.s
 const VALID_SCOPES: ReadonlySet<AuthSettingScope> = new Set(['namespace', 'userOnNs', 'userGlobal'])
 
 const SCOPE_LABEL: Readonly<Record<AuthSettingScope, string>> = Object.freeze({
+  platform: 'Plateforme (lecture seule)',
   namespace: 'Configuration du namespace',
   userOnNs: 'Pour moi sur ce namespace',
   userGlobal: 'Pour moi globalement',

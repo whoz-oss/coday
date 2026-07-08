@@ -15,6 +15,7 @@ import { defaultCreateScope } from '../_shared/default-create-scope'
 import { AuthSettingItemComponent } from '../auth-setting-item/auth-setting-item.component'
 
 const SECTION_LABEL: Readonly<Record<AuthSettingScope, string>> = Object.freeze({
+  platform: 'Platform (read-only)',
   namespace: 'Auth Settings du namespace',
   userOnNs: 'Mes overrides sur ce namespace',
   userGlobal: 'Mes overrides globaux',
@@ -89,6 +90,9 @@ export class AuthSettingsAllScopesComponent implements OnInit {
 
     this.state.vm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((vm) => {
       const next = new Map<string, ResolvedItem>()
+      vm.platform.forEach((c) => {
+        if (c.id) next.set(this.itemKey('platform', c.id), { config: c, scope: 'platform' })
+      })
       vm.namespace.forEach((c) => {
         if (c.id) next.set(this.itemKey('namespace', c.id), { config: c, scope: 'namespace' })
       })
@@ -146,11 +150,12 @@ export class AuthSettingsAllScopesComponent implements OnInit {
   }
 
   protected onDuplicate(item: ResolvedItem): void {
-    // Default destination = source scope (clone strict). Radio in the form lets the user
-    // re-target. Smart-redirect for non-admins: a non-admin cloning a NS item into NS scope
-    // would 403 at submit. Steer directly to `userOnNs`.
+    // Platform items can never be duplicated into platform scope from this page.
+    // Non-admins cloning a NS item would 403 at submit — steer to `userOnNs`.
+    // Default destination = source scope for all other cases.
     if (!item.config.id) return
-    const destinationScope = item.scope === 'namespace' && !this.isAdmin() ? 'userOnNs' : item.scope
+    const destinationScope =
+      item.scope === 'platform' || (item.scope === 'namespace' && !this.isAdmin()) ? 'userOnNs' : item.scope
     this.router.navigate(['/agentos', this.namespaceId, 'auth-settings', 'new'], {
       queryParams: { scope: destinationScope, template: item.config.id, templateScope: item.scope },
     })
@@ -158,6 +163,7 @@ export class AuthSettingsAllScopesComponent implements OnInit {
 
   private toListItems(vm: AuthSettingConfigViewModel): EntityListItem[] {
     const items: EntityListItem[] = []
+    items.push(...this.sectionItems('platform', vm.platform))
     items.push(...this.sectionItems('namespace', vm.namespace))
     items.push(...this.sectionItems('userOnNs', vm.userOnNs))
     items.push(...this.sectionItems('userGlobal', vm.userGlobal))
