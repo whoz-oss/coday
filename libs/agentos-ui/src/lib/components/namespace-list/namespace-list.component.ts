@@ -60,7 +60,7 @@ export class NamespaceListComponent {
 
   // --- Navigation ---
 
-  protected navigateToCases(id: string): void {
+  protected navigateToHome(id: string): void {
     this.router.navigate(['/agentos/home'], { queryParams: { ns: id } })
   }
 
