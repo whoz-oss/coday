@@ -1,5 +1,10 @@
 @if (open) {
-  <div class="ds-confirm-dialog__backdrop" (click)="onBackdropClick($event)">
+  <div
+    class="ds-confirm-dialog__backdrop"
+    (click)="onBackdropClick($event)"
+    (keydown.escape)="onCancel()"
+    tabindex="-1"
+  >
     <div
       class="ds-confirm-dialog"
       role="dialog"
