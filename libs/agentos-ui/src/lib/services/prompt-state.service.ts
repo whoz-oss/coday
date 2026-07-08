@@ -28,6 +28,10 @@ export class PromptStateService {
     return this.promptController.listPrompt('NAMESPACE', namespaceId)
   }
 
+  listPlatform(): Observable<Prompt[]> {
+    return this.promptController.listPlatformPrompt()
+  }
+
   create(payload: Prompt): Observable<Prompt> {
     return this.promptController.createPrompt(payload)
   }
