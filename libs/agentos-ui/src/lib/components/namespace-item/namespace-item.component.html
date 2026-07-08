@@ -1,18 +1,79 @@
-<div class="namespace-item" role="listitem" [class.namespace-item--pending-delete]="pendingDelete()">
-  <button class="namespace-item__body" type="button" (click)="onSelect()">
-    <span class="namespace-item__name">{{ namespace().name }}</span>
-    @if (namespace().description) {
-      <span class="namespace-item__desc">{{ namespace().description }}</span>
-    }
-  </button>
-
-  <div class="namespace-item__actions">
-    @if (pendingDelete()) {
-      <span class="namespace-item__confirm-label">Delete?</span>
+<agentos-action-card
+  [name]="namespace().name"
+  [menuItems]="pendingDelete() ? [] : menuItems"
+  (nameClicked)="onSelect()"
+  (menuAction)="onMenuAction($event)"
+>
+  @if (pendingDelete()) {
+    <ng-container agentosCardChips>
+      <span class="ns-confirm-label">Delete?</span>
       <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
-      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
-    } @else {
-      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
-    }
-  </div>
-</div>
+      <ds-icon-button icon="close" title="Cancel" (action)="onDeleteCancelled()" />
+    </ng-container>
+  } @else {
+    <ng-container agentosCardChips>
+      <button class="ac-chip" type="button" (click)="onIntegrations()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M8 2v4M16 2v4M6 8h12v3a6 6 0 01-12 0V8z"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path d="M12 17v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        </svg>
+        Integrations
+      </button>
+
+      <button class="ac-chip" type="button" (click)="onAiProviders()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="7" y="7" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.6" />
+          <rect x="10" y="10" width="4" height="4" rx="0.5" stroke="currentColor" stroke-width="1.4" />
+          <path
+            d="M9 2v3M12 2v3M15 2v3M9 19v3M12 19v3M15 19v3M2 9h3M2 12h3M2 15h3M19 9h3M19 12h3M19 15h3"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linecap="round"
+          />
+        </svg>
+        AI Providers
+      </button>
+
+      <button class="ac-chip" type="button" (click)="onAiModels()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M12 3l1.8 5.6L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.4L12 3z"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+          />
+        </svg>
+        AI Models
+      </button>
+
+      <button class="ac-chip" type="button" (click)="onAgentConfigs()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 7h9M17 7h3M4 17h3M11 17h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          <circle cx="13" cy="7" r="2.2" stroke="currentColor" stroke-width="1.6" />
+          <circle cx="8" cy="17" r="2.2" stroke="currentColor" stroke-width="1.6" />
+        </svg>
+        Agent Configs
+      </button>
+
+      <button class="ac-chip" type="button" (click)="onPrompts()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linejoin="round"
+          />
+          <path d="M14 3v4h4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+          <path d="M9 13h6M9 17h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+        </svg>
+        Prompts
+      </button>
+    </ng-container>
+  }
+</agentos-action-card>

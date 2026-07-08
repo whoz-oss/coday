@@ -27,7 +27,14 @@ data class IntegrationTypeDescriptor(
     val description: String,
     /**
      * JSON Schema (draft-07) describing the expected shape of [IntegrationConfig.parameters].
-     * The client uses this schema to render a configuration form dynamically.
+     * The client uses this schema to render a configuration form dynamically. `null` for
+     * built-in toggle integrations that take no configuration (see [builtIn]).
      */
-    val configSchema: JsonNode,
+    val configSchema: JsonNode? = null,
+    /**
+     * True for built-in integrations enabled by adding their [type] directly to an agent's
+     * `integrations` map (no [IntegrationConfig] instance) — surfaced as a simple toggle in the
+     * agent form. False for regular, instance-backed integration types.
+     */
+    val builtIn: Boolean = false,
 )

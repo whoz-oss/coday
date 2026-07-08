@@ -1,5 +1,6 @@
 package io.whozoss.agentos.tool
 
+import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import jakarta.annotation.PostConstruct
@@ -40,7 +41,20 @@ class ToolRegistryService(
     fun initialize() {
         logger.info { "Initializing Tool Registry" }
         loadPlugins()
+        registerBuiltInExchangeTypes()
         logger.info { "Tool Registry initialized with ${pluginsByType.size} plugin(s)" }
+    }
+
+    /**
+     * Surface the built-in file-exchange integration types in the catalogue — but only when the
+     * file-plugin (FILE_ACCESS) is loaded, since the exchange tools are built on top of it.
+     */
+    private fun registerBuiltInExchangeTypes() {
+        if (findPlugin(ExchangeIntegrationTypes.FILE_ACCESS) != null) {
+            ExchangeIntegrationTypes.builtInDescriptors().forEach(integrationTypeRegistry::registerBuiltIn)
+        } else {
+            logger.info { "File-plugin (FILE_ACCESS) not loaded — built-in exchange integration types not registered" }
+        }
     }
 
     private fun loadPlugins() {

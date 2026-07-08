@@ -4,14 +4,19 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AgentConfig, AgentConfigControllerService } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
-import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { BehaviorSubject, catchError, forkJoin, map, of, switchMap } from 'rxjs'
 import { AgentConfigItemComponent } from '../agent-config-item/agent-config-item.component'
+
+const GROUP_NAMESPACE = 'namespace'
+const GROUP_PLATFORM = 'platform'
 
 /**
  * NamespaceAgentConfigsComponent — list view for agent configs of a namespace.
  *
  * Loaded at /:namespaceId/agent-configs. Responsibilities:
- * - Load and display the list of AgentConfig via ds-entity-list
+ * - Load and display namespace-level AND platform-level agent configs
+ * - Merge both levels into a grouped ds-entity-list (namespace / platform)
+ * - Platform-level configs are displayed read-only (no edit/delete actions)
  * - Navigate back to the namespace list
  * - Navigate to the create form (/:namespaceId/agent-configs/new)
  * - Deletion with inline confirmation (delegated to AgentConfigItemComponent)
@@ -35,30 +40,54 @@ export class NamespaceAgentConfigsComponent {
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
-  /** Raw configs, kept for delete lookups. */
-  private readonly configs$ = this.refresh$.pipe(
-    switchMap(() => this.agentConfigController.listByParentAgentConfig(this.namespaceId))
+  /**
+   * Fetches both namespace-level and platform-level configs in parallel.
+   * Platform configs are appended with a groupKey so ds-entity-list renders them
+   * in a separate collapsed-by-default group.
+   */
+  private readonly allConfigs$ = this.refresh$.pipe(
+    switchMap(() =>
+      forkJoin({
+        namespace: this.agentConfigController.listByParentAgentConfig(this.namespaceId),
+        platform: this.agentConfigController
+          .listPlatformAgentsAgentConfig()
+          .pipe(catchError(() => of([] as AgentConfig[]))),
+      })
+    )
   )
 
-  /** Mapped to EntityListItem[] for ds-entity-list. */
-  protected readonly configItems$ = this.configs$.pipe(
-    map((configs) =>
-      configs.map(
+  /** Mapped to EntityListItem[] for ds-entity-list, grouped by level. */
+  protected readonly configItems$ = this.allConfigs$.pipe(
+    map(({ namespace, platform }) => [
+      ...platform.map(
         (c: AgentConfig): EntityListItem => ({
           id: c.id ?? '',
           name: c.name,
           description: c.description,
+          groupKey: GROUP_PLATFORM,
+          groupLabel: 'Platform (read-only)',
         })
-      )
-    )
+      ),
+      ...namespace.map(
+        (c: AgentConfig): EntityListItem => ({
+          id: c.id ?? '',
+          name: c.name,
+          description: c.description,
+          groupKey: GROUP_NAMESPACE,
+          groupLabel: 'Namespace',
+        })
+      ),
+    ])
   )
 
   /** Full config objects indexed by id — used to resolve itemTemplate events. */
-  private configsById = new Map<string, AgentConfig>()
+  private namespaceConfigsById = new Map<string, AgentConfig>()
+  private platformConfigsById = new Map<string, AgentConfig>()
 
   constructor() {
-    this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((configs: AgentConfig[]) => {
-      this.configsById = new Map(configs.map((c: AgentConfig) => [c.id ?? '', c]))
+    this.allConfigs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(({ namespace, platform }) => {
+      this.namespaceConfigsById = new Map(namespace.map((c: AgentConfig) => [c.id ?? '', c]))
+      this.platformConfigsById = new Map(platform.map((c: AgentConfig) => [c.id ?? '', c]))
     })
   }
 
@@ -78,6 +107,10 @@ export class NamespaceAgentConfigsComponent {
   }
 
   protected resolveConfig(id: string): AgentConfig | null {
-    return this.configsById.get(id) ?? null
+    return this.namespaceConfigsById.get(id) ?? this.platformConfigsById.get(id) ?? null
+  }
+
+  protected isPlatformConfig(id: string): boolean {
+    return this.platformConfigsById.has(id)
   }
 }
