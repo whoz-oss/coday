@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Prompt } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
-import { BehaviorSubject, forkJoin, map, switchMap } from 'rxjs'
+import { BehaviorSubject, catchError, forkJoin, map, of, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptItemComponent } from '../prompt-item/prompt-item.component'
 
@@ -45,7 +45,7 @@ export class NamespacePromptsComponent {
   private readonly allPrompts$ = this.refresh$.pipe(
     switchMap(() =>
       forkJoin({
-        platform: this.promptState.listPlatform(),
+        platform: this.promptState.listPlatform().pipe(catchError(() => of([] as Prompt[]))),
         namespace: this.promptState.listByNamespace(this.namespaceId),
       })
     )

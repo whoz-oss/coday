@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AgentConfig, AgentConfigControllerService } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
-import { BehaviorSubject, forkJoin, map, switchMap } from 'rxjs'
+import { BehaviorSubject, catchError, forkJoin, map, of, switchMap } from 'rxjs'
 import { AgentConfigItemComponent } from '../agent-config-item/agent-config-item.component'
 
 const GROUP_NAMESPACE = 'namespace'
@@ -49,7 +49,9 @@ export class NamespaceAgentConfigsComponent {
     switchMap(() =>
       forkJoin({
         namespace: this.agentConfigController.listByNamespaceAgentConfig(this.namespaceId),
-        platform: this.agentConfigController.listPlatformAgentsAgentConfig(),
+        platform: this.agentConfigController
+          .listPlatformAgentsAgentConfig()
+          .pipe(catchError(() => of([] as AgentConfig[]))),
       })
     )
   )

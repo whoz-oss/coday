@@ -36,8 +36,6 @@ export class AiModelItemComponent {
     { key: 'delete', label: 'Delete model', icon: 'delete', variant: 'danger' },
   ]
 
-  protected readonly readOnlyMenuItems: KebabMenuItem[] = []
-
   protected get displayTitle(): string {
     return this.model().alias ?? this.model().apiModelName
   }

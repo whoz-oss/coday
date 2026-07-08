@@ -9,7 +9,7 @@ import {
   AiModelControllerService,
 } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, forkJoin, Observable, switchMap, map } from 'rxjs'
+import { BehaviorSubject, catchError, forkJoin, Observable, of, switchMap, map } from 'rxjs'
 import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
 
 const PLATFORM_GROUP_KEY = '__platform__'
@@ -57,7 +57,7 @@ export class NamespaceAiModelsComponent {
       switchMap(() =>
         forkJoin({
           namespace: this.aiModelController.listByNamespaceIdAiModel(this.namespaceId),
-          platform: this.aiModelController.listPlatformLevelAiModel(),
+          platform: this.aiModelController.listPlatformLevelAiModel().pipe(catchError(() => of([] as AiModel[]))),
           providers: this.aiProviderController.listAiProvider(this.namespaceId),
         })
       )
