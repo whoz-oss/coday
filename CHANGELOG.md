@@ -1,3 +1,13 @@
+## 0.208.0 (2026-07-08)
+
+### 🚀 Features
+
+- #1013 filesystem agent document injection ([#1089](https://github.com/whoz-oss/coday/pull/1089), [#1013](https://github.com/whoz-oss/coday/issues/1013), [#1054](https://github.com/whoz-oss/coday/issues/1054))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.207.2 (2026-07-08)
 
 ### 🩹 Fixes
