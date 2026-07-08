@@ -1,3 +1,13 @@
+## 0.208.1 (2026-07-08)
+
+### 🩹 Fixes
+
+- wz-32749: fix nullable namespaceId in GroupsByExternalIdsRequest ([#1113](https://github.com/whoz-oss/coday/pull/1113))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.208.0 (2026-07-08)
 
 ### 🚀 Features
