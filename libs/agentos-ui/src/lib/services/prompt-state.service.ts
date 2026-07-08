@@ -45,6 +45,6 @@ export class PromptStateService {
    * Used for slash-command autocomplete in the chat composer.
    */
   listEffective(namespaceId: string): Observable<Prompt[]> {
-    return this.promptController.effectivePrompt(namespaceId)
+    return this.promptController.findEffectiveByNamespaceIdPrompt(namespaceId)
   }
 }

@@ -190,32 +190,34 @@ export class PromptControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public effectivePrompt(
+  public findEffectiveByNamespaceIdPrompt(
     namespaceId: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<Prompt>>
-  public effectivePrompt(
+  public findEffectiveByNamespaceIdPrompt(
     namespaceId: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<Prompt>>>
-  public effectivePrompt(
+  public findEffectiveByNamespaceIdPrompt(
     namespaceId: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<Prompt>>>
-  public effectivePrompt(
+  public findEffectiveByNamespaceIdPrompt(
     namespaceId: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (namespaceId === null || namespaceId === undefined) {
-      throw new Error('Required parameter namespaceId was null or undefined when calling effectivePrompt.')
+      throw new Error(
+        'Required parameter namespaceId was null or undefined when calling findEffectiveByNamespaceIdPrompt.'
+      )
     }
 
     let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
@@ -405,7 +407,7 @@ export class PromptControllerService extends BaseService {
   }
 
   /**
-   * @param parentId Parent entity ID
+   * @param parentId
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
@@ -476,7 +478,7 @@ export class PromptControllerService extends BaseService {
   /**
    * List Prompts by explicit scope
    * Returns prompts for the given scope. &#x60;namespaceId&#x60; is required for &#x60;NAMESPACE&#x60; and &#x60;USER_NAMESPACE&#x60; scopes, and must be omitted for &#x60;PLATFORM&#x60; and &#x60;USER&#x60;.  | scope          | namespaceId | returned prompts                  | required permission       | |----------------|-------------|-----------------------------------|---------------------------| | PLATFORM       | absent      | platform-level (null, null)       | authenticated             | | NAMESPACE      | required    | namespace-shared (ns, null)       | READ on namespace         | | USER           | absent      | user-global (null, me)            | authenticated             | | USER_NAMESPACE | required    | user × namespace (ns, me)        | READ on namespace         |
-   * @param scope
+   * @param scope Scope of prompts to return.
    * @param namespaceId
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.

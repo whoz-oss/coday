@@ -49,16 +49,22 @@ class ToolResolverService(
                         }
                 }.flatten()
 
-        // De-duplicate tools by name, dropping second and more tools with same name
-        return allTools
-            .groupBy { it.name }
-            .map { (name, tools) ->
-                if (tools.size > 1) {
-                    logger.warn { "[ToolResolver] Tool name conflict: '$name' present ${tools.size} times, keeping the first one." }
-                }
-                tools.first()
-            }
+        return dedupToolsByName(allTools)
     }
+
+    /**
+     * De-duplicate tools by name, keeping the first occurrence and warning on each conflict.
+     * Shared so every tool source (resolver, delegation, exchange) reconciles collisions identically.
+     */
+    fun dedupToolsByName(tools: List<StandardTool<*>>): List<StandardTool<*>> =
+        tools
+            .groupBy { it.name }
+            .map { (name, duplicates) ->
+                if (duplicates.size > 1) {
+                    logger.warn { "[ToolResolver] Tool name conflict: '$name' present ${duplicates.size} times, keeping the first one." }
+                }
+                duplicates.first()
+            }
 
     private fun extractTools(
         allowedNames: List<String>?,

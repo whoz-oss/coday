@@ -13,6 +13,12 @@
 <!-- Item template: renders AiModelItemComponent for each entity-list card slot -->
 <ng-template #aiModelItemTpl let-item>
   @if (resolveModel(item.id); as model) {
-    <agentos-ai-model-item [model]="model" [namespaceId]="namespaceId" (deleteRequested)="deleteModel($event)" />
+    <agentos-ai-model-item
+      [model]="model"
+      [namespaceId]="namespaceId"
+      [readOnly]="isPlatformModel(item.id)"
+      (deleteRequested)="deleteModel($event)"
+      (editRequested)="editModel($event)"
+    />
   }
 </ng-template>

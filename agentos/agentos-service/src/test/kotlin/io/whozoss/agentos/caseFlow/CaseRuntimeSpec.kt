@@ -21,6 +21,7 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.flow.flow
+import java.time.Instant
 import java.util.UUID
 
 /** Authorization check that grants access to all agents. */
@@ -149,6 +150,7 @@ class CaseRuntimeSpec : StringSpec() {
             CaseRuntime(
                 id = runtimeId,
                 namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
                 updateStatusCallback = { _, _ -> },
                 storeEvent = { event ->
                     savedEvents.add(event)
@@ -221,6 +223,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
                     updateStatusCallback = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)
@@ -288,6 +291,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
                     updateStatusCallback = { _, _ -> },
                     storeEvent = { event ->
                         if (event is AgentSelectedEvent) callOrder.add("AgentSelectedEvent saved")
@@ -328,6 +332,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
                     updateStatusCallback = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
@@ -354,6 +359,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
                     updateStatusCallback = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
@@ -388,6 +394,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
                     updateStatusCallback = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
@@ -455,6 +462,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
                     updateStatusCallback = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
@@ -552,6 +560,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
                     updateStatusCallback = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)
@@ -630,6 +639,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
                     updateStatusCallback = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)
@@ -697,6 +707,7 @@ class CaseRuntimeSpec : StringSpec() {
             runtime = CaseRuntime(
                 id = runtimeId,
                 namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
                 updateStatusCallback = { _, _ -> },
                 storeEvent = { event -> savedEvents.add(event); event },
                 selectAgent = selectAgent.asCallback,
@@ -721,6 +732,7 @@ class CaseRuntimeSpec : StringSpec() {
             runtime = CaseRuntime(
                 id = runtimeId,
                 namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
                 updateStatusCallback = { _, _ -> },
                 storeEvent = { it },
                 selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
@@ -790,6 +802,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = caseId,
                     namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
                     updateStatusCallback = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)

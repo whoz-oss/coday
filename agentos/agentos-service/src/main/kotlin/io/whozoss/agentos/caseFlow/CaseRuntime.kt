@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,6 +55,12 @@ private data class PendingCommand(val content: List<MessageContent>)
 class CaseRuntime(
     val id: UUID,
     val namespaceId: UUID,
+    /**
+     * The case's immutable creation timestamp — used to resolve the date-sharded exchange root.
+     * Required (no default) so every runtime resolves the same exchange shard as the controller
+     * ([io.whozoss.agentos.exchange.ExchangeController.caseRootFor]); production supplies it via [buildRuntime].
+     */
+    val caseCreatedAt: Instant,
     private val updateStatusCallback: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>) -> List<CaseEvent>,

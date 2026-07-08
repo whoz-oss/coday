@@ -1,3 +1,26 @@
+## 0.207.1 (2026-07-08)
+
+### 🩹 Fixes
+
+- #33235 platform-level entities visible and read-only in namespace views ([#1110](https://github.com/whoz-oss/coday/pull/1110), [#33235](https://github.com/whoz-oss/coday/issues/33235))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.207.0 (2026-07-08)
+
+### 🚀 Features
+
+- case & namespace file exchange (backend) ([#1075](https://github.com/whoz-oss/coday/pull/1075))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
 ## 0.206.0 (2026-07-08)
 
 ### 🚀 Features
