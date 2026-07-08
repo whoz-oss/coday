@@ -707,6 +707,7 @@ class CaseRuntimeSpec : StringSpec() {
             runtime = CaseRuntime(
                 id = runtimeId,
                 namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
                 updateStatusCallback = { _, _ -> },
                 storeEvent = { event -> savedEvents.add(event); event },
                 selectAgent = selectAgent.asCallback,
@@ -731,6 +732,7 @@ class CaseRuntimeSpec : StringSpec() {
             runtime = CaseRuntime(
                 id = runtimeId,
                 namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
                 updateStatusCallback = { _, _ -> },
                 storeEvent = { it },
                 selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
