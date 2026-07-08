@@ -18,6 +18,7 @@
       [namespaceId]="namespaceId"
       [readOnly]="isPlatformModel(item.id)"
       (deleteRequested)="deleteModel($event)"
+      (editRequested)="editModel($event)"
     />
   }
 </ng-template>

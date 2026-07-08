@@ -110,6 +110,10 @@ export class NamespaceAiModelsComponent {
     this.router.navigate(['/agentos', this.namespaceId, 'ai-models', 'new'])
   }
 
+  protected editModel(model: AiModel): void {
+    this.router.navigate(['/agentos', this.namespaceId, 'ai-models', model.id, 'edit'])
+  }
+
   protected deleteModel(model: AiModel): void {
     this.aiModelController
       .deleteAiModel(model.id ?? '')
