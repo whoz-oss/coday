@@ -1,0 +1,214 @@
+:host {
+  display: contents; // laisse le .shell-sidebar gérer son propre display
+
+  @media (max-width: 900px) {
+    display: none !important;
+  }
+}
+
+.shell-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border-right: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
+  background: var(--color-bg, #f4f3ef);
+  flex-shrink: 0;
+
+  // ── Top bar ──
+  &__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 14px 12px 6px;
+    flex-shrink: 0;
+  }
+
+  &__brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: background 140ms;
+
+    &:hover {
+      background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+    }
+  }
+
+  &__logo-img {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    object-fit: contain;
+  }
+
+  // logo-text removed (text label hidden, logo only)
+
+  // ── User menu ──
+  &__user-menu {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  &__user-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
+    background: color-mix(in srgb, var(--color-primary, #016b71) 15%, transparent);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--color-primary, #016b71);
+    transition: all 140ms;
+
+    &:hover {
+      background: color-mix(in srgb, var(--color-primary, #016b71) 25%, transparent);
+    }
+  }
+
+  // ── Namespace picker ──
+  &__ns-wrap {
+    padding: 12px 12px 6px;
+    position: relative;
+  }
+
+  &__ns-label {
+    padding: 0 2px 7px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary, #5a5449);
+  }
+
+  &__ns-picker {
+    position: relative;
+  }
+
+  &__ns-trigger {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
+    background: var(--color-bg-secondary, #faf9f7);
+    cursor: pointer;
+    color: var(--color-text, #1b1916);
+    transition: all 150ms;
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 700;
+
+    &:hover {
+      border-color: var(--color-border-light, rgba(0, 0, 0, 0.15));
+    }
+  }
+
+  &__ns-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-primary, #5aadb5);
+    flex-shrink: 0;
+  }
+
+  &__ns-name {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__ns-chevron {
+    color: var(--color-text-secondary, #968f85);
+    font-size: 0.75rem;
+  }
+
+  &__ns-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    background: var(--color-bg, #f4f3ef);
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
+    border-radius: 14px;
+    padding: 6px;
+    z-index: 100;
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.09),
+      0 1px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  &__ns-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-text, #1b1916);
+    font: inherit;
+    font-size: 0.8rem;
+    transition: all 130ms;
+
+    &:hover {
+      background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+    }
+
+    &--active {
+      background: color-mix(in srgb, var(--color-primary, #016b71) 12%, transparent);
+      color: var(--color-primary, #016b71);
+    }
+  }
+
+  &__ns-item-name {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__ns-name-static {
+    display: block;
+    padding: 10px 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--color-text, #1b1916);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  // ── Case list ──
+  &__cases-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 16px;
+
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--color-border-light, rgba(255, 255, 255, 0.12));
+      border-radius: 999px;
+    }
+  }
+}

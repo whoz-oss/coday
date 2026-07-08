@@ -8,6 +8,7 @@ import {
   effect,
   ElementRef,
   inject,
+  input,
   NgZone,
   OnDestroy,
   OnInit,
@@ -103,9 +104,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly caseState = inject(CaseStateService)
 
-  // Read from snapshot initially; updated reactively in ngOnInit via route.params
-  private caseId = this.route.snapshot.params['caseId'] as string
-  private readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  // Read from snapshot initially; updated reactively in ngOnInit via route.queryParams
+  private caseId = this.route.snapshot.queryParams['case'] as string
+  private readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
 
   /** Markdown renderer shared across all message pre-computations. */
   private readonly markdownRenderer = this.buildMarkdownRenderer()
@@ -154,6 +155,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly showTechnical = signal<boolean>(
     localStorage.getItem(CaseChatComponent.SHOW_TECHNICAL_KEY) === 'true'
   )
+  readonly showTechnicalOverride = input(false)
 
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
@@ -175,6 +177,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private scrollListenerCleanup: (() => void) | null = null
 
   constructor() {
+    // Sync showTechnical from parent shell override
+    effect(() => {
+      this.showTechnical.set(this.showTechnicalOverride())
+    })
+
     // Restore focus to the composer whenever we return to an interactive state.
     effect(() => {
       if (this.isRunning() || this.isTerminal()) return
@@ -298,8 +305,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.connectSse()
 
     // Re-initialise when navigating between cases (same component instance reused by the router)
-    this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
-      const newCaseId = params['caseId'] as string
+    this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const newCaseId = params['case'] as string
       if (newCaseId && newCaseId !== this.caseId) {
         this.caseId = newCaseId
         this.reinitialise()

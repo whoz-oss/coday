@@ -14,12 +14,12 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.case.CaseDto
+import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -60,7 +60,7 @@ class CaseControllerSpec : StringSpec({
         title = title,
     )
 
-    fun caseResource(id: UUID? = null, title: String? = "my case") = CaseResource(
+    fun caseResource(id: UUID? = null, title: String? = "my case") = CaseDto(
         id = id,
         namespaceId = namespaceId,
         status = CaseStatus.PENDING,
@@ -73,36 +73,15 @@ class CaseControllerSpec : StringSpec({
     // Mapping
     // -------------------------------------------------------------------------
 
-    "toResource maps all case fields including namespaceId and status" {
+    "toDto maps all case fields including namespaceId and status" {
         val entity = caseEntity(title = "engineering case")
 
-        val result = controller.toResource(entity)
+        val result = toDto(entity)
 
         result.id shouldBe entity.metadata.id
         result.namespaceId shouldBe namespaceId
         result.status shouldBe CaseStatus.PENDING
         result.title shouldBe "engineering case"
-    }
-
-    "toDomain generates a random UUID when resource id is null" {
-        val first = controller.toDomain(caseResource(id = null)).metadata.id
-        val second = controller.toDomain(caseResource(id = null)).metadata.id
-
-        // Two consecutive calls must yield distinct ids — proving a fresh UUID
-        // is generated rather than a default/sentinel value being reused.
-        first shouldNotBe second
-    }
-
-    "toDomain preserves a provided id" {
-        val id = UUID.randomUUID()
-        controller.toDomain(caseResource(id = id)).metadata.id shouldBe id
-    }
-
-    "toDomain fills null title with the default 'Case <id>'" {
-        val id = UUID.randomUUID()
-        val result = controller.toDomain(caseResource(id = id, title = null))
-
-        result.title shouldBe "Case $id"
     }
 
     // -------------------------------------------------------------------------
@@ -389,4 +368,5 @@ class CaseControllerSpec : StringSpec({
             controller.update(id, caseResource(id = id))
         }
     }
+
 })

@@ -1,0 +1,43 @@
+@if (open()) {
+  <!-- Backdrop to close on outside click -->
+  <div
+    class="shell-user-menu__backdrop"
+    role="presentation"
+    tabindex="-1"
+    (click)="onClose($event)"
+    (keyup.escape)="onClose($event)"
+  ></div>
+
+  <div class="shell-user-menu__overlay" [class.shell-user-menu__overlay--mobile]="variant() === 'mobile'">
+    <button class="shell-user-menu__item" type="button" (click)="onNavigate('/agentos/user')">👤 User</button>
+
+    @if (isAdmin()) {
+      <button class="shell-user-menu__item" type="button" (click)="onNavigate('/agentos/admin')">⚙️ Admin</button>
+    }
+
+    <div class="shell-user-menu__separator"></div>
+
+    <button class="shell-user-menu__item" type="button" (click)="onNavigate('/agentos/namespaces')">
+      🌐 Namespaces
+    </button>
+
+    <div class="shell-user-menu__separator"></div>
+
+    <button class="shell-user-menu__item" type="button" (click)="onThemeToggle()">
+      @if (isDark()) {
+        ☀️ Light mode
+      } @else {
+        🌙 Dark mode
+      }
+    </button>
+
+    <button
+      class="shell-user-menu__item"
+      [class.shell-user-menu__item--active]="showTechnical()"
+      type="button"
+      (click)="onLogsToggle()"
+    >
+      &lt;/&gt; Technical logs
+    </button>
+  </div>
+}

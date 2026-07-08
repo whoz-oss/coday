@@ -1,5 +1,7 @@
 package io.whozoss.agentos.userGroup
 
+import io.whozoss.agentos.sdk.api.userGroup.UserGroupApi
+import io.whozoss.agentos.sdk.api.userGroup.UserGroupSearchResult
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -17,62 +19,75 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
+/**
+ * REST API for UserGroup entities. Implements [UserGroupApi] so external consumers
+ * can declare a Feign client against the SDK interface.
+ */
 @RestController
 @RequestMapping("/api/user-groups", produces = [MediaType.APPLICATION_JSON_VALUE])
 class UserGroupController(
     private val userGroupService: UserGroupService,
-) {
+) : UserGroupApi {
     @GetMapping
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
-    fun searchByNamespaceId(
+    override fun findByNamespaceId(
         @RequestParam namespaceId: UUID,
-    ): List<UserGroupSearchResultResource> =
-        userGroupService
-            .findByNamespaceId(namespaceId)
-            .map { it.toResource() }
+    ): List<UserGroupSearchResult> = userGroupService.findByNamespaceId(namespaceId).map { it.toDto() }
 
     @GetMapping("/{userGroupId}")
     @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'READ')")
     @HideOnAccessDenied
-    fun getById(
+    override fun getById(
         @PathVariable userGroupId: UUID,
-    ): UserGroupSearchResultResource =
-        userGroupService.findByIdWithDetails(userGroupId)?.toResource()
+    ): UserGroupSearchResult =
+        userGroupService.findByIdWithDetails(userGroupId)?.toDto()
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND)
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasPermission(#request.namespaceId, 'Namespace', 'WRITE')")
-    fun create(
-        @Valid @RequestBody request: UserGroupCreateRequest,
-    ): UserGroupSearchResultResource =
-        userGroupService.createFromRequest(request).toResource()
+    override fun create(
+        @Valid @RequestBody request: io.whozoss.agentos.sdk.api.userGroup.UserGroupCreateRequest,
+    ): UserGroupSearchResult = userGroupService.createFromRequest(request).toDto()
 
     @PostMapping("/{userGroupId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'WRITE')")
-    fun update(
+    override fun update(
         @PathVariable userGroupId: UUID,
-        @Valid @RequestBody request: UserGroupUpdateRequest,
-    ): UserGroupSearchResultResource =
-        userGroupService.updateFromRequest(userGroupId, request).toResource()
+        @Valid @RequestBody request: io.whozoss.agentos.sdk.api.userGroup.UserGroupUpdateRequest,
+    ): UserGroupSearchResult =
+        userGroupService
+            .updateFromRequest(
+                userGroupId,
+                UserGroupUpdateRequest(
+                    name = request.name,
+                    userExternalIdsToAdd = request.userExternalIdsToAdd,
+                    userExternalIdsToRemove = request.userExternalIdsToRemove,
+                    agentIds = request.agentIds,
+                ),
+            ).toDto()
 
     @DeleteMapping("/{userGroupId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'DELETE')")
-    fun delete(
+    override fun delete(
         @PathVariable userGroupId: UUID,
     ) {
         val deleted = userGroupService.delete(userGroupId)
         if (!deleted) throw ResponseStatusException(HttpStatus.NOT_FOUND)
     }
-
-    private fun UserGroupSearchResult.toResource() =
-        UserGroupSearchResultResource(
-            userGroupId = userGroupId,
-            namespaceId = namespaceId,
-            namespaceExternalId = namespaceExternalId,
-            name = name,
-            agentIds = agentIds,
-            userCount = userCount,
-        )
 }
+
+// ---------------------------------------------------------------------------
+// Extension: service-internal UserGroupSearchResult → SDK UserGroupSearchResult
+// ---------------------------------------------------------------------------
+
+private fun io.whozoss.agentos.userGroup.UserGroupSearchResult.toDto() =
+    UserGroupSearchResult(
+        userGroupId = userGroupId,
+        namespaceId = namespaceId,
+        namespaceExternalId = namespaceExternalId,
+        name = name,
+        agentIds = agentIds,
+        userCount = userCount,
+    )

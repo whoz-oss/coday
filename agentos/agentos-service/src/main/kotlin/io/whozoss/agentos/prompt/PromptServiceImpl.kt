@@ -35,14 +35,17 @@ class PromptServiceImpl(
 
     override fun update(entity: Prompt): Prompt {
         validate(entity)
-        repository.findByTriple(entity.namespaceId, entity.userId, entity.name)
+        repository
+            .findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let { throw ConflictException(conflictMessage(entity)) }
         return saveOrConflict(entity)
     }
 
-    override fun findById(id: UUID, withRemoved: Boolean): Prompt? =
-        repository.findByIds(listOf(id), withRemoved).firstOrNull()
+    override fun findById(
+        id: UUID,
+        withRemoved: Boolean,
+    ): Prompt? = repository.findByIds(listOf(id), withRemoved).firstOrNull()
 
     override fun findByIds(
         ids: Collection<UUID>,
@@ -55,7 +58,10 @@ class PromptServiceImpl(
 
     override fun findByUserId(userId: UUID): List<Prompt> = repository.findByUserId(userId)
 
-    override fun findEffective(namespaceId: UUID, callerId: UUID): List<Prompt> =
+    override fun findEffective(
+        namespaceId: UUID,
+        callerId: UUID,
+    ): List<Prompt> =
         repository
             .findEffective(namespaceId, callerId)
             .sortedBy { layerPriority(it) }
@@ -65,10 +71,16 @@ class PromptServiceImpl(
 
     private fun layerPriority(p: Prompt): Int =
         when {
-            p.namespaceId == null && p.userId == null -> 0 // platform
-            p.namespaceId == null -> 1                     // user-global
-            p.userId == null -> 2                          // namespace-shared
-            else -> 3                                      // user×namespace
+            p.namespaceId == null && p.userId == null -> 0
+
+            // platform
+            p.namespaceId == null -> 1
+
+            // user-global
+            p.userId == null -> 2
+
+            // namespace-shared
+            else -> 3 // user×namespace
         }
 
     override fun delete(id: UUID): Boolean = repository.delete(id)
@@ -76,7 +88,10 @@ class PromptServiceImpl(
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
 
     /**
-     * Validates business rules that cannot be expressed via Bean Validation:
+     * Validates business rules that apply after Bean Validation:
+     * - No element of [Prompt.content] may be blank (type-use @NotBlank on generic
+     *   type arguments is unreliable when the DTO lives in a separate module with
+     *   compileOnly validation dependencies, so the check lives here instead).
      * - Parameter names must be unique within the list.
      */
     private fun validate(prompt: Prompt) {
