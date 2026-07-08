@@ -1,3 +1,13 @@
+## 0.207.2 (2026-07-08)
+
+### 🩹 Fixes
+
+- build angular post-merge ([#1112](https://github.com/whoz-oss/coday/pull/1112))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.207.1 (2026-07-08)
 
 ### 🩹 Fixes
