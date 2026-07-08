@@ -9,6 +9,7 @@ api/ai-provider-controller.service.ts
 api/api.ts
 api/case-controller.service.ts
 api/case-event-rest-controller.service.ts
+api/exchange-controller.service.ts
 api/feedback-controller.service.ts
 api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
@@ -43,6 +44,10 @@ model/confirmation-resolved-event.ts
 model/enrichment-phase-trace.ts
 model/entity-metadata.ts
 model/error-event.ts
+model/exchange-delete-response.ts
+model/exchange-file-content.ts
+model/exchange-file-entry.ts
+model/exchange-manifest.ts
 model/feedback-input.ts
 model/feedback.ts
 model/get-by-ids-case-event-rest200-response-inner.ts

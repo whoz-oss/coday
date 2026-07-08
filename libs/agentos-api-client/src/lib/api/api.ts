@@ -8,6 +8,8 @@ export * from './case-controller.service'
 import { CaseControllerService } from './case-controller.service'
 export * from './case-event-rest-controller.service'
 import { CaseEventRestControllerService } from './case-event-rest-controller.service'
+export * from './exchange-controller.service'
+import { ExchangeControllerService } from './exchange-controller.service'
 export * from './feedback-controller.service'
 import { FeedbackControllerService } from './feedback-controller.service'
 export * from './integration-config-controller.service'
@@ -20,7 +22,7 @@ export * from './namespace-permission-endpoints.service'
 import { NamespacePermissionEndpointsService } from './namespace-permission-endpoints.service'
 export * from './plugin-controller.service'
 import { PluginControllerService } from './plugin-controller.service'
-                                     export * from './prompt-controller.service'
+export * from './prompt-controller.service'
 import { PromptControllerService } from './prompt-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
@@ -34,6 +36,7 @@ export const APIS = [
   AiProviderControllerService,
   CaseControllerService,
   CaseEventRestControllerService,
+  ExchangeControllerService,
   FeedbackControllerService,
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,

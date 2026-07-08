@@ -10,14 +10,44 @@
 import { AgentDefinitionToolSummary } from './agent-definition-tool-summary'
 
 export interface AgentDefinition {
+  /**
+   * The ID of the AgentConfig this definition was resolved from.
+   */
   agentConfigId: string
+  /**
+   * The agent\'s display name.
+   */
   name: string
+  /**
+   * Privileged namespace context block sent as a separate system message, before instructions. Null when no namespace context is available.
+   */
   systemPrompt?: string
+  /**
+   * Final system instructions sent to the LLM, including injected namespace / integration / user context blocks.
+   */
   instructions?: string
+  /**
+   * The actual API model name sent to the provider.
+   */
   resolvedModelApiName: string
+  /**
+   * The name of the resolved AI provider.
+   */
   resolvedProviderName: string
+  /**
+   * Summary of tools that would be made available to this agent.
+   */
   tools: Array<AgentDefinitionToolSummary>
+  /**
+   * Whether the agent uses the advanced multi-step execution engine.
+   */
   advancedExecution: boolean
+  /**
+   * The namespace this agent belongs to.
+   */
   namespaceId: string
+  /**
+   * The user whose overlay was applied, or null for namespace-only resolution.
+   */
   userId?: string
 }

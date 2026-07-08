@@ -10,17 +10,17 @@
 /* tslint:disable:no-unused-variable member-ordering */
 
 import { Inject, Injectable, Optional } from '@angular/core'
-import { HttpClient, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
+import { HttpClient, HttpParams, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
 import { Observable } from 'rxjs'
 
 // @ts-ignore
-import { GetByIdsRequest } from '../model/get-by-ids-request'
+import { ExchangeDeleteResponse } from '../model/exchange-delete-response'
 // @ts-ignore
-import { GroupsByExternalIdsRequest } from '../model/groups-by-external-ids-request'
+import { ExchangeFileContent } from '../model/exchange-file-content'
 // @ts-ignore
-import { User } from '../model/user'
+import { ExchangeFileEntry } from '../model/exchange-file-entry'
 // @ts-ignore
-import { UserGroupSummary } from '../model/user-group-summary'
+import { ExchangeManifest } from '../model/exchange-manifest'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -30,7 +30,7 @@ import { BaseService } from '../api.base.service'
 @Injectable({
   providedIn: 'root',
 })
-export class UserControllerService extends BaseService {
+export class ExchangeControllerService extends BaseService {
   constructor(
     protected httpClient: HttpClient,
     @Optional() @Inject(BASE_PATH) basePath: string | string[],
@@ -40,183 +40,48 @@ export class UserControllerService extends BaseService {
   }
 
   /**
-   * @param user
+   * @param caseId
+   * @param path
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public createUser(
-    user: User,
+  public deleteCaseFileExchange(
+    caseId: string,
+    path: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<User>
-  public createUser(
-    user: User,
+  ): Observable<ExchangeDeleteResponse>
+  public deleteCaseFileExchange(
+    caseId: string,
+    path: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<User>>
-  public createUser(
-    user: User,
+  ): Observable<HttpResponse<ExchangeDeleteResponse>>
+  public deleteCaseFileExchange(
+    caseId: string,
+    path: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<User>>
-  public createUser(
-    user: User,
+  ): Observable<HttpEvent<ExchangeDeleteResponse>>
+  public deleteCaseFileExchange(
+    caseId: string,
+    path: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (user === null || user === undefined) {
-      throw new Error('Required parameter user was null or undefined when calling createUser.')
+    if (caseId === null || caseId === undefined) {
+      throw new Error('Required parameter caseId was null or undefined when calling deleteCaseFileExchange.')
+    }
+    if (path === null || path === undefined) {
+      throw new Error('Required parameter path was null or undefined when calling deleteCaseFileExchange.')
     }
 
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
-    }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
-
-    // to determine the Content-Type header
-    const consumes: string[] = ['application/json']
-    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
-    if (httpContentTypeSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
-    }
-
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
-    }
-
-    let localVarPath = `/api/users`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<User>('post', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
-      body: user,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
-   * @param id
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public deleteUser(
-    id: string,
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any>
-  public deleteUser(
-    id: string,
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<any>>
-  public deleteUser(
-    id: string,
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<any>>
-  public deleteUser(
-    id: string,
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling deleteUser.')
-    }
-
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
-    }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
-
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
-    }
-
-    let localVarPath = `/api/users/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<any>('delete', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
-   * @param id
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public getByIdUser(
-    id: string,
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<User>
-  public getByIdUser(
-    id: string,
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<User>>
-  public getByIdUser(
-    id: string,
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<User>>
-  public getByIdUser(
-    id: string,
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling getByIdUser.')
-    }
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>path, 'path')
 
     let localVarHeaders = this.defaultHeaders
 
@@ -241,10 +106,11 @@ export class UserControllerService extends BaseService {
       }
     }
 
-    let localVarPath = `/api/users/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
+    let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'caseId', value: caseId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<User>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<ExchangeDeleteResponse>('delete', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      params: localVarQueryParameters,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -255,37 +121,48 @@ export class UserControllerService extends BaseService {
   }
 
   /**
-   * @param getByIdsRequest
+   * @param namespaceId
+   * @param path
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getByIdsUser(
-    getByIdsRequest: GetByIdsRequest,
+  public deleteNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<User>>
-  public getByIdsUser(
-    getByIdsRequest: GetByIdsRequest,
+  ): Observable<ExchangeDeleteResponse>
+  public deleteNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<User>>>
-  public getByIdsUser(
-    getByIdsRequest: GetByIdsRequest,
+  ): Observable<HttpResponse<ExchangeDeleteResponse>>
+  public deleteNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<User>>>
-  public getByIdsUser(
-    getByIdsRequest: GetByIdsRequest,
+  ): Observable<HttpEvent<ExchangeDeleteResponse>>
+  public deleteNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (getByIdsRequest === null || getByIdsRequest === undefined) {
-      throw new Error('Required parameter getByIdsRequest was null or undefined when calling getByIdsUser.')
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error('Required parameter namespaceId was null or undefined when calling deleteNamespaceFileExchange.')
     }
+    if (path === null || path === undefined) {
+      throw new Error('Required parameter path was null or undefined when calling deleteNamespaceFileExchange.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>path, 'path')
 
     let localVarHeaders = this.defaultHeaders
 
@@ -299,12 +176,86 @@ export class UserControllerService extends BaseService {
 
     const localVarTransferCache: boolean = options?.transferCache ?? true
 
-    // to determine the Content-Type header
-    const consumes: string[] = ['application/json']
-    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
-    if (httpContentTypeSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
     }
+
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<ExchangeDeleteResponse>('delete', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param caseId
+   * @param path
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public downloadCaseFileExchange(
+    caseId: string,
+    path: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/octet-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<string>
+  public downloadCaseFileExchange(
+    caseId: string,
+    path: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/octet-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<string>>
+  public downloadCaseFileExchange(
+    caseId: string,
+    path: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/octet-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<string>>
+  public downloadCaseFileExchange(
+    caseId: string,
+    path: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/octet-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (caseId === null || caseId === undefined) {
+      throw new Error('Required parameter caseId was null or undefined when calling downloadCaseFileExchange.')
+    }
+    if (path === null || path === undefined) {
+      throw new Error('Required parameter path was null or undefined when calling downloadCaseFileExchange.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>path, 'path')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/octet-stream'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
 
     let responseType_: 'text' | 'json' | 'blob' = 'json'
     if (localVarHttpHeaderAcceptSelected) {
@@ -317,11 +268,11 @@ export class UserControllerService extends BaseService {
       }
     }
 
-    let localVarPath = `/api/users/by-ids`
+    let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'caseId', value: caseId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files/download`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<User>>('post', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<string>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: getByIdsRequest,
+      params: localVarQueryParameters,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -332,37 +283,353 @@ export class UserControllerService extends BaseService {
   }
 
   /**
-   * @param groupsByExternalIdsRequest
+   * @param namespaceId
+   * @param path
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public getGroupsByExternalIdsUser(
-    groupsByExternalIdsRequest: GroupsByExternalIdsRequest,
+  public downloadNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
     observe?: 'body',
     reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<{ [key: string]: Array<UserGroupSummary> }>
-  public getGroupsByExternalIdsUser(
-    groupsByExternalIdsRequest: GroupsByExternalIdsRequest,
+    options?: { httpHeaderAccept?: 'application/octet-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<string>
+  public downloadNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
     observe?: 'response',
     reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<{ [key: string]: Array<UserGroupSummary> }>>
-  public getGroupsByExternalIdsUser(
-    groupsByExternalIdsRequest: GroupsByExternalIdsRequest,
+    options?: { httpHeaderAccept?: 'application/octet-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<string>>
+  public downloadNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
     observe?: 'events',
     reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<{ [key: string]: Array<UserGroupSummary> }>>
-  public getGroupsByExternalIdsUser(
-    groupsByExternalIdsRequest: GroupsByExternalIdsRequest,
+    options?: { httpHeaderAccept?: 'application/octet-stream'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<string>>
+  public downloadNamespaceFileExchange(
+    namespaceId: string,
+    path: string,
     observe: any = 'body',
     reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+    options?: { httpHeaderAccept?: 'application/octet-stream'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (groupsByExternalIdsRequest === null || groupsByExternalIdsRequest === undefined) {
+    if (namespaceId === null || namespaceId === undefined) {
       throw new Error(
-        'Required parameter groupsByExternalIdsRequest was null or undefined when calling getGroupsByExternalIdsUser.'
+        'Required parameter namespaceId was null or undefined when calling downloadNamespaceFileExchange.'
+      )
+    }
+    if (path === null || path === undefined) {
+      throw new Error('Required parameter path was null or undefined when calling downloadNamespaceFileExchange.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>path, 'path')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/octet-stream'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files/download`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<string>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param caseId
+   * @param path
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public getCaseFileContentExchange(
+    caseId: string,
+    path: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<ExchangeFileContent>
+  public getCaseFileContentExchange(
+    caseId: string,
+    path: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<ExchangeFileContent>>
+  public getCaseFileContentExchange(
+    caseId: string,
+    path: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<ExchangeFileContent>>
+  public getCaseFileContentExchange(
+    caseId: string,
+    path: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (caseId === null || caseId === undefined) {
+      throw new Error('Required parameter caseId was null or undefined when calling getCaseFileContentExchange.')
+    }
+    if (path === null || path === undefined) {
+      throw new Error('Required parameter path was null or undefined when calling getCaseFileContentExchange.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>path, 'path')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'caseId', value: caseId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files/content`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<ExchangeFileContent>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param caseId
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public getCaseFilesManifestExchange(
+    caseId: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<ExchangeManifest>
+  public getCaseFilesManifestExchange(
+    caseId: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<ExchangeManifest>>
+  public getCaseFilesManifestExchange(
+    caseId: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<ExchangeManifest>>
+  public getCaseFilesManifestExchange(
+    caseId: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (caseId === null || caseId === undefined) {
+      throw new Error('Required parameter caseId was null or undefined when calling getCaseFilesManifestExchange.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'caseId', value: caseId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files/manifest`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<ExchangeManifest>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param namespaceId
+   * @param path
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public getNamespaceFileContentExchange(
+    namespaceId: string,
+    path: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<ExchangeFileContent>
+  public getNamespaceFileContentExchange(
+    namespaceId: string,
+    path: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<ExchangeFileContent>>
+  public getNamespaceFileContentExchange(
+    namespaceId: string,
+    path: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<ExchangeFileContent>>
+  public getNamespaceFileContentExchange(
+    namespaceId: string,
+    path: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error(
+        'Required parameter namespaceId was null or undefined when calling getNamespaceFileContentExchange.'
+      )
+    }
+    if (path === null || path === undefined) {
+      throw new Error('Required parameter path was null or undefined when calling getNamespaceFileContentExchange.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>path, 'path')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files/content`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<ExchangeFileContent>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param namespaceId
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public getNamespaceFilesManifestExchange(
+    namespaceId: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<ExchangeManifest>
+  public getNamespaceFilesManifestExchange(
+    namespaceId: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<ExchangeManifest>>
+  public getNamespaceFilesManifestExchange(
+    namespaceId: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<ExchangeManifest>>
+  public getNamespaceFilesManifestExchange(
+    namespaceId: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error(
+        'Required parameter namespaceId was null or undefined when calling getNamespaceFilesManifestExchange.'
       )
     }
 
@@ -378,13 +645,6 @@ export class UserControllerService extends BaseService {
 
     const localVarTransferCache: boolean = options?.transferCache ?? true
 
-    // to determine the Content-Type header
-    const consumes: string[] = ['application/json']
-    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
-    if (httpContentTypeSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
-    }
-
     let responseType_: 'text' | 'json' | 'blob' = 'json'
     if (localVarHttpHeaderAcceptSelected) {
       if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
@@ -396,71 +656,9 @@ export class UserControllerService extends BaseService {
       }
     }
 
-    let localVarPath = `/api/users/groups-by-external-ids`
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files/manifest`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<{ [key: string]: Array<UserGroupSummary> }>('post', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
-      body: groupsByExternalIdsRequest,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
-   * Get the current user\&#39;s profile
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public getMeUser(
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<User>
-  public getMeUser(
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<User>>
-  public getMeUser(
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<User>>
-  public getMeUser(
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
-    }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
-
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
-    }
-
-    let localVarPath = `/api/users/me`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<User>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<ExchangeManifest>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
@@ -472,96 +670,44 @@ export class UserControllerService extends BaseService {
   }
 
   /**
+   * @param caseId
+   * @param file
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listAllUser(
+  public uploadCaseFileExchange(
+    caseId: string,
+    file: Blob,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<User>>
-  public listAllUser(
+  ): Observable<ExchangeFileEntry>
+  public uploadCaseFileExchange(
+    caseId: string,
+    file: Blob,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<User>>>
-  public listAllUser(
+  ): Observable<HttpResponse<ExchangeFileEntry>>
+  public uploadCaseFileExchange(
+    caseId: string,
+    file: Blob,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<User>>>
-  public listAllUser(
+  ): Observable<HttpEvent<ExchangeFileEntry>>
+  public uploadCaseFileExchange(
+    caseId: string,
+    file: Blob,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    if (caseId === null || caseId === undefined) {
+      throw new Error('Required parameter caseId was null or undefined when calling uploadCaseFileExchange.')
     }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
-
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
-    }
-
-    let localVarPath = `/api/users`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<User>>('get', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
-   * @param requestBody
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public listByExternalIdsUser(
-    requestBody: Array<string>,
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<User>>
-  public listByExternalIdsUser(
-    requestBody: Array<string>,
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<User>>>
-  public listByExternalIdsUser(
-    requestBody: Array<string>,
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<User>>>
-  public listByExternalIdsUser(
-    requestBody: Array<string>,
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    if (requestBody === null || requestBody === undefined) {
-      throw new Error('Required parameter requestBody was null or undefined when calling listByExternalIdsUser.')
+    if (file === null || file === undefined) {
+      throw new Error('Required parameter file was null or undefined when calling uploadCaseFileExchange.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -577,10 +723,24 @@ export class UserControllerService extends BaseService {
     const localVarTransferCache: boolean = options?.transferCache ?? true
 
     // to determine the Content-Type header
-    const consumes: string[] = ['application/json']
-    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
-    if (httpContentTypeSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    const consumes: string[] = ['multipart/form-data']
+
+    const canConsumeForm = this.canConsumeForm(consumes)
+
+    let localVarFormParams: { append(param: string, value: any): any }
+    let localVarUseForm = false
+    let localVarConvertFormParamsToString = false
+    // use FormData to transmit files using content-type "multipart/form-data"
+    // see https://stackoverflow.com/questions/4007969/application-x-www-form-urlencoded-or-multipart-form-data
+    localVarUseForm = canConsumeForm
+    if (localVarUseForm) {
+      localVarFormParams = new FormData()
+    } else {
+      localVarFormParams = new HttpParams({ encoder: this.encoder })
+    }
+
+    if (file !== undefined) {
+      localVarFormParams = (localVarFormParams.append('file', <any>file) as any) || localVarFormParams
     }
 
     let responseType_: 'text' | 'json' | 'blob' = 'json'
@@ -594,11 +754,11 @@ export class UserControllerService extends BaseService {
       }
     }
 
-    let localVarPath = `/api/users/by-external-ids`
+    let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'caseId', value: caseId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<User>>('post', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<ExchangeFileEntry>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: requestBody,
+      body: localVarConvertFormParamsToString ? localVarFormParams.toString() : localVarFormParams,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -609,44 +769,44 @@ export class UserControllerService extends BaseService {
   }
 
   /**
-   * @param id
-   * @param user
+   * @param namespaceId
+   * @param file
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public updateUser(
-    id: string,
-    user: User,
+  public uploadNamespaceFileExchange(
+    namespaceId: string,
+    file: Blob,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<User>
-  public updateUser(
-    id: string,
-    user: User,
+  ): Observable<ExchangeFileEntry>
+  public uploadNamespaceFileExchange(
+    namespaceId: string,
+    file: Blob,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<User>>
-  public updateUser(
-    id: string,
-    user: User,
+  ): Observable<HttpResponse<ExchangeFileEntry>>
+  public uploadNamespaceFileExchange(
+    namespaceId: string,
+    file: Blob,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<User>>
-  public updateUser(
-    id: string,
-    user: User,
+  ): Observable<HttpEvent<ExchangeFileEntry>>
+  public uploadNamespaceFileExchange(
+    namespaceId: string,
+    file: Blob,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (id === null || id === undefined) {
-      throw new Error('Required parameter id was null or undefined when calling updateUser.')
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error('Required parameter namespaceId was null or undefined when calling uploadNamespaceFileExchange.')
     }
-    if (user === null || user === undefined) {
-      throw new Error('Required parameter user was null or undefined when calling updateUser.')
+    if (file === null || file === undefined) {
+      throw new Error('Required parameter file was null or undefined when calling uploadNamespaceFileExchange.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -662,10 +822,24 @@ export class UserControllerService extends BaseService {
     const localVarTransferCache: boolean = options?.transferCache ?? true
 
     // to determine the Content-Type header
-    const consumes: string[] = ['application/json']
-    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
-    if (httpContentTypeSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    const consumes: string[] = ['multipart/form-data']
+
+    const canConsumeForm = this.canConsumeForm(consumes)
+
+    let localVarFormParams: { append(param: string, value: any): any }
+    let localVarUseForm = false
+    let localVarConvertFormParamsToString = false
+    // use FormData to transmit files using content-type "multipart/form-data"
+    // see https://stackoverflow.com/questions/4007969/application-x-www-form-urlencoded-or-multipart-form-data
+    localVarUseForm = canConsumeForm
+    if (localVarUseForm) {
+      localVarFormParams = new FormData()
+    } else {
+      localVarFormParams = new HttpParams({ encoder: this.encoder })
+    }
+
+    if (file !== undefined) {
+      localVarFormParams = (localVarFormParams.append('file', <any>file) as any) || localVarFormParams
     }
 
     let responseType_: 'text' | 'json' | 'blob' = 'json'
@@ -679,11 +853,11 @@ export class UserControllerService extends BaseService {
       }
     }
 
-    let localVarPath = `/api/users/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/files`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<User>('put', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<ExchangeFileEntry>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: user,
+      body: localVarConvertFormParamsToString ? localVarFormParams.toString() : localVarFormParams,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
