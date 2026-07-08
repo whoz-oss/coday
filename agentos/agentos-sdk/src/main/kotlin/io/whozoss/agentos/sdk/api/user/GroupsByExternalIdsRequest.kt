@@ -12,5 +12,5 @@ import java.util.UUID
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class GroupsByExternalIdsRequest(
     val externalIds: List<String>,
-    val namespaceId: UUID,
+    val namespaceId: UUID? = null,
 )
