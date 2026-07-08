@@ -7,21 +7,11 @@ export const AGENTOS_ROUTES: Route[] = [
     loadComponent: () =>
       import('./components/agentos-shell/agentos-shell.component').then((m) => m.AgentosShellComponent),
     children: [
-      // --- Cases (own full-height shell with header + drawer) ---
+      // --- Cases (own full-height shell with sidebar layout) ---
       {
-        path: ':namespaceId/cases',
+        path: 'home',
         canActivate: [agentosReadyGuard],
         loadComponent: () => import('./components/case-shell/case-shell.component').then((m) => m.CaseShellComponent),
-        children: [
-          {
-            path: '',
-            loadComponent: () => import('./components/case-home/case-home.component').then((m) => m.CaseHomeComponent),
-          },
-          {
-            path: ':caseId',
-            loadComponent: () => import('./components/case-chat/case-chat.component').then((m) => m.CaseChatComponent),
-          },
-        ],
       },
       {
         path: '',
@@ -198,6 +188,12 @@ export const AGENTOS_ROUTES: Route[] = [
           // --- User profile ---
           {
             path: 'me',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/user-profile/user-profile.component').then((m) => m.UserProfileComponent),
+          },
+          {
+            path: 'user',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
               import('./components/user-profile/user-profile.component').then((m) => m.UserProfileComponent),

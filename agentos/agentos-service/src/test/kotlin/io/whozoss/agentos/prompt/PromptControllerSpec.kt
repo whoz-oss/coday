@@ -16,6 +16,8 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.prompt.PromptDto
+import io.whozoss.agentos.sdk.api.prompt.PromptParameterDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -27,17 +29,13 @@ import java.util.UUID
  *
  * Permission annotations (@PreAuthorize) are bypassed in pure unit tests — those are
  * exercised by the MVC integration specs. This spec covers:
- * - toResource / toDomain mapping
+ * - toDto / toDomain mapping
  * - create: scope dispatch, authorization guards, namespace existence check
  * - update: namespaceId mass-assignment guard, mutable fields, 404 path
  * - delete: 404 path
  *
  * HTTP-level flows (Bean Validation, status codes, @PreAuthorize wiring) are
  * covered by [PromptControllerMvcIntegrationSpec].
- *
- * Platform-level admin guard (Super Admin required for WRITE/DELETE on platform prompts)
- * is enforced by PermissionServiceImpl, not the controller. Those cases are covered
- * by PermissionService tests.
  */
 class PromptControllerSpec : StringSpec({
 
@@ -87,8 +85,8 @@ class PromptControllerSpec : StringSpec({
         name: String = "My Prompt",
         description: String? = null,
         content: List<String> = listOf("Hello {{name}}"),
-        parameters: List<PromptParameterResource> = emptyList(),
-    ) = PromptResource(
+        parameters: List<PromptParameterDto> = emptyList(),
+    ) = PromptDto(
         id = id,
         namespaceId = nsId,
         userId = userId,
@@ -111,10 +109,10 @@ class PromptControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // toResource mapping
+    // toDto mapping
     // -------------------------------------------------------------------------
 
-    "toResource maps all fields correctly" {
+    "toDto maps all fields correctly" {
         val id = UUID.randomUUID()
         val created = java.time.Instant.parse("2024-01-01T00:00:00Z")
         val modified = java.time.Instant.parse("2024-06-01T12:00:00Z")
@@ -133,7 +131,7 @@ class PromptControllerSpec : StringSpec({
             parameters = listOf(PromptParameter(name = "name", description = "User name", defaultValue = "World")),
         )
 
-        val result = controller.toResource(p)
+        val result = toDto(p)
 
         result.id shouldBe id
         result.namespaceId shouldBe namespaceId
@@ -150,15 +148,15 @@ class PromptControllerSpec : StringSpec({
         result.updatedOn shouldBe modified
     }
 
-    "toResource maps null namespaceId for platform prompts" {
+    "toDto maps null namespaceId for platform prompts" {
         val p = prompt(nsId = null)
-        val result = controller.toResource(p)
+        val result = toDto(p)
         result.namespaceId.shouldBeNull()
     }
 
-    "toResource maps empty parameters to empty list" {
+    "toDto maps empty parameters to empty list" {
         val p = prompt(parameters = emptyList())
-        val result = controller.toResource(p)
+        val result = toDto(p)
         result.parameters shouldBe emptyList()
     }
 
@@ -174,10 +172,10 @@ class PromptControllerSpec : StringSpec({
             name = "Summary",
             description = "Summarise input",
             content = listOf("Summarise: {{text}}"),
-            parameters = listOf(PromptParameterResource(name = "text", description = "Input text", defaultValue = "default")),
+            parameters = listOf(PromptParameterDto(name = "text", description = "Input text", defaultValue = "default")),
         )
 
-        val result = controller.toDomain(r)
+        val result = toDomain(r)
 
         result.id shouldBe id
         result.namespaceId shouldBe namespaceId
@@ -189,8 +187,8 @@ class PromptControllerSpec : StringSpec({
     }
 
     "toDomain generates a fresh UUID when id is null" {
-        val first = controller.toDomain(resource(id = null))
-        val second = controller.toDomain(resource(id = null))
+        val first = toDomain(resource(id = null))
+        val second = toDomain(resource(id = null))
         (first.id == second.id) shouldBe false
     }
 
@@ -293,9 +291,8 @@ class PromptControllerSpec : StringSpec({
         } returns true
         val captured = slot<Prompt>()
         every { service.create(capture(captured)) } answers { firstArg() }
-        val bodyId = UUID.randomUUID()
 
-        controller.create(resource(id = bodyId, nsId = namespaceId))
+        controller.create(resource(id = UUID.randomUUID(), nsId = namespaceId))
 
         // Controller always generates a new UUID — body id is ignored
         captured.captured.id shouldBe captured.captured.id // exists and is a valid UUID
@@ -371,7 +368,7 @@ class PromptControllerSpec : StringSpec({
 
     "update allows changing name, description, content, and parameters" {
         val p = prompt()
-        val newParams = listOf(PromptParameterResource(name = "city", description = "City name", defaultValue = "Paris"))
+        val newParams = listOf(PromptParameterDto(name = "city", description = "City name", defaultValue = "Paris"))
         val payload = resource(
             id = p.id,
             name = "New Name",

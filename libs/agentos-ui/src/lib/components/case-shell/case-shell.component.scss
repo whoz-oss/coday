@@ -6,42 +6,59 @@
 
 .case-shell {
   display: flex;
-  flex-direction: column;
   height: 100%;
+  overflow: hidden;
 
-  &__header {
+  // ── Resize handle ──
+  &__resize-handle {
+    width: 4px;
     flex-shrink: 0;
+    cursor: col-resize;
+    background: var(--color-border, rgba(0, 0, 0, 0.09));
+    transition: background 150ms;
+    position: relative;
+    z-index: 10;
+
+    &:hover,
+    &:active {
+      background: var(--color-primary, #016b71);
+    }
   }
 
-  &__body {
+  // ── Main ──
+  &__main {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-  }
 
-  &__sidenav {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  &__content {
-    position: relative;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  // Floating container for the open-drawer icon-button, visible when drawer is closed
-  &__toggle {
-    position: absolute;
-    top: 0.375rem;
-    left: 0.5rem;
-    z-index: 10;
+    > * {
+      flex: 1;
+      min-height: 0;
+    }
   }
 }
+
+// ══════════════════════════════════════════════════════════
+// RESPONSIVE — Mobile layout (< 900px)
+// ══════════════════════════════════════════════════════════
+@media (max-width: 900px) {
+  .case-shell {
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .case-shell__resize-handle {
+    display: none !important;
+  }
+
+  .case-shell__main {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
+// La sidebar gère sa propre visibilité via :host dans son propre scss

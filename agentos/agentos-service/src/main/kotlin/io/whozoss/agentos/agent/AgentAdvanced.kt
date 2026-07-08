@@ -1122,6 +1122,17 @@ class AgentAdvanced(
                         "or navigation path to it in your response so the user can access it immediately. " +
                         "Use the URL or the most actionable reference available in the tool response.",
                 )
+                add(
+                    "When you respond, keep your answers short and focused by giving only what is needed to fulfill " +
+                        "the request and leaving out extra explanation, filler, or repeated points; use plain, direct " +
+                        "language and avoid complicated phrasing or technical jargon unless it is specifically called for; " +
+                        "stay strictly on topic by not adding information the user did not ask for and not offering " +
+                        "unsolicited context, suggestions, or side details; address exactly what the user wants without " +
+                        "broadening the scope of your reply; and begin every response immediately with the substance itself, " +
+                        "a quick confirmation of the action taken, or a heading, never opening with a sentence that introduces, " +
+                        "restates, or comments on the request, and skipping any overall preamble, summary, or account " +
+                        "of what you did or why."
+                )
             }
         return lines.joinToString("\n").ifBlank { null }
     }

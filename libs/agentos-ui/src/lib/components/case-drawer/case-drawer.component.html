@@ -1,6 +1,6 @@
 <ds-entity-list
   title="Cases"
-  [items]="rootItems"
+  [items]="rootItems()"
   [itemTemplate]="caseItemTpl"
   [showCreate]="true"
   emptyMessage="No cases yet. Start one below."
@@ -10,30 +10,18 @@
   (itemSelected)="onItemSelected($event)"
   (createRequested)="onCreateRequested()"
 >
-  <ds-icon-button
-    toolbar-start
-    icon="chevron_left"
-    variant="default"
-    title="Close drawer"
-    (action)="closeRequested.emit()"
-  />
 </ds-entity-list>
 
-<!--
-  Item template: renders one CaseTreeItem row + its children recursively.
-  The recursive sub-tree template is defined alongside and referenced by name.
--->
 <ng-template #caseItemTpl let-item>
   <ng-container *ngTemplateOutlet="caseRowTpl; context: { node: item, depth: 0 }" />
 </ng-template>
 
-<!-- Recursive row template -->
 <ng-template #caseRowTpl let-node="node" let-depth="depth">
   <div class="case-tree-node" [style.--depth]="depth">
     <button
       type="button"
       class="case-tree-node__row"
-      [class.case-tree-node__row--active]="node.id === activeCaseId"
+      [class.case-tree-node__row--active]="node.id === activeCaseId()"
       (click)="onItemSelected(node.id)"
     >
       <span class="case-tree-node__expand-slot">

@@ -171,6 +171,15 @@
       }
 
       <div class="case-chat__composer">
+        @if (slashSuggestions().length > 0) {
+          <div class="case-chat__autocomplete">
+            <agentos-prompt-autocomplete
+              [prompts]="slashSuggestions()"
+              (selected)="onPromptSelected($event)"
+              (dismissed)="closeAutocomplete()"
+            />
+          </div>
+        }
         <textarea
           #composerInput
           class="case-chat__input"

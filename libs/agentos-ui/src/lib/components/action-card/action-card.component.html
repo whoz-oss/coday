@@ -1,0 +1,50 @@
+<div class="ac">
+  <!-- ── Header ── -->
+  <div class="ac__header">
+    <div class="ac__id">
+      <div class="ac__mark" aria-hidden="true">{{ resolvedMark }}</div>
+      <div class="ac__meta">
+        <button class="ac__name" type="button" (click)="nameClicked.emit()">{{ name() }}</button>
+      </div>
+    </div>
+
+    @if (hasMenu) {
+      <div class="ac__more">
+        <button class="ac__more-btn" type="button" title="More actions" (click)="toggleMenu($event)">
+          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="6" cy="12" r="1.6" fill="currentColor" />
+            <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+            <circle cx="18" cy="12" r="1.6" fill="currentColor" />
+          </svg>
+        </button>
+
+        @if (menuOpen()) {
+          <div class="ac__menu" role="menu">
+            @for (item of menuItems(); track item.key) {
+              @if (item.variant === 'separator') {
+                <div class="ac__menu-sep"></div>
+              } @else {
+                <button
+                  class="ac__menu-item"
+                  [class.ac__menu-item--danger]="item.variant === 'danger'"
+                  type="button"
+                  role="menuitem"
+                  (click)="onMenuItemClick(item.key)"
+                >
+                  {{ item.label }}
+                </button>
+              }
+            }
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- ── Chips ── -->
+  @if (hasChips) {
+    <div class="ac__chips">
+      <ng-content select="[agentosCardChips]" />
+    </div>
+  }
+</div>
