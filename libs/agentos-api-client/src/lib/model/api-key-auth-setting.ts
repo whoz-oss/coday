@@ -8,7 +8,12 @@
  * Do not edit the class manually.
  */
 
-export interface GroupsByExternalIdsRequest {
-  externalIds: Array<string>
-  namespaceId?: string
+export interface ApiKeyAuthSetting {
+  authType: 'ApiKeyAuthSetting'
+  userId?: string | null
+  namespaceId?: string | null
+  description?: string
+  name: string
+  id?: string
+  apiKey?: string
 }

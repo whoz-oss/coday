@@ -20,7 +20,11 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.sdk.authSetting.AuthType
+import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
+import io.whozoss.agentos.sdk.authSetting.toDataMap
 import io.whozoss.agentos.sdk.api.authSetting.AuthSettingDto
+import io.whozoss.agentos.sdk.api.authSetting.OAuthDiscoverableAuthSettingDto
+import io.whozoss.agentos.sdk.api.authSetting.ApiKeyAuthSettingDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -29,6 +33,15 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
+
+// Convenience accessor so domain-entity assertions stay map-based.
+private val AuthSetting.data: Map<String, String> get() = toDataMap()
+
+// Convenience accessor so DTO assertions stay map-based (maps typed nullable fields).
+private fun AuthSettingDto.dataMap(): Map<String, String>? {
+    val m = dtoToDataMap(this).filterValues { it.isNotEmpty() }
+    return m.ifEmpty { null }
+}
 
 /**
  * Unit tests for [AuthSettingController].
@@ -81,15 +94,21 @@ class AuthSettingControllerSpec :
             name: String = "github-oauth",
             authType: AuthType = AuthType.OAUTH_DISCOVERABLE,
             data: Map<String, String> = emptyMap(),
-        ) = AuthSetting(
+        ) = authSettingFromDataMap(
+            authType = authType,
+            data = data,
             metadata = EntityMetadata(id = id),
             namespaceId = nsId,
             userId = uId,
             name = name,
-            authType = authType,
-            data = data,
+            description = null,
         )
 
+        /**
+         * Build a DTO for use as a request body. Uses [OAuthDiscoverableAuthSettingDto] by
+         * default (matching the default authType), or [ApiKeyAuthSettingDto] for API_KEY.
+         * The optional [data] map is spread into the corresponding typed nullable fields.
+         */
         fun resource(
             id: UUID? = UUID.randomUUID(),
             nsId: UUID? = namespaceId,
@@ -97,14 +116,30 @@ class AuthSettingControllerSpec :
             name: String = "github-oauth",
             authType: AuthType? = AuthType.OAUTH_DISCOVERABLE,
             data: Map<String, String>? = null,
-        ) = AuthSettingDto(
-            id = id,
-            namespaceId = nsId,
-            userId = uId,
-            name = name,
-            authType = authType,
-            data = data,
-        )
+        ): AuthSettingDto =
+            when (authType) {
+                AuthType.API_KEY ->
+                    ApiKeyAuthSettingDto(
+                        id = id,
+                        namespaceId = nsId,
+                        userId = uId,
+                        name = name,
+                        authType = authType,
+                        apiKey = data?.get("apiKey"),
+                    )
+                else ->
+                    OAuthDiscoverableAuthSettingDto(
+                        id = id,
+                        namespaceId = nsId,
+                        userId = uId,
+                        name = name,
+                        authType = authType ?: AuthType.OAUTH_DISCOVERABLE,
+                        discoveryUrl = data?.get("discoveryUrl"),
+                        clientId = data?.get("clientId"),
+                        clientSecret = data?.get("clientSecret"),
+                        scopes = data?.get("scopes"),
+                    )
+            }
 
         val existingNamespace =
             Namespace(
@@ -123,15 +158,19 @@ class AuthSettingControllerSpec :
         // toDto — mapping and masking
         // -------------------------------------------------------------------------
 
-        "toDto masks values in data map" {
-            val s = setting(data = mapOf("clientSecret" to "sk-ant-api03-abcdefghijklmnop"))
+        "toDto masks sensitive values and leaves non-sensitive values plain" {
+            val s = setting(data = mapOf("clientSecret" to "sk-ant-api03-abcdefghijklmnop", "clientId" to "my-client-id"))
             val dto = toDto(s)
-            dto.data shouldNotBe null
-            dto.data!!["clientSecret"] shouldBe "sk-a****mnop"
+            // clientSecret is sensitive — must be masked
+            (dto as OAuthDiscoverableAuthSettingDto).clientSecret shouldBe "sk-a****mnop"
+            // clientId is NOT sensitive — must be plain
+            dto.clientId shouldBe "my-client-id"
         }
 
-        "toDto returns null data when data map is empty" {
-            toDto(setting(data = emptyMap())).data.shouldBeNull()
+        "toDto returns null typed fields when data map is empty" {
+            val dto = toDto(setting(data = emptyMap())) as OAuthDiscoverableAuthSettingDto
+            dto.clientSecret.shouldBeNull()
+            dto.clientId.shouldBeNull()
         }
 
         "toDto maps namespaceId and userId" {
@@ -141,20 +180,19 @@ class AuthSettingControllerSpec :
             dto.userId shouldBe uid
         }
 
-        "toDto maps all fields and masks data values" {
+        "toDto maps all fields and masks only the sensitive apiKey" {
             val s = setting(
                 name = "my-oauth",
                 authType = AuthType.API_KEY,
                 data = mapOf("apiKey" to "sk-openai-123456789012"),
             )
-            val dto = toDto(s)
+            val dto = toDto(s) as ApiKeyAuthSettingDto
 
             dto.id shouldBe s.metadata.id
             dto.name shouldBe "my-oauth"
             dto.authType shouldBe AuthType.API_KEY
-            dto.data shouldNotBe null
-            dto.data!!["apiKey"] shouldBe maskSensitiveValue("sk-openai-123456789012")
-            dto.data!!["apiKey"] shouldNotBe "sk-openai-123456789012"
+            dto.apiKey shouldBe maskSensitiveValue("sk-openai-123456789012")
+            dto.apiKey shouldNotBe "sk-openai-123456789012"
         }
 
         // -------------------------------------------------------------------------
@@ -339,7 +377,7 @@ class AuthSettingControllerSpec :
             captured.captured.userId shouldBe null
         }
 
-        "update with masked data value preserves existing value" {
+        "update with masked clientSecret preserves existing value" {
             val existingData = mapOf("clientSecret" to "real-secret-value-12345")
             val existing = setting(data = existingData)
             val captured = slot<AuthSetting>()
@@ -354,29 +392,43 @@ class AuthSettingControllerSpec :
             captured.captured.data["clientSecret"] shouldBe "real-secret-value-12345"
         }
 
-        "update with non-masked non-blank data value replaces it" {
-            val existing = setting(data = mapOf("apiKey" to "old-key-abcdefghijklmnop"))
+        "update with non-masked non-blank clientSecret replaces it" {
+            val existing = setting(
+                authType = AuthType.API_KEY,
+                data = mapOf("apiKey" to "old-key-abcdefghijklmnop"),
+            )
             val captured = slot<AuthSetting>()
             every { service.findById(existing.metadata.id) } returns existing
             every { service.update(capture(captured)) } answers { firstArg() }
 
             controller.update(
                 id = existing.metadata.id,
-                resource = resource(id = existing.metadata.id, data = mapOf("apiKey" to "new-key-abcdefghijklmnop")),
+                resource = resource(
+                    id = existing.metadata.id,
+                    authType = AuthType.API_KEY,
+                    data = mapOf("apiKey" to "new-key-abcdefghijklmnop"),
+                ),
             )
 
             captured.captured.data["apiKey"] shouldBe "new-key-abcdefghijklmnop"
         }
 
-        "update with blank data value clears the key" {
-            val existing = setting(data = mapOf("apiKey" to "real-key-abcdefghijklmnop"))
+        "update with blank apiKey clears the key" {
+            val existing = setting(
+                authType = AuthType.API_KEY,
+                data = mapOf("apiKey" to "real-key-abcdefghijklmnop"),
+            )
             val captured = slot<AuthSetting>()
             every { service.findById(existing.metadata.id) } returns existing
             every { service.update(capture(captured)) } answers { firstArg() }
 
             controller.update(
                 id = existing.metadata.id,
-                resource = resource(id = existing.metadata.id, data = mapOf("apiKey" to "")),
+                resource = resource(
+                    id = existing.metadata.id,
+                    authType = AuthType.API_KEY,
+                    data = mapOf("apiKey" to ""),
+                ),
             )
 
             captured.captured.data.containsKey("apiKey") shouldBe false
@@ -431,10 +483,14 @@ class AuthSettingControllerSpec :
         // list — scope filtering and userId sentinel validation
         // -------------------------------------------------------------------------
 
-        "list without filter returns the caller's overlays with masked data" {
+        "list without filter returns the caller's overlays with masked sensitive data" {
             val rows = listOf(
-                setting(nsId = null, uId = aliceId, name = "GLOBAL", data = mapOf("secret" to "real-secret-value-12345")),
-                setting(nsId = namespaceId, uId = aliceId, name = "NS", data = mapOf("key" to "another-secret-value-12345")),
+                setting(nsId = null, uId = aliceId, name = "GLOBAL",
+                    authType = AuthType.OAUTH_DISCOVERABLE,
+                    data = mapOf("clientSecret" to "real-secret-value-12345")),
+                setting(nsId = namespaceId, uId = aliceId, name = "NS",
+                    authType = AuthType.API_KEY,
+                    data = mapOf("apiKey" to "another-secret-value-12345")),
             )
             every { service.findFiltered(any(), any(), any(), any()) } returns rows
 
@@ -442,10 +498,11 @@ class AuthSettingControllerSpec :
 
             resp.size shouldBe 2
             resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL", "NS")
-            resp.forEach { r ->
-                r.data shouldNotBe null
-                r.data!!.values.forEach { v -> v.contains("****") shouldBe true }
-            }
+            // sensitive fields must be masked
+            val global = resp.first { it.name == "GLOBAL" } as OAuthDiscoverableAuthSettingDto
+            global.clientSecret!!.contains("****") shouldBe true
+            val ns = resp.first { it.name == "NS" } as ApiKeyAuthSettingDto
+            ns.apiKey!!.contains("****") shouldBe true
         }
 
         "list with namespaceId=none returns only user-global rows" {

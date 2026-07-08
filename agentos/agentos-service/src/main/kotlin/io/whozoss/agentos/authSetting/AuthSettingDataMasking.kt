@@ -5,8 +5,6 @@ private const val MASK = "****"
 /**
  * Mask a single sensitive value for safe inclusion in API responses.
  *
- * Mirrors the behaviour of [io.whozoss.agentos.aiProvider.maskApiKey], applied to each
- * value in an [AuthSetting.data] map:
  * - null / blank  → "****"  (always returns a non-null string; the map entry is kept)
  * - length ≤ 8    → "****"
  * - length 9–11   → first 2 + "****" + last 2
@@ -32,6 +30,25 @@ fun maskSensitiveValue(value: String?): String {
 fun maskDataMap(data: Map<String, String>?): Map<String, String>? {
     if (data.isNullOrEmpty()) return null
     return data.mapValues { (_, v) -> maskSensitiveValue(v) }
+}
+
+/**
+ * Selectively mask values in [data] for safe inclusion in API responses.
+ *
+ * Only keys listed in [sensitiveKeys] are masked. All other keys are returned
+ * in plain text, allowing non-sensitive properties (e.g. `clientId`, `discoveryUrl`,
+ * `username`) to be visible to the caller.
+ *
+ * Returns `null` when [data] is empty (nothing to surface).
+ */
+fun maskDataMapSelective(
+    data: Map<String, String>,
+    sensitiveKeys: Set<String>,
+): Map<String, String>? {
+    if (data.isEmpty()) return null
+    return data.mapValues { (key, value) ->
+        if (key in sensitiveKeys) maskSensitiveValue(value) else value
+    }
 }
 
 /**

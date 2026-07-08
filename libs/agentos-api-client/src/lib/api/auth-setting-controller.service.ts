@@ -14,9 +14,21 @@ import { HttpClient, HttpParams, HttpResponse, HttpEvent, HttpContext } from '@a
 import { Observable } from 'rxjs'
 
 // @ts-ignore
-import { AuthSetting } from '../model/auth-setting'
+import { ApiKeyAuthSetting } from '../model/api-key-auth-setting'
+// @ts-ignore
+import { BasicAuthAuthSetting } from '../model/basic-auth-auth-setting'
+// @ts-ignore
+import { BearerTokenAuthSetting } from '../model/bearer-token-auth-setting'
+// @ts-ignore
+import { GetByIdAuthSetting200Response } from '../model/get-by-id-auth-setting200-response'
 // @ts-ignore
 import { GetByIdsRequest } from '../model/get-by-ids-request'
+// @ts-ignore
+import { OAuthCustomAuthSetting } from '../model/o-auth-custom-auth-setting'
+// @ts-ignore
+import { OAuthDiscoverableAuthSetting } from '../model/o-auth-discoverable-auth-setting'
+// @ts-ignore
+import { OAuthRegisteredAuthSetting } from '../model/o-auth-registered-auth-setting'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -38,36 +50,67 @@ export class AuthSettingControllerService extends BaseService {
   /**
    * Create an AuthSetting
    * Scope is inferred implicitly from the body\&#39;s &#x60;(namespaceId, userId)&#x60; pair:  | body.namespaceId | body.userId        | scope         | required permission                  | |------------------|--------------------|---------------|--------------------------------------| | null             | null               | platform      | super-admin only                     | | present          | null               | NS-shared     | WRITE on the namespace               | | null             | &lt;currentUser.id&gt;   | user-global   | authenticated only                   | | present          | &lt;currentUser.id&gt;   | user×namespace| READ on the namespace                |  &#x60;body.userId&#x60; (when supplied) MUST equal the authenticated user\&#39;s id — sending a different user-id is rejected with 400 (mass-assignment guard). A &#x60;namespaceId&#x60; that does not exist returns 404.
-   * @param authSetting
+   * @param apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public createAuthSetting(
-    authSetting: AuthSetting,
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+      | ApiKeyAuthSetting
+      | BasicAuthAuthSetting
+      | BearerTokenAuthSetting
+      | OAuthCustomAuthSetting
+      | OAuthDiscoverableAuthSetting
+      | OAuthRegisteredAuthSetting,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<AuthSetting>
+  ): Observable<GetByIdAuthSetting200Response>
   public createAuthSetting(
-    authSetting: AuthSetting,
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+      | ApiKeyAuthSetting
+      | BasicAuthAuthSetting
+      | BearerTokenAuthSetting
+      | OAuthCustomAuthSetting
+      | OAuthDiscoverableAuthSetting
+      | OAuthRegisteredAuthSetting,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<AuthSetting>>
+  ): Observable<HttpResponse<GetByIdAuthSetting200Response>>
   public createAuthSetting(
-    authSetting: AuthSetting,
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+      | ApiKeyAuthSetting
+      | BasicAuthAuthSetting
+      | BearerTokenAuthSetting
+      | OAuthCustomAuthSetting
+      | OAuthDiscoverableAuthSetting
+      | OAuthRegisteredAuthSetting,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<AuthSetting>>
+  ): Observable<HttpEvent<GetByIdAuthSetting200Response>>
   public createAuthSetting(
-    authSetting: AuthSetting,
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+      | ApiKeyAuthSetting
+      | BasicAuthAuthSetting
+      | BearerTokenAuthSetting
+      | OAuthCustomAuthSetting
+      | OAuthDiscoverableAuthSetting
+      | OAuthRegisteredAuthSetting,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (authSetting === null || authSetting === undefined) {
-      throw new Error('Required parameter authSetting was null or undefined when calling createAuthSetting.')
+    if (
+      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
+        null ||
+      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
+        undefined
+    ) {
+      throw new Error(
+        'Required parameter apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting was null or undefined when calling createAuthSetting.'
+      )
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -102,9 +145,9 @@ export class AuthSettingControllerService extends BaseService {
 
     let localVarPath = `/api/auth-settings`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<AuthSetting>('post', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<GetByIdAuthSetting200Response>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: authSetting,
+      body: apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -193,19 +236,19 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<AuthSetting>
+  ): Observable<GetByIdAuthSetting200Response>
   public getByIdAuthSetting(
     id: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<AuthSetting>>
+  ): Observable<HttpResponse<GetByIdAuthSetting200Response>>
   public getByIdAuthSetting(
     id: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<AuthSetting>>
+  ): Observable<HttpEvent<GetByIdAuthSetting200Response>>
   public getByIdAuthSetting(
     id: string,
     observe: any = 'body',
@@ -241,7 +284,7 @@ export class AuthSettingControllerService extends BaseService {
 
     let localVarPath = `/api/auth-settings/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<AuthSetting>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<GetByIdAuthSetting200Response>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
@@ -262,19 +305,19 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<AuthSetting>>
+  ): Observable<Array<GetByIdAuthSetting200Response>>
   public getByIdsAuthSetting(
     getByIdsRequest: GetByIdsRequest,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<AuthSetting>>>
+  ): Observable<HttpResponse<Array<GetByIdAuthSetting200Response>>>
   public getByIdsAuthSetting(
     getByIdsRequest: GetByIdsRequest,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<AuthSetting>>>
+  ): Observable<HttpEvent<Array<GetByIdAuthSetting200Response>>>
   public getByIdsAuthSetting(
     getByIdsRequest: GetByIdsRequest,
     observe: any = 'body',
@@ -317,7 +360,7 @@ export class AuthSettingControllerService extends BaseService {
 
     let localVarPath = `/api/auth-settings/by-ids`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<AuthSetting>>('post', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<GetByIdAuthSetting200Response>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       body: getByIdsRequest,
       responseType: <any>responseType_,
@@ -343,21 +386,21 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<AuthSetting>>
+  ): Observable<Array<GetByIdAuthSetting200Response>>
   public listAuthSetting(
     namespaceId?: string,
     userId?: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<AuthSetting>>>
+  ): Observable<HttpResponse<Array<GetByIdAuthSetting200Response>>>
   public listAuthSetting(
     namespaceId?: string,
     userId?: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<AuthSetting>>>
+  ): Observable<HttpEvent<Array<GetByIdAuthSetting200Response>>>
   public listAuthSetting(
     namespaceId?: string,
     userId?: string,
@@ -394,7 +437,7 @@ export class AuthSettingControllerService extends BaseService {
 
     let localVarPath = `/api/auth-settings`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<AuthSetting>>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<GetByIdAuthSetting200Response>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       params: localVarQueryParameters,
       responseType: <any>responseType_,
@@ -408,34 +451,58 @@ export class AuthSettingControllerService extends BaseService {
 
   /**
    * @param id
-   * @param authSetting
+   * @param apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public updateAuthSetting(
     id: string,
-    authSetting: AuthSetting,
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+      | ApiKeyAuthSetting
+      | BasicAuthAuthSetting
+      | BearerTokenAuthSetting
+      | OAuthCustomAuthSetting
+      | OAuthDiscoverableAuthSetting
+      | OAuthRegisteredAuthSetting,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<AuthSetting>
+  ): Observable<GetByIdAuthSetting200Response>
   public updateAuthSetting(
     id: string,
-    authSetting: AuthSetting,
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+      | ApiKeyAuthSetting
+      | BasicAuthAuthSetting
+      | BearerTokenAuthSetting
+      | OAuthCustomAuthSetting
+      | OAuthDiscoverableAuthSetting
+      | OAuthRegisteredAuthSetting,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<AuthSetting>>
+  ): Observable<HttpResponse<GetByIdAuthSetting200Response>>
   public updateAuthSetting(
     id: string,
-    authSetting: AuthSetting,
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+      | ApiKeyAuthSetting
+      | BasicAuthAuthSetting
+      | BearerTokenAuthSetting
+      | OAuthCustomAuthSetting
+      | OAuthDiscoverableAuthSetting
+      | OAuthRegisteredAuthSetting,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<AuthSetting>>
+  ): Observable<HttpEvent<GetByIdAuthSetting200Response>>
   public updateAuthSetting(
     id: string,
-    authSetting: AuthSetting,
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+      | ApiKeyAuthSetting
+      | BasicAuthAuthSetting
+      | BearerTokenAuthSetting
+      | OAuthCustomAuthSetting
+      | OAuthDiscoverableAuthSetting
+      | OAuthRegisteredAuthSetting,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -443,8 +510,15 @@ export class AuthSettingControllerService extends BaseService {
     if (id === null || id === undefined) {
       throw new Error('Required parameter id was null or undefined when calling updateAuthSetting.')
     }
-    if (authSetting === null || authSetting === undefined) {
-      throw new Error('Required parameter authSetting was null or undefined when calling updateAuthSetting.')
+    if (
+      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
+        null ||
+      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
+        undefined
+    ) {
+      throw new Error(
+        'Required parameter apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting was null or undefined when calling updateAuthSetting.'
+      )
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -479,9 +553,9 @@ export class AuthSettingControllerService extends BaseService {
 
     let localVarPath = `/api/auth-settings/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<AuthSetting>('put', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<GetByIdAuthSetting200Response>('put', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: authSetting,
+      body: apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

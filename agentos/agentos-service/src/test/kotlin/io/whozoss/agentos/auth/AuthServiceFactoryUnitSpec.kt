@@ -9,6 +9,7 @@ import io.whozoss.agentos.authSetting.AuthSettingService
 import io.whozoss.agentos.credential.CredentialService
 import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.sdk.authSetting.AuthType
+import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
@@ -24,12 +25,14 @@ class AuthServiceFactoryUnitSpec : StringSpec({
     val namespaceId: UUID = UUID.randomUUID()
     val userId: UUID = UUID.randomUUID()
 
-    fun authSetting(name: String = "test-setting") = AuthSetting(
+    fun authSetting(name: String = "test-setting") = authSettingFromDataMap(
+        authType = AuthType.OAUTH_DISCOVERABLE,
+        data = emptyMap(),
         metadata = EntityMetadata(),
         namespaceId = namespaceId,
         userId = null,
         name = name,
-        authType = AuthType.OAUTH_DISCOVERABLE,
+        description = null,
     )
 
     // -------------------------------------------------------------------------

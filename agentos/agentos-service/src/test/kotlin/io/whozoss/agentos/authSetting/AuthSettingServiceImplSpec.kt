@@ -12,10 +12,15 @@ import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.sdk.authSetting.AuthType
+import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
+import io.whozoss.agentos.sdk.authSetting.toDataMap
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
+
+// Convenience accessor for tests that reason about the flat data map.
+private val AuthSetting.data: Map<String, String> get() = toDataMap()
 
 class AuthSettingServiceImplSpec : StringSpec() {
     // PermissionService and UserService are only used by findFiltered, which is not
@@ -34,14 +39,40 @@ class AuthSettingServiceImplSpec : StringSpec() {
         name: String = "github",
         authType: AuthType = AuthType.OAUTH_DISCOVERABLE,
         data: Map<String, String> = emptyMap(),
+        metadata: EntityMetadata = EntityMetadata(),
     ): AuthSetting =
-        AuthSetting(
-            metadata = EntityMetadata(),
+        authSettingFromDataMap(
+            authType = authType,
+            data = data,
+            metadata = metadata,
             namespaceId = namespaceId,
             userId = userId,
             name = name,
+            description = null,
+        )
+
+    /** Produce an updated entity with a different data map — replaces the old .copy(data=…) pattern. */
+    private fun AuthSetting.withData(newData: Map<String, String>): AuthSetting =
+        authSettingFromDataMap(
             authType = authType,
-            data = data,
+            data = newData,
+            metadata = metadata,
+            namespaceId = namespaceId,
+            userId = userId,
+            name = name,
+            description = description,
+        )
+
+    /** Produce an updated entity with a different name — replaces the old .copy(name=…) pattern. */
+    private fun AuthSetting.withName(newName: String): AuthSetting =
+        authSettingFromDataMap(
+            authType = authType,
+            data = toDataMap(),
+            metadata = metadata,
+            namespaceId = namespaceId,
+            userId = userId,
+            name = newName,
+            description = description,
         )
 
     init {
@@ -210,7 +241,7 @@ class AuthSettingServiceImplSpec : StringSpec() {
         "update replaces the setting" {
             val service = newService()
             val original = service.create(setting(data = mapOf("clientId" to "old-id")))
-            val updated = service.update(original.copy(data = mapOf("clientId" to "new-id")))
+            val updated = service.update(original.withData(mapOf("clientId" to "new-id")))
 
             updated.data["clientId"] shouldBe "new-id"
             service.findById(original.metadata.id)?.data?.get("clientId") shouldBe "new-id"
@@ -222,7 +253,7 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val original = service.create(setting(namespaceId = nsId, name = "github"))
 
             // updating with same name should not throw
-            val updated = service.update(original.copy(data = mapOf("clientId" to "new-id")))
+            val updated = service.update(original.withData(mapOf("clientId" to "new-id")))
             updated.name shouldBe "github"
         }
 
@@ -233,7 +264,7 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val toUpdate = service.create(setting(namespaceId = nsId, name = "github"))
 
             shouldThrow<ResponseStatusException> {
-                service.update(toUpdate.copy(name = "gitlab"))
+                service.update(toUpdate.withName("gitlab"))
             }.statusCode.value() shouldBe 409
         }
 
@@ -401,7 +432,7 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val mine = service.create(setting(namespaceId = nsId, userId = userId, name = "secondary", authType = AuthType.API_KEY))
 
             shouldThrow<ResponseStatusException> {
-                service.update(mine.copy(name = "primary"))
+                service.update(mine.withName("primary"))
             }.statusCode.value() shouldBe 409
         }
 

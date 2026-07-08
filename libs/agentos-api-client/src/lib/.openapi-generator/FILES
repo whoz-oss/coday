@@ -37,7 +37,10 @@ model/agent-selected-event.ts
 model/ai-model.ts
 model/ai-provider.ts
 model/answer-event.ts
-model/auth-setting.ts
+model/api-key-auth-setting.ts
+model/auth-setting-dto.ts
+model/basic-auth-auth-setting.ts
+model/bearer-token-auth-setting.ts
 model/case-event.ts
 model/case-status-event.ts
 model/case-updated-event.ts
@@ -52,6 +55,7 @@ model/exchange-file-entry.ts
 model/exchange-manifest.ts
 model/feedback-input.ts
 model/feedback.ts
+model/get-by-id-auth-setting200-response.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
 model/get-by-ids-request.ts
 model/groups-by-external-ids-request.ts
@@ -69,6 +73,9 @@ model/namespace-list-item.ts
 model/namespace-role-entry.ts
 model/namespace-user-list-item.ts
 model/namespace.ts
+model/o-auth-custom-auth-setting.ts
+model/o-auth-discoverable-auth-setting.ts
+model/o-auth-registered-auth-setting.ts
 model/pending-confirmation-event.ts
 model/plugin-action-response.ts
 model/plugin-info.ts

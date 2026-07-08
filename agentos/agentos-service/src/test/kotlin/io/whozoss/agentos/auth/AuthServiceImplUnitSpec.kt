@@ -12,6 +12,7 @@ import io.whozoss.agentos.credential.CredentialService
 import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.sdk.authSetting.AuthType
+import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -30,12 +31,14 @@ class AuthServiceImplUnitSpec : StringSpec({
     val userId: UUID = UUID.randomUUID()
     val authSettingId: UUID = UUID.randomUUID()
 
-    fun authSetting(name: String = "my-setting") = AuthSetting(
+    fun authSetting(name: String = "my-setting") = authSettingFromDataMap(
+        authType = AuthType.OAUTH_DISCOVERABLE,
+        data = emptyMap(),
         metadata = EntityMetadata(),
         namespaceId = namespaceId,
         userId = null,
         name = name,
-        authType = AuthType.OAUTH_DISCOVERABLE,
+        description = null,
     )
 
     fun credential() = Credential(

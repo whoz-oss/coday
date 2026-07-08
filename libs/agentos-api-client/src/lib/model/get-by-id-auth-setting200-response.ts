@@ -8,7 +8,4 @@
  * Do not edit the class manually.
  */
 
-export interface GroupsByExternalIdsRequest {
-  externalIds: Array<string>
-  namespaceId?: string
-}
+export interface GetByIdAuthSetting200Response {}

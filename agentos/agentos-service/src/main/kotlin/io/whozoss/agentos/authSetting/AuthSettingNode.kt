@@ -6,6 +6,8 @@ import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.sdk.authSetting.AuthType
+import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
+import io.whozoss.agentos.sdk.authSetting.toDataMap
 import io.whozoss.agentos.sdk.encryption.FieldEncryptor
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
@@ -27,10 +29,12 @@ import java.util.UUID
  * User-scoped settings (`userId != null`, `namespaceId == null`) do NOT get the
  * @Relationship — they are user-global and have no namespace to link to.
  *
- * [dataJson] stores the [AuthSetting.data] map serialised as JSON. Each value is
- * individually **encrypted** before write and **decrypted** after read using the
- * provided [FieldEncryptor]. Because [AuthSettingNode] is a plain data class (not a
- * Spring bean), the encryptor is passed explicitly to [toDomain] and [fromDomain].
+ * [dataJson] stores the typed properties of each [AuthSetting] subtype serialised
+ * as a flat JSON map. Each value is individually **encrypted** before write and
+ * **decrypted** after read using the provided [FieldEncryptor]. Conversion between
+ * the typed domain object and the flat map goes through [AuthSetting.toDataMap]
+ * (write) and [authSettingFromDataMap] (read). Because [AuthSettingNode] is a plain
+ * data class (not a Spring bean), the encryptor is passed explicitly.
  *
  * [authType] is stored as its enum name string and round-tripped via [AuthType.valueOf].
  */
@@ -54,8 +58,9 @@ data class AuthSettingNode(
     val description: String? = null,
     val authType: String,
     /**
-     * JSON-serialised [AuthSetting.data] map. Each map value is encrypted at rest;
-     * decryption happens in [toDomain] via the caller-supplied [FieldEncryptor].
+     * JSON-serialised flat property map for the [AuthSetting] subtype. Each map value
+     * is encrypted at rest; decryption and reconstruction into the typed subtype happens
+     * in [toDomain] via the caller-supplied [FieldEncryptor] and [authSettingFromDataMap].
      */
     val dataJson: String? = null,
     // EntityMetadata fields
@@ -71,7 +76,9 @@ data class AuthSettingNode(
         val rawData: Map<String, String> =
             dataJson?.let { MAPPER.readValue(it, DATA_TYPE) } ?: emptyMap()
         val decryptedData = rawData.mapValues { (_, v) -> encryptor.decrypt(v) }
-        return AuthSetting(
+        return authSettingFromDataMap(
+            authType = AuthType.valueOf(authType),
+            data = decryptedData,
             metadata =
                 EntityMetadata(
                     id = UUID.fromString(id),
@@ -85,8 +92,6 @@ data class AuthSettingNode(
             userId = userId?.let { UUID.fromString(it) },
             name = name,
             description = description,
-            authType = AuthType.valueOf(authType),
-            data = decryptedData,
         )
     }
 
@@ -112,7 +117,7 @@ data class AuthSettingNode(
                     config.metadata.removed -> tombstoneTripleKey(idString)
                     else -> computeTripleKey(config.namespaceId, config.userId, config.name)
                 }
-            val encryptedData = config.data.mapValues { (_, v) -> encryptor.encrypt(v) }
+            val encryptedData = config.toDataMap().mapValues { (_, v) -> encryptor.encrypt(v) }
             return AuthSettingNode(
                 id = idString,
                 namespaceId = config.namespaceId?.toString(),

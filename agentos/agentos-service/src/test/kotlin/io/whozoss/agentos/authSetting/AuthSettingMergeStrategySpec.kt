@@ -5,8 +5,13 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.sdk.authSetting.AuthType
+import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
+import io.whozoss.agentos.sdk.authSetting.toDataMap
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
+
+// Convenience accessor for tests that reason about the flat data map.
+private val AuthSetting.data: Map<String, String> get() = toDataMap()
 
 /**
  * Unit tests for [AuthSettingMergeStrategy].
@@ -28,14 +33,14 @@ class AuthSettingMergeStrategySpec : StringSpec({
         description: String? = "base desc",
         authType: AuthType = AuthType.OAUTH_DISCOVERABLE,
         data: Map<String, String> = mapOf("clientId" to "base-id", "clientSecret" to "base-secret"),
-    ) = AuthSetting(
+    ) = authSettingFromDataMap(
+        authType = authType,
+        data = data,
         metadata = EntityMetadata(),
         namespaceId = ns,
         userId = uid,
         name = name,
         description = description,
-        authType = authType,
-        data = data,
     )
 
     // -------------------------------------------------------------------------

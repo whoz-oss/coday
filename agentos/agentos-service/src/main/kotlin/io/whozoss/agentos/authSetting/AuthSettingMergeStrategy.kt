@@ -2,6 +2,8 @@ package io.whozoss.agentos.authSetting
 
 import io.whozoss.agentos.reconciliation.MergeStrategy
 import io.whozoss.agentos.sdk.authSetting.AuthSetting
+import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
+import io.whozoss.agentos.sdk.authSetting.toDataMap
 import org.springframework.stereotype.Component
 
 /**
@@ -13,10 +15,11 @@ import org.springframework.stereotype.Component
  * - `authType`: override wins (in practice all layers share the same authType due to the
  *   cross-layer consistency guard enforced at write time).
  * - `description`: override wins when non-null; otherwise `base.description` is preserved.
- * - `data`: deep merge of the map — for each key in `override.data`, if the value is
- *   non-blank it wins; otherwise the `base` value for that key is preserved. Keys present
- *   only in `base` are always preserved. Keys present only in `override` with a non-blank
- *   value are added to the result.
+ * - data: each subtype's typed properties are round-tripped through [toDataMap] so the
+ *   deep map-merge logic can be applied uniformly across all auth types. The merged map is
+ *   then reconstructed into the correct subtype via [authSettingFromDataMap]. For each key
+ *   in `override.toDataMap()`, if the value is non-blank it wins; otherwise the `base`
+ *   value for that key is preserved. Keys present only in `base` are always preserved.
  */
 @Component
 class AuthSettingMergeStrategy : MergeStrategy<AuthSetting> {
@@ -24,11 +27,15 @@ class AuthSettingMergeStrategy : MergeStrategy<AuthSetting> {
         base: AuthSetting,
         override: AuthSetting,
     ): AuthSetting {
-        val mergedData = mergeData(base.data, override.data)
-        return base.copy(
+        val mergedData = mergeData(base.toDataMap(), override.toDataMap())
+        return authSettingFromDataMap(
             authType = override.authType,
-            description = override.description ?: base.description,
             data = mergedData,
+            metadata = base.metadata,
+            namespaceId = base.namespaceId,
+            userId = base.userId,
+            name = base.name,
+            description = override.description ?: base.description,
         )
     }
 

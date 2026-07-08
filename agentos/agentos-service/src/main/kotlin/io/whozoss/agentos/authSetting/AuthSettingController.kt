@@ -10,8 +10,24 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.authSetting.AuthSetting
+import io.whozoss.agentos.sdk.authSetting.AuthType
+import io.whozoss.agentos.sdk.authSetting.ApiKeyAuthSetting
+import io.whozoss.agentos.sdk.authSetting.BasicAuthAuthSetting
+import io.whozoss.agentos.sdk.authSetting.BearerTokenAuthSetting
+import io.whozoss.agentos.sdk.authSetting.OAuthCustomAuthSetting
+import io.whozoss.agentos.sdk.authSetting.OAuthDiscoverableAuthSetting
+import io.whozoss.agentos.sdk.authSetting.OAuthRegisteredAuthSetting
+import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
+import io.whozoss.agentos.sdk.authSetting.toDataMap
+import io.whozoss.agentos.sdk.authSetting.toSensitiveKeys
 import io.whozoss.agentos.sdk.api.authSetting.AuthSettingApi
 import io.whozoss.agentos.sdk.api.authSetting.AuthSettingDto
+import io.whozoss.agentos.sdk.api.authSetting.ApiKeyAuthSettingDto
+import io.whozoss.agentos.sdk.api.authSetting.BasicAuthAuthSettingDto
+import io.whozoss.agentos.sdk.api.authSetting.BearerTokenAuthSettingDto
+import io.whozoss.agentos.sdk.api.authSetting.OAuthCustomAuthSettingDto
+import io.whozoss.agentos.sdk.api.authSetting.OAuthDiscoverableAuthSettingDto
+import io.whozoss.agentos.sdk.api.authSetting.OAuthRegisteredAuthSettingDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -42,9 +58,12 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * (both null) for super-admins. Standard CRUD and ownership-aware batch fetch are
  * delegated to [crud]. The [create] and [list] overrides carry scope-specific logic.
  *
- * **data masking**: the file-level [maskDataMap] function in [AuthSettingDataMasking] is
- * used in [toDto] for all read paths. [resolveDataMap] handles the per-key PUT semantics:
- * masked sentinel / null → preserve, blank → clear, non-blank → replace.
+ * **data masking**: [toDto] uses [maskDataMapSelective] to mask only the sensitive keys
+ * for each auth type (via [AuthSetting.toSensitiveKeys]). Non-sensitive properties such
+ * as `clientId` and `discoveryUrl` are returned in plain text.
+ *
+ * [resolveDataMap] handles the per-key PUT semantics: masked sentinel / null → preserve,
+ * blank → clear, non-blank → replace.
  */
 @RestController
 @RequestMapping(
@@ -67,14 +86,14 @@ class AuthSettingController(
             userIdOf = { it.userId },
             namespaceIdOf = { it.namespaceId },
             buildEntity = { resource, resolvedNs, resolvedUser ->
-                AuthSetting(
+                authSettingFromDataMap(
+                    authType = resource.authType!!,
+                    data = dtoToDataMap(resource),
                     metadata = EntityMetadata(id = UUID.randomUUID()),
                     namespaceId = resolvedNs,
                     userId = resolvedUser,
                     name = resource.name,
                     description = resource.description,
-                    authType = resource.authType!!,
-                    data = resource.data ?: emptyMap(),
                 )
             },
             crud =
@@ -155,8 +174,8 @@ class AuthSettingController(
                 "| null             | null               | platform      | super-admin only                     |\n" +
                 "| present          | null               | NS-shared     | WRITE on the namespace               |\n" +
                 "| null             | <currentUser.id>   | user-global   | authenticated only                   |\n" +
-                "| present          | <currentUser.id>   | user×namespace| READ on the namespace                |\n\n" +
-                "`body.userId` (when supplied) MUST equal the authenticated user's id — sending a different " +
+                "| present          | <currentUser.id>   | user\u00d7namespace| READ on the namespace                |\n\n" +
+                "`body.userId` (when supplied) MUST equal the authenticated user's id \u2014 sending a different " +
                 "user-id is rejected with 400 (mass-assignment guard). A `namespaceId` " +
                 "that does not exist returns 404.",
     )
@@ -171,14 +190,14 @@ class AuthSettingController(
                 throw AccessDeniedException("Platform-level AuthSetting requires Super Admin")
             }
             val entity =
-                AuthSetting(
+                authSettingFromDataMap(
+                    authType = resource.authType!!,
+                    data = dtoToDataMap(resource),
                     metadata = EntityMetadata(id = UUID.randomUUID()),
                     namespaceId = null,
                     userId = null,
                     name = resource.name,
                     description = resource.description,
-                    authType = resource.authType!!,
-                    data = resource.data ?: emptyMap(),
                 )
             return toDto(authSettingService.create(entity))
         }
@@ -197,13 +216,17 @@ class AuthSettingController(
         val existing =
             authSettingService.findById(id)
                 ?: throw ResourceNotFoundException("AuthSetting not found: $id")
+        val resolvedData = resolveDataMap(dtoToDataMap(resource), existing.toDataMap())
         return toDto(
             authSettingService.update(
-                existing.copy(
+                authSettingFromDataMap(
+                    authType = existing.authType, // immutable post-create
+                    data = resolvedData,
+                    metadata = existing.metadata,
+                    namespaceId = existing.namespaceId,
+                    userId = existing.userId,
                     name = resource.name,
                     description = resource.description,
-                    authType = existing.authType, // immutable post-create
-                    data = resolveDataMap(resource.data, existing.data),
                 ),
             ),
         )
@@ -226,7 +249,6 @@ class AuthSettingController(
      *
      * For each key in the incoming map:
      * - masked sentinel (contains "****") → preserve the existing value
-     * - null value (absent in incoming) → preserve the existing value
      * - blank string → clear (remove the key)
      * - non-blank, non-masked → replace
      *
@@ -234,10 +256,9 @@ class AuthSettingController(
      * (the client did not intend to touch them).
      */
     private fun resolveDataMap(
-        incoming: Map<String, String>?,
+        incoming: Map<String, String>,
         current: Map<String, String>,
     ): Map<String, String> {
-        if (incoming == null) return current
         val result = current.toMutableMap()
         for ((key, value) in incoming) {
             when {
@@ -252,13 +273,130 @@ class AuthSettingController(
     companion object : KLogging()
 }
 
-internal fun toDto(entity: AuthSetting) =
-    AuthSettingDto(
-        id = entity.metadata.id,
-        namespaceId = entity.namespaceId,
-        userId = entity.userId,
-        name = entity.name,
-        description = entity.description,
-        authType = entity.authType,
-        data = maskDataMap(entity.data),
-    )
+/**
+ * Extract the typed properties of an [AuthSettingDto] subtype into a flat string map.
+ *
+ * Null properties (absent or masked fields not yet supplied by the client) are omitted
+ * from the map so that [AuthSettingController.resolveDataMap] treats them as
+ * "preserve existing" rather than "clear".
+ */
+internal fun dtoToDataMap(dto: AuthSettingDto): Map<String, String> =
+    when (dto) {
+        is ApiKeyAuthSettingDto -> buildMap {
+            dto.apiKey?.let { put("apiKey", it) }
+        }
+        is BearerTokenAuthSettingDto -> buildMap {
+            dto.token?.let { put("token", it) }
+        }
+        is BasicAuthAuthSettingDto -> buildMap {
+            dto.username?.let { put("username", it) }
+            dto.password?.let { put("password", it) }
+        }
+        is OAuthDiscoverableAuthSettingDto -> buildMap {
+            dto.discoveryUrl?.let { put("discoveryUrl", it) }
+            dto.clientId?.let { put("clientId", it) }
+            dto.clientSecret?.let { put("clientSecret", it) }
+            dto.scopes?.let { put("scopes", it) }
+        }
+        is OAuthRegisteredAuthSettingDto -> buildMap {
+            dto.clientId?.let { put("clientId", it) }
+            dto.clientSecret?.let { put("clientSecret", it) }
+            dto.authorizationUrl?.let { put("authorizationUrl", it) }
+            dto.tokenUrl?.let { put("tokenUrl", it) }
+            dto.scopes?.let { put("scopes", it) }
+        }
+        is OAuthCustomAuthSettingDto -> buildMap {
+            dto.clientId?.let { put("clientId", it) }
+            dto.clientSecret?.let { put("clientSecret", it) }
+            dto.authorizationUrl?.let { put("authorizationUrl", it) }
+            dto.tokenUrl?.let { put("tokenUrl", it) }
+            dto.scopes?.let { put("scopes", it) }
+        }
+    }
+
+/**
+ * Map an [AuthSetting] to its corresponding [AuthSettingDto] subtype.
+ *
+ * Sensitive properties (per [AuthSetting.toSensitiveKeys]) are masked with
+ * [maskSensitiveValue]; non-sensitive properties (e.g. `clientId`, `discoveryUrl`,
+ * `username`) are returned in plain text so the client can identify the setting.
+ */
+internal fun toDto(entity: AuthSetting): AuthSettingDto {
+    val data = entity.toDataMap()
+    val sensitiveKeys = entity.toSensitiveKeys()
+    val maskedData = maskDataMapSelective(data, sensitiveKeys)
+    return when (entity) {
+        is ApiKeyAuthSetting ->
+            ApiKeyAuthSettingDto(
+                id = entity.metadata.id,
+                namespaceId = entity.namespaceId,
+                userId = entity.userId,
+                name = entity.name,
+                description = entity.description,
+                authType = entity.authType,
+                apiKey = maskedData?.get("apiKey"),
+            )
+        is BearerTokenAuthSetting ->
+            BearerTokenAuthSettingDto(
+                id = entity.metadata.id,
+                namespaceId = entity.namespaceId,
+                userId = entity.userId,
+                name = entity.name,
+                description = entity.description,
+                authType = entity.authType,
+                token = maskedData?.get("token"),
+            )
+        is BasicAuthAuthSetting ->
+            BasicAuthAuthSettingDto(
+                id = entity.metadata.id,
+                namespaceId = entity.namespaceId,
+                userId = entity.userId,
+                name = entity.name,
+                description = entity.description,
+                authType = entity.authType,
+                username = maskedData?.get("username"),
+                password = maskedData?.get("password"),
+            )
+        is OAuthDiscoverableAuthSetting ->
+            OAuthDiscoverableAuthSettingDto(
+                id = entity.metadata.id,
+                namespaceId = entity.namespaceId,
+                userId = entity.userId,
+                name = entity.name,
+                description = entity.description,
+                authType = entity.authType,
+                discoveryUrl = maskedData?.get("discoveryUrl"),
+                clientId = maskedData?.get("clientId"),
+                clientSecret = maskedData?.get("clientSecret"),
+                scopes = maskedData?.get("scopes"),
+            )
+        is OAuthRegisteredAuthSetting ->
+            OAuthRegisteredAuthSettingDto(
+                id = entity.metadata.id,
+                namespaceId = entity.namespaceId,
+                userId = entity.userId,
+                name = entity.name,
+                description = entity.description,
+                authType = entity.authType,
+                clientId = maskedData?.get("clientId"),
+                clientSecret = maskedData?.get("clientSecret"),
+                authorizationUrl = maskedData?.get("authorizationUrl"),
+                tokenUrl = maskedData?.get("tokenUrl"),
+                scopes = maskedData?.get("scopes"),
+            )
+        is OAuthCustomAuthSetting ->
+            OAuthCustomAuthSettingDto(
+                id = entity.metadata.id,
+                namespaceId = entity.namespaceId,
+                userId = entity.userId,
+                name = entity.name,
+                description = entity.description,
+                authType = entity.authType,
+                clientId = maskedData?.get("clientId"),
+                clientSecret = maskedData?.get("clientSecret"),
+                authorizationUrl = maskedData?.get("authorizationUrl"),
+                tokenUrl = maskedData?.get("tokenUrl"),
+                scopes = maskedData?.get("scopes"),
+            )
+    }
+}
