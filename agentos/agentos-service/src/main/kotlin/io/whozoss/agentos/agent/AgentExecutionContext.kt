@@ -2,6 +2,7 @@ package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.tool.ToolContext
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -14,6 +15,8 @@ import java.util.UUID
  *
  * @param caseId The case this agent run belongs to, or null when the context is built
  *   outside of a live case (e.g. definition resolution for a debug endpoint).
+ * @param caseCreatedAt The case's immutable creation timestamp, used to resolve the date-sharded
+ *   case file-exchange root. Null when [caseId] is null.
  * @param caseEventsProvider Returns the live event list of the current case at the moment
  *   of invocation. Evaluated lazily so tool calls during a single agent run see events
  *   produced by prior tool calls in the same turn (e.g. a read before a write).
@@ -22,6 +25,7 @@ import java.util.UUID
 data class AgentExecutionContext(
     val namespaceId: UUID,
     val caseId: UUID? = null,
+    val caseCreatedAt: Instant? = null,
     val userId: UUID? = null,
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
 ) {

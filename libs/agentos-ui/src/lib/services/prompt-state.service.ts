@@ -20,8 +20,16 @@ export class PromptStateService {
     return this.promptController.getByIdPrompt(id)
   }
 
+  listPlatform(): Observable<Prompt[]> {
+    return this.promptController.listPrompt('PLATFORM')
+  }
+
   listByNamespace(namespaceId: string): Observable<Prompt[]> {
-    return this.promptController.listByNamespacePrompt(namespaceId)
+    return this.promptController.listPrompt('NAMESPACE', namespaceId)
+  }
+
+  listPlatform(): Observable<Prompt[]> {
+    return this.promptController.listPlatformPrompt()
   }
 
   create(payload: Prompt): Observable<Prompt> {
@@ -34,5 +42,13 @@ export class PromptStateService {
 
   delete(id: string): Observable<unknown> {
     return this.promptController.deletePrompt(id)
+  }
+
+  /**
+   * Returns the effective (merged) prompt list for a namespace+user context.
+   * Used for slash-command autocomplete in the chat composer.
+   */
+  listEffective(namespaceId: string): Observable<Prompt[]> {
+    return this.promptController.effectivePrompt(namespaceId)
   }
 }

@@ -1,6 +1,12 @@
 spring:
   application:
     name: agentos
+  servlet:
+    multipart:
+      # Global upload limits (file-exchange uploads + plugin jars), raised from Spring's 1MB
+      # default. Overridable via env (relaxed binding), like the other params.
+      max-file-size: ${AGENTOS_MULTIPART_MAX_FILE_SIZE:25MB}
+      max-request-size: ${AGENTOS_MULTIPART_MAX_REQUEST_SIZE:30MB}
   cloud:
     # Spring Cloud 2024.0.x (Moore) targets Spring Boot 3.4.x officially.
     # AgentOS runs Spring Boot 3.5.x which is functionally compatible but
@@ -88,12 +94,20 @@ management:
 
 agentos:
   case:
-  # Grace period (ms) before an idle runtime with no SSE subscribers is evicted.
-  # Override with env var: AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
-  # idle-eviction-grace-ms: 300000
-  # Interval (ms) between SSE keep-alive comment frames sent to connected clients.
-  # Override with env var: AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
-  # sse-heartbeat-interval-ms: 30000
+    # Grace period (ms) before an idle runtime with no SSE subscribers is evicted.
+    # Override with env var: AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
+    # idle-eviction-grace-ms: 300000
+    # Interval (ms) between SSE keep-alive comment frames sent to connected clients.
+    # Override with env var: AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
+    # sse-heartbeat-interval-ms: 30000
+  exchange:
+    # Root directory for file-exchange files (relative to the working directory).
+    # Override with env var: AGENTOS_EXCHANGE_MOUNT_ROOT
+    # mount-root: data/exchange/
+    # Comma-separated file extensions allowed for user uploads (lowercase, no dot). The default
+    # covers text/doc/data/image/code; empty allows any. Expected to differ per AgentOS instance.
+    # Override with env var: AGENTOS_EXCHANGE_ALLOWED_UPLOAD_EXTENSIONS
+    # allowed-upload-extensions: txt,md,pdf,png,csv,json
   defaults:
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.

@@ -4,15 +4,20 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Prompt } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
-import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { BehaviorSubject, catchError, forkJoin, map, of, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptItemComponent } from '../prompt-item/prompt-item.component'
+
+const GROUP_PLATFORM = 'platform'
+const GROUP_NAMESPACE = 'namespace'
 
 /**
  * NamespacePromptsComponent — list view for prompts of a namespace.
  *
  * Loaded at /:namespaceId/prompts. Responsibilities:
- * - Load and display the list of Prompt via ds-entity-list
+ * - Load and display namespace-level AND platform-level prompts
+ * - Merge both levels into a grouped ds-entity-list (platform first, then namespace)
+ * - Platform-level prompts are displayed read-only (no edit/delete actions)
  * - Navigate back to the namespace list
  * - Navigate to the create form (/:namespaceId/prompts/new)
  * - Deletion with inline two-step confirmation (delegated to PromptItemComponent)
@@ -36,28 +41,48 @@ export class NamespacePromptsComponent {
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
-  /** Raw prompts, kept for delete lookups. */
-  private readonly prompts$ = this.refresh$.pipe(switchMap(() => this.promptState.listByNamespace(this.namespaceId)))
+  /** Fetches both namespace-level and platform-level prompts in parallel. */
+  private readonly allPrompts$ = this.refresh$.pipe(
+    switchMap(() =>
+      forkJoin({
+        platform: this.promptState.listPlatform().pipe(catchError(() => of([] as Prompt[]))),
+        namespace: this.promptState.listByNamespace(this.namespaceId),
+      })
+    )
+  )
 
-  /** Mapped to EntityListItem[] for ds-entity-list. */
-  protected readonly promptItems$ = this.prompts$.pipe(
-    map((prompts) =>
-      prompts.map(
+  /** Mapped to EntityListItem[] for ds-entity-list, platform group first. */
+  protected readonly promptItems$ = this.allPrompts$.pipe(
+    map(({ platform, namespace }) => [
+      ...platform.map(
         (p: Prompt): EntityListItem => ({
           id: p.id ?? '',
           name: p.name,
           description: p.description,
+          groupKey: GROUP_PLATFORM,
+          groupLabel: 'Platform (read-only)',
         })
-      )
-    )
+      ),
+      ...namespace.map(
+        (p: Prompt): EntityListItem => ({
+          id: p.id ?? '',
+          name: p.name,
+          description: p.description,
+          groupKey: GROUP_NAMESPACE,
+          groupLabel: 'Namespace',
+        })
+      ),
+    ])
   )
 
   /** Full prompt objects indexed by id — used to resolve itemTemplate events. */
-  private promptsById = new Map<string, Prompt>()
+  private namespacePromptsById = new Map<string, Prompt>()
+  private platformPromptsById = new Map<string, Prompt>()
 
   constructor() {
-    this.prompts$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((prompts: Prompt[]) => {
-      this.promptsById = new Map(prompts.map((p: Prompt) => [p.id ?? '', p]))
+    this.allPrompts$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(({ platform, namespace }) => {
+      this.platformPromptsById = new Map(platform.map((p: Prompt) => [p.id ?? '', p]))
+      this.namespacePromptsById = new Map(namespace.map((p: Prompt) => [p.id ?? '', p]))
     })
   }
 
@@ -77,6 +102,10 @@ export class NamespacePromptsComponent {
   }
 
   protected resolvePrompt(id: string): Prompt | null {
-    return this.promptsById.get(id) ?? null
+    return this.platformPromptsById.get(id) ?? this.namespacePromptsById.get(id) ?? null
+  }
+
+  protected isPlatformPrompt(id: string): boolean {
+    return this.platformPromptsById.has(id)
   }
 }

@@ -51,6 +51,11 @@ data class AgentConfig(
      * Map key = integration name (matches [IntegrationConfig.name] or
      * [ToolPlugin.integrationType] for config-less plugins).
      * Map value = allowed tool names, or null for all tools of that integration.
+     *
+     * Reserved keys `CASE_FILE_EXCHANGE` / `NAMESPACE_FILE_EXCHANGE`
+     * (see [io.whozoss.agentos.exchange.ExchangeIntegrationTypes]) enable the built-in
+     * file-exchange integrations: they have no [IntegrationConfig] instance and are resolved by
+     * `AgentServiceImpl.buildExchangeTools` rather than the normal plugin path.
      */
     val integrations: Map<String, List<String>?>? = null,
     /**
