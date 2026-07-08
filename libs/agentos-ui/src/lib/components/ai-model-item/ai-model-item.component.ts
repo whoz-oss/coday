@@ -20,6 +20,11 @@ import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-os
 export class AiModelItemComponent {
   readonly model = input.required<AiModel>()
   readonly namespaceId = input<string | undefined>(undefined)
+  /**
+   * When true, edit and delete actions are hidden.
+   * Used for platform-level models displayed in a namespace context (read-only visibility).
+   */
+  readonly readOnly = input(false)
 
   readonly deleteRequested = output<AiModel>()
   readonly editRequested = output<AiModel>()
@@ -30,6 +35,8 @@ export class AiModelItemComponent {
     { key: 'edit', label: 'Edit model', icon: 'edit' },
     { key: 'delete', label: 'Delete model', icon: 'delete', variant: 'danger' },
   ]
+
+  protected readonly readOnlyMenuItems: KebabMenuItem[] = []
 
   protected get displayTitle(): string {
     return this.model().alias ?? this.model().apiModelName
