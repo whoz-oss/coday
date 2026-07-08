@@ -28,10 +28,6 @@ export class PromptStateService {
     return this.promptController.listPrompt('NAMESPACE', namespaceId)
   }
 
-  listPlatform(): Observable<Prompt[]> {
-    return this.promptController.listPlatformPrompt()
-  }
-
   create(payload: Prompt): Observable<Prompt> {
     return this.promptController.createPrompt(payload)
   }
@@ -49,6 +45,6 @@ export class PromptStateService {
    * Used for slash-command autocomplete in the chat composer.
    */
   listEffective(namespaceId: string): Observable<Prompt[]> {
-    return this.promptController.effectivePrompt(namespaceId)
+    return this.promptController.findEffectiveByNamespaceIdPrompt(namespaceId)
   }
 }
