@@ -48,7 +48,7 @@ export class NamespaceAgentConfigsComponent {
   private readonly allConfigs$ = this.refresh$.pipe(
     switchMap(() =>
       forkJoin({
-        namespace: this.agentConfigController.listByNamespaceAgentConfig(this.namespaceId),
+        namespace: this.agentConfigController.listByParentAgentConfig(this.namespaceId),
         platform: this.agentConfigController
           .listPlatformAgentsAgentConfig()
           .pipe(catchError(() => of([] as AgentConfig[]))),
