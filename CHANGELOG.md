@@ -1,3 +1,13 @@
+## 0.204.3 (2026-07-08)
+
+### 🩹 Fixes
+
+- navigate back to home from namespace list ([#1108](https://github.com/whoz-oss/coday/pull/1108))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.204.2 (2026-07-07)
 
 ### 🩹 Fixes
