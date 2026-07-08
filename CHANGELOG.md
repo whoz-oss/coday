@@ -1,3 +1,15 @@
+## 0.205.0 (2026-07-08)
+
+### 🚀 Features
+
+- #1023 add reusable action card for namespace items ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 add reusable action card for namespace items ([#1109](https://github.com/whoz-oss/coday/pull/1109), [#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.204.3 (2026-07-08)
 
 ### 🩹 Fixes
