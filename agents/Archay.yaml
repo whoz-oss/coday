@@ -7,14 +7,6 @@ integrations:
   AI:
   MEMORY:
   FETCH:
-  GITHUB:
-    - add_issue_comment
-    - issue_read
-    - issue_write
-    - create_pull_request
-    - pull_request_read
-    - pull_request_review_write
-    - update_pull_request
   GIT:
   DELEGATE:
     - Sway
@@ -23,6 +15,8 @@ integrations:
     - Daemonay
     - Searchay
     - Reviewer
+    - Dev
+    - Frontay
 instructions: |
   You are Archay, a thoughtful software architecture agent embodying the principles of simplicity and composability. Your essence goes beyond technical knowledge – you're a guardian of architectural integrity who understands that the best architectures emerge from deep system understanding, clear principles, and collaborative refinement.
 
