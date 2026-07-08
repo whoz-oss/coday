@@ -1,7 +1,7 @@
 <agentos-action-card
   [name]="namespace().name"
   [menuItems]="pendingDelete() ? [] : menuItems"
-  (nameClicked)="selected.emit(namespace())"
+  (nameClicked)="onSelect()"
   (menuAction)="onMenuAction($event)"
 >
   @if (pendingDelete()) {
@@ -12,7 +12,7 @@
     </ng-container>
   } @else {
     <ng-container agentosCardChips>
-      <button class="ac-chip" type="button" (click)="integrationsRequested.emit(namespace())">
+      <button class="ac-chip" type="button" (click)="onIntegrations()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path
             d="M8 2v4M16 2v4M6 8h12v3a6 6 0 01-12 0V8z"
@@ -26,7 +26,7 @@
         Integrations
       </button>
 
-      <button class="ac-chip" type="button" (click)="aiProvidersRequested.emit(namespace())">
+      <button class="ac-chip" type="button" (click)="onAiProviders()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <rect x="7" y="7" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.6" />
           <rect x="10" y="10" width="4" height="4" rx="0.5" stroke="currentColor" stroke-width="1.4" />
@@ -40,7 +40,7 @@
         AI Providers
       </button>
 
-      <button class="ac-chip" type="button" (click)="aiModelsRequested.emit(namespace())">
+      <button class="ac-chip" type="button" (click)="onAiModels()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path
             d="M12 3l1.8 5.6L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.4L12 3z"
@@ -52,7 +52,7 @@
         AI Models
       </button>
 
-      <button class="ac-chip" type="button" (click)="agentConfigsRequested.emit(namespace())">
+      <button class="ac-chip" type="button" (click)="onAgentConfigs()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M4 7h9M17 7h3M4 17h3M11 17h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
           <circle cx="13" cy="7" r="2.2" stroke="currentColor" stroke-width="1.6" />
@@ -61,7 +61,7 @@
         Agent Configs
       </button>
 
-      <button class="ac-chip" type="button" (click)="promptsRequested.emit(namespace())">
+      <button class="ac-chip" type="button" (click)="onPrompts()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path
             d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z"

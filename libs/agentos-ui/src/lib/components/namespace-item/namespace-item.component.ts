@@ -26,9 +26,28 @@ export class NamespaceItemComponent {
 
   protected readonly menuItems: ActionCardMenuItem[] = [
     { key: 'edit', label: 'Edit namespace' },
-    { key: 'separator', label: '', variant: 'separator' as any },
+    { key: 'separator', label: '', variant: 'separator' },
     { key: 'delete', label: 'Delete namespace', variant: 'danger' },
   ]
+
+  protected onSelect(): void {
+    this.selected.emit(this.namespace())
+  }
+  protected onIntegrations(): void {
+    this.integrationsRequested.emit(this.namespace())
+  }
+  protected onAiProviders(): void {
+    this.aiProvidersRequested.emit(this.namespace())
+  }
+  protected onAiModels(): void {
+    this.aiModelsRequested.emit(this.namespace())
+  }
+  protected onAgentConfigs(): void {
+    this.agentConfigsRequested.emit(this.namespace())
+  }
+  protected onPrompts(): void {
+    this.promptsRequested.emit(this.namespace())
+  }
 
   protected onMenuAction(key: string): void {
     switch (key) {
