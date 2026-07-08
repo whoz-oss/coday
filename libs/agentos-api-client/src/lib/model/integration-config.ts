@@ -16,4 +16,5 @@ export interface IntegrationConfig {
   integrationType: string
   description?: string
   parameters?: any | null
+  authSettingName?: string
 }

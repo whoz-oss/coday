@@ -87,6 +87,7 @@ class IntegrationConfigController(
                     integrationType = resource.integrationType,
                     description = resource.description,
                     parameters = resource.parameters,
+                    authSettingName = resource.authSettingName,
                 )
             },
             crud =
@@ -206,6 +207,7 @@ class IntegrationConfigController(
                     integrationType = resource.integrationType,
                     description = resource.description,
                     parameters = resource.parameters,
+                    authSettingName = resource.authSettingName,
                 )
             return toDto(integrationConfigService.create(entity))
         }
@@ -233,6 +235,7 @@ class IntegrationConfigController(
                     integrationType = existing.integrationType,
                     description = resource.description,
                     parameters = resource.parameters,
+                    authSettingName = resource.authSettingName,
                 ),
             ),
         )
@@ -287,4 +290,5 @@ private fun toDto(entity: IntegrationConfig) =
         integrationType = entity.integrationType,
         description = entity.description,
         parameters = entity.parameters,
+        authSettingName = entity.authSettingName,
     )

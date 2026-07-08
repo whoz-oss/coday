@@ -1,0 +1,117 @@
+<div class="auth-setting-form">
+  <header class="auth-setting-form__header">
+    <button class="auth-setting-form__back" type="button" (click)="cancel()" title="Back to auth settings">
+      <span class="auth-setting-form__back-icon">&#8592;</span>
+      Auth Settings
+    </button>
+    <h1 class="auth-setting-form__title">{{ isEditMode() ? 'Edit auth setting' : 'New auth setting' }}</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="auth-setting-form__loading">Loading&hellip;</p>
+  } @else {
+    <form class="auth-setting-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      @if (!isPlatformMode) {
+        <fieldset class="auth-setting-form__scope" [disabled]="isEditMode()">
+          <legend class="auth-setting-form__label">Portée de la configuration</legend>
+          @for (opt of scopeOptions; track trackByScope($index, opt)) {
+            <label class="auth-setting-form__scope-option">
+              <input
+                type="radio"
+                [formControl]="scopeControl"
+                [value]="opt.value"
+                [disabled]="opt.value === 'namespace' && !isAdmin()"
+              />
+              <span>{{ opt.label }}</span>
+            </label>
+          }
+        </fieldset>
+      }
+
+      <div class="auth-setting-form__field">
+        <label class="auth-setting-form__label" for="as-auth-type">Auth type <span aria-hidden="true">*</span></label>
+        <select id="as-auth-type" class="auth-setting-form__select" [formControl]="authTypeControl">
+          @for (type of authTypeOptions; track type) {
+            <option [value]="type">{{ type }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="auth-setting-form__field">
+        <label class="auth-setting-form__label" for="as-name">Name <span aria-hidden="true">*</span></label>
+        <input
+          id="as-name"
+          class="auth-setting-form__input"
+          type="text"
+          placeholder="e.g. GitHub OAuth App"
+          [formControl]="nameControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="auth-setting-form__field">
+        <label class="auth-setting-form__label" for="as-description">Description</label>
+        <input
+          id="as-description"
+          class="auth-setting-form__input"
+          type="text"
+          placeholder="Optional — short description of this auth setting"
+          [formControl]="descriptionControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="auth-setting-form__data" [formArrayName]="'data'">
+        <div class="auth-setting-form__data-title">
+          <span class="auth-setting-form__label">Credential data</span>
+          <button class="auth-setting-form__data-add" type="button" (click)="addDataEntry()">+ Add entry</button>
+        </div>
+        <p class="auth-setting-form__data-hint">
+          Key-value pairs for this auth setting (e.g. clientId, clientSecret, token). Values are stored encrypted and
+          masked on read.
+          @if (isEditMode()) {
+            Unchanged values are not re-sent to the server.
+          }
+        </p>
+        @for (dataGroup of dataArray.controls; track $index) {
+          <div class="auth-setting-form__data-row" [formGroupName]="$index">
+            <input
+              class="auth-setting-form__input"
+              type="text"
+              placeholder="Key (e.g. clientSecret)"
+              formControlName="key"
+              autocomplete="off"
+            />
+            <input
+              class="auth-setting-form__input auth-setting-form__input--secret"
+              type="password"
+              placeholder="Value"
+              formControlName="value"
+              autocomplete="new-password"
+            />
+            <button
+              class="auth-setting-form__data-remove"
+              type="button"
+              (click)="removeDataEntry($index)"
+              title="Remove entry"
+              aria-label="Remove entry"
+            >
+              &times;
+            </button>
+          </div>
+        }
+      </div>
+
+      <div class="auth-setting-form__actions">
+        <button
+          class="auth-setting-form__btn auth-setting-form__btn--primary"
+          type="submit"
+          [disabled]="form.invalid || isSubmitting()"
+        >
+          {{ isEditMode() ? 'Save changes' : 'Create' }}
+        </button>
+        <button class="auth-setting-form__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+</div>

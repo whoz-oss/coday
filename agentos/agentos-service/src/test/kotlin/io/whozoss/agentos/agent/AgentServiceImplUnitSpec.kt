@@ -16,6 +16,7 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
@@ -50,6 +51,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val toolRegistryService: ToolRegistryService = mockk(relaxed = true)
     private val toolMetricsService: ToolMetricsService = mockk(relaxed = true)
     private val caseEventService: CaseEventService = mockk(relaxed = true)
+    private val authServiceFactory: AuthServiceFactory = mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
             chatClientProvider,
@@ -66,6 +68,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             toolRegistryService,
             toolMetricsService,
             caseEventService,
+            authServiceFactory,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -431,6 +434,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolRegistryService,
                     toolMetricsService,
                     caseEventService,
+                    authServiceFactory,
                 )
             val configs =
                 listOf(

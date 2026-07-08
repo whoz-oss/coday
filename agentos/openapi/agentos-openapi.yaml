@@ -377,6 +377,63 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/auth-settings/{id}:
+    get:
+      tags:
+      - auth-setting-controller
+      operationId: getByIdAuthSetting
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSetting"
+    put:
+      tags:
+      - auth-setting-controller
+      operationId: updateAuthSetting
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthSetting"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSetting"
+    delete:
+      tags:
+      - auth-setting-controller
+      operationId: deleteAuthSetting
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/ai-providers/{id}:
     get:
       tags:
@@ -1315,6 +1372,93 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
+  /api/auth-settings:
+    get:
+      tags:
+      - auth-setting-controller
+      summary: List AuthSettings by scope
+      description: |-
+        Scope is inferred from the query params:
+
+        | query                            | mode             | required permission                            |
+        |----------------------------------|------------------|------------------------------------------------|
+        | (no params)                      | platform         | authenticated                                  |
+        | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
+        | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
+
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+      operationId: listAuthSetting
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: userId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuthSetting"
+    post:
+      tags:
+      - auth-setting-controller
+      summary: Create an AuthSetting
+      description: |-
+        Scope is inferred implicitly from the body's `(namespaceId, userId)` pair:
+
+        | body.namespaceId | body.userId        | scope         | required permission                  |
+        |------------------|--------------------|---------------|--------------------------------------|
+        | null             | null               | platform      | super-admin only                     |
+        | present          | null               | NS-shared     | WRITE on the namespace               |
+        | null             | <currentUser.id>   | user-global   | authenticated only                   |
+        | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
+
+        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard). A `namespaceId` that does not exist returns 404.
+      operationId: createAuthSetting
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthSetting"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSetting"
+  /api/auth-settings/by-ids:
+    post:
+      tags:
+      - auth-setting-controller
+      operationId: getByIdsAuthSetting
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuthSetting"
   /api/ai-providers:
     get:
       tags:
@@ -2212,6 +2356,8 @@ components:
           type: string
         parameters:
           $ref: "#/components/schemas/JsonNode"
+        authSettingName:
+          type: string
       required:
       - integrationType
       - name
@@ -2247,6 +2393,43 @@ components:
       - namespaceId
       - removed
       - status
+    AuthSetting:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        authType:
+          type: string
+          enum:
+          - OAUTH_DISCOVERABLE
+          - OAUTH_REGISTERED
+          - OAUTH_CUSTOM
+          - API_KEY
+          - BEARER_TOKEN
+          - BASIC_AUTH
+        data:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - authType
+      - name
     AiProvider:
       type: object
       properties:

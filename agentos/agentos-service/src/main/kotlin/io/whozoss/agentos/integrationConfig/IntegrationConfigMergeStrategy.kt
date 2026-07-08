@@ -24,6 +24,8 @@ import org.springframework.stereotype.Component
  *   key, the user should send the appropriate empty value for the consumer (e.g. `""`
  *   for a string), not JSON `null`.
  * - `description`: `override.description` wins when non-null; otherwise inherited from `base`.
+ * - `authSettingName`: `override.authSettingName` wins when non-null; otherwise inherited from `base`.
+ *   A higher-precedence layer can redirect authentication to a different [io.whozoss.agentos.authSetting.AuthSetting].
  * - `integrationType`: `override.integrationType` wins for symmetry. In normal usage all
  *   layers carry the same `integrationType` because the service create/update path
  *   rejects an override whose `integrationType` differs from a matching `name` in any
@@ -42,6 +44,7 @@ class IntegrationConfigMergeStrategy : MergeStrategy<IntegrationConfig> {
             integrationType = override.integrationType,
             description = override.description ?: base.description,
             parameters = mergeParameters(base.parameters, override.parameters),
+            authSettingName = override.authSettingName ?: base.authSettingName,
         )
 
     private fun mergeParameters(

@@ -13,7 +13,7 @@ export interface Namespace {
   name: string
   description?: string
   /**
-   * Optional filesystem path to a directory containing base configuration for this namespace (agents, tools, etc.)
+   * Optional filesystem path to a directory containing base configuration for this namespace (agents, tools, etc.).
    */
   configPath?: string
   /**

@@ -5,13 +5,14 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
 import { Router } from '@angular/router'
 import { combineLatest, map } from 'rxjs'
 import { AiProviderConfigStateService } from '../../services/ai-provider-config-state.service'
+import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import { THEME_PORT, ThemeMode } from '../../services/theme.service'
 import { EnterKeyBehavior, USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { UserStateService } from '../../services/user-state.service'
 
 interface UserGlobalEntry {
-  category: 'integration' | 'aiProvider'
+  category: 'integration' | 'aiProvider' | 'authSetting'
   id: string
   name: string
   subtitle: string
@@ -20,6 +21,7 @@ interface UserGlobalEntry {
 interface UserGlobalRecap {
   integrations: UserGlobalEntry[]
   aiProviders: UserGlobalEntry[]
+  authSettings: UserGlobalEntry[]
   total: number
 }
 
@@ -50,6 +52,7 @@ export class UserProfileComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly integrationState = inject(IntegrationConfigStateService)
   private readonly providerState = inject(AiProviderConfigStateService)
+  private readonly authSettingState = inject(AuthSettingConfigStateService)
   private readonly themePort = inject(THEME_PORT)
   private readonly preferencesPort = inject(USER_PREFERENCES_PORT)
   protected readonly isEditing = signal(false)
@@ -86,8 +89,12 @@ export class UserProfileComponent implements OnInit {
    * delete from this view). The state services already cache via shareReplay.
    */
   protected readonly recap = toSignal(
-    combineLatest([this.integrationState.userGlobal$, this.providerState.userGlobal$]).pipe(
-      map(([integrations, providers]): UserGlobalRecap => {
+    combineLatest([
+      this.integrationState.userGlobal$,
+      this.providerState.userGlobal$,
+      this.authSettingState.userGlobal$,
+    ]).pipe(
+      map(([integrations, providers, authSettings]): UserGlobalRecap => {
         const integrationEntries = integrations.map(
           (c): UserGlobalEntry => ({
             category: 'integration',
@@ -104,10 +111,19 @@ export class UserProfileComponent implements OnInit {
             subtitle: p.apiType,
           })
         )
+        const authSettingEntries = authSettings.map(
+          (s): UserGlobalEntry => ({
+            category: 'authSetting',
+            id: s.id ?? '',
+            name: s.name,
+            subtitle: s.authType,
+          })
+        )
         return {
           integrations: integrationEntries,
           aiProviders: providerEntries,
-          total: integrationEntries.length + providerEntries.length,
+          authSettings: authSettingEntries,
+          total: integrationEntries.length + providerEntries.length + authSettingEntries.length,
         }
       })
     ),
@@ -115,6 +131,7 @@ export class UserProfileComponent implements OnInit {
       initialValue: {
         integrations: [],
         aiProviders: [],
+        authSettings: [],
         total: 0,
       } as UserGlobalRecap,
     }
@@ -207,7 +224,9 @@ export class UserProfileComponent implements OnInit {
     const call$ =
       entry.category === 'integration'
         ? this.integrationState.delete(entry.id, 'userGlobal')
-        : this.providerState.delete(entry.id, 'userGlobal')
+        : entry.category === 'authSetting'
+          ? this.authSettingState.delete(entry.id, 'userGlobal')
+          : this.providerState.delete(entry.id, 'userGlobal')
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       error: (err) => {

@@ -5,6 +5,7 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.delegation.DelegationTool
@@ -50,6 +51,7 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
+    private val authServiceFactory: AuthServiceFactory,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -215,6 +217,7 @@ class AgentServiceImpl(
             context.toToolContext(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
                 agentName = agentConfig.name,
+                authService = context.userId?.let { authServiceFactory.create(context.namespaceId, it) },
             )
         val baseTools =
             toolResolverService.resolveToolsForRun(

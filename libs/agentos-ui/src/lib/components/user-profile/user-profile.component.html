@@ -185,8 +185,8 @@
           @if (isOverridesExpanded()) {
             @if (recap().total === 0) {
               <p class="user-profile__overrides-empty">
-                No global configuration yet. Create one from the Integrations / AI Providers / AI Models pages of your
-                namespaces.
+                No global configuration yet. Create one from the Integrations / AI Providers / Auth Settings pages of
+                your namespaces.
               </p>
             } @else {
               @if (recap().integrations.length > 0) {
@@ -222,6 +222,35 @@
                 <h3 class="user-profile__overrides-subtitle">AI Providers</h3>
                 <ul class="user-profile__overrides-list">
                   @for (entry of recap().aiProviders; track trackEntry($index, entry)) {
+                    <li class="user-profile__overrides-row">
+                      <span class="user-profile__overrides-name">{{ entry.name }}</span>
+                      <span class="user-profile__overrides-subtitle-text">{{ entry.subtitle }}</span>
+                      @if (isPendingDelete(entry)) {
+                        <span class="user-profile__overrides-confirm-label">Delete?</span>
+                        <button
+                          class="user-profile__overrides-delete user-profile__overrides-delete--confirm"
+                          type="button"
+                          (click)="confirmDelete(entry)"
+                        >
+                          Confirm
+                        </button>
+                        <button class="user-profile__overrides-delete" type="button" (click)="cancelDelete()">
+                          Cancel
+                        </button>
+                      } @else {
+                        <button class="user-profile__overrides-delete" type="button" (click)="armDelete(entry)">
+                          Delete
+                        </button>
+                      }
+                    </li>
+                  }
+                </ul>
+              }
+
+              @if (recap().authSettings.length > 0) {
+                <h3 class="user-profile__overrides-subtitle">My global auth settings</h3>
+                <ul class="user-profile__overrides-list">
+                  @for (entry of recap().authSettings; track trackEntry($index, entry)) {
                     <li class="user-profile__overrides-row">
                       <span class="user-profile__overrides-name">{{ entry.name }}</span>
                       <span class="user-profile__overrides-subtitle-text">{{ entry.subtitle }}</span>
