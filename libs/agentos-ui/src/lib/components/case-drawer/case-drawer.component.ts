@@ -14,7 +14,7 @@ import { NgTemplateOutlet } from '@angular/common'
 
 /**
  * EntityListItem extended with a recursive children list.
- * Only root nodes are passed to ds-entity-list; children are rendered
+ * Only root nodes are passed to ds-entity-list in tree mode; children are rendered
  * inline by the itemTemplate.
  */
 export interface CaseTreeItem extends EntityListItem {
@@ -25,8 +25,11 @@ export interface CaseTreeItem extends EntityListItem {
  * CaseDrawerComponent — presentational drawer for the case list.
  *
  * Uses ds-entity-list for the chrome (toolbar, search, create button).
- * The itemTemplate handles hierarchical rendering: each root item renders
- * its sub-cases inline, collapsed by default.
+ *
+ * Two display modes:
+ * - **Tree mode** (no active search): root cases are shown with expandable sub-cases.
+ * - **Flat mode** (search active): all matching cases at every depth level are shown
+ *   as a flat list, including sub-cases. Matching is done on title AND case ID.
  */
 @Component({
   selector: 'agentos-case-drawer',
@@ -44,15 +47,41 @@ export class CaseDrawerComponent {
 
   @ViewChild('caseItemTpl', { static: true }) caseItemTpl!: TemplateRef<{ $implicit: CaseTreeItem }>
 
+  /** Current search query, driven by ds-entity-list's searchChanged output. */
+  protected readonly searchQuery = signal('')
+
+  protected readonly isSearchActive = computed(() => this.searchQuery().trim().length > 0)
+
   /**
-   * Arbre reconstruit automatiquement quand cases() change.
-   * Remplace OnChanges qui ne se déclenche pas avec les signal inputs.
+   * Tree rebuilt automatically when cases() changes.
+   * Used in tree mode (no active search).
    */
   protected readonly rootItems = computed(() => buildTree(this.cases()))
 
   /**
-   * Ancêtres du case actif à auto-expanded, recalculés quand
-   * rootItems() ou activeCaseId() change.
+   * Flat list of all cases matching the current search query.
+   * Traverses the full tree at every depth level.
+   * Matching is done on title AND case ID (case-insensitive).
+   * Used in flat mode (search active).
+   */
+  protected readonly flatFilteredItems = computed((): CaseTreeItem[] => {
+    const query = this.searchQuery().toLowerCase().trim()
+    if (!query) return []
+    return collectMatching(this.rootItems(), query)
+  })
+
+  /**
+   * Items passed to ds-entity-list:
+   * - flat filtered list when search is active
+   * - root tree nodes otherwise
+   */
+  protected readonly displayItems = computed((): CaseTreeItem[] =>
+    this.isSearchActive() ? this.flatFilteredItems() : this.rootItems()
+  )
+
+  /**
+   * Ancestors of the active case to auto-expand, recalculated when
+   * rootItems() or activeCaseId() changes.
    */
   private readonly autoExpandedIds = computed(() => {
     const id = this.activeCaseId()
@@ -62,7 +91,7 @@ export class CaseDrawerComponent {
     return expanded
   })
 
-  /** IDs des noeuds manuellement expand/collapse par l'utilisateur. */
+  /** IDs of nodes manually expanded/collapsed by the user. */
   protected readonly expandedIds = signal(new Set<string>())
 
   protected isExpanded(id: string): boolean {
@@ -76,6 +105,10 @@ export class CaseDrawerComponent {
       next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
+  }
+
+  protected onSearchChanged(query: string): void {
+    this.searchQuery.set(query)
   }
 
   protected onItemSelected(id: string): void {
@@ -95,6 +128,8 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
   const toNode = (c: Case): CaseTreeItem => ({
     id: c.id ?? '',
     name: c.title ?? c.id ?? '—',
+    // Store the case ID in description so ds-entity-list's built-in filter also matches on it
+    description: c.id ?? '',
     children: [],
   })
 
@@ -120,6 +155,20 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
       .map((item) => ({ ...item, children: sortDesc(item.children) }))
 
   return sortDesc(roots)
+}
+
+/**
+ * Recursively collect all tree nodes (at any depth) whose name or id
+ * contains the given query string (case-insensitive).
+ * Returns a flat list — hierarchy is not preserved in search results.
+ */
+function collectMatching(nodes: CaseTreeItem[], query: string): CaseTreeItem[] {
+  return nodes.reduce<CaseTreeItem[]>((acc, node) => {
+    const matches = node.name.toLowerCase().includes(query) || node.id.toLowerCase().includes(query)
+    if (matches) acc.push(node)
+    if (node.children.length) acc.push(...collectMatching(node.children, query))
+    return acc
+  }, [])
 }
 
 function findAndCollectAncestors(nodes: CaseTreeItem[], targetId: string, acc: Set<string>): boolean {
