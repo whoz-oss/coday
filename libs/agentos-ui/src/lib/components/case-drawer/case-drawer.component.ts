@@ -163,18 +163,12 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
  * Returns a flat list — hierarchy is not preserved in search results.
  */
 function collectMatching(nodes: CaseTreeItem[], query: string): CaseTreeItem[] {
-  const results: CaseTreeItem[] = []
-  for (const node of nodes) {
-    const matchesName = node.name.toLowerCase().includes(query)
-    const matchesId = node.id.toLowerCase().includes(query)
-    if (matchesName || matchesId) {
-      results.push(node)
-    }
-    if (node.children.length) {
-      results.push(...collectMatching(node.children, query))
-    }
-  }
-  return results
+  return nodes.reduce<CaseTreeItem[]>((acc, node) => {
+    const matches = node.name.toLowerCase().includes(query) || node.id.toLowerCase().includes(query)
+    if (matches) acc.push(node)
+    if (node.children.length) acc.push(...collectMatching(node.children, query))
+    return acc
+  }, [])
 }
 
 function findAndCollectAncestors(nodes: CaseTreeItem[], targetId: string, acc: Set<string>): boolean {
