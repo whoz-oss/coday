@@ -2,19 +2,31 @@ package io.whozoss.agentos.encryption
 
 import io.whozoss.agentos.sdk.encryption.FieldEncryptor
 import mu.KLogging
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 /**
  * Registers the appropriate [FieldEncryptor] bean based on the presence of
- * [ENV_KEY] and [ENV_SALT] environment variables.
+ * [ENV_KEY] and [ENV_SALT] environment variables (or equivalent Spring properties).
  *
- * - Both present  → [SpringFieldEncryptor] (AES-256-GCM via Spring Security Crypto)
- * - Both absent   → [Base64FieldEncryptor] (obfuscation only — logs a WARN)
- * - Only one set  → fails fast with [IllegalStateException]
+ * Resolution order (env vars take precedence over Spring properties):
+ * - Both key and salt resolved → [SpringFieldEncryptor] (AES-256-GCM)
+ * - Both absent               → fails fast with [IllegalStateException]
+ * - Only one resolved         → fails fast with [IllegalStateException]
+ *
+ * Spring properties `agentos.encryption.key` and `agentos.encryption.salt` are
+ * supported as an alternative to env vars, primarily to allow test profiles to
+ * supply fixed credentials via `application-test.yml`.
  */
 @Configuration
-class FieldEncryptorConfiguration {
+open class FieldEncryptorConfiguration {
+
+    @Value("\${agentos.encryption.key:}")
+    internal var propertyKey: String = ""
+
+    @Value("\${agentos.encryption.salt:}")
+    internal var propertySalt: String = ""
 
     /**
      * Reads an environment variable by name. Extracted as an open method so that
@@ -23,28 +35,27 @@ class FieldEncryptorConfiguration {
     open fun getEnv(name: String): String? = System.getenv(name)
 
     @Bean
-    fun fieldEncryptor(): FieldEncryptor {
-        val key  = getEnv(ENV_KEY)
-        val salt = getEnv(ENV_SALT)
+    open fun fieldEncryptor(): FieldEncryptor {
+        // Env vars take precedence; fall back to Spring properties.
+        val key  = getEnv(ENV_KEY)?.takeIf  { it.isNotBlank() } ?: propertyKey.takeIf  { it.isNotBlank() }
+        val salt = getEnv(ENV_SALT)?.takeIf { it.isNotBlank() } ?: propertySalt.takeIf { it.isNotBlank() }
 
         return when {
             key != null && salt != null -> {
-                logger.info { "[Encryption] AES-256-GCM encryption configured via $ENV_KEY / $ENV_SALT" }
+                logger.info { "[Encryption] AES-256-GCM encryption configured" }
                 SpringFieldEncryptor(key, salt)
             }
 
-            key == null && salt == null -> {
-                logger.warn {
-                    "[Encryption] No encryption key configured, using Base64 obfuscation" +
-                        " — NOT suitable for production. Set $ENV_KEY and $ENV_SALT to enable AES-256-GCM encryption."
-                }
-                Base64FieldEncryptor()
-            }
+            key == null && salt == null -> throw IllegalStateException(
+                "Encryption is required but not configured. " +
+                    "Set $ENV_KEY and $ENV_SALT environment variables, " +
+                    "or Spring properties agentos.encryption.key and agentos.encryption.salt."
+            )
 
             else -> {
-                val missing = if (key == null) ENV_KEY else ENV_SALT
+                val missing = if (key == null) "$ENV_KEY / agentos.encryption.key" else "$ENV_SALT / agentos.encryption.salt"
                 throw IllegalStateException(
-                    "Both $ENV_KEY and $ENV_SALT must be set, or neither. Missing: $missing"
+                    "Both encryption key and salt must be set, or neither. Missing: $missing"
                 )
             }
         }

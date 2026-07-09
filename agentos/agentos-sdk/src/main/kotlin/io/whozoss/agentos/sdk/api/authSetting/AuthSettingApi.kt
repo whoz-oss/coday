@@ -23,6 +23,13 @@ interface AuthSettingApi : EntityCrudApi<AuthSettingDto> {
     /**
      * GET /api/auth-settings — list auth settings by scope.
      *
+     * Scope is inferred from the combination of query parameters:
+     * - (no params)                       → platform-level auth settings
+     * - `namespaceId=<uuid>`              → NS-shared auth settings for that namespace
+     * - `namespaceId=<uuid>&userId=me`    → user × namespace overlay for the caller
+     * - `namespaceId=none&userId=me`      → user-global auth settings (no namespace)
+     * - `userId=me` (no namespace)        → all caller's auth settings across scopes
+     *
      * [namespaceId] accepts a UUID string or the sentinel `"none"` (meaning `namespaceId IS NULL`).
      * [userId] accepts only the sentinel `"me"` or absent.
      */

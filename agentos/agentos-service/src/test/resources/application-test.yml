@@ -32,6 +32,11 @@ eureka:
     enabled: false
 
 agentos:
+  # Fixed test credentials — NOT real secrets; exist solely to satisfy
+  # FieldEncryptorConfiguration's fail-fast requirement in integration tests.
+  encryption:
+    key: test-password-for-unit-tests
+    salt: deadbeefcafe1234
   plugins:
     dir: build/test-plugins
   persistence:
