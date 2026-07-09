@@ -223,7 +223,6 @@ export class AuthSettingFormComponent implements OnInit {
     const queryParams = this.route.snapshot.queryParamMap
 
     const authSettingId = params.get('authSettingId')
-    const hintedScope = this.isPlatformMode ? 'namespace' : this.parseScope(queryParams.get('scope'))
 
     if (authSettingId) {
       this.isEditMode.set(true)
@@ -233,6 +232,14 @@ export class AuthSettingFormComponent implements OnInit {
       return
     }
 
+    // In platform mode, scope is always 'platform' and the radio is locked.
+    if (this.isPlatformMode) {
+      this.scopeControl.setValue('platform')
+      this.scopeControl.disable()
+      return
+    }
+
+    const hintedScope = this.parseScope(queryParams.get('scope'))
     this.scopeControl.setValue(hintedScope)
     const templateId = queryParams.get('template')
     if (templateId) {
@@ -245,8 +252,8 @@ export class AuthSettingFormComponent implements OnInit {
   }
 
   private deriveScopeFromConfig(config: AuthSettingDto): AuthSettingScope {
-    const isUserScope = !!config.userId
-    if (!isUserScope) return 'namespace'
+    if (!config.userId && !config.namespaceId) return 'platform'
+    if (!config.userId) return 'namespace'
     return config.namespaceId ? 'userOnNs' : 'userGlobal'
   }
 

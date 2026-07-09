@@ -2,9 +2,10 @@ import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
-import { AuthSettingControllerService, AuthSettingDto } from '@whoz-oss/agentos-api-client'
+import { AuthSettingDto } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 import { AuthSettingItemComponent } from '../auth-setting-item/auth-setting-item.component'
 
 /**
@@ -13,7 +14,8 @@ import { AuthSettingItemComponent } from '../auth-setting-item/auth-setting-item
  * Loaded at /agentos/admin/auth-settings. Accessible to super-admins only
  * (backend enforces via 403; frontend shows the link only when user.isAdmin).
  *
- * Platform auth settings have namespaceId IS NULL (sentinel: 'none').
+ * Platform auth settings have namespaceId IS NULL AND userId IS NULL.
+ * Delegates all data access to AuthSettingConfigStateService (two-layer rule).
  */
 @Component({
   selector: 'agentos-platform-auth-settings',
@@ -24,14 +26,12 @@ import { AuthSettingItemComponent } from '../auth-setting-item/auth-setting-item
 export class PlatformAuthSettingsComponent {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly authSettingController = inject(AuthSettingControllerService)
+  private readonly state = inject(AuthSettingConfigStateService)
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   /** Raw platform auth settings, kept for delete lookups. */
-  private readonly settings$ = this.refresh$.pipe(
-    switchMap(() => this.authSettingController.listAuthSetting('none').pipe(map((raw) => raw as AuthSettingDto[])))
-  )
+  private readonly settings$ = this.refresh$.pipe(switchMap(() => this.state.loadPlatformSettings()))
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly settingItems$ = this.settings$.pipe(
@@ -70,8 +70,8 @@ export class PlatformAuthSettingsComponent {
 
   protected onDelete(setting: AuthSettingDto): void {
     if (!setting.id) return
-    this.authSettingController
-      .deleteAuthSetting(setting.id)
+    this.state
+      .delete(setting.id, 'platform')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }
