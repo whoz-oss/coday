@@ -2,7 +2,7 @@ import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
-import { AuthSetting, AuthSettingControllerService } from '@whoz-oss/agentos-api-client'
+import { AuthSettingControllerService, AuthSettingDto } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
 import { AuthSettingItemComponent } from '../auth-setting-item/auth-setting-item.component'
@@ -29,13 +29,15 @@ export class PlatformAuthSettingsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   /** Raw platform auth settings, kept for delete lookups. */
-  private readonly settings$ = this.refresh$.pipe(switchMap(() => this.authSettingController.listAuthSetting('none')))
+  private readonly settings$ = this.refresh$.pipe(
+    switchMap(() => this.authSettingController.listAuthSetting('none').pipe(map((raw) => raw as AuthSettingDto[])))
+  )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly settingItems$ = this.settings$.pipe(
     map((settings) =>
       settings.map(
-        (s: AuthSetting): EntityListItem => ({
+        (s: AuthSettingDto): EntityListItem => ({
           id: s.id ?? '',
           name: s.name,
           description: s.authType,
@@ -45,11 +47,11 @@ export class PlatformAuthSettingsComponent {
   )
 
   /** Full auth setting objects indexed by id — used to resolve itemTemplate events. */
-  private settingsById = new Map<string, AuthSetting>()
+  private settingsById = new Map<string, AuthSettingDto>()
 
   constructor() {
     this.settings$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((settings) => {
-      this.settingsById = new Map(settings.map((s: AuthSetting) => [s.id ?? '', s]))
+      this.settingsById = new Map(settings.map((s: AuthSettingDto) => [s.id ?? '', s]))
     })
   }
 
@@ -61,12 +63,12 @@ export class PlatformAuthSettingsComponent {
     this.router.navigate(['/agentos', 'admin', 'auth-settings', 'new'])
   }
 
-  protected onEdit(setting: AuthSetting): void {
+  protected onEdit(setting: AuthSettingDto): void {
     if (!setting.id) return
     this.router.navigate(['/agentos', 'admin', 'auth-settings', setting.id, 'edit'])
   }
 
-  protected onDelete(setting: AuthSetting): void {
+  protected onDelete(setting: AuthSettingDto): void {
     if (!setting.id) return
     this.authSettingController
       .deleteAuthSetting(setting.id)
@@ -74,7 +76,7 @@ export class PlatformAuthSettingsComponent {
       .subscribe(() => this.refresh$.next())
   }
 
-  protected resolveSetting(id: string): AuthSetting | null {
+  protected resolveSetting(id: string): AuthSettingDto | null {
     return this.settingsById.get(id) ?? null
   }
 }

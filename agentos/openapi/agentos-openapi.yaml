@@ -2705,6 +2705,14 @@ components:
       discriminator:
         propertyName: authType
       properties:
+        userId:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        description:
+          type: string
         authType:
           type: string
           enum:
@@ -2714,14 +2722,6 @@ components:
           - API_KEY
           - BEARER_TOKEN
           - BASIC_AUTH
-        userId:
-          type: string
-          format: uuid
-        namespaceId:
-          type: string
-          format: uuid
-        description:
-          type: string
         name:
           type: string
         id:

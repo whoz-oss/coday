@@ -2,7 +2,7 @@ import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AuthSetting } from '@whoz-oss/agentos-api-client'
+import { AuthSettingDto } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { map, of, switchMap } from 'rxjs'
 import {
@@ -23,10 +23,8 @@ const SECTION_LABEL: Readonly<Record<AuthSettingScope, string>> = Object.freeze(
 
 const EMPTY_PREFIX = '__empty__'
 
-type AnyAuthSetting = AuthSetting
-
 interface ResolvedItem {
-  config: AnyAuthSetting
+  config: AuthSettingDto
   scope: AuthSettingScope
 }
 
@@ -170,7 +168,7 @@ export class AuthSettingsAllScopesComponent implements OnInit {
     return items
   }
 
-  private sectionItems(scope: AuthSettingScope, configs: AnyAuthSetting[]): EntityListItem[] {
+  private sectionItems(scope: AuthSettingScope, configs: AuthSettingDto[]): EntityListItem[] {
     if (configs.length === 0) {
       return [
         {
@@ -182,7 +180,7 @@ export class AuthSettingsAllScopesComponent implements OnInit {
       ]
     }
     return configs
-      .filter((c): c is AnyAuthSetting & { id: string } => !!c.id)
+      .filter((c): c is AuthSettingDto & { id: string } => !!c.id)
       .map((c) => ({
         id: this.itemKey(scope, c.id),
         name: c.name,

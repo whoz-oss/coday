@@ -9,10 +9,10 @@
  */
 
 export interface ApiKeyAuthSetting {
-  authType: 'ApiKeyAuthSetting'
   userId?: string | null
   namespaceId?: string | null
   description?: string
+  authType: 'ApiKeyAuthSetting'
   name: string
   id?: string
   apiKey?: string

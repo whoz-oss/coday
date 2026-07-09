@@ -1,9 +1,23 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, effect, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
-import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AuthSetting, AuthSettingAuthTypeEnum } from '@whoz-oss/agentos-api-client'
-import { AuthSettingConfigStateService, AuthSettingScope } from '../../services/auth-setting-config-state.service'
+import {
+  ApiKeyAuthSetting,
+  AuthSettingDto,
+  BasicAuthAuthSetting,
+  BearerTokenAuthSetting,
+  OAuthCustomAuthSetting,
+  OAuthDiscoverableAuthSetting,
+  OAuthRegisteredAuthSetting,
+} from '@whoz-oss/agentos-api-client'
+import {
+  AUTH_SETTING_TYPE_LABEL,
+  AUTH_SETTING_TYPES,
+  AuthSettingConfigStateService,
+  AuthSettingScope,
+  AuthSettingType,
+} from '../../services/auth-setting-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 
 const VALID_SCOPES: ReadonlySet<AuthSettingScope> = new Set(['namespace', 'userOnNs', 'userGlobal'])
@@ -16,8 +30,67 @@ const SCOPE_LABEL: Readonly<Record<AuthSettingScope, string>> = Object.freeze({
 })
 
 /**
+ * Credential fields per auth type.
+ * `secret: true` → rendered as `type="password"` with masking-sentinel tracking.
+ */
+interface CredentialField {
+  key: string
+  label: string
+  placeholder: string
+  secret: boolean
+  required: boolean
+}
+
+const CREDENTIAL_FIELDS: Readonly<Record<AuthSettingType, ReadonlyArray<CredentialField>>> = {
+  ApiKeyAuthSetting: [{ key: 'apiKey', label: 'API Key', placeholder: 'sk-…', secret: true, required: false }],
+  BasicAuthAuthSetting: [
+    { key: 'username', label: 'Username', placeholder: 'user@example.com', secret: false, required: false },
+    { key: 'password', label: 'Password', placeholder: '••••••••', secret: true, required: false },
+  ],
+  BearerTokenAuthSetting: [{ key: 'token', label: 'Bearer token', placeholder: 'eyJ…', secret: true, required: false }],
+  OAuthDiscoverableAuthSetting: [
+    {
+      key: 'discoveryUrl',
+      label: 'Discovery URL',
+      placeholder: 'https://…/.well-known/openid-configuration',
+      secret: false,
+      required: false,
+    },
+    { key: 'clientId', label: 'Client ID', placeholder: '', secret: false, required: false },
+    { key: 'clientSecret', label: 'Client secret', placeholder: '', secret: true, required: false },
+    { key: 'scopes', label: 'Scopes', placeholder: 'openid profile email', secret: false, required: false },
+  ],
+  OAuthCustomAuthSetting: [
+    {
+      key: 'authorizationUrl',
+      label: 'Authorization URL',
+      placeholder: 'https://…/authorize',
+      secret: false,
+      required: false,
+    },
+    { key: 'tokenUrl', label: 'Token URL', placeholder: 'https://…/token', secret: false, required: false },
+    { key: 'clientId', label: 'Client ID', placeholder: '', secret: false, required: false },
+    { key: 'clientSecret', label: 'Client secret', placeholder: '', secret: true, required: false },
+    { key: 'scopes', label: 'Scopes', placeholder: 'openid profile email', secret: false, required: false },
+  ],
+  OAuthRegisteredAuthSetting: [
+    {
+      key: 'authorizationUrl',
+      label: 'Authorization URL',
+      placeholder: 'https://…/authorize',
+      secret: false,
+      required: false,
+    },
+    { key: 'tokenUrl', label: 'Token URL', placeholder: 'https://…/token', secret: false, required: false },
+    { key: 'clientId', label: 'Client ID', placeholder: '', secret: false, required: false },
+    { key: 'clientSecret', label: 'Client secret', placeholder: '', secret: true, required: false },
+    { key: 'scopes', label: 'Scopes', placeholder: 'openid profile email', secret: false, required: false },
+  ],
+}
+
+/**
  * AuthSettingFormComponent — full-page create / edit form for an auth setting
- * (Issue #1095, Phase 7).
+ * (Issue #1095).
  *
  * Mode is determined by the route param `:authSettingId`:
  * - `/:namespaceId/auth-settings/new`                    → create mode
@@ -26,20 +99,24 @@ const SCOPE_LABEL: Readonly<Record<AuthSettingScope, string>> = Object.freeze({
  * The active scope is driven by the `?scope=` query param in create mode (radio selector
  * exposed). In edit mode the scope is **derived from the loaded resource** (presence of
  * `userId`/`namespaceId`) — the query param is ignored to prevent forged URLs from routing
- * the update to the wrong controller (lesson learned from story 6.5).
+ * the update to the wrong controller.
  *
- * Data masking (NFR-SEC-1): on edit, the loaded data values are the masked sentinels
- * returned by the backend. The form tracks `initialData` (a snapshot of the loaded values).
- * On submit, each data entry is compared to the snapshot:
- *   - unchanged value → key is omitted from the update payload (backend keeps persisted cred)
+ * Type-specific credential fields: selecting a different `authType` swaps the credential
+ * fieldset. Each concrete auth type exposes its own named fields (e.g. `apiKey` for
+ * ApiKeyAuthSetting, `username`+`password` for BasicAuth). The generic key-value `data`
+ * map is gone — the backend now uses typed subtypes.
+ *
+ * Data masking (NFR-SEC-1): on edit, the loaded credential values are the masked sentinels
+ * returned by the backend. The form tracks `initialCredentials` (a snapshot of the loaded
+ * values). On submit, each credential field is compared to its snapshot:
+ *   - unchanged value → field is set to `undefined` in the payload (backend keeps persisted cred)
  *   - changed value   → included as-is
- *   - empty string    → included (clears the key on the backend)
+ *   - empty string    → included (clears the credential on the backend)
  *
  * Cross-link `?template=<id>` (create only) hydrates name/authType/description from the
- * referenced setting; the `data` map is intentionally NOT hydrated — credentials don't
- * carry across resources (NFR-SEC-1).
+ * referenced setting; credential fields are intentionally NOT hydrated (NFR-SEC-1).
  *
- * authType is immutable in edit mode (same as apiType in AiProviderFormComponent).
+ * authType is immutable in edit mode.
  */
 @Component({
   selector: 'agentos-auth-setting-form',
@@ -55,35 +132,15 @@ export class AuthSettingFormComponent implements OnInit {
   private readonly state = inject(AuthSettingConfigStateService)
   private readonly namespaceRole = inject(NamespaceRoleStateService)
 
-  /**
-   * Namespace scoping this form. `undefined` when loaded from an admin route
-   * (`admin/auth-settings/new`, `admin/auth-settings/:id/edit`) — platform context.
-   * A concrete UUID when loaded from `/:namespaceId/auth-settings/*`.
-   */
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
-
-  /**
-   * Whether this form is operating in platform-admin context.
-   * True when there is no `:namespaceId` param in the route (admin/* routes).
-   * In platform mode:
-   * - the scope selector is hidden (scope is implicitly 'namespace' = platform-level)
-   * - create payload has namespaceId: null (platform scope, namespaceId IS NULL)
-   * - navigateBack() returns to /agentos/admin/auth-settings
-   */
   protected readonly isPlatformMode = this.namespaceId === undefined
 
-  /**
-   * Whether the current user can write at namespace scope (super-admin OR namespace ADMIN
-   * by Neo4j relation). Drives the namespace radio option's disabled state — non-admins
-   * cannot pick `scope='namespace'` because the backend would 403. Defaults to `false`
-   * until the lookup resolves; safe — admins see options enable as soon as the role lands.
-   * In platform mode, always true (super-admin access is enforced by the backend).
-   */
   protected readonly isAdmin = this.isPlatformMode
     ? signal(true)
     : toSignal(this.namespaceRole.isAdminOfNamespace$(this.namespaceId!), { initialValue: false })
 
-  protected readonly authTypeOptions = Object.values(AuthSettingAuthTypeEnum)
+  protected readonly authTypeOptions = AUTH_SETTING_TYPES
+  protected readonly authTypeLabel = AUTH_SETTING_TYPE_LABEL
 
   protected readonly scopeOptions: ReadonlyArray<{ value: AuthSettingScope; label: string }> = [
     { value: 'namespace', label: SCOPE_LABEL.namespace },
@@ -91,69 +148,64 @@ export class AuthSettingFormComponent implements OnInit {
     { value: 'userGlobal', label: SCOPE_LABEL.userGlobal },
   ]
 
+  // ── Shared fields (common to all auth types) ─────────────────────────────
+  protected readonly nameControl = new FormControl<string>('', {
+    nonNullable: true,
+    validators: [Validators.required, Validators.minLength(1)],
+  })
+  protected readonly descriptionControl = new FormControl<string | null>(null)
+  protected readonly authTypeControl = new FormControl<AuthSettingType>('ApiKeyAuthSetting', {
+    nonNullable: true,
+    validators: [Validators.required],
+  })
+  protected readonly scopeControl = new FormControl<AuthSettingScope>('namespace', { nonNullable: true })
+
   protected readonly form = new FormGroup({
-    name: new FormControl<string>('', {
-      nonNullable: true,
-      validators: [Validators.required, Validators.minLength(1)],
-    }),
-    description: new FormControl<string | null>(null),
-    authType: new FormControl<AuthSettingAuthTypeEnum>(AuthSettingAuthTypeEnum.API_KEY, {
-      nonNullable: true,
-      validators: [Validators.required],
-    }),
-    scope: new FormControl<AuthSettingScope>('namespace', { nonNullable: true }),
-    data: new FormArray<FormGroup<{ key: FormControl<string>; value: FormControl<string> }>>([], { validators: [] }),
+    name: this.nameControl,
+    description: this.descriptionControl,
+    authType: this.authTypeControl,
+    scope: this.scopeControl,
   })
 
-  protected get nameControl() {
-    return this.form.controls.name
-  }
-  protected get descriptionControl() {
-    return this.form.controls.description
-  }
-  protected get authTypeControl() {
-    return this.form.controls.authType
-  }
-  protected get scopeControl() {
-    return this.form.controls.scope
-  }
-  protected get dataArray() {
-    return this.form.controls.data
-  }
+  // ── Credential controls — one per concrete field across all types ─────────
+  // All optional; only the fields relevant to the selected authType are included
+  // in the submit payload. Controls are always present in the DOM (simpler than
+  // dynamic FormGroup manipulation) but only the active type's fields are shown.
+  protected readonly apiKeyControl = new FormControl<string>('', { nonNullable: true })
+  protected readonly usernameControl = new FormControl<string>('', { nonNullable: true })
+  protected readonly passwordControl = new FormControl<string>('', { nonNullable: true })
+  protected readonly tokenControl = new FormControl<string>('', { nonNullable: true })
+  protected readonly discoveryUrlControl = new FormControl<string>('', { nonNullable: true })
+  protected readonly authorizationUrlControl = new FormControl<string>('', { nonNullable: true })
+  protected readonly tokenUrlControl = new FormControl<string>('', { nonNullable: true })
+  protected readonly clientIdControl = new FormControl<string>('', { nonNullable: true })
+  protected readonly clientSecretControl = new FormControl<string>('', { nonNullable: true })
+  protected readonly scopesControl = new FormControl<string>('', { nonNullable: true })
 
-  protected addDataEntry(): void {
-    this.dataArray.push(
-      new FormGroup({
-        key: new FormControl<string>('', { nonNullable: true, validators: [Validators.required] }),
-        value: new FormControl<string>('', { nonNullable: true }),
-      })
-    )
-  }
+  // ── Reactive derived state ────────────────────────────────────────────────
+  protected readonly selectedAuthType = toSignal(this.authTypeControl.valueChanges, {
+    initialValue: this.authTypeControl.value,
+  })
 
-  protected removeDataEntry(index: number): void {
-    this.dataArray.removeAt(index)
-  }
+  protected readonly credentialFields = computed<ReadonlyArray<CredentialField>>(
+    () => CREDENTIAL_FIELDS[this.selectedAuthType()]
+  )
 
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
 
-  /** Kept for the update payload (preserves server-side userId/namespaceId). */
-  private existingConfig: AuthSetting | null = null
+  /** Kept for the update payload (preserves server-side userId/namespaceId/authType). */
+  private existingConfig: AuthSettingDto | null = null
 
   /**
-   * Snapshot of the data values loaded from the server (typically masked sentinels).
-   * On submit we compare each entry's current value to this snapshot — if unchanged,
-   * we omit that key from the update payload so the backend keeps the persisted credential
-   * (NFR-SEC-1, FR25 equivalent for auth settings).
+   * Snapshot of credential values loaded from the server (typically masked sentinels).
+   * On submit, each credential field is compared to its snapshot — if unchanged, it is
+   * set to `undefined` in the payload so the backend keeps the persisted credential (NFR-SEC-1).
    */
-  private initialData: Record<string, string> = {}
+  private initialCredentials: Partial<Record<string, string>> = {}
 
   constructor() {
-    // URL-forging defence: in create-mode, if a non-admin lands on `?scope=namespace` (the
-    // default, or via a hand-crafted URL), bounce the radio to `userOnNs` once the role
-    // lookup resolves. We watch reactively because the role lookup is async.
-    // In platform mode, scope is always 'namespace' (platform-level) and never bounced.
     if (!this.isPlatformMode) {
       effect(() => {
         const admin = this.isAdmin()
@@ -175,7 +227,6 @@ export class AuthSettingFormComponent implements OnInit {
 
     if (authSettingId) {
       this.isEditMode.set(true)
-      // Edit-mode: scope and authType are immutable — disable them so the user cannot change.
       this.scopeControl.disable()
       this.authTypeControl.disable()
       this.loadConfig(authSettingId)
@@ -193,11 +244,7 @@ export class AuthSettingFormComponent implements OnInit {
     return raw && VALID_SCOPES.has(raw as AuthSettingScope) ? (raw as AuthSettingScope) : 'namespace'
   }
 
-  /**
-   * In edit-mode, the scope is **derived from the loaded resource**, not from the URL —
-   * a forged `?scope=` would otherwise route the update to the wrong controller.
-   */
-  private deriveScopeFromConfig(config: AuthSetting): AuthSettingScope {
+  private deriveScopeFromConfig(config: AuthSettingDto): AuthSettingScope {
     const isUserScope = !!config.userId
     if (!isUserScope) return 'namespace'
     return config.namespaceId ? 'userOnNs' : 'userGlobal'
@@ -230,14 +277,13 @@ export class AuthSettingFormComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (config) => {
-          // Hydrate everything except the data map — credentials don't carry across overrides.
+          // Hydrate metadata only — credentials never carry across resources (NFR-SEC-1).
           this.nameControl.setValue(config.name)
           this.descriptionControl.setValue(config.description ?? null)
-          this.authTypeControl.setValue(config.authType as AuthSettingAuthTypeEnum)
-          this.dataArray.clear()
-          this.initialData = {}
+          this.authTypeControl.setValue(config.authType as AuthSettingType)
+          this.clearCredentialControls()
+          this.initialCredentials = {}
           this.isLoading.set(false)
-          // Strip the template param so a refresh doesn't re-hydrate over user edits.
           this.router.navigate([], {
             relativeTo: this.route,
             queryParams: { template: null, templateScope: null },
@@ -258,82 +304,199 @@ export class AuthSettingFormComponent implements OnInit {
       })
   }
 
-  private applyConfigToForm(config: AuthSetting): void {
+  private applyConfigToForm(config: AuthSettingDto): void {
     this.nameControl.setValue(config.name)
     this.descriptionControl.setValue(config.description ?? null)
-    this.authTypeControl.setValue(config.authType as AuthSettingAuthTypeEnum)
-    // Hydrate data entries from the loaded config
-    this.dataArray.clear()
-    this.initialData = {}
-    for (const [key, value] of Object.entries(config.data ?? {})) {
-      this.initialData[key] = value
-      this.dataArray.push(
-        new FormGroup({
-          key: new FormControl<string>(key, { nonNullable: true, validators: [Validators.required] }),
-          value: new FormControl<string>(value, { nonNullable: true }),
-        })
-      )
+    this.authTypeControl.setValue(config.authType as AuthSettingType)
+    this.clearCredentialControls()
+    this.initialCredentials = {}
+
+    // Hydrate the type-specific credential fields from the loaded config.
+    // Each field value is stored in initialCredentials for masking on submit.
+    switch (config.authType) {
+      case 'ApiKeyAuthSetting': {
+        const v = (config as ApiKeyAuthSetting).apiKey ?? ''
+        this.apiKeyControl.setValue(v)
+        this.initialCredentials['apiKey'] = v
+        break
+      }
+      case 'BasicAuthAuthSetting': {
+        const c = config as BasicAuthAuthSetting
+        const u = c.username ?? ''
+        const p = c.password ?? ''
+        this.usernameControl.setValue(u)
+        this.passwordControl.setValue(p)
+        this.initialCredentials['username'] = u
+        this.initialCredentials['password'] = p
+        break
+      }
+      case 'BearerTokenAuthSetting': {
+        const v = (config as BearerTokenAuthSetting).token ?? ''
+        this.tokenControl.setValue(v)
+        this.initialCredentials['token'] = v
+        break
+      }
+      case 'OAuthDiscoverableAuthSetting': {
+        const c = config as OAuthDiscoverableAuthSetting
+        this.discoveryUrlControl.setValue(c.discoveryUrl ?? '')
+        this.clientIdControl.setValue(c.clientId ?? '')
+        this.clientSecretControl.setValue(c.clientSecret ?? '')
+        this.scopesControl.setValue(c.scopes ?? '')
+        this.initialCredentials['discoveryUrl'] = c.discoveryUrl ?? ''
+        this.initialCredentials['clientId'] = c.clientId ?? ''
+        this.initialCredentials['clientSecret'] = c.clientSecret ?? ''
+        this.initialCredentials['scopes'] = c.scopes ?? ''
+        break
+      }
+      case 'OAuthCustomAuthSetting': {
+        const c = config as OAuthCustomAuthSetting
+        this.authorizationUrlControl.setValue(c.authorizationUrl ?? '')
+        this.tokenUrlControl.setValue(c.tokenUrl ?? '')
+        this.clientIdControl.setValue(c.clientId ?? '')
+        this.clientSecretControl.setValue(c.clientSecret ?? '')
+        this.scopesControl.setValue(c.scopes ?? '')
+        this.initialCredentials['authorizationUrl'] = c.authorizationUrl ?? ''
+        this.initialCredentials['tokenUrl'] = c.tokenUrl ?? ''
+        this.initialCredentials['clientId'] = c.clientId ?? ''
+        this.initialCredentials['clientSecret'] = c.clientSecret ?? ''
+        this.initialCredentials['scopes'] = c.scopes ?? ''
+        break
+      }
+      case 'OAuthRegisteredAuthSetting': {
+        const c = config as OAuthRegisteredAuthSetting
+        this.authorizationUrlControl.setValue(c.authorizationUrl ?? '')
+        this.tokenUrlControl.setValue(c.tokenUrl ?? '')
+        this.clientIdControl.setValue(c.clientId ?? '')
+        this.clientSecretControl.setValue(c.clientSecret ?? '')
+        this.scopesControl.setValue(c.scopes ?? '')
+        this.initialCredentials['authorizationUrl'] = c.authorizationUrl ?? ''
+        this.initialCredentials['tokenUrl'] = c.tokenUrl ?? ''
+        this.initialCredentials['clientId'] = c.clientId ?? ''
+        this.initialCredentials['clientSecret'] = c.clientSecret ?? ''
+        this.initialCredentials['scopes'] = c.scopes ?? ''
+        break
+      }
     }
+  }
+
+  private clearCredentialControls(): void {
+    this.apiKeyControl.setValue('')
+    this.usernameControl.setValue('')
+    this.passwordControl.setValue('')
+    this.tokenControl.setValue('')
+    this.discoveryUrlControl.setValue('')
+    this.authorizationUrlControl.setValue('')
+    this.tokenUrlControl.setValue('')
+    this.clientIdControl.setValue('')
+    this.clientSecretControl.setValue('')
+    this.scopesControl.setValue('')
+  }
+
+  /**
+   * Reads a credential control value, applying the masking rule:
+   * in edit mode, if the value is unchanged from the initial sentinel, return `undefined`
+   * so the backend keeps the persisted credential (NFR-SEC-1).
+   */
+  private credentialValue(key: string, value: string): string | undefined {
+    if (this.isEditMode() && value === this.initialCredentials[key]) return undefined
+    return value || undefined
   }
 
   protected submit(): void {
     if (this.form.invalid || this.isSubmitting()) return
-
     if (this.isEditMode() && !this.existingConfig?.id) {
       this.navigateBack()
       return
     }
 
     this.isSubmitting.set(true)
-    const trimmedDescription = this.descriptionControl.value?.trim()
-
-    // Data masking: on edit, compare each value to the snapshot.
-    // If a key's value is unchanged from the initial (masked) sentinel, omit that key
-    // from the payload so the backend keeps the persisted credential.
-    // If no entries are present and we are editing, send null (omit data entirely).
-    let data: { [key: string]: string } | null = null
-
-    const dataEntries = this.dataArray.controls.filter((g) => g.controls.key.value.trim())
-
-    if (dataEntries.length > 0) {
-      const resultMap: { [key: string]: string } = {}
-      for (const group of dataEntries) {
-        const key = group.controls.key.value.trim()
-        const currentValue = group.controls.value.value
-        if (this.isEditMode() && currentValue === this.initialData[key]) {
-          // Value unchanged — omit this key from the payload; backend keeps persisted cred.
-          continue
-        }
-        resultMap[key] = currentValue
-      }
-      // If all values were unchanged, resultMap is empty — treat as null (no-op on backend).
-      data = Object.keys(resultMap).length > 0 ? resultMap : null
-    } else if (!this.isEditMode()) {
-      // Create mode with no entries: send empty object to indicate no data.
-      data = {}
-    }
-    // Edit mode with no entries: data stays null (no-op, backend keeps existing data).
-
-    const draft = {
-      name: this.nameControl.value.trim(),
-      authType: this.authTypeControl.value,
-      description: trimmedDescription ? trimmedDescription : null,
-      data,
-    }
+    const name = this.nameControl.value.trim()
+    const description = this.descriptionControl.value?.trim() || undefined
+    const authType = this.authTypeControl.value
     const scope = this.form.getRawValue().scope
-
-    // In platform mode, namespaceId is null (platform scope: namespaceId IS NULL).
     const namespaceIdForCreate = this.isPlatformMode ? null : (this.namespaceId ?? null)
+
+    const typed = this.buildTypedPayload(authType, name, description)
 
     const call$ =
       this.isEditMode() && this.existingConfig?.id
-        ? this.state.update(this.existingConfig.id, draft, scope, this.existingConfig)
-        : this.state.create(draft, scope, namespaceIdForCreate)
+        ? this.state.update(this.existingConfig.id, typed, this.existingConfig)
+        : this.state.create(typed, scope, namespaceIdForCreate)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),
       error: () => this.isSubmitting.set(false),
     })
+  }
+
+  private buildTypedPayload(authType: AuthSettingType, name: string, description: string | undefined): AuthSettingDto {
+    const base = { name, description }
+    switch (authType) {
+      case 'ApiKeyAuthSetting':
+        return {
+          ...base,
+          authType: 'ApiKeyAuthSetting',
+          apiKey: this.credentialValue('apiKey', this.apiKeyControl.value),
+        } satisfies ApiKeyAuthSetting
+      case 'BasicAuthAuthSetting':
+        return {
+          ...base,
+          authType: 'BasicAuthAuthSetting',
+          username: this.credentialValue('username', this.usernameControl.value),
+          password: this.credentialValue('password', this.passwordControl.value),
+        } satisfies BasicAuthAuthSetting
+      case 'BearerTokenAuthSetting':
+        return {
+          ...base,
+          authType: 'BearerTokenAuthSetting',
+          token: this.credentialValue('token', this.tokenControl.value),
+        } satisfies BearerTokenAuthSetting
+      case 'OAuthDiscoverableAuthSetting':
+        return {
+          ...base,
+          authType: 'OAuthDiscoverableAuthSetting',
+          discoveryUrl: this.credentialValue('discoveryUrl', this.discoveryUrlControl.value),
+          clientId: this.credentialValue('clientId', this.clientIdControl.value),
+          clientSecret: this.credentialValue('clientSecret', this.clientSecretControl.value),
+          scopes: this.credentialValue('scopes', this.scopesControl.value),
+        } satisfies OAuthDiscoverableAuthSetting
+      case 'OAuthCustomAuthSetting':
+        return {
+          ...base,
+          authType: 'OAuthCustomAuthSetting',
+          authorizationUrl: this.credentialValue('authorizationUrl', this.authorizationUrlControl.value),
+          tokenUrl: this.credentialValue('tokenUrl', this.tokenUrlControl.value),
+          clientId: this.credentialValue('clientId', this.clientIdControl.value),
+          clientSecret: this.credentialValue('clientSecret', this.clientSecretControl.value),
+          scopes: this.credentialValue('scopes', this.scopesControl.value),
+        } satisfies OAuthCustomAuthSetting
+      case 'OAuthRegisteredAuthSetting':
+        return {
+          ...base,
+          authType: 'OAuthRegisteredAuthSetting',
+          authorizationUrl: this.credentialValue('authorizationUrl', this.authorizationUrlControl.value),
+          tokenUrl: this.credentialValue('tokenUrl', this.tokenUrlControl.value),
+          clientId: this.credentialValue('clientId', this.clientIdControl.value),
+          clientSecret: this.credentialValue('clientSecret', this.clientSecretControl.value),
+          scopes: this.credentialValue('scopes', this.scopesControl.value),
+        } satisfies OAuthRegisteredAuthSetting
+    }
+  }
+
+  protected controlForField(key: string): FormControl<string> | undefined {
+    const map: Record<string, FormControl<string>> = {
+      apiKey: this.apiKeyControl,
+      username: this.usernameControl,
+      password: this.passwordControl,
+      token: this.tokenControl,
+      discoveryUrl: this.discoveryUrlControl,
+      authorizationUrl: this.authorizationUrlControl,
+      tokenUrl: this.tokenUrlControl,
+      clientId: this.clientIdControl,
+      clientSecret: this.clientSecretControl,
+      scopes: this.scopesControl,
+    }
+    return map[key]
   }
 
   protected cancel(): void {
@@ -350,5 +513,9 @@ export class AuthSettingFormComponent implements OnInit {
 
   protected trackByScope(_index: number, opt: { value: AuthSettingScope }): string {
     return opt.value
+  }
+
+  protected trackByField(_index: number, field: CredentialField): string {
+    return field.key
   }
 }

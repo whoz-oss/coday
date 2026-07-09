@@ -32,7 +32,7 @@
         <label class="auth-setting-form__label" for="as-auth-type">Auth type <span aria-hidden="true">*</span></label>
         <select id="as-auth-type" class="auth-setting-form__select" [formControl]="authTypeControl">
           @for (type of authTypeOptions; track type) {
-            <option [value]="type">{{ type }}</option>
+            <option [value]="type">{{ authTypeLabel[type] }}</option>
           }
         </select>
       </div>
@@ -61,46 +61,37 @@
         />
       </div>
 
-      <div class="auth-setting-form__data" [formArrayName]="'data'">
-        <div class="auth-setting-form__data-title">
-          <span class="auth-setting-form__label">Credential data</span>
-          <button class="auth-setting-form__data-add" type="button" (click)="addDataEntry()">+ Add entry</button>
-        </div>
-        <p class="auth-setting-form__data-hint">
-          Key-value pairs for this auth setting (e.g. clientId, clientSecret, token). Values are stored encrypted and
-          masked on read.
-          @if (isEditMode()) {
-            Unchanged values are not re-sent to the server.
+      @if (credentialFields().length > 0) {
+        <fieldset class="auth-setting-form__credentials">
+          <legend class="auth-setting-form__label">Credentials</legend>
+          <p class="auth-setting-form__credentials-hint">
+            Values are stored encrypted and masked on read.
+            @if (isEditMode()) {
+              Leave a field unchanged to keep the stored credential.
+            }
+          </p>
+          @for (field of credentialFields(); track trackByField($index, field)) {
+            <div class="auth-setting-form__field">
+              <label class="auth-setting-form__label" [for]="'as-cred-' + field.key">
+                {{ field.label }}
+                @if (field.required) {
+                  <span aria-hidden="true">*</span>
+                }
+              </label>
+              @if (controlForField(field.key); as ctrl) {
+                <input
+                  [id]="'as-cred-' + field.key"
+                  [class]="'auth-setting-form__input' + (field.secret ? ' auth-setting-form__input--secret' : '')"
+                  [type]="field.secret ? 'password' : 'text'"
+                  [placeholder]="field.placeholder"
+                  [formControl]="ctrl"
+                  [autocomplete]="field.secret ? 'new-password' : 'off'"
+                />
+              }
+            </div>
           }
-        </p>
-        @for (dataGroup of dataArray.controls; track $index) {
-          <div class="auth-setting-form__data-row" [formGroupName]="$index">
-            <input
-              class="auth-setting-form__input"
-              type="text"
-              placeholder="Key (e.g. clientSecret)"
-              formControlName="key"
-              autocomplete="off"
-            />
-            <input
-              class="auth-setting-form__input auth-setting-form__input--secret"
-              type="password"
-              placeholder="Value"
-              formControlName="value"
-              autocomplete="new-password"
-            />
-            <button
-              class="auth-setting-form__data-remove"
-              type="button"
-              (click)="removeDataEntry($index)"
-              title="Remove entry"
-              aria-label="Remove entry"
-            >
-              &times;
-            </button>
-          </div>
-        }
-      </div>
+        </fieldset>
+      }
 
       <div class="auth-setting-form__actions">
         <button

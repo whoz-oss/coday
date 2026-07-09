@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
-import { AuthSetting } from '@whoz-oss/agentos-api-client'
+import { AuthSettingDto } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 import { AuthSettingScope } from '../../services/auth-setting-config-state.service'
 
@@ -49,16 +49,16 @@ const SCOPE_BADGES: Readonly<Record<AuthSettingScope, ScopeBadge>> = Object.free
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AuthSettingItemComponent {
-  readonly config = input.required<AuthSetting>()
+  readonly config = input.required<AuthSettingDto>()
   readonly scope = input.required<AuthSettingScope>()
   readonly readOnly = input<boolean>(false)
   /** Whether to display the scope badge. Set to false when the scope is already
    * conveyed by the surrounding section (e.g. platform-level admin page). */
   readonly showBadge = input<boolean>(true)
 
-  readonly editRequested = output<AuthSetting>()
-  readonly deleteRequested = output<AuthSetting>()
-  readonly duplicateRequested = output<AuthSetting>()
+  readonly editRequested = output<AuthSettingDto>()
+  readonly deleteRequested = output<AuthSettingDto>()
+  readonly duplicateRequested = output<AuthSettingDto>()
 
   protected readonly pendingDelete = signal(false)
 

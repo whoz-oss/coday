@@ -9,10 +9,10 @@
  */
 
 export interface BearerTokenAuthSetting {
-  authType: 'BearerTokenAuthSetting'
   userId?: string | null
   namespaceId?: string | null
   description?: string
+  authType: 'BearerTokenAuthSetting'
   name: string
   id?: string
   token?: string
