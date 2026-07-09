@@ -9,9 +9,9 @@
  */
 
 export interface OAuthDiscoverableAuthSetting {
+  description?: string
   userId?: string | null
   namespaceId?: string | null
-  description?: string
   authType: 'OAuthDiscoverableAuthSetting'
   name: string
   id?: string

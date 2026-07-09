@@ -9,9 +9,9 @@
  */
 
 export interface OAuthRegisteredAuthSetting {
+  description?: string
   userId?: string | null
   namespaceId?: string | null
-  description?: string
   authType: 'OAuthRegisteredAuthSetting'
   name: string
   id?: string

@@ -2705,14 +2705,14 @@ components:
       discriminator:
         propertyName: authType
       properties:
+        description:
+          type: string
         userId:
           type: string
           format: uuid
         namespaceId:
           type: string
           format: uuid
-        description:
-          type: string
         authType:
           type: string
           enum:
