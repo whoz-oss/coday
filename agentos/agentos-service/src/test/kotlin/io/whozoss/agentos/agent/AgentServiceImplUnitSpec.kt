@@ -32,6 +32,7 @@ import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.util.IdCompressorService
 import org.springframework.ai.chat.client.ChatClient
 import java.util.UUID
 
@@ -66,6 +67,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             toolRegistryService,
             toolMetricsService,
             caseEventService,
+            IdCompressorService()
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -431,6 +433,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolRegistryService,
                     toolMetricsService,
                     caseEventService,
+                    IdCompressorService()
                 )
             val configs =
                 listOf(

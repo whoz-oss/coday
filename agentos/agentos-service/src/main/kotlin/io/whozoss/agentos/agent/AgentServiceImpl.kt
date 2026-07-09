@@ -14,6 +14,7 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.redirect.globToRegex
+import io.whozoss.agentos.util.IdCompressorService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -50,6 +51,7 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
+    private val idCompressorService: IdCompressorService,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -365,6 +367,7 @@ class AgentServiceImpl(
                 llmProvider = providerConfig.name,
                 llmModel = modelConfig.apiModelName,
                 toolMetricsService = toolMetricsService,
+                idCompressorService = idCompressorService,
             )
         } else {
             AgentSimple(

@@ -8,6 +8,8 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.util.IdCompressorService
+import io.whozoss.agentos.util.MessageCompressorBuffer
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
@@ -40,12 +42,23 @@ data class AgentAdvancedContext(
      *   generation, final response, etc.). Null when the caller needs the base history
      *   without any additional prompt (e.g. confirmation manager calls).
      */
-    internal fun buildMessages(events: List<CaseEvent>, prompt: String? = null, compressor: io.whozoss.agentos.util.IdCompressor? = null): List<Message> {
-        val history = convertEventsToMessages(events, compressor = compressor)
+    internal fun buildMessages(
+        events: List<CaseEvent>,
+        prompt: String? = null,
+        compressor: IdCompressorService? = null,
+        buffer: MessageCompressorBuffer? = null
+    ): List<Message> {
+        val history = convertEventsToMessages(events, compressor = compressor, buffer = buffer)
         var operationalMessage = listOfNotNull(instructions, prompt).joinToString("\n\n").takeUnless { it.isBlank() }
-        operationalMessage = operationalMessage?.let { compressor?.compress(it) ?: it }
+        if (compressor != null && buffer != null) {
+            operationalMessage = operationalMessage?.let { compressor.compress(it, buffer) }
+        }
         val messages = if (operationalMessage != null) history + UserMessage(operationalMessage) else history
-        val sysPrompt = systemPrompt?.let { compressor?.compress(it) ?: it }
+        val sysPrompt = if (compressor != null && buffer != null) {
+            systemPrompt?.let { compressor.compress(it, buffer) }
+        } else {
+            systemPrompt
+        }
         return listOfNotNull(sysPrompt?.let { SystemMessage(it) }) + messages
     }
 
@@ -60,7 +73,8 @@ data class AgentAdvancedContext(
     internal fun convertEventsToMessages(
         events: List<CaseEvent>,
         maxDetailedChars: Int = 300_000,
-        compressor: io.whozoss.agentos.util.IdCompressor? = null,
+        compressor: IdCompressorService? = null,
+        buffer: MessageCompressorBuffer? = null,
     ): List<Message> {
         val responsesByRequestId = indexToolResponses(events)
         val detailedRequestIds =
@@ -75,8 +89,8 @@ data class AgentAdvancedContext(
             when (event) {
                 is MessageEvent -> {
                     var sessionContext = event.sessionContextPromptText().takeIf { index == lastUserMsgIndex }
-                    sessionContext = sessionContext?.let { compressor?.compress(it) ?: it }
-                    val message = event.toSpringAiMessage(this.agentId.toString(), compressor)
+                    sessionContext = if (compressor != null && buffer != null && sessionContext != null) compressor.compress(sessionContext, buffer) else sessionContext
+                    val message = event.toSpringAiMessage(this.agentId.toString(), compressor, buffer)
                     if (sessionContext != null && message is UserMessage) {
                         listOf(UserMessage(sessionContext + "\n\n" + message.text))
                     } else {
@@ -85,11 +99,11 @@ data class AgentAdvancedContext(
                 }
 
                 is ToolRequestEvent -> {
-                    toToolMessages(event, detailedRequestIds, responsesByRequestId, compressor)
+                    toToolMessages(event, detailedRequestIds, responsesByRequestId, compressor, buffer)
                 }
 
                 is IntentionGeneratedEvent -> {
-                    toIntentionMessage(event, compressor)
+                    toIntentionMessage(event, compressor, buffer)
                 }
 
                 else -> {
@@ -137,20 +151,22 @@ data class AgentAdvancedContext(
         event: ToolRequestEvent,
         detailedRequestIds: Set<String>,
         responsesByRequestId: Map<String, ToolResponseEvent>,
-        compressor: io.whozoss.agentos.util.IdCompressor?
+        compressor: IdCompressorService?,
+        buffer: MessageCompressorBuffer?,
     ): List<Message> =
         if (event.toolRequestId in detailedRequestIds) {
-            toDetailedToolMessages(event, responsesByRequestId, compressor)
+            toDetailedToolMessages(event, responsesByRequestId, compressor, buffer)
         } else {
-            listOf(toToolSummaryMessage(event, responsesByRequestId, compressor))
+            listOf(toToolSummaryMessage(event, responsesByRequestId, compressor, buffer))
         }
 
     private fun toDetailedToolMessages(
         event: ToolRequestEvent,
         responsesByRequestId: Map<String, ToolResponseEvent>,
-        compressor: io.whozoss.agentos.util.IdCompressor?
+        compressor: IdCompressorService?,
+        buffer: MessageCompressorBuffer?,
     ): List<Message> {
-        val args = compressor?.compress(normalizeArgs(event.args)) ?: normalizeArgs(event.args)
+        val args = if (compressor != null && buffer != null) compressor.compress(normalizeArgs(event.args), buffer) else normalizeArgs(event.args)
         val toolCall =
             AssistantMessage.ToolCall(event.toolRequestId, "function", event.toolName, args)
         val messages = mutableListOf<Message>(AssistantMessage.builder().toolCalls(listOf(toolCall)).build())
@@ -161,7 +177,7 @@ data class AgentAdvancedContext(
         var responseText =
             responsesByRequestId[event.toolRequestId]?.let { extractText(it.output) }
                 ?: "[No response recorded]"
-        responseText = compressor?.compress(responseText) ?: responseText
+        responseText = if (compressor != null && buffer != null) compressor.compress(responseText, buffer) else responseText
 
         messages.add(
             ToolResponseMessage
@@ -182,7 +198,8 @@ data class AgentAdvancedContext(
     private fun toToolSummaryMessage(
         event: ToolRequestEvent,
         responsesByRequestId: Map<String, ToolResponseEvent>,
-        compressor: io.whozoss.agentos.util.IdCompressor?
+        compressor: IdCompressorService?,
+        buffer: MessageCompressorBuffer?,
     ): Message {
         val response = responsesByRequestId[event.toolRequestId]
         var status =
@@ -190,12 +207,12 @@ data class AgentAdvancedContext(
                 response == null || response.success -> "Success"
                 else -> "Failed: ${extractText(response.output)}"
             }
-        status = compressor?.compress(status) ?: status
+        status = if (compressor != null && buffer != null) compressor.compress(status, buffer) else status
         return AssistantMessage("[Step summary] Tool: ${event.toolName} | $status")
     }
 
-    private fun toIntentionMessage(event: IntentionGeneratedEvent, compressor: io.whozoss.agentos.util.IdCompressor?): List<Message> {
-        val intention = compressor?.compress(event.intention) ?: event.intention
+    private fun toIntentionMessage(event: IntentionGeneratedEvent, compressor: IdCompressorService?, buffer: MessageCompressorBuffer?): List<Message> {
+        val intention = if (compressor != null && buffer != null) compressor.compress(event.intention, buffer) else event.intention
         return listOf(
             AssistantMessage("INTERNAL STEP: Tool Call: ${event.toolName}\nIntention: $intention"),
         )

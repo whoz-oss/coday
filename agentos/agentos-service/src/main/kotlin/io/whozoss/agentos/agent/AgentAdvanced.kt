@@ -28,6 +28,7 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.util.AttemptFailure
 import io.whozoss.agentos.util.AttemptResult
 import io.whozoss.agentos.util.AttemptSuccess
+import io.whozoss.agentos.util.IdCompressorService
 import io.whozoss.agentos.util.mapWhile
 import io.whozoss.agentos.util.retryWithFallback
 import kotlinx.coroutines.flow.Flow
@@ -55,6 +56,7 @@ class AgentAdvanced(
     override val llmModel: String,
     /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
     private val toolMetricsService: ToolMetricsService? = null,
+    private val idCompressorService: IdCompressorService,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -1025,11 +1027,10 @@ class AgentAdvanced(
                 } ?: appendLine("Now, continue your conversation with the user.")
             }
 
-        val compressor = io.whozoss.agentos.util.IdCompressor()
-        val messages = context.buildMessages(accumulatedEvents, prompt, compressor)
-        // StreamingDecompressor must be created AFTER buildMessages so the compressor
-        // map is fully populated before the first chunk arrives.
-        val streamingDecompressor = compressor.StreamingDecompressor()
+        val buffer = idCompressorService.newBuffer()
+        val messages = context.buildMessages(accumulatedEvents, prompt, idCompressorService, buffer)
+        // The buffer must be fully populated by buildMessages before the first chunk arrives.
+        // feed/flush on the service use the buffer's carry and alias maps for streaming decompression.
 
         logger.debug { "[$name] generateFinalResponse — sending ${messages.size} messages" }
         logger.trace { "[$name] generateFinalResponse intentionContext:\n$prompt" }
@@ -1047,7 +1048,7 @@ class AgentAdvanced(
                     response.result.output.text
                         ?.takeIf { it.isNotEmpty() }
                 if (chunk != null) {
-                    val decompressedChunk = streamingDecompressor.feed(chunk)
+                    val decompressedChunk = idCompressorService.feed(chunk, buffer)
                     if (decompressedChunk.isNotEmpty()) {
                         contentBuilder.append(decompressedChunk)
                         emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = decompressedChunk))
@@ -1058,7 +1059,7 @@ class AgentAdvanced(
                     ?.let { lastFinishReason = it }
             }
         // Flush any remaining carry after the stream ends
-        val flushed = streamingDecompressor.flush()
+        val flushed = idCompressorService.flush(buffer)
         if (flushed.isNotEmpty()) {
             contentBuilder.append(flushed)
             emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = flushed))
@@ -1389,10 +1390,11 @@ Output requirements:
             }
         val prompt = listOfNotNull(basePrompt, retryHint).joinToString("\n\n")
 
-        val compressor = io.whozoss.agentos.util.IdCompressor()
-        val messages = context.buildMessages(events, prompt, compressor)
+        val compressor = idCompressorService
+        val buffer = compressor?.newBuffer()
+        val messages = context.buildMessages(events, prompt, compressor, buffer)
         val raw = callLlmForParameters(messages)
-        val uncompressedRaw = compressor.uncompress(raw)
+        val uncompressedRaw = if (compressor != null && buffer != null) compressor.uncompress(raw, buffer) else raw
 
         logger.trace { "[$name] generateParameters raw response for '$toolName': $uncompressedRaw" }
 
@@ -1496,8 +1498,9 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
 - Only include properties defined in the schema.
             """.trimIndent()
 
-        val compressor = io.whozoss.agentos.util.IdCompressor()
-        val messages = context.buildMessages(accumulatedEvents.dropLast(1), fullPrompt, compressor)
+        val compressor = idCompressorService
+        val buffer = compressor?.newBuffer()
+        val messages = context.buildMessages(accumulatedEvents.dropLast(1), fullPrompt, compressor, buffer)
 
         logger.debug { "[$name] enrichment phase $phaseIndex for '${tool.name}' — sending ${messages.size} messages" }
 
@@ -1507,7 +1510,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                 .call()
                 .content()
                 ?.trim() ?: "{}"
-        val uncompressedJson = compressor.uncompress(rawJson)
+        val uncompressedJson = if (compressor != null && buffer != null) compressor.uncompress(rawJson, buffer) else rawJson
         val phaseJson = stripJsonFence(uncompressedJson)
 
         logger.debug { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }

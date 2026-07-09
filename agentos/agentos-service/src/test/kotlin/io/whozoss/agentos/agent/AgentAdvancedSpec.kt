@@ -36,6 +36,7 @@ import io.whozoss.agentos.sdk.tool.IntermediatePhaseDescriptor
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.util.IdCompressorService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.withContext
@@ -135,6 +136,7 @@ class AgentAdvancedSpec :
                 objectMapper = testObjectMapper,
                 llmProvider = "test-provider",
                 llmModel = "test-model",
+                idCompressorService = IdCompressorService()
             )
         }
 
@@ -207,6 +209,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events =
@@ -282,6 +285,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events =
@@ -353,6 +357,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events =
@@ -433,6 +438,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -478,15 +484,25 @@ class AgentAdvancedSpec :
             // A real UUID that will be compressed in the message history.
             val realId = "550e8400-e29b-41d4-a716-446655440000"
 
-            val mockGenerator = mockk<AgentIntentionGenerator>()
+            val generatorMock = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                generatorMock.generate(any(), any(), any(), any(), any())
             } returns IntentionGeneratedEvent(
                 namespaceId = namespaceId,
                 caseId = caseId,
                 agentId = agentId,
                 intention = "No further tool calls needed.",
                 toolName = "Answer",
+            )
+
+            // The conversation history that will be compressed before being sent to the LLM.
+            val initialEvents = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text(realId)),
+                ),
             )
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
@@ -501,30 +517,52 @@ class AgentAdvancedSpec :
             val promptSlot = slot<Prompt>()
             every { mockChatClient.prompt(capture(promptSlot)).stream() } returns mockStreamSpec
 
-            // We need the compressor token. Strategy: let the agent run once to capture
-            // the prompt, then inspect the compressed text to find the token.
-            // Simpler approach: set up the stream AFTER we know the token — use a
-            // two-pass mock: first call captures, second call (from the real run) returns
-            // the stream with the compressed token.
-            //
-            // Actually the cleanest approach: use the real IdCompressor independently to
-            // predict the compressed form of realId at position 0, then mock the stream
-            // to return that token. The compressor always assigns the same alias for the
-            // same ID at the same offset.
-            val predictingCompressor = io.whozoss.agentos.util.IdCompressor()
-            // The message history will contain realId in a user MessageEvent.
-            // Compress a representative text to get the alias the agent will use.
-            val sampleText = "<user name=\"User One\">$realId</user>"
-            val compressedSampleText = predictingCompressor.compress(sampleText)
-            // Extract the compressed alias (the short token that replaced realId).
-            val compressedAlias = compressedSampleText.replace(sampleText.replace(realId, ""), "")
-                .trim()
-                .let {
-                    // The alias is the token that is NOT in the original text without the ID.
-                    // Simpler: just find the token via the compressor's uncompress map.
-                    // We'll use a different strategy: run the full compress and find the replacement.
-                    compressedSampleText.substringAfter("<user name=\"User One\">").substringBefore("</user>")
-                }
+            // Strategy: capture the prompt via the .call() path, which works reliably with
+            // capture(slot) on relaxed mocks. Both .call() (detectUserLanguage) and .stream()
+            // (generateFinalResponse) compress through the same IdCompressorService buffer,
+            // so the alias in the .call() prompt is identical to the one in the .stream() prompt.
+            val captureSlot2 = slot<Prompt>()
+            val captureClient2 = mockk<ChatClient>(relaxed = true)
+            val captureStreamSpec2 = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { captureStreamSpec2.chatResponse() } returns chatResponseFlux("ok")
+            every { captureClient2.prompt(any<Prompt>()).stream() } returns captureStreamSpec2
+            every { captureClient2.prompt(capture(captureSlot2)).call().content() } returns null
+
+            AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "TestAgent",
+                context = AgentAdvancedContext(
+                    chatClient = captureClient2,
+                    tools = emptyList(),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                ),
+                intentionGenerator = generatorMock,
+                objectMapper = testObjectMapper,
+                maxIterations = 5,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
+                idCompressorService = io.whozoss.agentos.util.IdCompressorService(),
+            ).run(initialEvents).toList()
+
+            // Extract the alias from the captured .call() prompt (detectUserLanguage).
+            // Both .call() and .stream() compress via the same buffer, so the alias is identical.
+            val capturedText2 = captureSlot2.captured.instructions.joinToString(" ") { it.text ?: "" }
+            capturedText2.contains(realId) shouldBe false  // sanity: UUID must be gone
+            val compressedAlias = Regex("UI[0-9a-z]+").find(capturedText2)?.value
+                ?: error("No compressed alias (UI...) found in captured prompt")
+
+            // Re-setup the generator mock for Pass 2.
+            every {
+                generatorMock.generate(any(), any(), any(), any(), any())
+            } returns IntentionGeneratedEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                intention = "No further tool calls needed.",
+                toolName = "Answer",
+            )
 
             // Mock the stream to return the compressed alias split across two chunks
             // to exercise the boundary-split decompression path.
@@ -544,21 +582,14 @@ class AgentAdvancedSpec :
                 metadata = EntityMetadata(id = agentId),
                 name = "TestAgent",
                 context = context,
-                intentionGenerator = mockGenerator,
+                intentionGenerator = generatorMock,
                 objectMapper = testObjectMapper,
                 maxIterations = 5,
                 llmProvider = "test-provider",
                 llmModel = "test-model",
+                idCompressorService = io.whozoss.agentos.util.IdCompressorService(),
             )
 
-            val initialEvents = listOf(
-                MessageEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    actor = Actor("user1", "User One", ActorRole.USER),
-                    content = listOf(MessageContent.Text(realId)),
-                ),
-            )
             val events = agent.run(initialEvents).toList()
 
             // All TextChunkEvents must contain the real ID, not the compressed alias.
@@ -666,6 +697,7 @@ class AgentAdvancedSpec :
                     maxIterations = 10,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -728,6 +760,7 @@ class AgentAdvancedSpec :
                     objectMapper = testObjectMapper,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -772,6 +805,7 @@ class AgentAdvancedSpec :
                     objectMapper = testObjectMapper,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -809,6 +843,7 @@ class AgentAdvancedSpec :
                     objectMapper = testObjectMapper,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -847,6 +882,7 @@ class AgentAdvancedSpec :
                     objectMapper = testObjectMapper,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -901,6 +937,7 @@ class AgentAdvancedSpec :
                     objectMapper = testObjectMapper,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -1323,6 +1360,7 @@ class AgentAdvancedSpec :
                     maxIterations = 3,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1380,6 +1418,7 @@ class AgentAdvancedSpec :
                     maxIterations = 1,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
 
@@ -1440,6 +1479,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
 
@@ -1506,6 +1546,7 @@ class AgentAdvancedSpec :
                     maxIterations = 1,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userReply).toList()
 
@@ -1563,6 +1604,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1628,6 +1670,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1705,6 +1748,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1784,6 +1828,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             agent.run(makeInitialEvents(namespaceId, caseId)).toList()
 
@@ -1860,6 +1905,7 @@ class AgentAdvancedSpec :
                     caseEventsProvider = { initialEvents },
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             agent.run(initialEvents).toList()
 
@@ -1902,6 +1948,7 @@ class AgentAdvancedSpec :
                     maxIterations = 1,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val events = agent.run(initialUserMsg + pending).toList()
 
@@ -1963,6 +2010,7 @@ class AgentAdvancedSpec :
                     maxIterations = 1,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending + userYes).toList()
 
@@ -2014,6 +2062,7 @@ class AgentAdvancedSpec :
                     maxIterations = 1,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
             val events = agent.run(makeInitialEvents(namespaceId, caseId) + pending).toList()
 
@@ -2079,6 +2128,7 @@ class AgentAdvancedSpec :
                     maxIterations = 10,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2157,6 +2207,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2230,6 +2281,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2303,6 +2355,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2376,6 +2429,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2401,17 +2455,73 @@ class AgentAdvancedSpec :
             // Arrange: conversation history contains a real UUID.
             // The LLM echoes the compressed alias in the JSON args it generates.
             // The ToolRequestEvent.args stored must contain the original UUID.
+            //
+            // Strategy: two-pass approach — first capture the real prompt to extract the
+            // actual alias, then run the full agent with the LLM mocked to echo that alias.
             val realUuid = "550e8400-e29b-41d4-a716-446655440000"
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            // Predict the alias the compressor will assign to realUuid.
-            val predictingCompressor = io.whozoss.agentos.util.IdCompressor()
-            val sampleText = "<user name=\"User One\">$realUuid</user>"
-            val alias = predictingCompressor.compress(sampleText)
-                .substringAfter("<user name=\"User One\">")
-                .substringBefore("</user>")
+            val initialEvents = listOf(
+                MessageEvent(
+                    namespaceId = namespaceId, caseId = caseId,
+                    actor = Actor("user1", "User One", ActorRole.USER),
+                    content = listOf(MessageContent.Text(realUuid)),
+                ),
+            )
+
+            // --- Pass 1: capture the compressed prompt to learn the actual alias ---
+            val captureSlot = slot<Prompt>()
+            val captureClient = mockk<ChatClient>(relaxed = true)
+            val captureStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { captureClient.prompt(any<Prompt>()).stream() } returns captureStreamSpec
+            every { captureStreamSpec.chatResponse() } returns chatResponseFlux("ok")
+            every { captureClient.prompt(capture(captureSlot)).call().content() } returns "{}"
+
+            val captureMockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
+            every { captureMockTool.name } returns "TEST__tool"
+            every { captureMockTool.description } returns "A test tool"
+            every { captureMockTool.inputSchema } returns """{"type":"object","properties":{"profileId":{"type":"string"}}}"""
+            every { captureMockTool.paramType } returns String::class.java
+            coEvery { captureMockTool.getConfirmationMode(any(), any()) } returns io.whozoss.agentos.sdk.tool.ConfirmationMode.NONE
+            coEvery { captureMockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
+
+            val captureMockGenerator = mockk<AgentIntentionGenerator>()
+            every { captureMockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany listOf(
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Call the tool.", toolName = "TEST__tool",
+                ),
+                IntentionGeneratedEvent(
+                    namespaceId = namespaceId, caseId = caseId, agentId = agentId,
+                    intention = "Done.", toolName = "Answer",
+                ),
+            )
+
+            AgentAdvanced(
+                metadata = EntityMetadata(id = agentId),
+                name = "TestAgent",
+                context = AgentAdvancedContext(
+                    chatClient = captureClient,
+                    tools = listOf(captureMockTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                ),
+                intentionGenerator = captureMockGenerator,
+                objectMapper = testObjectMapper,
+                maxIterations = 5,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
+                idCompressorService = io.whozoss.agentos.util.IdCompressorService(),
+            ).run(initialEvents).toList()
+
+            // Extract the alias from the captured parameter-generation prompt.
+            val capturedText = captureSlot.captured.instructions.joinToString(" ") { it.text ?: "" }
+            capturedText.contains(realUuid) shouldBe false   // sanity
+            val alias = Regex("UI[0-9a-z]+").find(capturedText)?.value
+                ?: error("No compressed alias (UI...) found in captured prompt")
 
             val mockTool = mockk<io.whozoss.agentos.sdk.tool.StandardTool<String>>(relaxed = true)
             every { mockTool.name } returns "TEST__tool"
@@ -2460,6 +2570,7 @@ class AgentAdvancedSpec :
                 maxIterations = 5,
                 llmProvider = "test-provider",
                 llmModel = "test-model",
+                idCompressorService = io.whozoss.agentos.util.IdCompressorService(),
             )
 
             val events = agent.run(listOf(
@@ -2527,6 +2638,7 @@ class AgentAdvancedSpec :
                 maxIterations = 5,
                 llmProvider = "test-provider",
                 llmModel = "test-model",
+                idCompressorService = io.whozoss.agentos.util.IdCompressorService(),
             )
 
             agent.run(listOf(
@@ -2538,7 +2650,7 @@ class AgentAdvancedSpec :
             )).toList()
 
             // The raw UUID must not appear in any message sent to the LLM for parameter generation.
-            val promptText = promptSlot.captured.instructions.joinToString(" ") { it.text }
+            val promptText = promptSlot.captured.instructions.joinToString(" ") { it.text ?: "" }
             promptText.contains(realUuid) shouldBe false
             promptText.contains("UI") shouldBe true
         }
@@ -2558,6 +2670,7 @@ class AgentAdvancedSpec :
                     maxIterations = 1,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2666,6 +2779,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2759,6 +2873,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2866,6 +2981,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -2990,6 +3106,7 @@ class AgentAdvancedSpec :
                     maxIterations = 5,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -3083,6 +3200,7 @@ class AgentAdvancedSpec :
                     maxIterations = 50,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
@@ -3191,6 +3309,7 @@ class AgentAdvancedSpec :
                     maxIterations = 20,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
+                    idCompressorService = IdCompressorService()
                 )
 
             val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()

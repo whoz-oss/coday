@@ -10,6 +10,7 @@ import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.util.AttemptFailure
 import io.whozoss.agentos.util.AttemptSuccess
+import io.whozoss.agentos.util.IdCompressorService
 import io.whozoss.agentos.util.retryWithFallback
 import mu.KLogging
 import org.springframework.ai.chat.prompt.Prompt
@@ -17,7 +18,9 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 
 @Service
-class AgentIntentionGenerator {
+class AgentIntentionGenerator(
+    private val idCompressorService: IdCompressorService,
+) {
     fun generate(
         context: AgentAdvancedContext,
         events: List<CaseEvent>,
@@ -139,14 +142,14 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
             val fullPrompt = listOfNotNull(prompt, retryHint).joinToString("\n\n")
 
             try {
-                val compressor = io.whozoss.agentos.util.IdCompressor()
-                val messages = context.buildMessages(events, fullPrompt, compressor)
+                val buffer = idCompressorService.newBuffer()
+                val messages = context.buildMessages(events, fullPrompt, idCompressorService, buffer)
                 val response = context.chatClient
                     .prompt(Prompt(messages))
                     .call()
                     .content() ?: throw AgentIntentionGenerationException.InvalidFormat("Null LLM response")
 
-                val uncompressedResponse = compressor.uncompress(response)
+                val uncompressedResponse = idCompressorService.uncompress(response, buffer)
 
                 logger.trace { "Intention generation response:\n$uncompressedResponse" }
 
