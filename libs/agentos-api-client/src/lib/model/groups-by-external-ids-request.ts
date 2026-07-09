@@ -10,5 +10,5 @@
 
 export interface GroupsByExternalIdsRequest {
   externalIds: Array<string>
-  namespaceId?: string
+  namespaceId: string
 }

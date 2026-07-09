@@ -1,3 +1,66 @@
+## 0.208.2 (2026-07-09)
+
+### 🩹 Fixes
+
+- #33273 case search flattens tree and matches on id ([#1117](https://github.com/whoz-oss/coday/pull/1117), [#33273](https://github.com/whoz-oss/coday/issues/33273))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.208.1 (2026-07-08)
+
+### 🩹 Fixes
+
+- wz-32749: fix nullable namespaceId in GroupsByExternalIdsRequest ([#1113](https://github.com/whoz-oss/coday/pull/1113))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.208.0 (2026-07-08)
+
+### 🚀 Features
+
+- #1013 filesystem agent document injection ([#1089](https://github.com/whoz-oss/coday/pull/1089), [#1013](https://github.com/whoz-oss/coday/issues/1013), [#1054](https://github.com/whoz-oss/coday/issues/1054))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.207.2 (2026-07-08)
+
+### 🩹 Fixes
+
+- build angular post-merge ([#1112](https://github.com/whoz-oss/coday/pull/1112))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.207.1 (2026-07-08)
+
+### 🩹 Fixes
+
+- #33235 platform-level entities visible and read-only in namespace views ([#1110](https://github.com/whoz-oss/coday/pull/1110), [#33235](https://github.com/whoz-oss/coday/issues/33235))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.207.0 (2026-07-08)
+
+### 🚀 Features
+
+- case & namespace file exchange (backend) ([#1075](https://github.com/whoz-oss/coday/pull/1075))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
 ## 0.206.0 (2026-07-08)
 
 ### 🚀 Features

@@ -712,5 +712,36 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
                 modified.isAfter(beforeDelete.minusSeconds(1)) shouldBe true
             }
         }
+
+        // -------------------------------------------------------------------------
+        // Exchange enablement now lives in the integrations map (reserved built-in keys)
+        // -------------------------------------------------------------------------
+
+        "save round-trips the reserved file-exchange integration keys" {
+            val ns = namespaceRepo.save(namespace())
+            val saved = agentConfigRepo.save(
+                agentConfig(ns.id, "exchange-agent").copy(
+                    integrations = mapOf("CASE_FILE_EXCHANGE" to null, "NAMESPACE_FILE_EXCHANGE" to null),
+                ),
+            )
+
+            // re-fetch (not the save return value) to prove the map survives the Neo4j round-trip
+            val reloaded = agentConfigRepo.findByParent(ns.id, withDisabled = true).single { it.id == saved.id }
+
+            reloaded.integrations?.containsKey("CASE_FILE_EXCHANGE") shouldBe true
+            reloaded.integrations?.containsKey("NAMESPACE_FILE_EXCHANGE") shouldBe true
+        }
+
+        "enabling only the case exchange does not phantom-add the namespace key" {
+            val ns = namespaceRepo.save(namespace())
+            val saved = agentConfigRepo.save(
+                agentConfig(ns.id, "case-only-agent").copy(integrations = mapOf("CASE_FILE_EXCHANGE" to null)),
+            )
+
+            val reloaded = agentConfigRepo.findByParent(ns.id, withDisabled = true).single { it.id == saved.id }
+
+            reloaded.integrations?.containsKey("CASE_FILE_EXCHANGE") shouldBe true
+            reloaded.integrations?.containsKey("NAMESPACE_FILE_EXCHANGE") shouldBe false
+        }
     }
 }
