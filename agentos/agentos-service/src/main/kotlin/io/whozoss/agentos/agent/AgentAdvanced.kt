@@ -25,20 +25,17 @@ import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.util.AttemptFailure
 import io.whozoss.agentos.util.AttemptResult
 import io.whozoss.agentos.util.AttemptSuccess
-import io.whozoss.agentos.util.IdCompressorService
 import io.whozoss.agentos.util.mapWhile
 import io.whozoss.agentos.util.retryWithFallback
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
-import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
 import org.springframework.ai.chat.messages.UserMessage
-import org.springframework.ai.chat.model.ChatResponse
-import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
 
@@ -47,6 +44,7 @@ class AgentAdvanced(
     override val name: String,
     private val context: AgentAdvancedContext,
     private val intentionGenerator: AgentIntentionGenerator,
+    private val compressingChatClient: CompressingChatClient,
     private val objectMapper: ObjectMapper,
     private val userId: UUID? = null,
     private val userExternalId: String? = null,
@@ -56,7 +54,6 @@ class AgentAdvanced(
     override val llmModel: String,
     /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
     private val toolMetricsService: ToolMetricsService? = null,
-    private val idCompressorService: IdCompressorService,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -160,6 +157,7 @@ class AgentAdvanced(
                     val intention =
                         intentionGenerator.generate(
                             context = context,
+                            compressingChatClient = compressingChatClient,
                             events = accumulatedEvents,
                             namespaceId = namespaceId,
                             caseId = caseId,
@@ -1027,43 +1025,26 @@ class AgentAdvanced(
                 } ?: appendLine("Now, continue your conversation with the user.")
             }
 
-        val buffer = idCompressorService.newBuffer()
-        val messages = context.buildMessages(accumulatedEvents, prompt, idCompressorService, buffer)
-        // The buffer must be fully populated by buildMessages before the first chunk arrives.
-        // feed/flush on the service use the buffer's carry and alias maps for streaming decompression.
+        val messages = context.buildMessages(accumulatedEvents, prompt)
 
         logger.debug { "[$name] generateFinalResponse — sending ${messages.size} messages" }
         logger.trace { "[$name] generateFinalResponse intentionContext:\n$prompt" }
 
         val contentBuilder = StringBuilder()
         var lastFinishReason: String? = null
-        context.chatClient
-            .prompt(Prompt(messages))
-            .stream()
-            .chatResponse()
-            .asFlow()
+        compressingChatClient
+            .stream(messages)
             .takeWhile { shouldContinue() }
-            .collect { response: ChatResponse ->
-                val chunk =
-                    response.result.output.text
-                        ?.takeIf { it.isNotEmpty() }
+            .collect { response ->
+                val chunk = response.result.output.text?.takeIf { it.isNotEmpty() }
                 if (chunk != null) {
-                    val decompressedChunk = idCompressorService.feed(chunk, buffer)
-                    if (decompressedChunk.isNotEmpty()) {
-                        contentBuilder.append(decompressedChunk)
-                        emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = decompressedChunk))
-                    }
+                    contentBuilder.append(chunk)
+                    emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
                 }
                 response.result.metadata.finishReason
                     ?.takeIf { it.isNotBlank() }
                     ?.let { lastFinishReason = it }
             }
-        // Flush any remaining carry after the stream ends
-        val flushed = idCompressorService.flush(buffer)
-        if (flushed.isNotEmpty()) {
-            contentBuilder.append(flushed)
-            emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = flushed))
-        }
         if (isTruncated(lastFinishReason)) {
             val msg =
                 "LLM response was truncated (finish_reason=$lastFinishReason). " +
@@ -1208,16 +1189,7 @@ class AgentAdvanced(
 
         val raw =
             runCatching {
-                context.chatClient
-                    .prompt(
-                        Prompt(
-                            listOf(
-                                UserMessage(prompt),
-                            ),
-                        ),
-                    ).call()
-                    .content()
-                    ?.trim()
+                compressingChatClient.call(listOf(UserMessage(prompt)))
             }.getOrNull() ?: return null
 
         // Extract the language name from <language>...</language> tags.
@@ -1390,39 +1362,26 @@ Output requirements:
             }
         val prompt = listOfNotNull(basePrompt, retryHint).joinToString("\n\n")
 
-        val compressor = idCompressorService
-        val buffer = compressor?.newBuffer()
-        val messages = context.buildMessages(events, prompt, compressor, buffer)
-        val raw = callLlmForParameters(messages)
-        val uncompressedRaw = if (compressor != null && buffer != null) compressor.uncompress(raw, buffer) else raw
+        val messages = context.buildMessages(events, prompt)
+        val raw = stripJsonFence(compressingChatClient.call(messages) ?: "{}")
 
-        logger.trace { "[$name] generateParameters raw response for '$toolName': $uncompressedRaw" }
+        logger.trace { "[$name] generateParameters raw response for '$toolName': $raw" }
 
-        return if (isValidJson(uncompressedRaw)) {
+        return if (isValidJson(raw)) {
             AttemptSuccess(
                 ToolRequestEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
                     toolRequestId = toolRequestId,
                     toolName = toolName,
-                    args = uncompressedRaw,
+                    args = raw,
                     enrichmentPhases = enrichmentTraces,
                 ),
             )
         } else {
-            logger.warn { "[$name] generateParameters: invalid JSON for '$toolName'. Raw: $uncompressedRaw" }
-            AttemptFailure(uncompressedRaw)
+            logger.warn { "[$name] generateParameters: invalid JSON for '$toolName'. Raw: $raw" }
+            AttemptFailure(raw)
         }
-    }
-
-    private fun callLlmForParameters(messages: List<org.springframework.ai.chat.messages.Message>): String {
-        val raw =
-            context.chatClient
-                .prompt(Prompt(messages))
-                .call()
-                .content()
-                ?.trim() ?: "{}"
-        return stripJsonFence(raw)
     }
 
     private fun isValidJson(raw: String): Boolean =
@@ -1498,20 +1457,11 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
 - Only include properties defined in the schema.
             """.trimIndent()
 
-        val compressor = idCompressorService
-        val buffer = compressor?.newBuffer()
-        val messages = context.buildMessages(accumulatedEvents.dropLast(1), fullPrompt, compressor, buffer)
+        val messages = context.buildMessages(accumulatedEvents.dropLast(1), fullPrompt)
 
         logger.debug { "[$name] enrichment phase $phaseIndex for '${tool.name}' — sending ${messages.size} messages" }
 
-        val rawJson =
-            context.chatClient
-                .prompt(Prompt(messages))
-                .call()
-                .content()
-                ?.trim() ?: "{}"
-        val uncompressedJson = if (compressor != null && buffer != null) compressor.uncompress(rawJson, buffer) else rawJson
-        val phaseJson = stripJsonFence(uncompressedJson)
+        val phaseJson = stripJsonFence(compressingChatClient.call(messages) ?: "{}")
 
         logger.debug { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }
 

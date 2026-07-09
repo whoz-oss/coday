@@ -19,6 +19,7 @@ import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.redirect.globToRegex
+import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.util.IdCompressorService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -374,11 +375,13 @@ class AgentServiceImpl(
                     confirmationManager = confirmationManager,
                     systemPrompt = resolvedSystemPrompt,
                 )
+            val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
             AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),
                 name = agentName,
                 context = advancedContext,
                 intentionGenerator = intentionGenerator,
+                compressingChatClient = compressingChatClient,
                 objectMapper = objectMapper,
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
@@ -386,7 +389,6 @@ class AgentServiceImpl(
                 llmProvider = providerConfig.name,
                 llmModel = modelConfig.apiModelName,
                 toolMetricsService = toolMetricsService,
-                idCompressorService = idCompressorService,
             )
         } else {
             AgentSimple(

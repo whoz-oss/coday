@@ -3,8 +3,6 @@ package io.whozoss.agentos.agent
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
-import io.whozoss.agentos.util.IdCompressorService
-import io.whozoss.agentos.util.MessageCompressorBuffer
 import org.springframework.web.util.HtmlUtils
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
@@ -44,8 +42,9 @@ internal fun MessageEvent.sessionContextPromptText(): String? =
     sessionContext?.let { ctx ->
         val entries = ctx.entries.joinToString("\n") { (k, v) -> "  ${escapeXml(k)}: ${escapeXml(v.toString())}" }
         "<$SESSION_CONTEXT_TAG>\n$entries\n</$SESSION_CONTEXT_TAG>"
-}
-    /** Escapes XML special characters to prevent prompt injection. Delegates to Spring's [HtmlUtils.htmlEscape]. */
+    }
+
+/** Escapes XML special characters to prevent prompt injection. Delegates to Spring's [HtmlUtils.htmlEscape]. */
 private fun escapeXml(value: String): String = HtmlUtils.htmlEscape(value)
 
 /**
@@ -62,13 +61,11 @@ private fun escapeXml(value: String): String = HtmlUtils.htmlEscape(value)
  * The XML tagging convention (`<agent=Name>`, `<user name="...">`) is deliberately kept
  * consistent with the Coday `AiClient.convertAgentMessages` implementation.
  */
-internal fun MessageEvent.toSpringAiMessage(currentAgentId: String, compressor: IdCompressorService? = null, buffer: MessageCompressorBuffer? = null): Message {
-    var textContent =
+internal fun MessageEvent.toSpringAiMessage(currentAgentId: String): Message {
+    val textContent =
         content
             .filterIsInstance<MessageContent.Text>()
             .joinToString("\n") { it.content }
-
-    textContent = if (compressor != null && buffer != null) compressor.compress(textContent, buffer) else textContent
 
     return when (actor.role) {
         ActorRole.USER -> {

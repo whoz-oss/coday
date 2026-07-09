@@ -8,8 +8,6 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
-import io.whozoss.agentos.util.IdCompressorService
-import io.whozoss.agentos.util.MessageCompressorBuffer
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
@@ -45,21 +43,11 @@ data class AgentAdvancedContext(
     internal fun buildMessages(
         events: List<CaseEvent>,
         prompt: String? = null,
-        compressor: IdCompressorService? = null,
-        buffer: MessageCompressorBuffer? = null
     ): List<Message> {
-        val history = convertEventsToMessages(events, compressor = compressor, buffer = buffer)
-        var operationalMessage = listOfNotNull(instructions, prompt).joinToString("\n\n").takeUnless { it.isBlank() }
-        if (compressor != null && buffer != null) {
-            operationalMessage = operationalMessage?.let { compressor.compress(it, buffer) }
-        }
+        val history = convertEventsToMessages(events)
+        val operationalMessage = listOfNotNull(instructions, prompt).joinToString("\n\n").takeUnless { it.isBlank() }
         val messages = if (operationalMessage != null) history + UserMessage(operationalMessage) else history
-        val sysPrompt = if (compressor != null && buffer != null) {
-            systemPrompt?.let { compressor.compress(it, buffer) }
-        } else {
-            systemPrompt
-        }
-        return listOfNotNull(sysPrompt?.let { SystemMessage(it) }) + messages
+        return listOfNotNull(systemPrompt?.let { SystemMessage(it) }) + messages
     }
 
     /**
@@ -73,8 +61,6 @@ data class AgentAdvancedContext(
     internal fun convertEventsToMessages(
         events: List<CaseEvent>,
         maxDetailedChars: Int = 300_000,
-        compressor: IdCompressorService? = null,
-        buffer: MessageCompressorBuffer? = null,
     ): List<Message> {
         val responsesByRequestId = indexToolResponses(events)
         val detailedRequestIds =
@@ -88,9 +74,8 @@ data class AgentAdvancedContext(
         return events.flatMapIndexed { index, event ->
             when (event) {
                 is MessageEvent -> {
-                    var sessionContext = event.sessionContextPromptText().takeIf { index == lastUserMsgIndex }
-                    sessionContext = if (compressor != null && buffer != null && sessionContext != null) compressor.compress(sessionContext, buffer) else sessionContext
-                    val message = event.toSpringAiMessage(this.agentId.toString(), compressor, buffer)
+                    val sessionContext = event.sessionContextPromptText().takeIf { index == lastUserMsgIndex }
+                    val message = event.toSpringAiMessage(this.agentId.toString())
                     if (sessionContext != null && message is UserMessage) {
                         listOf(UserMessage(sessionContext + "\n\n" + message.text))
                     } else {
@@ -99,11 +84,11 @@ data class AgentAdvancedContext(
                 }
 
                 is ToolRequestEvent -> {
-                    toToolMessages(event, detailedRequestIds, responsesByRequestId, compressor, buffer)
+                    toToolMessages(event, detailedRequestIds, responsesByRequestId)
                 }
 
                 is IntentionGeneratedEvent -> {
-                    toIntentionMessage(event, compressor, buffer)
+                    toIntentionMessage(event)
                 }
 
                 else -> {
@@ -151,22 +136,18 @@ data class AgentAdvancedContext(
         event: ToolRequestEvent,
         detailedRequestIds: Set<String>,
         responsesByRequestId: Map<String, ToolResponseEvent>,
-        compressor: IdCompressorService?,
-        buffer: MessageCompressorBuffer?,
     ): List<Message> =
         if (event.toolRequestId in detailedRequestIds) {
-            toDetailedToolMessages(event, responsesByRequestId, compressor, buffer)
+            toDetailedToolMessages(event, responsesByRequestId)
         } else {
-            listOf(toToolSummaryMessage(event, responsesByRequestId, compressor, buffer))
+            listOf(toToolSummaryMessage(event, responsesByRequestId))
         }
 
     private fun toDetailedToolMessages(
         event: ToolRequestEvent,
         responsesByRequestId: Map<String, ToolResponseEvent>,
-        compressor: IdCompressorService?,
-        buffer: MessageCompressorBuffer?,
     ): List<Message> {
-        val args = if (compressor != null && buffer != null) compressor.compress(normalizeArgs(event.args), buffer) else normalizeArgs(event.args)
+        val args = normalizeArgs(event.args)
         val toolCall =
             AssistantMessage.ToolCall(event.toolRequestId, "function", event.toolName, args)
         val messages = mutableListOf<Message>(AssistantMessage.builder().toolCalls(listOf(toolCall)).build())
@@ -174,10 +155,9 @@ data class AgentAdvancedContext(
         // Every AssistantMessage with tool_calls MUST be followed by a ToolResponseMessage
         // for each tool_call_id — OpenAI returns 400 otherwise. Use the real response if
         // available, or synthesize a placeholder so the message list stays well-formed.
-        var responseText =
+        val responseText =
             responsesByRequestId[event.toolRequestId]?.let { extractText(it.output) }
                 ?: "[No response recorded]"
-        responseText = if (compressor != null && buffer != null) compressor.compress(responseText, buffer) else responseText
 
         messages.add(
             ToolResponseMessage
@@ -198,25 +178,20 @@ data class AgentAdvancedContext(
     private fun toToolSummaryMessage(
         event: ToolRequestEvent,
         responsesByRequestId: Map<String, ToolResponseEvent>,
-        compressor: IdCompressorService?,
-        buffer: MessageCompressorBuffer?,
     ): Message {
         val response = responsesByRequestId[event.toolRequestId]
-        var status =
+        val status =
             when {
                 response == null || response.success -> "Success"
                 else -> "Failed: ${extractText(response.output)}"
             }
-        status = if (compressor != null && buffer != null) compressor.compress(status, buffer) else status
         return AssistantMessage("[Step summary] Tool: ${event.toolName} | $status")
     }
 
-    private fun toIntentionMessage(event: IntentionGeneratedEvent, compressor: IdCompressorService?, buffer: MessageCompressorBuffer?): List<Message> {
-        val intention = if (compressor != null && buffer != null) compressor.compress(event.intention, buffer) else event.intention
-        return listOf(
-            AssistantMessage("INTERNAL STEP: Tool Call: ${event.toolName}\nIntention: $intention"),
+    private fun toIntentionMessage(event: IntentionGeneratedEvent): List<Message> =
+        listOf(
+            AssistantMessage("INTERNAL STEP: Tool Call: ${event.toolName}\nIntention: ${event.intention}"),
         )
-    }
 
     private fun normalizeArgs(args: String?): String = args?.takeIf { it.isNotBlank() } ?: "{}"
 
