@@ -93,9 +93,9 @@ class HttpMcpConnection(
 
     override fun callTool(toolName: String, arguments: Map<String, Any?>): String {
         try {
-            @Suppress("UNCHECKED_CAST")
+            val safeArguments: Map<String, Any> = arguments.filterValues { it != null }.mapValues { it.value!! }
             val request = CallToolRequest.builder(toolName)
-                .arguments(arguments as Map<String, Any>)
+                .arguments(safeArguments)
                 .build()
             val result = try {
                 client.callTool(request)
@@ -121,7 +121,7 @@ class HttpMcpConnection(
      * Closes the MCP HTTP session gracefully.
      * Safe to call multiple times — failures on close are swallowed.
      */
-    fun close() {
+    override fun close() {
         logger.debug { "[MCP-HTTP] Closing connection to ${config.url}" }
         runCatching { client.closeGracefully() }
             .onFailure { runCatching { client.close() } }

@@ -60,8 +60,8 @@ class McpHttpToolProvider : ToolPlugin {
             }
             logger.info { "MCP_HTTP integration '$configName': providing ${connection.tools.size} tool(s)" }
             // The connection stays open for the duration of the agent run.
-            // It is closed by the GC when the McpTool references are released.
-            // TODO: consider explicit lifecycle management if connections are observed to leak.
+            // McpTool holds a McpConnectionPort reference; callers are responsible for
+            // invoking McpConnectionPort.close() when the agent run completes.
             connection.tools.map { McpTool(it, connection, configName) }
         } catch (e: Exception) {
             logger.error { "MCP_HTTP integration '$configName': could not connect — ${e.message}" }

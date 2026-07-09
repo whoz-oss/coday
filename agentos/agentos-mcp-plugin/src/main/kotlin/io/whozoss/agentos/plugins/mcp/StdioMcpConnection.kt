@@ -123,7 +123,8 @@ class StdioMcpConnection(
     ): String {
         lastUsed = Instant.now()
         try {
-            val request = CallToolRequest.builder(toolName).arguments(arguments as Map<String, Any>).build()
+            val safeArguments: Map<String, Any> = arguments.filterValues { it != null }.mapValues { it.value!! }
+            val request = CallToolRequest.builder(toolName).arguments(safeArguments).build()
             val result =
                 try {
                     client.callTool(request)
