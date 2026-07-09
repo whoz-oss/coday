@@ -1,3 +1,13 @@
+## 0.208.3 (2026-07-09)
+
+### 🩹 Fixes
+
+- #33235 platform integrations always read-only on namespace page ([#1120](https://github.com/whoz-oss/coday/pull/1120), [#33235](https://github.com/whoz-oss/coday/issues/33235))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.208.2 (2026-07-09)
 
 ### 🩹 Fixes
