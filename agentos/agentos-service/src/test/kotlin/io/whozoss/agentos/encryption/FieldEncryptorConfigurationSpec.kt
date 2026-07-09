@@ -4,6 +4,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.kotest.matchers.types.shouldNotBeInstanceOf
 
 /**
  * Unit tests for [FieldEncryptorConfiguration].
@@ -51,11 +52,9 @@ class FieldEncryptorConfigurationSpec : StringSpec({
         config.fieldEncryptor().shouldBeInstanceOf<SpringFieldEncryptor>()
     }
 
-    "both vars absent throws IllegalStateException" {
+    "both vars absent returns NoOpFieldEncryptor" {
         val config = configWith(envKey = null, envSalt = null)
-        val ex = shouldThrow<IllegalStateException> { config.fieldEncryptor() }
-        ex.message shouldContain FieldEncryptorConfiguration.ENV_KEY
-        ex.message shouldContain FieldEncryptorConfiguration.ENV_SALT
+        config.fieldEncryptor().shouldBeInstanceOf<NoOpFieldEncryptor>()
     }
 
     "only key present throws IllegalStateException" {

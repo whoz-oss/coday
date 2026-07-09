@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration
  *
  * Resolution order (env vars take precedence over Spring properties):
  * - Both key and salt resolved → [SpringFieldEncryptor] (AES-256-GCM)
- * - Both absent               → fails fast with [IllegalStateException]
+ * - Both absent               → [NoOpFieldEncryptor] (no encryption, WARN logged)
  * - Only one resolved         → fails fast with [IllegalStateException]
  *
  * Spring properties `agentos.encryption.key` and `agentos.encryption.salt` are
@@ -46,11 +46,14 @@ open class FieldEncryptorConfiguration {
                 SpringFieldEncryptor(key, salt)
             }
 
-            key == null && salt == null -> throw IllegalStateException(
-                "Encryption is required but not configured. " +
-                    "Set $ENV_KEY and $ENV_SALT environment variables, " +
-                    "or Spring properties agentos.encryption.key and agentos.encryption.salt."
-            )
+            key == null && salt == null -> {
+                logger.warn {
+                    "[Encryption] No encryption configured — using no-op encryptor. " +
+                        "Sensitive data will be stored in PLAINTEXT. " +
+                        "For production, set $ENV_KEY and $ENV_SALT environment variables."
+                }
+                NoOpFieldEncryptor()
+            }
 
             else -> {
                 val missing = if (key == null) "$ENV_KEY / agentos.encryption.key" else "$ENV_SALT / agentos.encryption.salt"
