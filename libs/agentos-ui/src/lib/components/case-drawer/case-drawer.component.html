@@ -1,19 +1,35 @@
 <ds-entity-list
   title="Cases"
-  [items]="rootItems()"
+  [items]="displayItems()"
   [itemTemplate]="caseItemTpl"
   [showCreate]="true"
+  [disableInternalFilter]="true"
   emptyMessage="No cases yet. Start one below."
   searchPlaceholder="Filter cases…"
   cardMinWidth="220px"
   contentMaxWidth="100%"
   (itemSelected)="onItemSelected($event)"
   (createRequested)="onCreateRequested()"
+  (searchChanged)="onSearchChanged($event)"
 >
 </ds-entity-list>
 
 <ng-template #caseItemTpl let-item>
-  <ng-container *ngTemplateOutlet="caseRowTpl; context: { node: item, depth: 0 }" />
+  @if (isSearchActive()) {
+    <!-- Flat mode: render each match directly, no tree expand/collapse -->
+    <button
+      type="button"
+      class="case-tree-node__row"
+      [class.case-tree-node__row--active]="item.id === activeCaseId()"
+      (click)="onItemSelected(item.id)"
+    >
+      <span class="case-tree-node__expand-slot"></span>
+      <span class="case-tree-node__name">{{ item.name }}</span>
+    </button>
+  } @else {
+    <!-- Tree mode: hierarchical rendering -->
+    <ng-container *ngTemplateOutlet="caseRowTpl; context: { node: item, depth: 0 }" />
+  }
 </ng-template>
 
 <ng-template #caseRowTpl let-node="node" let-depth="depth">

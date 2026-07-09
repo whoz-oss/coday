@@ -3,12 +3,9 @@ import {
   Component,
   computed,
   ElementRef,
-  EventEmitter,
-  Input,
-  OnChanges,
-  Output,
+  input,
+  output,
   signal,
-  SimpleChanges,
   TemplateRef,
   ViewChild,
 } from '@angular/core'
@@ -34,9 +31,8 @@ export interface GroupedItems {
 /**
  * DsEntityList — a full-page generic list.
  *
- * `items` is bridged via `ngOnChanges` into an internal signal so that
- * `computed` derivations (filtering, grouping) re-evaluate reactively
- * whenever the parent updates the binding.
+ * Uses signal-based inputs throughout. `computed` derivations (filtering,
+ * grouping) re-evaluate reactively whenever `items` or the search query change.
  */
 @Component({
   selector: 'ds-entity-list',
@@ -45,32 +41,41 @@ export interface GroupedItems {
   templateUrl: './entity-list.component.html',
   styleUrl: './entity-list.component.scss',
 })
-export class EntityListComponent implements AfterViewInit, OnChanges {
-  @Input({ required: true }) title!: string
-  @Input() items: EntityListItem[] = []
-  @Input() searchPlaceholder: string = 'Filter…'
-  @Input() emptyMessage: string = 'No items found.'
-  @Input() autoFocusSearch: boolean = false
-  @Input() cardMinWidth: string = '260px'
-  @Input() contentMaxWidth: string = '900px'
-  @Input() showCreate: boolean = false
-  @Input() itemTemplate?: TemplateRef<{ $implicit: EntityListItem }>
+export class EntityListComponent implements AfterViewInit {
+  readonly title = input.required<string>()
+  readonly items = input<EntityListItem[]>([])
+  readonly searchPlaceholder = input<string>('Filter…')
+  readonly emptyMessage = input<string>('No items found.')
+  readonly autoFocusSearch = input<boolean>(false)
+  readonly cardMinWidth = input<string>('260px')
+  readonly contentMaxWidth = input<string>('900px')
+  readonly showCreate = input<boolean>(false)
+  readonly itemTemplate = input<TemplateRef<{ $implicit: EntityListItem }> | undefined>(undefined)
+  /**
+   * When true, the internal search filter is disabled — items are displayed as-is.
+   * Use this when the parent manages its own filtering logic and passes pre-filtered items.
+   * The search input remains visible; the parent receives the query via searchChanged.
+   */
+  readonly disableInternalFilter = input<boolean>(false)
 
-  @Output() itemSelected = new EventEmitter<string>()
-  @Output() createRequested = new EventEmitter<void>()
+  readonly itemSelected = output<string>()
+  readonly createRequested = output<void>()
+  /**
+   * Emitted on every keystroke and on clear.
+   * Primarily useful when disableInternalFilter is true and the parent owns the filter logic.
+   */
+  readonly searchChanged = output<string>()
 
   @ViewChild('searchInput') private searchInputRef?: ElementRef<HTMLInputElement>
-
-  /** Internal signal bridging the `items` @Input — makes computed() reactive. */
-  private readonly itemsSignal = signal<EntityListItem[]>([])
 
   protected readonly searchQuery = signal('')
 
   protected readonly isSearchActive = computed(() => this.searchQuery().trim().length > 0)
 
   protected readonly filteredItems = computed(() => {
+    const all = this.items()
+    if (this.disableInternalFilter()) return all
     const query = this.searchQuery().toLowerCase().trim()
-    const all = this.itemsSignal()
     if (!query) return all
     return all.filter(
       (item) => item.name.toLowerCase().includes(query) || (item.description?.toLowerCase().includes(query) ?? false)
@@ -109,24 +114,20 @@ export class EntityListComponent implements AfterViewInit, OnChanges {
     () => !this.isSearchActive() && this.groupedItems().some((g) => g.groupKey !== '')
   )
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['items']) {
-      this.itemsSignal.set(this.items)
-    }
-  }
-
   ngAfterViewInit(): void {
-    if (this.autoFocusSearch) {
+    if (this.autoFocusSearch()) {
       setTimeout(() => this.searchInputRef?.nativeElement.focus(), 0)
     }
   }
 
   protected onSearchChange(value: string): void {
     this.searchQuery.set(value)
+    this.searchChanged.emit(value)
   }
 
   protected clearSearch(): void {
     this.searchQuery.set('')
+    this.searchChanged.emit('')
     this.searchInputRef?.nativeElement.focus()
   }
 
