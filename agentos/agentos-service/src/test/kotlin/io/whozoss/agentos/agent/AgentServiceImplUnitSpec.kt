@@ -137,7 +137,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     )
 
     init {
-        every { toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any(), credentialProviderFactory = any()) } returns emptyList()
         // dedupToolsByName is the shared collision-reconciler; identity is fine (no collisions in these tests).
         every { toolResolverService.dedupToolsByName(any()) } answers { firstArg() }
         // isToolAllowed gates the exchange grant's per-tool allowlist; allow all (tests use null allowlists).
@@ -986,6 +986,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentIntegrations = null,
                     context = any(),
                     allIntegrationConfigs = any(),
+                    credentialProviderFactory = any(),
                 )
             }
         }
@@ -1009,6 +1010,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentIntegrations = integrations,
                     context = any(),
                     allIntegrationConfigs = any(),
+                    credentialProviderFactory = any(),
                 )
             }
         }

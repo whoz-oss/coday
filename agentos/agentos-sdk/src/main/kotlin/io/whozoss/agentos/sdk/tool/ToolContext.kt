@@ -1,6 +1,6 @@
 package io.whozoss.agentos.sdk.tool
 
-import io.whozoss.agentos.sdk.auth.AuthService
+import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import java.util.UUID
 
@@ -24,10 +24,11 @@ import java.util.UUID
  *   the context is not associated with a specific agent (e.g. tool-set resolution at
  *   namespace level). Plugins may use this to exclude the running agent from lists they
  *   build (e.g. the redirect tool excludes the calling agent from eligible targets).
- * @param authService The authentication service for the current (namespace, user) context,
- *   or null when the context does not carry a resolved user identity (e.g. unauthenticated
- *   calls or tool-set resolution at namespace level without a user). Plugins use this to
- *   resolve AuthSettings and manage Credentials without handling identity themselves.
+ * @param credentialProvider A pre-scoped credential supplier bound to this integration's
+ *   authSettingName. The provider already captures the resolved (namespace, user, authSetting)
+ *   so plugins call `credentialProvider?.invoke()` to obtain their credential without handling
+ *   identity resolution themselves. Returns null when no auth is configured for this
+ *   integration or the user has not yet authenticated.
  */
 data class ToolContext(
     val namespaceId: UUID,
@@ -35,5 +36,5 @@ data class ToolContext(
     val userExternalId: String?,
     val caseEvents: List<CaseEvent>,
     val agentName: String? = null,
-    val authService: AuthService? = null,
+    val credentialProvider: CredentialProvider? = null,
 )

@@ -7,6 +7,7 @@ import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthServiceFactory
+import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.delegation.DelegationTool
@@ -230,13 +231,23 @@ class AgentServiceImpl(
             context.toToolContext(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
                 agentName = agentConfig.name,
-                authService = context.userId?.let { authServiceFactory.create(context.namespaceId, it) },
             )
+        val credentialProviderFactory: (String) -> CredentialProvider? = { authSettingName ->
+            context.userId?.let { userId ->
+                val svc = authServiceFactory.create(context.namespaceId, userId)
+                val provider: CredentialProvider = {
+                    val setting = svc.resolveAuthSetting(authSettingName)
+                    svc.resolveCredential(setting.metadata.id)
+                }
+                provider
+            }
+        }
         val baseTools =
             toolResolverService.resolveToolsForRun(
                 agentIntegrations = agentConfig.integrations,
                 context = toolContext,
                 allIntegrationConfigs = effectiveIntegrationConfigs,
+                credentialProviderFactory = credentialProviderFactory,
             )
         // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
         // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name

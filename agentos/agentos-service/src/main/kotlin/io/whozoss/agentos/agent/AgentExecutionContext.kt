@@ -1,6 +1,5 @@
 package io.whozoss.agentos.agent
 
-import io.whozoss.agentos.sdk.auth.AuthService
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.time.Instant
@@ -33,7 +32,6 @@ data class AgentExecutionContext(
     fun toToolContext(
         userExternalId: String?,
         agentName: String?,
-        authService: AuthService? = null,
     ): ToolContext =
         ToolContext(
             namespaceId = namespaceId,
@@ -41,6 +39,5 @@ data class AgentExecutionContext(
             userExternalId = userExternalId,
             caseEvents = caseEventsProvider(),
             agentName = agentName,
-            authService = authService,
         )
 }
