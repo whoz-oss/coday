@@ -1,3 +1,13 @@
+## 0.208.2 (2026-07-09)
+
+### 🩹 Fixes
+
+- #33273 case search flattens tree and matches on id ([#1117](https://github.com/whoz-oss/coday/pull/1117), [#33273](https://github.com/whoz-oss/coday/issues/33273))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.208.1 (2026-07-08)
 
 ### 🩹 Fixes
