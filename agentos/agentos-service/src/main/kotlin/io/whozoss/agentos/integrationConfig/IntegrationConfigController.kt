@@ -1,5 +1,10 @@
 package io.whozoss.agentos.integrationConfig
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
@@ -18,8 +23,10 @@ import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -252,6 +259,34 @@ class IntegrationConfigController(
         scopedOwnershipCrudDelegate.delete(id)
     }
 
+    @Operation(
+        summary = "Export an IntegrationConfig as a YAML file",
+        description =
+            "Returns the integration config as a downloadable YAML file, ready to be placed in " +
+                "the namespace `integrations/` directory under `configPath`. " +
+                "Only the fields meaningful in a filesystem config are included: " +
+                "`name`, `integrationType`, `description`, `parameters`. " +
+                "Scope metadata (`id`, `namespaceId`, `userId`) is intentionally omitted. " +
+                "**Note:** `parameters` is exported in clear text — treat the file as sensitive " +
+                "if it contains credentials.",
+    )
+    @GetMapping("/{id}/export", produces = ["application/yaml"])
+    @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'READ')")
+    @HideOnAccessDenied
+    fun export(
+        @PathVariable id: UUID,
+    ): ResponseEntity<String> {
+        val entity =
+            integrationConfigService.findById(id)
+                ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        val yaml = YAML_MAPPER.writeValueAsString(toExportModel(entity))
+        val filename = "${entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-")}.yaml"
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
+            .contentType(MediaType.parseMediaType("application/yaml"))
+            .body(yaml)
+    }
+
     // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------
@@ -275,7 +310,21 @@ class IntegrationConfigController(
         }
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * YAML mapper configured for clean, human-readable output:
+         * - No `---` document start marker
+         - No Jackson type tags
+         * - Null values omitted (via [toExportModel] filtering)
+         */
+        private val YAML_MAPPER: ObjectMapper =
+            ObjectMapper(
+                YAMLFactory.builder()
+                    .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
+                    .build(),
+            ).registerModule(KotlinModule.Builder().build())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+    }
 }
 
 private fun toDto(entity: IntegrationConfig) =
@@ -288,3 +337,27 @@ private fun toDto(entity: IntegrationConfig) =
         description = entity.description,
         parameters = entity.parameters,
     )
+
+/**
+ * Produces the filesystem-ready export model from a persisted [IntegrationConfig].
+ *
+ * Scope fields (`id`, `namespaceId`, `userId`) are intentionally excluded — they are
+ * persistence artefacts with no meaning in a YAML file. Only the fields that
+ * [io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository] reads
+ * are included, so the exported file can be dropped directly into `integrations/`.
+ */
+private fun toExportModel(entity: IntegrationConfig) =
+    IntegrationConfigExportModel(
+        name = entity.name,
+        integrationType = entity.integrationType,
+        description = entity.description,
+        parameters = entity.parameters,
+    )
+
+@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+private data class IntegrationConfigExportModel(
+    val name: String,
+    val integrationType: String,
+    val description: String?,
+    val parameters: com.fasterxml.jackson.databind.JsonNode?,
+)

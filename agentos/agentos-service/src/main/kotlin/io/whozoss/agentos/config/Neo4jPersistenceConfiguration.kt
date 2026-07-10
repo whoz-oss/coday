@@ -22,6 +22,7 @@ import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
+import io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
@@ -145,9 +146,13 @@ class Neo4jPersistenceConfiguration {
         integrationConfigNodeNeo4jRepository: IntegrationConfigNodeNeo4jRepository,
         objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
+        namespaceRepository: NamespaceRepository,
     ): IntegrationConfigRepository {
-        logger.info { "[Persistence] Neo4jIntegrationConfigRepository active" }
-        return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
+        logger.info { "[Persistence] Neo4jIntegrationConfigRepository active (filesystem augmentation enabled)" }
+        return FilesystemIntegrationConfigRepository(
+            delegate = Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService),
+            namespaceRepository = namespaceRepository,
+        )
     }
 
     @Bean
