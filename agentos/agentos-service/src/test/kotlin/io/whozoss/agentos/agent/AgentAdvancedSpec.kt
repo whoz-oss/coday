@@ -7,14 +7,12 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.*
-import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.*
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.*
-import io.whozoss.agentos.util.IdCompressorService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.withContext
@@ -64,10 +62,7 @@ internal class TestRemoveTool(
         return ToolExecutionResult.success("File $path deleted successfully")
     }
 
-    override suspend fun getConfirmationMode(
-        argsJson: String?,
-        context: ToolContext?,
-    ) = forcedMode
+    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = forcedMode
 
     override fun getConfirmationInstructions(): String = "Be strict: explicit confirmation only after the assistant's question."
 
@@ -157,7 +152,7 @@ class AgentAdvancedSpec :
                 mockChatClient.prompt(any<Prompt>()).call().content()
             } returns """{"agentName":"TargetAgent"}"""
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.chatResponse() } returns Flux.empty<ChatResponse>()
+            every { mockStreamSpec.content() } returns Flux.empty()
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
@@ -232,7 +227,7 @@ class AgentAdvancedSpec :
                 mockChatClient.prompt(any<Prompt>()).call().content()
             } returns """{"agentName":"TargetAgent"}"""
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.chatResponse() } returns Flux.empty<ChatResponse>()
+            every { mockStreamSpec.content() } returns Flux.empty()
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
@@ -303,7 +298,7 @@ class AgentAdvancedSpec :
                 mockChatClient.prompt(any<Prompt>()).call().content()
             } returns """{"agentName":"TargetAgent"}"""
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.chatResponse() } returns Flux.empty<ChatResponse>()
+            every { mockStreamSpec.content() } returns Flux.empty()
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
@@ -447,147 +442,6 @@ class AgentAdvancedSpec :
             finishedEvent shouldNotBe null
             finishedEvent!!.agentId shouldBe agentId
             finishedEvent.agentName shouldBe "TestAgent"
-        }
-
-        "generateFinalResponse decompresses IDs in streamed chunks and final MessageEvent" {
-            // Regression guard: IDs present in the conversation history are compressed
-            // before being sent to the LLM. The LLM echoes a compressed token in its
-            // response. Both TextChunkEvents and the final MessageEvent must contain the
-            // original ID, not the compressed alias.
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            val agentId = UUID.randomUUID()
-            // A real UUID that will be compressed in the message history.
-            val realId = "550e8400-e29b-41d4-a716-446655440000"
-
-            val generatorMock = mockk<AgentIntentionGenerator>()
-            every {
-                generatorMock.generate(any(), any(), any(), any(), any())
-            } returns
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    agentId = agentId,
-                    intention = "No further tool calls needed.",
-                    toolName = "Answer",
-                )
-
-            // The conversation history that will be compressed before being sent to the LLM.
-            val initialEvents =
-                listOf(
-                    MessageEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        actor = Actor("user1", "User One", ActorRole.USER),
-                        content = listOf(MessageContent.Text(realId)),
-                    ),
-                )
-
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            // detectUserLanguage makes a synchronous call — return null to skip language detection.
-            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns null
-
-            // The LLM response contains a compressed token. We cannot know the exact
-            // compressed form ahead of time (it depends on the compressor's internal
-            // offset), so we capture the messages sent to the LLM and derive the token.
-            val promptSlot = slot<Prompt>()
-            every { mockChatClient.prompt(capture(promptSlot)).stream() } returns mockStreamSpec
-
-            // Strategy: capture the prompt via the .call() path, which works reliably with
-            // capture(slot) on relaxed mocks. Both .call() (detectUserLanguage) and .stream()
-            // (generateFinalResponse) compress through the same IdCompressorService buffer,
-            // so the alias in the .call() prompt is identical to the one in the .stream() prompt.
-            val captureSlot2 = slot<Prompt>()
-            val captureClient2 = mockk<ChatClient>(relaxed = true)
-            val captureStreamSpec2 = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { captureStreamSpec2.chatResponse() } returns chatResponseFlux("ok")
-            every { captureClient2.prompt(any<Prompt>()).stream() } returns captureStreamSpec2
-            every { captureClient2.prompt(capture(captureSlot2)).call().content() } returns null
-
-            AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = "TestAgent",
-                context =
-                    AgentAdvancedContext(
-                        chatClient = captureClient2,
-                        tools = emptyList(),
-                        instructions = null,
-                        agentId = agentId,
-                        confirmationManager = mockk(relaxed = true),
-                    ),
-                intentionGenerator = generatorMock,
-                objectMapper = testObjectMapper,
-                maxIterations = 5,
-                llmProvider = "test-provider",
-                llmModel = "test-model",
-            ).run(initialEvents).toList()
-
-            // Extract the alias from the captured .call() prompt (detectUserLanguage).
-            // Both .call() and .stream() compress via the same buffer, so the alias is identical.
-            val capturedText2 = captureSlot2.captured.instructions.joinToString(" ") { it.text ?: "" }
-            capturedText2.contains(realId) shouldBe false // sanity: UUID must be gone
-            val compressedAlias =
-                Regex("UI[0-9a-z]+").find(capturedText2)?.value
-                    ?: error("No compressed alias (UI...) found in captured prompt")
-
-            // Re-setup the generator mock for Pass 2.
-            every {
-                generatorMock.generate(any(), any(), any(), any(), any())
-            } returns
-                IntentionGeneratedEvent(
-                    namespaceId = namespaceId,
-                    caseId = caseId,
-                    agentId = agentId,
-                    intention = "No further tool calls needed.",
-                    toolName = "Answer",
-                )
-
-            // Mock the stream to return the compressed alias split across two chunks
-            // to exercise the boundary-split decompression path.
-            val mid = compressedAlias.length / 2
-            val chunk1 = "Profile: ${compressedAlias.substring(0, mid)}"
-            val chunk2 = "${compressedAlias.substring(mid)} is active."
-            every { mockStreamSpec.chatResponse() } returns chatResponseFlux(chunk1, chunk2)
-
-            val context =
-                AgentAdvancedContext(
-                    chatClient = mockChatClient,
-                    tools = emptyList(),
-                    instructions = null,
-                    agentId = agentId,
-                    confirmationManager = mockk(relaxed = true),
-                )
-            val agent =
-                AgentAdvanced(
-                    metadata = EntityMetadata(id = agentId),
-                    name = "TestAgent",
-                    context = context,
-                    intentionGenerator = generatorMock,
-                    objectMapper = testObjectMapper,
-                    maxIterations = 5,
-                    llmProvider = "test-provider",
-                    llmModel = "test-model",
-                )
-
-            val events = agent.run(initialEvents).toList()
-
-            // All TextChunkEvents must contain the real ID, not the compressed alias.
-            val chunks = events.filterIsInstance<TextChunkEvent>()
-            val chunksText = chunks.joinToString("") { it.chunk }
-            chunksText shouldContain realId
-            (chunksText.contains(compressedAlias)) shouldBe false
-
-            // The final MessageEvent must also contain the real ID.
-            val messageEvent =
-                events
-                    .filterIsInstance<MessageEvent>()
-                    .firstOrNull { it.actor.role == ActorRole.AGENT }
-            messageEvent shouldNotBe null
-            val messageText = (messageEvent!!.content.first() as MessageContent.Text).content
-            messageText shouldContain realId
-            (messageText.contains(compressedAlias)) shouldBe false
         }
 
         "emits WarnEvent when repetition loop is detected and agent eventually selects Answer" {
@@ -1281,7 +1135,7 @@ class AgentAdvancedSpec :
         ): Pair<AgentAdvancedContext, ChatClient> {
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { chatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.chatResponse() } returns Flux.empty<ChatResponse>()
+            every { mockStreamSpec.chatResponse() } returns Flux.empty()
             val ctx =
                 AgentAdvancedContext(
                     chatClient = chatClient,
@@ -1322,7 +1176,7 @@ class AgentAdvancedSpec :
             val agentId = UUID.randomUUID()
             val tool = TestRemoveTool(tempDir)
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any()) } returns
+            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any()) } returns
                 "Voulez-vous supprimer old.txt?"
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"old.txt"}"""
@@ -1383,7 +1237,7 @@ class AgentAdvancedSpec :
                 )
             val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns ConfirmationDecision.CONFIRMED
-            val (ctx, confirmationChatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
@@ -1442,7 +1296,7 @@ class AgentAdvancedSpec :
                 )
             val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns ConfirmationDecision.REJECTED
-            val (ctx, confirmationChatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
             val intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer")
             val agent =
                 AgentAdvanced(
@@ -1508,8 +1362,8 @@ class AgentAdvancedSpec :
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns
                 ConfirmationDecision.AMBIGUOUS
             val clarificationText = "Pour \u00eatre s\u00fbr \u2014 veux-tu vraiment supprimer old.txt ? Oui ou non."
-            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any()) } returns clarificationText
-            val (ctx, confirmationChatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any()) } returns clarificationText
+            val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
@@ -1542,7 +1396,7 @@ class AgentAdvancedSpec :
             val target = tempDir.resolve("safe.txt").also { it.writeText("data") }
             val tool = TestRemoveTool(tempDir, name = "TEST__safe", forcedMode = ConfirmationMode.INFER)
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any()) } returns false
+            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"safe.txt"}"""
 
@@ -1599,10 +1453,7 @@ class AgentAdvancedSpec :
                     override val version = "1.0.0"
                     override val paramType = null
 
-                    override suspend fun getConfirmationMode(
-                        argsJson: String?,
-                        context: ToolContext?,
-                    ) = ConfirmationMode.INFER
+                    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = ConfirmationMode.INFER
 
                     override suspend fun execute(
                         input: Map<String, Any>?,
@@ -1610,7 +1461,7 @@ class AgentAdvancedSpec :
                     ): ToolExecutionResult = throw RuntimeException("boom")
                 }
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any()) } returns false
+            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
@@ -1729,7 +1580,7 @@ class AgentAdvancedSpec :
             events.filterIsInstance<PendingConfirmationEvent>() shouldHaveSize 0
             // shouldConfirm is never called (mode = NONE → no gate)
             verify(exactly = 0) {
-                confirmationManager.shouldConfirm(any(), any(), any(), any(), any())
+                confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any())
             }
             executed.get() shouldBe true
         }
@@ -1748,10 +1599,7 @@ class AgentAdvancedSpec :
                     override val version = "1.0.0"
                     override val paramType = null
 
-                    override suspend fun getConfirmationMode(
-                        argsJson: String?,
-                        context: ToolContext?,
-                    ) = ConfirmationMode.INFER
+                    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = ConfirmationMode.INFER
 
                     override fun getConfirmationInstructions(): String = "Be strict: 'pourquoi pas' is not consent."
 
@@ -1849,7 +1697,7 @@ class AgentAdvancedSpec :
                 }
             val confirmationManager = mockk<ConfirmationManager>()
             every {
-                confirmationManager.formulateQuestion(any(), any(), any(), any(), any())
+                confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any())
             } returns "confirm?"
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             // The args returned to the orchestrator by the LLM
@@ -1911,7 +1759,7 @@ class AgentAdvancedSpec :
                     toolName = "FILES__remove",
                     inputJson = """{"path":"old.txt"}""",
                 )
-            val (ctx, confirmationChatClient) = confirmationContext(listOf(tool), agentId, mockk(relaxed = true))
+            val (ctx, _) = confirmationContext(listOf(tool), agentId, mockk(relaxed = true))
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
@@ -1943,10 +1791,7 @@ class AgentAdvancedSpec :
                     override val version = "1.0.0"
                     override val paramType = null
 
-                    override suspend fun getConfirmationMode(
-                        argsJson: String?,
-                        context: ToolContext?,
-                    ) = ConfirmationMode.EVERY_TIME
+                    override suspend fun getConfirmationMode(argsJson: String?, context: ToolContext?) = ConfirmationMode.EVERY_TIME
 
                     override suspend fun execute(
                         input: Map<String, Any>?,
@@ -1975,7 +1820,7 @@ class AgentAdvancedSpec :
                 )
             val confirmationManager = mockk<ConfirmationManager>(relaxed = true)
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns ConfirmationDecision.CONFIRMED
-            val (ctx, confirmationChatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
+            val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmationManager)
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
@@ -2026,7 +1871,7 @@ class AgentAdvancedSpec :
                     toolName = "SOMETHING__obsolete",
                     inputJson = """{"a":"b"}""",
                 )
-            val (ctx, confirmationChatClient) = confirmationContext(emptyList(), agentId, mockk(relaxed = true))
+            val (ctx, _) = confirmationContext(emptyList(), agentId, mockk(relaxed = true))
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
@@ -2416,254 +2261,11 @@ class AgentAdvancedSpec :
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
-        // -------------------------------------------------------------------------
-        // ID compression in parameter generation
-        // -------------------------------------------------------------------------
-
-        "generateParameters sends compressed IDs to the LLM and uncompresses the JSON args" {
-            // Arrange: conversation history contains a real UUID.
-            // The LLM echoes the compressed alias in the JSON args it generates.
-            // The ToolRequestEvent.args stored must contain the original UUID.
-            //
-            // Strategy: two-pass approach — first capture the real prompt to extract the
-            // actual alias, then run the full agent with the LLM mocked to echo that alias.
-            val realUuid = "550e8400-e29b-41d4-a716-446655440000"
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            val agentId = UUID.randomUUID()
-
-            val initialEvents =
-                listOf(
-                    MessageEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        actor = Actor("user1", "User One", ActorRole.USER),
-                        content = listOf(MessageContent.Text(realUuid)),
-                    ),
-                )
-
-            // --- Pass 1: capture the compressed prompt to learn the actual alias ---
-            val captureSlot = slot<Prompt>()
-            val captureClient = mockk<ChatClient>(relaxed = true)
-            val captureStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { captureClient.prompt(any<Prompt>()).stream() } returns captureStreamSpec
-            every { captureStreamSpec.chatResponse() } returns chatResponseFlux("ok")
-            every { captureClient.prompt(capture(captureSlot)).call().content() } returns "{}"
-
-            val captureMockTool = mockk<StandardTool<String>>(relaxed = true)
-            every { captureMockTool.name } returns "TEST__tool"
-            every { captureMockTool.description } returns "A test tool"
-            every { captureMockTool.inputSchema } returns """{"type":"object","properties":{"profileId":{"type":"string"}}}"""
-            every { captureMockTool.paramType } returns String::class.java
-            coEvery { captureMockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
-            coEvery { captureMockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
-
-            val captureMockGenerator = mockk<AgentIntentionGenerator>()
-            every { captureMockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
-                listOf(
-                    IntentionGeneratedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = agentId,
-                        intention = "Call the tool.",
-                        toolName = "TEST__tool",
-                    ),
-                    IntentionGeneratedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = agentId,
-                        intention = "Done.",
-                        toolName = "Answer",
-                    ),
-                )
-
-            AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = "TestAgent",
-                context =
-                    AgentAdvancedContext(
-                        chatClient = captureClient,
-                        tools = listOf(captureMockTool),
-                        instructions = null,
-                        agentId = agentId,
-                        confirmationManager = mockk(relaxed = true),
-                    ),
-                intentionGenerator = captureMockGenerator,
-                objectMapper = testObjectMapper,
-                maxIterations = 5,
-                llmProvider = "test-provider",
-                llmModel = "test-model",
-            ).run(initialEvents).toList()
-
-            // Extract the alias from the captured parameter-generation prompt.
-            val capturedText = captureSlot.captured.instructions.joinToString(" ") { it.text ?: "" }
-            capturedText.contains(realUuid) shouldBe false // sanity
-            val alias =
-                Regex("UI[0-9a-z]+").find(capturedText)?.value
-                    ?: error("No compressed alias (UI...) found in captured prompt")
-
-            val mockTool = mockk<StandardTool<String>>(relaxed = true)
-            every { mockTool.name } returns "TEST__tool"
-            every { mockTool.description } returns "A test tool"
-            every { mockTool.inputSchema } returns """{"type":"object","properties":{"profileId":{"type":"string"}}}"""
-            every { mockTool.paramType } returns String::class.java
-            coEvery { mockTool.getConfirmationMode(any(), any()) } returns io.whozoss.agentos.sdk.tool.ConfirmationMode.NONE
-            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
-
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("ok")
-            // detectUserLanguage call returns null; parameter generation returns the alias in JSON.
-            every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany
-                listOf(
-                    """{"profileId":"$alias"}""", // parameter generation: alias in JSON
-                    null, // detectUserLanguage
-                )
-
-            val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
-                listOf(
-                    IntentionGeneratedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = agentId,
-                        intention = "Call the tool with the profile id.",
-                        toolName = "TEST__tool",
-                    ),
-                    IntentionGeneratedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = agentId,
-                        intention = "Done.",
-                        toolName = "Answer",
-                    ),
-                )
-
-            val context =
-                AgentAdvancedContext(
-                    chatClient = mockChatClient,
-                    tools = listOf(mockTool),
-                    instructions = null,
-                    agentId = agentId,
-                    confirmationManager = mockk(relaxed = true),
-                )
-            val agent =
-                AgentAdvanced(
-                    metadata = EntityMetadata(id = agentId),
-                    name = "TestAgent",
-                    context = context,
-                    intentionGenerator = mockGenerator,
-                    objectMapper = testObjectMapper,
-                    maxIterations = 5,
-                    llmProvider = "test-provider",
-                    llmModel = "test-model",
-                )
-
-            val events =
-                agent
-                    .run(
-                        listOf(
-                            MessageEvent(
-                                namespaceId = namespaceId,
-                                caseId = caseId,
-                                actor = Actor("user1", "User One", ActorRole.USER),
-                                content = listOf(MessageContent.Text(realUuid)),
-                            ),
-                        ),
-                    ).toList()
-
-            val toolRequest = events.filterIsInstance<ToolRequestEvent>().single()
-            // args must contain the original UUID, not the compressed alias
-            toolRequest.args shouldNotBe null
-            toolRequest.args!! shouldContain realUuid
-            toolRequest.args!! shouldNotBe """{"profileId":"$alias"}"""
-        }
-
-        "generateParameters sends compressed IDs in the prompt — LLM never sees raw UUIDs" {
-            val realUuid = "550e8400-e29b-41d4-a716-446655440000"
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            val agentId = UUID.randomUUID()
-
-            val mockTool = mockk<StandardTool<String>>(relaxed = true)
-            every { mockTool.name } returns "TEST__tool"
-            every { mockTool.description } returns "A test tool"
-            every { mockTool.inputSchema } returns """{"type":"object","properties":{"profileId":{"type":"string"}}}"""
-            every { mockTool.paramType } returns String::class.java
-            coEvery { mockTool.getConfirmationMode(any(), any()) } returns ConfirmationMode.NONE
-            coEvery { mockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
-
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("ok")
-            val promptSlot = slot<Prompt>()
-            // Capture only the parameter-generation call (first call()).
-            every { mockChatClient.prompt(capture(promptSlot)).call().content() } returns "{}"
-
-            val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
-                listOf(
-                    IntentionGeneratedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = agentId,
-                        intention = "Call the tool.",
-                        toolName = "TEST__tool",
-                    ),
-                    IntentionGeneratedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = agentId,
-                        intention = "Done.",
-                        toolName = "Answer",
-                    ),
-                )
-
-            val context =
-                AgentAdvancedContext(
-                    chatClient = mockChatClient,
-                    tools = listOf(mockTool),
-                    instructions = null,
-                    agentId = agentId,
-                    confirmationManager = mockk(relaxed = true),
-                )
-            val agent =
-                AgentAdvanced(
-                    metadata = EntityMetadata(id = agentId),
-                    name = "TestAgent",
-                    context = context,
-                    intentionGenerator = mockGenerator,
-                    objectMapper = testObjectMapper,
-                    maxIterations = 5,
-                    llmProvider = "test-provider",
-                    llmModel = "test-model",
-                )
-
-            agent
-                .run(
-                    listOf(
-                        MessageEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            actor = Actor("user1", "User One", ActorRole.USER),
-                            content = listOf(MessageContent.Text(realUuid)),
-                        ),
-                    ),
-                ).toList()
-
-            // The raw UUID must not appear in any message sent to the LLM for parameter generation.
-            val promptText = promptSlot.captured.instructions.joinToString(" ") { it.text ?: "" }
-            promptText.contains(realUuid) shouldBe false
-            promptText.contains("UI") shouldBe true
-        }
-
         "ToolNotFoundException: unknown tool name in intention surfaces as WarnEvent, no tool execution" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            val (ctx, confirmationChatClient) = confirmationContext(emptyList(), agentId, mockk(relaxed = true))
+            val (ctx, _) = confirmationContext(emptyList(), agentId, mockk(relaxed = true))
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
