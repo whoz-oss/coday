@@ -1,3 +1,34 @@
+## 0.209.0 (2026-07-10)
+
+### 🚀 Features
+
+- wz-33118 use real agentId into events ([c10f2617](https://github.com/whoz-oss/coday/commit/c10f2617))
+- wz-33118 use real agentId into events ([#1123](https://github.com/whoz-oss/coday/pull/1123))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
+## 0.208.4 (2026-07-10)
+
+### 🩹 Fixes
+
+- openapi regen ([#1124](https://github.com/whoz-oss/coday/pull/1124))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.208.3 (2026-07-09)
+
+### 🩹 Fixes
+
+- #33235 platform integrations always read-only on namespace page ([#1120](https://github.com/whoz-oss/coday/pull/1120), [#33235](https://github.com/whoz-oss/coday/issues/33235))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.208.2 (2026-07-09)
 
 ### 🩹 Fixes
