@@ -228,4 +228,12 @@ export class IntegrationConfigStateService {
     void scope
     return this.nsController.deleteIntegrationConfig(id).pipe(tap(() => this.refresh()))
   }
+
+  /**
+   * Export a config as a YAML string. The caller is responsible for triggering the
+   * browser download — this method only fetches the raw YAML content from the backend.
+   */
+  exportAsYaml(id: string): Observable<string> {
+    return this.nsController.exportIntegrationConfig(id)
+  }
 }
