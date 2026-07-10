@@ -18,8 +18,15 @@
                 <pre class="case-chat__session-context-body">{{ item.event.sessionContext | json }}</pre>
               </div>
             }
-            <span class="case-chat__message-author">{{ item.event.actor.displayName }}</span>
-            <div class="case-chat__message-text case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+            <span
+              class="case-chat__message-author"
+              [title]="item.event.actor.role === 'USER' ? item.event.actor.displayName : ''"
+              >{{ item.event.actor.role === 'USER' && !showTechnical() ? 'User' : item.event.actor.displayName }}</span
+            >
+            <div class="case-chat__message-body">
+              <ds-copy-button class="case-chat__message-copy" [text]="messageText(item)" title="Copy message" />
+              <div class="case-chat__message-text case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+            </div>
           </div>
         } @else if (item.kind === 'streaming') {
           <div class="case-chat__message case-chat__message--agent case-chat__message--streaming">

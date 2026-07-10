@@ -127,8 +127,8 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
 
   const toNode = (c: Case): CaseTreeItem => ({
     id: c.id ?? '',
-    name: c.title ?? c.id ?? '—',
-    // Store the case ID in description so ds-entity-list's built-in filter also matches on it
+    name: c.title || '—',
+    // Store the case ID in description for search matching (not displayed in the custom template)
     description: c.id ?? '',
     children: [],
   })

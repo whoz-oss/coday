@@ -1,5 +1,6 @@
 export * from './lib/components/drawer/drawer.component'
 export * from './lib/components/icon-button/icon-button.component'
+export * from './lib/components/copy-button/copy-button.component'
 export * from './lib/components/json-schema-form/json-schema-form.component'
 export * from './lib/components/json-schema-form/json-schema.model'
 export * from './lib/components/autocomplete-input/autocomplete-data-source'

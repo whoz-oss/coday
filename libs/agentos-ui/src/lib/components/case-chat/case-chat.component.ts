@@ -36,7 +36,7 @@ import {
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { Prompt } from '@whoz-oss/agentos-api-client'
-import { IconButtonComponent } from '@whoz-oss/design-system'
+import { CopyButtonComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import { CaseStateService } from '../../services/case-state.service'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
@@ -93,7 +93,7 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 @Component({
   selector: 'agentos-case-chat',
-  imports: [IconButtonComponent, JsonPipe, PromptAutocompleteComponent],
+  imports: [CopyButtonComponent, IconButtonComponent, JsonPipe, PromptAutocompleteComponent],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -103,6 +103,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly zone = inject(NgZone)
   private readonly destroyRef = inject(DestroyRef)
   private readonly domSanitizer = inject(DomSanitizer)
+  private readonly elementRef = inject(ElementRef)
 
   private readonly config = inject(Configuration)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
@@ -199,6 +200,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Listener cleanup function registered on the messages container. */
   private scrollListenerCleanup: (() => void) | null = null
 
+  /** Listener cleanup function for wheel events on the host element. */
+  private wheelListenerCleanup: (() => void) | null = null
+
   constructor() {
     // Slash-command autocomplete: debounce input, load prompts on first `/`, filter locally.
     // We carry the prefix through the pipeline so the subscribe callback can filter
@@ -225,10 +229,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       this.showTechnical.set(this.showTechnicalOverride())
     })
 
-    // Restore focus to the composer whenever we return to an interactive state.
+    // Restore focus to the composer whenever we return to an interactive state,
+    // but only when the user has no active text selection (avoid clearing copy intent).
     effect(() => {
       if (this.isRunning() || this.isTerminal()) return
-      queueMicrotask(() => this.composerInput?.nativeElement.focus())
+      queueMicrotask(() => {
+        const selection = window.getSelection()
+        if (selection && selection.toString().length > 0) return
+        this.composerInput?.nativeElement.focus()
+      })
     })
 
     // Auto-scroll to bottom whenever the timeline or streaming text changes,
@@ -244,9 +253,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     })
 
-    // Register scroll listener after the first render so the ViewChild is available.
+    // Register scroll and wheel listeners after the first render so the ViewChild is available.
     afterNextRender(() => {
       this.attachScrollListener()
+      this.attachWheelListener()
     })
   }
 
@@ -360,6 +370,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.eventSource?.close()
     this.scrollListenerCleanup?.()
+    this.wheelListenerCleanup?.()
   }
 
   // ---------------------------------------------------------------------------
@@ -382,6 +393,26 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     el.addEventListener('scroll', onScroll, { passive: true })
     this.scrollListenerCleanup = () => el.removeEventListener('scroll', onScroll)
+  }
+
+  /**
+   * Attach a wheel listener to the host element.
+   * When the wheel event occurs outside the messages container (e.g. left/right margins),
+   * redirect the scroll to the messages container so the user can always scroll.
+   */
+  private attachWheelListener(): void {
+    const host = this.elementRef.nativeElement as HTMLElement
+    const onWheel = (event: WheelEvent) => {
+      const messagesEl = this.messagesContainer?.nativeElement
+      if (!messagesEl) return
+      // If the event target is inside the messages container, let it scroll naturally.
+      if (messagesEl.contains(event.target as Node)) return
+      // Redirect the wheel delta to the messages container.
+      event.preventDefault()
+      messagesEl.scrollTop += event.deltaY
+    }
+    host.addEventListener('wheel', onWheel, { passive: false })
+    this.wheelListenerCleanup = () => host.removeEventListener('wheel', onWheel)
   }
 
   /** Programmatically scroll the messages container to the very bottom. */
@@ -746,6 +777,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected isTechnicalExpanded(eventId: string): boolean {
     return this.expandedTechnicals().has(eventId)
+  }
+
+  /** Extract plain text from a message item for clipboard copy. */
+  protected messageText(item: TimelineItem & { kind: 'message' }): string {
+    return this.extractText(item.event)
   }
 
   // ---------------------------------------------------------------------------

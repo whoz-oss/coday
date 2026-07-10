@@ -351,6 +351,33 @@
   // flex-shrink: 0 prevents them from being crushed in the scroll container.
   &__message {
     flex-shrink: 0;
+
+    // Show copy button on hover
+    &:hover .case-chat__message-copy {
+      opacity: 1;
+    }
+  }
+
+  &__message-body {
+    position: relative;
+  }
+
+  &__message-author {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-secondary, #6e6e73);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.15rem;
+  }
+
+  &__message-copy {
+    position: absolute;
+    top: 0;
+    right: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
   }
 
   &__thinking {
