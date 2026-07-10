@@ -1,5 +1,9 @@
 import { inject, Injectable } from '@angular/core'
-import { IntegrationConfig, IntegrationConfigControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  IntegrationConfig,
+  IntegrationConfigControllerService,
+  IntegrationConfigExportService,
+} from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, catchError, combineLatest, map, Observable, of, shareReplay, switchMap, tap } from 'rxjs'
 import { multicastRefreshable } from './rxjs-state.utils'
 import { UserStateService } from './user-state.service'
@@ -58,6 +62,7 @@ const USER_ME_SENTINEL = 'me'
 @Injectable({ providedIn: 'root' })
 export class IntegrationConfigStateService {
   private readonly nsController = inject(IntegrationConfigControllerService)
+  private readonly exportService = inject(IntegrationConfigExportService)
   private readonly userState = inject(UserStateService)
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
@@ -232,8 +237,13 @@ export class IntegrationConfigStateService {
   /**
    * Export a config as a YAML string. The caller is responsible for triggering the
    * browser download — this method only fetches the raw YAML content from the backend.
+   *
+   * Delegates to `IntegrationConfigExportService` (hand-written) rather than the
+   * generated controller, because the generator's `selectHeaderAccept` logic prefers
+   * JSON when both MIME types are listed (406), and maps `application/yaml` to
+   * `responseType: 'blob'` instead of `'text'`.
    */
   exportAsYaml(id: string): Observable<string> {
-    return this.nsController.exportIntegrationConfig(id)
+    return this.exportService.exportAsYaml(id)
   }
 }
