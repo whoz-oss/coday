@@ -1901,6 +1901,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationTypeDescriptor"
+  /api/integration-configs/{id}/export:
+    get:
+      tags:
+      - integration-config-controller
+      summary: Export an IntegrationConfig as a YAML file
+      description: "Returns the integration config as a downloadable YAML file, ready\
+        \ to be placed in the namespace `integrations/` directory under `configPath`.\
+        \ Only the fields meaningful in a filesystem config are included: `name`,\
+        \ `integrationType`, `description`, `parameters`. Scope metadata (`id`, `namespaceId`,\
+        \ `userId`) is intentionally omitted. **Note:** `parameters` is exported in\
+        \ clear text — treat the file as sensitive if it contains credentials."
+      operationId: exportIntegrationConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/yaml:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: string
   /api/feedbacks/by-parentId/{caseId}:
     get:
       tags:
