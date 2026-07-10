@@ -1,3 +1,14 @@
+## 0.209.0 (2026-07-10)
+
+### 🚀 Features
+
+- wz-33118 use real agentId into events ([c10f2617](https://github.com/whoz-oss/coday/commit/c10f2617))
+- wz-33118 use real agentId into events ([#1123](https://github.com/whoz-oss/coday/pull/1123))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
 ## 0.208.4 (2026-07-10)
 
 ### 🩹 Fixes
