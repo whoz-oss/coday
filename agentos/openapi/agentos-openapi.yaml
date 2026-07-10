@@ -2629,7 +2629,6 @@ components:
           format: uuid
       required:
       - externalIds
-      - namespaceId
     UserGroupSummary:
       type: object
       properties:

@@ -1,3 +1,13 @@
+## 0.208.4 (2026-07-10)
+
+### 🩹 Fixes
+
+- openapi regen ([#1124](https://github.com/whoz-oss/coday/pull/1124))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.208.3 (2026-07-09)
 
 ### 🩹 Fixes
