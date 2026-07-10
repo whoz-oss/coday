@@ -267,11 +267,10 @@ class IntegrationConfigController(
                 "Only the fields meaningful in a filesystem config are included: " +
                 "`name`, `integrationType`, `description`, `parameters`. " +
                 "Scope metadata (`id`, `namespaceId`, `userId`) is intentionally omitted. " +
-                "**Note:** `parameters` is exported in clear text — treat the file as sensitive " +
-                "if it contains credentials.",
+                "**parameters are exported in clear text** — requires WRITE permission on the entity.",
     )
-    @GetMapping("/{id}/export", produces = ["application/yaml"])
-    @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'READ')")
+    @GetMapping("/{id}/export", produces = [MediaType.APPLICATION_YAML_VALUE])
+    @PreAuthorize("hasPermission(#id, 'IntegrationConfig', 'WRITE')")
     @HideOnAccessDenied
     fun export(
         @PathVariable id: UUID,
@@ -281,9 +280,10 @@ class IntegrationConfigController(
                 ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
         val yaml = YAML_MAPPER.writeValueAsString(toExportModel(entity))
         val filename = "${entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-")}.yaml"
-        return ResponseEntity.ok()
+        return ResponseEntity
+            .ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
-            .contentType(MediaType.parseMediaType("application/yaml"))
+            .contentType(MediaType.parseMediaType(MediaType.APPLICATION_YAML_VALUE))
             .body(yaml)
     }
 
@@ -319,7 +319,8 @@ class IntegrationConfigController(
          */
         private val YAML_MAPPER: ObjectMapper =
             ObjectMapper(
-                YAMLFactory.builder()
+                YAMLFactory
+                    .builder()
                     .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
                     .build(),
             ).registerModule(KotlinModule.Builder().build())
