@@ -11,8 +11,9 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.util.AttemptFailure
 import io.whozoss.agentos.util.AttemptSuccess
 import io.whozoss.agentos.util.retryWithFallback
-import io.whozoss.agentos.chat.CompressingChatClient
 import mu.KLogging
+import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -20,7 +21,7 @@ import java.util.UUID
 class AgentIntentionGenerator {
     fun generate(
         context: AgentAdvancedContext,
-        compressingChatClient: CompressingChatClient,
+        chatClient: ChatClient,
         events: List<CaseEvent>,
         namespaceId: UUID,
         caseId: UUID,
@@ -141,7 +142,7 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
 
             try {
                 val messages = context.buildMessages(events, fullPrompt)
-                val response = compressingChatClient.call(messages)
+                val response = chatClient.prompt(Prompt(messages)).call().content()
                     ?: throw AgentIntentionGenerationException.InvalidFormat("Null LLM response")
 
                 logger.trace { "Intention generation response:\n$response" }

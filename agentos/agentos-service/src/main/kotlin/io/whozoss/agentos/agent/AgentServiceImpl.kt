@@ -381,7 +381,7 @@ class AgentServiceImpl(
                 name = agentName,
                 context = advancedContext,
                 intentionGenerator = intentionGenerator,
-                compressingChatClient = compressingChatClient,
+                chatClient = compressingChatClient,
                 objectMapper = objectMapper,
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,

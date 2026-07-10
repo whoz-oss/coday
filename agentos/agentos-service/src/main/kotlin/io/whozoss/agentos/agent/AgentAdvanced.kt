@@ -25,7 +25,6 @@ import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.util.AttemptFailure
 import io.whozoss.agentos.util.AttemptResult
 import io.whozoss.agentos.util.AttemptSuccess
@@ -34,8 +33,11 @@ import io.whozoss.agentos.util.retryWithFallback
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
+import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
 
@@ -44,7 +46,7 @@ class AgentAdvanced(
     override val name: String,
     private val context: AgentAdvancedContext,
     private val intentionGenerator: AgentIntentionGenerator,
-    private val compressingChatClient: CompressingChatClient,
+    private val chatClient: ChatClient,
     private val objectMapper: ObjectMapper,
     private val userId: UUID? = null,
     private val userExternalId: String? = null,
@@ -157,7 +159,7 @@ class AgentAdvanced(
                     val intention =
                         intentionGenerator.generate(
                             context = context,
-                            compressingChatClient = compressingChatClient,
+                            chatClient = chatClient,
                             events = accumulatedEvents,
                             namespaceId = namespaceId,
                             caseId = caseId,
@@ -1032,8 +1034,11 @@ class AgentAdvanced(
 
         val contentBuilder = StringBuilder()
         var lastFinishReason: String? = null
-        compressingChatClient
-            .stream(messages)
+        chatClient
+            .prompt(Prompt(messages))
+            .stream()
+            .chatResponse()
+            .asFlow()
             .takeWhile { shouldContinue() }
             .collect { response ->
                 val chunk = response.result.output.text?.takeIf { it.isNotEmpty() }
@@ -1189,7 +1194,7 @@ class AgentAdvanced(
 
         val raw =
             runCatching {
-                compressingChatClient.call(listOf(UserMessage(prompt)))
+                chatClient.prompt(Prompt(listOf(UserMessage(prompt)))).call().content()
             }.getOrNull() ?: return null
 
         // Extract the language name from <language>...</language> tags.
@@ -1363,7 +1368,7 @@ Output requirements:
         val prompt = listOfNotNull(basePrompt, retryHint).joinToString("\n\n")
 
         val messages = context.buildMessages(events, prompt)
-        val raw = stripJsonFence(compressingChatClient.call(messages) ?: "{}")
+        val raw = stripJsonFence(chatClient.prompt(Prompt(messages)).call().content() ?: "{}")
 
         logger.trace { "[$name] generateParameters raw response for '$toolName': $raw" }
 
@@ -1461,7 +1466,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
 
         logger.debug { "[$name] enrichment phase $phaseIndex for '${tool.name}' — sending ${messages.size} messages" }
 
-        val phaseJson = stripJsonFence(compressingChatClient.call(messages) ?: "{}")
+        val phaseJson = stripJsonFence(chatClient.prompt(Prompt(messages)).call().content() ?: "{}")
 
         logger.debug { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }
 
