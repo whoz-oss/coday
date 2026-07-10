@@ -336,7 +336,6 @@ class AgentIntentionGeneratorSpec :
 
             makeGenerator().generate(
                 makeContext(mockChatClient),
-                makeCompressingClient(mockChatClient),
                 makeEventsWithUserMessageAfterToolCall(namespaceId, caseId),
                 namespaceId,
                 caseId,
@@ -357,7 +356,6 @@ class AgentIntentionGeneratorSpec :
 
             makeGenerator().generate(
                 makeContext(mockChatClient),
-                makeCompressingClient(mockChatClient),
                 makeEventsWithAnswerAfterToolCall(namespaceId, caseId),
                 namespaceId,
                 caseId,
@@ -378,7 +376,6 @@ class AgentIntentionGeneratorSpec :
 
             makeGenerator().generate(
                 makeContext(mockChatClient),
-                makeCompressingClient(mockChatClient),
                 makeEventsWithUserMessageBeforeToolCall(namespaceId, caseId),
                 namespaceId,
                 caseId,
@@ -406,7 +403,7 @@ class AgentIntentionGeneratorSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
 
-            val result = generator.generate(context, makeCompressingClient(mockChatClient), makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+            val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "All good on retry"
@@ -427,7 +424,7 @@ class AgentIntentionGeneratorSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
 
-            val result = generator.generate(context, makeCompressingClient(mockChatClient), makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+            val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "Recovered on retry"
@@ -445,7 +442,7 @@ class AgentIntentionGeneratorSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
 
-            val result = generator.generate(context, makeCompressingClient(mockChatClient), makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+            val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "Failed to plan next step after"
@@ -497,7 +494,6 @@ class AgentIntentionGeneratorSpec :
                         agentId = agentId,
                         confirmationManager = sharedConfirmationManager,
                     ),
-                    CompressingChatClient(captureClient, IdCompressorService()),
                     events, namespaceId, caseId,
                 )
 
@@ -523,7 +519,6 @@ class AgentIntentionGeneratorSpec :
                         agentId = agentId,          // same agentId — identical system prompt
                         confirmationManager = sharedConfirmationManager,
                     ),
-                    CompressingChatClient(echoClient, IdCompressorService()),
                     events, namespaceId, caseId,
                 )
 
@@ -564,7 +559,7 @@ class AgentIntentionGeneratorSpec :
 
             // Inject the compressor — without it, no compression happens and the UUID would appear raw.
             AgentIntentionGenerator()
-                .generate(context, CompressingChatClient(mockChatClient, IdCompressorService()), events, namespaceId, caseId)
+                .generate(context, events, namespaceId, caseId)
 
             // The raw UUID must NOT appear in any message sent to the LLM.
             val promptText = promptSlot.captured.instructions.joinToString(" ") { it.text }

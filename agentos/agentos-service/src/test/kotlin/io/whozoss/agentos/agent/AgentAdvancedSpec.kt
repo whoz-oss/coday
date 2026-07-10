@@ -114,7 +114,6 @@ class AgentAdvancedSpec :
                 name = "ParserAgent",
                 context = context,
                 intentionGenerator = mockk(),
-                chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                 objectMapper = testObjectMapper,
                 llmProvider = "test-provider",
                 llmModel = "test-model",
@@ -162,7 +161,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -186,7 +185,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -238,7 +236,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -262,7 +260,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -310,7 +307,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -334,7 +331,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -383,7 +379,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -415,7 +411,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -467,7 +462,7 @@ class AgentAdvancedSpec :
 
             val generatorMock = mockk<AgentIntentionGenerator>()
             every {
-                generatorMock.generate(any(), any(), any(), any(), any(), any())
+                generatorMock.generate(any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -523,7 +518,6 @@ class AgentAdvancedSpec :
                         confirmationManager = mockk(relaxed = true),
                     ),
                 intentionGenerator = generatorMock,
-                chatClient = CompressingChatClient(captureClient2, IdCompressorService()),
                 objectMapper = testObjectMapper,
                 maxIterations = 5,
                 llmProvider = "test-provider",
@@ -540,7 +534,7 @@ class AgentAdvancedSpec :
 
             // Re-setup the generator mock for Pass 2.
             every {
-                generatorMock.generate(any(), any(), any(), any(), any(), any())
+                generatorMock.generate(any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -571,7 +565,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = generatorMock,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -633,7 +626,7 @@ class AgentAdvancedSpec :
             val otherCount = AgentAdvanced.REPETITION_WINDOW - AgentAdvanced.REPETITION_THRESHOLD
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), isNull())
+                mockGenerator.generate(any(), any(), any(), any(), isNull())
             } returnsMany
                 (1..otherCount).map {
                     IntentionGeneratedEvent(
@@ -654,7 +647,7 @@ class AgentAdvancedSpec :
                     )
                 }
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), not(isNull()))
+                mockGenerator.generate(any(), any(), any(), any(), not(isNull()))
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -683,7 +676,6 @@ class AgentAdvancedSpec :
                     name = "LoopAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 10,
                     llmProvider = "test-provider",
@@ -747,7 +739,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockk(),
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
@@ -792,7 +783,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockk(),
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
@@ -830,7 +820,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockk(),
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
@@ -869,7 +858,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockk(),
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
@@ -924,7 +912,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockk(),
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
@@ -1315,7 +1302,7 @@ class AgentAdvancedSpec :
         ): AgentIntentionGenerator {
             val gen = mockk<AgentIntentionGenerator>()
             every {
-                gen.generate(any(), any(), any(), any(), any(), any())
+                gen.generate(any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -1335,7 +1322,7 @@ class AgentAdvancedSpec :
             val agentId = UUID.randomUUID()
             val tool = TestRemoveTool(tempDir)
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any()) } returns
+            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any()) } returns
                 "Voulez-vous supprimer old.txt?"
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"old.txt"}"""
@@ -1346,7 +1333,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "FILES__remove"),
-                    chatClient = CompressingChatClient(chatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 3,
                     llmProvider = "test-provider",
@@ -1404,7 +1390,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
-                    chatClient = CompressingChatClient(confirmationChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
                     llmProvider = "test-provider",
@@ -1465,7 +1450,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = intentionGenerator,
-                    chatClient = CompressingChatClient(confirmationChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -1489,7 +1473,7 @@ class AgentAdvancedSpec :
             synthetic.success shouldBe false
             target.exists() shouldBe true
 
-            verify(atLeast = 1) { intentionGenerator.generate(any(), any(), any(), any(), any(), any()) }
+            verify(atLeast = 1) { intentionGenerator.generate(any(), any(), any(), any(), any()) }
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
 
             events.filterIsInstance<ToolRequestEvent>().filter { it.toolName == "FILES__remove" } shouldHaveSize 0
@@ -1524,7 +1508,7 @@ class AgentAdvancedSpec :
             every { confirmationManager.analyzeConfirmation(any(), any(), any(), any()) } returns
                 ConfirmationDecision.AMBIGUOUS
             val clarificationText = "Pour \u00eatre s\u00fbr \u2014 veux-tu vraiment supprimer old.txt ? Oui ou non."
-            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any()) } returns clarificationText
+            every { confirmationManager.formulateQuestion(any(), any(), any(), any(), any()) } returns clarificationText
             val (ctx, confirmationChatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             val agent =
                 AgentAdvanced(
@@ -1532,7 +1516,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
-                    chatClient = CompressingChatClient(confirmationChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
                     llmProvider = "test-provider",
@@ -1559,13 +1542,13 @@ class AgentAdvancedSpec :
             val target = tempDir.resolve("safe.txt").also { it.writeText("data") }
             val tool = TestRemoveTool(tempDir, name = "TEST__safe", forcedMode = ConfirmationMode.INFER)
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
+            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns """{"path":"safe.txt"}"""
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -1590,7 +1573,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(chatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -1628,13 +1610,13 @@ class AgentAdvancedSpec :
                     ): ToolExecutionResult = throw RuntimeException("boom")
                 }
             val confirmationManager = mockk<ConfirmationManager>()
-            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any()) } returns false
+            every { confirmationManager.shouldConfirm(any(), any(), any(), any(), any()) } returns false
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -1659,7 +1641,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(chatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -1713,7 +1694,7 @@ class AgentAdvancedSpec :
             every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -1737,7 +1718,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(chatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -1749,7 +1729,7 @@ class AgentAdvancedSpec :
             events.filterIsInstance<PendingConfirmationEvent>() shouldHaveSize 0
             // shouldConfirm is never called (mode = NONE → no gate)
             verify(exactly = 0) {
-                confirmationManager.shouldConfirm(any(), any(), any(), any(), any(), any())
+                confirmationManager.shouldConfirm(any(), any(), any(), any(), any())
             }
             executed.get() shouldBe true
         }
@@ -1796,7 +1776,7 @@ class AgentAdvancedSpec :
             every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -1820,7 +1800,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(chatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -1870,7 +1849,7 @@ class AgentAdvancedSpec :
                 }
             val confirmationManager = mockk<ConfirmationManager>()
             every {
-                confirmationManager.formulateQuestion(any(), any(), any(), any(), any(), any())
+                confirmationManager.formulateQuestion(any(), any(), any(), any(), any())
             } returns "confirm?"
             val (ctx, chatClient) = confirmationContext(listOf(tool), agentId, confirmationManager)
             // The args returned to the orchestrator by the LLM
@@ -1878,7 +1857,7 @@ class AgentAdvancedSpec :
             every { chatClient.prompt(any<Prompt>()).call().content() } returns expectedArgs
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returns
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
@@ -1896,7 +1875,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(chatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 2,
                     caseEventsProvider = { initialEvents },
@@ -1940,7 +1918,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockk(),
-                    chatClient = CompressingChatClient(confirmationChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
                     llmProvider = "test-provider",
@@ -2005,7 +1982,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
-                    chatClient = CompressingChatClient(confirmationChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
                     llmProvider = "test-provider",
@@ -2057,7 +2033,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
-                    chatClient = CompressingChatClient(confirmationChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
                     llmProvider = "test-provider",
@@ -2099,7 +2074,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -2123,7 +2098,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 10,
                     llmProvider = "test-provider",
@@ -2141,7 +2115,7 @@ class AgentAdvancedSpec :
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
 
             // The intention generator must have been called only once — no loop
-            verify(exactly = 1) { mockGenerator.generate(any(), any(), any(), any(), any(), any()) }
+            verify(exactly = 1) { mockGenerator.generate(any(), any(), any(), any(), any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -2170,7 +2144,7 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returns """{"value":"hello"}"""
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -2202,7 +2176,6 @@ class AgentAdvancedSpec :
                     name = "RetryAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -2244,7 +2217,7 @@ class AgentAdvancedSpec :
                 )
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -2276,7 +2249,6 @@ class AgentAdvancedSpec :
                     name = "RetryAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -2318,7 +2290,7 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returns response
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -2350,7 +2322,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -2392,7 +2363,7 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany invalidResponses
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -2424,7 +2395,6 @@ class AgentAdvancedSpec :
                     name = "RetryAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -2489,7 +2459,7 @@ class AgentAdvancedSpec :
             coEvery { captureMockTool.executeWithJson(any(), any()) } returns ToolExecutionResult.success("done")
 
             val captureMockGenerator = mockk<AgentIntentionGenerator>()
-            every { captureMockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
+            every { captureMockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -2519,7 +2489,6 @@ class AgentAdvancedSpec :
                         confirmationManager = mockk(relaxed = true),
                     ),
                 intentionGenerator = captureMockGenerator,
-                chatClient = CompressingChatClient(captureClient, IdCompressorService()),
                 objectMapper = testObjectMapper,
                 maxIterations = 5,
                 llmProvider = "test-provider",
@@ -2553,7 +2522,7 @@ class AgentAdvancedSpec :
                 )
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -2585,7 +2554,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -2635,7 +2603,7 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(capture(promptSlot)).call().content() } returns "{}"
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -2667,7 +2635,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -2703,7 +2670,6 @@ class AgentAdvancedSpec :
                     name = "TestAgent",
                     context = ctx,
                     intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "DOES_NOT_EXIST"),
-                    chatClient = CompressingChatClient(confirmationChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 1,
                     llmProvider = "test-provider",
@@ -2779,7 +2745,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -2812,7 +2778,6 @@ class AgentAdvancedSpec :
                     name = "EnrichAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -2873,7 +2838,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -2906,7 +2871,6 @@ class AgentAdvancedSpec :
                     name = "SimpleAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -2981,7 +2945,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -3014,7 +2978,6 @@ class AgentAdvancedSpec :
                     name = "FallbackAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -3106,7 +3069,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -3139,7 +3102,6 @@ class AgentAdvancedSpec :
                     name = "MultiPhaseAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 5,
                     llmProvider = "test-provider",
@@ -3208,7 +3170,7 @@ class AgentAdvancedSpec :
             // heeds the repetition warning.
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -3232,7 +3194,6 @@ class AgentAdvancedSpec :
                     name = "LoopAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     // High maxIterations: without the fix the agent would run until exhaustion.
                     maxIterations = 50,
@@ -3306,7 +3267,7 @@ class AgentAdvancedSpec :
             // The agent self-corrects on the very next iteration (with the warning hint),
             // so count never reaches THRESHOLD+1 and ForceStop is never triggered.
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), isNull())
+                mockGenerator.generate(any(), any(), any(), any(), isNull())
             } returnsMany
                 (1..AgentAdvanced.REPETITION_WINDOW).map {
                     IntentionGeneratedEvent(
@@ -3318,7 +3279,7 @@ class AgentAdvancedSpec :
                     )
                 }
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any(), not(isNull()))
+                mockGenerator.generate(any(), any(), any(), any(), not(isNull()))
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -3342,7 +3303,6 @@ class AgentAdvancedSpec :
                     name = "SelfCorrectingAgent",
                     context = context,
                     intentionGenerator = mockGenerator,
-                    chatClient = CompressingChatClient(mockChatClient, IdCompressorService()),
                     objectMapper = testObjectMapper,
                     maxIterations = 20,
                     llmProvider = "test-provider",

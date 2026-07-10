@@ -366,22 +366,21 @@ class AgentServiceImpl(
 
         return if (advancedExecution) {
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
             val advancedContext =
                 AgentAdvancedContext(
-                    chatClient = chatClient,
+                    chatClient = compressingChatClient,
                     tools = resolvedTools.toList(),
                     instructions = resolvedInstructions,
                     agentId = agentId,
                     confirmationManager = confirmationManager,
                     systemPrompt = resolvedSystemPrompt,
                 )
-            val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
             AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),
                 name = agentName,
                 context = advancedContext,
                 intentionGenerator = intentionGenerator,
-                chatClient = compressingChatClient,
                 objectMapper = objectMapper,
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
