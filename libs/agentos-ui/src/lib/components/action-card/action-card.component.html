@@ -1,10 +1,33 @@
-<div class="ac">
+@if (clickable()) {
+  <button class="ac ac--clickable" type="button" (click)="nameClicked.emit()">
+    <ng-container *ngTemplateOutlet="cardContent" />
+  </button>
+} @else {
+  <div class="ac">
+    <ng-container *ngTemplateOutlet="cardContent" />
+  </div>
+}
+
+<ng-template #cardContent>
   <!-- ── Header ── -->
   <div class="ac__header">
     <div class="ac__id">
-      <div class="ac__mark" aria-hidden="true">{{ resolvedMark }}</div>
+      @if (logo()) {
+        <div class="ac__mark ac__mark--logo" aria-hidden="true">
+          <img [src]="logo()" [alt]="name()" class="ac__logo-img" />
+        </div>
+      } @else {
+        <div class="ac__mark" [class.ac__mark--emoji]="markIsEmoji()" aria-hidden="true">{{ resolvedMark }}</div>
+      }
       <div class="ac__meta">
-        <button class="ac__name" type="button" (click)="nameClicked.emit()">{{ name() }}</button>
+        @if (clickable()) {
+          <span class="ac__name">{{ name() }}</span>
+        } @else {
+          <button class="ac__name" type="button" (click)="nameClicked.emit()">{{ name() }}</button>
+        }
+        @if (description()) {
+          <p class="ac__description">{{ description() }}</p>
+        }
       </div>
     </div>
 
@@ -19,4 +42,4 @@
       <ng-content select="[agentosCardChips]" />
     </div>
   }
-</div>
+</ng-template>

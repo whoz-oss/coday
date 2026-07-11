@@ -1,10 +1,33 @@
 @use '../../../../../design-system/src/styles' as ds;
 
+:host {
+  display: block;
+  height: var(--ac-height, auto);
+}
+
 .ac {
   @include ds.surface-card;
 
   // Override: dropdown must not be clipped by the card
   overflow: visible;
+
+  // Mode card entière cliquable
+  &--clickable {
+    @include ds.button-reset;
+    @include ds.surface-card;
+    @include ds.surface-card-clickable;
+    overflow: visible;
+    width: 100%;
+    height: 100%;
+    text-align: left;
+
+    .ac__name {
+      cursor: inherit;
+      &:hover {
+        text-decoration: none;
+      }
+    }
+  }
 
   // ── Header ──
   &__header {
@@ -27,10 +50,45 @@
     @include ds.surface-mark;
     @include ds.text-mark;
     align-self: flex-start;
+
+    &--logo {
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      padding: 4px;
+
+      [data-theme='dark'] & {
+        background: transparent;
+      }
+    }
+
+    &--emoji {
+      font-size: 18px;
+      line-height: 32px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      color: inherit;
+
+      [data-theme='dark'] & {
+        background: transparent;
+      }
+    }
+  }
+
+  &__logo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 4px;
+    display: block;
   }
 
   &__meta {
     min-width: 0;
+  }
+
+  &__description {
+    @include ds.text-secondary;
+    margin: 2px 0 0;
   }
 
   &__name {

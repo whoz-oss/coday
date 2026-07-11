@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, Directive, contentChild, input, output } from '@angular/core'
+import { NgTemplateOutlet } from '@angular/common'
 import { KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 // Re-export for consumers who typed ActionCardMenuItem directly
@@ -13,12 +14,16 @@ export class ActionCardChipsDirective {}
   templateUrl: './action-card.component.html',
   styleUrl: './action-card.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [KebabMenuComponent],
+  imports: [KebabMenuComponent, NgTemplateOutlet],
 })
 export class ActionCardComponent {
   readonly name = input.required<string>()
+  readonly description = input<string | null>(null)
   readonly mark = input<string | null>(null)
+  readonly markIsEmoji = input<boolean>(false)
+  readonly logo = input<string | null>(null)
   readonly menuItems = input<KebabMenuItem[]>([])
+  readonly clickable = input<boolean>(false)
 
   readonly nameClicked = output<void>()
   readonly menuAction = output<string>()
