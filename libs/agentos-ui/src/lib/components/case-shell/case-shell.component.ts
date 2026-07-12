@@ -92,6 +92,9 @@ export class CaseShellComponent {
   /** Whether the namespace dropdown is open */
   protected readonly nsMenuOpen = signal(false)
 
+  /** Whether the desktop sidebar is expanded */
+  protected readonly sidebarOpen = signal(true)
+
   /** Whether the mobile case switcher is open */
   protected readonly mobileSwitcherOpen = signal(false)
 
@@ -203,6 +206,14 @@ export class CaseShellComponent {
 
   protected navigateHome(): void {
     this.router.navigate(['/agentos/home'])
+  }
+
+  protected collapseSidebar(): void {
+    this.sidebarOpen.set(false)
+  }
+
+  protected expandSidebar(): void {
+    this.sidebarOpen.set(true)
   }
 
   protected onMenuNavigate(path: string): void {
