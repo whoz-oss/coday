@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { Prompt } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
+import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptItemComponent } from '../prompt-item/prompt-item.component'
@@ -19,7 +19,7 @@ import { PromptItemComponent } from '../prompt-item/prompt-item.component'
  */
 @Component({
   selector: 'agentos-platform-prompts',
-  imports: [AsyncPipe, EntityListComponent, PromptItemComponent],
+  imports: [AsyncPipe, EntityListComponent, PromptItemComponent, IconButtonComponent],
   templateUrl: './platform-prompts.component.html',
   styleUrl: './platform-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

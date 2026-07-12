@@ -1,6 +1,15 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core'
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  EventEmitter,
+  Input,
+  Output,
+  ViewChild,
+} from '@angular/core'
+import { MatDivider } from '@angular/material/divider'
 import { MatIcon } from '@angular/material/icon'
-import { MatMenuModule } from '@angular/material/menu'
+import { MatMenu, MatMenuModule } from '@angular/material/menu'
 import { IconButtonComponent } from '../icon-button/icon-button.component'
 
 export interface KebabMenuItem {
@@ -10,8 +19,8 @@ export interface KebabMenuItem {
   label: string
   /** Optional Material icon name shown before the label. */
   icon?: string
-  /** Visual variant — 'danger' renders the item in error color. */
-  variant?: 'default' | 'danger'
+  /** Visual variant — 'danger' renders the item in error color, 'separator' renders a divider (label and key are ignored). */
+  variant?: 'default' | 'danger' | 'separator'
   /** When true the item is shown but cannot be clicked. */
   disabled?: boolean
 }
@@ -31,16 +40,22 @@ export interface KebabMenuItem {
 @Component({
   selector: 'ds-kebab-menu',
   standalone: true,
-  imports: [IconButtonComponent, MatIcon, MatMenuModule],
+  imports: [IconButtonComponent, MatDivider, MatIcon, MatMenuModule],
   templateUrl: './kebab-menu.component.html',
   styleUrl: './kebab-menu.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class KebabMenuComponent {
+export class KebabMenuComponent implements AfterViewInit {
   @Input({ required: true }) items!: KebabMenuItem[]
 
   /** Emits the `key` of the selected menu item. */
   @Output() itemSelected = new EventEmitter<string>()
+
+  @ViewChild('menu') private menu!: MatMenu
+
+  ngAfterViewInit(): void {
+    this.menu.panelClass = 'ds-kebab-panel'
+  }
 
   protected onItemClick(key: string): void {
     this.itemSelected.emit(key)

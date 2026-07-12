@@ -42,13 +42,19 @@
   }
 
   &__logo-img {
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
     border-radius: 6px;
     object-fit: contain;
   }
 
-  // logo-text removed (text label hidden, logo only)
+  &__logo-text {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text, #1b1916);
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+  }
 
   // ── User menu ──
   &__user-menu {
@@ -142,14 +148,12 @@
     left: 0;
     right: 0;
     top: calc(100% + 4px);
-    background: var(--color-bg, #f4f3ef);
+    background: var(--color-modal-bg, #fff);
     border: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
-    border-radius: 14px;
+    border-radius: 10px;
     padding: 6px;
     z-index: 100;
-    box-shadow:
-      0 6px 20px rgba(0, 0, 0, 0.09),
-      0 1px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--color-modal-shadow, 0 6px 20px rgba(0, 0, 0, 0.08));
   }
 
   &__ns-item {
