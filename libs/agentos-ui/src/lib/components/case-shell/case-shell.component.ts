@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core'
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   Case,
@@ -7,7 +7,7 @@ import {
   NamespaceControllerService,
   NamespaceListItem,
 } from '@whoz-oss/agentos-api-client'
-import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { BehaviorSubject, debounceTime, map, skip, switchMap } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
 import { THEME_PORT, ThemeMode } from '../../services/theme.service'
@@ -143,6 +143,11 @@ export class CaseShellComponent {
     if (!this.userState.currentUser()) {
       this.userState.loadMe().pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
     }
+
+    // Persist sidebar width to localStorage, debounced to avoid writing on every drag pixel.
+    toObservable(this.sidebarWidth)
+      .pipe(skip(1), debounceTime(300), takeUntilDestroyed(this.destroyRef))
+      .subscribe((width) => localStorage.setItem('agentos.sidebar.width', String(width)))
 
     // Sync selectedNamespace whenever namespaces load or the ?ns param changes.
     // When no ?ns is present, auto-select the first namespace and update the URL.
@@ -284,7 +289,6 @@ export class CaseShellComponent {
       const delta = e.clientX - startX
       const newWidth = Math.max(200, Math.min(500, startWidth + delta))
       this.sidebarWidth.set(newWidth)
-      localStorage.setItem('agentos.sidebar.width', String(newWidth))
     }
 
     const onUp = (): void => {
