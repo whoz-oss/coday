@@ -83,8 +83,8 @@ export class CaseShellComponent {
   // UI state
   // ---------------------------------------------------------------------------
 
-  /** Sidebar width in pixels — adjustable via drag handle */
-  protected readonly sidebarWidth = signal(300)
+  /** Sidebar width in pixels — adjustable via drag handle, persisted in localStorage */
+  protected readonly sidebarWidth = signal(Number(localStorage.getItem('agentos.sidebar.width')) || 300)
 
   /** Whether the user context menu is open */
   protected readonly menuOpen = signal(false)
@@ -284,6 +284,7 @@ export class CaseShellComponent {
       const delta = e.clientX - startX
       const newWidth = Math.max(200, Math.min(500, startWidth + delta))
       this.sidebarWidth.set(newWidth)
+      localStorage.setItem('agentos.sidebar.width', String(newWidth))
     }
 
     const onUp = (): void => {
