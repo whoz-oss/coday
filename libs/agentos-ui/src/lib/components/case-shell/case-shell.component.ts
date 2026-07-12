@@ -92,8 +92,8 @@ export class CaseShellComponent {
   /** Whether the namespace dropdown is open */
   protected readonly nsMenuOpen = signal(false)
 
-  /** Whether the desktop sidebar is expanded */
-  protected readonly sidebarOpen = signal(true)
+  /** Whether the desktop sidebar is expanded — persisted in localStorage */
+  protected readonly sidebarOpen = signal(localStorage.getItem('agentos.sidebar.open') !== 'false')
 
   /** Whether the mobile case switcher is open */
   protected readonly mobileSwitcherOpen = signal(false)
@@ -210,10 +210,12 @@ export class CaseShellComponent {
 
   protected collapseSidebar(): void {
     this.sidebarOpen.set(false)
+    localStorage.setItem('agentos.sidebar.open', 'false')
   }
 
   protected expandSidebar(): void {
     this.sidebarOpen.set(true)
+    localStorage.setItem('agentos.sidebar.open', 'true')
   }
 
   protected onMenuNavigate(path: string): void {
