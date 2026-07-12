@@ -14,7 +14,6 @@ export interface PluginInfo {
   state: PluginInfoStateEnum
   description: string
   provider: string
-  agentCount: number
   pluginPath: string
 }
 export enum PluginInfoStateEnum {

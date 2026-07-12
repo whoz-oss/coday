@@ -1910,8 +1910,8 @@ paths:
         \ to be placed in the namespace `integrations/` directory under `configPath`.\
         \ Only the fields meaningful in a filesystem config are included: `name`,\
         \ `integrationType`, `description`, `parameters`. Scope metadata (`id`, `namespaceId`,\
-        \ `userId`) is intentionally omitted. **Note:** `parameters` is exported in\
-        \ clear text — treat the file as sensitive if it contains credentials."
+        \ `userId`) is intentionally omitted. **parameters are exported in clear text**\
+        \ — requires WRITE permission on the entity."
       operationId: exportIntegrationConfig
       parameters:
       - name: id
@@ -2271,6 +2271,34 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AiModel"
+  /api/agent-configs/{id}/export:
+    get:
+      tags:
+      - agent-config-controller
+      summary: Export an AgentConfig as a YAML file
+      description: "Returns the agent config as a downloadable YAML file, ready to\
+        \ be placed in the namespace `agents/` directory under `configPath`. Only\
+        \ the fields meaningful in a filesystem config are included. Scope metadata\
+        \ (`id`, `namespaceId`, `enabled`, `advancedExecution`, `externalMetadata`)\
+        \ is intentionally omitted."
+      operationId: exportAgentConfig
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/yaml:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: string
   /api/agent-configs/{id}/definition:
     get:
       tags:
@@ -3497,13 +3525,9 @@ components:
           type: string
         provider:
           type: string
-        agentCount:
-          type: integer
-          format: int32
         pluginPath:
           type: string
       required:
-      - agentCount
       - description
       - id
       - pluginPath

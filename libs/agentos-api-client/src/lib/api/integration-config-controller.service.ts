@@ -187,7 +187,7 @@ export class IntegrationConfigControllerService extends BaseService {
 
   /**
    * Export an IntegrationConfig as a YAML file
-   * Returns the integration config as a downloadable YAML file, ready to be placed in the namespace &#x60;integrations/&#x60; directory under &#x60;configPath&#x60;. Only the fields meaningful in a filesystem config are included: &#x60;name&#x60;, &#x60;integrationType&#x60;, &#x60;description&#x60;, &#x60;parameters&#x60;. Scope metadata (&#x60;id&#x60;, &#x60;namespaceId&#x60;, &#x60;userId&#x60;) is intentionally omitted. **Note:** &#x60;parameters&#x60; is exported in clear text — treat the file as sensitive if it contains credentials.
+   * Returns the integration config as a downloadable YAML file, ready to be placed in the namespace &#x60;integrations/&#x60; directory under &#x60;configPath&#x60;. Only the fields meaningful in a filesystem config are included: &#x60;name&#x60;, &#x60;integrationType&#x60;, &#x60;description&#x60;, &#x60;parameters&#x60;. Scope metadata (&#x60;id&#x60;, &#x60;namespaceId&#x60;, &#x60;userId&#x60;) is intentionally omitted. **parameters are exported in clear text** — requires WRITE permission on the entity.
    * @param id
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
