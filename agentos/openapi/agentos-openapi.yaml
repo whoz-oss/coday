@@ -966,6 +966,59 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/namespaces/{namespaceId}/files:
+    post:
+      tags:
+      - exchange-controller
+      operationId: uploadNamespaceFileExchange
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+              - file
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileEntry"
+    delete:
+      tags:
+      - exchange-controller
+      operationId: deleteNamespaceFileExchange
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: path
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDeleteResponse"
   /api/namespaces/{namespaceId}/deploy-agents:
     post:
       tags:
@@ -1231,6 +1284,59 @@ paths:
       responses:
         "200":
           description: OK
+  /api/cases/{caseId}/files:
+    post:
+      tags:
+      - exchange-controller
+      operationId: uploadCaseFileExchange
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+              - file
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileEntry"
+    delete:
+      tags:
+      - exchange-controller
+      operationId: deleteCaseFileExchange
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: path
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDeleteResponse"
   /api/cases/by-user/in-namespace:
     post:
       tags:
@@ -1695,6 +1801,74 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/NamespaceUserListItem"
+  /api/namespaces/{namespaceId}/files/manifest:
+    get:
+      tags:
+      - exchange-controller
+      operationId: getNamespaceFilesManifestExchange
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeManifest"
+  /api/namespaces/{namespaceId}/files/download:
+    get:
+      tags:
+      - exchange-controller
+      operationId: downloadNamespaceFileExchange
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: path
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: byte
+  /api/namespaces/{namespaceId}/files/content:
+    get:
+      tags:
+      - exchange-controller
+      operationId: getNamespaceFileContentExchange
+      parameters:
+      - name: namespaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: path
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileContent"
   /api/integration-types:
     get:
       tags:
@@ -1769,6 +1943,74 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Feedback"
+  /api/cases/{caseId}/files/manifest:
+    get:
+      tags:
+      - exchange-controller
+      operationId: getCaseFilesManifestExchange
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeManifest"
+  /api/cases/{caseId}/files/download:
+    get:
+      tags:
+      - exchange-controller
+      operationId: downloadCaseFileExchange
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: path
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: byte
+  /api/cases/{caseId}/files/content:
+    get:
+      tags:
+      - exchange-controller
+      operationId: getCaseFileContentExchange
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: path
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileContent"
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -2387,7 +2629,6 @@ components:
           format: uuid
       required:
       - externalIds
-      - namespaceId
     UserGroupSummary:
       type: object
       properties:
@@ -2536,6 +2777,43 @@ components:
             format: uuid
       required:
       - agentIds
+    ExchangeFileEntry:
+      type: object
+      description: Metadata for a single file in an exchange scope.
+      properties:
+        path:
+          type: string
+          description: "Path of the file relative to its exchange root, using forward\
+            \ slashes."
+        filename:
+          type: string
+          description: File name (last path segment).
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes.
+        lastModified:
+          type: string
+          format: date-time
+          description: Last modification timestamp.
+        mimeType:
+          type: string
+          description: "Detected MIME type, or null if it could not be determined."
+        scope:
+          type: string
+          description: Scope the file belongs to.
+          enum:
+          - CASE
+          - NAMESPACE
+        etag:
+          type: string
+          description: Opaque entity tag derived from size and last-modified time.
+      required:
+      - filename
+      - lastModified
+      - path
+      - scope
+      - size
     NamespaceRoleEntry:
       type: object
       properties:
@@ -3255,6 +3533,45 @@ components:
       - externalId
       - id
       - role
+    ExchangeManifest:
+      type: object
+      description: Files in an exchange scope plus the caller's capability.
+      properties:
+        files:
+          type: array
+          description: Files available in the scope.
+          items:
+            $ref: "#/components/schemas/ExchangeFileEntry"
+        capability:
+          type: string
+          description: Capability the caller has over this scope.
+          enum:
+          - NONE
+          - READ
+          - READ_WRITE
+      required:
+      - capability
+      - files
+    ExchangeFileContent:
+      type: object
+      description: Text content and metadata of a single exchange file.
+      properties:
+        content:
+          type: string
+          description: UTF-8 text content of the file.
+        etag:
+          type: string
+          description: Opaque entity tag derived from size and last-modified time.
+        mimeType:
+          type: string
+          description: "Detected MIME type, or null if it could not be determined."
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes.
+      required:
+      - content
+      - size
     IntegrationTypeDescriptor:
       type: object
       properties:
@@ -3332,3 +3649,16 @@ components:
       - description
       - inputSchema
       - name
+    ExchangeDeleteResponse:
+      type: object
+      description: Result of an exchange file deletion.
+      properties:
+        success:
+          type: boolean
+          description: Whether the deletion succeeded.
+        message:
+          type: string
+          description: Human-readable outcome message.
+      required:
+      - message
+      - success

@@ -1,3 +1,139 @@
+## 0.209.0 (2026-07-10)
+
+### 🚀 Features
+
+- wz-33118 use real agentId into events ([c10f2617](https://github.com/whoz-oss/coday/commit/c10f2617))
+- wz-33118 use real agentId into events ([#1123](https://github.com/whoz-oss/coday/pull/1123))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
+## 0.208.4 (2026-07-10)
+
+### 🩹 Fixes
+
+- openapi regen ([#1124](https://github.com/whoz-oss/coday/pull/1124))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.208.3 (2026-07-09)
+
+### 🩹 Fixes
+
+- #33235 platform integrations always read-only on namespace page ([#1120](https://github.com/whoz-oss/coday/pull/1120), [#33235](https://github.com/whoz-oss/coday/issues/33235))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.208.2 (2026-07-09)
+
+### 🩹 Fixes
+
+- #33273 case search flattens tree and matches on id ([#1117](https://github.com/whoz-oss/coday/pull/1117), [#33273](https://github.com/whoz-oss/coday/issues/33273))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.208.1 (2026-07-08)
+
+### 🩹 Fixes
+
+- wz-32749: fix nullable namespaceId in GroupsByExternalIdsRequest ([#1113](https://github.com/whoz-oss/coday/pull/1113))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.208.0 (2026-07-08)
+
+### 🚀 Features
+
+- #1013 filesystem agent document injection ([#1089](https://github.com/whoz-oss/coday/pull/1089), [#1013](https://github.com/whoz-oss/coday/issues/1013), [#1054](https://github.com/whoz-oss/coday/issues/1054))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.207.2 (2026-07-08)
+
+### 🩹 Fixes
+
+- build angular post-merge ([#1112](https://github.com/whoz-oss/coday/pull/1112))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.207.1 (2026-07-08)
+
+### 🩹 Fixes
+
+- #33235 platform-level entities visible and read-only in namespace views ([#1110](https://github.com/whoz-oss/coday/pull/1110), [#33235](https://github.com/whoz-oss/coday/issues/33235))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.207.0 (2026-07-08)
+
+### 🚀 Features
+
+- case & namespace file exchange (backend) ([#1075](https://github.com/whoz-oss/coday/pull/1075))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
+## 0.206.0 (2026-07-08)
+
+### 🚀 Features
+
+- wz-32968 prompt call ([#1092](https://github.com/whoz-oss/coday/pull/1092))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.205.0 (2026-07-08)
+
+### 🚀 Features
+
+- #1023 add reusable action card for namespace items ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 add reusable action card for namespace items ([#1109](https://github.com/whoz-oss/coday/pull/1109), [#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.204.3 (2026-07-08)
+
+### 🩹 Fixes
+
+- navigate back to home from namespace list ([#1108](https://github.com/whoz-oss/coday/pull/1108))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.204.2 (2026-07-07)
+
+### 🩹 Fixes
+
+- #31851 platform agents require explicit DEPLOYED_TO relation ([#1101](https://github.com/whoz-oss/coday/pull/1101), [#31851](https://github.com/whoz-oss/coday/issues/31851))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.204.1 (2026-07-07)
 
 ### 🩹 Fixes

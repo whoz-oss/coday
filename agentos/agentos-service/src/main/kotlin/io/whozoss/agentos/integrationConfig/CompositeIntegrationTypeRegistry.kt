@@ -51,5 +51,10 @@ class CompositeIntegrationTypeRegistry : IntegrationTypeRegistry {
         }
     }
 
+    override fun registerBuiltIn(descriptor: IntegrationTypeDescriptor) {
+        pluginDescriptors[descriptor.type] = descriptor
+        logger.info { "Registered built-in integration type descriptor: '${descriptor.type}'" }
+    }
+
     companion object : KLogging()
 }

@@ -31,4 +31,12 @@ interface IntegrationTypeRegistry {
      * configuration and therefore have no descriptor to expose.
      */
     fun registerFromPlugin(plugin: ToolPlugin)
+
+    /**
+     * Register a built-in integration descriptor not backed by a [ToolPlugin] config schema
+     * (e.g. the file-exchange integrations). Such integrations are enabled by adding their
+     * [IntegrationTypeDescriptor.type] to an agent's `integrations` map and are resolved
+     * imperatively rather than through the plugin path.
+     */
+    fun registerBuiltIn(descriptor: IntegrationTypeDescriptor)
 }

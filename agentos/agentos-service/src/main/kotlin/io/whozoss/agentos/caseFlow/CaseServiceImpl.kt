@@ -6,13 +6,15 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
-import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
 import io.whozoss.agentos.delegation.SubCaseManager
+import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.prompt.PromptCommandParser
+import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -57,6 +59,7 @@ class CaseServiceImpl(
     private val namespaceService: NamespaceService,
     private val caseConfig: CaseConfigProperties,
     private val permissionService: PermissionService,
+    private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
 ) : CaseService,
     SubCaseManager {
@@ -241,6 +244,7 @@ class CaseServiceImpl(
         CaseRuntime(
             id = case.id,
             namespaceId = case.namespaceId,
+            caseCreatedAt = case.metadata.created,
             updateStatusCallback = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
@@ -279,7 +283,67 @@ class CaseServiceImpl(
         sessionContext: Map<String, Any?>?,
     ) {
         val runtime = getCaseRuntime(caseId)
-        runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+        val userId = actor.id.let { runCatching { UUID.fromString(it) }.getOrNull() }
+
+        // Resolve prompt commands — a single user input may expand to multiple sequential
+        // commands (e.g. a /prompt alias). Each resolved command becomes a separate agent
+        // turn: first → agent → second → agent → … This preserves the invariant that the
+        // LLM always sees alternating user/assistant turns; consecutive user messages
+        // without an assistant response in between are rejected by providers like Anthropic.
+        //
+        // Resolution failures (cycle, depth exceeded, missing arguments) are caught here
+        // and surfaced as a WarnEvent in the runtime so the SSE client sees the error.
+        // The original user message is stored first so the conversation history is intact.
+        val resolvedCommands: List<String>? = if (userId != null) {
+            try {
+                content.filterIsInstance<MessageContent.Text>().flatMap { mc ->
+                    PromptCommandParser.resolve(mc.content) {
+                        promptService.findEffective(runtime.namespaceId, userId)
+                    }
+                }
+            } catch (e: PromptResolutionException) {
+                logger.warn(e) { "Prompt resolution failed for case $caseId: ${e.message}" }
+                runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+                runtime.emitEvent(
+                    storeEvent(
+                        WarnEvent(
+                            namespaceId = runtime.namespaceId,
+                            caseId = caseId,
+                            message = "Prompt resolution failed: ${e.message}",
+                        ),
+                    ),
+                )
+                // run() must still be launched: addUserMessage stored a MessageEvent and
+                // an AgentSelectedEvent. Without run(), the runtime has a pending
+                // AgentSelectedEvent in its history but no execution loop to process it,
+                // leaving the case blocked in PENDING status forever.
+                scope.launch { runtime.run() }
+                return
+            }
+        } else {
+            content.filterIsInstance<MessageContent.Text>().map { it.content }
+        }
+        val nonTextContent = content.filter { it !is MessageContent.Text }
+
+        when {
+            resolvedCommands.isNullOrEmpty() ->
+                runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+            else -> {
+                // First command goes as the initial user message (with any non-text attachments).
+                // Subsequent commands are enqueued: the runtime drains them one-by-one after
+                // each agent turn completes, injecting each as a fresh user message.
+                runtime.addUserMessage(
+                    actor,
+                    listOf(MessageContent.Text(resolvedCommands.first())) + nonTextContent,
+                    answerToEventId,
+                    sessionContext,
+                )
+                resolvedCommands.drop(1).forEach { cmd ->
+                    runtime.enqueueCommand(listOf(MessageContent.Text(cmd)))
+                }
+            }
+        }
+
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
         scope.launch { runtime.run() }
         // Trigger post-processing after each user message (e.g. automatic title generation).
@@ -505,6 +569,7 @@ class CaseServiceImpl(
             AgentExecutionContext(
                 namespaceId = runtime.namespaceId,
                 caseId = caseId,
+                caseCreatedAt = runtime.caseCreatedAt,
                 userId = userId,
                 caseEventsProvider = eventsProvider,
             )

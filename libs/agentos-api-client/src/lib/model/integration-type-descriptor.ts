@@ -12,5 +12,5 @@ export interface IntegrationTypeDescriptor {
   type: string
   displayName: string
   description: string
-  configSchema: any | null
+  configSchema?: any | null
 }
