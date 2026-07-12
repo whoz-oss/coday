@@ -2,7 +2,12 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, WritableSignal,
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
-import { AgentConfig, AgentConfigControllerService, IntegrationConfig } from '@whoz-oss/agentos-api-client'
+import {
+  AgentConfig,
+  AgentConfigControllerService,
+  AgentConfigExportService,
+  IntegrationConfig,
+} from '@whoz-oss/agentos-api-client'
 import { forkJoin, of } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 
@@ -54,6 +59,7 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly agentConfigController = inject(AgentConfigControllerService)
+  private readonly exportService = inject(AgentConfigExportService)
   private readonly integrationConfigState = inject(IntegrationConfigStateService)
 
   /**
@@ -112,6 +118,7 @@ export class AgentConfigFormComponent implements OnInit {
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
+  protected readonly isExporting = signal(false)
 
   /** Route to the inspect view — only valid in edit mode (agentConfigId is present). */
   protected inspectRoute(): string[] {
@@ -327,6 +334,29 @@ export class AgentConfigFormComponent implements OnInit {
       next: () => this.navigateBack(),
       error: () => this.isSubmitting.set(false),
     })
+  }
+
+  protected exportYaml(): void {
+    const id = this.existingConfig?.id
+    if (!id || this.isExporting()) return
+
+    this.isExporting.set(true)
+    this.exportService
+      .exportAsYaml(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (yaml) => {
+          const blob = new Blob([yaml], { type: 'application/yaml' })
+          const url = URL.createObjectURL(blob)
+          const anchor = document.createElement('a')
+          anchor.href = url
+          anchor.download = `${this.existingConfig?.name ?? 'agent'}.yaml`
+          anchor.click()
+          URL.revokeObjectURL(url)
+          this.isExporting.set(false)
+        },
+        error: () => this.isExporting.set(false),
+      })
   }
 
   protected cancel(): void {

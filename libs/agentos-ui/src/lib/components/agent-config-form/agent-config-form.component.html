@@ -176,6 +176,16 @@
         >
           {{ isEditMode() ? 'Save changes' : 'Create' }}
         </button>
+        @if (isEditMode()) {
+          <button
+            class="agent-config-form__btn agent-config-form__btn--export"
+            type="button"
+            [disabled]="isExporting()"
+            (click)="exportYaml()"
+          >
+            {{ isExporting() ? 'Exporting…' : 'Export as YAML' }}
+          </button>
+        }
         <button class="agent-config-form__btn" type="button" (click)="cancel()">Cancel</button>
       </div>
     </form>
