@@ -111,27 +111,6 @@ class FilesystemIntegrationConfigRepository(
         return filesystemConfigs(namespaceId).firstOrNull { it.name.equals(name, ignoreCase = true) }
     }
 
-    /**
-     * Cross-namespace lookup used by platform-level write validation.
-     *
-     * Augments the delegate result with filesystem configs that share [name] across all
-     * namespaces whose directory is already held in the cache. This is best-effort: namespaces
-     * whose `integrations/` directory has never been read are not yet cached and therefore not
-     * checked. The delegate's DB-backed check remains the primary guard; this augmentation
-     * prevents a platform admin from conflicting with a known filesystem-defined config.
-     */
-    override fun findNsSharedByName(name: String): List<IntegrationConfig> {
-        val fromDelegate = delegate.findNsSharedByName(name)
-        val fromFilesystem = cacheRegistry.getAllCached()
-            .filter { it.name.equals(name, ignoreCase = true) }
-            .filter { fs ->
-                fromDelegate.none { p ->
-                    p.namespaceId == fs.namespaceId && p.name.equals(fs.name, ignoreCase = true)
-                }
-            }
-        return fromDelegate + fromFilesystem
-    }
-
     // -------------------------------------------------------------------------
     // Internal helpers
     // -------------------------------------------------------------------------

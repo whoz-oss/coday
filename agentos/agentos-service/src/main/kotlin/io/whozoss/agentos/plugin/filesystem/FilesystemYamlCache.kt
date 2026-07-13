@@ -41,9 +41,6 @@ class FilesystemYamlCache<T>(
         return reload(now)
     }
 
-    /** Returns the currently cached items without triggering a reload. Empty when not yet loaded. */
-    fun getCached(): List<T> = entry?.items ?: emptyList()
-
     @Synchronized
     private fun reload(now: Instant): List<T> {
         // double-checked: another thread may have reloaded while we waited for the lock
@@ -107,15 +104,4 @@ class FilesystemYamlCacheRegistry<T>(
 
     fun getAll(directory: Path): List<T> =
         caches.computeIfAbsent(directory) { FilesystemYamlCache(it, parser, ttl) }.getAll()
-
-    /**
-     * Returns a flat list of all items currently held across every cached directory,
-     * without triggering any filesystem I/O.
-     *
-     * Intended for best-effort cross-namespace lookups (e.g. [findNsSharedByName])
-     * where the goal is to check already-warm caches rather than proactively scanning
-     * all namespace directories.
-     */
-    fun getAllCached(): List<T> =
-        caches.values.flatMap { it.getCached() }
 }
