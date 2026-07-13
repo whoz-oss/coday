@@ -98,18 +98,23 @@ export class CaseDrawerComponent {
     return expanded
   })
 
-  /** IDs of nodes manually expanded/collapsed by the user. */
-  protected readonly expandedIds = signal(new Set<string>())
+  /**
+   * Explicit user expand/collapse choices (true = expanded, false = collapsed). An entry here
+   * overrides the auto-expanded default, so a user CAN collapse an ancestor of the active case
+   * (which [autoExpandedIds] would otherwise force open).
+   */
+  protected readonly expandOverrides = signal(new Map<string, boolean>())
 
   protected isExpanded(id: string): boolean {
-    return this.expandedIds().has(id) || this.autoExpandedIds().has(id)
+    return this.expandOverrides().get(id) ?? this.autoExpandedIds().has(id)
   }
 
   protected toggleExpand(event: Event, id: string): void {
     event.stopPropagation()
-    this.expandedIds.update((set) => {
-      const next = new Set(set)
-      next.has(id) ? next.delete(id) : next.add(id)
+    const nextExpanded = !this.isExpanded(id)
+    this.expandOverrides.update((map) => {
+      const next = new Map(map)
+      next.set(id, nextExpanded)
       return next
     })
   }

@@ -144,4 +144,22 @@ describe('CaseDrawerComponent', () => {
     expect(stars).toEqual([{ id: 'case-1', starred: true }])
     expect(deletes).toEqual(['case-1'])
   })
+
+  it('lets the user collapse an auto-expanded ancestor of the active case', () => {
+    // Parent P with child C; C is the active case, so P is auto-expanded as an ancestor.
+    const cases = [
+      { id: 'p', title: 'Parent', favorite: false } as Case,
+      { id: 'c', title: 'Child', favorite: false, parentCaseId: 'p' } as Case,
+    ]
+    const component = makeComponent(cases, 'c')
+
+    expect(component['isExpanded']('p')).toBe(true)
+
+    // The user can now collapse it despite the auto-expand, and re-expand it.
+    component['toggleExpand'](new Event('click'), 'p')
+    expect(component['isExpanded']('p')).toBe(false)
+
+    component['toggleExpand'](new Event('click'), 'p')
+    expect(component['isExpanded']('p')).toBe(true)
+  })
 })
