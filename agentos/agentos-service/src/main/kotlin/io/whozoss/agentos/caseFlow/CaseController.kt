@@ -349,5 +349,6 @@ internal fun toDto(entity: Case) =
         title = entity.title,
         parentCaseId = entity.parentCaseId,
         created = entity.metadata.created,
+        modified = entity.metadata.modified,
         removed = entity.metadata.removed,
     )

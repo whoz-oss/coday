@@ -15,6 +15,7 @@ export interface Case {
   title?: string
   parentCaseId?: string
   created?: string
+  modified?: string
   removed: boolean
   favorite: boolean
   /**

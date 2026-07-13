@@ -81,8 +81,12 @@ class CaseControllerSpec : StringSpec({
     // Mapping
     // -------------------------------------------------------------------------
 
-    "toDto maps all case fields including namespaceId and status" {
-        val entity = caseEntity(title = "engineering case")
+    "toDto maps all case fields including namespaceId, status, created and modified" {
+        val now = java.time.Instant.now()
+        val later = now.plusSeconds(60)
+        val entity = caseEntity(title = "engineering case").copy(
+            metadata = EntityMetadata(created = now, modified = later),
+        )
 
         val result = toDto(entity)
 
@@ -90,6 +94,8 @@ class CaseControllerSpec : StringSpec({
         result.namespaceId shouldBe namespaceId
         result.status shouldBe CaseStatus.PENDING
         result.title shouldBe "engineering case"
+        result.created shouldBe now
+        result.modified shouldBe later
     }
 
     // -------------------------------------------------------------------------

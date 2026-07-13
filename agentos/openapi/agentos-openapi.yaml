@@ -2533,6 +2533,9 @@ components:
         created:
           type: string
           format: date-time
+        modified:
+          type: string
+          format: date-time
         removed:
           type: boolean
         favorite:
