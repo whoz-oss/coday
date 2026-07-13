@@ -2,6 +2,7 @@
   <button
     class="exchange-item__main"
     type="button"
+    [attr.data-exchange-path]="row().path"
     [attr.aria-current]="active() ? 'true' : null"
     [attr.aria-label]="'View ' + row().filename"
     (click)="viewRequested.emit()"

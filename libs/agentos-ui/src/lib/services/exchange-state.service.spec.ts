@@ -159,7 +159,7 @@ describe('ExchangeStateService', () => {
   })
 
   describe('writes refresh the case manifest', () => {
-    it('upload success → reloads manifest and clears isUploading', async () => {
+    it('upload success → reloads manifest and clears caseUploading', async () => {
       init()
       controller.uploadCaseFileExchange.mockReturnValue(of(caseFile))
       controller.getCaseFilesManifestExchange.mockClear()
@@ -167,7 +167,9 @@ describe('ExchangeStateService', () => {
       expect(result.success).toBe(true)
       expect(controller.uploadCaseFileExchange).toHaveBeenCalledWith('c-1', expect.any(File))
       expect(controller.getCaseFilesManifestExchange).toHaveBeenCalledWith('c-1')
-      expect(service.isUploading()).toBe(false)
+      expect(service.caseUploading()).toBe(false)
+      // a case upload must not have flipped the namespace flag (per-scope isolation)
+      expect(service.namespaceUploading()).toBe(false)
     })
 
     it('upload 409 → returns a friendly conflict error', async () => {

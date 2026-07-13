@@ -11,6 +11,9 @@ import {
   ViewChild,
 } from '@angular/core'
 
+/** Per-instance counter so the message/title ids are unique across concurrently-rendered dialogs. */
+let dialogInstanceCounter = 0
+
 /**
  * DsConfirmDialog — an accessible confirmation dialog to replace native confirm()/alert().
  *
@@ -66,6 +69,9 @@ export class ConfirmDialogComponent implements OnChanges, AfterViewChecked {
   @Output() cancelled = new EventEmitter<void>()
 
   @ViewChild('confirmButton') private confirmButton?: ElementRef<HTMLButtonElement>
+
+  /** Stable id for the message paragraph, referenced by the dialog's aria-describedby. */
+  protected readonly messageId = `ds-confirm-dialog-message-${dialogInstanceCounter++}`
 
   private pendingFocus = false
 

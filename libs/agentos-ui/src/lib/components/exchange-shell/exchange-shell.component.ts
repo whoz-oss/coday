@@ -20,7 +20,7 @@ import { ExchangeDrawerComponent } from '../exchange-drawer/exchange-drawer.comp
 /**
  * ExchangeShellComponent — smart container for the file-exchange drawer panel.
  *
- * Owns the ExchangeStateService lifecycle (initializeForCase / clear from route params),
+ * Owns the ExchangeStateService lifecycle (initializeForCase / clear from the `?ns`/`?case` query params),
  * loads file content on selection, and routes upload (always CASE) / download / delete
  * (behind ds-confirm-dialog) / retry. Rendered inside the right ds-drawer hosted by
  * case-chat; closing is delegated upward via `closeRequested`.
@@ -59,36 +59,29 @@ export class ExchangeShellComponent implements OnInit, OnDestroy {
     return `Delete "${filename}"? This action cannot be undone.`
   })
 
+  /** The case currently initialised, so an unrelated query-param change does not re-init. */
+  private activeCaseId: string | null = null
+
   ngOnInit(): void {
-    this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      const { namespaceId, caseId } = this.resolveRouteIds()
+    // The case view is rendered directly by the case-shell (not through a router-outlet with
+    // `:namespaceId/cases/:caseId` path params), so the active case/namespace come through query
+    // params (`?ns=..&case=..`), mirroring case-chat. Subscribing (not reading the snapshot once)
+    // re-initialises the drawer when the user switches case on the reused component instance.
+    this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const namespaceId = params['ns'] as string | undefined
+      const caseId = params['case'] as string | undefined
       if (namespaceId && caseId) {
+        // Guard on the case actually changing (like case-chat): a re-emission for some other query
+        // param must not wipe the open file and double-refetch both manifests.
+        if (caseId === this.activeCaseId) return
+        this.activeCaseId = caseId
         this.resetSelection()
         this.state.initializeForCase(namespaceId, caseId)
-      } else {
+      } else if (this.activeCaseId !== null) {
+        this.activeCaseId = null
         this.state.clear()
       }
     })
-  }
-
-  /**
-   * Resolve namespaceId + caseId by walking up the route hierarchy.
-   * `namespaceId` is declared on a parent route (`:namespaceId/cases`) while
-   * `caseId` is on the `:caseId` child. Under the router's default
-   * `paramsInheritanceStrategy: 'emptyOnly'`, the `:caseId` route does NOT
-   * inherit the parent's `namespaceId`, so reading `this.route.params` alone
-   * misses it. Walking up the `parent` chain collects both reliably.
-   */
-  private resolveRouteIds(): { namespaceId?: string; caseId?: string } {
-    let r: ActivatedRoute | null = this.route
-    let namespaceId: string | undefined
-    let caseId: string | undefined
-    while (r) {
-      namespaceId = namespaceId ?? r.snapshot.paramMap.get('namespaceId') ?? undefined
-      caseId = caseId ?? r.snapshot.paramMap.get('caseId') ?? undefined
-      r = r.parent
-    }
-    return { namespaceId, caseId }
   }
 
   ngOnDestroy(): void {

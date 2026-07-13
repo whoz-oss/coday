@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, ElementRef, input, output, viewChild } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  input,
+  output,
+  viewChild,
+} from '@angular/core'
 import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
 import { ExchangeFileRef, ExchangeScope, ExchangeScopeStatus } from '../../services/exchange-state.service'
@@ -40,13 +49,14 @@ export class ExchangeDrawerComponent {
   readonly caseStatus = input.required<ExchangeScopeStatus>()
   readonly caseSectionVisible = input<boolean>(false)
   readonly canWriteCase = input<boolean>(false)
-  readonly isUploading = input<boolean>(false)
+  readonly caseUploading = input<boolean>(false)
 
   // ── Namespace scope ──────────────────────────────────────────────────────────
   readonly namespaceFiles = input<ExchangeFileEntry[]>([])
   readonly namespaceStatus = input.required<ExchangeScopeStatus>()
   readonly namespaceSectionVisible = input<boolean>(false)
   readonly canWriteNamespace = input<boolean>(false)
+  readonly namespaceUploading = input<boolean>(false)
 
   // ── Current selection / viewer ────────────────────────────────────────────────
   readonly activeFile = input<ExchangeFileRef | null>(null)
@@ -64,6 +74,7 @@ export class ExchangeDrawerComponent {
   /** Emitted when the viewer's back button is pressed; the parent clears the active file. */
   readonly viewerClosed = output<void>()
 
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef)
   private readonly fileInput = viewChild<ElementRef<HTMLInputElement>>('fileInput')
 
   /** Scope enums exposed to the template. */
@@ -73,19 +84,30 @@ export class ExchangeDrawerComponent {
   protected readonly caseRows = computed(() => this.caseFiles().map(ExchangeItemComponent.toRow))
   protected readonly namespaceRows = computed(() => this.namespaceFiles().map(ExchangeItemComponent.toRow))
 
-  /** The row element that opened the viewer — focus returns here on back (a11y). */
-  private lastFocused: HTMLElement | null = null
+  /** Path of the row that opened the viewer — focus returns to it on back (a11y). */
+  private lastSelectedPath: string | null = null
 
   protected onFileSelected(ref: ExchangeFileRef): void {
-    this.lastFocused = document.activeElement as HTMLElement | null
+    // Cache the path, not the element: opening the viewer destroys the list, so the original row
+    // button becomes a detached node — focusing it on back is a no-op. Re-query the fresh row instead.
+    this.lastSelectedPath = ref.path
     this.fileSelected.emit(ref)
   }
 
   protected onViewerClose(): void {
     this.viewerClosed.emit()
-    // Restore focus to the originating row once the list is re-rendered.
-    const target = this.lastFocused
-    queueMicrotask(() => target?.focus())
+    const path = this.lastSelectedPath
+    if (!path) return
+    // Restore focus to the freshly re-rendered row once the list is back (matched by path).
+    queueMicrotask(() => {
+      const rows = this.host.nativeElement.querySelectorAll<HTMLElement>('[data-exchange-path]')
+      for (const el of Array.from(rows)) {
+        if (el.getAttribute('data-exchange-path') === path) {
+          el.focus()
+          break
+        }
+      }
+    })
   }
 
   /** Scope of the section whose upload button was last clicked (one hidden input is shared). */

@@ -87,7 +87,9 @@ export class ExchangeStateService {
   )
   readonly caseSectionVisible = computed(() => this.caseView().status !== 'forbidden')
   readonly namespaceSectionVisible = computed(() => this.namespaceView().status !== 'forbidden')
-  readonly isUploading = signal(false)
+  // Tracked per scope: an in-flight upload in one scope must not disable the other scope's upload.
+  readonly caseUploading = signal(false)
+  readonly namespaceUploading = signal(false)
 
   private loadScope(loader: () => Observable<ExchangeManifest>): Observable<ExchangeScopeView> {
     return loader().pipe(
@@ -171,19 +173,20 @@ export class ExchangeStateService {
     const isCase = scope === ExchangeFileEntryScopeEnum.CASE
     const id = isCase ? this.caseId : this.namespaceId
     if (!id) return { success: false, error: 'No active scope' }
-    this.isUploading.set(true)
+    const uploading = isCase ? this.caseUploading : this.namespaceUploading
+    uploading.set(true)
     const upload$ = isCase
       ? this.controller.uploadCaseFileExchange(id, file)
       : this.controller.uploadNamespaceFileExchange(id, file)
     return new Promise((resolve) => {
       upload$.subscribe({
         next: () => {
-          this.isUploading.set(false)
+          uploading.set(false)
           this.refreshManifest()
           resolve({ success: true })
         },
         error: (err: { status?: number; message?: string; error?: { message?: string } }) => {
-          this.isUploading.set(false)
+          uploading.set(false)
           resolve({ success: false, error: this.uploadErrorMessage(err) })
         },
       })

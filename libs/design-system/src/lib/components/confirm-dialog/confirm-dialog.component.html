@@ -10,15 +10,15 @@
       role="dialog"
       aria-modal="true"
       [attr.aria-label]="title || null"
+      [attr.aria-describedby]="message ? messageId : null"
       tabindex="-1"
-      (keydown.escape)="onCancel()"
       (keydown.enter)="onEnter($event)"
     >
       @if (title) {
         <h2 class="ds-confirm-dialog__title">{{ title }}</h2>
       }
       @if (message) {
-        <p class="ds-confirm-dialog__message">{{ message }}</p>
+        <p [id]="messageId" class="ds-confirm-dialog__message">{{ message }}</p>
       }
 
       <div class="ds-confirm-dialog__actions">

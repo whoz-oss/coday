@@ -25,7 +25,7 @@
                   icon="upload_file"
                   variant="primary"
                   title="Upload a file"
-                  [disabled]="isUploading()"
+                  [disabled]="caseUploading()"
                   (action)="triggerUpload(CASE)"
                 />
               } @else {
@@ -42,7 +42,7 @@
             </div>
           </div>
 
-          @if (isUploading()) {
+          @if (caseUploading()) {
             <p class="exchange-drawer__inflight">Uploading…</p>
           }
 
@@ -89,7 +89,7 @@
                   icon="upload_file"
                   variant="primary"
                   title="Upload a file"
-                  [disabled]="isUploading()"
+                  [disabled]="namespaceUploading()"
                   (action)="triggerUpload(NAMESPACE)"
                 />
               } @else {
