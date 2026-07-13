@@ -572,6 +572,11 @@ class CaseServiceImpl(
                 caseCreatedAt = runtime.caseCreatedAt,
                 userId = userId,
                 caseEventsProvider = eventsProvider,
+                emitEvent = { event ->
+                    val saved = storeEvent(event)
+                    runtime.emitEvent(saved)
+                    saved
+                },
             )
         val agent = agentService.findAgentByName(agentName, context, this)
 

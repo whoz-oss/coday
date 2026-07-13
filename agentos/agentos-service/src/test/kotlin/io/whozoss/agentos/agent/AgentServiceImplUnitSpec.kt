@@ -20,6 +20,7 @@ import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthServiceFactory
+import io.whozoss.agentos.auth.OAuthFlowService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
@@ -60,6 +61,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val toolMetricsService: ToolMetricsService = mockk(relaxed = true)
     private val caseEventService: CaseEventService = mockk(relaxed = true)
     private val authServiceFactory: AuthServiceFactory = mockk(relaxed = true)
+    private val oAuthFlowService: OAuthFlowService = mockk(relaxed = true)
     private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
@@ -80,6 +82,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             toolMetricsService = toolMetricsService,
             caseEventService = caseEventService,
             authServiceFactory = authServiceFactory,
+            oAuthFlowService = oAuthFlowService,
             exchangeStorageService = exchangeStorageService,
             exchangeCapabilityService = exchangeCapabilityService,
             agentDocumentResolver = agentDocumentResolver,
@@ -529,6 +532,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolMetricsService = toolMetricsService,
                     caseEventService = caseEventService,
                     authServiceFactory = authServiceFactory,
+                    oAuthFlowService = oAuthFlowService,
                     exchangeStorageService = exchangeStorageService,
                     exchangeCapabilityService = exchangeCapabilityService,
                     agentDocumentResolver = agentDocumentResolver,

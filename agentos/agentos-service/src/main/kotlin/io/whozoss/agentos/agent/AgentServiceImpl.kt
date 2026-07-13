@@ -7,7 +7,9 @@ import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthServiceFactory
+import io.whozoss.agentos.auth.OAuthFlowService
 import io.whozoss.agentos.sdk.auth.CredentialProvider
+import io.whozoss.agentos.sdk.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.delegation.DelegationTool
@@ -61,6 +63,7 @@ class AgentServiceImpl(
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
     private val authServiceFactory: AuthServiceFactory,
+    private val oAuthFlowService: OAuthFlowService,
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val agentDocumentResolver: AgentDocumentResolver,
@@ -237,7 +240,23 @@ class AgentServiceImpl(
                 val svc = authServiceFactory.create(context.namespaceId, userId)
                 val provider: CredentialProvider = {
                     val setting = svc.resolveAuthSetting(authSettingName)
-                    svc.resolveCredential(setting.metadata.id)
+                    if (setting.authType in OAUTH_AUTH_TYPES && context.caseId != null && context.emitEvent != null) {
+                        // OAuth types: delegate to OAuthFlowService for full lifecycle
+                        // (check existing -> refresh -> interactive via QuestionEvent).
+                        kotlinx.coroutines.runBlocking {
+                            oAuthFlowService.resolveOAuthCredential(
+                                userId = userId,
+                                authSetting = setting,
+                                namespaceId = context.namespaceId,
+                                caseId = context.caseId,
+                                agentId = UUID.nameUUIDFromBytes(agentConfig.name.toByteArray()),
+                                agentName = agentConfig.name,
+                                emitEvent = context.emitEvent,
+                            )
+                        }
+                    } else {
+                        svc.resolveCredential(setting.metadata.id)
+                    }
                 }
                 provider
             }
@@ -690,5 +709,12 @@ class AgentServiceImpl(
         return tools
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        private val OAUTH_AUTH_TYPES =
+            setOf(
+                AuthType.OAUTH_DISCOVERABLE,
+                AuthType.OAUTH_REGISTERED,
+                AuthType.OAUTH_CUSTOM,
+            )
+    }
 }
