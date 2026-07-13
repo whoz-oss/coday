@@ -1,3 +1,13 @@
+## 0.211.0 (2026-07-13)
+
+### 🚀 Features
+
+- collapsable sidebar drawer with hover chevron and floating menu button ([#1128](https://github.com/whoz-oss/coday/pull/1128), [#1127](https://github.com/whoz-oss/coday/issues/1127))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.210.0 (2026-07-13)
 
 ### 🚀 Features
