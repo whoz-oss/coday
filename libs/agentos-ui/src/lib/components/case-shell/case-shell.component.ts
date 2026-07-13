@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core'
-import { toSignal } from '@angular/core/rxjs-interop'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core'
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   Case,
@@ -7,7 +7,7 @@ import {
   NamespaceControllerService,
   NamespaceListItem,
 } from '@whoz-oss/agentos-api-client'
-import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { BehaviorSubject, debounceTime, map, skip, switchMap } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
 import { THEME_PORT, ThemeMode } from '../../services/theme.service'
@@ -52,6 +52,7 @@ export class CaseShellComponent {
   private readonly namespaceController = inject(NamespaceControllerService)
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
+  private readonly destroyRef = inject(DestroyRef)
 
   // ---------------------------------------------------------------------------
   // User
@@ -82,14 +83,17 @@ export class CaseShellComponent {
   // UI state
   // ---------------------------------------------------------------------------
 
-  /** Sidebar width in pixels — adjustable via drag handle */
-  protected readonly sidebarWidth = signal(300)
+  /** Sidebar width in pixels — adjustable via drag handle, persisted in localStorage */
+  protected readonly sidebarWidth = signal(Number(localStorage.getItem('agentos.sidebar.width')) || 300)
 
   /** Whether the user context menu is open */
   protected readonly menuOpen = signal(false)
 
   /** Whether the namespace dropdown is open */
   protected readonly nsMenuOpen = signal(false)
+
+  /** Whether the desktop sidebar is expanded — persisted in localStorage */
+  protected readonly sidebarOpen = signal(localStorage.getItem('agentos.sidebar.open') !== 'false')
 
   /** Whether the mobile case switcher is open */
   protected readonly mobileSwitcherOpen = signal(false)
@@ -134,6 +138,17 @@ export class CaseShellComponent {
   protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
 
   constructor() {
+    // Load the current user eagerly so isAdmin() and userInitials() are available
+    // as soon as the shell renders, without waiting for a /me navigation.
+    if (!this.userState.currentUser()) {
+      this.userState.loadMe().pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
+    }
+
+    // Persist sidebar width to localStorage, debounced to avoid writing on every drag pixel.
+    toObservable(this.sidebarWidth)
+      .pipe(skip(1), debounceTime(300), takeUntilDestroyed(this.destroyRef))
+      .subscribe((width) => localStorage.setItem('agentos.sidebar.width', String(width)))
+
     // Sync selectedNamespace whenever namespaces load or the ?ns param changes.
     // When no ?ns is present, auto-select the first namespace and update the URL.
     effect(() => {
@@ -196,6 +211,16 @@ export class CaseShellComponent {
 
   protected navigateHome(): void {
     this.router.navigate(['/agentos/home'])
+  }
+
+  protected collapseSidebar(): void {
+    this.sidebarOpen.set(false)
+    localStorage.setItem('agentos.sidebar.open', 'false')
+  }
+
+  protected expandSidebar(): void {
+    this.sidebarOpen.set(true)
+    localStorage.setItem('agentos.sidebar.open', 'true')
   }
 
   protected onMenuNavigate(path: string): void {

@@ -288,6 +288,7 @@ class AgentServiceImpl(
 
         return createAgentInstance(
             agentName = definition.name,
+            agentId = definition.agentConfigId,
             resolvedInstructions = definition.instructions,
             resolvedSystemPrompt = definition.systemPrompt,
             advancedExecution = definition.advancedExecution,
@@ -344,6 +345,7 @@ class AgentServiceImpl(
      */
     private fun createAgentInstance(
         agentName: String,
+        agentId: UUID,
         resolvedInstructions: String?,
         resolvedSystemPrompt: String?,
         advancedExecution: Boolean,
@@ -362,7 +364,6 @@ class AgentServiceImpl(
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
 
         return if (advancedExecution) {
-            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
             val advancedContext =
                 AgentAdvancedContext(
                     chatClient = chatClient,
@@ -387,7 +388,7 @@ class AgentServiceImpl(
             )
         } else {
             AgentSimple(
-                metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
+                metadata = EntityMetadata(id = agentId),
                 name = agentName,
                 chatClient = chatClient,
                 tools = resolvedTools,
