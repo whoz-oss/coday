@@ -349,6 +349,30 @@ class Neo4jPermissionRepository(
             throw e
         }
 
+    override fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean =
+        try {
+            permissionNodeRepository.promoteMemberToAdmin(
+                userId = userId,
+                entityId = entityId,
+                entityLabel = entityType.label,
+            ) > 0
+        } catch (e: Exception) {
+            logger.error(e) { "Error promoting MEMBER to ADMIN for user=$userId on $entityType:$entityId" }
+            throw e
+        }
+
+    override fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean =
+        try {
+            permissionNodeRepository.demoteAdminToMember(
+                userId = userId,
+                entityId = entityId,
+                entityLabel = entityType.label,
+            ) > 0
+        } catch (e: Exception) {
+            logger.error(e) { "Error demoting ADMIN to MEMBER for user=$userId on $entityType:$entityId" }
+            throw e
+        }
+
     override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
         try {
             val result = mutableMapOf<String, DirectRelation>()

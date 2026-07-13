@@ -129,6 +129,27 @@ interface PermissionService {
     ): Set<String>
 
     /**
+     * Atomically promotes a [:MEMBER] relation to [:ADMIN], preserving all relation
+     * properties (e.g. `starred`). Prefer over `revokePermission(MEMBER)` +
+     * `grantPermission(ADMIN)` when upgrading an existing relation — the two-step
+     * approach silently drops properties stored on the old relation.
+     *
+     * @return true if a [:MEMBER] edge was found and promoted; false if the user had
+     *   no MEMBER relation (the [:ADMIN] edge is still created in that case).
+     */
+    fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean
+
+    /**
+     * Atomically demotes a [:ADMIN] relation to [:MEMBER], preserving all relation
+     * properties (e.g. `starred`). Prefer over `revokePermission(ADMIN)` +
+     * `grantPermission(MEMBER)` when downgrading an existing relation.
+     *
+     * @return true if a [:ADMIN] edge was found and demoted; false if the user had
+     *   no ADMIN relation (the [:MEMBER] edge is still created in that case).
+     */
+    fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean
+
+    /**
      * Sets the caller's per-user favorite flag on their direct relation to an entity.
      * @return true if a direct relation was updated, false if the user has none.
      */

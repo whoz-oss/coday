@@ -228,6 +228,63 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             permissionService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), true) shouldBe true
         }
 
+        "starred flag survives a MEMBER-to-ADMIN promotion via syncUserRoles (grantPermission path)" {
+            val user = createUser()
+            val namespace = createNamespace()
+            val case = createCase(namespace.id)
+            val caseId = case.id.toString()
+            val userId = user.id.toString()
+
+            // User starts as MEMBER and stars the case.
+            permissionNodeRepository.createMemberPermission(
+                userId = userId,
+                entityId = caseId,
+                entityLabel = "Case",
+            )
+            permissionNodeRepository.setStarred(
+                userId = userId,
+                entityId = caseId,
+                entityLabel = "Case",
+                starred = true,
+            )
+            starredIds(userId) shouldContain caseId
+
+            // Simulate the promote path: atomic MEMBER -> ADMIN preserving properties.
+            permissionService.promoteMemberToAdmin(userId, EntityType.CASE, caseId)
+
+            // The relation is now ADMIN, and the starred flag must still be set.
+            val relations = permissionService.listDirectRelations(userId, EntityType.CASE)
+            relations[caseId] shouldBe DirectRelation(PermissionRelation.ADMIN, starred = true)
+        }
+
+        "starred flag survives an ADMIN-to-MEMBER demotion via syncUserRoles" {
+            val user = createUser()
+            val namespace = createNamespace()
+            val case = createCase(namespace.id)
+            val caseId = case.id.toString()
+            val userId = user.id.toString()
+
+            // User starts as ADMIN and stars the case.
+            permissionNodeRepository.createAdminPermission(
+                userId = userId,
+                entityId = caseId,
+                entityLabel = "Case",
+            )
+            permissionNodeRepository.setStarred(
+                userId = userId,
+                entityId = caseId,
+                entityLabel = "Case",
+                starred = true,
+            )
+            starredIds(userId) shouldContain caseId
+
+            // Atomic ADMIN -> MEMBER preserving properties.
+            permissionService.demoteAdminToMember(userId, EntityType.CASE, caseId)
+
+            val relations = permissionService.listDirectRelations(userId, EntityType.CASE)
+            relations[caseId] shouldBe DirectRelation(PermissionRelation.MEMBER, starred = true)
+        }
+
         "listDirectRelations returns the caller's relation and starred flag per entity (and omits un-related ones)" {
             val user = createUser()
             val namespace = createNamespace()

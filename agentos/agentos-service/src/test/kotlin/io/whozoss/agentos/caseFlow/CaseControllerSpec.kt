@@ -21,6 +21,8 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import org.springframework.http.HttpStatus
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**

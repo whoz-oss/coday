@@ -139,4 +139,29 @@ interface PermissionRepository {
      * round-trip so list endpoints can enrich each resource without a per-row query.
      */
     fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation>
+
+    /**
+     * Atomically promotes a [:MEMBER] relation to [:ADMIN], preserving all properties
+     * (e.g. `starred`) from the old relation.
+     *
+     * Prefer this over `revokePermission(MEMBER)` + `grantPermission(ADMIN)` when a
+     * direct [:MEMBER] relation already exists and must be upgraded — the two-step
+     * approach silently drops relation properties.
+     *
+     * @return true if a [:MEMBER] edge was found and promoted; false if the user had
+     *   no MEMBER relation on the entity (the [:ADMIN] edge is still created in that case).
+     */
+    fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean
+
+    /**
+     * Atomically demotes a [:ADMIN] relation to [:MEMBER], preserving all properties
+     * (e.g. `starred`) from the old relation.
+     *
+     * Prefer this over `revokePermission(ADMIN)` + `grantPermission(MEMBER)` when a
+     * direct [:ADMIN] relation already exists and must be downgraded.
+     *
+     * @return true if a [:ADMIN] edge was found and demoted; false if the user had
+     *   no ADMIN relation on the entity (the [:MEMBER] edge is still created in that case).
+     */
+    fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean
 }

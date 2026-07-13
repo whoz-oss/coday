@@ -195,6 +195,38 @@ class PermissionServiceImpl(
         }
     }
 
+    override fun promoteMemberToAdmin(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean {
+        return try {
+            val promoted = permissionRepository.promoteMemberToAdmin(userId, entityType, entityId)
+            permissionCache.clear()
+            logger.info { "Promoted MEMBER to ADMIN for user=$userId on $entityType:$entityId (hadMember=$promoted)" }
+            promoted
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to promote MEMBER to ADMIN: user=$userId, entity=$entityType:$entityId" }
+            throw e
+        }
+    }
+
+    override fun demoteAdminToMember(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean {
+        return try {
+            val demoted = permissionRepository.demoteAdminToMember(userId, entityType, entityId)
+            permissionCache.clear()
+            logger.info { "Demoted ADMIN to MEMBER for user=$userId on $entityType:$entityId (hadAdmin=$demoted)" }
+            demoted
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to demote ADMIN to MEMBER: user=$userId, entity=$entityType:$entityId" }
+            throw e
+        }
+    }
+
     override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean =
         permissionRepository.setStarred(userId, entityType, entityId, starred)
 

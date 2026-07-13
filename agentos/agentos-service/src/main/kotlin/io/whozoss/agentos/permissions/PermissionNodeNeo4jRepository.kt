@@ -148,6 +148,52 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("entityLabel") entityLabel: String,
     )
 
+    /**
+     * Atomically promotes a [:MEMBER] relation to [:ADMIN], preserving all properties
+     * (notably `starred`) from the old relation onto the new one.
+     *
+     * Returns the number of [:MEMBER] relations deleted (0 = user had no MEMBER edge;
+     * 1 = promotion succeeded). The [:ADMIN] edge is always created-or-kept regardless.
+     */
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})-[old:MEMBER]->(e {id: $entityId})
+        WHERE $entityLabel IN labels(e)
+        MERGE (u)-[newRel:ADMIN]->(e)
+        SET newRel += properties(old)
+        DELETE old
+        RETURN count(old)
+    """,
+    )
+    fun promoteMemberToAdmin(
+        @Param("userId") userId: String,
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): Long
+
+    /**
+     * Atomically demotes a [:ADMIN] relation to [:MEMBER], preserving all properties
+     * (notably `starred`) from the old relation onto the new one.
+     *
+     * Returns the number of [:ADMIN] relations deleted (0 = user had no ADMIN edge;
+     * 1 = demotion succeeded). The [:MEMBER] edge is always created-or-kept regardless.
+     */
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})-[old:ADMIN]->(e {id: $entityId})
+        WHERE $entityLabel IN labels(e)
+        MERGE (u)-[newRel:MEMBER]->(e)
+        SET newRel += properties(old)
+        DELETE old
+        RETURN count(old)
+    """,
+    )
+    fun demoteAdminToMember(
+        @Param("userId") userId: String,
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): Long
+
     // Star / favorite — a per-user boolean property on the user↔entity relation.
 
     @Query(
