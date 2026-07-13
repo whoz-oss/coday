@@ -1,4 +1,8 @@
-<div class="shell-sidebar" [style.width.px]="sidebarOpen() ? sidebarWidth() : 0">
+<div
+  class="shell-sidebar"
+  [style.width.px]="effectiveWidth()"
+  [style.overflow]="effectiveWidth() === 0 ? 'hidden' : 'visible'"
+>
   <!-- Top: logo + namespace picker + user menu -->
   <div class="shell-sidebar__top">
     <button
@@ -16,59 +20,73 @@
       }
     </button>
 
-    <!-- Namespace picker (inline, next to logo) -->
-    <div class="shell-sidebar__ns-wrap">
-      @if (showNsPicker()) {
-        <div class="shell-sidebar__ns-picker">
-          <button class="shell-sidebar__ns-trigger" (click)="nsMenuToggled.emit()">
-            <span class="shell-sidebar__ns-name">{{ selectedNamespace()?.name ?? 'Select namespace' }}</span>
-            <span class="shell-sidebar__ns-chevron">&#9662;</span>
-          </button>
+    <!-- Namespace picker — hidden in compact mode -->
+    @if (!isCompact()) {
+      <div class="shell-sidebar__ns-wrap">
+        @if (showNsPicker()) {
+          <div class="shell-sidebar__ns-picker">
+            <button
+              class="shell-sidebar__ns-trigger"
+              [class.shell-sidebar__ns-trigger--open]="nsMenuOpen()"
+              (click)="nsMenuToggled.emit()"
+            >
+              <span class="shell-sidebar__ns-mark">{{ nsInitial(selectedNamespace()?.name) }}</span>
+              <span class="shell-sidebar__ns-name">{{ selectedNamespace()?.name ?? 'Select namespace' }}</span>
+              <span class="shell-sidebar__ns-chevron">&#9662;</span>
+            </button>
 
-          @if (nsMenuOpen()) {
-            <div class="shell-sidebar__ns-menu">
-              @for (ns of namespaces(); track ns.id) {
-                <button
-                  class="shell-sidebar__ns-item"
-                  [class.shell-sidebar__ns-item--active]="ns.id === selectedNamespace()?.id"
-                  (click)="namespaceSelected.emit(ns)"
-                >
-                  <span class="shell-sidebar__ns-item-name">{{ ns.name }}</span>
-                  @if (ns.id === selectedNamespace()?.id) {
-                    <span>&#10003;</span>
-                  }
-                </button>
-              }
-            </div>
-          }
-        </div>
-      } @else {
-        <span class="shell-sidebar__ns-name-static">{{ selectedNamespace()?.name }}</span>
-      }
-    </div>
-
-    <!-- User context menu -->
-    <div class="shell-sidebar__user-menu">
-      <button class="shell-sidebar__user-btn" type="button" title="Menu" (click)="menuToggled.emit($event)">
-        @if (userInitials()) {
-          {{ userInitials() }}
+            @if (nsMenuOpen()) {
+              <div class="shell-sidebar__ns-menu">
+                @for (ns of namespaces(); track ns.id) {
+                  <button
+                    class="shell-sidebar__ns-item"
+                    [class.shell-sidebar__ns-item--active]="ns.id === selectedNamespace()?.id"
+                    (click)="namespaceSelected.emit(ns)"
+                  >
+                    <span class="shell-sidebar__ns-item-mark">{{ nsInitial(ns.name) }}</span>
+                    <span class="shell-sidebar__ns-item-name">{{ ns.name }}</span>
+                    @if (ns.id === selectedNamespace()?.id) {
+                      <span class="shell-sidebar__ns-item-check">&#10003;</span>
+                    }
+                  </button>
+                }
+              </div>
+            }
+          </div>
         } @else {
-          &bull;&bull;&bull;
+          <!-- Single namespace: non-clickable display -->
+          <div class="shell-sidebar__ns-trigger shell-sidebar__ns-trigger--readonly">
+            <span class="shell-sidebar__ns-mark">{{ nsInitial(selectedNamespace()?.name) }}</span>
+            <span class="shell-sidebar__ns-name">{{ selectedNamespace()?.name }}</span>
+          </div>
         }
-      </button>
+      </div>
+    }
 
-      <agentos-shell-user-menu
-        [open]="menuOpen()"
-        [isAdmin]="isAdmin()"
-        [isDark]="isDark()"
-        [showTechnical]="showTechnical()"
-        variant="desktop"
-        (navigateTo)="navigateTo.emit($event)"
-        (themeToggled)="themeToggled.emit()"
-        (logsToggled)="logsToggled.emit()"
-        (closed)="menuClosed.emit($event)"
-      />
-    </div>
+    <!-- User context menu — hidden in compact mode -->
+    @if (!isCompact()) {
+      <div class="shell-sidebar__user-menu">
+        <button class="shell-sidebar__user-btn" type="button" title="Menu" (click)="menuToggled.emit($event)">
+          @if (userInitials()) {
+            {{ userInitials() }}
+          } @else {
+            &bull;&bull;&bull;
+          }
+        </button>
+
+        <agentos-shell-user-menu
+          [open]="menuOpen()"
+          [isAdmin]="isAdmin()"
+          [isDark]="isDark()"
+          [showTechnical]="showTechnical()"
+          variant="desktop"
+          (navigateTo)="navigateTo.emit($event)"
+          (themeToggled)="themeToggled.emit()"
+          (logsToggled)="logsToggled.emit()"
+          (closed)="menuClosed.emit($event)"
+        />
+      </div>
+    }
   </div>
 
   <!-- Case list -->
@@ -76,8 +94,20 @@
     <agentos-case-drawer
       [cases]="cases()"
       [activeCaseId]="activeCaseId()"
+      [compact]="isCompact()"
       (caseSelected)="caseSelected.emit($event)"
       (createRequested)="createRequested.emit()"
     />
   </div>
+
+  <!-- Compact toggle: chevron pill on the right border, vertically centered -->
+  <button
+    type="button"
+    class="shell-sidebar__compact-toggle"
+    [class.shell-sidebar__compact-toggle--compact]="isCompact()"
+    [title]="isCompact() ? 'Expand drawer' : 'Collapse to icons'"
+    (click)="toggleCompact()"
+  >
+    <span class="material-icons shell-sidebar__compact-toggle-icon">chevron_left</span>
+  </button>
 </div>

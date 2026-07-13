@@ -30,6 +30,11 @@ export interface CaseTreeItem extends EntityListItem {
  * - **Tree mode** (no active search): root cases are shown with expandable sub-cases.
  * - **Flat mode** (search active): all matching cases at every depth level are shown
  *   as a flat list, including sub-cases. Matching is done on title AND case ID.
+ *
+ * Compact mode (compact input = true):
+ * - Hides the ds-entity-list chrome entirely
+ * - Shows only a vertical list of case initials badges
+ * - Placeholder for future status icons
  */
 @Component({
   selector: 'agentos-case-drawer',
@@ -41,6 +46,7 @@ export interface CaseTreeItem extends EntityListItem {
 export class CaseDrawerComponent {
   readonly cases = input<Case[]>([])
   readonly activeCaseId = input<string | null>(null)
+  readonly compact = input<boolean>(false)
 
   readonly caseSelected = output<string>()
   readonly createRequested = output<void>()
@@ -57,6 +63,18 @@ export class CaseDrawerComponent {
    * Used in tree mode (no active search).
    */
   protected readonly rootItems = computed(() => buildTree(this.cases()))
+
+  /**
+   * Root items enriched with initials, used in compact/icons mode.
+   * Initials = first letter of the first two words of the title, uppercased.
+   * Placeholder for future status icons.
+   */
+  protected readonly compactItems = computed(() =>
+    this.rootItems().map((item) => ({
+      ...item,
+      initials: getInitials(item.name),
+    }))
+  )
 
   /**
    * Flat list of all cases matching the current search query.
@@ -118,6 +136,22 @@ export class CaseDrawerComponent {
   protected onCreateRequested(): void {
     this.createRequested.emit()
   }
+}
+
+/**
+ * Extract initials from a case title.
+ * Takes the first letter of each of the first two words, uppercased.
+ * Falls back to the first two characters of the string if only one word.
+ * Examples:
+ *   'Block deep work'   -> 'BD'
+ *   'Q3 travel policy'  -> 'QT'
+ *   'sync'              -> 'SY'
+ */
+function getInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  const first = words[0]?.[0] ?? ''
+  const second = words[1]?.[0] ?? words[0]?.[1] ?? ''
+  return (first + second).toUpperCase()
 }
 
 /** Build a tree of CaseTreeItem from a flat Case list, sorted newest first at every level. */
