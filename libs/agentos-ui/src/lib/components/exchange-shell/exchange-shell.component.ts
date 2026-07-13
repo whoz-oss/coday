@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, output, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
@@ -74,7 +74,7 @@ export class ExchangeShellComponent {
       }
     })
     // Release the shared exchange state when this shell is torn down.
-    this.destroyRef.onDestroy(() => this.state.clear())
+    effect((onCleanup) => onCleanup(() => this.state.clear()))
   }
 
   // ── View ──────────────────────────────────────────────────────────────────────
