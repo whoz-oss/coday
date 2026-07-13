@@ -10,6 +10,7 @@ import java.util.UUID
  * Carries the identifiers and live event history that a tool may need to:
  * - scope API calls to the correct namespace and user
  * - verify that a read operation was performed before a mutation (anti-hallucination guard)
+ * - resolve credentials for authenticated integrations
  *
  * @param namespaceId The namespace in which the current case is running.
  * @param userId The internal AgentOS UUID of the requesting user, or null when the
@@ -24,11 +25,9 @@ import java.util.UUID
  *   the context is not associated with a specific agent (e.g. tool-set resolution at
  *   namespace level). Plugins may use this to exclude the running agent from lists they
  *   build (e.g. the redirect tool excludes the calling agent from eligible targets).
- * @param credentialProvider A pre-scoped credential supplier bound to this integration's
- *   authSettingName. The provider already captures the resolved (namespace, user, authSetting)
- *   so plugins call `credentialProvider?.invoke()` to obtain their credential without handling
- *   identity resolution themselves. Returns null when no auth is configured for this
- *   integration or the user has not yet authenticated.
+ * @param credentialProvider Pre-scoped credential supplier for the integration this tool
+ *   belongs to. Returns the user's stored credential (OAuth tokens, API keys, etc.) or
+ *   null if not yet authenticated. Null when no AuthSetting is bound to the integration.
  */
 data class ToolContext(
     val namespaceId: UUID,

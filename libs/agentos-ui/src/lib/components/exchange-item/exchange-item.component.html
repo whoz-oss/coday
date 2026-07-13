@@ -1,0 +1,38 @@
+<div class="exchange-item" [class.exchange-item--active]="active()">
+  <button
+    class="exchange-item__main"
+    type="button"
+    [attr.data-exchange-path]="row().path"
+    [attr.aria-current]="active() ? 'true' : null"
+    [attr.aria-label]="'View ' + row().filename"
+    (click)="viewRequested.emit()"
+  >
+    <span class="exchange-item__icon material-icons" aria-hidden="true">{{ row().icon }}</span>
+    <span class="exchange-item__text">
+      <span class="exchange-item__name">{{ row().filename }}</span>
+      <span class="exchange-item__meta">
+        {{ row().meta }}
+        @for (badge of row().badges; track badge.label) {
+          <span class="exchange-item__badge exchange-item__badge--{{ badge.variant }}">{{ badge.label }}</span>
+        }
+      </span>
+    </span>
+  </button>
+
+  <div class="exchange-item__actions">
+    <ds-icon-button
+      icon="download"
+      variant="default"
+      [title]="'Download ' + row().filename"
+      (action)="downloadRequested.emit()"
+    />
+    @if (canWrite()) {
+      <ds-icon-button
+        icon="delete"
+        variant="danger"
+        [title]="'Delete ' + row().filename"
+        (action)="deleteRequested.emit()"
+      />
+    }
+  </div>
+</div>

@@ -36,7 +36,10 @@ export interface GroupedItems {
  */
 @Component({
   selector: 'ds-entity-list',
-  host: { '[attr.title]': 'null' },
+  host: {
+    '[attr.title]': 'null',
+    '[class.ds-entity-list--toolbar-only]': 'toolbarOnly()',
+  },
   imports: [MatExpansionModule, EntityCardComponent, NgTemplateOutlet],
   templateUrl: './entity-list.component.html',
   styleUrl: './entity-list.component.scss',
@@ -57,6 +60,7 @@ export class EntityListComponent implements AfterViewInit {
    * The search input remains visible; the parent receives the query via searchChanged.
    */
   readonly disableInternalFilter = input<boolean>(false)
+  readonly toolbarOnly = input<boolean>(false)
 
   readonly itemSelected = output<string>()
   readonly createRequested = output<void>()
