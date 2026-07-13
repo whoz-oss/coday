@@ -1,3 +1,13 @@
+## 0.210.0 (2026-07-13)
+
+### 🚀 Features
+
+- replace Coday label with inline namespace picker in sidebar, fix isAdmin on first load ([#1127](https://github.com/whoz-oss/coday/pull/1127))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.209.0 (2026-07-10)
 
 ### 🚀 Features
