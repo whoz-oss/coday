@@ -1,5 +1,6 @@
 package io.whozoss.agentos.integrationConfig
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
@@ -317,6 +318,12 @@ class IntegrationConfigController(
          - No Jackson type tags
          * - Null values omitted (via [toExportModel] filtering)
          */
+        /**
+         * YAML mapper configured for clean, human-readable output:
+         * - No `---` document start marker
+         * - No Jackson type tags
+         * - Null and empty values omitted (via [toExportModel] filtering + NON_EMPTY inclusion)
+         */
         private val YAML_MAPPER: ObjectMapper =
             ObjectMapper(
                 YAMLFactory
@@ -325,6 +332,7 @@ class IntegrationConfigController(
                     .build(),
             ).registerModule(KotlinModule.Builder().build())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
     }
 }
 
@@ -355,7 +363,6 @@ private fun toExportModel(entity: IntegrationConfig) =
         parameters = entity.parameters,
     )
 
-@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
 private data class IntegrationConfigExportModel(
     val name: String,
     val integrationType: String,

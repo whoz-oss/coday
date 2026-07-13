@@ -164,7 +164,7 @@ class FilesystemIntegrationConfigRepository(
         return IntegrationConfig(
             // Stable UUID derived from the name so identity survives restarts.
             // namespaceId is null here; it is overwritten by the caller.
-            metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("filesystem-integration:${model.name}".toByteArray())),
+            metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("filesystem-integration:${model.name}".toByteArray(Charsets.UTF_8))),
             namespaceId = null,
             userId = null,
             name = model.name,

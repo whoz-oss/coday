@@ -346,9 +346,8 @@ class AgentConfigControllerExportSpec : StringSpec({
         val c = config(name = "test-agent", description = "A test")
         every { service.findById(c.metadata.id) } returns c
 
-        val response = controller.export(c.metadata.id)
+        val body = controller.export(c.metadata.id).body
 
-        response.body shouldBe response.body // non-null assertion done via !! in body checks above
-        (response.body != null) shouldBe true
+        (body != null) shouldBe true
     }
 })
