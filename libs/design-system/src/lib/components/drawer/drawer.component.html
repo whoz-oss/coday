@@ -2,10 +2,10 @@
   <mat-sidenav
     class="ds-drawer__sidenav"
     [class.ds-drawer__sidenav--overlay]="isMobile()"
-    [style.width]="isMobile() && mobileFullWidth ? '100vw' : drawerWidth"
-    [opened]="open"
+    [style.width]="isMobile() && mobileFullWidth() ? '100vw' : drawerWidth()"
+    [opened]="open()"
     [mode]="drawerMode()"
-    [position]="position"
+    [position]="position()"
     (openedChange)="onOpenedChange($event)"
   >
     <ng-content select="[dsDrawerSide]" />

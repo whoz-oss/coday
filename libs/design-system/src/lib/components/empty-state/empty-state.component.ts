@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core'
+import { ChangeDetectionStrategy, Component, input } from '@angular/core'
 import { MatIcon } from '@angular/material/icon'
 
 /**
@@ -24,11 +24,11 @@ import { MatIcon } from '@angular/material/icon'
 })
 export class EmptyStateComponent {
   /** Optional Material icon name rendered above the title. */
-  @Input() icon?: string
+  readonly icon = input<string>()
 
   /** Primary message describing the empty state. */
-  @Input() title: string = ''
+  readonly title = input<string>('')
 
   /** Optional secondary text giving more context or next steps. */
-  @Input() hint?: string
+  readonly hint = input<string>()
 }

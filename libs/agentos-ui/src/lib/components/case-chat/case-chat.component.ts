@@ -44,6 +44,7 @@ import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
+import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 
 export interface ToolCall {
@@ -526,7 +527,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           if (event.type === 'ToolResponseEvent') {
             this.anyToolResponseThisTurn = true
             // The agent mutated the exchange filesystem → refresh the affected scope's drawer + badge live.
-            const mutatedScope = this.exchangeMutationScope((event as ToolResponseEvent).toolName)
+            const mutatedScope = exchangeMutationScope((event as ToolResponseEvent).toolName)
             if (mutatedScope === 'case') {
               this.exchangeState.refreshCase()
             } else if (mutatedScope === 'namespace') {
@@ -601,12 +602,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Whether any tool ran this turn — gates the end-of-turn exchange refresh (skips pure-chat turns). */
   private anyToolResponseThisTurn = false
-
-  /** The exchange scope a mutating file-plugin tool (create/edit/remove/move) acts on, or null. */
-  private exchangeMutationScope(toolName?: string): 'case' | 'namespace' | null {
-    const match = /^(case|namespace)-exchange__(editFiles|remove|moveFile)$/.exec(toolName ?? '')
-    return match ? (match[1] as 'case' | 'namespace') : null
-  }
 
   protected onInput(event: Event): void {
     const value = (event.target as HTMLTextAreaElement).value

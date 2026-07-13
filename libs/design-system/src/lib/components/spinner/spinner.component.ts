@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core'
+import { ChangeDetectionStrategy, Component, input } from '@angular/core'
 
 export type SpinnerSize = 'sm' | 'md' | 'lg'
 
@@ -22,8 +22,8 @@ export type SpinnerSize = 'sm' | 'md' | 'lg'
 })
 export class SpinnerComponent {
   /** Visual size of the spinner. */
-  @Input() size: SpinnerSize = 'md'
+  readonly size = input<SpinnerSize>('md')
 
   /** Accessible label announced to assistive technology. */
-  @Input() label: string = 'Loading'
+  readonly label = input<string>('Loading')
 }

@@ -1,14 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  DestroyRef,
-  inject,
-  OnDestroy,
-  OnInit,
-  output,
-  signal,
-} from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, output, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
@@ -35,7 +25,7 @@ import { ExchangeDrawerComponent } from '../exchange-drawer/exchange-drawer.comp
   styleUrl: './exchange-shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ExchangeShellComponent implements OnInit, OnDestroy {
+export class ExchangeShellComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly destroyRef = inject(DestroyRef)
   protected readonly state = inject(ExchangeStateService)
@@ -62,12 +52,13 @@ export class ExchangeShellComponent implements OnInit, OnDestroy {
   /** The case currently initialised, so an unrelated query-param change does not re-init. */
   private activeCaseId: string | null = null
 
-  ngOnInit(): void {
+  constructor() {
     // The case view is rendered directly by the case-shell (not through a router-outlet with
     // `:namespaceId/cases/:caseId` path params), so the active case/namespace come through query
     // params (`?ns=..&case=..`), mirroring case-chat. Subscribing (not reading the snapshot once)
     // re-initialises the drawer when the user switches case on the reused component instance.
-    this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+    // In the constructor injection context, takeUntilDestroyed() needs no explicit DestroyRef.
+    this.route.queryParams.pipe(takeUntilDestroyed()).subscribe((params) => {
       const namespaceId = params['ns'] as string | undefined
       const caseId = params['case'] as string | undefined
       if (namespaceId && caseId) {
@@ -82,10 +73,8 @@ export class ExchangeShellComponent implements OnInit, OnDestroy {
         this.state.clear()
       }
     })
-  }
-
-  ngOnDestroy(): void {
-    this.state.clear()
+    // Release the shared exchange state when this shell is torn down.
+    this.destroyRef.onDestroy(() => this.state.clear())
   }
 
   // ── View ──────────────────────────────────────────────────────────────────────

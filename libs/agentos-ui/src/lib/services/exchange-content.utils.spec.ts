@@ -1,6 +1,7 @@
 import {
   canViewFile,
   detectFormat,
+  exchangeMutationScope,
   formatSize,
   getFileIcon,
   isFormatViewable,
@@ -72,6 +73,24 @@ describe('exchange-content.utils', () => {
     it('pretty-prints valid JSON and leaves invalid JSON untouched', () => {
       expect(reindentJson('{"a":1}')).toBe('{\n  "a": 1\n}')
       expect(reindentJson('not json')).toBe('not json')
+    })
+  })
+
+  describe('exchangeMutationScope', () => {
+    it('maps mutating case/namespace exchange tools to their scope', () => {
+      expect(exchangeMutationScope('case-exchange__editFiles')).toBe('case')
+      expect(exchangeMutationScope('case-exchange__remove')).toBe('case')
+      expect(exchangeMutationScope('case-exchange__moveFile')).toBe('case')
+      expect(exchangeMutationScope('namespace-exchange__editFiles')).toBe('namespace')
+      expect(exchangeMutationScope('namespace-exchange__remove')).toBe('namespace')
+    })
+
+    it('returns null for read-only, unknown, or missing tool names', () => {
+      expect(exchangeMutationScope('case-exchange__readFile')).toBeNull()
+      expect(exchangeMutationScope('case-exchange__listFiles')).toBeNull()
+      expect(exchangeMutationScope('some-other-tool')).toBeNull()
+      expect(exchangeMutationScope('')).toBeNull()
+      expect(exchangeMutationScope(undefined)).toBeNull()
     })
   })
 })

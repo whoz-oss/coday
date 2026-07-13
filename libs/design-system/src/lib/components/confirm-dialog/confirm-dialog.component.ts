@@ -1,18 +1,4 @@
-import {
-  AfterViewChecked,
-  ChangeDetectionStrategy,
-  Component,
-  ElementRef,
-  EventEmitter,
-  Input,
-  OnChanges,
-  Output,
-  SimpleChanges,
-  ViewChild,
-} from '@angular/core'
-
-/** Per-instance counter so the message/title ids are unique across concurrently-rendered dialogs. */
-let dialogInstanceCounter = 0
+import { ChangeDetectionStrategy, Component, effect, ElementRef, input, output, viewChild } from '@angular/core'
 
 /**
  * DsConfirmDialog — an accessible confirmation dialog to replace native confirm()/alert().
@@ -21,7 +7,7 @@ let dialogInstanceCounter = 0
  * the matching output fires — the host is responsible for closing the dialog (set open=false).
  *
  * Accessibility:
- *   - role="dialog" + aria-modal="true", labelled by the title.
+ *   - role="dialog" + aria-modal="true", labelled by the title, described by the message.
  *   - Esc cancels, Enter confirms (when focus is not on a button, which activate natively).
  *   - The confirm button receives focus when the dialog opens.
  *
@@ -46,47 +32,41 @@ let dialogInstanceCounter = 0
   styleUrl: './confirm-dialog.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ConfirmDialogComponent implements OnChanges, AfterViewChecked {
+export class ConfirmDialogComponent {
   /** Dialog heading. */
-  @Input() title: string = ''
+  readonly title = input<string>('')
 
   /** Body text describing the action being confirmed. */
-  @Input() message: string = ''
+  readonly message = input<string>('')
 
   /** Label of the primary (confirm) button. */
-  @Input() confirmLabel: string = 'Confirm'
+  readonly confirmLabel = input<string>('Confirm')
 
   /** Label of the secondary (cancel) button. */
-  @Input() cancelLabel: string = 'Cancel'
+  readonly cancelLabel = input<string>('Cancel')
 
   /** Whether the dialog is visible. */
-  @Input() open: boolean = false
+  readonly open = input<boolean>(false)
 
   /** Emitted when the user confirms the action. */
-  @Output() confirmed = new EventEmitter<void>()
+  readonly confirmed = output<void>()
 
   /** Emitted when the user cancels (button, Esc or backdrop click). */
-  @Output() cancelled = new EventEmitter<void>()
+  readonly cancelled = output<void>()
 
-  @ViewChild('confirmButton') private confirmButton?: ElementRef<HTMLButtonElement>
+  private readonly confirmButton = viewChild<ElementRef<HTMLButtonElement>>('confirmButton')
 
   /** Stable id for the message paragraph, referenced by the dialog's aria-describedby. */
-  protected readonly messageId = `ds-confirm-dialog-message-${dialogInstanceCounter++}`
+  protected readonly messageId = `ds-confirm-dialog-message-${crypto.randomUUID()}`
 
-  private pendingFocus = false
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['open'] && this.open) {
-      // Defer the focus to ngAfterViewChecked: the button only exists once @if renders it.
-      this.pendingFocus = true
-    }
-  }
-
-  ngAfterViewChecked(): void {
-    if (this.pendingFocus && this.confirmButton) {
-      this.confirmButton.nativeElement.focus()
-      this.pendingFocus = false
-    }
+  constructor() {
+    // Focus the confirm button once the dialog is open and the button has rendered (@if open).
+    // The viewChild signal updates when the button appears, so this re-runs and focuses it.
+    effect(() => {
+      if (this.open()) {
+        this.confirmButton()?.nativeElement.focus()
+      }
+    })
   }
 
   protected onConfirm(): void {

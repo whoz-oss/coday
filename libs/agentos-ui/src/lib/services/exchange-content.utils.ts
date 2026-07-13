@@ -126,3 +126,13 @@ export function reindentJson(content: string): string {
     return content
   }
 }
+
+/**
+ * The exchange scope a mutating file-plugin tool (create/edit/remove/move) acts on, or null when
+ * the tool is not an exchange mutation. Drives the live manifest refresh in the case chat.
+ * Tool names follow `<case|namespace>-exchange__<tool>`.
+ */
+export function exchangeMutationScope(toolName?: string): 'case' | 'namespace' | null {
+  const match = /^(case|namespace)-exchange__(editFiles|remove|moveFile)$/.exec(toolName ?? '')
+  return match ? (match[1] as 'case' | 'namespace') : null
+}
