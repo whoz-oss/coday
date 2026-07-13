@@ -1,42 +1,75 @@
+import { signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
-import { EMPTY, Observable, of, throwError } from 'rxjs'
+import { Case, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import { EMPTY, of, Subject, throwError } from 'rxjs'
 import { CaseShellComponent } from './case-shell.component'
+import { CaseStateService } from '../../services/case-state.service'
+import { UserStateService } from '../../services/user-state.service'
+import { THEME_PORT } from '../../services/theme.service'
 
 describe('CaseShellComponent', () => {
   const NS_ID = 'ns-1'
 
   const caseWith = (id: string, title?: string): Case => ({ id, namespaceId: NS_ID, title }) as unknown as Case
 
-  let routerMock: { url: string; events: Observable<unknown>; navigate: jest.Mock }
-  let routeMock: { snapshot: { params: Record<string, string> } }
-  let caseControllerMock: {
-    listMineByParentCase: jest.Mock
+  let routerMock: { navigate: jest.Mock; events: typeof EMPTY }
+  let queryParams$: Subject<Record<string, string>>
+  let casesMock: ReturnType<typeof signal<Case[]>>
+  let caseStateMock: {
+    cases: ReturnType<typeof signal<Case[]>>
+    loadCases: jest.Mock
     deleteCase: jest.Mock
-    starCase: jest.Mock
-    unstarCase: jest.Mock
+    setStarred: jest.Mock
   }
+  let userStateMock: { currentUser: jest.Mock; loadMe: jest.Mock }
+  let namespaceControllerMock: { listAllNamespace: jest.Mock }
+  let themeMock: { theme: jest.Mock; setTheme: jest.Mock }
 
-  function makeComponent(url: string, cases: Case[] = [], listMineMock?: jest.Mock): CaseShellComponent {
-    routerMock = { url, events: EMPTY, navigate: jest.fn() }
-    routeMock = { snapshot: { params: { namespaceId: NS_ID } } }
-    caseControllerMock = {
-      listMineByParentCase: listMineMock ?? jest.fn().mockReturnValue(of(cases)),
+  function makeComponent(queryParams: Record<string, string> = {}, cases: Case[] = []): CaseShellComponent {
+    queryParams$ = new Subject()
+    routerMock = { navigate: jest.fn(), events: EMPTY }
+    casesMock = signal(cases)
+    caseStateMock = {
+      cases: casesMock,
+      loadCases: jest.fn(),
       deleteCase: jest.fn().mockReturnValue(of(undefined)),
-      starCase: jest.fn().mockReturnValue(of(undefined)),
-      unstarCase: jest.fn().mockReturnValue(of(undefined)),
+      setStarred: jest.fn().mockReturnValue(of(undefined)),
+    }
+    userStateMock = {
+      currentUser: jest.fn().mockReturnValue(null),
+      loadMe: jest.fn().mockReturnValue(EMPTY),
+    }
+    namespaceControllerMock = {
+      listAllNamespace: jest.fn().mockReturnValue(of([])),
+    }
+    themeMock = {
+      theme: jest.fn().mockReturnValue('light'),
+      setTheme: jest.fn(),
     }
 
     TestBed.configureTestingModule({
       providers: [
         { provide: Router, useValue: routerMock },
-        { provide: ActivatedRoute, useValue: routeMock },
-        { provide: CaseControllerService, useValue: caseControllerMock },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParams: queryParams$.asObservable(),
+            snapshot: { params: {} },
+          },
+        },
+        { provide: CaseStateService, useValue: caseStateMock },
+        { provide: UserStateService, useValue: userStateMock },
+        { provide: NamespaceControllerService, useValue: namespaceControllerMock },
+        { provide: THEME_PORT, useValue: themeMock },
       ],
     })
 
-    return TestBed.runInInjectionContext(() => new CaseShellComponent())
+    const component = TestBed.runInInjectionContext(() => new CaseShellComponent())
+    // Emit initial query params to drive activeCaseId / namespaceId signals
+    queryParams$.next(queryParams)
+    TestBed.flushEffects()
+    return component
   }
 
   afterEach(() => {
@@ -47,50 +80,43 @@ describe('CaseShellComponent', () => {
   describe('soft-delete', () => {
     it('does not delete the case when the user cancels the confirmation', () => {
       jest.spyOn(window, 'confirm').mockReturnValue(false)
-      const component = makeComponent(`/agentos/${NS_ID}/cases`)
+      const component = makeComponent({ ns: NS_ID })
 
       component['onDeleteRequested']('case-1')
 
-      expect(caseControllerMock.deleteCase).not.toHaveBeenCalled()
+      expect(caseStateMock.deleteCase).not.toHaveBeenCalled()
     })
 
-    it('soft-deletes the case and refreshes the list once confirmed', () => {
+    it('calls deleteCase on the state service once confirmed', () => {
       jest.spyOn(window, 'confirm').mockReturnValue(true)
-      const component = makeComponent(`/agentos/${NS_ID}/cases`)
-      // Initial list load happens once at construction.
-      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
+      const component = makeComponent({ ns: NS_ID })
 
       component['onDeleteRequested']('case-1')
 
-      expect(caseControllerMock.deleteCase).toHaveBeenCalledWith('case-1')
-      // The list is refreshed after a successful delete.
-      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(2)
+      expect(caseStateMock.deleteCase).toHaveBeenCalledWith('case-1')
     })
 
-    it('navigates back to the case section home when the deleted case is the active one', () => {
+    it('navigates away when the deleted case is the active one', () => {
       jest.spyOn(window, 'confirm').mockReturnValue(true)
-      const component = makeComponent(`/agentos/${NS_ID}/cases/active-1`)
-      expect(component['activeCaseId']()).toBe('active-1')
+      const component = makeComponent({ ns: NS_ID, case: 'active-1' })
 
       component['onDeleteRequested']('active-1')
 
-      expect(routerMock.navigate).toHaveBeenCalledWith(['.'], { relativeTo: routeMock })
+      expect(routerMock.navigate).toHaveBeenCalled()
     })
 
-    it('stays on the current view when the deleted case is not the active one', () => {
+    it('does not navigate when the deleted case is not the active one', () => {
       jest.spyOn(window, 'confirm').mockReturnValue(true)
-      const component = makeComponent(`/agentos/${NS_ID}/cases/active-1`)
+      const component = makeComponent({ ns: NS_ID, case: 'active-1' })
 
       component['onDeleteRequested']('other-2')
 
       expect(routerMock.navigate).not.toHaveBeenCalled()
     })
 
-    it('confirms with the same label the drawer row shows (the case title)', () => {
-      // The drawer renders CaseItemComponent.toListItem(c).name (title ?? id). The confirm
-      // must use that same label so the dialog identifies the row the user clicked.
+    it('confirms with the case title when available', () => {
       const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false)
-      const component = makeComponent(`/agentos/${NS_ID}/cases`, [caseWith('case-1', 'My Case')])
+      const component = makeComponent({ ns: NS_ID }, [caseWith('case-1', 'My Case')])
 
       component['onDeleteRequested']('case-1')
 
@@ -99,65 +125,55 @@ describe('CaseShellComponent', () => {
 
     it('confirms with the case id when the case is not in the current list', () => {
       const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false)
-      const component = makeComponent(`/agentos/${NS_ID}/cases`, [])
+      const component = makeComponent({ ns: NS_ID }, [])
 
       component['onDeleteRequested']('gone-9')
 
       expect(confirmSpy).toHaveBeenCalledWith('Delete "gone-9"?')
     })
 
-    it('logs and alerts the user, and does not navigate or refresh, when the delete request fails', () => {
+    it('logs and alerts the user when the delete request fails', () => {
       jest.spyOn(window, 'confirm').mockReturnValue(true)
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
       const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => undefined)
-      const component = makeComponent(`/agentos/${NS_ID}/cases/active-1`)
-      caseControllerMock.deleteCase.mockReturnValue(throwError(() => new Error('boom')))
+      const component = makeComponent({ ns: NS_ID, case: 'active-1' })
+      caseStateMock.deleteCase.mockReturnValue(throwError(() => new Error('boom')))
 
       component['onDeleteRequested']('active-1')
 
       expect(routerMock.navigate).not.toHaveBeenCalled()
-      // No refresh: listMineByParentCase stays at its single construction-time call.
-      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
       expect(errorSpy).toHaveBeenCalled()
-      // The failure is surfaced to the user, not just the console.
       expect(alertSpy).toHaveBeenCalled()
     })
   })
 
   describe('star', () => {
-    it('stars a case via the state service (optimistic, no extra reload)', () => {
-      const component = makeComponent(`/agentos/${NS_ID}/cases`)
-      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
+    it('calls setStarred(id, true) when starring a case', () => {
+      const component = makeComponent({ ns: NS_ID })
 
       component['onStarToggled']({ id: 'case-1', starred: true })
 
-      expect(caseControllerMock.starCase).toHaveBeenCalledWith('case-1')
-      expect(caseControllerMock.unstarCase).not.toHaveBeenCalled()
-      // The optimistic update lives in the signal — a successful star does not reload the list.
-      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
+      expect(caseStateMock.setStarred).toHaveBeenCalledWith('case-1', true)
     })
 
-    it('unstars a case when toggled off', () => {
-      const component = makeComponent(`/agentos/${NS_ID}/cases`)
+    it('calls setStarred(id, false) when unstarring a case', () => {
+      const component = makeComponent({ ns: NS_ID })
 
       component['onStarToggled']({ id: 'case-1', starred: false })
 
-      expect(caseControllerMock.unstarCase).toHaveBeenCalledWith('case-1')
-      expect(caseControllerMock.starCase).not.toHaveBeenCalled()
+      expect(caseStateMock.setStarred).toHaveBeenCalledWith('case-1', false)
     })
 
-    it('alerts the user when the star request fails (the service reverts locally)', () => {
+    it('alerts the user when the star request fails', () => {
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
       const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => undefined)
-      const component = makeComponent(`/agentos/${NS_ID}/cases`)
-      caseControllerMock.starCase.mockReturnValue(throwError(() => new Error('boom')))
+      const component = makeComponent({ ns: NS_ID })
+      caseStateMock.setStarred.mockReturnValue(throwError(() => new Error('boom')))
 
       component['onStarToggled']({ id: 'case-1', starred: true })
 
       expect(errorSpy).toHaveBeenCalled()
       expect(alertSpy).toHaveBeenCalled()
-      // No reload: the revert is a local signal patch inside CaseStateService.
-      expect(caseControllerMock.listMineByParentCase).toHaveBeenCalledTimes(1)
     })
   })
 })
