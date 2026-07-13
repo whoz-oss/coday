@@ -111,9 +111,9 @@
 
 .entity-list__create-btn {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   border: none;
   background: var(--color-primary, #016b71);
   color: #fff;
@@ -126,7 +126,7 @@
   transition: background 150ms;
 
   &:hover {
-    background: var(--color-primary-hover, #7cc0c7);
+    background: var(--color-primary-hover, #015a5f);
   }
 }
 

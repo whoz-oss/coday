@@ -12,7 +12,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: visible; // compact-toggle pill dépasse légèrement à droite
+  overflow: visible;
   position: relative;
   border-right: 1px solid var(--color-border);
   background: var(--color-bg);
@@ -28,8 +28,6 @@
     padding: 10px;
     border-bottom: 1px solid var(--color-border);
     flex-shrink: 0;
-    // overflow: hidden retiré — il clippait le dropdown __ns-menu (position: absolute).
-    // Le texte long est géré par text-overflow: ellipsis sur les éléments enfants.
     overflow: visible;
   }
 
@@ -72,22 +70,21 @@
   }
 
   &__user-btn {
+    @include ds.text-mark;
+
     width: 32px;
     height: 32px;
-    border-radius: 50%;
-    border: 1px solid var(--color-border);
-    background: color-mix(in srgb, var(--color-primary, #016b71) 15%, transparent);
+    border-radius: 8px;
+    border: none;
+    background: var(--color-primary, #016b71);
+    color: #fff;
     cursor: pointer;
     display: grid;
     place-items: center;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    color: var(--color-primary, #016b71);
-    transition: background 140ms;
+    transition: background 140ms ease;
 
     &:hover {
-      background: color-mix(in srgb, var(--color-primary, #016b71) 25%, transparent);
+      background: var(--color-primary-hover, #015a5f);
     }
   }
 
@@ -110,7 +107,7 @@
     align-items: center;
     gap: 8px;
     padding: 5px 8px 5px 5px;
-    border-radius: 10px;
+    border-radius: 8px;
     border: 1px solid var(--color-border);
     background: var(--color-bg-secondary);
     color: var(--color-text);
@@ -118,15 +115,12 @@
 
     &:hover {
       background: var(--color-bg-hover);
-      border-color: var(--color-border);
     }
 
     &--open {
       border-color: var(--color-primary);
-      background: var(--color-bg-secondary);
     }
 
-    // Non-clickable single namespace display
     &--readonly {
       cursor: default;
       pointer-events: none;
@@ -137,7 +131,6 @@
     @include ds.surface-mark;
     @include ds.text-mark;
 
-    // Smaller than the default 32px to fit the top bar
     width: 26px;
     height: 26px;
     border-radius: 6px;
@@ -209,7 +202,6 @@
   }
 
   // Case list
-
   &__cases-scroll {
     flex: 1;
     overflow-y: auto;

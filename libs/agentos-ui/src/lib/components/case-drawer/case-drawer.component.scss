@@ -40,16 +40,13 @@
       border-color: var(--color-border);
     }
 
-    // Active: surface-mark intent (dark bg, white text) + primary tint
     &--active {
-      background: var(--color-primary, #016b71);
-      border-color: var(--color-primary, #016b71);
-      color: #fff;
-      box-shadow: 0 1px 4px var(--color-shadow);
+      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+      border-color: var(--color-primary);
+      color: var(--color-primary);
 
       &:hover {
-        background: var(--color-primary-hover, #015a5f);
-        border-color: var(--color-primary-hover, #015a5f);
+        background: color-mix(in srgb, var(--color-primary) 18%, transparent);
       }
     }
   }
@@ -80,11 +77,11 @@
     }
 
     &--active {
-      background: var(--color-primary, #007aff);
-      color: var(--color-text-inverse, #fff);
+      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+      color: var(--color-primary);
 
       &:hover {
-        background: var(--color-primary-hover);
+        background: color-mix(in srgb, var(--color-primary) 18%, transparent);
       }
     }
   }
