@@ -1,3 +1,13 @@
+## 0.213.0 (2026-07-13)
+
+### 🚀 Features
+
+- #1018 add MCP_HTTP tool provider for remote MCP servers ([#1119](https://github.com/whoz-oss/coday/pull/1119), [#1018](https://github.com/whoz-oss/coday/issues/1018), [#1095](https://github.com/whoz-oss/coday/issues/1095), [#1096](https://github.com/whoz-oss/coday/issues/1096), [#1097](https://github.com/whoz-oss/coday/issues/1097))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.212.0 (2026-07-13)
 
 ### 🚀 Features
