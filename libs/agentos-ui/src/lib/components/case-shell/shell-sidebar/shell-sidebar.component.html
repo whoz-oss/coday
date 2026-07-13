@@ -78,6 +78,8 @@
       [activeCaseId]="activeCaseId()"
       (caseSelected)="caseSelected.emit($event)"
       (createRequested)="createRequested.emit()"
+      (deleteRequested)="deleteRequested.emit($event)"
+      (starToggled)="starToggled.emit($event)"
     />
   </div>
 </div>

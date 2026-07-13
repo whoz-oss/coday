@@ -1,13 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  Case,
-  CaseControllerService,
-  NamespaceControllerService,
-  NamespaceListItem,
-} from '@whoz-oss/agentos-api-client'
-import { BehaviorSubject, debounceTime, map, skip, switchMap } from 'rxjs'
+import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
+import { debounceTime, map, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
 import { THEME_PORT, ThemeMode } from '../../services/theme.service'

@@ -58,9 +58,12 @@ export class CaseDrawerComponent {
 
   /**
    * Tree rebuilt automatically when cases() changes.
-   * Grouped by favorites when at least one root is favorited.
+   * Favorites are promoted to the top; remaining roots are bucketed by creation date.
    */
-  protected readonly rootItems = computed(() => groupFavorites(buildTree(this.cases())))
+  protected readonly rootItems = computed(() => {
+    const { roots, createdAt } = buildTree(this.cases())
+    return groupFavorites(roots, createdAt)
+  })
 
   /**
    * Flat list of all cases matching the current search query.
@@ -160,27 +163,113 @@ export class CaseDrawerComponent {
   }
 }
 
-/**
- * Group the root nodes into "Favorites" / "Others" accordion sections (favorites first)
- * when at least one root is favorited; otherwise leave them ungrouped (flat tree).
- *
- * Grouping is applied at the root level only — a favorited sub-case stays nested under its
- * parent (its favorite state is reachable via the row's "⋯" menu), rather than being lifted
- * out of the hierarchy.
- */
-function groupFavorites(roots: CaseTreeItem[]): CaseTreeItem[] {
-  if (!roots.some((r) => r.favorite)) return roots
-  // Stable sort keeps the newest-first order within each section.
-  const sorted = [...roots].sort((a, b) => Number(b.favorite) - Number(a.favorite))
-  for (const root of sorted) {
-    root.groupKey = root.favorite ? 'favorites' : 'others'
-    root.groupLabel = root.favorite ? 'Favorites' : 'Others'
-  }
-  return sorted
+// ── Time-bucket helpers ──────────────────────────────────────────────────────
+
+type TimeBucket = 'today' | 'this-week' | 'last-month' | 'older'
+
+const BUCKET_ORDER: TimeBucket[] = ['today', 'this-week', 'last-month', 'older']
+
+const BUCKET_LABEL: Record<TimeBucket, string> = {
+  today: 'Today',
+  'this-week': 'This week',
+  'last-month': 'Last month',
+  older: 'Older',
 }
 
-/** Build a tree of CaseTreeItem from a flat Case list, sorted newest first at every level. */
-function buildTree(cases: Case[]): CaseTreeItem[] {
+function timeBucket(isoDate: string | undefined, now: Date): TimeBucket {
+  if (!isoDate) return 'older'
+  const d = new Date(isoDate)
+  if (isNaN(d.getTime())) return 'older'
+
+  const startOfToday = new Date(now)
+  startOfToday.setHours(0, 0, 0, 0)
+
+  const startOfWeek = new Date(startOfToday)
+  startOfWeek.setDate(startOfToday.getDate() - startOfToday.getDay())
+
+  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+
+  if (d >= startOfToday) return 'today'
+  if (d >= startOfWeek) return 'this-week'
+  if (d >= startOfLastMonth) return 'last-month'
+  return 'older'
+}
+
+/**
+ * Group nodes into "Favorites" + time-bucket sections.
+ *
+ * Favorited nodes (at any depth) are extracted from the tree and promoted to the
+ * top of the list under a "Favorites" group. Their children follow them.
+ *
+ * Non-favorited root nodes are then distributed into time-based buckets
+ * (Today / This week / Last month / Older) based on their `created` date.
+ * Empty buckets are omitted.
+ */
+function groupFavorites(roots: CaseTreeItem[], createdAt: Map<string, string>): CaseTreeItem[] {
+  // Extract favorites from the entire tree.
+  const promoted: CaseTreeItem[] = []
+  const prunedRoots = extractFavorites(roots, promoted)
+
+  for (const node of promoted) {
+    node.groupKey = 'favorites'
+    node.groupLabel = 'Favorites'
+  }
+
+  // Distribute remaining roots into time buckets.
+  const now = new Date()
+  const buckets = new Map<TimeBucket, CaseTreeItem[]>()
+  for (const node of prunedRoots) {
+    const bucket = timeBucket(createdAt.get(node.id), now)
+    if (!buckets.has(bucket)) buckets.set(bucket, [])
+    buckets.get(bucket)!.push(node)
+  }
+
+  const bucketed: CaseTreeItem[] = []
+  for (const key of BUCKET_ORDER) {
+    const group = buckets.get(key)
+    if (!group?.length) continue
+    for (const node of group) {
+      node.groupKey = key
+      node.groupLabel = BUCKET_LABEL[key]
+    }
+    bucketed.push(...group)
+  }
+
+  // If there are no favorites and only one non-empty bucket, skip grouping entirely
+  // to avoid a single section header wrapping the whole list.
+  const activeBuckets = BUCKET_ORDER.filter((k) => buckets.has(k))
+  if (!promoted.length && activeBuckets.length <= 1) {
+    return roots
+  }
+
+  return [...promoted, ...bucketed]
+}
+
+/**
+ * Recursively walk [nodes], collect favorited nodes into [favorites], and return
+ * the remaining (non-favorited) nodes with their children similarly pruned.
+ * The order within each group is preserved (newest-first from buildTree).
+ */
+function extractFavorites(nodes: CaseTreeItem[], favorites: CaseTreeItem[]): CaseTreeItem[] {
+  const remaining: CaseTreeItem[] = []
+  for (const node of nodes) {
+    // Recurse first so a favorited grandchild is extracted before we inspect the parent.
+    const prunedChildren = extractFavorites(node.children, favorites)
+    if (node.favorite) {
+      // Lift this node to favorites; keep its (already-pruned) children with it.
+      favorites.push({ ...node, children: prunedChildren, groupKey: undefined, groupLabel: undefined })
+    } else {
+      remaining.push({ ...node, children: prunedChildren })
+    }
+  }
+  return remaining
+}
+
+/**
+ * Build a tree of CaseTreeItem from a flat Case list, sorted newest first at every level.
+ * Returns both the root nodes and the createdAt map (needed by groupFavorites for bucketing).
+ */
+function buildTree(cases: Case[]): { roots: CaseTreeItem[]; createdAt: Map<string, string> } {
   const allIds = new Set(cases.map((c) => c.id ?? ''))
   const createdAt = new Map(cases.map((c) => [c.id ?? '', c.created ?? '']))
 
@@ -211,7 +300,7 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
       .sort((a, b) => ((createdAt.get(b.id) ?? '') > (createdAt.get(a.id) ?? '') ? 1 : -1))
       .map((item) => ({ ...item, children: sortDesc(item.children) }))
 
-  return sortDesc(roots)
+  return { roots: sortDesc(roots), createdAt }
 }
 
 /**
