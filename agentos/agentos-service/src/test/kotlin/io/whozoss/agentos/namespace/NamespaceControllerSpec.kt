@@ -14,6 +14,7 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.namespace.NamespaceDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -76,7 +77,7 @@ class NamespaceControllerSpec : StringSpec({
         configPath: String? = null,
         externalId: String? = null,
         defaultAgentName: String? = null,
-    ) = NamespaceResource(
+    ) = NamespaceDto(
         id = id,
         name = name,
         description = description,
@@ -91,28 +92,14 @@ class NamespaceControllerSpec : StringSpec({
     // Mapping
     // -------------------------------------------------------------------------
 
-    "toResource maps all fields including configPath" {
+    "toDto maps all fields including configPath" {
         val id = UUID.randomUUID()
-        controller.toResource(ns(id = id, name = "coday", description = "Coday project", configPath = "/opt/coday")) shouldBe
-            NamespaceResource(id = id, name = "coday", description = "Coday project", configPath = "/opt/coday")
+        ns(id = id, name = "coday", description = "Coday project", configPath = "/opt/coday").toDto() shouldBe
+            NamespaceDto(id = id, name = "coday", description = "Coday project", configPath = "/opt/coday")
     }
 
-    "toResource preserves null configPath" {
-        controller.toResource(ns(configPath = null)).configPath shouldBe null
-    }
-
-    "toDomain normalizes blank configPath to null" {
-        controller.toDomain(resource(configPath = "   ")).configPath shouldBe null
-    }
-
-    "toDomain normalizes empty string configPath to null" {
-        controller.toDomain(resource(configPath = "")).configPath shouldBe null
-    }
-
-    "toDomain generates a random UUID when resource id is null" {
-        val first = controller.toDomain(resource(id = null))
-        val second = controller.toDomain(resource(id = null))
-        (first.metadata.id == second.metadata.id) shouldBe false
+    "toDto preserves null configPath" {
+        ns(configPath = null).toDto().configPath shouldBe null
     }
 
     // -------------------------------------------------------------------------

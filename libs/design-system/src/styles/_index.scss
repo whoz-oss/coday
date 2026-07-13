@@ -1,0 +1,30 @@
+///
+/// Coday Design System — Styles Barrel
+///
+/// Single entry point that forwards all design system partials.
+/// Consumers import this file and access everything via a namespace:
+///
+///   @use 'libs/design-system/src/styles' as ds;
+///
+///   .my-card   { @include ds.surface-card; }
+///   .my-title  { @include ds.text-title; }
+///   .my-chip   { @include ds.chip; }
+///   .my-badge  { @include ds.badge-success; }
+///
+/// Variables are also forwarded and accessible via the namespace:
+///
+///   font-family: ds.$font-ui;
+///   font-family: ds.$font-code;
+///
+
+// ── Typography — font stacks, text-* mixins ───────────────────────────────────
+@forward 'typography';
+
+// ── Surfaces — card, clickable-card, dropdown, glass, mark ───────────────────
+@forward 'surfaces';
+
+// ── Interactive — chip, icon-button, menu-item, focus-ring, button-reset ─────
+@forward 'interactive';
+
+// ── Badges — badge-base, badge(), badge-success/warning/error/info ────────────
+@forward 'badges';

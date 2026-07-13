@@ -4,7 +4,7 @@
   height: 100%;
 }
 
-// ── Tree node (rendered inside ds-entity-list itemTemplate) ──────────────
+// ── Tree node (rendered inside ds-entity-list itemTemplate) ─────────────────────────────
 
 .case-tree-node {
   width: 100%;
@@ -15,9 +15,15 @@
     width: 100%;
     padding: 0.375rem 0.5rem;
     padding-left: calc(0.5rem + var(--depth, 0) * 1.25rem);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    font-size: 0.875rem;
+    color: var(--color-text, #1d1d1f);
     border-radius: 6px;
     gap: 0.375rem;
-    color: var(--color-text, #1d1d1f);
     transition: background 0.12s ease;
     box-sizing: border-box;
 
@@ -97,7 +103,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 500;
-    font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
+    font-family: var(--font-mono, 'SF Mono', ui-monospace, monospace);
     font-size: 0.8rem;
   }
 

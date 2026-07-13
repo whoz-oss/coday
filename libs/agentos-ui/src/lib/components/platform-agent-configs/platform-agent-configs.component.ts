@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { AgentConfig, AgentConfigControllerService } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
+import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
 import { AgentConfigItemComponent } from '../agent-config-item/agent-config-item.component'
 
@@ -18,7 +18,7 @@ import { AgentConfigItemComponent } from '../agent-config-item/agent-config-item
  */
 @Component({
   selector: 'agentos-platform-agent-configs',
-  imports: [AsyncPipe, EntityListComponent, AgentConfigItemComponent],
+  imports: [AsyncPipe, EntityListComponent, AgentConfigItemComponent, IconButtonComponent],
   templateUrl: './platform-agent-configs.component.html',
   styleUrl: './platform-agent-configs.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

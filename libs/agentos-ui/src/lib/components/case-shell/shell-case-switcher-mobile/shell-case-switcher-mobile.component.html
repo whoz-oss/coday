@@ -1,0 +1,48 @@
+<!-- Trigger row -->
+<div
+  class="shell-case-switcher__trigger"
+  tabindex="0"
+  role="button"
+  (click)="toggled.emit()"
+  (keyup.enter)="toggled.emit()"
+>
+  <span class="shell-case-switcher__dot" [class]="'shell-case-switcher__dot--' + activeCaseStatus()"></span>
+  <span class="shell-case-switcher__title">{{ activeCaseTitle() }}</span>
+  <span class="shell-case-switcher__status">{{ activeCaseStatusLabel() }}</span>
+  <span class="shell-case-switcher__chevron">⌄</span>
+</div>
+
+<!-- Expandable case list -->
+@if (open()) {
+  <div class="shell-case-switcher__list">
+    <!-- New case -->
+    <div
+      class="shell-case-switcher__item shell-case-switcher__item--new"
+      tabindex="0"
+      role="button"
+      (click)="createRequested.emit()"
+      (keyup.enter)="createRequested.emit()"
+    >
+      <span class="shell-case-switcher__new-icon">+</span>
+      <span class="shell-case-switcher__title">New case</span>
+    </div>
+
+    <!-- Other cases -->
+    @for (c of otherCases(); track c.id) {
+      <div
+        class="shell-case-switcher__item"
+        tabindex="0"
+        role="button"
+        (click)="caseSelected.emit(c.id ?? '')"
+        (keyup.enter)="caseSelected.emit(c.id ?? '')"
+      >
+        <span
+          class="shell-case-switcher__dot"
+          [class]="'shell-case-switcher__dot--' + deriveMobileStatus(c.status)"
+        ></span>
+        <span class="shell-case-switcher__title">{{ c.title ?? c.id }}</span>
+        <span class="shell-case-switcher__status">{{ c.status.toLowerCase() }}</span>
+      </div>
+    }
+  </div>
+}

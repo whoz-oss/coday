@@ -1,0 +1,150 @@
+@use '../../../../../../design-system/src/styles' as ds;
+
+:host {
+  display: none; // hidden on desktop, shown via media query
+}
+
+.shell-topbar-mobile {
+  &__brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  &__logo-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  &__logo-img {
+    height: 28px;
+    width: auto;
+    border-radius: 6px;
+    object-fit: contain;
+  }
+
+  &__logo-text {
+    @include ds.text-label;
+  }
+
+  &__sep {
+    color: var(--color-text-tertiary);
+    font: inherit;
+    font-size: 0.75rem;
+    flex: none;
+  }
+
+  // ── Namespace switcher ──
+  &__ns-wrap {
+    position: static;
+    min-width: 0;
+  }
+
+  &__ns-btn {
+    @include ds.text-menu-item;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+  }
+
+  &__chevron {
+    color: var(--color-text-secondary);
+    font-size: 9px;
+    flex: none;
+  }
+
+  &__ns-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 299;
+  }
+
+  &__ns-menu {
+    @include ds.surface-dropdown;
+    position: fixed;
+    top: 44px;
+    left: 16px;
+    min-width: 180px;
+    z-index: 300;
+  }
+
+  &__ns-item {
+    @include ds.menu-item;
+
+    &--active {
+      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+      color: var(--color-primary);
+    }
+  }
+
+  &__ns-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    flex-shrink: 0;
+  }
+
+  &__ns-item-name {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  // ── Avatar ──
+  &__avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  &__avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+    color: var(--color-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: inherit;
+    font-size: 0.625rem;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+  }
+}
+
+@media (max-width: 900px) {
+  :host {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 16px;
+    min-height: 44px;
+    border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+    background: var(--color-bg, #fff);
+    flex-shrink: 0;
+    position: relative;
+  }
+}

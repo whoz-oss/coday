@@ -30,7 +30,7 @@ export class HeaderComponent implements OnInit {
   protected readonly currentUser = this.userState.currentUser
 
   protected navigateHome(): void {
-    this.router.navigate(['/agentos'])
+    this.router.navigate(['/agentos/home'])
   }
 
   protected readonly isAdmin = computed(() => this.userState.currentUser()?.isAdmin === true)

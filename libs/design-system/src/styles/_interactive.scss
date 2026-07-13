@@ -1,0 +1,155 @@
+///
+/// Coday Design System — Interactive Element Mixins
+///
+/// Captures the interaction patterns established in ActionCard (chips,
+/// icon buttons, menu items) and shared focus / reset utilities.
+///
+/// Usage:
+///   @use 'libs/design-system/src/styles' as ds;
+///   .my-chip    { @include ds.chip; }
+///   .my-btn     { @include ds.icon-button(32px); }
+///   .my-item    { @include ds.menu-item; }
+///
+
+// ── Chip / pill ───────────────────────────────────────────────────────────────
+
+/// Pill-shaped chip — inline tag with border, subtle background, hover state.
+/// Source: .ac-chip in action-card.component.scss
+/// → height 28px, radius 999px, surface-secondary bg, 11.5px Inter 500
+@mixin chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
+  color: var(--color-text, #1d1d1f);
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
+    border-color: var(--color-border, rgba(0, 0, 0, 0.16));
+  }
+}
+
+// ── Icon button ───────────────────────────────────────────────────────────────
+
+/// Compact icon button — square, transparent rest state, bg-hover on hover.
+/// Source: .ac__more-btn in action-card.component.scss
+///
+/// @param {Length} $size [26px] — width and height of the button
+/// @param {Length} $radius [6px] — border-radius of the button
+@mixin icon-button($size: 26px, $radius: 6px) {
+  @include button-reset;
+
+  width: $size;
+  height: $size;
+  border-radius: $radius;
+  color: var(--color-text-secondary, rgba(0, 0, 0, 0.35));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+    color: var(--color-text, #1d1d1f);
+  }
+
+  &:focus-visible {
+    @include focus-ring;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+// ── Menu item ─────────────────────────────────────────────────────────────────
+
+/// Dropdown / contextual menu item.
+/// Source: .ac__menu-item in action-card.component.scss
+/// → full-width, radius 6px, 12.5px Inter 500, hover bg-hover, danger variant
+///
+/// Apply the `--danger` modifier class for destructive actions:
+///   `<button class="my-item my-item--danger">`
+@mixin menu-item {
+  @include button-reset;
+
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-text, #1d1d1f);
+  text-align: left;
+  transition: background 100ms ease;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+  }
+
+  // Danger / destructive action variant — apply as a modifier class
+  &--danger {
+    color: var(--color-error, #a5140a);
+
+    &:hover {
+      // Translucent tint derived from the error token.
+      // Note: relies on CSS relative color syntax (supported in modern browsers).
+      // Fallback: rgba with a static approximation of the light-mode error color.
+      background: rgba(from var(--color-error, #ff453a) r g b / 0.08);
+    }
+  }
+}
+
+/// Menu separator — thin horizontal rule between menu item groups.
+/// Source: .ac__menu-sep in action-card.component.scss
+@mixin menu-separator {
+  height: 1px;
+  background: var(--color-border, rgba(0, 0, 0, 0.07));
+  margin: 4px;
+  border: none;
+}
+
+// ── Accessibility utilities ───────────────────────────────────────────────────
+
+/// Standard focus ring — 2px solid primary, offset 2px.
+/// Use inside a :focus-visible rule.
+/// Source: .ac__name:focus-visible and .entity-card--clickable:focus-visible
+@mixin focus-ring {
+  outline: 2px solid var(--color-primary, #007aff);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+// ── Reset utilities ───────────────────────────────────────────────────────────
+
+/// CSS reset for native <button> elements.
+/// Strips browser default styles so mixins can apply clean custom styling.
+@mixin button-reset {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}

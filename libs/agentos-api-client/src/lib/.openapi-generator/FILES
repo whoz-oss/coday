@@ -9,12 +9,14 @@ api/ai-provider-controller.service.ts
 api/api.ts
 api/case-controller.service.ts
 api/case-event-rest-controller.service.ts
+api/exchange-controller.service.ts
 api/feedback-controller.service.ts
 api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
 api/namespace-controller.service.ts
 api/namespace-permission-endpoints.service.ts
 api/plugin-controller.service.ts
+api/prompt-controller.service.ts
 api/sse.service.ts
 api/user-controller.service.ts
 api/user-group-controller.service.ts
@@ -42,6 +44,10 @@ model/confirmation-resolved-event.ts
 model/enrichment-phase-trace.ts
 model/entity-metadata.ts
 model/error-event.ts
+model/exchange-delete-response.ts
+model/exchange-file-content.ts
+model/exchange-file-entry.ts
+model/exchange-manifest.ts
 model/feedback-input.ts
 model/feedback.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
@@ -65,6 +71,8 @@ model/pending-confirmation-event.ts
 model/plugin-action-response.ts
 model/plugin-info.ts
 model/plugin-upload-response.ts
+model/prompt-parameter.ts
+model/prompt.ts
 model/question-event.ts
 model/sync-user-roles-request.ts
 model/text-chunk-event.ts

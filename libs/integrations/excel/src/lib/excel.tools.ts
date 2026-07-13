@@ -8,7 +8,7 @@ import {
   IntegrationConfig,
   Interactor,
 } from '@coday/model'
-import * as ExcelJS from 'exceljs'
+import ExcelJS from 'exceljs'
 
 /**
  * ExcelTools: Read Excel files (.xlsx) and expose their content to agents.

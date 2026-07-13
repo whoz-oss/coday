@@ -1,35 +1,46 @@
 <ds-entity-list
   title="Cases"
-  [items]="rootItems"
+  [items]="displayItems()"
   [itemTemplate]="caseItemTpl"
   [showCreate]="true"
+  [disableInternalFilter]="true"
   emptyMessage="No cases yet. Start one below."
   searchPlaceholder="Filter cases…"
-  cardMinWidth="220px"
+  cardMinWidth="100%"
   contentMaxWidth="100%"
   (createRequested)="onCreateRequested()"
+  (searchChanged)="onSearchChanged($event)"
 >
-  <ds-icon-button
-    toolbar-start
-    icon="chevron_left"
-    variant="default"
-    title="Close drawer"
-    (action)="closeRequested.emit()"
-  />
 </ds-entity-list>
 
 <!--
   Item template: renders one case row + its sub-cases recursively.
-  The recursive sub-tree template is defined alongside and referenced by name.
+  Two display modes:
+  - Flat mode (search active): each match rendered directly, no tree expand/collapse.
+  - Tree mode (no search): hierarchical rendering with expandable sub-cases.
 -->
 <ng-template #caseItemTpl let-item>
-  <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: item, depth: 0 }" />
+  @if (isSearchActive()) {
+    <!-- Flat mode: render each match directly, no tree expand/collapse -->
+    <button
+      type="button"
+      class="case-tree-node__row"
+      [class.case-tree-node__row--active]="item.id === activeCaseId()"
+      (click)="onItemSelected(item.id)"
+    >
+      <span class="case-tree-node__expand-slot"></span>
+      <span class="case-tree-node__name">{{ item.name }}</span>
+    </button>
+  } @else {
+    <!-- Tree mode: hierarchical rendering -->
+    <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: item, depth: 0 }" />
+  }
 </ng-template>
 
 <!-- Recursive row template: select + star + (ADMIN-gated) delete, then children -->
 <ng-template #caseRowTpl let-node="node" let-depth="depth">
   <div class="case-tree-node" [style.--depth]="depth">
-    <div class="case-tree-node__row" [class.case-tree-node__row--active]="node.id === activeCaseId">
+    <div class="case-tree-node__row" [class.case-tree-node__row--active]="node.id === activeCaseId()">
       <span class="case-tree-node__expand-slot">
         @if (node.children.length) {
           <button

@@ -7,11 +7,10 @@ package io.whozoss.agentos.permissions
  * `MATCH (e:Label)` Cypher queries and in `@PreAuthorize("hasPermission(#id, 'Label', ...)")`
  * SpEL expressions.
  *
- * **Why an enum** : story 5-4's [io.whozoss.agentos.entity.EntityController] declared
- * `entityType: String`, which let typos (`"AgenConfig"`) compile cleanly while silently
- * denying all reads at runtime (the corresponding Neo4j label simply has no matches).
- * Replacing the string with an enum makes typos compile-time errors and lets IDE refactor
- * tools rename atomically across all call sites.
+ * **Why an enum** : story 5-4's original entity controller declared `entityType: String`,
+ * which let typos (`"AgenConfig"`) compile cleanly while silently denying all reads at
+ * runtime. Replacing the string with an enum makes typos compile-time errors and lets IDE
+ * refactor tools rename atomically across all call sites.
  *
  * **SpEL still uses strings** : Spring Security `@PreAuthorize` annotations cannot
  * idiomatically reference enum constants — the `T(...).LABEL` syntax is unreadable.

@@ -554,33 +554,33 @@ export class AgentConfigControllerService extends BaseService {
   }
 
   /**
-   * @param parentId Parent entity ID
+   * @param parentId
    * @param withDisabled
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listByNamespaceAgentConfig(
+  public listByParentAgentConfig(
     parentId: string,
     withDisabled?: boolean,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<AgentConfig>>
-  public listByNamespaceAgentConfig(
+  public listByParentAgentConfig(
     parentId: string,
     withDisabled?: boolean,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<AgentConfig>>>
-  public listByNamespaceAgentConfig(
+  public listByParentAgentConfig(
     parentId: string,
     withDisabled?: boolean,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<AgentConfig>>>
-  public listByNamespaceAgentConfig(
+  public listByParentAgentConfig(
     parentId: string,
     withDisabled?: boolean,
     observe: any = 'body',
@@ -588,7 +588,7 @@ export class AgentConfigControllerService extends BaseService {
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (parentId === null || parentId === undefined) {
-      throw new Error('Required parameter parentId was null or undefined when calling listByNamespaceAgentConfig.')
+      throw new Error('Required parameter parentId was null or undefined when calling listByParentAgentConfig.')
     }
 
     let localVarQueryParameters = new HttpParams({ encoder: this.encoder })

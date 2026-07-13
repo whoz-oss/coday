@@ -1,17 +1,16 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  EventEmitter,
-  Input,
-  OnChanges,
-  Output,
-  SimpleChanges,
+  computed,
+  input,
+  output,
+  signal,
   TemplateRef,
   ViewChild,
 } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
 import { Case } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
+import { EntityListComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 import { CaseItemComponent, CaseListItem } from '../case-item/case-item.component'
 
 /**
@@ -28,70 +27,92 @@ export interface CaseTreeItem extends CaseListItem {
  * CaseDrawerComponent — presentational drawer for the case list.
  *
  * Uses ds-entity-list for the chrome (toolbar, search, create button).
- * The itemTemplate handles hierarchical rendering: each root item renders
- * its sub-cases inline, collapsed by default.
+ *
+ * Two display modes:
+ * - **Tree mode** (no active search): root cases are shown with expandable sub-cases.
+ * - **Flat mode** (search active): all matching cases at every depth level are shown
+ *   as a flat list, including sub-cases. Matching is done on title AND case ID.
  */
 @Component({
   selector: 'agentos-case-drawer',
-  imports: [EntityListComponent, IconButtonComponent, KebabMenuComponent, NgTemplateOutlet],
+  imports: [EntityListComponent, KebabMenuComponent, NgTemplateOutlet],
   templateUrl: './case-drawer.component.html',
   styleUrl: './case-drawer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CaseDrawerComponent implements OnChanges {
-  @Input() cases: Case[] = []
-  @Input() activeCaseId: string | null = null
+export class CaseDrawerComponent {
+  readonly cases = input<Case[]>([])
+  readonly activeCaseId = input<string | null>(null)
 
-  @Output() caseSelected = new EventEmitter<string>()
-  @Output() createRequested = new EventEmitter<void>()
-  @Output() closeRequested = new EventEmitter<void>()
-  @Output() deleteRequested = new EventEmitter<string>()
-  @Output() starToggled = new EventEmitter<{ id: string; starred: boolean }>()
+  readonly caseSelected = output<string>()
+  readonly createRequested = output<void>()
+  readonly deleteRequested = output<string>()
+  readonly starToggled = output<{ id: string; starred: boolean }>()
 
   @ViewChild('caseItemTpl', { static: true }) caseItemTpl!: TemplateRef<{ $implicit: CaseTreeItem }>
 
-  /** Only root nodes — ds-entity-list iterates over these. */
-  protected rootItems: CaseTreeItem[] = []
+  /** Current search query, driven by ds-entity-list's searchChanged output. */
+  protected readonly searchQuery = signal('')
 
-  /** IDs of nodes whose children are currently visible. */
-  protected expandedIds = new Set<string>()
+  protected readonly isSearchActive = computed(() => this.searchQuery().trim().length > 0)
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['cases']) {
-      this.rootItems = groupFavorites(buildTree(this.cases))
-    }
-    if (changes['cases'] || changes['activeCaseId']) {
-      this.autoExpandAncestors()
-    }
-  }
+  /**
+   * Tree rebuilt automatically when cases() changes.
+   * Grouped by favorites when at least one root is favorited.
+   */
+  protected readonly rootItems = computed(() => groupFavorites(buildTree(this.cases())))
 
-  /** Expand all ancestors of the active case so it is visible. */
-  private autoExpandAncestors(): void {
-    if (!this.activeCaseId) return
-    const findAndExpand = (nodes: CaseTreeItem[], targetId: string): boolean => {
-      for (const node of nodes) {
-        if (node.id === targetId) return true
-        if (node.children.length && findAndExpand(node.children, targetId)) {
-          this.expandedIds.add(node.id)
-          return true
-        }
-      }
-      return false
-    }
-    findAndExpand(this.rootItems, this.activeCaseId)
-  }
+  /**
+   * Flat list of all cases matching the current search query.
+   * Traverses the full tree at every depth level.
+   * Matching is done on title AND case ID (case-insensitive).
+   * Used in flat mode (search active).
+   */
+  protected readonly flatFilteredItems = computed((): CaseTreeItem[] => {
+    const query = this.searchQuery().toLowerCase().trim()
+    if (!query) return []
+    return collectMatching(this.rootItems(), query)
+  })
+
+  /**
+   * Items passed to ds-entity-list:
+   * - flat filtered list when search is active
+   * - root tree nodes otherwise
+   */
+  protected readonly displayItems = computed((): CaseTreeItem[] =>
+    this.isSearchActive() ? this.flatFilteredItems() : this.rootItems()
+  )
+
+  /**
+   * Ancestors of the active case to auto-expand, recalculated when
+   * rootItems() or activeCaseId() changes.
+   */
+  private readonly autoExpandedIds = computed(() => {
+    const id = this.activeCaseId()
+    if (!id) return new Set<string>()
+    const expanded = new Set<string>()
+    findAndCollectAncestors(this.rootItems(), id, expanded)
+    return expanded
+  })
+
+  /** IDs of nodes manually expanded/collapsed by the user. */
+  protected readonly expandedIds = signal(new Set<string>())
 
   protected isExpanded(id: string): boolean {
-    return this.expandedIds.has(id)
+    return this.expandedIds().has(id) || this.autoExpandedIds().has(id)
   }
 
   protected toggleExpand(event: Event, id: string): void {
     event.stopPropagation()
-    if (this.expandedIds.has(id)) {
-      this.expandedIds.delete(id)
-    } else {
-      this.expandedIds.add(id)
-    }
+    this.expandedIds.update((set) => {
+      const next = new Set(set)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  protected onSearchChanged(query: string): void {
+    this.searchQuery.set(query)
   }
 
   protected onItemSelected(id: string): void {
@@ -185,11 +206,35 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
     }
   }
 
-  // Sort newest first at every level of the tree
   const sortDesc = (items: CaseTreeItem[]): CaseTreeItem[] =>
     items
       .sort((a, b) => ((createdAt.get(b.id) ?? '') > (createdAt.get(a.id) ?? '') ? 1 : -1))
       .map((item) => ({ ...item, children: sortDesc(item.children) }))
 
   return sortDesc(roots)
+}
+
+/**
+ * Recursively collect all tree nodes (at any depth) whose name or id
+ * contains the given query string (case-insensitive).
+ * Returns a flat list — hierarchy is not preserved in search results.
+ */
+function collectMatching(nodes: CaseTreeItem[], query: string): CaseTreeItem[] {
+  return nodes.reduce<CaseTreeItem[]>((acc, node) => {
+    const matches = node.name.toLowerCase().includes(query) || node.id.toLowerCase().includes(query)
+    if (matches) acc.push(node)
+    if (node.children.length) acc.push(...collectMatching(node.children, query))
+    return acc
+  }, [])
+}
+
+function findAndCollectAncestors(nodes: CaseTreeItem[], targetId: string, acc: Set<string>): boolean {
+  for (const node of nodes) {
+    if (node.id === targetId) return true
+    if (node.children.length && findAndCollectAncestors(node.children, targetId, acc)) {
+      acc.add(node.id)
+      return true
+    }
+  }
+  return false
 }

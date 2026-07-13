@@ -1,108 +1,211 @@
-import { Component, DestroyRef, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
-import { ActivatedRoute, NavigationEnd, Router, RouterOutlet } from '@angular/router'
-import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
-import { filter, map, merge, of } from 'rxjs'
+import { ActivatedRoute, Router } from '@angular/router'
+import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
+import { map } from 'rxjs'
+import { CaseChatComponent } from '../case-chat/case-chat.component'
+import { CaseHomeComponent } from '../case-home/case-home.component'
+import { THEME_PORT, ThemeMode } from '../../services/theme.service'
+import { UserStateService } from '../../services/user-state.service'
 import { CaseStateService } from '../../services/case-state.service'
-import { CaseDrawerComponent } from '../case-drawer/case-drawer.component'
-import { CaseItemComponent } from '../case-item/case-item.component'
-import { HeaderComponent } from '../header/header.component'
+import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
+import { ShellTopbarMobileComponent } from './shell-topbar-mobile/shell-topbar-mobile.component'
+import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/shell-case-switcher-mobile.component'
 
 /**
- * CaseShellComponent — smart layout container for the case section.
+ * CaseShellComponent — smart layout orchestrator for the case section.
  *
- * Responsibilities:
- * - Owns the ds-drawer layout: header + collapsible sidenav + routed content
- * - Delegates case list state to CaseStateService
- * - Passes cases to CaseDrawerComponent (presentational)
- * - Handles drawer toggle state
- * - Navigates on case selection / create
+ * Responsibilities (after refactor):
+ * - Owns data: case list, namespace list, query params
+ * - Owns routing: namespace switching, case selection, navigation
+ * - Owns UI state: sidebar width, menus open/closed, theme, technical logs
+ * - Delegates rendering to ShellSidebarComponent, ShellTopbarMobileComponent,
+ *   ShellCaseSwitcherMobileComponent
  *
- * Child routes render inside the <router-outlet> in the main content area:
- *   ''          → CaseHomeComponent
- *   ':caseId'   → CaseChatComponent
+ * Active namespace and case are read from query params:
+ *   ?ns=<namespaceId>   → active namespace
+ *   ?case=<caseId>      → active case (renders CaseChatComponent when present)
+ *
+ * When no ?ns is present, auto-selects the first available namespace.
  */
 @Component({
   selector: 'agentos-case-shell',
-  imports: [RouterOutlet, DrawerComponent, CaseDrawerComponent, HeaderComponent, IconButtonComponent],
+  imports: [
+    CaseChatComponent,
+    CaseHomeComponent,
+    ShellSidebarComponent,
+    ShellTopbarMobileComponent,
+    ShellCaseSwitcherMobileComponent,
+  ],
   templateUrl: './case-shell.component.html',
   styleUrl: './case-shell.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CaseShellComponent {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
+  private readonly namespaceController = inject(NamespaceControllerService)
+  private readonly themePort = inject(THEME_PORT)
+  private readonly userState = inject(UserStateService)
   private readonly caseState = inject(CaseStateService)
   private readonly destroyRef = inject(DestroyRef)
 
-  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  // ---------------------------------------------------------------------------
+  // User
+  // ---------------------------------------------------------------------------
 
-  protected readonly drawerOpen = signal(true)
+  protected readonly isAdmin = computed(() => this.userState.currentUser()?.isAdmin === true)
 
+  protected readonly userInitials = computed(() => {
+    const user = this.userState.currentUser()
+    if (!user) return ''
+    const first = user.firstname?.[0] ?? ''
+    const last = user.lastname?.[0] ?? ''
+    return (first + last).toUpperCase() || user.email?.[0]?.toUpperCase() || ''
+  })
+
+  // ---------------------------------------------------------------------------
+  // Theme
+  // ---------------------------------------------------------------------------
+
+  protected readonly isDark = computed(() => {
+    const t = this.themePort.theme()
+    if (t === 'dark') return true
+    if (t === 'light') return false
+    return typeof document !== 'undefined' && document.documentElement.hasAttribute('data-theme')
+  })
+
+  // ---------------------------------------------------------------------------
+  // UI state
+  // ---------------------------------------------------------------------------
+
+  /** Sidebar width in pixels — adjustable via drag handle */
+  protected readonly sidebarWidth = signal(300)
+
+  /** Whether the user context menu is open */
+  protected readonly menuOpen = signal(false)
+
+  /** Whether the namespace dropdown is open */
+  protected readonly nsMenuOpen = signal(false)
+
+  /** Whether the mobile case switcher is open */
+  protected readonly mobileSwitcherOpen = signal(false)
+
+  /** Shared technical logs toggle — passed down to CaseChatComponent */
+  protected readonly showTechnical = signal(false)
+
+  /** Whether to show the namespace picker (admin or multiple namespaces) */
+  protected readonly showNsPicker = computed(() => this.isAdmin() || this.namespaces().length > 1)
+
+  // ---------------------------------------------------------------------------
+  // Query param streams
+  // ---------------------------------------------------------------------------
+
+  private readonly namespaceId$ = this.route.queryParams.pipe(map((p) => (p['ns'] as string) ?? null))
+
+  private readonly _namespaceIdRaw = toSignal(this.namespaceId$)
+  protected readonly namespaceId = computed(() => this._namespaceIdRaw() ?? null)
+
+  private readonly _activeCaseIdRaw = toSignal(this.route.queryParams.pipe(map((p) => (p['case'] as string) ?? null)))
+  protected readonly activeCaseId = computed(() => this._activeCaseIdRaw() ?? null)
+
+  // ---------------------------------------------------------------------------
+  // Data
+  // ---------------------------------------------------------------------------
+
+  /** Cases from the state service (loaded via /mine — direct ADMIN/MEMBER edge only). */
   protected readonly cases = this.caseState.cases
 
+  protected readonly namespaces = toSignal(this.namespaceController.listAllNamespace(), {
+    initialValue: [] as NamespaceListItem[],
+  })
+
+  protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
+
   constructor() {
-    this.caseState.loadCases(this.namespaceId)
+    // Load the current user eagerly so isAdmin() and userInitials() are available
+    // as soon as the shell renders, without waiting for a /me navigation.
+    if (!this.userState.currentUser()) {
+      this.userState.loadMe().pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
+    }
+
+    // Sync selectedNamespace whenever namespaces load or the ?ns param changes.
+    // When no ?ns is present, auto-select the first namespace and update the URL.
+    effect(() => {
+      const nsList = this.namespaces()
+      const nsId = this.namespaceId()
+      if (!nsList.length) return
+
+      if (nsId) {
+        const found = nsList.find((ns) => ns.id === nsId)
+        this.selectedNamespace.set(found ?? nsList[0] ?? null)
+      } else {
+        const first = nsList[0]
+        if (first?.id) {
+          this.router.navigate(['/agentos/home'], { queryParams: { ns: first.id }, replaceUrl: true })
+        }
+      }
+    })
+
+    // Reload the case list whenever the namespace changes.
+    effect(() => {
+      const nsId = this.namespaceId()
+      if (nsId) {
+        this.caseState.loadCases(nsId)
+      }
+    })
   }
 
-  /**
-   * Active case id — derived reactively from router NavigationEnd events.
-   *
-   * `computed()` on `route.firstChild?.snapshot` does not work because the snapshot
-   * is not a signal and won’t trigger re-evaluation on navigation.
-   * Instead we listen to Router events and extract the caseId from the URL.
-   */
-  protected readonly activeCaseId = toSignal(
-    merge(
-      // Emit immediately for the current URL (handles component init and page refresh)
-      of(this.router.url),
-      // Then re-emit on every completed navigation
-      this.router.events.pipe(
-        filter((e): e is NavigationEnd => e instanceof NavigationEnd),
-        map((e) => e.urlAfterRedirects)
-      )
-    ).pipe(map((url) => this.extractCaseId(url))),
-    { initialValue: null as string | null }
-  )
+  // ---------------------------------------------------------------------------
+  // Namespace
+  // ---------------------------------------------------------------------------
 
-  /**
-   * Extract the caseId segment from the current URL.
-   * URL pattern: /agentos/:namespaceId/cases/:caseId
-   */
-  private extractCaseId(url: string): string | null {
-    const match = url.match(/\/cases\/([^/?#]+)/)
-    return match?.[1] ?? null
+  protected onNamespaceSelected(ns: NamespaceListItem): void {
+    this.selectedNamespace.set(ns)
+    this.nsMenuOpen.set(false)
+    this.router.navigate(['/agentos/home'], { queryParams: { ns: ns.id } })
   }
 
-  protected toggleDrawer(): void {
-    this.drawerOpen.update((v) => !v)
+  protected toggleNsMenu(event?: Event): void {
+    event?.stopPropagation()
+    event?.preventDefault()
+    this.nsMenuOpen.update((v) => !v)
   }
+
+  protected closeNsMenu(event: Event): void {
+    event.stopPropagation()
+    this.nsMenuOpen.set(false)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cases
+  // ---------------------------------------------------------------------------
 
   protected onCaseSelected(caseId: string): void {
-    this.router.navigate([caseId], { relativeTo: this.route })
+    this.router.navigate(['/agentos/home'], {
+      queryParams: { ns: this.namespaceId(), case: caseId },
+    })
   }
 
   protected onCreateRequested(): void {
-    // Navigate to the home view where the user can start a new case
-    this.navigateToSectionHome()
+    this.router.navigate(['/agentos/home'], {
+      queryParams: { ns: this.namespaceId() },
+    })
   }
 
   protected onDeleteRequested(caseId: string): void {
-    // Confirm with the same label the drawer row shows (CaseItemComponent.toListItem),
-    // so the dialog identifies the exact case the user clicked.
     const target = this.cases().find((c) => c.id === caseId)
-    const label = target ? CaseItemComponent.toListItem(target).name : caseId
+    const label = target?.title ?? caseId
     if (!confirm(`Delete "${label}"?`)) {
       return
     }
-    // Soft-delete: the state service issues the request and reloads the list on success.
     this.caseState
       .deleteCase(caseId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        // If the active case was deleted, leave its (now removed) chat view.
         next: () => {
           if (caseId === this.activeCaseId()) {
-            this.navigateToSectionHome()
+            this.router.navigate(['/agentos/home'], { queryParams: { ns: this.namespaceId() } })
           }
         },
         error: (err) => {
@@ -113,7 +216,6 @@ export class CaseShellComponent {
   }
 
   protected onStarToggled(event: { id: string; starred: boolean }): void {
-    // The state service flips the favorite optimistically and reverts it if the request fails.
     this.caseState
       .setStarred(event.id, event.starred)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -125,8 +227,88 @@ export class CaseShellComponent {
       })
   }
 
-  /** Navigate to the case section home (the list / create view). */
-  private navigateToSectionHome(): void {
-    this.router.navigate(['.'], { relativeTo: this.route })
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
+  protected navigateHome(): void {
+    this.router.navigate(['/agentos/home'])
+  }
+
+  protected onMenuNavigate(path: string): void {
+    this.menuOpen.set(false)
+    this.router.navigate([path])
+  }
+
+  // ---------------------------------------------------------------------------
+  // User menu
+  // ---------------------------------------------------------------------------
+
+  protected toggleMenu(event?: MouseEvent): void {
+    event?.stopPropagation()
+    event?.preventDefault()
+    this.menuOpen.update((v) => !v)
+  }
+
+  protected closeMenu(event: Event): void {
+    event.stopPropagation()
+    this.menuOpen.set(false)
+  }
+
+  protected onMenuToggleTheme(): void {
+    this.menuOpen.set(false)
+    const next: ThemeMode = this.isDark() ? 'light' : 'dark'
+    this.themePort.setTheme(next)
+  }
+
+  protected onMenuToggleLogs(): void {
+    this.menuOpen.set(false)
+    this.showTechnical.update((v) => !v)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Mobile case switcher
+  // ---------------------------------------------------------------------------
+
+  protected toggleMobileSwitcher(): void {
+    this.mobileSwitcherOpen.update((v) => !v)
+  }
+
+  protected onMobileCaseSelect(caseId: string): void {
+    this.mobileSwitcherOpen.set(false)
+    this.onCaseSelected(caseId)
+  }
+
+  protected onMobileCreateCase(): void {
+    this.mobileSwitcherOpen.set(false)
+    this.onCreateRequested()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sidebar resize
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Start a drag session to resize the sidebar.
+   * Clamps the width between 200px and 500px.
+   */
+  protected onResizeStart(event: MouseEvent): void {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = this.sidebarWidth()
+
+    const onMove = (e: MouseEvent): void => {
+      const delta = e.clientX - startX
+      const newWidth = Math.max(200, Math.min(500, startWidth + delta))
+      this.sidebarWidth.set(newWidth)
+    }
+
+    const onUp = (): void => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
   }
 }

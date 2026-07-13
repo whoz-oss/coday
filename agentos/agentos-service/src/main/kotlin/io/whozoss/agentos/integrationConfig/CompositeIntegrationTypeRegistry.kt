@@ -28,7 +28,7 @@ class CompositeIntegrationTypeRegistry : IntegrationTypeRegistry {
 
     override fun registerFromPlugin(plugin: ToolPlugin) {
         val schema = plugin.configSchema ?: run {
-            logger.debug { "Plugin '${plugin.integrationType}' has no configSchema — skipping descriptor registration" }
+            logger.debug { "Plugin '${plugin.integrationType}' has no configSchema -- skipping descriptor registration" }
             return
         }
         val descriptor = IntegrationTypeDescriptor(
@@ -49,6 +49,11 @@ class CompositeIntegrationTypeRegistry : IntegrationTypeRegistry {
         } else {
             logger.info { "Registered integration type descriptor from plugin: '${plugin.integrationType}'" }
         }
+    }
+
+    override fun registerBuiltIn(descriptor: IntegrationTypeDescriptor) {
+        pluginDescriptors[descriptor.type] = descriptor
+        logger.info { "Registered built-in integration type descriptor: '${descriptor.type}'" }
     }
 
     companion object : KLogging()

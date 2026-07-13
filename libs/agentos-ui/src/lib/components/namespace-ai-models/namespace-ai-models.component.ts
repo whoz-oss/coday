@@ -9,16 +9,20 @@ import {
   AiModelControllerService,
 } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, combineLatest, Observable, switchMap, map } from 'rxjs'
+import { BehaviorSubject, catchError, forkJoin, Observable, of, switchMap, map } from 'rxjs'
 import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
+
+const PLATFORM_GROUP_KEY = '__platform__'
+const PLATFORM_GROUP_LABEL = 'Platform (read-only)'
 
 /**
  * NamespaceLlmModelsComponent — list view for AI models of a namespace.
  *
  * Loaded at /:namespaceId/ai-models. Responsibilities:
- * - Load all AiModel for the namespace in a single call
- * - Load AiProvider providers in parallel to resolve group labels
- * - Display models grouped by provider name via ds-entity-list grouping
+ * - Load namespace-level AND platform-level AI models in parallel
+ * - Load AiProvider providers to resolve group labels for namespace models
+ * - Display namespace models grouped by provider name, platform models in a dedicated group
+ * - Platform-level models are displayed read-only (no edit/delete actions)
  * - Navigate back to the namespace list
  * - Navigate to the create form (/:namespaceId/ai-models/new)
  * - Deletion with inline confirmation (delegated to AiModelItemComponent)
@@ -45,40 +49,56 @@ export class NamespaceAiModelsComponent {
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   /**
-   * Raw models, kept for delete lookups.
-   * Loaded in parallel with providers to resolve group labels without sequential calls.
+   * Fetches namespace models, platform models, and providers in parallel.
+   * Providers are needed to resolve group labels for namespace-level models.
    */
-  private readonly data$: Observable<[AiModel[], AiProvider[]]> = this.refresh$.pipe(
-    switchMap(() =>
-      combineLatest([
-        this.aiModelController.listByNamespaceIdAiModel(this.namespaceId),
-        this.aiProviderController.listAiProvider(this.namespaceId),
-      ])
-    )
-  )
-
-  /** Mapped to EntityListItem[] with groupKey/groupLabel for ds-entity-list grouping. */
-  protected readonly modelItems$ = this.data$.pipe(
-    map(([models, providers]) => {
-      const providerNames = new Map(providers.map((p: AiProvider) => [p.id ?? '', p.name]))
-      return models.map(
-        (m: AiModel): EntityListItem => ({
-          id: m.id ?? '',
-          name: m.alias ?? m.apiModelName,
-          description: m.apiModelName,
-          groupKey: m.aiProviderId,
-          groupLabel: providerNames.get(m.aiProviderId) ?? m.aiProviderId,
+  private readonly data$: Observable<{ namespace: AiModel[]; platform: AiModel[]; providers: AiProvider[] }> =
+    this.refresh$.pipe(
+      switchMap(() =>
+        forkJoin({
+          namespace: this.aiModelController.listByNamespaceIdAiModel(this.namespaceId),
+          platform: this.aiModelController.listPlatformLevelAiModel().pipe(catchError(() => of([] as AiModel[]))),
+          providers: this.aiProviderController.listAiProvider(this.namespaceId),
         })
       )
+    )
+
+  /** Mapped to EntityListItem[] with groupKey/groupLabel for ds-entity-list grouping.
+   * Platform models appear first in their own group; namespace models follow, grouped by provider. */
+  protected readonly modelItems$ = this.data$.pipe(
+    map(({ namespace, platform, providers }) => {
+      const providerNames = new Map(providers.map((p: AiProvider) => [p.id ?? '', p.name]))
+      return [
+        ...platform.map(
+          (m: AiModel): EntityListItem => ({
+            id: m.id ?? '',
+            name: m.alias ?? m.apiModelName,
+            description: m.apiModelName,
+            groupKey: PLATFORM_GROUP_KEY,
+            groupLabel: PLATFORM_GROUP_LABEL,
+          })
+        ),
+        ...namespace.map(
+          (m: AiModel): EntityListItem => ({
+            id: m.id ?? '',
+            name: m.alias ?? m.apiModelName,
+            description: m.apiModelName,
+            groupKey: m.aiProviderId,
+            groupLabel: providerNames.get(m.aiProviderId) ?? m.aiProviderId,
+          })
+        ),
+      ]
     })
   )
 
   /** Full model objects indexed by id — used to resolve itemTemplate events. */
-  private modelsById = new Map<string, AiModel>()
+  private namespaceModelsById = new Map<string, AiModel>()
+  private platformModelsById = new Map<string, AiModel>()
 
   constructor() {
-    this.data$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(([models]) => {
-      this.modelsById = new Map(models.map((m: AiModel) => [m.id ?? '', m]))
+    this.data$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(({ namespace, platform }) => {
+      this.namespaceModelsById = new Map(namespace.map((m: AiModel) => [m.id ?? '', m]))
+      this.platformModelsById = new Map(platform.map((m: AiModel) => [m.id ?? '', m]))
     })
   }
 
@@ -90,6 +110,10 @@ export class NamespaceAiModelsComponent {
     this.router.navigate(['/agentos', this.namespaceId, 'ai-models', 'new'])
   }
 
+  protected editModel(model: AiModel): void {
+    this.router.navigate(['/agentos', this.namespaceId, 'ai-models', model.id, 'edit'])
+  }
+
   protected deleteModel(model: AiModel): void {
     this.aiModelController
       .deleteAiModel(model.id ?? '')
@@ -98,6 +122,10 @@ export class NamespaceAiModelsComponent {
   }
 
   protected resolveModel(id: string): AiModel | null {
-    return this.modelsById.get(id) ?? null
+    return this.namespaceModelsById.get(id) ?? this.platformModelsById.get(id) ?? null
+  }
+
+  protected isPlatformModel(id: string): boolean {
+    return this.platformModelsById.has(id)
   }
 }
