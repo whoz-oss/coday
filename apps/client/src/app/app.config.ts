@@ -5,6 +5,8 @@ import {
   provideBrowserGlobalErrorListeners,
   provideZoneChangeDetection,
 } from '@angular/core'
+import { firstValueFrom, of } from 'rxjs'
+import { catchError } from 'rxjs/operators'
 import { provideRouter } from '@angular/router'
 import { provideHttpClient } from '@angular/common/http'
 import { provideAnimations } from '@angular/platform-browser/animations'
@@ -45,16 +47,21 @@ function initializeOAuthService(_oauthService: OAuthService) {
  * statically here. We use a dynamic import inside the factory instead — Angular's DI
  * resolves the service at runtime regardless, because it is providedIn: 'root'.
  *
- * Errors are swallowed — an unauthenticated or anonymous session should not block the app
- * from rendering; components that need the user will degrade gracefully.
+ * Errors are caught and logged — an unauthenticated or anonymous session should not block
+ * the app from rendering; components that need the user will degrade gracefully.
  */
 function initializeCurrentUser(injector: Injector) {
   return async () => {
     const { UserStateService } = await import('@whoz-oss/agentos-ui')
     const userState = injector.get(UserStateService)
-    return new Promise<void>((resolve) => {
-      userState.loadMe().subscribe({ next: () => resolve(), error: () => resolve() })
-    })
+    await firstValueFrom(
+      userState.loadMe().pipe(
+        catchError((err) => {
+          console.warn('Failed to load current user', err)
+          return of(null)
+        })
+      )
+    )
   }
 }
 
