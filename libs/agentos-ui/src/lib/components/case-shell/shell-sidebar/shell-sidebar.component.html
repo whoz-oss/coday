@@ -1,8 +1,19 @@
-<div class="shell-sidebar" [style.width.px]="sidebarWidth()">
+<div class="shell-sidebar" [style.width.px]="sidebarOpen() ? sidebarWidth() : 0">
   <!-- Top: logo + namespace picker + user menu -->
   <div class="shell-sidebar__top">
-    <button class="shell-sidebar__brand" type="button" title="Home" (click)="homeClicked.emit()">
-      <img src="CODAY-Logo.png" alt="Coday" class="shell-sidebar__logo-img" />
+    <button
+      class="shell-sidebar__brand"
+      type="button"
+      [title]="brandHovered ? 'Close sidebar' : 'Home'"
+      (mouseenter)="brandHovered = true"
+      (mouseleave)="brandHovered = false"
+      (click)="brandHovered ? collapseRequested.emit() : homeClicked.emit()"
+    >
+      @if (brandHovered) {
+        <span class="shell-sidebar__logo-chevron material-icons">chevron_left</span>
+      } @else {
+        <img src="CODAY-Logo.png" alt="Coday" class="shell-sidebar__logo-img" />
+      }
     </button>
 
     <!-- Namespace picker (inline, next to logo) -->

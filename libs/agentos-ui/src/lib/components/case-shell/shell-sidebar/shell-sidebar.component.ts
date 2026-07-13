@@ -22,8 +22,11 @@ import { ShellUserMenuComponent } from '../shell-user-menu/shell-user-menu.compo
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ShellSidebarComponent {
+  protected brandHovered = false
+
   // ── Layout ──────────────────────────────────────────────
   readonly sidebarWidth = input.required<number>()
+  readonly sidebarOpen = input.required<boolean>()
 
   // ── Namespace ────────────────────────────────────────────
   readonly selectedNamespace = input.required<NamespaceListItem | null>()
@@ -43,6 +46,7 @@ export class ShellSidebarComponent {
   readonly showTechnical = input.required<boolean>()
 
   // ── Outputs ──────────────────────────────────────────────
+  readonly collapseRequested = output<void>()
   readonly homeClicked = output<void>()
   readonly namespaceSelected = output<NamespaceListItem>()
   readonly nsMenuToggled = output<void>()
