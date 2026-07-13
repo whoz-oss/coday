@@ -335,11 +335,48 @@ mat-slide-toggle {
   transform-origin: right center;
 }
 
-/* ds-kebab-menu — danger variant for mat-menu items rendered in CDK overlay */
-[data-variant='danger'].mat-mdc-menu-item {
-  color: var(--color-error, #ff3b30);
+/* ds-kebab-menu — panel styles for CDK overlay (mat-menu rendered outside component scope) */
+.ds-kebab-panel {
+  /* Override Material MDC internal tokens — highest specificity approach */
+  --mat-menu-container-color: var(--color-modal-bg, #fff);
+  --mat-menu-container-shape: 10px;
+  --mat-menu-item-label-text-color: var(--color-text, #1d1d1f);
+  --mat-menu-item-label-text-size: 0.78rem;
+  --mat-menu-item-label-text-weight: 500;
+  --mat-menu-item-hover-state-layer-color: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+  --mat-menu-item-focus-state-layer-color: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
 
-  .mat-icon {
-    color: var(--color-error, #ff3b30);
+  /* Border + shadow — not covered by MDC tokens, needs class override */
+  &.mat-mdc-menu-panel {
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    box-shadow: var(--color-modal-shadow, 0 6px 20px rgba(0, 0, 0, 0.08)) !important;
+    min-width: 160px;
+  }
+
+  .mat-mdc-menu-content {
+    padding: 5px !important;
+  }
+
+  /* Items — border-radius + padding */
+  .mat-mdc-menu-item {
+    border-radius: 6px;
+    min-height: 36px;
+    padding: 0 10px;
+
+    /* Danger variant */
+    &[data-variant='danger'] {
+      --mat-menu-item-label-text-color: var(--color-error, #ff3b30);
+      --mat-menu-item-hover-state-layer-color: rgba(255, 59, 48, 0.08);
+
+      .mat-icon {
+        color: var(--color-error, #ff3b30);
+      }
+    }
+  }
+
+  /* Divider */
+  .mat-divider {
+    margin: 4px 0;
+    border-color: var(--color-border, rgba(0, 0, 0, 0.07));
   }
 }

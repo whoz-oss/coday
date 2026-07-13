@@ -1,16 +1,32 @@
-.ac {
-  background: var(--color-bg-secondary, #fff);
-  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-  border-radius: 12px;
-  box-shadow: 0 1px 3px var(--color-shadow, rgba(0, 0, 0, 0.05));
-  overflow: visible;
-  transition:
-    box-shadow 150ms ease,
-    border-color 150ms ease;
+@use '../../../../../design-system/src/styles' as ds;
 
-  &:hover {
-    box-shadow: 0 2px 8px var(--color-shadow, rgba(0, 0, 0, 0.08));
-    border-color: var(--color-border, rgba(0, 0, 0, 0.15));
+:host {
+  display: block;
+  height: var(--ac-height, auto);
+}
+
+.ac {
+  @include ds.surface-card;
+
+  // Override: dropdown must not be clipped by the card
+  overflow: visible;
+
+  // Mode card entière cliquable
+  &--clickable {
+    @include ds.button-reset;
+    @include ds.surface-card;
+    @include ds.surface-card-clickable;
+    overflow: visible;
+    width: 100%;
+    height: 100%;
+    text-align: left;
+
+    .ac__name {
+      cursor: inherit;
+      &:hover {
+        text-decoration: none;
+      }
+    }
   }
 
   // ── Header ──
@@ -31,43 +47,56 @@
   }
 
   &__mark {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: #161616;
-    color: #fff;
-    border: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font:
-      700 13px 'Inter',
-      sans-serif;
-    flex-shrink: 0;
+    @include ds.surface-mark;
+    @include ds.text-mark;
     align-self: flex-start;
 
-    [data-theme='dark'] & {
-      background: transparent;
-      border: 1.5px solid var(--color-border, rgba(255, 255, 255, 0.15));
-      color: var(--color-text, #f5f5f7);
+    &--logo {
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      padding: 4px;
+
+      [data-theme='dark'] & {
+        background: transparent;
+      }
     }
+
+    &--emoji {
+      font-size: 18px;
+      line-height: 32px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      color: inherit;
+
+      [data-theme='dark'] & {
+        background: transparent;
+      }
+    }
+  }
+
+  &__logo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 4px;
+    display: block;
   }
 
   &__meta {
     min-width: 0;
   }
 
+  &__description {
+    @include ds.text-secondary;
+    margin: 2px 0 0;
+  }
+
   &__name {
+    @include ds.button-reset;
+    @include ds.text-title;
+
     display: block;
-    font:
-      600 14px/1.3 'Inter',
-      sans-serif;
-    color: var(--color-text, #161616);
     word-break: break-word;
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
     text-align: left;
 
     &:hover {
@@ -75,84 +104,7 @@
     }
 
     &:focus-visible {
-      outline: 2px solid var(--color-primary, #2a5fc9);
-      outline-offset: 2px;
-      border-radius: 2px;
-    }
-  }
-
-  // ── More button + dropdown ──
-  &__more {
-    position: relative;
-    flex-shrink: 0;
-  }
-
-  &__more-btn {
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
-    border: none;
-    background: transparent;
-    color: var(--color-text-secondary, rgba(0, 0, 0, 0.35));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition:
-      background 120ms ease,
-      color 120ms ease;
-
-    &:hover {
-      background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
-      color: var(--color-text, #161616);
-    }
-  }
-
-  &__menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    min-width: 180px;
-    background: var(--color-modal-bg, #fff);
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-    border-radius: 10px;
-    padding: 5px;
-    z-index: 200;
-    box-shadow: var(--color-modal-shadow, 0 6px 20px rgba(0, 0, 0, 0.08));
-  }
-
-  &__menu-sep {
-    height: 1px;
-    background: var(--color-border, rgba(0, 0, 0, 0.07));
-    margin: 4px 4px;
-  }
-
-  &__menu-item {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    padding: 8px 10px;
-    border-radius: 6px;
-    border: none;
-    background: transparent;
-    font:
-      500 12.5px 'Inter',
-      sans-serif;
-    color: var(--color-text, #161616);
-    text-align: left;
-    cursor: pointer;
-    transition: background 100ms ease;
-
-    &:hover {
-      background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
-    }
-
-    &--danger {
-      color: var(--color-error, #a5140a);
-
-      &:hover {
-        background: rgba(from var(--color-error, #ff453a) r g b / 0.08);
-      }
+      @include ds.focus-ring;
     }
   }
 
@@ -167,28 +119,7 @@
 
 // ── Chip style — pill arrondi, via .ac-chip sur les boutons projetés ──
 :host ::ng-deep .ac-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 12px 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-  background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
-  color: var(--color-text, #161616);
-  font:
-    500 11.5px 'Inter',
-    sans-serif;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    background 120ms ease,
-    border-color 120ms ease;
-
-  &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
-    border-color: var(--color-border, rgba(0, 0, 0, 0.16));
-  }
+  @include ds.chip;
 
   svg {
     flex-shrink: 0;
