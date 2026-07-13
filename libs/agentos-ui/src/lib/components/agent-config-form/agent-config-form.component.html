@@ -64,8 +64,8 @@
         ></textarea>
       </div>
 
-      <!-- Integrations section: shows platform-level configs in platform mode, namespace + platform configs otherwise -->
-      @if (integrationRows().length > 0) {
+      <!-- Integrations section: shown when the namespace has integration configs or built-ins -->
+      @if (integrationRows().length > 0 || builtInRows().length > 0) {
         <fieldset class="agent-config-form__integrations">
           <legend class="agent-config-form__label">Integrations</legend>
           <p class="agent-config-form__integrations-hint">
@@ -95,6 +95,25 @@
                 />
               }
             </div>
+          }
+
+          @if (builtInRows().length > 0) {
+            <p class="agent-config-form__integrations-separator">Built-in integrations</p>
+            @for (row of builtInRows(); track row.type) {
+              <div class="agent-config-form__integration-row">
+                <label class="agent-config-form__integration-toggle">
+                  <input
+                    class="agent-config-form__integration-checkbox"
+                    type="checkbox"
+                    [checked]="row.enabled()"
+                    (change)="toggleBuiltIn(row)"
+                  />
+                  <span class="agent-config-form__integration-name">{{ row.displayName }}</span>
+                  <span class="agent-config-form__integration-type">built-in</span>
+                </label>
+                <p class="agent-config-form__integration-builtin-desc">{{ row.description }}</p>
+              </div>
+            }
           }
         </fieldset>
       }

@@ -1,3 +1,15 @@
+## 0.212.0 (2026-07-13)
+
+### 🚀 Features
+
+- case & namespace file exchange (frontend) ([#1076](https://github.com/whoz-oss/coday/pull/1076))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
 ## 0.211.1 (2026-07-13)
 
 ### 🩹 Fixes
