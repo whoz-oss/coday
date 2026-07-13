@@ -279,6 +279,7 @@ data class QuestionEvent(
     val agentName: String,
     val question: String,
     val options: List<String>? = null,
+    val questionType: QuestionType = QuestionType.FREE_TEXT,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.QUESTION
 
