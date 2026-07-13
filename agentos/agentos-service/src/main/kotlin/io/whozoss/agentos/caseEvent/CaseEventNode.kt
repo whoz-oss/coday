@@ -227,6 +227,11 @@ class QuestionEventNode(
     val question: String,
     /** JSON-serialised [List]<[String]>?, null when no options */
     val options: String? = null,
+    /**
+     * Stored as a String for forward compatibility. Defaults to "FREE_TEXT" so that
+     * existing nodes written before this field was introduced deserialise correctly.
+     */
+    val questionType: String = "FREE_TEXT",
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

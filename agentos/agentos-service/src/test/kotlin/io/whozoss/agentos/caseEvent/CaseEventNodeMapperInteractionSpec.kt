@@ -9,6 +9,7 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.time.Instant
 import java.util.UUID
@@ -48,6 +49,46 @@ class CaseEventNodeMapperInteractionSpec :
             roundTripped.agentName shouldBe "RouterAgent"
             roundTripped.question shouldBe "Which environment should I deploy to?"
             roundTripped.options shouldBe listOf("staging", "production")
+            roundTripped.questionType shouldBe QuestionType.FREE_TEXT
+        }
+
+        "QuestionEvent with OAUTH_AUTHORIZE questionType survives the round-trip" {
+            val original =
+                QuestionEvent(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = UUID.randomUUID(),
+                    caseId = UUID.randomUUID(),
+                    timestamp = Instant.parse("2026-05-19T15:03:00Z"),
+                    agentId = agentId,
+                    agentName = "RouterAgent",
+                    question = "Please authorise access.",
+                    options = null,
+                    questionType = QuestionType.OAUTH_AUTHORIZE,
+                )
+
+            val node = nodeMapper.fromDomain(original)
+            val roundTripped = nodeMapper.toDomain(node) as QuestionEvent
+
+            roundTripped.questionType shouldBe QuestionType.OAUTH_AUTHORIZE
+        }
+
+        "QuestionEvent with unknown questionType in node defaults to FREE_TEXT" {
+            val node =
+                QuestionEventNode(
+                    id = UUID.randomUUID().toString(),
+                    caseId = UUID.randomUUID().toString(),
+                    namespaceId = UUID.randomUUID().toString(),
+                    timestamp = Instant.parse("2026-05-19T15:04:00Z"),
+                    agentId = agentId.toString(),
+                    agentName = "LegacyAgent",
+                    question = "Old question from before the field existed.",
+                    options = null,
+                    questionType = "UNKNOWN_VALUE",
+                )
+
+            val roundTripped = nodeMapper.toDomain(node) as QuestionEvent
+
+            roundTripped.questionType shouldBe QuestionType.FREE_TEXT
         }
 
         "QuestionEvent with null options survives the round-trip" {

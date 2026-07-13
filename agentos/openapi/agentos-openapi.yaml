@@ -3678,6 +3678,12 @@ components:
               type: string
           question:
             type: string
+          questionType:
+            type: string
+            enum:
+            - FREE_TEXT
+            - SINGLE_CHOICE
+            - OAUTH_AUTHORIZE
       required:
       - agentId
       - agentName
@@ -3686,6 +3692,7 @@ components:
       - metadata
       - namespaceId
       - question
+      - questionType
       - timestamp
       - type
     Text:
