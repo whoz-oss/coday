@@ -33,6 +33,7 @@
   <!-- ═══ DESKTOP SIDEBAR ═══ -->
   <agentos-shell-sidebar
     [sidebarWidth]="sidebarWidth()"
+    [sidebarOpen]="sidebarOpen()"
     [selectedNamespace]="selectedNamespace()"
     [namespaces]="namespaces()"
     [showNsPicker]="showNsPicker()"
@@ -44,6 +45,7 @@
     [isAdmin]="isAdmin()"
     [isDark]="isDark()"
     [showTechnical]="showTechnical()"
+    (collapseRequested)="collapseSidebar()"
     (homeClicked)="navigateHome()"
     (namespaceSelected)="onNamespaceSelected($event)"
     (nsMenuToggled)="toggleNsMenu()"
@@ -59,14 +61,23 @@
     (logsToggled)="onMenuToggleLogs()"
   />
 
-  <!-- Resize handle -->
-  <div
-    class="case-shell__resize-handle"
-    role="separator"
-    tabindex="-1"
-    aria-label="Resize sidebar"
-    (mousedown)="onResizeStart($event)"
-  ></div>
+  <!-- Resize handle (hidden when sidebar is collapsed) -->
+  @if (sidebarOpen()) {
+    <div
+      class="case-shell__resize-handle"
+      role="separator"
+      tabindex="-1"
+      aria-label="Resize sidebar"
+      (mousedown)="onResizeStart($event)"
+    ></div>
+  }
+
+  <!-- Expand button — floats top-left when sidebar is collapsed -->
+  @if (!sidebarOpen()) {
+    <button class="case-shell__expand-btn" type="button" title="Open sidebar" (click)="expandSidebar()">
+      <span class="material-icons">menu</span>
+    </button>
+  }
 
   <!-- ═══ MAIN ═══ -->
   <main class="case-shell__main">
