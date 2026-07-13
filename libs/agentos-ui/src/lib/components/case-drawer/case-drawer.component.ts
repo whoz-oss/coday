@@ -271,7 +271,9 @@ function extractFavorites(nodes: CaseTreeItem[], favorites: CaseTreeItem[]): Cas
  */
 function buildTree(cases: Case[]): { roots: CaseTreeItem[]; createdAt: Map<string, string> } {
   const allIds = new Set(cases.map((c) => c.id ?? ''))
-  const createdAt = new Map(cases.map((c) => [c.id ?? '', c.created ?? '']))
+  // Use `modified` for both sorting and time-bucket grouping so the list reflects
+  // recent activity rather than creation order.
+  const createdAt = new Map(cases.map((c) => [c.id ?? '', c.modified ?? c.created ?? '']))
 
   // Reuse the shared mapping so each node carries name, favorite and canDelete.
   const toNode = (c: Case): CaseTreeItem => ({
