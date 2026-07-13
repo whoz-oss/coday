@@ -315,12 +315,6 @@ class IntegrationConfigController(
         /**
          * YAML mapper configured for clean, human-readable output:
          * - No `---` document start marker
-         - No Jackson type tags
-         * - Null values omitted (via [toExportModel] filtering)
-         */
-        /**
-         * YAML mapper configured for clean, human-readable output:
-         * - No `---` document start marker
          * - No Jackson type tags
          * - Null and empty values omitted (via [toExportModel] filtering + NON_EMPTY inclusion)
          */
