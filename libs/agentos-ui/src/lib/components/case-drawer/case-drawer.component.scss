@@ -17,16 +17,14 @@
   overflow-y: auto;
 
   &__badge {
-    @include ds.surface-mark; // 32x32, radius 8px, #161616 bg / dark outlined
-    @include ds.text-mark; // 700 13px Inter
+    @include ds.surface-mark;
+    @include ds.text-mark;
 
-    // Overrides: larger size, interactive states, active variant
     width: 36px;
     height: 36px;
     letter-spacing: 0.03em;
     text-transform: uppercase;
     cursor: pointer;
-    // Resting state: bg-secondary instead of #161616 (mark style reserved for active)
     background: var(--color-bg-secondary, #fff);
     color: var(--color-text, #1b1916);
     border: 1px solid var(--color-border);
