@@ -9,10 +9,10 @@
  */
 
 export interface BasicAuthAuthSetting {
-  description?: string
+  authType: 'BasicAuthAuthSetting'
   userId?: string | null
   namespaceId?: string | null
-  authType: 'BasicAuthAuthSetting'
+  description?: string
   name: string
   id?: string
   username?: string

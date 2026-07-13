@@ -9,10 +9,10 @@
  */
 
 export interface OAuthCustomAuthSetting {
-  description?: string
+  authType: 'OAuthCustomAuthSetting'
   userId?: string | null
   namespaceId?: string | null
-  authType: 'OAuthCustomAuthSetting'
+  description?: string
   name: string
   id?: string
   clientId?: string
