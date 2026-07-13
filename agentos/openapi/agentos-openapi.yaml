@@ -2705,8 +2705,6 @@ components:
       discriminator:
         propertyName: authType
       properties:
-        description:
-          type: string
         userId:
           type: string
           format: uuid
@@ -2722,6 +2720,8 @@ components:
           - API_KEY
           - BEARER_TOKEN
           - BASIC_AUTH
+        description:
+          type: string
         name:
           type: string
         id:
