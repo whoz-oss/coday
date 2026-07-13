@@ -53,7 +53,7 @@ export class UserListComponent implements OnInit {
   }
 
   protected goBack(): void {
-    this.router.navigate(['/agentos'])
+    this.router.navigate(['/agentos', 'admin'])
   }
 
   protected navigateToCreate(): void {

@@ -1,3 +1,5 @@
+@use '../../../../../../design-system/src/styles' as ds;
+
 :host {
   display: none; // hidden on desktop, shown via media query
 }
@@ -24,19 +26,20 @@
   }
 
   &__logo-img {
-    width: 20px;
-    height: 20px;
+    height: 28px;
+    width: auto;
     border-radius: 6px;
     object-fit: contain;
   }
 
-  // logo-text removed (logo only)
+  &__logo-text {
+    @include ds.text-label;
+  }
 
   &__sep {
-    color: rgba(0, 0, 0, 0.25);
-    font:
-      400 12px 'Inter',
-      sans-serif;
+    color: var(--color-text-tertiary);
+    font: inherit;
+    font-size: 0.75rem;
     flex: none;
   }
 
@@ -47,10 +50,8 @@
   }
 
   &__ns-btn {
-    font:
-      600 12.5px 'Inter',
-      sans-serif;
-    color: var(--color-text, #161616);
+    @include ds.text-menu-item;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -64,7 +65,7 @@
   }
 
   &__chevron {
-    color: rgba(0, 0, 0, 0.35);
+    color: var(--color-text-secondary);
     font-size: 9px;
     flex: none;
   }
@@ -76,42 +77,20 @@
   }
 
   &__ns-menu {
+    @include ds.surface-dropdown;
     position: fixed;
     top: 44px;
     left: 16px;
     min-width: 180px;
-    background: var(--color-bg, #f4f3ef);
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
-    border-radius: 14px;
-    padding: 6px;
     z-index: 300;
-    box-shadow:
-      0 6px 20px rgba(0, 0, 0, 0.09),
-      0 1px 4px rgba(0, 0, 0, 0.05);
   }
 
   &__ns-item {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px;
-    border-radius: 10px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    color: var(--color-text, #1b1916);
-    font: inherit;
-    font-size: 0.8rem;
-    transition: all 130ms;
-
-    &:hover {
-      background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
-    }
+    @include ds.menu-item;
 
     &--active {
-      background: color-mix(in srgb, var(--color-primary, #016b71) 12%, transparent);
-      color: var(--color-primary, #016b71);
+      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+      color: var(--color-primary);
     }
   }
 
@@ -119,9 +98,8 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--color-primary, #5aadb5);
+    background: var(--color-primary);
     flex-shrink: 0;
-    border-radius: 50%;
   }
 
   &__ns-item-name {
@@ -142,15 +120,15 @@
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: oklch(0.94 0.03 255);
-    border: 1px solid oklch(0.82 0.06 255);
-    color: #2a5fc9;
+    background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+    color: var(--color-primary);
     display: flex;
     align-items: center;
     justify-content: center;
-    font:
-      600 10px 'Inter',
-      sans-serif;
+    font: inherit;
+    font-size: 0.625rem;
+    font-weight: 700;
     cursor: pointer;
     user-select: none;
   }

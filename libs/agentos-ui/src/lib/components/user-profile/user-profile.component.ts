@@ -2,6 +2,7 @@ import { Location } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
+import { IconButtonComponent } from '@whoz-oss/design-system'
 import { Router } from '@angular/router'
 import { combineLatest, map } from 'rxjs'
 import { AiProviderConfigStateService } from '../../services/ai-provider-config-state.service'
@@ -40,7 +41,7 @@ interface UserGlobalRecap {
  */
 @Component({
   selector: 'agentos-user-profile',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, IconButtonComponent],
   templateUrl: './user-profile.component.html',
   styleUrl: './user-profile.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

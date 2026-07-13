@@ -1,3 +1,5 @@
+@use '../../../../../../design-system/src/styles' as ds;
+
 .shell-user-menu {
   &__backdrop {
     position: fixed;
@@ -6,18 +8,12 @@
   }
 
   &__overlay {
+    @include ds.surface-dropdown;
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
     min-width: 180px;
-    background: var(--color-bg, #f4f3ef);
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
-    border-radius: 14px;
-    padding: 6px;
     z-index: 200;
-    box-shadow:
-      0 6px 20px rgba(0, 0, 0, 0.09),
-      0 1px 4px rgba(0, 0, 0, 0.05);
 
     &--mobile {
       position: absolute;
@@ -29,24 +25,7 @@
   }
 
   &__item {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 9px 10px;
-    border-radius: 10px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    color: var(--color-text, #1b1916);
-    font: inherit;
-    font-size: 0.8rem;
-    text-align: left;
-    transition: all 130ms;
-
-    &:hover {
-      background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
-    }
+    @include ds.menu-item;
 
     &--active {
       background: color-mix(in srgb, var(--color-primary, #016b71) 12%, transparent);
@@ -55,8 +34,6 @@
   }
 
   &__separator {
-    height: 1px;
-    background: var(--color-border, rgba(0, 0, 0, 0.09));
-    margin: 4px 6px;
+    @include ds.menu-separator;
   }
 }
