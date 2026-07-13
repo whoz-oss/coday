@@ -99,21 +99,20 @@ describe('CaseDrawerComponent', () => {
     const component = makeComponent(cases)
 
     const roots = component['rootItems']()
-    // Favorites are promoted to the top
+    // Favorites are promoted to the top under a "Favorites" group.
     expect(roots[0].id).toBe('fav')
     expect(roots[0].groupKey).toBe('favorites')
     expect(roots[0].groupLabel).toBe('Favorites')
-    // Non-favorite is bucketed by time (groupKey is one of the time-bucket keys)
+    // Non-favorites render ungrouped below (no time-bucket grouping).
     expect(roots[1].id).toBe('plain')
-    expect(roots[1].groupKey).toBeDefined()
-    expect(roots[1].groupKey).not.toBe('favorites')
+    expect(roots[1].groupKey).toBeUndefined()
   })
 
-  it('leaves roots ungrouped when nothing is favorited and only one time bucket', () => {
+  it('leaves roots ungrouped when nothing is favorited', () => {
     const cases: Case[] = [{ id: 'a', namespaceId: 'ns', favorite: false } as unknown as Case]
     const component = makeComponent(cases)
 
-    // Single bucket with no favorites: grouping is skipped
+    // No favorites: the list is returned unchanged, no section header.
     expect(component['rootItems']()[0].groupKey).toBeUndefined()
   })
 

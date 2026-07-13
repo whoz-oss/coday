@@ -15,9 +15,9 @@ import { CaseItemComponent, CaseListItem } from '../case-item/case-item.componen
 
 /**
  * A case list item extended with a recursive children list (parent/child cases).
- * Only root nodes are passed to ds-entity-list; children are rendered inline by
- * the itemTemplate. Inherits `favorite` + `canDelete` from [CaseListItem] so each
- * row can render the star toggle and the (ADMIN-gated) delete button.
+ * Only root nodes are passed to ds-entity-list; children are rendered inline by the
+ * itemTemplate. Inherits `favorite` + `canDelete` from [CaseListItem] so each row can
+ * render the star toggle and the (ADMIN-gated) delete action.
  */
 export interface CaseTreeItem extends CaseListItem {
   children: CaseTreeItem[]
@@ -29,9 +29,14 @@ export interface CaseTreeItem extends CaseListItem {
  * Uses ds-entity-list for the chrome (toolbar, search, create button).
  *
  * Two display modes:
- * - **Tree mode** (no active search): root cases are shown with expandable sub-cases.
- * - **Flat mode** (search active): all matching cases at every depth level are shown
- *   as a flat list, including sub-cases. Matching is done on title AND case ID.
+ * - **Tree mode** (no active search): root cases with expandable sub-cases; favorited
+ *   cases are promoted to a "Favorites" group at the top.
+ * - **Flat mode** (search active): all matching cases at every depth level are shown as a
+ *   flat list. Matching is done on title AND case ID.
+ *
+ * Compact mode (compact input = true):
+ * - Hides the ds-entity-list chrome entirely
+ * - Shows only a vertical list of case-initials badges
  */
 @Component({
   selector: 'agentos-case-drawer',
@@ -43,6 +48,7 @@ export interface CaseTreeItem extends CaseListItem {
 export class CaseDrawerComponent {
   readonly cases = input<Case[]>([])
   readonly activeCaseId = input<string | null>(null)
+  readonly compact = input<boolean>(false)
 
   readonly caseSelected = output<string>()
   readonly createRequested = output<void>()
@@ -57,13 +63,21 @@ export class CaseDrawerComponent {
   protected readonly isSearchActive = computed(() => this.searchQuery().trim().length > 0)
 
   /**
-   * Tree rebuilt automatically when cases() changes.
-   * Favorites are promoted to the top; remaining roots are bucketed by creation date.
+   * Tree rebuilt automatically when cases() changes. Favorited cases (at any depth) are
+   * promoted to a "Favorites" group at the top; the rest keep their newest-first order.
    */
-  protected readonly rootItems = computed(() => {
-    const { roots, createdAt } = buildTree(this.cases())
-    return groupFavorites(roots, createdAt)
-  })
+  protected readonly rootItems = computed(() => promoteFavorites(buildTree(this.cases())))
+
+  /**
+   * Root items enriched with initials, used in compact/icons mode.
+   * Initials = first letter of the first two words of the title, uppercased.
+   */
+  protected readonly compactItems = computed(() =>
+    this.rootItems().map((item) => ({
+      ...item,
+      initials: getInitials(item.name),
+    }))
+  )
 
   /**
    * Flat list of all cases matching the current search query.
@@ -168,121 +182,35 @@ export class CaseDrawerComponent {
   }
 }
 
-// ── Time-bucket helpers ──────────────────────────────────────────────────────
-
-type TimeBucket = 'today' | 'this-week' | 'last-month' | 'older'
-
-const BUCKET_ORDER: TimeBucket[] = ['today', 'this-week', 'last-month', 'older']
-
-const BUCKET_LABEL: Record<TimeBucket, string> = {
-  today: 'Today',
-  'this-week': 'This week',
-  'last-month': 'Last month',
-  older: 'Older',
-}
-
-function timeBucket(isoDate: string | undefined, now: Date): TimeBucket {
-  if (!isoDate) return 'older'
-  const d = new Date(isoDate)
-  if (isNaN(d.getTime())) return 'older'
-
-  const startOfToday = new Date(now)
-  startOfToday.setHours(0, 0, 0, 0)
-
-  const startOfWeek = new Date(startOfToday)
-  startOfWeek.setDate(startOfToday.getDate() - startOfToday.getDay())
-
-  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-
-  if (d >= startOfToday) return 'today'
-  if (d >= startOfWeek) return 'this-week'
-  if (d >= startOfLastMonth) return 'last-month'
-  return 'older'
-}
-
 /**
- * Group nodes into "Favorites" + time-bucket sections.
- *
- * Favorited nodes (at any depth) are extracted from the tree and promoted to the
- * top of the list under a "Favorites" group. Their children follow them.
- *
- * Non-favorited root nodes are then distributed into time-based buckets
- * (Today / This week / Last month / Older) based on their `created` date.
- * Empty buckets are omitted.
+ * Extract initials from a case title.
+ * Takes the first letter of each of the first two words, uppercased.
+ * Falls back to the first two characters of the string if only one word.
+ * Examples:
+ *   'Block deep work'   -> 'BD'
+ *   'Q3 travel policy'  -> 'QT'
+ *   'sync'              -> 'SY'
  */
-function groupFavorites(roots: CaseTreeItem[], createdAt: Map<string, string>): CaseTreeItem[] {
-  // Extract favorites from the entire tree.
-  const promoted: CaseTreeItem[] = []
-  const prunedRoots = extractFavorites(roots, promoted)
-
-  for (const node of promoted) {
-    node.groupKey = 'favorites'
-    node.groupLabel = 'Favorites'
-  }
-
-  // Distribute remaining roots into time buckets.
-  const now = new Date()
-  const buckets = new Map<TimeBucket, CaseTreeItem[]>()
-  for (const node of prunedRoots) {
-    const bucket = timeBucket(createdAt.get(node.id), now)
-    if (!buckets.has(bucket)) buckets.set(bucket, [])
-    buckets.get(bucket)!.push(node)
-  }
-
-  const bucketed: CaseTreeItem[] = []
-  for (const key of BUCKET_ORDER) {
-    const group = buckets.get(key)
-    if (!group?.length) continue
-    for (const node of group) {
-      node.groupKey = key
-      node.groupLabel = BUCKET_LABEL[key]
-    }
-    bucketed.push(...group)
-  }
-
-  // If there are no favorites and only one non-empty bucket, skip grouping entirely
-  // to avoid a single section header wrapping the whole list.
-  const activeBuckets = BUCKET_ORDER.filter((k) => buckets.has(k))
-  if (!promoted.length && activeBuckets.length <= 1) {
-    return roots
-  }
-
-  return [...promoted, ...bucketed]
-}
-
-/**
- * Recursively walk [nodes], collect favorited nodes into [favorites], and return
- * the remaining (non-favorited) nodes with their children similarly pruned.
- * The order within each group is preserved (newest-first from buildTree).
- */
-function extractFavorites(nodes: CaseTreeItem[], favorites: CaseTreeItem[]): CaseTreeItem[] {
-  const remaining: CaseTreeItem[] = []
-  for (const node of nodes) {
-    // Recurse first so a favorited grandchild is extracted before we inspect the parent.
-    const prunedChildren = extractFavorites(node.children, favorites)
-    if (node.favorite) {
-      // Lift this node to favorites; keep its (already-pruned) children with it.
-      favorites.push({ ...node, children: prunedChildren, groupKey: undefined, groupLabel: undefined })
-    } else {
-      remaining.push({ ...node, children: prunedChildren })
-    }
-  }
-  return remaining
+function getInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  const first = words[0]?.[0] ?? ''
+  const second = words[1]?.[0] ?? words[0]?.[1] ?? ''
+  return (first + second).toUpperCase()
 }
 
 /**
  * Build a tree of CaseTreeItem from a flat Case list, sorted newest first at every level.
- * Returns both the root nodes and the createdAt map (needed by groupFavorites for bucketing).
+ * Uses `modified` (falling back to `created`) so the list reflects recent activity.
  */
-function buildTree(cases: Case[]): { roots: CaseTreeItem[]; createdAt: Map<string, string> } {
+function buildTree(cases: Case[]): CaseTreeItem[] {
   const allIds = new Set(cases.map((c) => c.id ?? ''))
-  // Use `modified` for both sorting and time-bucket grouping so the list reflects
-  // recent activity rather than creation order.
-  const createdAt = new Map(cases.map((c) => [c.id ?? '', c.modified ?? c.created ?? '']))
+  const modifiedAt = new Map(cases.map((c) => [c.id ?? '', c.modified ?? c.created ?? '']))
 
-  // Reuse the shared mapping so each node carries name, favorite and canDelete.
+  // Reuse the shared mapping so each node carries name, favorite and canDelete; store the
+  // case ID in description so search (and ds-entity-list's filter) also match on it.
   const toNode = (c: Case): CaseTreeItem => ({
     ...CaseItemComponent.toListItem(c),
+    description: c.id ?? '',
     children: [],
   })
 
@@ -304,10 +232,44 @@ function buildTree(cases: Case[]): { roots: CaseTreeItem[]; createdAt: Map<strin
 
   const sortDesc = (items: CaseTreeItem[]): CaseTreeItem[] =>
     items
-      .sort((a, b) => ((createdAt.get(b.id) ?? '') > (createdAt.get(a.id) ?? '') ? 1 : -1))
+      .sort((a, b) => ((modifiedAt.get(b.id) ?? '') > (modifiedAt.get(a.id) ?? '') ? 1 : -1))
       .map((item) => ({ ...item, children: sortDesc(item.children) }))
 
-  return { roots: sortDesc(roots), createdAt }
+  return sortDesc(roots)
+}
+
+/**
+ * Promote favorited cases (at any depth) to a "Favorites" group at the top of the list.
+ * The remaining cases keep their newest-first order and render ungrouped below. When there
+ * are no favorites the list is returned unchanged (no empty section header).
+ */
+function promoteFavorites(roots: CaseTreeItem[]): CaseTreeItem[] {
+  const promoted: CaseTreeItem[] = []
+  const remaining = extractFavorites(roots, promoted)
+  if (!promoted.length) return roots
+  for (const node of promoted) {
+    node.groupKey = 'favorites'
+    node.groupLabel = 'Favorites'
+  }
+  return [...promoted, ...remaining]
+}
+
+/**
+ * Recursively walk [nodes], collect favorited nodes into [favorites], and return the
+ * remaining (non-favorited) nodes with their children similarly pruned. A favorited node
+ * keeps its (already-pruned) children with it. Order within each group is preserved.
+ */
+function extractFavorites(nodes: CaseTreeItem[], favorites: CaseTreeItem[]): CaseTreeItem[] {
+  const remaining: CaseTreeItem[] = []
+  for (const node of nodes) {
+    const prunedChildren = extractFavorites(node.children, favorites)
+    if (node.favorite) {
+      favorites.push({ ...node, children: prunedChildren, groupKey: undefined, groupLabel: undefined })
+    } else {
+      remaining.push({ ...node, children: prunedChildren })
+    }
+  }
+  return remaining
 }
 
 /**

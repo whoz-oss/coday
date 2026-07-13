@@ -1,8 +1,9 @@
 <ds-entity-list
   title="Cases"
   [items]="displayItems()"
-  [itemTemplate]="caseItemTpl"
+  [itemTemplate]="compact() ? undefined : caseItemTpl"
   [showCreate]="true"
+  [toolbarOnly]="compact()"
   [disableInternalFilter]="true"
   emptyMessage="No cases yet. Start one below."
   searchPlaceholder="Filter cases…"
@@ -10,8 +11,23 @@
   contentMaxWidth="100%"
   (createRequested)="onCreateRequested()"
   (searchChanged)="onSearchChanged($event)"
->
-</ds-entity-list>
+/>
+
+@if (compact()) {
+  <div class="case-drawer-compact">
+    @for (item of compactItems(); track item.id) {
+      <button
+        type="button"
+        class="case-drawer-compact__badge"
+        [class.case-drawer-compact__badge--active]="item.id === activeCaseId()"
+        [title]="item.name"
+        (click)="onItemSelected(item.id)"
+      >
+        {{ item.initials }}
+      </button>
+    }
+  </div>
+}
 
 <!--
   Item template: renders one case row + its sub-cases recursively.

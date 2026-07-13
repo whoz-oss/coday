@@ -15,14 +15,12 @@
   }
 
   &__logo-btn {
+    @include ds.button-reset;
+
     display: flex;
     align-items: center;
     gap: 6px;
     flex: none;
-    padding: 0;
-    border: none;
-    background: transparent;
-    cursor: pointer;
   }
 
   &__logo-img {
@@ -43,25 +41,36 @@
     flex: none;
   }
 
-  // ── Namespace switcher ──
+  // Namespace switcher
   &__ns-wrap {
     position: static;
     min-width: 0;
   }
 
   &__ns-btn {
+    @include ds.button-reset;
     @include ds.text-menu-item;
+
     font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     display: flex;
     align-items: center;
-    gap: 3px;
-    cursor: pointer;
-    background: none;
-    border: none;
-    padding: 0;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: all 150ms;
+    max-width: 160px;
+
+    &:hover {
+      background: var(--color-bg-hover);
+      border-color: var(--color-border);
+    }
+
+    // Open state: primary border — aligns with desktop trigger style
+    &--open {
+      border-color: var(--color-primary);
+      background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+    }
   }
 
   &__chevron {
@@ -78,10 +87,11 @@
 
   &__ns-menu {
     @include ds.surface-dropdown;
+
     position: fixed;
     top: 44px;
     left: 16px;
-    min-width: 180px;
+    min-width: 200px;
     z-index: 300;
   }
 
@@ -94,14 +104,6 @@
     }
   }
 
-  &__ns-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--color-primary);
-    flex-shrink: 0;
-  }
-
   &__ns-item-name {
     flex: 1;
     text-align: left;
@@ -110,27 +112,30 @@
     text-overflow: ellipsis;
   }
 
-  // ── Avatar ──
+  // Avatar
   &__avatar-wrap {
     position: relative;
     flex-shrink: 0;
   }
 
   &__avatar {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--color-primary) 15%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
-    color: var(--color-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font: inherit;
-    font-size: 0.625rem;
-    font-weight: 700;
+    @include ds.text-mark;
+
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: var(--color-primary, #016b71);
+    color: #fff;
+    display: grid;
+    place-items: center;
     cursor: pointer;
     user-select: none;
+    transition: background 140ms ease;
+
+    &:hover {
+      background: var(--color-primary-hover, #015a5f);
+    }
   }
 }
 
@@ -142,8 +147,8 @@
     gap: 8px;
     padding: 0 16px;
     min-height: 44px;
-    border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
-    background: var(--color-bg, #fff);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg);
     flex-shrink: 0;
     position: relative;
   }

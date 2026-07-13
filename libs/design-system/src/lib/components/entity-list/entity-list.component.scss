@@ -3,6 +3,10 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+
+  &.ds-entity-list--toolbar-only {
+    flex: 0 0 auto;
+  }
 }
 
 .entity-list {
@@ -22,10 +26,16 @@
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
   border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-  // Fixed height — the mat-form-field must not cause resize on focus
   height: 56px;
   width: 100%;
   box-sizing: border-box;
+
+  &--centered {
+    justify-content: center;
+    height: auto;
+    padding: 8px 0;
+    border-bottom: none;
+  }
 }
 
 .entity-list__title {
@@ -101,9 +111,9 @@
 
 .entity-list__create-btn {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   border: none;
   background: var(--color-primary, #016b71);
   color: #fff;
@@ -116,7 +126,7 @@
   transition: background 150ms;
 
   &:hover {
-    background: var(--color-primary-hover, #7cc0c7);
+    background: var(--color-primary-hover, #015a5f);
   }
 }
 
