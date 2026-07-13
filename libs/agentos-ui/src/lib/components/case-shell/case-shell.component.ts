@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core'
-import { toSignal } from '@angular/core/rxjs-interop'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   Case,
@@ -52,6 +52,7 @@ export class CaseShellComponent {
   private readonly namespaceController = inject(NamespaceControllerService)
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
+  private readonly destroyRef = inject(DestroyRef)
 
   // ---------------------------------------------------------------------------
   // User
@@ -134,6 +135,12 @@ export class CaseShellComponent {
   protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
 
   constructor() {
+    // Load the current user eagerly so isAdmin() and userInitials() are available
+    // as soon as the shell renders, without waiting for a /me navigation.
+    if (!this.userState.currentUser()) {
+      this.userState.loadMe().pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
+    }
+
     // Sync selectedNamespace whenever namespaces load or the ?ns param changes.
     // When no ?ns is present, auto-select the first namespace and update the URL.
     effect(() => {

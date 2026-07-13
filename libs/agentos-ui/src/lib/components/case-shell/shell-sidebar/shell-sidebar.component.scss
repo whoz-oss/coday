@@ -19,21 +19,21 @@
   &__top {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 14px 12px 6px;
+    gap: 6px;
+    padding: 10px 10px 10px;
+    border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
     flex-shrink: 0;
   }
 
   &__brand {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 6px;
+    padding: 4px;
     border-radius: 8px;
     border: none;
     background: transparent;
     cursor: pointer;
+    flex-shrink: 0;
     transition: background 140ms;
 
     &:hover {
@@ -42,18 +42,10 @@
   }
 
   &__logo-img {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border-radius: 6px;
     object-fit: contain;
-  }
-
-  &__logo-text {
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--color-text, #1b1916);
-    white-space: nowrap;
-    letter-spacing: -0.01em;
   }
 
   // ── User menu ──
@@ -82,19 +74,11 @@
     }
   }
 
-  // ── Namespace picker ──
+  // ── Namespace picker (inline in top bar) ──
   &__ns-wrap {
-    padding: 12px 12px 6px;
+    flex: 1;
+    min-width: 0;
     position: relative;
-  }
-
-  &__ns-label {
-    padding: 0 2px 7px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--color-text-tertiary, #5a5449);
   }
 
   &__ns-picker {
@@ -105,29 +89,22 @@
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: 12px;
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
-    background: var(--color-bg-secondary, #faf9f7);
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
     cursor: pointer;
     color: var(--color-text, #1b1916);
     transition: all 150ms;
     font: inherit;
-    font-size: 0.82rem;
+    font-size: 0.85rem;
     font-weight: 700;
 
     &:hover {
-      border-color: var(--color-border-light, rgba(0, 0, 0, 0.15));
+      background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+      border-color: var(--color-border, rgba(0, 0, 0, 0.09));
     }
-  }
-
-  &__ns-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--color-primary, #5aadb5);
-    flex-shrink: 0;
   }
 
   &__ns-name {
@@ -191,8 +168,8 @@
 
   &__ns-name-static {
     display: block;
-    padding: 10px 12px;
-    font-size: 0.82rem;
+    padding: 5px 8px;
+    font-size: 0.85rem;
     font-weight: 700;
     color: var(--color-text, #1b1916);
     white-space: nowrap;
