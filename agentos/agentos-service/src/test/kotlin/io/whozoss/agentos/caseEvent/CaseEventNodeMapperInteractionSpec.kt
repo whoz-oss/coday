@@ -52,6 +52,50 @@ class CaseEventNodeMapperInteractionSpec :
             roundTripped.questionType shouldBe QuestionType.FREE_TEXT
         }
 
+        "QuestionEvent with OPEN_CHOICE questionType survives the round-trip" {
+            val original =
+                QuestionEvent(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = UUID.randomUUID(),
+                    caseId = UUID.randomUUID(),
+                    timestamp = Instant.parse("2026-05-19T15:05:00Z"),
+                    agentId = agentId,
+                    agentName = "RouterAgent",
+                    question = "Pick a template or describe your own.",
+                    options = listOf("blank", "standard", "advanced"),
+                    questionType = QuestionType.OPEN_CHOICE,
+                )
+
+            val node = nodeMapper.fromDomain(original)
+            val roundTripped = nodeMapper.toDomain(node) as QuestionEvent
+
+            roundTripped.questionType shouldBe QuestionType.OPEN_CHOICE
+            roundTripped.options shouldBe listOf("blank", "standard", "advanced")
+            roundTripped.userId shouldBe null
+        }
+
+        "QuestionEvent with userId survives the round-trip" {
+            val targetUserId = UUID.randomUUID()
+            val original =
+                QuestionEvent(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = UUID.randomUUID(),
+                    caseId = UUID.randomUUID(),
+                    timestamp = Instant.parse("2026-05-19T15:06:00Z"),
+                    agentId = agentId,
+                    agentName = "RouterAgent",
+                    question = "Hey Alice, which environment?",
+                    options = listOf("staging", "production"),
+                    questionType = QuestionType.SINGLE_CHOICE,
+                    userId = targetUserId,
+                )
+
+            val node = nodeMapper.fromDomain(original)
+            val roundTripped = nodeMapper.toDomain(node) as QuestionEvent
+
+            roundTripped.userId shouldBe targetUserId
+        }
+
         "QuestionEvent with OAUTH_AUTHORIZE questionType survives the round-trip" {
             val original =
                 QuestionEvent(

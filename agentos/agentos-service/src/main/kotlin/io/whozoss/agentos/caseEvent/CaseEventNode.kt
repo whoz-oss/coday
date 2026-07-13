@@ -232,6 +232,11 @@ class QuestionEventNode(
      * existing nodes written before this field was introduced deserialise correctly.
      */
     val questionType: String = "FREE_TEXT",
+    /**
+     * UUID of the specific user this question is directed at, or null when addressed
+     * to any user of the case. Null default ensures backward compat with existing nodes.
+     */
+    val userId: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

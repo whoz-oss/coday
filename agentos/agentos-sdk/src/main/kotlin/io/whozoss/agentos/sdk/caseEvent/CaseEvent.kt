@@ -269,6 +269,11 @@ data class ThinkingEvent(
 /**
  * Emitted when an agent asks a question to the user via a tool.
  * The user can respond asynchronously via an AnswerEvent.
+ *
+ * @param userId When non-null, identifies the specific user this question is directed at.
+ *   Null means the question is addressed to any user of the case.
+ * @param questionType Controls how the UI should render the response input.
+ *   [QuestionType.OPEN_CHOICE] requires [options] to be non-null and non-empty.
  */
 data class QuestionEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -280,6 +285,8 @@ data class QuestionEvent(
     val question: String,
     val options: List<String>? = null,
     val questionType: QuestionType = QuestionType.FREE_TEXT,
+    /** Identifies the specific user this question is directed at. Null = any user. */
+    val userId: UUID? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.QUESTION
 
