@@ -377,6 +377,35 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/cases/{id}/star:
+    put:
+      tags:
+      - case-controller
+      operationId: starCase
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags:
+      - case-controller
+      operationId: unstarCase
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/ai-providers/{id}:
     get:
       tags:
@@ -2110,6 +2139,27 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Case"
+  /api/cases/by-parentId/{parentId}/mine:
+    get:
+      tags:
+      - case-controller
+      operationId: listMineByParentCase
+      parameters:
+      - name: parentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
   /api/case-events/{id}:
     get:
       tags:
@@ -2483,9 +2533,21 @@ components:
         created:
           type: string
           format: date-time
+        modified:
+          type: string
+          format: date-time
         removed:
           type: boolean
+        favorite:
+          type: boolean
+        role:
+          type: string
+          description: The caller's direct relation on this case
+          enum:
+          - ADMIN
+          - MEMBER
       required:
+      - favorite
       - namespaceId
       - removed
       - status

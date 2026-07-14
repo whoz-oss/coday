@@ -148,6 +148,89 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("entityLabel") entityLabel: String,
     )
 
+    /**
+     * Atomically promotes a [:MEMBER] relation to [:ADMIN], preserving all properties
+     * (notably `starred`) from the old relation onto the new one.
+     *
+     * Returns the number of [:MEMBER] relations deleted (0 = user had no MEMBER edge;
+     * 1 = promotion succeeded). The [:ADMIN] edge is always created-or-kept regardless.
+     */
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})-[old:MEMBER]->(e {id: $entityId})
+        WHERE $entityLabel IN labels(e)
+        MERGE (u)-[newRel:ADMIN]->(e)
+        SET newRel += properties(old)
+        DELETE old
+        RETURN count(old)
+    """,
+    )
+    fun promoteMemberToAdmin(
+        @Param("userId") userId: String,
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): Long
+
+    /**
+     * Atomically demotes a [:ADMIN] relation to [:MEMBER], preserving all properties
+     * (notably `starred`) from the old relation onto the new one.
+     *
+     * Returns the number of [:ADMIN] relations deleted (0 = user had no ADMIN edge;
+     * 1 = demotion succeeded). The [:MEMBER] edge is always created-or-kept regardless.
+     */
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})-[old:ADMIN]->(e {id: $entityId})
+        WHERE $entityLabel IN labels(e)
+        MERGE (u)-[newRel:MEMBER]->(e)
+        SET newRel += properties(old)
+        DELETE old
+        RETURN count(old)
+    """,
+    )
+    fun demoteAdminToMember(
+        @Param("userId") userId: String,
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): Long
+
+    // Star / favorite — a per-user boolean property on the user↔entity relation.
+
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e {id: $entityId})
+        WHERE $entityLabel IN labels(e)
+        SET r.starred = $starred
+        RETURN count(r)
+    """,
+    )
+    fun setStarred(
+        @Param("userId") userId: String,
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+        @Param("starred") starred: Boolean,
+    ): Long
+
+    /**
+     * The caller's direct relation and starred flag for every entity of the given label
+     * they have a direct ADMIN/MEMBER edge on, encoded as `"id|relation|starred"` per row.
+     *
+     * Encoded into a single string column on purpose: Spring Data Neo4j cannot map a
+     * multi-value record (`RETURN a, b, c`) without a custom mapper. The caller decodes
+     * each row and collapses duplicate ids (a user may hold both edges on one entity).
+     */
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e)
+        WHERE $entityLabel IN labels(e)
+        RETURN e.id + '|' + type(r) + '|' + toString(coalesce(r.starred, false)) AS row
+    """,
+    )
+    fun findDirectRelations(
+        @Param("userId") userId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): List<String>
+
     // User listing queries
 
     @Query(
