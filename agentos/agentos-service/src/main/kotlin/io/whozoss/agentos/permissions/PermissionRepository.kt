@@ -125,26 +125,6 @@ interface PermissionRepository {
     ): Set<String>
 
     /**
-     * Sets or clears the per-user "starred" (favorite) flag for an entity.
-     *
-     * Implemented as a dedicated `[:STARRED]` relationship — orthogonal to the
-     * `[:ADMIN]`/`[:MEMBER]` permission edges. Role transitions never affect it.
-     *
-     * @return true if the user has a direct ADMIN/MEMBER relation on the entity
-     *   (and the star was therefore persisted or cleared), false if they have none
-     *   (the operation was a no-op). Lets callers reject the request instead of
-     *   reporting a success that did not happen.
-     */
-    fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean
-
-    /**
-     * The caller's direct relation (and starred flag) for every entity of [entityType]
-     * they have a direct ADMIN/MEMBER edge on, keyed by entity id. Resolved in a single
-     * round-trip so list endpoints can enrich each resource without a per-row query.
-     */
-    fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation>
-
-    /**
      * Atomically promotes a [:MEMBER] relation to [:ADMIN].
      *
      * The [:STARRED] edge (if any) is a separate relationship and survives untouched —

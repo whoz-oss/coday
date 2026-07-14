@@ -32,8 +32,10 @@ import io.whozoss.agentos.namespace.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
 import io.whozoss.agentos.permissions.Neo4jPermissionRepository
+import io.whozoss.agentos.permissions.Neo4jStarredRepository
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRepository
+import io.whozoss.agentos.permissions.StarredRepository
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
@@ -138,6 +140,12 @@ class Neo4jPersistenceConfiguration {
     fun neo4jPermissionRepository(permissionNodeNeo4jRepository: PermissionNodeNeo4jRepository): PermissionRepository {
         logger.info { "[Persistence] Neo4jPermissionRepository active" }
         return Neo4jPermissionRepository(permissionNodeNeo4jRepository)
+    }
+
+    @Bean
+    fun neo4jStarredRepository(permissionNodeNeo4jRepository: PermissionNodeNeo4jRepository): StarredRepository {
+        logger.info { "[Persistence] Neo4jStarredRepository active" }
+        return Neo4jStarredRepository(permissionNodeNeo4jRepository)
     }
 
     @Bean

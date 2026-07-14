@@ -149,18 +149,6 @@ interface PermissionService {
     fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean
 
     /**
-     * Sets the caller's per-user favorite flag on their direct relation to an entity.
-     * @return true if a direct relation was updated, false if the user has none.
-     */
-    fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean
-
-    /**
-     * The caller's direct relation (and starred flag) per entity of [entityType] they
-     * have a direct edge on, keyed by entity id. One round-trip; used to enrich listings.
-     */
-    fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation>
-
-    /**
      * Clears the permission cache for a specific user.
      * Should be called when user permissions change.
      *
