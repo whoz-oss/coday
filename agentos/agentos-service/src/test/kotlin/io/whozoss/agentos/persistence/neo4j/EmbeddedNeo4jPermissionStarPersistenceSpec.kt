@@ -26,15 +26,19 @@ import org.springframework.test.context.ActiveProfiles
 import java.util.UUID
 
 /**
- * Persistence contract for the per-user "starred" (favorite) flag on the
- * user↔entity relation, exercised against the embedded Neo4j harness.
+ * Persistence contract for the per-user "starred" (favorite) flag, exercised
+ * against the embedded Neo4j harness.
+ *
+ * Since issue #1140, starred is stored as a dedicated `[:STARRED]` relationship
+ * — orthogonal to `[:ADMIN]`/`[:MEMBER]`. Role transitions (promote/demote) no
+ * longer need to preserve properties; the `[:STARRED]` edge simply survives.
  *
  * Mirrors the embedded-neo4j spec infrastructure used by
  * [EmbeddedNeo4jCasePersistenceSpec] (`embedded-neo4j` profile +
  * [EmbeddedNeo4jTestConfiguration] harness driver — no Docker).
  *
  * Verifies both layers of the plumbing:
- * - the raw Cypher on [PermissionNodeNeo4jRepository] (`setStarred` / `findDirectRelations`)
+ * - the raw Cypher on [PermissionNodeNeo4jRepository] (`mergeStarred` / `deleteStarred` / `findDirectRelations`)
  * - the typed delegation through [PermissionService] (`setStarred` / `listDirectRelations`)
  */
 @SpringBootTest
@@ -88,31 +92,29 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
 
-        "setStarred(true) marks the case starred; setStarred(false) clears it" {
+        "mergeStarred creates a [:STARRED] edge; deleteStarred removes it" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
 
-            // Grant a direct ADMIN relation the star flag lives on.
+            // A direct ADMIN relation is required: mergeStarred guards against orphaned [:STARRED] edges.
             permissionNodeRepository.createAdminPermission(
                 userId = user.id.toString(),
                 entityId = case.id.toString(),
                 entityLabel = "Case",
             )
 
-            permissionNodeRepository.setStarred(
+            permissionNodeRepository.mergeStarred(
                 userId = user.id.toString(),
                 entityId = case.id.toString(),
                 entityLabel = "Case",
-                starred = true,
             )
             starredIds(user.id.toString()) shouldContain case.id.toString()
 
-            permissionNodeRepository.setStarred(
+            permissionNodeRepository.deleteStarred(
                 userId = user.id.toString(),
                 entityId = case.id.toString(),
                 entityLabel = "Case",
-                starred = false,
             )
             starredIds(user.id.toString()) shouldNotContain case.id.toString()
         }
@@ -125,31 +127,30 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             starredIds(user.id.toString()).shouldBeEmpty()
         }
 
-        "setStarred is a no-op when the user has no direct relation on the entity" {
+        "mergeStarred is a no-op when the user has no direct relation on the entity" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
 
-            // No ADMIN/MEMBER edge granted — SET must not create anything to star.
-            permissionNodeRepository.setStarred(
+            // No ADMIN/MEMBER edge — the MATCH guard prevents orphaned [:STARRED] edges.
+            permissionNodeRepository.mergeStarred(
                 userId = user.id.toString(),
                 entityId = case.id.toString(),
                 entityLabel = "Case",
-                starred = true,
             )
 
             starredIds(user.id.toString()).shouldBeEmpty()
         }
 
-        "starred is per-user: it is scoped to the caller's own edge (ADMIN vs MEMBER) and never leaks across users" {
+        "starred is per-user: it is scoped to the caller's [:STARRED] edge and never leaks across users" {
             val userA = createUser("a@example.com")
             val userB = createUser("b@example.com")
             val namespace = createNamespace()
             val case = createCase(namespace.id)
             val caseId = case.id.toString()
 
-            // Two distinct users, each with their OWN direct edge to the same case:
-            // A via ADMIN, B via MEMBER (exercises the MEMBER branch of the star queries).
+            // Two distinct users, each with their OWN direct permission edge to the same case:
+            // A via ADMIN, B via MEMBER (exercises the MEMBER branch of the mergeStarred guard).
             permissionNodeRepository.createAdminPermission(
                 userId = userA.id.toString(),
                 entityId = caseId,
@@ -161,32 +162,29 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityLabel = "Case",
             )
 
-            // A stars the case: only A sees it, B does not (per-user isolation on set).
-            permissionNodeRepository.setStarred(
+            // A stars the case: only A has a [:STARRED] edge, B does not.
+            permissionNodeRepository.mergeStarred(
                 userId = userA.id.toString(),
                 entityId = caseId,
                 entityLabel = "Case",
-                starred = true,
             )
             starredIds(userA.id.toString()) shouldContain caseId
             starredIds(userB.id.toString()) shouldNotContain caseId
 
-            // B stars it via its MEMBER edge: B now sees it, and A is unaffected.
-            permissionNodeRepository.setStarred(
+            // B stars it: B now has its own [:STARRED] edge, A is unaffected.
+            permissionNodeRepository.mergeStarred(
                 userId = userB.id.toString(),
                 entityId = caseId,
                 entityLabel = "Case",
-                starred = true,
             )
             starredIds(userB.id.toString()) shouldContain caseId
             starredIds(userA.id.toString()) shouldContain caseId
 
-            // B un-stars: A's star survives (isolation holds on unset too).
-            permissionNodeRepository.setStarred(
+            // B un-stars: only B's [:STARRED] edge is removed, A's survives.
+            permissionNodeRepository.deleteStarred(
                 userId = userB.id.toString(),
                 entityId = caseId,
                 entityLabel = "Case",
-                starred = false,
             )
             starredIds(userB.id.toString()) shouldNotContain caseId
             starredIds(userA.id.toString()) shouldContain caseId
@@ -228,7 +226,7 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             permissionService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), true) shouldBe true
         }
 
-        "starred flag survives a MEMBER-to-ADMIN promotion via syncUserRoles (grantPermission path)" {
+        "[:STARRED] edge survives a MEMBER-to-ADMIN promotion" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
@@ -241,23 +239,21 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityId = caseId,
                 entityLabel = "Case",
             )
-            permissionNodeRepository.setStarred(
+            permissionNodeRepository.mergeStarred(
                 userId = userId,
                 entityId = caseId,
                 entityLabel = "Case",
-                starred = true,
             )
             starredIds(userId) shouldContain caseId
 
-            // Simulate the promote path: atomic MEMBER -> ADMIN preserving properties.
+            // Promote: [:MEMBER] is replaced by [:ADMIN]; [:STARRED] is a separate edge and untouched.
             permissionService.promoteMemberToAdmin(userId, EntityType.CASE, caseId)
 
-            // The relation is now ADMIN, and the starred flag must still be set.
             val relations = permissionService.listDirectRelations(userId, EntityType.CASE)
             relations[caseId] shouldBe DirectRelation(PermissionRelation.ADMIN, starred = true)
         }
 
-        "starred flag survives an ADMIN-to-MEMBER demotion via syncUserRoles" {
+        "[:STARRED] edge survives an ADMIN-to-MEMBER demotion" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
@@ -270,22 +266,21 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityId = caseId,
                 entityLabel = "Case",
             )
-            permissionNodeRepository.setStarred(
+            permissionNodeRepository.mergeStarred(
                 userId = userId,
                 entityId = caseId,
                 entityLabel = "Case",
-                starred = true,
             )
             starredIds(userId) shouldContain caseId
 
-            // Atomic ADMIN -> MEMBER preserving properties.
+            // Demote: [:ADMIN] is replaced by [:MEMBER]; [:STARRED] is a separate edge and untouched.
             permissionService.demoteAdminToMember(userId, EntityType.CASE, caseId)
 
             val relations = permissionService.listDirectRelations(userId, EntityType.CASE)
             relations[caseId] shouldBe DirectRelation(PermissionRelation.MEMBER, starred = true)
         }
 
-        "listDirectRelations returns the caller's relation and starred flag per entity (and omits un-related ones)" {
+        "listDirectRelations returns the caller's relation and [:STARRED] flag per entity (and omits un-related ones)" {
             val user = createUser()
             val namespace = createNamespace()
             val adminCase = createCase(namespace.id)

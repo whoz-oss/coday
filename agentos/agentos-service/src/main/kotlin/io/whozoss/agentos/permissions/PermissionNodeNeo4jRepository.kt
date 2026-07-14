@@ -149,8 +149,10 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     )
 
     /**
-     * Atomically promotes a [:MEMBER] relation to [:ADMIN], preserving all properties
-     * (notably `starred`) from the old relation onto the new one.
+     * Atomically promotes a [:MEMBER] relation to [:ADMIN].
+     *
+     * The [:STARRED] edge (if any) is untouched — it is a separate relationship and
+     * survives the permission-type change without any property-copying logic.
      *
      * Returns the number of [:MEMBER] relations deleted (0 = user had no MEMBER edge;
      * 1 = promotion succeeded). The [:ADMIN] edge is always created-or-kept regardless.
@@ -159,8 +161,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         $$"""
         MATCH (u:User {id: $userId})-[old:MEMBER]->(e {id: $entityId})
         WHERE $entityLabel IN labels(e)
-        MERGE (u)-[newRel:ADMIN]->(e)
-        SET newRel += properties(old)
+        MERGE (u)-[:ADMIN]->(e)
         DELETE old
         RETURN count(old)
     """,
@@ -172,8 +173,10 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     ): Long
 
     /**
-     * Atomically demotes a [:ADMIN] relation to [:MEMBER], preserving all properties
-     * (notably `starred`) from the old relation onto the new one.
+     * Atomically demotes a [:ADMIN] relation to [:MEMBER].
+     *
+     * The [:STARRED] edge (if any) is untouched — it is a separate relationship and
+     * survives the permission-type change without any property-copying logic.
      *
      * Returns the number of [:ADMIN] relations deleted (0 = user had no ADMIN edge;
      * 1 = demotion succeeded). The [:MEMBER] edge is always created-or-kept regardless.
@@ -182,8 +185,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         $$"""
         MATCH (u:User {id: $userId})-[old:ADMIN]->(e {id: $entityId})
         WHERE $entityLabel IN labels(e)
-        MERGE (u)-[newRel:MEMBER]->(e)
-        SET newRel += properties(old)
+        MERGE (u)-[:MEMBER]->(e)
         DELETE old
         RETURN count(old)
     """,
@@ -194,21 +196,51 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("entityLabel") entityLabel: String,
     ): Long
 
-    // Star / favorite — a per-user boolean property on the user↔entity relation.
+    // Star / favorite — a dedicated [:STARRED] relationship, orthogonal to [:ADMIN]/[:MEMBER].
+    // Decoupling starred from the permission edge means role transitions (promote/demote)
+    // need no property-preservation logic: the [:STARRED] edge survives untouched.
 
+    /**
+     * Creates a [:STARRED] edge from the user to the entity — only when a direct
+     * [:ADMIN] or [:MEMBER] edge already exists (the MATCH guard prevents orphaned
+     * [:STARRED] edges for users with no permission on the entity).
+     *
+     * Returns the number of [:STARRED] edges created or matched (0 = user has no
+     * direct permission edge, so no star was persisted).
+     */
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e {id: $entityId})
+        MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(e {id: $entityId})
         WHERE $entityLabel IN labels(e)
-        SET r.starred = $starred
-        RETURN count(r)
+        MERGE (u)-[:STARRED]->(e)
+        RETURN count(e)
     """,
     )
-    fun setStarred(
+    fun mergeStarred(
         @Param("userId") userId: String,
         @Param("entityId") entityId: String,
         @Param("entityLabel") entityLabel: String,
-        @Param("starred") starred: Boolean,
+    ): Long
+
+    /**
+     * Removes the [:STARRED] edge between the user and the entity, if it exists.
+     *
+     * Returns the number of [:ADMIN]/[:MEMBER] edges matched (0 = user has no direct
+     * permission edge; the call is still safe but reports that nothing was un-starred).
+     */
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(e {id: $entityId})
+        WHERE $entityLabel IN labels(e)
+        OPTIONAL MATCH (u)-[s:STARRED]->(e)
+        DELETE s
+        RETURN count(e)
+    """,
+    )
+    fun deleteStarred(
+        @Param("userId") userId: String,
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
     ): Long
 
     /**
@@ -218,12 +250,15 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * Encoded into a single string column on purpose: Spring Data Neo4j cannot map a
      * multi-value record (`RETURN a, b, c`) without a custom mapper. The caller decodes
      * each row and collapses duplicate ids (a user may hold both edges on one entity).
+     *
+     * The [:STARRED] edge is joined separately — its existence is the sole source of
+     * truth for the starred flag (no property on the permission edge).
      */
     @Query(
         $$"""
         MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e)
         WHERE $entityLabel IN labels(e)
-        RETURN e.id + '|' + type(r) + '|' + toString(coalesce(r.starred, false)) AS row
+        RETURN e.id + '|' + type(r) + '|' + toString(EXISTS { (u)-[:STARRED]->(e) }) AS row
     """,
     )
     fun findDirectRelations(

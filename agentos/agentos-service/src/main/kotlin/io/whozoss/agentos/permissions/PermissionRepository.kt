@@ -125,10 +125,14 @@ interface PermissionRepository {
     ): Set<String>
 
     /**
-     * Sets the per-user "starred" (favorite) flag on the user's direct relation to an entity.
+     * Sets or clears the per-user "starred" (favorite) flag for an entity.
      *
-     * @return true if a direct ADMIN/MEMBER relation was updated, false if the user has
-     *   none (the star was not persisted). Lets callers reject the operation instead of
+     * Implemented as a dedicated `[:STARRED]` relationship — orthogonal to the
+     * `[:ADMIN]`/`[:MEMBER]` permission edges. Role transitions never affect it.
+     *
+     * @return true if the user has a direct ADMIN/MEMBER relation on the entity
+     *   (and the star was therefore persisted or cleared), false if they have none
+     *   (the operation was a no-op). Lets callers reject the request instead of
      *   reporting a success that did not happen.
      */
     fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean
@@ -141,12 +145,10 @@ interface PermissionRepository {
     fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation>
 
     /**
-     * Atomically promotes a [:MEMBER] relation to [:ADMIN], preserving all properties
-     * (e.g. `starred`) from the old relation.
+     * Atomically promotes a [:MEMBER] relation to [:ADMIN].
      *
-     * Prefer this over `revokePermission(MEMBER)` + `grantPermission(ADMIN)` when a
-     * direct [:MEMBER] relation already exists and must be upgraded — the two-step
-     * approach silently drops relation properties.
+     * The [:STARRED] edge (if any) is a separate relationship and survives untouched —
+     * no property-preservation logic is needed.
      *
      * @return true if a [:MEMBER] edge was found and promoted; false if the user had
      *   no MEMBER relation on the entity (the [:ADMIN] edge is still created in that case).
@@ -154,11 +156,10 @@ interface PermissionRepository {
     fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean
 
     /**
-     * Atomically demotes a [:ADMIN] relation to [:MEMBER], preserving all properties
-     * (e.g. `starred`) from the old relation.
+     * Atomically demotes a [:ADMIN] relation to [:MEMBER].
      *
-     * Prefer this over `revokePermission(ADMIN)` + `grantPermission(MEMBER)` when a
-     * direct [:ADMIN] relation already exists and must be downgraded.
+     * The [:STARRED] edge (if any) is a separate relationship and survives untouched —
+     * no property-preservation logic is needed.
      *
      * @return true if a [:ADMIN] edge was found and demoted; false if the user had
      *   no ADMIN relation on the entity (the [:MEMBER] edge is still created in that case).

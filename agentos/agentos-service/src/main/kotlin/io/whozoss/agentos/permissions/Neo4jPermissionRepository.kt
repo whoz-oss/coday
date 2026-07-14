@@ -338,12 +338,18 @@ class Neo4jPermissionRepository(
 
     override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean =
         try {
-            permissionNodeRepository.setStarred(
-                userId = userId,
-                entityId = entityId,
-                entityLabel = entityType.label,
-                starred = starred,
-            ) > 0
+            when (starred) {
+                true -> permissionNodeRepository.mergeStarred(
+                    userId = userId,
+                    entityId = entityId,
+                    entityLabel = entityType.label,
+                ) > 0
+                false -> permissionNodeRepository.deleteStarred(
+                    userId = userId,
+                    entityId = entityId,
+                    entityLabel = entityType.label,
+                ) > 0
+            }
         } catch (e: Exception) {
             logger.error(e) { "Error setting starred=$starred for user=$userId on $entityType:$entityId" }
             throw e
