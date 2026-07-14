@@ -9,9 +9,9 @@
  */
 
 export interface EntityMetadata {
-  id: string
   created: string
   createdBy?: string
+  id: string
   modified: string
   modifiedBy?: string
   removed: boolean

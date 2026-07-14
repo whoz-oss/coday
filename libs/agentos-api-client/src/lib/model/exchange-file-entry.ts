@@ -13,17 +13,13 @@
  */
 export interface ExchangeFileEntry {
   /**
-   * Path of the file relative to its exchange root, using forward slashes.
+   * Opaque entity tag derived from size and last-modified time.
    */
-  path: string
+  etag?: string
   /**
    * File name (last path segment).
    */
   filename: string
-  /**
-   * File size in bytes.
-   */
-  size: number
   /**
    * Last modification timestamp.
    */
@@ -33,13 +29,17 @@ export interface ExchangeFileEntry {
    */
   mimeType?: string
   /**
+   * Path of the file relative to its exchange root, using forward slashes.
+   */
+  path: string
+  /**
    * Scope the file belongs to.
    */
   scope: ExchangeFileEntryScopeEnum
   /**
-   * Opaque entity tag derived from size and last-modified time.
+   * File size in bytes.
    */
-  etag?: string
+  size: number
 }
 export enum ExchangeFileEntryScopeEnum {
   CASE = 'CASE',

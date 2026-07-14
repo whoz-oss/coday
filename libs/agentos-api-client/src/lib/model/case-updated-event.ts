@@ -10,11 +10,11 @@
 import { EntityMetadata } from './entity-metadata'
 
 export interface CaseUpdatedEvent {
-  namespaceId: string
   caseId: string
-  type: 'CaseUpdatedEvent'
-  timestamp: string
-  metadata: EntityMetadata
   id: string
+  metadata: EntityMetadata
+  namespaceId: string
+  timestamp: string
+  type: 'CaseUpdatedEvent'
   title?: string
 }

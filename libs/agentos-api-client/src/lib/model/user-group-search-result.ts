@@ -9,10 +9,10 @@
  */
 
 export interface UserGroupSearchResult {
-  userGroupId: string
-  namespaceId: string
-  namespaceExternalId: string
-  name: string
   agentIds: Array<string>
+  name: string
+  namespaceExternalId: string
+  namespaceId: string
   userCount: number
+  userGroupId: string
 }

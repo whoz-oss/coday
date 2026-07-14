@@ -10,14 +10,14 @@
 import { EntityMetadata } from './entity-metadata'
 
 export interface PendingConfirmationEvent {
-  namespaceId: string
   caseId: string
-  type: 'PendingConfirmationEvent'
-  timestamp: string
-  metadata: EntityMetadata
   id: string
-  toolRequestId: string
-  toolName: string
+  metadata: EntityMetadata
+  namespaceId: string
+  timestamp: string
+  type: 'PendingConfirmationEvent'
   inputJson: string
   toolConfirmationInstructions: string
+  toolName: string
+  toolRequestId: string
 }
