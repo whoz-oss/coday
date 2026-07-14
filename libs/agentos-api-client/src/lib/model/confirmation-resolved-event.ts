@@ -10,13 +10,13 @@
 import { EntityMetadata } from './entity-metadata'
 
 export interface ConfirmationResolvedEvent {
-  caseId: string
-  id: string
-  metadata: EntityMetadata
   namespaceId: string
-  timestamp: string
+  caseId: string
   type: 'ConfirmationResolvedEvent'
-  confirmed: boolean
+  timestamp: string
+  metadata: EntityMetadata
+  id: string
   pendingEventId: string
+  confirmed: boolean
   resultText: string
 }

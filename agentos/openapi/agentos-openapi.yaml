@@ -3324,9 +3324,9 @@ components:
             format: uuid
           agentName:
             type: string
-          llmModel:
-            type: string
           llmProvider:
+            type: string
+          llmModel:
             type: string
       required:
       - agentId
@@ -3347,9 +3347,9 @@ components:
             format: uuid
           agentName:
             type: string
-          llmModel:
-            type: string
           llmProvider:
+            type: string
+          llmModel:
             type: string
       required:
       - agentId
@@ -3384,13 +3384,13 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
+          questionId:
+            type: string
+            format: uuid
           actor:
             $ref: "#/components/schemas/Actor"
           answer:
             type: string
-          questionId:
-            type: string
-            format: uuid
       required:
       - actor
       - answer
@@ -3406,20 +3406,12 @@ components:
       discriminator:
         propertyName: type
       properties:
-        caseId:
-          type: string
-          format: uuid
-        id:
-          type: string
-          format: uuid
-        metadata:
-          $ref: "#/components/schemas/EntityMetadata"
         namespaceId:
           type: string
           format: uuid
-        timestamp:
+        caseId:
           type: string
-          format: date-time
+          format: uuid
         type:
           type: string
           enum:
@@ -3441,6 +3433,14 @@ components:
           - PendingConfirmationEvent
           - ConfirmationResolvedEvent
           - CaseUpdatedEvent
+        timestamp:
+          type: string
+          format: date-time
+        metadata:
+          $ref: "#/components/schemas/EntityMetadata"
+        id:
+          type: string
+          format: uuid
       required:
       - caseId
       - id
@@ -3488,11 +3488,11 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
-          confirmed:
-            type: boolean
           pendingEventId:
             type: string
             format: uuid
+          confirmed:
+            type: boolean
           resultText:
             type: string
       required:
@@ -3590,10 +3590,10 @@ components:
             format: uuid
           intention:
             type: string
-          isFailedIntention:
-            type: boolean
           toolName:
             type: string
+          isFailedIntention:
+            type: boolean
       required:
       - agentId
       - caseId
@@ -3643,13 +3643,13 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
-          inputJson:
-            type: string
-          toolConfirmationInstructions:
+          toolRequestId:
             type: string
           toolName:
             type: string
-          toolRequestId:
+          inputJson:
+            type: string
+          toolConfirmationInstructions:
             type: string
       required:
       - caseId
@@ -3672,12 +3672,12 @@ components:
             format: uuid
           agentName:
             type: string
+          question:
+            type: string
           options:
             type: array
             items:
               type: string
-          question:
-            type: string
       required:
       - agentId
       - agentName
@@ -3727,16 +3727,16 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
+          toolRequestId:
+            type: string
+          toolName:
+            type: string
           args:
             type: string
           enrichmentPhases:
             type: array
             items:
               $ref: "#/components/schemas/EnrichmentPhaseTrace"
-          toolName:
-            type: string
-          toolRequestId:
-            type: string
       required:
       - caseId
       - id
@@ -3751,22 +3751,22 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
-          durationMs:
-            type: integer
-            format: int64
+          toolRequestId:
+            type: string
+          toolName:
+            type: string
           output:
             oneOf:
             - $ref: "#/components/schemas/Image"
             - $ref: "#/components/schemas/Text"
           success:
             type: boolean
+          durationMs:
+            type: integer
+            format: int64
           toolMetadata:
             type: object
             additionalProperties: {}
-          toolName:
-            type: string
-          toolRequestId:
-            type: string
       required:
       - caseId
       - id

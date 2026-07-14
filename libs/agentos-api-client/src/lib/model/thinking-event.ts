@@ -10,10 +10,10 @@
 import { EntityMetadata } from './entity-metadata'
 
 export interface ThinkingEvent {
-  caseId: string
-  id: string
-  metadata: EntityMetadata
   namespaceId: string
-  timestamp: string
+  caseId: string
   type: 'ThinkingEvent'
+  timestamp: string
+  metadata: EntityMetadata
+  id: string
 }
