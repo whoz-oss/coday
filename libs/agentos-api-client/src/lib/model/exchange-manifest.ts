@@ -14,13 +14,13 @@ import { ExchangeFileEntry } from './exchange-file-entry'
  */
 export interface ExchangeManifest {
   /**
-   * Files available in the scope.
-   */
-  files: Array<ExchangeFileEntry>
-  /**
    * Capability the caller has over this scope.
    */
   capability: ExchangeManifestCapabilityEnum
+  /**
+   * Files available in the scope.
+   */
+  files: Array<ExchangeFileEntry>
 }
 export enum ExchangeManifestCapabilityEnum {
   NONE = 'NONE',

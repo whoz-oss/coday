@@ -9,12 +9,12 @@
  */
 
 export interface NamespaceListItem {
+  configPath?: string
+  defaultAgentName?: string
+  description?: string
+  externalId?: string
   id: string
   name: string
-  description?: string
-  configPath?: string
-  externalId?: string
-  defaultAgentName?: string
   /**
    * The caller\'s effective role on this namespace.
    */
