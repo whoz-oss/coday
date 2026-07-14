@@ -11,14 +11,14 @@ import { EntityMetadata } from './entity-metadata'
 import { EnrichmentPhaseTrace } from './enrichment-phase-trace'
 
 export interface ToolRequestEvent {
-  namespaceId: string
   caseId: string
-  type: 'ToolRequestEvent'
-  timestamp: string
-  metadata: EntityMetadata
   id: string
-  toolRequestId: string
-  toolName: string
+  metadata: EntityMetadata
+  namespaceId: string
+  timestamp: string
+  type: 'ToolRequestEvent'
   args?: string
   enrichmentPhases?: Array<EnrichmentPhaseTrace>
+  toolName: string
+  toolRequestId: string
 }

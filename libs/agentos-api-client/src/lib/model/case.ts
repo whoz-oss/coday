@@ -9,13 +9,13 @@
  */
 
 export interface Case {
+  created?: string
   id?: string
   namespaceId: string
+  parentCaseId?: string
+  removed: boolean
   status: CaseStatusEnum
   title?: string
-  parentCaseId?: string
-  created?: string
-  removed: boolean
 }
 export enum CaseStatusEnum {
   PENDING = 'PENDING',

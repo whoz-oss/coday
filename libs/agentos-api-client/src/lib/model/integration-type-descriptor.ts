@@ -9,8 +9,8 @@
  */
 
 export interface IntegrationTypeDescriptor {
-  type: string
-  displayName: string
-  description: string
   configSchema?: any | null
+  description: string
+  displayName: string
+  type: string
 }

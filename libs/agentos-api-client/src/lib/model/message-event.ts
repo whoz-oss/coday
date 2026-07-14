@@ -12,12 +12,12 @@ import { Actor } from './actor'
 import { MessageEventAllOfContent } from './message-event-all-of-content'
 
 export interface MessageEvent {
-  namespaceId: string
   caseId: string
-  type: 'MessageEvent'
-  timestamp: string
-  metadata: EntityMetadata
   id: string
+  metadata: EntityMetadata
+  namespaceId: string
+  timestamp: string
+  type: 'MessageEvent'
   actor: Actor
   content: Array<MessageEventAllOfContent>
   sessionContext?: { [key: string]: any }
