@@ -2,7 +2,7 @@ package io.whozoss.agentos.authSetting
 
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.sdk.authSetting.AuthSetting
-import io.whozoss.agentos.sdk.encryption.FieldEncryptor
+import io.whozoss.agentos.encryption.FieldEncryptor
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
