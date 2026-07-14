@@ -197,7 +197,7 @@ export class IntegrationConfigControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: {
-      httpHeaderAccept?: 'application/yaml' | 'application/json'
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
       context?: HttpContext
       transferCache?: boolean
     }
@@ -207,7 +207,7 @@ export class IntegrationConfigControllerService extends BaseService {
     observe?: 'response',
     reportProgress?: boolean,
     options?: {
-      httpHeaderAccept?: 'application/yaml' | 'application/json'
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
       context?: HttpContext
       transferCache?: boolean
     }
@@ -217,7 +217,7 @@ export class IntegrationConfigControllerService extends BaseService {
     observe?: 'events',
     reportProgress?: boolean,
     options?: {
-      httpHeaderAccept?: 'application/yaml' | 'application/json'
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
       context?: HttpContext
       transferCache?: boolean
     }
@@ -227,7 +227,7 @@ export class IntegrationConfigControllerService extends BaseService {
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: {
-      httpHeaderAccept?: 'application/yaml' | 'application/json'
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
       context?: HttpContext
       transferCache?: boolean
     }
@@ -239,7 +239,7 @@ export class IntegrationConfigControllerService extends BaseService {
     let localVarHeaders = this.defaultHeaders
 
     const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/yaml', 'application/json'])
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json', 'application/yaml'])
     if (localVarHttpHeaderAcceptSelected !== undefined) {
       localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
     }
