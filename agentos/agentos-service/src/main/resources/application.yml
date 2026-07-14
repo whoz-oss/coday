@@ -147,6 +147,9 @@ agentos:
     # Override with env var: AGENTOS_PERSISTENCE_MODE
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
 
+springdoc:
+  writer-with-order-by-keys: true
+
 logging:
   level:
     root: INFO
