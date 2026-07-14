@@ -168,4 +168,27 @@ interface PermissionService {
      * @param userId The ID of the user to clear cache for
      */
     fun clearUserCache(userId: String)
+
+    /**
+     * Batch-apply share entries on an entity in a single Cypher round-trip per role group.
+     * Each entry is a (userId, targetRole?) pair:
+     * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER
+     *   preserving relation properties such as `starred`, or create directly)
+     * - targetRole = [PermissionRelation.MEMBER] → ensure user has MEMBER (demote from ADMIN
+     *   preserving relation properties, or create directly)
+     * - targetRole = null → revoke all relations (ADMIN and MEMBER)
+     *
+     * Non-existent User nodes are silently skipped — the Cypher MATCH filters them out.
+     * Invalidates the permission cache after a successful write.
+     *
+     * @param entityType The type of entity being shared
+     * @param entityId The ID of the entity
+     * @param entries List of (userId, targetRole?) pairs
+     * @return List of userIds that were successfully processed
+     */
+    fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String>
 }

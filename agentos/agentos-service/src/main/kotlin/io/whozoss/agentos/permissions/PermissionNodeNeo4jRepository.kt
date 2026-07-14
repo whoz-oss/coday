@@ -378,6 +378,63 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     ): List<String>
 
     /**
+     * Batch-apply ADMIN role to users on an entity.
+     *
+     * For each userId in [userIds]:
+     * - Deletes any existing [:MEMBER] relation and creates/keeps [:ADMIN].
+     * - Creates [:ADMIN] directly when no relation exists.
+     * - No-op when [:ADMIN] already exists and no [:MEMBER] needs deleting.
+     * - Silently skips non-existent User nodes (the `MATCH (u:User {id: uid})` filters them).
+     *
+     * Returns the userIds that were successfully processed.
+     */
+    @Query("UNWIND \$userIds AS uid MATCH (u:User {id: uid}) MATCH (e {id: \$entityId}) WHERE \$entityLabel IN labels(e) OPTIONAL MATCH (u)-[oldMember:MEMBER]->(e) DELETE oldMember MERGE (u)-[:ADMIN]->(e) RETURN uid")
+    fun batchGrantAdmin(
+        @Param("userIds") userIds: List<String>,
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): List<String>
+
+    /**
+     * Batch-apply MEMBER role to users on an entity.
+     *
+     * For each userId in [userIds]:
+     * - Deletes any existing [:ADMIN] relation and creates/keeps [:MEMBER].
+     * - Creates [:MEMBER] directly when no relation exists.
+     * - No-op when [:MEMBER] already exists and no [:ADMIN] needs deleting.
+     * - Silently skips non-existent User nodes.
+     *
+     * Returns the userIds that were successfully processed.
+     */
+    @Query("UNWIND \$userIds AS uid MATCH (u:User {id: uid}) MATCH (e {id: \$entityId}) WHERE \$entityLabel IN labels(e) OPTIONAL MATCH (u)-[oldAdmin:ADMIN]->(e) DELETE oldAdmin MERGE (u)-[:MEMBER]->(e) RETURN uid")
+    fun batchGrantMember(
+        @Param("userIds") userIds: List<String>,
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): List<String>
+
+    /**
+     * Batch-revoke all relations ([:ADMIN] and [:MEMBER]) from users on an entity.
+     *
+     * Silently skips non-existent User nodes and users without any relation.
+     * Returns the userIds for which at least one relation was removed.
+     */
+    @Query(
+        $$"""
+        UNWIND $userIds AS uid
+        MATCH (u:User {id: uid})-[r:ADMIN|MEMBER]->(e {id: $entityId})
+        WHERE $entityLabel IN labels(e)
+        DELETE r
+        RETURN DISTINCT uid
+        """,
+    )
+    fun batchRevoke(
+        @Param("userIds") userIds: List<String>,
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): List<String>
+
+    /**
      * Returns true when an entity with [entityId] and label [entityLabel] is
      * genuinely platform-scoped: both [namespaceId] and [userId] scalar properties
      * are NULL on the node.

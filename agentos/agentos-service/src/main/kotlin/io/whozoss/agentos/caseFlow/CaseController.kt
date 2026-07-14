@@ -13,6 +13,9 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
 import io.whozoss.agentos.sdk.api.case.CaseApi
 import io.whozoss.agentos.sdk.api.case.CaseDto
+import io.whozoss.agentos.sdk.api.case.CaseRole
+import io.whozoss.agentos.sdk.api.case.CaseShareRequest
+import io.whozoss.agentos.sdk.api.case.CaseUserListItem
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -336,6 +339,104 @@ class CaseController(
             )
         }
         logger.info { "User $userId unstarred case $id" }
+    }
+
+    /**
+     * PUT /api/cases/{caseId}/share — batch-update user roles on a case.
+     *
+     * Delta semantics: only listed users are affected; unlisted users are untouched.
+     * Entries targeting the current caller are silently filtered to prevent
+     * accidental self-demotion or self-revocation.
+     *
+     * Non-existent userIds are silently skipped (the Cypher MATCH on User filters them).
+     * Returns the list of userIds for which the operation was actually applied.
+     */
+    @PutMapping("/{caseId}/share", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
+    @HideOnAccessDenied
+    fun shareCase(
+        @PathVariable caseId: UUID,
+        @Valid @RequestBody request: CaseShareRequest,
+    ): List<UUID> {
+        caseService.getById(caseId)
+        val currentUserId = userService.getCurrentUser().id
+        val caseIdStr = caseId.toString()
+
+        val entries = request.entries
+            .filter { it.userId != currentUserId }
+            .map { entry ->
+                entry.userId.toString() to when (entry.role) {
+                    CaseRole.ADMIN -> PermissionRelation.ADMIN
+                    CaseRole.MEMBER -> PermissionRelation.MEMBER
+                    null -> null
+                }
+            }
+
+        if (entries.size < request.entries.size) {
+            logger.info { "Filtered out self-modification entry for user $currentUserId on case $caseId" }
+        }
+
+        val appliedUserIds = permissionService.applyShareBatch(EntityType.CASE, caseIdStr, entries)
+        logger.info { "Case $caseId shared by $currentUserId — ${appliedUserIds.size} user(s) affected" }
+        return appliedUserIds.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+    }
+
+    /**
+     * GET /api/cases/{caseId}/users — list all users with a direct relation on this case.
+     *
+     * Returns users holding a direct `[:ADMIN]` or `[:MEMBER]` edge on the case.
+     * Super-admins without a direct relation are not listed.
+     */
+    @GetMapping("/{caseId}/users")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    @HideOnAccessDenied
+    fun listCaseUsers(
+        @PathVariable caseId: UUID,
+    ): List<CaseUserListItem> {
+        caseService.getById(caseId)
+        val caseIdStr = caseId.toString()
+        val adminUserIds =
+            permissionService
+                .listUsersWithPermission(EntityType.CASE, caseIdStr, PermissionRelation.ADMIN)
+                .toSet()
+        val memberUserIds =
+            permissionService
+                .listUsersWithPermission(EntityType.CASE, caseIdStr, PermissionRelation.MEMBER)
+                .toSet()
+        val allUserIds = adminUserIds + memberUserIds
+        if (allUserIds.isEmpty()) return emptyList()
+
+        val uuids =
+            allUserIds.mapNotNull { raw ->
+                runCatching { UUID.fromString(raw) }.getOrNull()
+                    ?: run {
+                        logger.warn { "Dropping malformed user id from permission listing on case $caseId: '$raw'" }
+                        null
+                    }
+            }
+        val users = userService.findByIds(uuids)
+
+        val missingCount = uuids.size - users.size
+        if (missingCount > 0) {
+            logger.warn {
+                "Case $caseId has $missingCount permission relation(s) pointing to " +
+                    "non-existent users — filtered from response"
+            }
+        }
+
+        return users.map { user ->
+            val userIdString = user.metadata.id.toString()
+            CaseUserListItem(
+                id = user.metadata.id,
+                externalId = user.externalId,
+                email = user.email,
+                firstname = user.firstname,
+                lastname = user.lastname,
+                role = if (userIdString in adminUserIds) "ADMIN" else "MEMBER",
+            )
+        }
     }
 
     companion object : KLogging()

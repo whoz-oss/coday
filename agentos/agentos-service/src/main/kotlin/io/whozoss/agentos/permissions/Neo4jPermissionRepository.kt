@@ -373,6 +373,41 @@ class Neo4jPermissionRepository(
             throw e
         }
 
+    override fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String> {
+        if (entries.isEmpty()) return emptyList()
+        val label = entityType.label
+        val result = mutableSetOf<String>()
+        try {
+            val adminUserIds = entries.filter { it.second == PermissionRelation.ADMIN }.map { it.first }
+            val memberUserIds = entries.filter { it.second == PermissionRelation.MEMBER }.map { it.first }
+            val revokeUserIds = entries.filter { it.second == null }.map { it.first }
+
+            if (adminUserIds.isNotEmpty()) {
+                result.addAll(permissionNodeRepository.batchGrantAdmin(adminUserIds, entityId, label))
+            }
+            if (memberUserIds.isNotEmpty()) {
+                result.addAll(permissionNodeRepository.batchGrantMember(memberUserIds, entityId, label))
+            }
+            if (revokeUserIds.isNotEmpty()) {
+                result.addAll(permissionNodeRepository.batchRevoke(revokeUserIds, entityId, label))
+            }
+
+            logger.info {
+                "applyShareBatch on $entityType:$entityId — " +
+                    "admin=${adminUserIds.size}, member=${memberUserIds.size}, revoke=${revokeUserIds.size}, " +
+                    "applied=${result.size}"
+            }
+            return result.toList()
+        } catch (e: Exception) {
+            logger.error(e) { "Error applying share batch on $entityType:$entityId" }
+            throw e
+        }
+    }
+
     override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
         try {
             val result = mutableMapOf<String, DirectRelation>()
