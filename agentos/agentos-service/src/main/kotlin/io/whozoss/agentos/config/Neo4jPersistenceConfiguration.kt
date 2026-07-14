@@ -11,6 +11,10 @@ import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
 import io.whozoss.agentos.aiProvider.AiProviderNodeNeo4jRepository
 import io.whozoss.agentos.aiProvider.AiProviderRepository
 import io.whozoss.agentos.aiProvider.Neo4jAiProviderRepository
+import io.whozoss.agentos.credential.CredentialNodeNeo4jRepository
+import io.whozoss.agentos.credential.CredentialRepository
+import io.whozoss.agentos.credential.Neo4jCredentialRepository
+import io.whozoss.agentos.sdk.encryption.FieldEncryptor
 import io.whozoss.agentos.caseEvent.CaseEventNodeMapper
 import io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
@@ -86,6 +90,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.prompt",
         "io.whozoss.agentos.userGroup",
+        "io.whozoss.agentos.credential",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -148,6 +153,15 @@ class Neo4jPersistenceConfiguration {
     ): IntegrationConfigRepository {
         logger.info { "[Persistence] Neo4jIntegrationConfigRepository active" }
         return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
+    }
+
+    @Bean
+    fun neo4jCredentialRepository(
+        credentialNodeNeo4jRepository: CredentialNodeNeo4jRepository,
+        fieldEncryptor: FieldEncryptor,
+    ): CredentialRepository {
+        logger.info { "[Persistence] Neo4jCredentialRepository active" }
+        return Neo4jCredentialRepository(credentialNodeNeo4jRepository, fieldEncryptor)
     }
 
     @Bean
