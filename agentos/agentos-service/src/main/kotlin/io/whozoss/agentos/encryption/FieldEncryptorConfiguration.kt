@@ -19,7 +19,7 @@ import org.springframework.context.annotation.Configuration
  * supply fixed credentials via `application-test.yml`.
  */
 @Configuration
-open class FieldEncryptorConfiguration {
+class FieldEncryptorConfiguration {
 
     @Value("\${agentos.encryption.key:}")
     internal var propertyKey: String = ""
@@ -34,7 +34,7 @@ open class FieldEncryptorConfiguration {
     open fun getEnv(name: String): String? = System.getenv(name)
 
     @Bean
-    open fun fieldEncryptor(): FieldEncryptor {
+    fun fieldEncryptor(): FieldEncryptor {
         // Env vars take precedence; fall back to Spring properties.
         val key  = getEnv(ENV_KEY)?.takeIf  { it.isNotBlank() } ?: propertyKey.takeIf  { it.isNotBlank() }
         val salt = getEnv(ENV_SALT)?.takeIf { it.isNotBlank() } ?: propertySalt.takeIf { it.isNotBlank() }

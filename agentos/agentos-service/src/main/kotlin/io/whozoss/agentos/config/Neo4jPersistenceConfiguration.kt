@@ -11,21 +11,21 @@ import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
 import io.whozoss.agentos.aiProvider.AiProviderNodeNeo4jRepository
 import io.whozoss.agentos.aiProvider.AiProviderRepository
 import io.whozoss.agentos.aiProvider.Neo4jAiProviderRepository
-import io.whozoss.agentos.credential.CredentialNodeNeo4jRepository
-import io.whozoss.agentos.credential.CredentialRepository
-import io.whozoss.agentos.credential.Neo4jCredentialRepository
-import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.caseEvent.CaseEventNodeMapper
 import io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseEvent.MessageContentSerializer
 import io.whozoss.agentos.caseEvent.Neo4jCaseEventRepository
-import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
-import io.whozoss.agentos.feedback.FeedbackRepository
-import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
+import io.whozoss.agentos.credential.CredentialNodeNeo4jRepository
+import io.whozoss.agentos.credential.CredentialRepository
+import io.whozoss.agentos.credential.Neo4jCredentialRepository
+import io.whozoss.agentos.encryption.FieldEncryptor
+import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
+import io.whozoss.agentos.feedback.FeedbackRepository
+import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
@@ -159,9 +159,10 @@ class Neo4jPersistenceConfiguration {
     fun neo4jCredentialRepository(
         credentialNodeNeo4jRepository: CredentialNodeNeo4jRepository,
         fieldEncryptor: FieldEncryptor,
+        objectMapper: ObjectMapper,
     ): CredentialRepository {
         logger.info { "[Persistence] Neo4jCredentialRepository active" }
-        return Neo4jCredentialRepository(credentialNodeNeo4jRepository, fieldEncryptor)
+        return Neo4jCredentialRepository(credentialNodeNeo4jRepository, fieldEncryptor, objectMapper)
     }
 
     @Bean

@@ -1,7 +1,7 @@
 package io.whozoss.agentos.credential
 
 import com.fasterxml.jackson.core.type.TypeReference
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.encryption.FieldEncryptor
@@ -38,15 +38,15 @@ data class CredentialNode(
      */
     val dataJson: String? = null,
     // EntityMetadata fields
-    val created: Instant = Instant.now(),
+    val created: Instant,
     val createdBy: String? = null,
-    val modified: Instant = Instant.now(),
+    val modified: Instant,
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
 ) {
-    fun toDomain(encryptor: FieldEncryptor): Credential {
+    fun toDomain(encryptor: FieldEncryptor, objectMapper: ObjectMapper): Credential {
         val rawData: Map<String, String> =
-            dataJson?.let { MAPPER.readValue(it, DATA_TYPE) } ?: emptyMap()
+            dataJson?.let { objectMapper.readValue(it, DATA_TYPE) } ?: emptyMap()
         val decryptedData = rawData.mapValues { (_, v) -> encryptor.decrypt(v) }
         return Credential(
             metadata =
@@ -66,12 +66,12 @@ data class CredentialNode(
     }
 
     companion object {
-        private val MAPPER = jacksonObjectMapper()
         private val DATA_TYPE = object : TypeReference<Map<String, String>>() {}
 
         fun fromDomain(
             credential: Credential,
             encryptor: FieldEncryptor,
+            objectMapper: ObjectMapper,
         ): CredentialNode {
             val encryptedData = credential.data.mapValues { (_, v) -> encryptor.encrypt(v) }
             return CredentialNode(
@@ -79,7 +79,7 @@ data class CredentialNode(
                 userId = credential.userId.toString(),
                 authSettingId = credential.authSettingId.toString(),
                 credentialType = credential.credentialType.name,
-                dataJson = encryptedData.takeIf { it.isNotEmpty() }?.let { MAPPER.writeValueAsString(it) },
+                dataJson = encryptedData.takeIf { it.isNotEmpty() }?.let { objectMapper.writeValueAsString(it) },
                 created = credential.metadata.created,
                 createdBy = credential.metadata.createdBy,
                 modified = credential.metadata.modified,
