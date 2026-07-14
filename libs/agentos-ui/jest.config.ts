@@ -12,6 +12,12 @@ export default {
       },
     ],
   },
+  // `marked` v16 is ESM-only ("type":"module", no CJS default export). Jest (CommonJS
+  // runtime) cannot parse it. We redirect the import to the UMD build, which is
+  // CJS-compatible and exposes the same public API.
+  moduleNameMapper: {
+    '^marked$': '<rootDir>/../../node_modules/marked/lib/marked.umd.js',
+  },
   transformIgnorePatterns: ['node_modules/(?!.*\\.mjs$|@angular|rxjs)'],
   moduleFileExtensions: ['ts', 'html', 'js', 'json', 'mjs'],
   snapshotSerializers: [

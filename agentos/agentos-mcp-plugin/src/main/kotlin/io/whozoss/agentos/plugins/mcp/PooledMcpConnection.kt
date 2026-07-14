@@ -19,7 +19,7 @@ interface PooledMcpConnection : McpConnectionPort {
     fun isAlive(): Boolean
 
     /** Closes the connection and terminates the underlying server process. */
-    fun close()
+    override fun close()
 
     /** Tools discovered when the connection was established. */
     override val tools: List<Tool>

@@ -9,12 +9,13 @@
  */
 
 export interface PluginInfo {
-  id: string
-  version: string
-  state: PluginInfoStateEnum
+  agentCount: number
   description: string
-  provider: string
+  id: string
   pluginPath: string
+  provider: string
+  state: PluginInfoStateEnum
+  version: string
 }
 export enum PluginInfoStateEnum {
   CREATED = 'CREATED',

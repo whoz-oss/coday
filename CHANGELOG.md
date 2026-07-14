@@ -1,3 +1,35 @@
+## 0.214.1 (2026-07-14)
+
+### 🩹 Fixes
+
+- openapi property order ([#1138](https://github.com/whoz-oss/coday/pull/1138))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.214.0 (2026-07-14)
+
+### 🚀 Features
+
+- #1014 AgentOS case management (soft-delete + star/favorite + related-only listing) ([#1084](https://github.com/whoz-oss/coday/pull/1084), [#1014](https://github.com/whoz-oss/coday/issues/1014), [#1081](https://github.com/whoz-oss/coday/issues/1081), [#1010](https://github.com/whoz-oss/coday/issues/1010))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
+## 0.213.0 (2026-07-13)
+
+### 🚀 Features
+
+- #1018 add MCP_HTTP tool provider for remote MCP servers ([#1119](https://github.com/whoz-oss/coday/pull/1119), [#1018](https://github.com/whoz-oss/coday/issues/1018), [#1095](https://github.com/whoz-oss/coday/issues/1095), [#1096](https://github.com/whoz-oss/coday/issues/1096), [#1097](https://github.com/whoz-oss/coday/issues/1097))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.212.0 (2026-07-13)
 
 ### 🚀 Features

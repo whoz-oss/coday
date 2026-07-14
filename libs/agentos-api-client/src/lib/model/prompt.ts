@@ -10,15 +10,15 @@
 import { PromptParameter } from './prompt-parameter'
 
 export interface Prompt {
-  id?: string
-  namespaceId?: string | null
-  userId?: string | null
-  name: string
-  description?: string
   content: Array<string>
-  parameters: Array<PromptParameter>
   createdBy?: string
   createdOn?: string
+  description?: string
+  id?: string
+  name: string
+  namespaceId?: string | null
+  parameters: Array<PromptParameter>
   updatedBy?: string
   updatedOn?: string
+  userId?: string | null
 }

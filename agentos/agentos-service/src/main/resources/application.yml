@@ -1,6 +1,9 @@
 spring:
   application:
     name: agentos
+  jackson:
+    mapper:
+      sort-properties-alphabetically: true
   servlet:
     multipart:
       # Global upload limits (file-exchange uploads + plugin jars), raised from Spring's 1MB
@@ -143,6 +146,9 @@ agentos:
     #   neo4j                    - standalone Neo4j server (requires spring.neo4j.* config)
     # Override with env var: AGENTOS_PERSISTENCE_MODE
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
+
+springdoc:
+  writer-with-order-by-keys: true
 
 logging:
   level:

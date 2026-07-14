@@ -9,11 +9,13 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import mu.KLogging
 
 /**
- * A [StandardTool] that delegates execution to a live [StdioMcpConnection].
+ * A [StandardTool] that delegates execution to a live MCP connection.
  *
  * Each instance represents one tool advertised by a remote MCP server.
- * The [StdioMcpConnection] is owned by [McpConnectionPool] and outlives individual
- * agent runs — this tool holds only a reference, never closes the connection.
+ * For stdio transport, the connection is pooled via [McpConnectionPool] and
+ * outlives individual agent runs. For HTTP transport, the connection lives for
+ * the duration of the agent run and is not shared across users.
+ * In both cases this tool holds only a reference and never closes the connection.
  *
  * The [inputSchema] is taken verbatim from the MCP server's tool definition so
  * the LLM sees exactly the schema the MCP server declared.
