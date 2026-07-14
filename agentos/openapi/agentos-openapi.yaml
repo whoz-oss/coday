@@ -414,19 +414,9 @@ paths:
         required: false
         schema:
           type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/ai-providers/{id}:
-    get:
-      tags:
-      - ai-provider-controller
-      operationId: getByIdAiProvider
-      parameters:
-      - name: id
-        in: path
-        required: true
+      - in: query
+        name: userId
+        required: false
         schema:
           type: string
       responses:
@@ -724,6 +714,27 @@ paths:
                   $ref: "#/components/schemas/Case"
           description: OK
       summary: List cases by namespace
+      tags:
+      - case-controller
+  /api/cases/by-parentId/{parentId}/mine:
+    get:
+      operationId: listMineByParentCase
+      parameters:
+      - in: path
+        name: parentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
+          description: OK
       tags:
       - case-controller
   /api/cases/by-user/external/{externalId}:
@@ -1058,6 +1069,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Case"
+          description: OK
+      tags:
+      - case-controller
+  /api/cases/{id}/star:
+    delete:
+      operationId: unstarCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - case-controller
+    put:
+      operationId: starCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
           description: OK
       tags:
       - case-controller
@@ -2120,16 +2160,8 @@ paths:
           type: string
           format: uuid
       responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Case"
-  /api/case-events/{id}:
-    get:
+        "204":
+          description: No Content
       tags:
       - user-group-controller
     get:
@@ -2373,51 +2405,9 @@ components:
     AgentConfig:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type: string
-          format: uuid
-        status:
-          type: string
-          enum:
-          - PENDING
-          - RUNNING
-          - IDLE
-          - KILLED
-          - ERROR
-        title:
-          type: string
-        parentCaseId:
-          type: string
-          format: uuid
-        created:
-          type: string
-          format: date-time
-        removed:
+        advancedExecution:
           type: boolean
-      required:
-      - namespaceId
-      - removed
-      - status
-    AiProvider:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        userId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        name:
+        createdBy:
           type: string
         createdOn:
           type: string
@@ -2709,9 +2699,14 @@ components:
         created:
           type: string
           format: date-time
+        favorite:
+          type: boolean
         id:
           type: string
           format: uuid
+        modified:
+          type: string
+          format: date-time
         namespaceId:
           type: string
           format: uuid
@@ -2720,6 +2715,12 @@ components:
           format: uuid
         removed:
           type: boolean
+        role:
+          type: string
+          description: The caller's direct relation on this case
+          enum:
+          - ADMIN
+          - MEMBER
         status:
           type: string
           enum:
@@ -2731,6 +2732,7 @@ components:
         title:
           type: string
       required:
+      - favorite
       - namespaceId
       - removed
       - status
