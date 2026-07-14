@@ -1,3 +1,15 @@
+## 0.214.0 (2026-07-14)
+
+### 🚀 Features
+
+- #1014 AgentOS case management (soft-delete + star/favorite + related-only listing) ([#1084](https://github.com/whoz-oss/coday/pull/1084), [#1014](https://github.com/whoz-oss/coday/issues/1014), [#1081](https://github.com/whoz-oss/coday/issues/1081), [#1010](https://github.com/whoz-oss/coday/issues/1010))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
 ## 0.213.0 (2026-07-13)
 
 ### 🚀 Features
