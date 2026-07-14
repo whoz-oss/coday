@@ -89,9 +89,9 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             Case(metadata = EntityMetadata(), namespaceId = namespaceId),
         )
 
-    /** Case ids the user has starred, resolved via the [StarredService.listStarred] API. */
+    /** Case ids the user has starred, resolved via the [StarredService.listDirectRelations] API. */
     private fun starredIds(userId: String): Set<String> =
-        starredService.listStarred(userId, EntityType.CASE).filterValues { it.starred }.keys
+        starredService.listDirectRelations(userId, EntityType.CASE).filterValues { it.starred }.keys
 
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
@@ -194,7 +194,7 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             starredIds(userA.id.toString()) shouldContain caseId
         }
 
-        "StarredService.setStarred round-trip visible via listStarred" {
+        "StarredService.setStarred round-trip visible via listDirectRelations" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
@@ -253,7 +253,7 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             // Promote: [:MEMBER] is replaced by [:ADMIN]; [:STARRED] is a separate edge and untouched.
             permissionService.promoteMemberToAdmin(userId, EntityType.CASE, caseId)
 
-            val relations = starredService.listStarred(userId, EntityType.CASE)
+            val relations = starredService.listDirectRelations(userId, EntityType.CASE)
             relations[caseId] shouldBe DirectRelation(PermissionRelation.ADMIN, starred = true)
         }
 
@@ -280,11 +280,11 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             // Demote: [:ADMIN] is replaced by [:MEMBER]; [:STARRED] is a separate edge and untouched.
             permissionService.demoteAdminToMember(userId, EntityType.CASE, caseId)
 
-            val relations = starredService.listStarred(userId, EntityType.CASE)
+            val relations = starredService.listDirectRelations(userId, EntityType.CASE)
             relations[caseId] shouldBe DirectRelation(PermissionRelation.MEMBER, starred = true)
         }
 
-        "listStarred returns the caller's relation and [:STARRED] flag per entity (and omits un-related ones)" {
+        "listDirectRelations returns the caller's relation and [:STARRED] flag per entity (and omits un-related ones)" {
             val user = createUser()
             val namespace = createNamespace()
             val adminCase = createCase(namespace.id)
@@ -303,7 +303,7 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             )
             starredService.setStarred(user.id.toString(), EntityType.CASE, adminCase.id.toString(), true)
 
-            val relations = starredService.listStarred(user.id.toString(), EntityType.CASE)
+            val relations = starredService.listDirectRelations(user.id.toString(), EntityType.CASE)
 
             relations[adminCase.id.toString()] shouldBe DirectRelation(PermissionRelation.ADMIN, starred = true)
             relations[memberCase.id.toString()] shouldBe DirectRelation(PermissionRelation.MEMBER, starred = false)

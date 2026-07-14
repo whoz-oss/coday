@@ -32,7 +32,7 @@ class Neo4jStarredRepository(
             throw e
         }
 
-    override fun listStarred(userId: String, entityType: EntityType): Map<String, DirectRelation> =
+    override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
         try {
             val result = mutableMapOf<String, DirectRelation>()
             for (row in permissionNodeRepository.findDirectRelations(userId, entityType.label)) {

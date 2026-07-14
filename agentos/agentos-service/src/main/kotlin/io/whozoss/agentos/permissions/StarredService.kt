@@ -14,15 +14,19 @@ interface StarredService {
      * Requires the user to hold a direct `[:ADMIN]` or `[:MEMBER]` relation on the
      * entity — starring is not allowed via transitive (namespace-level) access only.
      *
-     * @return true if the user had a direct relation and the operation was persisted;
-     *   false if they had none (no-op). Callers may reject the request on false.
+     * @return true if the user has a direct `[:ADMIN]` or `[:MEMBER]` edge on the entity
+     *   (the `[:STARRED]` edge was created or deleted as requested); false if they have
+     *   no direct permission edge (no-op). Callers may reject the request on false.
+     *   Note: for `starred=false`, returns true even when the entity was not previously
+     *   starred — the guard only checks for the permission edge.
      */
     fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean
 
     /**
-     * Returns the caller's direct permission relation and starred flag for every
-     * entity of [entityType] they have a direct edge on, keyed by entity id.
-     * Resolved in a single round-trip; used to enrich list responses.
+     * Returns the caller's direct permission relation and starred flag for every entity
+     * of [entityType] they have a direct `[:ADMIN]`/`[:MEMBER]` edge on, keyed by
+     * entity id. Includes both starred and non-starred entities. Resolved in a single
+     * round-trip; used to enrich list responses with role and favorite metadata.
      */
-    fun listStarred(userId: String, entityType: EntityType): Map<String, DirectRelation>
+    fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation>
 }

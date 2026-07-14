@@ -160,7 +160,7 @@ class CaseController(
         cases: List<Case>,
         userId: String,
     ): List<CaseDto> {
-        val starred = starredService.listStarred(userId, EntityType.CASE)
+        val starred = starredService.listDirectRelations(userId, EntityType.CASE)
         return cases.map {
             val meta = starred[it.metadata.id.toString()]
             toDto(it).copy(favorite = meta?.starred ?: false, role = meta?.relation?.name)

@@ -22,11 +22,11 @@ class StarredServiceImpl(
             throw e
         }
 
-    override fun listStarred(userId: String, entityType: EntityType): Map<String, DirectRelation> =
+    override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
         try {
-            starredRepository.listStarred(userId, entityType)
+            starredRepository.listDirectRelations(userId, entityType)
         } catch (e: Exception) {
-            logger.error(e) { "Failed to list starred for user=$userId, type=$entityType" }
+            logger.error(e) { "Failed to list direct relations for user=$userId, type=$entityType" }
             emptyMap()
         }
 }

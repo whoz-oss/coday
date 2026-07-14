@@ -76,7 +76,7 @@ class CaseControllerSpec : StringSpec({
         clearAllMocks()
         // Default: the caller has no starred entries (empty enrichment). Listing tests that
         // assert `favorite`/`role` override this with a specific map.
-        every { starredService.listStarred(any(), EntityType.CASE) } returns emptyMap()
+        every { starredService.listDirectRelations(any(), EntityType.CASE) } returns emptyMap()
     }
 
     // -------------------------------------------------------------------------
@@ -235,7 +235,7 @@ class CaseControllerSpec : StringSpec({
         val plain = caseEntity(title = "plain")
         every { userService.getCurrentUser() } returns caller
         every {
-            starredService.listStarred(callerId.toString(), EntityType.CASE)
+            starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
         } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = true))
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
@@ -253,7 +253,7 @@ class CaseControllerSpec : StringSpec({
         val plain = caseEntity(title = "plain")
         every { userService.getCurrentUser() } returns caller
         every {
-            starredService.listStarred(callerId.toString(), EntityType.CASE)
+            starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
         } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
         every {
             permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
@@ -341,7 +341,7 @@ class CaseControllerSpec : StringSpec({
         val plain = caseEntity(title = "plain")
         every { userService.getCurrentUser() } returns caller
         every {
-            starredService.listStarred(callerId.toString(), EntityType.CASE)
+            starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
         } returns mapOf(
             starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = true),
             plain.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = false),
@@ -359,7 +359,7 @@ class CaseControllerSpec : StringSpec({
         val memberCase = caseEntity(title = "member case")
         every { userService.getCurrentUser() } returns caller
         every {
-            starredService.listStarred(callerId.toString(), EntityType.CASE)
+            starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
         } returns mapOf(
             adminCase.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = false),
             memberCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = false),
