@@ -1,6 +1,9 @@
 spring:
   application:
     name: agentos
+  jackson:
+    mapper:
+      sort-properties-alphabetically: true
   servlet:
     multipart:
       # Global upload limits (file-exchange uploads + plugin jars), raised from Spring's 1MB

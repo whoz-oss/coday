@@ -2,7 +2,6 @@ package io.whozoss.agentos.sdk.caseEvent
 
 import com.fasterxml.jackson.annotation.JsonCreator
 import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.annotation.JsonValue
@@ -62,7 +61,6 @@ enum class CaseEventType(
  * Jackson polymorphism: the `type` field (CaseEventType.value = class name)
  * is used as discriminant for serialization and deserialization.
  */
-@JsonPropertyOrder(alphabetic = true)
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "type")
 @JsonSubTypes(
     JsonSubTypes.Type(value = CaseStatusEvent::class, name = "CaseStatusEvent"),
