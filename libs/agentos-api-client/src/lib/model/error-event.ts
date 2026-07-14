@@ -10,11 +10,11 @@
 import { EntityMetadata } from './entity-metadata'
 
 export interface ErrorEvent {
-  caseId: string
-  id: string
-  metadata: EntityMetadata
   namespaceId: string
-  timestamp: string
+  caseId: string
   type: 'ErrorEvent'
+  timestamp: string
+  metadata: EntityMetadata
+  id: string
   message: string
 }

@@ -11,16 +11,16 @@ import { EntityMetadata } from './entity-metadata'
 import { ToolResponseEventAllOfOutput } from './tool-response-event-all-of-output'
 
 export interface ToolResponseEvent {
-  caseId: string
-  id: string
-  metadata: EntityMetadata
   namespaceId: string
-  timestamp: string
+  caseId: string
   type: 'ToolResponseEvent'
-  durationMs?: number
+  timestamp: string
+  metadata: EntityMetadata
+  id: string
+  toolRequestId: string
+  toolName: string
   output: ToolResponseEventAllOfOutput
   success: boolean
+  durationMs?: number
   toolMetadata: { [key: string]: any }
-  toolName: string
-  toolRequestId: string
 }

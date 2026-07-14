@@ -10,14 +10,14 @@
 import { EntityMetadata } from './entity-metadata'
 
 export interface AgentRunningEvent {
-  caseId: string
-  id: string
-  metadata: EntityMetadata
   namespaceId: string
-  timestamp: string
+  caseId: string
   type: 'AgentRunningEvent'
+  timestamp: string
+  metadata: EntityMetadata
+  id: string
   agentId: string
   agentName: string
-  llmModel?: string
   llmProvider?: string
+  llmModel?: string
 }

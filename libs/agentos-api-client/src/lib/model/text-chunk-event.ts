@@ -10,11 +10,11 @@
 import { EntityMetadata } from './entity-metadata'
 
 export interface TextChunkEvent {
-  caseId: string
-  id: string
-  metadata: EntityMetadata
   namespaceId: string
-  timestamp: string
+  caseId: string
   type: 'TextChunkEvent'
+  timestamp: string
+  metadata: EntityMetadata
+  id: string
   chunk: string
 }
