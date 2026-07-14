@@ -10,9 +10,9 @@
 
 export interface OAuthDiscoverableAuthSetting {
   authType: 'OAuthDiscoverableAuthSetting'
+  description?: string
   userId?: string | null
   namespaceId?: string | null
-  description?: string
   name: string
   id?: string
   discoveryUrl?: string
