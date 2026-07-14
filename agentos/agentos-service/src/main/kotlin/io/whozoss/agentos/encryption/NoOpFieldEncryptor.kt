@@ -1,7 +1,5 @@
 package io.whozoss.agentos.encryption
 
-import io.whozoss.agentos.sdk.encryption.FieldEncryptor
-
 /**
  * No-op field encryptor for development use only.
  * Values are stored as-is without encryption.

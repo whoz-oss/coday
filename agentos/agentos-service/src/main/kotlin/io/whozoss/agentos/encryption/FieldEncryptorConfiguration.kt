@@ -1,6 +1,5 @@
 package io.whozoss.agentos.encryption
 
-import io.whozoss.agentos.sdk.encryption.FieldEncryptor
 import mu.KLogging
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
