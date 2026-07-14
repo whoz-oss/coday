@@ -414,19 +414,9 @@ paths:
         required: false
         schema:
           type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/ai-providers/{id}:
-    get:
-      tags:
-      - ai-provider-controller
-      operationId: getByIdAiProvider
-      parameters:
-      - name: id
-        in: path
-        required: true
+      - in: query
+        name: userId
+        required: false
         schema:
           type: string
       responses:
@@ -547,6 +537,192 @@ paths:
           description: OK
       tags:
       - ai-provider-controller
+  /api/auth-settings:
+    get:
+      description: |-
+        Scope is inferred from the query params:
+
+        | query                            | mode             | required permission                            |
+        |----------------------------------|------------------|------------------------------------------------|
+        | (no params)                      | platform         | authenticated                                  |
+        | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
+        | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
+
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+      operationId: listAuthSetting
+      parameters:
+      - in: query
+        name: namespaceId
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: userId
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                  - $ref: "#/components/schemas/ApiKeyAuthSetting"
+                  - $ref: "#/components/schemas/BasicAuthAuthSetting"
+                  - $ref: "#/components/schemas/BearerTokenAuthSetting"
+                  - $ref: "#/components/schemas/OAuthCustomAuthSetting"
+                  - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+                  - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
+          description: OK
+      summary: List AuthSettings by scope
+      tags:
+      - auth-setting-controller
+    post:
+      description: |-
+        Scope is inferred implicitly from the body's `(namespaceId, userId)` pair:
+
+        | body.namespaceId | body.userId        | scope         | required permission                  |
+        |------------------|--------------------|---------------|--------------------------------------|
+        | null             | null               | platform      | super-admin only                     |
+        | present          | null               | NS-shared     | WRITE on the namespace               |
+        | null             | <currentUser.id>   | user-global   | authenticated only                   |
+        | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
+
+        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard). A `namespaceId` that does not exist returns 404.
+      operationId: createAuthSetting
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: "#/components/schemas/ApiKeyAuthSetting"
+              - $ref: "#/components/schemas/BasicAuthAuthSetting"
+              - $ref: "#/components/schemas/BearerTokenAuthSetting"
+              - $ref: "#/components/schemas/OAuthCustomAuthSetting"
+              - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+              - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/ApiKeyAuthSetting"
+                - $ref: "#/components/schemas/BasicAuthAuthSetting"
+                - $ref: "#/components/schemas/BearerTokenAuthSetting"
+                - $ref: "#/components/schemas/OAuthCustomAuthSetting"
+                - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+                - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
+          description: Created
+      summary: Create an AuthSetting
+      tags:
+      - auth-setting-controller
+  /api/auth-settings/by-ids:
+    post:
+      operationId: getByIdsAuthSetting
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                  - $ref: "#/components/schemas/ApiKeyAuthSetting"
+                  - $ref: "#/components/schemas/BasicAuthAuthSetting"
+                  - $ref: "#/components/schemas/BearerTokenAuthSetting"
+                  - $ref: "#/components/schemas/OAuthCustomAuthSetting"
+                  - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+                  - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
+          description: OK
+      tags:
+      - auth-setting-controller
+  /api/auth-settings/{id}:
+    delete:
+      operationId: deleteAuthSetting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - auth-setting-controller
+    get:
+      operationId: getByIdAuthSetting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/ApiKeyAuthSetting"
+                - $ref: "#/components/schemas/BasicAuthAuthSetting"
+                - $ref: "#/components/schemas/BearerTokenAuthSetting"
+                - $ref: "#/components/schemas/OAuthCustomAuthSetting"
+                - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+                - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
+          description: OK
+      tags:
+      - auth-setting-controller
+    put:
+      operationId: updateAuthSetting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: "#/components/schemas/ApiKeyAuthSetting"
+              - $ref: "#/components/schemas/BasicAuthAuthSetting"
+              - $ref: "#/components/schemas/BearerTokenAuthSetting"
+              - $ref: "#/components/schemas/OAuthCustomAuthSetting"
+              - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+              - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/ApiKeyAuthSetting"
+                - $ref: "#/components/schemas/BasicAuthAuthSetting"
+                - $ref: "#/components/schemas/BearerTokenAuthSetting"
+                - $ref: "#/components/schemas/OAuthCustomAuthSetting"
+                - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+                - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
+          description: OK
+      tags:
+      - auth-setting-controller
   /api/case-events/by-ids:
     post:
       operationId: getByIdsCaseEventRest
@@ -1386,29 +1562,8 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  oneOf:
-                  - $ref: "#/components/schemas/AgentFinishedEvent"
-                  - $ref: "#/components/schemas/AgentRunningEvent"
-                  - $ref: "#/components/schemas/AgentSelectedEvent"
-                  - $ref: "#/components/schemas/AnswerEvent"
-                  - $ref: "#/components/schemas/CaseStatusEvent"
-                  - $ref: "#/components/schemas/CaseUpdatedEvent"
-                  - $ref: "#/components/schemas/ConfirmationResolvedEvent"
-                  - $ref: "#/components/schemas/ErrorEvent"
-                  - $ref: "#/components/schemas/IntentionGeneratedEvent"
-                  - $ref: "#/components/schemas/MessageEvent"
-                  - $ref: "#/components/schemas/PendingConfirmationEvent"
-                  - $ref: "#/components/schemas/QuestionEvent"
-                  - $ref: "#/components/schemas/TextChunkEvent"
-                  - $ref: "#/components/schemas/ThinkingEvent"
-                  - $ref: "#/components/schemas/ToolRequestEvent"
-                  - $ref: "#/components/schemas/ToolResponseEvent"
-                  - $ref: "#/components/schemas/ToolSelectedEvent"
-                  - $ref: "#/components/schemas/WarnEvent"
-  /api/ai-providers:
-    get:
+                $ref: "#/components/schemas/SyncUserRolesRequest"
+          description: OK
       tags:
       - namespace-permission-endpoints
   /api/namespaces/{id}:
@@ -2378,62 +2533,9 @@ components:
           format: uuid
         content:
           type: string
-          minLength: 1
-      required:
-      - defaultValue
-      - name
-    Namespace:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        configPath:
-          type: string
-          description: "Optional filesystem path to a directory containing base configuration\
-            \ for this namespace (agents, tools, etc.)."
-        externalId:
-          type: string
-          description: "Optional external identifier for this namespace, e.g. a federation\
-            \ id from an external system"
-        defaultAgentName:
-          type: string
-          description: "Logical name of the default agent for this namespace. Resolved\
-            \ at runtime against AgentConfig entries (case-insensitive). When null,\
-            \ messages without an @mention will produce an explicit error."
-      required:
-      - name
-    IntegrationConfig:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        userId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        name:
-          type: string
-          minLength: 1
-        integrationType:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        parameters:
-          $ref: "#/components/schemas/JsonNode"
+        sessionContext:
+          type: object
+          additionalProperties: {}
       required:
       - content
     AgentConfig:
@@ -2446,31 +2548,6 @@ components:
         createdOn:
           type: string
           format: date-time
-        removed:
-          type: boolean
-      required:
-      - namespaceId
-      - removed
-      - status
-    AiProvider:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        userId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        name:
-          type: string
-          minLength: 1
         description:
           type: string
         enabled:
@@ -2752,6 +2829,107 @@ components:
       - questionId
       - timestamp
       - type
+    ApiKeyAuthSetting:
+      allOf:
+      - $ref: "#/components/schemas/AuthSettingDto"
+      - type: object
+        properties:
+          apiKey:
+            type: string
+          name:
+            type: string
+            minLength: 1
+          namespaceId:
+            type:
+            - string
+            - "null"
+            format: uuid
+          userId:
+            type:
+            - string
+            - "null"
+            format: uuid
+      required:
+      - authType
+      - name
+    AuthSettingDto:
+      type: object
+      discriminator:
+        propertyName: authType
+      properties:
+        authType:
+          type: string
+          enum:
+          - OAUTH_DISCOVERABLE
+          - OAUTH_REGISTERED
+          - OAUTH_CUSTOM
+          - API_KEY
+          - BEARER_TOKEN
+          - BASIC_AUTH
+        description:
+          type: string
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        namespaceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+      required:
+      - authType
+      - name
+    BasicAuthAuthSetting:
+      allOf:
+      - $ref: "#/components/schemas/AuthSettingDto"
+      - type: object
+        properties:
+          name:
+            type: string
+            minLength: 1
+          namespaceId:
+            type:
+            - string
+            - "null"
+            format: uuid
+          password:
+            type: string
+          userId:
+            type:
+            - string
+            - "null"
+            format: uuid
+          username:
+            type: string
+      required:
+      - authType
+      - name
+    BearerTokenAuthSetting:
+      allOf:
+      - $ref: "#/components/schemas/AuthSettingDto"
+      - type: object
+        properties:
+          name:
+            type: string
+            minLength: 1
+          namespaceId:
+            type:
+            - string
+            - "null"
+            format: uuid
+          token:
+            type: string
+          userId:
+            type:
+            - string
+            - "null"
+            format: uuid
+      required:
+      - authType
+      - name
     Case:
       type: object
       properties:
@@ -3135,6 +3313,8 @@ components:
     IntegrationConfig:
       type: object
       properties:
+        authSettingName:
+          type: string
         description:
           type: string
         id:
@@ -3345,6 +3525,97 @@ components:
       - externalId
       - id
       - role
+    OAuthCustomAuthSetting:
+      allOf:
+      - $ref: "#/components/schemas/AuthSettingDto"
+      - type: object
+        properties:
+          authorizationUrl:
+            type: string
+          clientId:
+            type: string
+          clientSecret:
+            type: string
+          name:
+            type: string
+            minLength: 1
+          namespaceId:
+            type:
+            - string
+            - "null"
+            format: uuid
+          scopes:
+            type: string
+          tokenUrl:
+            type: string
+          userId:
+            type:
+            - string
+            - "null"
+            format: uuid
+      required:
+      - authType
+      - name
+    OAuthDiscoverableAuthSetting:
+      allOf:
+      - $ref: "#/components/schemas/AuthSettingDto"
+      - type: object
+        properties:
+          clientId:
+            type: string
+          clientSecret:
+            type: string
+          discoveryUrl:
+            type: string
+          name:
+            type: string
+            minLength: 1
+          namespaceId:
+            type:
+            - string
+            - "null"
+            format: uuid
+          scopes:
+            type: string
+          userId:
+            type:
+            - string
+            - "null"
+            format: uuid
+      required:
+      - authType
+      - name
+    OAuthRegisteredAuthSetting:
+      allOf:
+      - $ref: "#/components/schemas/AuthSettingDto"
+      - type: object
+        properties:
+          authorizationUrl:
+            type: string
+          clientId:
+            type: string
+          clientSecret:
+            type: string
+          name:
+            type: string
+            minLength: 1
+          namespaceId:
+            type:
+            - string
+            - "null"
+            format: uuid
+          scopes:
+            type: string
+          tokenUrl:
+            type: string
+          userId:
+            type:
+            - string
+            - "null"
+            format: uuid
+      required:
+      - authType
+      - name
     PendingConfirmationEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"

@@ -9,6 +9,7 @@
  */
 
 export interface IntegrationConfig {
+  authSettingName?: string
   description?: string
   id?: string
   integrationType: string
@@ -16,5 +17,4 @@ export interface IntegrationConfig {
   namespaceId?: string | null
   parameters?: any | null
   userId?: string | null
-  authSettingName?: string
 }

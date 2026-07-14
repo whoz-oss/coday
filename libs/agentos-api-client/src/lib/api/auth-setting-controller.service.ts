@@ -20,9 +20,9 @@ import { BasicAuthAuthSetting } from '../model/basic-auth-auth-setting'
 // @ts-ignore
 import { BearerTokenAuthSetting } from '../model/bearer-token-auth-setting'
 // @ts-ignore
-import { GetByIdAuthSetting200Response } from '../model/get-by-id-auth-setting200-response'
-// @ts-ignore
 import { GetByIdsRequest } from '../model/get-by-ids-request'
+// @ts-ignore
+import { ListAuthSetting200ResponseInner } from '../model/list-auth-setting200-response-inner'
 // @ts-ignore
 import { OAuthCustomAuthSetting } from '../model/o-auth-custom-auth-setting'
 // @ts-ignore
@@ -65,7 +65,7 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<GetByIdAuthSetting200Response>
+  ): Observable<ListAuthSetting200ResponseInner>
   public createAuthSetting(
     apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
       | ApiKeyAuthSetting
@@ -77,7 +77,7 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<GetByIdAuthSetting200Response>>
+  ): Observable<HttpResponse<ListAuthSetting200ResponseInner>>
   public createAuthSetting(
     apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
       | ApiKeyAuthSetting
@@ -89,7 +89,7 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<GetByIdAuthSetting200Response>>
+  ): Observable<HttpEvent<ListAuthSetting200ResponseInner>>
   public createAuthSetting(
     apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
       | ApiKeyAuthSetting
@@ -145,7 +145,7 @@ export class AuthSettingControllerService extends BaseService {
 
     let localVarPath = `/api/auth-settings`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<GetByIdAuthSetting200Response>('post', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<ListAuthSetting200ResponseInner>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       body: apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting,
       responseType: <any>responseType_,
@@ -236,19 +236,19 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<GetByIdAuthSetting200Response>
+  ): Observable<ListAuthSetting200ResponseInner>
   public getByIdAuthSetting(
     id: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<GetByIdAuthSetting200Response>>
+  ): Observable<HttpResponse<ListAuthSetting200ResponseInner>>
   public getByIdAuthSetting(
     id: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<GetByIdAuthSetting200Response>>
+  ): Observable<HttpEvent<ListAuthSetting200ResponseInner>>
   public getByIdAuthSetting(
     id: string,
     observe: any = 'body',
@@ -284,7 +284,7 @@ export class AuthSettingControllerService extends BaseService {
 
     let localVarPath = `/api/auth-settings/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<GetByIdAuthSetting200Response>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<ListAuthSetting200ResponseInner>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
@@ -305,19 +305,19 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<GetByIdAuthSetting200Response>>
+  ): Observable<Array<ListAuthSetting200ResponseInner>>
   public getByIdsAuthSetting(
     getByIdsRequest: GetByIdsRequest,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<GetByIdAuthSetting200Response>>>
+  ): Observable<HttpResponse<Array<ListAuthSetting200ResponseInner>>>
   public getByIdsAuthSetting(
     getByIdsRequest: GetByIdsRequest,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<GetByIdAuthSetting200Response>>>
+  ): Observable<HttpEvent<Array<ListAuthSetting200ResponseInner>>>
   public getByIdsAuthSetting(
     getByIdsRequest: GetByIdsRequest,
     observe: any = 'body',
@@ -360,7 +360,7 @@ export class AuthSettingControllerService extends BaseService {
 
     let localVarPath = `/api/auth-settings/by-ids`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<GetByIdAuthSetting200Response>>('post', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<ListAuthSetting200ResponseInner>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       body: getByIdsRequest,
       responseType: <any>responseType_,
@@ -386,21 +386,21 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<GetByIdAuthSetting200Response>>
+  ): Observable<Array<ListAuthSetting200ResponseInner>>
   public listAuthSetting(
     namespaceId?: string,
     userId?: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<GetByIdAuthSetting200Response>>>
+  ): Observable<HttpResponse<Array<ListAuthSetting200ResponseInner>>>
   public listAuthSetting(
     namespaceId?: string,
     userId?: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<GetByIdAuthSetting200Response>>>
+  ): Observable<HttpEvent<Array<ListAuthSetting200ResponseInner>>>
   public listAuthSetting(
     namespaceId?: string,
     userId?: string,
@@ -437,7 +437,7 @@ export class AuthSettingControllerService extends BaseService {
 
     let localVarPath = `/api/auth-settings`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<GetByIdAuthSetting200Response>>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<ListAuthSetting200ResponseInner>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       params: localVarQueryParameters,
       responseType: <any>responseType_,
@@ -467,7 +467,7 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<GetByIdAuthSetting200Response>
+  ): Observable<ListAuthSetting200ResponseInner>
   public updateAuthSetting(
     id: string,
     apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
@@ -480,7 +480,7 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<GetByIdAuthSetting200Response>>
+  ): Observable<HttpResponse<ListAuthSetting200ResponseInner>>
   public updateAuthSetting(
     id: string,
     apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
@@ -493,7 +493,7 @@ export class AuthSettingControllerService extends BaseService {
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<GetByIdAuthSetting200Response>>
+  ): Observable<HttpEvent<ListAuthSetting200ResponseInner>>
   public updateAuthSetting(
     id: string,
     apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
@@ -553,7 +553,7 @@ export class AuthSettingControllerService extends BaseService {
 
     let localVarPath = `/api/auth-settings/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<GetByIdAuthSetting200Response>('put', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<ListAuthSetting200ResponseInner>('put', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       body: apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting,
       responseType: <any>responseType_,

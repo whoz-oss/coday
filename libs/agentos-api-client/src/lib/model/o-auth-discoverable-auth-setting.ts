@@ -11,12 +11,12 @@
 export interface OAuthDiscoverableAuthSetting {
   authType: 'OAuthDiscoverableAuthSetting'
   description?: string
-  userId?: string | null
-  namespaceId?: string | null
-  name: string
   id?: string
-  discoveryUrl?: string
+  name: string
+  namespaceId?: string | null
+  userId?: string | null
   clientId?: string
   clientSecret?: string
+  discoveryUrl?: string
   scopes?: string
 }

@@ -11,13 +11,13 @@
 export interface OAuthCustomAuthSetting {
   authType: 'OAuthCustomAuthSetting'
   description?: string
-  userId?: string | null
-  namespaceId?: string | null
-  name: string
   id?: string
+  name: string
+  namespaceId?: string | null
+  userId?: string | null
+  authorizationUrl?: string
   clientId?: string
   clientSecret?: string
-  authorizationUrl?: string
-  tokenUrl?: string
   scopes?: string
+  tokenUrl?: string
 }

@@ -11,9 +11,9 @@
 export interface ApiKeyAuthSetting {
   authType: 'ApiKeyAuthSetting'
   description?: string
-  userId?: string | null
-  namespaceId?: string | null
-  name: string
   id?: string
+  name: string
+  namespaceId?: string | null
+  userId?: string | null
   apiKey?: string
 }

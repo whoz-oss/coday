@@ -11,9 +11,9 @@
 export interface BearerTokenAuthSetting {
   authType: 'BearerTokenAuthSetting'
   description?: string
-  userId?: string | null
-  namespaceId?: string | null
-  name: string
   id?: string
+  name: string
+  namespaceId?: string | null
+  userId?: string | null
   token?: string
 }

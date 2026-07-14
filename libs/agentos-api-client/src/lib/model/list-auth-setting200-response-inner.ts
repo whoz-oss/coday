@@ -8,4 +8,4 @@
  * Do not edit the class manually.
  */
 
-export interface GetByIdAuthSetting200Response {}
+export interface ListAuthSetting200ResponseInner {}
