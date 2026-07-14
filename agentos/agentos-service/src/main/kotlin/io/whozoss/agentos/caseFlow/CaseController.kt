@@ -346,7 +346,7 @@ class CaseController(
      *
      * Delta semantics: only listed users are affected; unlisted users are untouched.
      * Entries targeting the current caller are silently filtered to prevent
-     * accidental self-demotion or self-revocation.
+     * any self-modification (promotion, demotion, or revocation).
      *
      * Non-existent userIds are silently skipped (the Cypher MATCH on User filters them).
      * Returns the list of userIds for which the operation was actually applied.

@@ -1015,6 +1015,55 @@ paths:
       summary: Add a message
       tags:
       - case-controller
+  /api/cases/{caseId}/share:
+    put:
+      operationId: shareCase
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseShareRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  format: uuid
+          description: OK
+      tags:
+      - case-controller
+  /api/cases/{caseId}/users:
+    get:
+      operationId: listCaseUsers
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CaseUserListItem"
+          description: OK
+      tags:
+      - case-controller
   /api/cases/{id}:
     delete:
       operationId: deleteCase
@@ -2783,6 +2832,28 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseShareEntry:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+          - ADMIN
+          - MEMBER
+        userId:
+          type: string
+          format: uuid
+      required:
+      - userId
+    CaseShareRequest:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CaseShareEntry"
+      required:
+      - entries
     CaseStatusEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -2818,6 +2889,31 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseUserListItem:
+      type: object
+      properties:
+        email:
+          type: string
+        externalId:
+          type: string
+        firstname:
+          type: string
+        id:
+          type: string
+          format: uuid
+        lastname:
+          type: string
+        role:
+          type: string
+          description: The user's direct role on this case.
+          enum:
+          - ADMIN
+          - MEMBER
+      required:
+      - email
+      - externalId
+      - id
+      - role
     ConfirmationResolvedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"

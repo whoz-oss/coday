@@ -388,6 +388,9 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      *
      * Returns the userIds that were successfully processed.
      */
+    // TODO: once [:STARRED] is a dedicated relationship (see linked issue), the
+    //  existing promoteMemberToAdmin / demoteAdminToMember queries can be simplified
+    //  the same way — plain delete + merge without property copying.
     @Query("UNWIND \$userIds AS uid MATCH (u:User {id: uid}) MATCH (e {id: \$entityId}) WHERE \$entityLabel IN labels(e) OPTIONAL MATCH (u)-[oldMember:MEMBER]->(e) DELETE oldMember MERGE (u)-[:ADMIN]->(e) RETURN uid")
     fun batchGrantAdmin(
         @Param("userIds") userIds: List<String>,
