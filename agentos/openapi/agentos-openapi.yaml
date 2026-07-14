@@ -414,9 +414,19 @@ paths:
         required: false
         schema:
           type: string
-      - in: query
-        name: userId
-        required: false
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+  /api/ai-providers/{id}:
+    get:
+      tags:
+      - ai-provider-controller
+      operationId: getByIdAiProvider
+      parameters:
+      - name: id
+        in: path
+        required: true
         schema:
           type: string
       responses:
@@ -2110,8 +2120,16 @@ paths:
           type: string
           format: uuid
       responses:
-        "204":
-          description: No Content
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
+  /api/case-events/{id}:
+    get:
       tags:
       - user-group-controller
     get:
@@ -2355,9 +2373,51 @@ components:
     AgentConfig:
       type: object
       properties:
-        advancedExecution:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - IDLE
+          - KILLED
+          - ERROR
+        title:
+          type: string
+        parentCaseId:
+          type: string
+          format: uuid
+        created:
+          type: string
+          format: date-time
+        removed:
           type: boolean
-        createdBy:
+      required:
+      - namespaceId
+      - removed
+      - status
+    AiProvider:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        name:
           type: string
         createdOn:
           type: string

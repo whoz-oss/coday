@@ -13,9 +13,8 @@ export interface Case {
   id?: string
   namespaceId: string
   parentCaseId?: string
+  created?: string
   removed: boolean
-  status: CaseStatusEnum
-  title?: string
 }
 export enum CaseStatusEnum {
   PENDING = 'PENDING',
@@ -23,4 +22,8 @@ export enum CaseStatusEnum {
   IDLE = 'IDLE',
   KILLED = 'KILLED',
   ERROR = 'ERROR',
+}
+export enum CaseRoleEnum {
+  ADMIN = 'ADMIN',
+  MEMBER = 'MEMBER',
 }

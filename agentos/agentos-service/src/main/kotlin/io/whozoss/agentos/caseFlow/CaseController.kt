@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 
@@ -107,15 +108,60 @@ class CaseController(
     ): List<CaseDto> {
         val user = userService.getCurrentUser()
         val userId = user.id.toString()
-        val isNamespaceAdmin = permissionService.hasPermission(
-            userId, EntityType.NAMESPACE, parentId.toString(), Action.WRITE,
-        )
-        return if (isNamespaceAdmin) {
-            logger.debug { "User $userId is namespace-ADMIN on $parentId — short-circuit list (no filtering)" }
-            caseService.findByParent(parentId).map(::toDto)
-        } else {
-            logger.debug { "User $userId not namespace-ADMIN on $parentId — using permission-filtered listing" }
-            caseService.findAccessibleByUserInNamespace(user.id, parentId).map(::toDto)
+        val isNamespaceAdmin =
+            permissionService.hasPermission(
+                userId,
+                EntityType.NAMESPACE,
+                parentId.toString(),
+                Action.WRITE,
+            )
+        val cases =
+            if (isNamespaceAdmin) {
+                logger.debug { "User $userId is namespace-ADMIN on $parentId — short-circuit list (no filtering)" }
+                caseService.findByParent(parentId)
+            } else {
+                logger.debug { "User $userId not namespace-ADMIN on $parentId — using permission-filtered listing" }
+                caseService.findAccessibleByUserInNamespace(user.id, parentId)
+            }
+        return withCallerMeta(cases, userId)
+    }
+
+    /**
+     * GET /api/cases/by-parentId/{parentId}/mine — list ONLY the cases in [parentId]
+     * that the CURRENT user has a DIRECT [:ADMIN|MEMBER] relation with.
+     *
+     * Deliberately excludes the namespace-admin fast path AND namespace-admin
+     * transitivity used by [listByParent]: every returned case is one the user can
+     * star (star requires a direct user↔case edge). This powers the AgentOS drawer.
+     *
+     * Single-case access by URL is unchanged ([getById] gates on `hasPermission(#id,'Case','READ')`),
+     * so admins/super-admins can still open a case they don't own.
+     */
+    @GetMapping("/by-parentId/{parentId}/mine")
+    @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
+    fun listMineByParent(
+        @PathVariable parentId: UUID,
+    ): List<CaseDto> {
+        val user = userService.getCurrentUser()
+        logger.debug { "Listing directly-related cases for user ${user.id} in namespace $parentId" }
+        val cases = caseService.findConcerningUserInNamespace(user.id, parentId)
+        return withCallerMeta(cases, user.id.toString())
+    }
+
+    /**
+     * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
+     * relation (`role`) and favorite flag. A single companion query resolves the whole
+     * set (no per-case round-trip). Cases the user has no direct edge on get `role = null`
+     * and `favorite = false` (e.g. the namespace-admin fast path in [listByParent]).
+     */
+    private fun withCallerMeta(
+        cases: List<Case>,
+        userId: String,
+    ): List<CaseDto> {
+        val relations = permissionService.listDirectRelations(userId, EntityType.CASE)
+        return cases.map {
+            val meta = relations[it.metadata.id.toString()]
+            toDto(it).copy(favorite = meta?.starred ?: false, role = meta?.relation?.name)
         }
     }
 
@@ -133,21 +179,26 @@ class CaseController(
         val created = crud.create(resource)
         val caseId = created.id ?: error("Created case must have an id")
         val userId = userService.getCurrentUser().id.toString()
-        runCatching {
-            permissionService.grantPermission(
-                userId,
-                EntityType.CASE,
-                caseId.toString(),
-                PermissionRelation.ADMIN,
-            )
+        val granted =
+            runCatching {
+                permissionService.grantPermission(
+                    userId,
+                    EntityType.CASE,
+                    caseId.toString(),
+                    PermissionRelation.ADMIN,
+                )
+            }.onFailure { e ->
+                logger.warn(e) {
+                    "Auto-ADMIN grant failed for case $caseId (user $userId) — case persisted. " +
+                        "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
+                }
+            }.isSuccess
+        if (granted) {
             logger.info { "User $userId created case $caseId with auto-ADMIN grant" }
-        }.onFailure { e ->
-            logger.warn(e) {
-                "Auto-ADMIN grant failed for case $caseId (user $userId) — case persisted. " +
-                    "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
-            }
         }
-        return created
+        // Surface the creator's fresh direct relation so the UI enables ADMIN-only actions
+        // (delete) on the new case immediately, without waiting for a list refresh to enrich it.
+        return if (granted) created.copy(role = PermissionRelation.ADMIN.name) else created
     }
 
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -182,6 +233,8 @@ class CaseController(
         @PathVariable userId: UUID,
     ): List<CaseDto> {
         logger.debug { "Listing cases for user $userId" }
+        // No caller-meta enrichment: these list a *target* user's cases, so role/favorite
+        // (defined as the caller's) would be misleading; they stay at their defaults.
         return caseService.findConcerningUser(userId).map(::toDto)
     }
 
@@ -249,6 +302,42 @@ class CaseController(
         logger.info { "Case killed: $caseId" }
     }
 
+    /** PUT /api/cases/{id}/star — mark the case as favorite for the current user. */
+    @PutMapping("/{id}/star")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
+    fun starCase(
+        @PathVariable id: UUID,
+    ) {
+        val userId = userService.getCurrentUser().id.toString()
+        if (!permissionService.setStarred(userId, EntityType.CASE, id.toString(), true)) {
+            // READ can be granted transitively (namespace-admin) but starring writes on the
+            // caller's direct edge — reject instead of reporting a success that did not persist.
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Cannot star case $id: the caller has no direct relation on it",
+            )
+        }
+        logger.info { "User $userId starred case $id" }
+    }
+
+    /** DELETE /api/cases/{id}/star — remove the case from the current user's favorites. */
+    @DeleteMapping("/{id}/star")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
+    fun unstarCase(
+        @PathVariable id: UUID,
+    ) {
+        val userId = userService.getCurrentUser().id.toString()
+        if (!permissionService.setStarred(userId, EntityType.CASE, id.toString(), false)) {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Cannot unstar case $id: the caller has no direct relation on it",
+            )
+        }
+        logger.info { "User $userId unstarred case $id" }
+    }
+
     companion object : KLogging()
 }
 
@@ -260,5 +349,6 @@ internal fun toDto(entity: Case) =
         title = entity.title,
         parentCaseId = entity.parentCaseId,
         created = entity.metadata.created,
+        modified = entity.metadata.modified,
         removed = entity.metadata.removed,
     )
