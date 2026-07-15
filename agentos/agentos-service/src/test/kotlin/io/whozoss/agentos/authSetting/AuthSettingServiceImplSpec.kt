@@ -322,6 +322,56 @@ class AuthSettingServiceImplSpec : StringSpec() {
             service.findByUserId(userId) shouldHaveSize 2
         }
 
+        // -------------------------------------------------------------------------
+        // OAUTH_MCP_DISCOVERABLE
+        // -------------------------------------------------------------------------
+
+        "create and findById round-trip works for OAUTH_MCP_DISCOVERABLE" {
+            val service = newService()
+            val saved = service.create(setting(
+                authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+                data = mapOf("resourceUrl" to "https://mcp.example.com/sse", "scopes" to "read write"),
+            ))
+            val found = service.findById(saved.metadata.id)
+
+            found.shouldNotBeNull()
+            found.authType shouldBe AuthType.OAUTH_MCP_DISCOVERABLE
+            found.data["resourceUrl"] shouldBe "https://mcp.example.com/sse"
+            found.data["scopes"] shouldBe "read write"
+        }
+
+        "cross-layer authType consistency guard works for OAUTH_MCP_DISCOVERABLE" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(setting(namespaceId = nsId, userId = null, name = "mcp-setting", authType = AuthType.OAUTH_MCP_DISCOVERABLE))
+
+            shouldThrow<ResponseStatusException> {
+                service.create(setting(namespaceId = nsId, userId = userId, name = "mcp-setting", authType = AuthType.API_KEY))
+            }.statusCode.value() shouldBe 409
+        }
+
+        "OAUTH_MCP_DISCOVERABLE merges across layers correctly" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            // Platform provides resourceUrl; namespace-shared provides clientId
+            service.create(setting(
+                namespaceId = null, userId = null, name = "mcp-setting",
+                authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+                data = mapOf("resourceUrl" to "https://mcp.example.com"),
+            ))
+            service.create(setting(
+                namespaceId = nsId, userId = null, name = "mcp-setting",
+                authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+                data = mapOf("clientId" to "ns-client-id"),
+            ))
+
+            val resolved = service.resolveAuthSetting(nsId, userId, "mcp-setting")
+            resolved.data["resourceUrl"] shouldBe "https://mcp.example.com"
+            resolved.data["clientId"] shouldBe "ns-client-id"
+        }
+
         "create user-global allows same name as another user's user-global with different authType (cross-user is by-design)" {
             val service = newService()
             val userA = UUID.randomUUID()

@@ -28,6 +28,8 @@ import { OAuthCustomAuthSetting } from '../model/o-auth-custom-auth-setting'
 // @ts-ignore
 import { OAuthDiscoverableAuthSetting } from '../model/o-auth-discoverable-auth-setting'
 // @ts-ignore
+import { OAuthMcpDiscoverableAuthSetting } from '../model/o-auth-mcp-discoverable-auth-setting'
+// @ts-ignore
 import { OAuthRegisteredAuthSetting } from '../model/o-auth-registered-auth-setting'
 
 // @ts-ignore
@@ -50,66 +52,70 @@ export class AuthSettingControllerService extends BaseService {
   /**
    * Create an AuthSetting
    * Scope is inferred implicitly from the body\&#39;s &#x60;(namespaceId, userId)&#x60; pair:  | body.namespaceId | body.userId        | scope         | required permission                  | |------------------|--------------------|---------------|--------------------------------------| | null             | null               | platform      | super-admin only                     | | present          | null               | NS-shared     | WRITE on the namespace               | | null             | &lt;currentUser.id&gt;   | user-global   | authenticated only                   | | present          | &lt;currentUser.id&gt;   | user×namespace| READ on the namespace                |  &#x60;body.userId&#x60; (when supplied) MUST equal the authenticated user\&#39;s id — sending a different user-id is rejected with 400 (mass-assignment guard). A &#x60;namespaceId&#x60; that does not exist returns 404.
-   * @param apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting
+   * @param apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public createAuthSetting(
-    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting:
       | ApiKeyAuthSetting
       | BasicAuthAuthSetting
       | BearerTokenAuthSetting
       | OAuthCustomAuthSetting
       | OAuthDiscoverableAuthSetting
+      | OAuthMcpDiscoverableAuthSetting
       | OAuthRegisteredAuthSetting,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<ListAuthSetting200ResponseInner>
   public createAuthSetting(
-    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting:
       | ApiKeyAuthSetting
       | BasicAuthAuthSetting
       | BearerTokenAuthSetting
       | OAuthCustomAuthSetting
       | OAuthDiscoverableAuthSetting
+      | OAuthMcpDiscoverableAuthSetting
       | OAuthRegisteredAuthSetting,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<ListAuthSetting200ResponseInner>>
   public createAuthSetting(
-    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting:
       | ApiKeyAuthSetting
       | BasicAuthAuthSetting
       | BearerTokenAuthSetting
       | OAuthCustomAuthSetting
       | OAuthDiscoverableAuthSetting
+      | OAuthMcpDiscoverableAuthSetting
       | OAuthRegisteredAuthSetting,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<ListAuthSetting200ResponseInner>>
   public createAuthSetting(
-    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting:
       | ApiKeyAuthSetting
       | BasicAuthAuthSetting
       | BearerTokenAuthSetting
       | OAuthCustomAuthSetting
       | OAuthDiscoverableAuthSetting
+      | OAuthMcpDiscoverableAuthSetting
       | OAuthRegisteredAuthSetting,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (
-      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
+      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
         null ||
-      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
+      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
         undefined
     ) {
       throw new Error(
-        'Required parameter apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting was null or undefined when calling createAuthSetting.'
+        'Required parameter apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting was null or undefined when calling createAuthSetting.'
       )
     }
 
@@ -147,7 +153,7 @@ export class AuthSettingControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<ListAuthSetting200ResponseInner>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting,
+      body: apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -451,18 +457,19 @@ export class AuthSettingControllerService extends BaseService {
 
   /**
    * @param id
-   * @param apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting
+   * @param apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public updateAuthSetting(
     id: string,
-    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting:
       | ApiKeyAuthSetting
       | BasicAuthAuthSetting
       | BearerTokenAuthSetting
       | OAuthCustomAuthSetting
       | OAuthDiscoverableAuthSetting
+      | OAuthMcpDiscoverableAuthSetting
       | OAuthRegisteredAuthSetting,
     observe?: 'body',
     reportProgress?: boolean,
@@ -470,12 +477,13 @@ export class AuthSettingControllerService extends BaseService {
   ): Observable<ListAuthSetting200ResponseInner>
   public updateAuthSetting(
     id: string,
-    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting:
       | ApiKeyAuthSetting
       | BasicAuthAuthSetting
       | BearerTokenAuthSetting
       | OAuthCustomAuthSetting
       | OAuthDiscoverableAuthSetting
+      | OAuthMcpDiscoverableAuthSetting
       | OAuthRegisteredAuthSetting,
     observe?: 'response',
     reportProgress?: boolean,
@@ -483,12 +491,13 @@ export class AuthSettingControllerService extends BaseService {
   ): Observable<HttpResponse<ListAuthSetting200ResponseInner>>
   public updateAuthSetting(
     id: string,
-    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting:
       | ApiKeyAuthSetting
       | BasicAuthAuthSetting
       | BearerTokenAuthSetting
       | OAuthCustomAuthSetting
       | OAuthDiscoverableAuthSetting
+      | OAuthMcpDiscoverableAuthSetting
       | OAuthRegisteredAuthSetting,
     observe?: 'events',
     reportProgress?: boolean,
@@ -496,12 +505,13 @@ export class AuthSettingControllerService extends BaseService {
   ): Observable<HttpEvent<ListAuthSetting200ResponseInner>>
   public updateAuthSetting(
     id: string,
-    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting:
+    apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting:
       | ApiKeyAuthSetting
       | BasicAuthAuthSetting
       | BearerTokenAuthSetting
       | OAuthCustomAuthSetting
       | OAuthDiscoverableAuthSetting
+      | OAuthMcpDiscoverableAuthSetting
       | OAuthRegisteredAuthSetting,
     observe: any = 'body',
     reportProgress: boolean = false,
@@ -511,13 +521,13 @@ export class AuthSettingControllerService extends BaseService {
       throw new Error('Required parameter id was null or undefined when calling updateAuthSetting.')
     }
     if (
-      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
+      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
         null ||
-      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
+      apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting ===
         undefined
     ) {
       throw new Error(
-        'Required parameter apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting was null or undefined when calling updateAuthSetting.'
+        'Required parameter apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting was null or undefined when calling updateAuthSetting.'
       )
     }
 
@@ -555,7 +565,7 @@ export class AuthSettingControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<ListAuthSetting200ResponseInner>('put', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthRegisteredAuthSetting,
+      body: apiKeyAuthSettingBasicAuthAuthSettingBearerTokenAuthSettingOAuthCustomAuthSettingOAuthDiscoverableAuthSettingOAuthMcpDiscoverableAuthSettingOAuthRegisteredAuthSetting,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
