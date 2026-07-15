@@ -1,75 +1,99 @@
 import { Component, OnInit, inject } from '@angular/core'
+import { HttpClient } from '@angular/common/http'
 import { ActivatedRoute } from '@angular/router'
+import { Configuration } from '@whoz-oss/agentos-api-client'
 import { AGENTOS_OAUTH_CALLBACK_STORAGE_KEY } from '../../services/oauth-agentos.service'
 
 /**
  * OAuthCallbackComponent — lightweight popup receiver for AgentOS OAuth flows.
  *
  * Rendered at /agentos/oauth/callback in a popup window opened by OAuthAgentosService.
- * Extracts code/state/error from query params, sends them to the parent window
- * via postMessage, falls back to localStorage when window.opener is unavailable,
- * then closes itself after 1 second.
+ *
+ * Security: the authorization code is sensitive and must NEVER leave this popup via
+ * postMessage or localStorage. Instead, this component posts the code directly to
+ * the backend (`POST /api/oauth/callback`) and only communicates the outcome
+ * (success/failure) to the parent window.
+ *
+ * Flow:
+ * 1. Extract code/state/error from query params
+ * 2. If code is present: POST to /api/oauth/callback { code, state } from THIS popup
+ * 3. Send only { success: true } or { success: false, error: '...' } to parent
+ * 4. Auto-close after 1 second
  */
 @Component({
   selector: 'agentos-oauth-callback',
-  template: `<p style="font-family: sans-serif; padding: 2rem; text-align: center;">{{ message }}</p>`,
+  template: `<p style="font-family: sans-serif; padding: 2rem; text-align: center">{{ message }}</p>`,
 })
 export class OAuthCallbackComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
+  private readonly http = inject(HttpClient)
+  private readonly config = inject(Configuration)
 
   protected message = 'Authentication in progress…'
 
   ngOnInit(): void {
-    console.log('[AgentOS OAuth Callback] Component initialized')
-
     const code = this.route.snapshot.queryParamMap.get('code')
     const state = this.route.snapshot.queryParamMap.get('state')
     const error = this.route.snapshot.queryParamMap.get('error')
     const errorDescription = this.route.snapshot.queryParamMap.get('error_description')
 
-    console.log('[AgentOS OAuth Callback] code:', code, 'state:', state, 'error:', error, 'opener:', !!window.opener)
-
     if (error) {
-      console.log('[AgentOS OAuth Callback] OAuth error received:', error, errorDescription)
-      this.sendAndClose({ error, state: state ?? undefined, errorDescription: errorDescription ?? undefined })
+      console.warn('[AgentOS OAuth Callback] OAuth error:', error, errorDescription)
+      this.notifyParentAndClose({
+        success: false,
+        error: errorDescription || error,
+      })
       return
     }
 
     if (!code) {
       console.error('[AgentOS OAuth Callback] Missing authorization code')
-      this.message = 'OAuth callback error: Missing authorization code.'
+      this.message = 'OAuth callback error: missing authorization code.'
+      this.notifyParentAndClose({
+        success: false,
+        error: 'Missing authorization code',
+      })
       return
     }
 
-    this.sendAndClose({ code, state: state ?? undefined })
+    // Post the code directly to the backend from this popup.
+    // The code never leaves this window via postMessage or localStorage.
+    this.http.post(`${this.config.basePath}/api/oauth/callback`, { code, state }).subscribe({
+      next: () => {
+        console.log('[AgentOS OAuth Callback] Backend callback resolved')
+        this.notifyParentAndClose({ success: true })
+      },
+      error: (err) => {
+        console.error('[AgentOS OAuth Callback] Backend callback failed:', err)
+        this.notifyParentAndClose({
+          success: false,
+          error: err?.error?.message || err?.message || 'Token exchange failed',
+        })
+      },
+    })
   }
 
-  private sendAndClose(data: { code?: string; state?: string; error?: string; errorDescription?: string }): void {
-    if (data.error) {
-      this.message = 'Authentication failed. You can close this window.'
+  /**
+   * Send ONLY the outcome (success/failure) to the parent window — never the code or state.
+   * Falls back to localStorage when window.opener is unavailable (cross-origin popup).
+   */
+  private notifyParentAndClose(result: { success: boolean; error?: string }): void {
+    this.message = result.success
+      ? 'Authentication complete. You can close this window.'
+      : `Authentication failed: ${result.error ?? 'unknown error'}. You can close this window.`
+
+    if (window.opener) {
+      try {
+        window.opener.postMessage(result, window.location.origin)
+      } catch (err) {
+        console.error('[AgentOS OAuth Callback] postMessage failed:', err)
+        localStorage.setItem(AGENTOS_OAUTH_CALLBACK_STORAGE_KEY, JSON.stringify(result))
+      }
     } else {
-      this.message = 'Authentication complete. You can close this window.'
+      console.warn('[AgentOS OAuth Callback] No window.opener — localStorage fallback')
+      localStorage.setItem(AGENTOS_OAUTH_CALLBACK_STORAGE_KEY, JSON.stringify(result))
     }
 
-    if (!window.opener) {
-      console.warn('[AgentOS OAuth Callback] No window.opener — using localStorage fallback')
-      localStorage.setItem(AGENTOS_OAUTH_CALLBACK_STORAGE_KEY, JSON.stringify(data))
-      setTimeout(() => window.close(), 1000)
-      return
-    }
-
-    try {
-      window.opener.postMessage(data, window.location.origin)
-      console.log('[AgentOS OAuth Callback] postMessage sent successfully')
-    } catch (err) {
-      console.error('[AgentOS OAuth Callback] Failed to send postMessage:', err)
-      // Last-resort fallback
-      localStorage.setItem(AGENTOS_OAUTH_CALLBACK_STORAGE_KEY, JSON.stringify(data))
-    }
-
-    setTimeout(() => {
-      console.log('[AgentOS OAuth Callback] Closing popup')
-      window.close()
-    }, 1000)
+    setTimeout(() => window.close(), 1000)
   }
 }

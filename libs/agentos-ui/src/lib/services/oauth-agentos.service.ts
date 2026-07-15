@@ -9,15 +9,19 @@ export const AGENTOS_OAUTH_CALLBACK_STORAGE_KEY = 'agentos_oauth_callback'
  * OAuthAgentosService — manages the OAuth popup flow for AgentOS QuestionEvent with
  * questionType === 'OAUTH_AUTHORIZE'.
  *
+ * Security: the authorization code NEVER transits through this service. The popup
+ * (OAuthCallbackComponent) posts the code directly to the backend. This service
+ * only receives the outcome (success/failure) via postMessage or localStorage.
+ *
  * Flow:
  * 1. CaseChatComponent receives a QuestionEvent (OAUTH_AUTHORIZE) via SSE.
  * 2. It calls `setPendingQuestion(event)` to expose it to the inline panel.
- * 3. The user clicks "Authorize" in the panel → `openPopup(event)` is called from click handler.
+ * 3. The user clicks "Authorize" → `openPopup(event)` is called from click handler.
  * 4. Popup opens to the URL in `event.question`.
- * 5. Popup redirects to /agentos/oauth/callback?code=...&state=...
- * 6. OAuthCallbackComponent sends postMessage (or localStorage fallback).
- * 7. This service receives the callback, posts to POST /api/oauth/callback (resolves backend future)
- *    then posts to POST /api/cases/{caseId}/messages with answerToEventId (creates AnswerEvent).
+ * 5. Provider redirects to /agentos/oauth/callback?code=...&state=...
+ * 6. OAuthCallbackComponent posts { code, state } to POST /api/oauth/callback (backend).
+ * 7. OAuthCallbackComponent sends { success: true } or { success: false, error } to parent.
+ * 8. This service receives the outcome and posts an AnswerEvent to close the QuestionEvent.
  */
 @Injectable({
   providedIn: 'root',
@@ -40,7 +44,7 @@ export class OAuthAgentosService implements OnDestroy {
   constructor() {
     window.addEventListener('message', this.messageHandler)
     window.addEventListener('storage', this.storageHandler)
-    // Drain any callback that arrived before this service was ready
+    // Drain any result that arrived before this service was ready
     this.drainLocalStorage()
   }
 
@@ -97,6 +101,14 @@ export class OAuthAgentosService implements OnDestroy {
     this.stopPopupMonitoring()
   }
 
+  /**
+   * Post an answer to a QuestionEvent (for FREE_TEXT, SINGLE_CHOICE, OPEN_CHOICE).
+   * Called directly by the question-panel component.
+   */
+  answerQuestion(questionEvent: QuestionEvent, answer: string): void {
+    this.postAnswer(questionEvent, answer)
+  }
+
   // ---------------------------------------------------------------------------
   // Popup monitoring
   // ---------------------------------------------------------------------------
@@ -149,7 +161,10 @@ export class OAuthAgentosService implements OnDestroy {
   }
 
   // ---------------------------------------------------------------------------
-  // Callback reception
+  // Result reception (from popup via postMessage or localStorage)
+  //
+  // The popup has already posted the authorization code to the backend.
+  // We only receive { success: boolean, error?: string } — never the code or state.
   // ---------------------------------------------------------------------------
 
   private handlePopupMessage(event: MessageEvent): void {
@@ -157,16 +172,16 @@ export class OAuthAgentosService implements OnDestroy {
       return // Reject cross-origin messages
     }
     const data = event.data
-    if (!data || (!data.code && !data.error)) {
-      return // Not an OAuth callback message
+    if (!data || typeof data.success !== 'boolean') {
+      return // Not an OAuth result message
     }
-    console.log('[OAuthAgentos] Received postMessage callback')
-    this.zone.run(() => this.processCallbackData(data))
+    console.log('[OAuthAgentos] Received postMessage result:', data.success)
+    this.zone.run(() => this.processResult(data))
   }
 
   private handleStorageEvent(event: StorageEvent): void {
     if (event.key !== AGENTOS_OAUTH_CALLBACK_STORAGE_KEY || !event.newValue) return
-    console.log('[OAuthAgentos] Received localStorage callback fallback')
+    console.log('[OAuthAgentos] Received localStorage result fallback')
     this.zone.run(() => this.drainLocalStorage())
   }
 
@@ -176,56 +191,47 @@ export class OAuthAgentosService implements OnDestroy {
     localStorage.removeItem(AGENTOS_OAUTH_CALLBACK_STORAGE_KEY)
     try {
       const data = JSON.parse(raw)
-      this.processCallbackData(data)
+      if (typeof data.success === 'boolean') {
+        this.processResult(data)
+      }
     } catch (err) {
-      console.error('[OAuthAgentos] Failed to parse localStorage OAuth callback:', err)
+      console.error('[OAuthAgentos] Failed to parse localStorage OAuth result:', err)
     }
   }
 
-  private processCallbackData(data: {
-    code?: string
-    state?: string
-    error?: string
-    errorDescription?: string
-  }): void {
-    const { code, state, error } = data ?? {}
+  /**
+   * Process the outcome received from the popup.
+   *
+   * The popup has already posted the authorization code to the backend
+   * (POST /api/oauth/callback). We only receive the result (success/failure)
+   * — the code and state never leave the popup window.
+   *
+   * Our job here is to close the QuestionEvent in the case timeline by
+   * posting an AnswerEvent.
+   */
+  private processResult(result: { success: boolean; error?: string }): void {
     this.stopPopupMonitoring()
 
-    if (error) {
-      console.warn('[OAuthAgentos] OAuth error received:', error)
-      this.pendingQuestion.set(null)
-      return
-    }
-
-    if (!code) {
-      console.warn('[OAuthAgentos] Callback missing code')
-      return
-    }
-
-    // Grab the pending question before clearing it
     const questionEvent = this.pendingQuestion()
     this.pendingQuestion.set(null)
 
-    console.log('[OAuthAgentos] Processing OAuth callback — posting to /api/oauth/callback')
+    if (!questionEvent) {
+      console.warn('[OAuthAgentos] Received result but no pending question')
+      return
+    }
 
-    // Step 1: post to /api/oauth/callback to resolve the backend CompletableFuture
-    this.http.post(`${this.config.basePath}/api/oauth/callback`, { code, state }).subscribe({
-      next: () => {
-        console.log('[OAuthAgentos] /api/oauth/callback resolved successfully')
-        // Step 2: post AnswerEvent via /api/cases/{caseId}/messages if we have the QuestionEvent
-        if (questionEvent) {
-          this.postAnswer(questionEvent, 'OAuth authorization completed')
-        }
-      },
-      error: (err) => {
-        console.error('[OAuthAgentos] Failed to post to /api/oauth/callback:', err)
-        // Still try to post the AnswerEvent so the case timeline is consistent
-        if (questionEvent) {
-          this.postAnswer(questionEvent, 'OAuth authorization completed')
-        }
-      },
-    })
+    if (result.success) {
+      console.log('[OAuthAgentos] OAuth succeeded — posting AnswerEvent')
+      this.postAnswer(questionEvent, 'OAuth authorization completed')
+    } else {
+      console.warn('[OAuthAgentos] OAuth failed:', result.error)
+      this.postAnswer(questionEvent, `OAuth authorization failed: ${result.error ?? 'unknown error'}`)
+    }
   }
+
+  // ---------------------------------------------------------------------------
+  // AnswerEvent posting
+  // ---------------------------------------------------------------------------
 
   private postAnswer(questionEvent: QuestionEvent, content: string): void {
     this.http
@@ -237,13 +243,5 @@ export class OAuthAgentosService implements OnDestroy {
         next: () => console.log('[OAuthAgentos] AnswerEvent posted successfully'),
         error: (err) => console.error('[OAuthAgentos] Failed to post AnswerEvent:', err),
       })
-  }
-
-  /**
-   * Post an answer to a QuestionEvent (for FREE_TEXT, SINGLE_CHOICE, OPEN_CHOICE).
-   * Called directly by the question-panel component.
-   */
-  answerQuestion(questionEvent: QuestionEvent, answer: string): void {
-    this.postAnswer(questionEvent, answer)
   }
 }
