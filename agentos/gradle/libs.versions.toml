@@ -54,8 +54,8 @@ okhttp = "4.12.0"
 mcpSdk = "2.0.0"
 
 # AgentOS modules versions
-agentosSdk = "0.213.0"
-agentosService = "0.213.0"
+agentosSdk = "0.214.2"
+agentosService = "0.214.2"
 
 [libraries]
 # Jakarta Validation API — annotation-only, for compileOnly use in agentos-sdk

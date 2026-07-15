@@ -9,7 +9,6 @@
  */
 
 export interface IntegrationConfig {
-  authSettingName?: string
   description?: string
   id?: string
   integrationType: string
