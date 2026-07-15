@@ -10,13 +10,13 @@
 
 export interface FeedbackInput {
   caseEventId: string
+  /**
+   * Optional free-text note. Ignored (cleared) when positive=true.
+   */
+  comment?: string
   positive: boolean
   /**
    * Optional category label. Ignored (cleared) when positive=true.
    */
   type?: string
-  /**
-   * Optional free-text note. Ignored (cleared) when positive=true.
-   */
-  comment?: string
 }

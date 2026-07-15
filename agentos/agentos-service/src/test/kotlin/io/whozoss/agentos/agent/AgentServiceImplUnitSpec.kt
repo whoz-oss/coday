@@ -38,6 +38,7 @@ import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.util.IdCompressorService
 import org.springframework.ai.chat.client.ChatClient
 import java.nio.file.Files
 import java.time.Instant
@@ -80,6 +81,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             exchangeStorageService = exchangeStorageService,
             exchangeCapabilityService = exchangeCapabilityService,
             agentDocumentResolver = agentDocumentResolver,
+            idCompressorService = IdCompressorService(),
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -528,6 +530,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     exchangeStorageService = exchangeStorageService,
                     exchangeCapabilityService = exchangeCapabilityService,
                     agentDocumentResolver = agentDocumentResolver,
+                    idCompressorService = IdCompressorService(),
                 )
             val configs =
                 listOf(

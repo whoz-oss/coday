@@ -16,6 +16,9 @@ import com.fasterxml.jackson.databind.JsonNode
  * @property configSchema JSON Schema describing the configuration object expected by
  *   [IntegrationConfigDto.parameters] for this type. Null when this integration requires
  *   no configuration.
+ * @property builtIn True for built-in integrations enabled by adding their [type] directly to an
+ *   agent's `integrations` map (no [IntegrationConfig] instance). False for regular,
+ *   instance-backed integration types.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class IntegrationTypeDescriptor(
@@ -23,4 +26,5 @@ data class IntegrationTypeDescriptor(
     val displayName: String,
     val description: String,
     val configSchema: JsonNode?,
+    val builtIn: Boolean = false,
 )

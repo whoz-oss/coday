@@ -1,3 +1,54 @@
+## 0.214.3 (2026-07-15)
+
+### 🚀 Features
+
+- **wz-33039:** implement a compression mechanism en UUID and ObjectId ([cef48bdb](https://github.com/whoz-oss/coday/commit/cef48bdb))
+- **wz-33039:** change in a IdCompressorService.kt and fix tests ([81b893c2](https://github.com/whoz-oss/coday/commit/81b893c2))
+- **wz-33039:** fix test ([89306f20](https://github.com/whoz-oss/coday/commit/89306f20))
+- **wz-33039:** openapi ([a0fbdbc4](https://github.com/whoz-oss/coday/commit/a0fbdbc4))
+- **wz-33039:** rework the logic to have the compression at the chat client level ([f9a1528b](https://github.com/whoz-oss/coday/commit/f9a1528b))
+- **wz-33039:** rework the logic to have the compression chat client be considered as a chat client ([c5d4371b](https://github.com/whoz-oss/coday/commit/c5d4371b))
+- **wz-33039:** final changes ([a21a5b65](https://github.com/whoz-oss/coday/commit/a21a5b65))
+- **wz-33039:** tests changes ([254d6bab](https://github.com/whoz-oss/coday/commit/254d6bab))
+- **wz-33039:** implement a compression mechanism en UUID and ObjectId ([#1115](https://github.com/whoz-oss/coday/pull/1115))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.214.2 (2026-07-15)
+
+### 🩹 Fixes
+
+- resolve integration type descriptor ([#1143](https://github.com/whoz-oss/coday/pull/1143))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.214.1 (2026-07-14)
+
+### 🩹 Fixes
+
+- openapi property order ([#1138](https://github.com/whoz-oss/coday/pull/1138))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.214.0 (2026-07-14)
+
+### 🚀 Features
+
+- #1014 AgentOS case management (soft-delete + star/favorite + related-only listing) ([#1084](https://github.com/whoz-oss/coday/pull/1084), [#1014](https://github.com/whoz-oss/coday/issues/1014), [#1081](https://github.com/whoz-oss/coday/issues/1081), [#1010](https://github.com/whoz-oss/coday/issues/1010))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
 ## 0.213.0 (2026-07-13)
 
 ### 🚀 Features

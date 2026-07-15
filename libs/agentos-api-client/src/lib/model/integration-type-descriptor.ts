@@ -9,13 +9,9 @@
  */
 
 export interface IntegrationTypeDescriptor {
-  type: string
-  displayName: string
-  description: string
+  builtIn: boolean
   configSchema?: any | null
-  /**
-   * When true, this integration type is built-in (no config instance required).
-   * Manually added: the backend exposes this field but the OpenAPI spec is not yet updated.
-   */
-  builtIn?: boolean
+  description: string
+  displayName: string
+  type: string
 }

@@ -1,6 +1,6 @@
 package io.whozoss.agentos.exchange
 
-import io.whozoss.agentos.integrationConfig.IntegrationTypeDescriptor
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationTypeDescriptor
 
 /**
  * Integration-type identifiers for the file exchange.
