@@ -7,39 +7,20 @@ import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
-import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.CaseEvent
-import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
-import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
-import io.whozoss.agentos.sdk.caseEvent.MessageContent
-import io.whozoss.agentos.sdk.caseEvent.MessageEvent
-import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
-import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
-import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
-import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
-import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
-import io.whozoss.agentos.sdk.caseEvent.WarnEvent
+import io.whozoss.agentos.sdk.caseEvent.*
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.tool.ConfirmationMode
-import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
-import io.whozoss.agentos.sdk.tool.StandardTool
-import io.whozoss.agentos.sdk.tool.ToolContext
-import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import io.whozoss.agentos.util.AttemptFailure
-import io.whozoss.agentos.util.AttemptResult
-import io.whozoss.agentos.util.AttemptSuccess
-import io.whozoss.agentos.util.mapWhile
-import io.whozoss.agentos.util.retryWithFallback
+import io.whozoss.agentos.sdk.tool.*
+import io.whozoss.agentos.util.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
+import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
-import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
-import java.util.UUID
+import java.util.*
 
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -212,7 +193,6 @@ class AgentAdvanced(
                             caseId = caseId,
                             shouldContinue = shouldContinue,
                             emitEvent = { event -> emit(event) },
-                            context = context
                         )
                     }
                     emit(
@@ -967,7 +947,6 @@ class AgentAdvanced(
         caseId: UUID,
         shouldContinue: () -> Boolean,
         emitEvent: suspend (CaseEvent) -> Unit,
-        context: AgentAdvancedContext,
     ) {
         val userFullName =
             accumulatedEvents
@@ -1038,10 +1017,8 @@ class AgentAdvanced(
             .chatResponse()
             .asFlow()
             .takeWhile { shouldContinue() }
-            .collect { response: ChatResponse ->
-                val chunk =
-                    response.result.output.text
-                        ?.takeIf { it.isNotEmpty() }
+            .collect { response ->
+                val chunk = response.result.output.text?.takeIf { it.isNotEmpty() }
                 if (chunk != null) {
                     contentBuilder.append(chunk)
                     emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
@@ -1194,16 +1171,7 @@ class AgentAdvanced(
 
         val raw =
             runCatching {
-                context.chatClient
-                    .prompt(
-                        Prompt(
-                            listOf(
-                                UserMessage(prompt),
-                            ),
-                        ),
-                    ).call()
-                    .content()
-                    ?.trim()
+                context.chatClient.prompt(Prompt(listOf(UserMessage(prompt)))).call().content()
             }.getOrNull() ?: return null
 
         // Extract the language name from <language>...</language> tags.
@@ -1398,15 +1366,7 @@ Output requirements:
         }
     }
 
-    private fun callLlmForParameters(messages: List<org.springframework.ai.chat.messages.Message>): String {
-        val raw =
-            context.chatClient
-                .prompt(Prompt(messages))
-                .call()
-                .content()
-                ?.trim() ?: "{}"
-        return stripJsonFence(raw)
-    }
+    private fun callLlmForParameters(messages: List<Message>): String = stripJsonFence(context.chatClient.prompt(Prompt(messages)).call().content() ?: "{}")
 
     private fun isValidJson(raw: String): Boolean =
         runCatching {
@@ -1485,13 +1445,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
 
         logger.debug { "[$name] enrichment phase $phaseIndex for '${tool.name}' — sending ${messages.size} messages" }
 
-        val rawJson =
-            context.chatClient
-                .prompt(Prompt(messages))
-                .call()
-                .content()
-                ?.trim() ?: "{}"
-        val phaseJson = stripJsonFence(rawJson)
+        val phaseJson = callLlmForParameters(messages)
 
         logger.debug { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }
 

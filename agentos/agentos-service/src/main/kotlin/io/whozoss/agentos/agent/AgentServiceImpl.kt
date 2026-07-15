@@ -23,6 +23,8 @@ import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.redirect.globToRegex
+import io.whozoss.agentos.chat.CompressingChatClient
+import io.whozoss.agentos.util.IdCompressorService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -64,6 +66,7 @@ class AgentServiceImpl(
     private val caseEventService: CaseEventService,
     private val authServiceFactory: AuthServiceFactory,
     private val oAuthFlowService: OAuthFlowService,
+    private val idCompressorService: IdCompressorService,
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val agentDocumentResolver: AgentDocumentResolver,
@@ -397,9 +400,10 @@ class AgentServiceImpl(
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
 
         return if (advancedExecution) {
+            val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
             val advancedContext =
                 AgentAdvancedContext(
-                    chatClient = chatClient,
+                    chatClient = compressingChatClient,
                     tools = resolvedTools.toList(),
                     instructions = resolvedInstructions,
                     agentId = agentId,
