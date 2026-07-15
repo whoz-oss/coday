@@ -59,6 +59,16 @@
         ></textarea>
       </div>
 
+      <div class="integration-form__field">
+        <label class="integration-form__label" for="integration-auth-setting">Auth Setting</label>
+        <select id="integration-auth-setting" class="integration-form__select" [formControl]="authSettingNameControl">
+          <option [ngValue]="null">None</option>
+          @for (name of availableAuthSettings(); track name) {
+            <option [value]="name">{{ name }}</option>
+          }
+        </select>
+      </div>
+
       @if (schema(); as s) {
         <div class="integration-form__schema-form">
           <ds-json-schema-form [schema]="s" [value]="initialParams()" (valueChange)="onParamsChange($event)" />

@@ -9,6 +9,7 @@ import {
   BearerTokenAuthSetting,
   OAuthCustomAuthSetting,
   OAuthDiscoverableAuthSetting,
+  OAuthMcpDiscoverableAuthSetting,
   OAuthRegisteredAuthSetting,
 } from '@whoz-oss/agentos-api-client'
 import {
@@ -82,6 +83,18 @@ const CREDENTIAL_FIELDS: Readonly<Record<AuthSettingType, ReadonlyArray<Credenti
       required: false,
     },
     { key: 'tokenUrl', label: 'Token URL', placeholder: 'https://…/token', secret: false, required: false },
+    { key: 'clientId', label: 'Client ID', placeholder: '', secret: false, required: false },
+    { key: 'clientSecret', label: 'Client secret', placeholder: '', secret: true, required: false },
+    { key: 'scopes', label: 'Scopes', placeholder: 'openid profile email', secret: false, required: false },
+  ],
+  OAuthMcpDiscoverableAuthSetting: [
+    {
+      key: 'resourceUrl',
+      label: 'Resource URL',
+      placeholder: 'https://…/mcp',
+      secret: false,
+      required: false,
+    },
     { key: 'clientId', label: 'Client ID', placeholder: '', secret: false, required: false },
     { key: 'clientSecret', label: 'Client secret', placeholder: '', secret: true, required: false },
     { key: 'scopes', label: 'Scopes', placeholder: 'openid profile email', secret: false, required: false },
@@ -181,6 +194,7 @@ export class AuthSettingFormComponent implements OnInit {
   protected readonly clientIdControl = new FormControl<string>('', { nonNullable: true })
   protected readonly clientSecretControl = new FormControl<string>('', { nonNullable: true })
   protected readonly scopesControl = new FormControl<string>('', { nonNullable: true })
+  protected readonly resourceUrlControl = new FormControl<string>('', { nonNullable: true })
 
   // ── Reactive derived state ────────────────────────────────────────────────
   protected readonly selectedAuthType = toSignal(this.authTypeControl.valueChanges, {
@@ -383,6 +397,18 @@ export class AuthSettingFormComponent implements OnInit {
         this.initialCredentials['scopes'] = c.scopes ?? ''
         break
       }
+      case 'OAuthMcpDiscoverableAuthSetting': {
+        const c = config as OAuthMcpDiscoverableAuthSetting
+        this.resourceUrlControl.setValue(c.resourceUrl ?? '')
+        this.clientIdControl.setValue(c.clientId ?? '')
+        this.clientSecretControl.setValue(c.clientSecret ?? '')
+        this.scopesControl.setValue(c.scopes ?? '')
+        this.initialCredentials['resourceUrl'] = c.resourceUrl ?? ''
+        this.initialCredentials['clientId'] = c.clientId ?? ''
+        this.initialCredentials['clientSecret'] = c.clientSecret ?? ''
+        this.initialCredentials['scopes'] = c.scopes ?? ''
+        break
+      }
     }
   }
 
@@ -397,6 +423,7 @@ export class AuthSettingFormComponent implements OnInit {
     this.clientIdControl.setValue('')
     this.clientSecretControl.setValue('')
     this.scopesControl.setValue('')
+    this.resourceUrlControl.setValue('')
   }
 
   /**
@@ -487,6 +514,15 @@ export class AuthSettingFormComponent implements OnInit {
           clientSecret: this.credentialValue('clientSecret', this.clientSecretControl.value),
           scopes: this.credentialValue('scopes', this.scopesControl.value),
         } satisfies OAuthRegisteredAuthSetting
+      case 'OAuthMcpDiscoverableAuthSetting':
+        return {
+          ...base,
+          authType: 'OAuthMcpDiscoverableAuthSetting',
+          resourceUrl: this.credentialValue('resourceUrl', this.resourceUrlControl.value),
+          clientId: this.credentialValue('clientId', this.clientIdControl.value),
+          clientSecret: this.credentialValue('clientSecret', this.clientSecretControl.value),
+          scopes: this.credentialValue('scopes', this.scopesControl.value),
+        } satisfies OAuthMcpDiscoverableAuthSetting
     }
   }
 
@@ -502,6 +538,7 @@ export class AuthSettingFormComponent implements OnInit {
       clientId: this.clientIdControl,
       clientSecret: this.clientSecretControl,
       scopes: this.scopesControl,
+      resourceUrl: this.resourceUrlControl,
     }
     return map[key]
   }
