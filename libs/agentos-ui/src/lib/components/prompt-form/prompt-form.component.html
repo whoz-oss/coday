@@ -199,28 +199,6 @@
         <span class="prompt-form__field-hint">Optional. Opaque JSON object stored as-is. Leave empty to clear.</span>
       </div>
 
-      <!-- Metadata (read-only, edit mode only) -->
-      @if (isEditMode() && existingPromptMetadata()) {
-        <div class="prompt-form__metadata">
-          @if (existingPromptMetadata()?.createdBy) {
-            <span class="prompt-form__metadata-item">Created by: {{ existingPromptMetadata()?.createdBy }}</span>
-          }
-          @if (existingPromptMetadata()?.createdOn) {
-            <span class="prompt-form__metadata-item"
-              >Created: {{ existingPromptMetadata()?.createdOn | date: 'medium' }}</span
-            >
-          }
-          @if (existingPromptMetadata()?.updatedBy) {
-            <span class="prompt-form__metadata-item">Updated by: {{ existingPromptMetadata()?.updatedBy }}</span>
-          }
-          @if (existingPromptMetadata()?.updatedOn) {
-            <span class="prompt-form__metadata-item"
-              >Updated: {{ existingPromptMetadata()?.updatedOn | date: 'medium' }}</span
-            >
-          }
-        </div>
-      }
-
       <!-- Actions -->
       <div class="prompt-form__actions">
         <button

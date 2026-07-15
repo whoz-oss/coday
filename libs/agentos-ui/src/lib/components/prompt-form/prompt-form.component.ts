@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
 import { HttpErrorResponse } from '@angular/common/http'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
@@ -50,7 +49,7 @@ import { PromptStateService } from '../../services/prompt-state.service'
  */
 @Component({
   selector: 'agentos-prompt-form',
-  imports: [ReactiveFormsModule, DatePipe],
+  imports: [ReactiveFormsModule],
   templateUrl: './prompt-form.component.html',
   styleUrl: './prompt-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -127,12 +126,6 @@ export class PromptFormComponent implements OnInit {
   /** Public signal for the template — list of available AgentConfigs. */
   protected readonly availableAgentConfigs = this.agentConfigs.asReadonly()
 
-  /**
-   * Audit metadata from the loaded prompt, exposed for read-only display in edit mode.
-   * Null in create mode.
-   */
-  protected readonly existingPromptMetadata = signal<PromptMetadata | null>(null)
-
   /** Kept for the update payload (preserves server-side fields like id). */
   private existingPrompt: Prompt | null = null
 
@@ -161,12 +154,6 @@ export class PromptFormComponent implements OnInit {
         next: (prompt) => {
           this.existingPrompt = prompt
           this.hydrateForm(prompt)
-          this.existingPromptMetadata.set({
-            createdBy: prompt.createdBy,
-            createdOn: prompt.createdOn,
-            updatedBy: prompt.updatedBy,
-            updatedOn: prompt.updatedOn,
-          })
           this.isLoading.set(false)
         },
         error: () => {
@@ -360,12 +347,4 @@ interface ParameterGroup {
   name: FormControl<string>
   description: FormControl<string | null>
   defaultValue: FormControl<string>
-}
-
-/** Audit metadata extracted from a loaded prompt for read-only display. */
-interface PromptMetadata {
-  createdBy?: string
-  createdOn?: string
-  updatedBy?: string
-  updatedOn?: string
 }
