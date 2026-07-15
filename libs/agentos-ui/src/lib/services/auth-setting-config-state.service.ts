@@ -7,6 +7,7 @@ import {
   BearerTokenAuthSetting,
   OAuthCustomAuthSetting,
   OAuthDiscoverableAuthSetting,
+  OAuthMcpDiscoverableAuthSetting,
   OAuthRegisteredAuthSetting,
 } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, catchError, combineLatest, map, Observable, of, shareReplay, switchMap, tap } from 'rxjs'
@@ -44,6 +45,7 @@ export type AuthSettingPayload =
   | Omit<BearerTokenAuthSetting, 'authType'>
   | Omit<OAuthCustomAuthSetting, 'authType'>
   | Omit<OAuthDiscoverableAuthSetting, 'authType'>
+  | Omit<OAuthMcpDiscoverableAuthSetting, 'authType'>
   | Omit<OAuthRegisteredAuthSetting, 'authType'>
 
 /** The authType discriminant values as a union of string literals. */
@@ -55,6 +57,7 @@ export const AUTH_SETTING_TYPES: ReadonlyArray<AuthSettingType> = [
   'BasicAuthAuthSetting',
   'BearerTokenAuthSetting',
   'OAuthDiscoverableAuthSetting',
+  'OAuthMcpDiscoverableAuthSetting',
   'OAuthCustomAuthSetting',
   'OAuthRegisteredAuthSetting',
 ] as const
@@ -65,6 +68,7 @@ export const AUTH_SETTING_TYPE_LABEL: Readonly<Record<AuthSettingType, string>> 
   BasicAuthAuthSetting: 'Basic Auth (username / password)',
   BearerTokenAuthSetting: 'Bearer Token',
   OAuthDiscoverableAuthSetting: 'OAuth — Discovery URL',
+  OAuthMcpDiscoverableAuthSetting: 'OAuth — MCP Discoverable',
   OAuthCustomAuthSetting: 'OAuth — Custom endpoints',
   OAuthRegisteredAuthSetting: 'OAuth — Registered app',
 }
@@ -86,6 +90,7 @@ const AUTH_TYPE_TO_BACKEND: Readonly<Record<string, string>> = {
   BasicAuthAuthSetting: 'BASIC_AUTH',
   BearerTokenAuthSetting: 'BEARER_TOKEN',
   OAuthDiscoverableAuthSetting: 'OAUTH_DISCOVERABLE',
+  OAuthMcpDiscoverableAuthSetting: 'OAUTH_MCP_DISCOVERABLE',
   OAuthCustomAuthSetting: 'OAUTH_CUSTOM',
   OAuthRegisteredAuthSetting: 'OAUTH_REGISTERED',
 }
@@ -96,6 +101,7 @@ const AUTH_TYPE_FROM_BACKEND: Readonly<Record<string, string>> = {
   BASIC_AUTH: 'BasicAuthAuthSetting',
   BEARER_TOKEN: 'BearerTokenAuthSetting',
   OAUTH_DISCOVERABLE: 'OAuthDiscoverableAuthSetting',
+  OAUTH_MCP_DISCOVERABLE: 'OAuthMcpDiscoverableAuthSetting',
   OAUTH_CUSTOM: 'OAuthCustomAuthSetting',
   OAUTH_REGISTERED: 'OAuthRegisteredAuthSetting',
 }
