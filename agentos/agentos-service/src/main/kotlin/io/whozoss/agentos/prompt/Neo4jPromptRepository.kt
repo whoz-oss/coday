@@ -37,7 +37,7 @@ open class Neo4jPromptRepository(
                         childLinkService.link(EntityType.PROMPT.label, savedNode.id, EntityType.NAMESPACE.label, nsId.toString())
                     }
                     entity.agentConfigId?.let { agentId ->
-                        childLinkService.link(EntityType.PROMPT.label, savedNode.id, "AgentConfig", agentId.toString())
+                        childLinkService.link(EntityType.PROMPT.label, savedNode.id, EntityType.AGENT_CONFIG.label, agentId.toString())
                     }
                 }
             }.toDomain(objectMapper)
