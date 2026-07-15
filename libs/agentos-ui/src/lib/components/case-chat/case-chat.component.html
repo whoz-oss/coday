@@ -66,6 +66,22 @@
                   <span class="case-chat__technical-label">{{ item.item.label }}</span>
                 }
               </div>
+            } @else if (item.kind === 'question') {
+              @if (
+                !item.answered &&
+                (item.event.questionType !== 'OAUTH_AUTHORIZE' || oauthPendingQuestion()?.id === item.event.id)
+              ) {
+                <agentos-question-panel
+                  [questionEvent]="item.event"
+                  (answered)="onQuestionAnswered(item.event, $event)"
+                  (cancelled)="onQuestionCancelled()"
+                />
+              } @else if (item.answered) {
+                <div class="case-chat__question-answered">
+                  <span class="case-chat__question-answered-label">✅ Question answered</span>
+                  <span class="case-chat__question-answered-text">{{ item.event.question }}</span>
+                </div>
+              }
             } @else {
               <div
                 class="case-chat__tool-call"

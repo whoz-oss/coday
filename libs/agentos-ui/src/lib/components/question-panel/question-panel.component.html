@@ -1,0 +1,83 @@
+<div class="question-panel">
+  <div class="question-panel__header">
+    <span class="question-panel__agent">{{ questionEvent().agentName }}</span>
+    <span class="question-panel__label">asks</span>
+  </div>
+
+  <p class="question-panel__question">{{ questionEvent().question }}</p>
+
+  @switch (questionEvent().questionType) {
+    @case (QuestionType.FREE_TEXT) {
+      <div class="question-panel__free-text">
+        <input
+          class="question-panel__input"
+          type="text"
+          placeholder="Your answer…"
+          [value]="freeTextValue()"
+          (input)="onFreeTextInput($event)"
+          (keydown)="onFreeTextKeydown($event)"
+          autofocus
+        />
+        <button
+          class="question-panel__btn question-panel__btn--primary"
+          type="button"
+          [disabled]="!freeTextValue().trim()"
+          (click)="submitFreeText()"
+        >
+          Submit
+        </button>
+      </div>
+    }
+    @case (QuestionType.SINGLE_CHOICE) {
+      <div class="question-panel__options">
+        @for (option of questionEvent().options; track option) {
+          <button class="question-panel__btn question-panel__btn--option" type="button" (click)="selectOption(option)">
+            {{ option }}
+          </button>
+        }
+      </div>
+    }
+    @case (QuestionType.OPEN_CHOICE) {
+      <div class="question-panel__options">
+        @for (option of questionEvent().options; track option) {
+          <button class="question-panel__btn question-panel__btn--option" type="button" (click)="selectOption(option)">
+            {{ option }}
+          </button>
+        }
+      </div>
+      <div class="question-panel__free-text question-panel__free-text--with-margin">
+        <input
+          class="question-panel__input"
+          type="text"
+          placeholder="Or type a custom answer…"
+          [value]="freeTextValue()"
+          (input)="onFreeTextInput($event)"
+          (keydown)="onFreeTextKeydown($event)"
+        />
+        <button
+          class="question-panel__btn question-panel__btn--primary"
+          type="button"
+          [disabled]="!freeTextValue().trim()"
+          (click)="submitFreeText()"
+        >
+          Submit
+        </button>
+      </div>
+    }
+    @case (QuestionType.OAUTH_AUTHORIZE) {
+      <div class="question-panel__oauth">
+        <p class="question-panel__oauth-hint">
+          This action requires authorization. Click below to open the authorization page.
+        </p>
+        <div class="question-panel__oauth-actions">
+          <button class="question-panel__btn question-panel__btn--primary" type="button" (click)="onAuthorize()">
+            Authorize
+          </button>
+          <button class="question-panel__btn question-panel__btn--secondary" type="button" (click)="onOAuthCancel()">
+            Cancel
+          </button>
+        </div>
+      </div>
+    }
+  }
+</div>
