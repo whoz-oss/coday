@@ -46,6 +46,7 @@ import java.util.UUID
     JsonSubTypes.Type(value = OAuthDiscoverableAuthSettingDto::class, name = "OAUTH_DISCOVERABLE"),
     JsonSubTypes.Type(value = OAuthRegisteredAuthSettingDto::class, name = "OAUTH_REGISTERED"),
     JsonSubTypes.Type(value = OAuthCustomAuthSettingDto::class, name = "OAUTH_CUSTOM"),
+    JsonSubTypes.Type(value = OAuthMcpDiscoverableAuthSettingDto::class, name = "OAUTH_MCP_DISCOVERABLE"),
 )
 sealed interface AuthSettingDto {
     val id: UUID?
@@ -161,5 +162,23 @@ data class OAuthCustomAuthSettingDto(
     val clientSecret: String? = null,
     val authorizationUrl: String? = null,
     val tokenUrl: String? = null,
+    val scopes: String? = null,
+) : AuthSettingDto
+
+@Schema(name = "OAuthMcpDiscoverableAuthSetting")
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class OAuthMcpDiscoverableAuthSettingDto(
+    override val id: UUID? = null,
+    @field:Schema(types = ["string", "null"], format = "uuid")
+    override val namespaceId: UUID? = null,
+    @field:Schema(types = ["string", "null"], format = "uuid")
+    override val userId: UUID? = null,
+    @field:NotBlank
+    override val name: String,
+    override val description: String? = null,
+    override val authType: AuthType? = AuthType.OAUTH_MCP_DISCOVERABLE,
+    val resourceUrl: String? = null,
+    val clientId: String? = null,
+    val clientSecret: String? = null,
     val scopes: String? = null,
 ) : AuthSettingDto
