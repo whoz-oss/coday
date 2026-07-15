@@ -273,6 +273,7 @@ class CaseEventNodeMapper(
                     node.question,
                     node.options,
                     node.questionType,
+                    node.userId,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -503,6 +504,7 @@ class CaseEventNodeMapper(
             question = n.question,
             options = n.options?.let { serializer.deserializeStringList(it) },
             questionType = try { QuestionType.valueOf(n.questionType) } catch (_: Exception) { QuestionType.FREE_TEXT },
+            userId = n.userId?.let { UUID.fromString(it) },
         )
 
     private fun toDomain(n: AnswerEventNode) =
@@ -740,6 +742,7 @@ class CaseEventNodeMapper(
             question = e.question,
             options = e.options?.let { serializer.serializeStringList(it) },
             questionType = e.questionType.name,
+            userId = e.userId?.toString(),
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

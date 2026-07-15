@@ -7,5 +7,10 @@ enum class QuestionType(
 ) {
     FREE_TEXT("FREE_TEXT"),
     SINGLE_CHOICE("SINGLE_CHOICE"),
+    /**
+     * The user may either pick one of the provided [QuestionEvent.options] or enter free text.
+     * Requires [QuestionEvent.options] to be non-null and non-empty.
+     */
+    OPEN_CHOICE("OPEN_CHOICE"),
     OAUTH_AUTHORIZE("OAUTH_AUTHORIZE"),
 }

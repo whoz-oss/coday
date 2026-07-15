@@ -3714,7 +3714,11 @@ components:
             enum:
             - FREE_TEXT
             - SINGLE_CHOICE
+            - OPEN_CHOICE
             - OAUTH_AUTHORIZE
+          userId:
+            type: string
+            format: uuid
       required:
       - agentId
       - agentName
