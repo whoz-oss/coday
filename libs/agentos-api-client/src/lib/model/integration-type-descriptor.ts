@@ -9,12 +9,7 @@
  */
 
 export interface IntegrationTypeDescriptor {
-  /**
-   * True for built-in integrations enabled by adding their type directly to an agent's
-   * integrations map (no IntegrationConfig instance) — surfaced as a simple toggle in the
-   * agent form. False for regular, instance-backed integration types.
-   */
-  builtIn?: boolean
+  builtIn: boolean
   configSchema?: any | null
   description: string
   displayName: string
