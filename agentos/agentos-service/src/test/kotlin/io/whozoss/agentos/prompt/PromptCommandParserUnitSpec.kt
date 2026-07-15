@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import java.util.UUID
 
 class PromptCommandParserUnitSpec : StringSpec({
 
@@ -14,74 +15,80 @@ class PromptCommandParserUnitSpec : StringSpec({
         name: String,
         content: List<String>,
         parameters: List<PromptParameter> = emptyList(),
+        agentConfigId: UUID? = null,
     ) = Prompt(
         metadata = EntityMetadata(),
         name = name,
         content = content,
         parameters = parameters,
+        agentConfigId = agentConfigId,
     )
 
     /**
      * Helper: resolves [text] against the given effective [prompts].
      * The lambda is invoked lazily by the parser only when [text] starts with `/`.
      */
-    fun resolve(text: String, vararg prompts: Prompt): List<String> =
+    fun resolve(text: String, vararg prompts: Prompt): List<ResolvedCommand> =
         PromptCommandParser.resolve(text) { prompts.toList() }
+
+    /** Convenience: extract just the text strings from resolved commands. */
+    fun resolveTexts(text: String, vararg prompts: Prompt): List<String> =
+        resolve(text, *prompts).map { it.text }
 
     // --- Basic command resolution ---
 
     "non-slash text is returned unchanged" {
-        resolve("hello world") shouldBe listOf("hello world")
+        resolve("hello world") shouldBe listOf(ResolvedCommand("hello world", null))
     }
 
     "bare slash is returned unchanged" {
-        resolve("/") shouldBe listOf("/")
+        resolve("/") shouldBe listOf(ResolvedCommand("/", null))
     }
 
     "unknown prompt name is returned unchanged" {
-        resolve("/unknown", prompt("known", listOf("content"))) shouldBe listOf("/unknown")
+        resolve("/unknown", prompt("known", listOf("content"))) shouldBe listOf(ResolvedCommand("/unknown", null))
     }
 
     "prompt with no placeholders returns joined content" {
-        resolve("/greet", prompt("greet", listOf("Hello!", "How are you?"))) shouldBe listOf("Hello!", "How are you?")
+        resolveTexts("/greet", prompt("greet", listOf("Hello!", "How are you?"))) shouldBe listOf("Hello!", "How are you?")
     }
 
     "prompt name matching is case-insensitive" {
-        resolve("/myprompt", prompt("MyPrompt", listOf("result"))) shouldBe listOf("result")
+        resolveTexts("/myprompt", prompt("MyPrompt", listOf("result"))) shouldBe listOf("result")
     }
 
     // --- {{ARGUMENTS}} ---
 
     "ARGUMENTS is replaced with raw argument string" {
-        resolve("/plan refactor the auth module", prompt("plan", listOf("Create a plan for: {{ARGUMENTS}}"))) shouldBe
+        resolveTexts("/plan refactor the auth module", prompt("plan", listOf("Create a plan for: {{ARGUMENTS}}"))) shouldBe
             listOf("Create a plan for: refactor the auth module")
     }
 
     "ARGUMENTS with empty args is replaced with empty string" {
-        resolve("/plan", prompt("plan", listOf("Create a plan for: {{ARGUMENTS}}"))) shouldBe listOf("Create a plan for: ")
+        resolveTexts("/plan", prompt("plan", listOf("Create a plan for: {{ARGUMENTS}}"))) shouldBe listOf("Create a plan for: ")
     }
 
     "ARGUMENTS captures full multi-word text including quotes" {
-        resolve("/echo hello world how are you", prompt("echo", listOf("{{ARGUMENTS}}"))) shouldBe
+        resolveTexts("/echo hello world how are you", prompt("echo", listOf("{{ARGUMENTS}}"))) shouldBe
             listOf("hello world how are you")
     }
 
     // --- Named placeholders resolved positionally ---
 
     "single named placeholder resolved from first positional arg" {
-        resolve("/say hello", prompt("say", listOf("You said: {{msg}}"), listOf(param("msg")))) shouldBe listOf("You said: hello")
+        resolveTexts("/say hello", prompt("say", listOf("You said: {{msg}}"), listOf(param("msg")))) shouldBe listOf("You said: hello")
     }
 
     "quoted positional arg preserves spaces" {
-        resolve("/say \"hello world\"", prompt("say", listOf("{{msg}}"), listOf(param("msg")))) shouldBe listOf("hello world")
+        resolveTexts("/say \"hello world\"", prompt("say", listOf("{{msg}}"), listOf(param("msg")))) shouldBe listOf("hello world")
     }
 
     "single-quoted positional arg preserves spaces" {
-        resolve("/say 'hello world'", prompt("say", listOf("{{msg}}"), listOf(param("msg")))) shouldBe listOf("hello world")
+        resolveTexts("/say 'hello world'", prompt("say", listOf("{{msg}}"), listOf(param("msg")))) shouldBe listOf("hello world")
     }
 
     "two named placeholders resolved from two positional args" {
-        resolve(
+        resolveTexts(
             "/greet Alice 30",
             prompt(
                 "greet",
@@ -92,15 +99,15 @@ class PromptCommandParserUnitSpec : StringSpec({
     }
 
     "missing arg falls back to parameter defaultValue" {
-        resolve("/say", prompt("say", listOf("You said: {{msg}}"), listOf(param("msg", "nothing")))) shouldBe listOf("You said: nothing")
+        resolveTexts("/say", prompt("say", listOf("You said: {{msg}}"), listOf(param("msg", "nothing")))) shouldBe listOf("You said: nothing")
     }
 
     "missing arg with empty-string default resolves to empty" {
-        resolve("/say", prompt("say", listOf("[{{msg}}]"), listOf(param("msg", "")))) shouldBe listOf("[]")
+        resolveTexts("/say", prompt("say", listOf("[{{msg}}]"), listOf(param("msg", "")))) shouldBe listOf("[]")
     }
 
     "partial args: first provided, second uses default" {
-        resolve(
+        resolveTexts(
             "/greet Hello",
             prompt(
                 "greet",
@@ -121,7 +128,7 @@ class PromptCommandParserUnitSpec : StringSpec({
     // --- Mixed {{ARGUMENTS}} + {{paramName}} ---
 
     "ARGUMENTS and named placeholder coexist" {
-        resolve(
+        resolveTexts(
             "/mix Rust is great",
             prompt(
                 "mix",
@@ -134,7 +141,7 @@ class PromptCommandParserUnitSpec : StringSpec({
     // --- Same placeholder used multiple times ---
 
     "same placeholder used twice in content is replaced in both occurrences" {
-        resolve(
+        resolveTexts(
             "/repeat hello",
             prompt(
                 "repeat",
@@ -147,7 +154,7 @@ class PromptCommandParserUnitSpec : StringSpec({
     // --- Placeholder in multiple content lines ---
 
     "placeholder resolved across multiple content lines" {
-        resolve(
+        resolveTexts(
             "/multi Alice",
             prompt(
                 "multi",
@@ -160,7 +167,7 @@ class PromptCommandParserUnitSpec : StringSpec({
     // --- Recursive resolution ---
 
     "prompt content containing /subPrompt is resolved recursively" {
-        resolve(
+        resolveTexts(
             "/main",
             prompt("main", listOf("step 1", "/sub arg1", "step 3")),
             prompt("sub", listOf("sub-step for: {{ARGUMENTS}}")),
@@ -172,7 +179,7 @@ class PromptCommandParserUnitSpec : StringSpec({
     }
 
     "deeply nested prompts are resolved recursively" {
-        resolve(
+        resolveTexts(
             "/a",
             prompt("a", listOf("/b")),
             prompt("b", listOf("/c")),
@@ -181,7 +188,7 @@ class PromptCommandParserUnitSpec : StringSpec({
     }
 
     "same prompt can be used in sibling branches without cycle error" {
-        resolve(
+        resolveTexts(
             "/main",
             prompt("main", listOf("/shared", "/shared")),
             prompt("shared", listOf("hello")),
@@ -189,7 +196,7 @@ class PromptCommandParserUnitSpec : StringSpec({
     }
 
     "unresolved /subPrompt in content is kept as-is when not found" {
-        resolve(
+        resolveTexts(
             "/main",
             prompt("main", listOf("step 1", "/unknown-sub", "step 3")),
         ) shouldBe listOf(
@@ -222,7 +229,7 @@ class PromptCommandParserUnitSpec : StringSpec({
     }
 
     "same prompt with different resolved arguments is not a cycle" {
-        resolve(
+        resolveTexts(
             "/router",
             prompt("router", listOf("/worker one", "/worker two")),
             prompt("worker", listOf("done: {{ARGUMENTS}}")),
@@ -246,5 +253,87 @@ class PromptCommandParserUnitSpec : StringSpec({
         shouldThrow<PromptResolutionException> {
             resolve("/p0", *prompts.toTypedArray())
         }.message shouldBe "Maximum prompt nesting depth (10) exceeded"
+    }
+
+    // --- agentConfigId propagation ---
+
+    "prompt with agentConfigId propagates it to each resolved line" {
+        val agentId = UUID.randomUUID()
+        val result = resolve(
+            "/greet",
+            prompt("greet", listOf("Hello!", "How are you?"), agentConfigId = agentId),
+        )
+        result shouldBe listOf(
+            ResolvedCommand("Hello!", agentId),
+            ResolvedCommand("How are you?", agentId),
+        )
+    }
+
+    "prompt without agentConfigId produces ResolvedCommands with null" {
+        val result = resolve(
+            "/greet",
+            prompt("greet", listOf("Hello!", "How are you?")),
+        )
+        result shouldBe listOf(
+            ResolvedCommand("Hello!", null),
+            ResolvedCommand("How are you?", null),
+        )
+    }
+
+    "non-slash text produces ResolvedCommand with null agentConfigId" {
+        resolve("plain message") shouldBe listOf(ResolvedCommand("plain message", null))
+    }
+
+    "recursive: parent agentConfigId=X, child agentConfigId=Y — each line carries its own" {
+        val parentId = UUID.randomUUID()
+        val childId = UUID.randomUUID()
+        val result = resolve(
+            "/parent",
+            prompt("parent", listOf("parent line", "/child"), agentConfigId = parentId),
+            prompt("child", listOf("child line"), agentConfigId = childId),
+        )
+        result shouldBe listOf(
+            ResolvedCommand("parent line", parentId),
+            ResolvedCommand("child line", childId),
+        )
+    }
+
+    "recursive: parent agentConfigId=X, child agentConfigId=null — child lines have null" {
+        val parentId = UUID.randomUUID()
+        val result = resolve(
+            "/parent",
+            prompt("parent", listOf("parent line", "/child"), agentConfigId = parentId),
+            prompt("child", listOf("child line"), agentConfigId = null),
+        )
+        result shouldBe listOf(
+            ResolvedCommand("parent line", parentId),
+            ResolvedCommand("child line", null),
+        )
+    }
+
+    "recursive: parent agentConfigId=null, child agentConfigId=Y — child lines carry Y" {
+        val childId = UUID.randomUUID()
+        val result = resolve(
+            "/parent",
+            prompt("parent", listOf("parent line", "/child"), agentConfigId = null),
+            prompt("child", listOf("child line"), agentConfigId = childId),
+        )
+        result shouldBe listOf(
+            ResolvedCommand("parent line", null),
+            ResolvedCommand("child line", childId),
+        )
+    }
+
+    "unknown sub-prompt reference passes through with null agentConfigId" {
+        val parentId = UUID.randomUUID()
+        val result = resolve(
+            "/parent",
+            prompt("parent", listOf("before", "/unknown-sub", "after"), agentConfigId = parentId),
+        )
+        result shouldBe listOf(
+            ResolvedCommand("before", parentId),
+            ResolvedCommand("/unknown-sub", null),
+            ResolvedCommand("after", parentId),
+        )
     }
 })

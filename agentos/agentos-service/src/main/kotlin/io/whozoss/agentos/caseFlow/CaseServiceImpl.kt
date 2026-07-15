@@ -14,6 +14,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptCommandParser
+import io.whozoss.agentos.prompt.ResolvedCommand
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -294,7 +295,7 @@ class CaseServiceImpl(
         // Resolution failures (cycle, depth exceeded, missing arguments) are caught here
         // and surfaced as a WarnEvent in the runtime so the SSE client sees the error.
         // The original user message is stored first so the conversation history is intact.
-        val resolvedCommands: List<String>? = if (userId != null) {
+        val resolvedCommands: List<ResolvedCommand>? = if (userId != null) {
             try {
                 content.filterIsInstance<MessageContent.Text>().flatMap { mc ->
                     PromptCommandParser.resolve(mc.content) {
@@ -321,9 +322,25 @@ class CaseServiceImpl(
                 return
             }
         } else {
-            content.filterIsInstance<MessageContent.Text>().map { it.content }
+            content.filterIsInstance<MessageContent.Text>().map { ResolvedCommand(it.content) }
         }
         val nonTextContent = content.filter { it !is MessageContent.Text }
+
+        // Cache agentConfigId -> agent name lookups so multiple ResolvedCommands referencing
+        // the same agent don't trigger redundant repository calls.
+        val agentNameCache = mutableMapOf<UUID, String?>()
+
+        fun resolvedText(cmd: ResolvedCommand): String {
+            val agentConfigId = cmd.agentConfigId ?: return cmd.text
+            // Don't prefix if the content already starts with an @mention.
+            if (cmd.text.trimStart().startsWith("@")) return cmd.text
+            val agentName = agentNameCache.getOrPut(agentConfigId) {
+                agentConfigService.findById(agentConfigId)
+                    ?.takeIf { !it.metadata.removed }
+                    ?.name
+            }
+            return if (agentName != null) "@$agentName ${cmd.text}" else cmd.text
+        }
 
         when {
             resolvedCommands.isNullOrEmpty() ->
@@ -334,12 +351,12 @@ class CaseServiceImpl(
                 // each agent turn completes, injecting each as a fresh user message.
                 runtime.addUserMessage(
                     actor,
-                    listOf(MessageContent.Text(resolvedCommands.first())) + nonTextContent,
+                    listOf(MessageContent.Text(resolvedText(resolvedCommands.first()))) + nonTextContent,
                     answerToEventId,
                     sessionContext,
                 )
                 resolvedCommands.drop(1).forEach { cmd ->
-                    runtime.enqueueCommand(listOf(MessageContent.Text(cmd)))
+                    runtime.enqueueCommand(listOf(MessageContent.Text(resolvedText(cmd))))
                 }
             }
         }
