@@ -1,3 +1,13 @@
+## 0.214.2 (2026-07-15)
+
+### 🩹 Fixes
+
+- resolve integration type descriptor ([#1143](https://github.com/whoz-oss/coday/pull/1143))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.214.1 (2026-07-14)
 
 ### 🩹 Fixes
