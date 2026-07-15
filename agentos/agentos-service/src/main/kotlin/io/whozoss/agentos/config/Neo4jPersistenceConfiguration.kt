@@ -143,9 +143,9 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
-    fun neo4jStarredRepository(permissionNodeNeo4jRepository: PermissionNodeNeo4jRepository): StarredRepository {
+    fun neo4jStarredRepository(caseNodeNeo4jRepository: CaseNodeNeo4jRepository): StarredRepository {
         logger.info { "[Persistence] Neo4jStarredRepository active" }
-        return Neo4jStarredRepository(permissionNodeNeo4jRepository)
+        return Neo4jStarredRepository(caseNodeNeo4jRepository)
     }
 
     @Bean

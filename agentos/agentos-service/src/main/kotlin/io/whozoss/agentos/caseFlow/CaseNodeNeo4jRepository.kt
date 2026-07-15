@@ -168,4 +168,67 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
         @Param("parentCaseId") parentCaseId: String,
         @Param("childCaseId") childCaseId: String,
     )
+
+    // -------------------------------------------------------------------------
+    // Starred / favorite — per-user [:STARRED] relationship on Case nodes.
+    //
+    // The [:STARRED] edge is orthogonal to [:ADMIN]/[:MEMBER]: role transitions
+    // (promote/demote) leave it untouched. The MATCH guard on [:ADMIN|MEMBER]
+    // prevents orphaned [:STARRED] edges for users with no direct permission.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Creates a `[:STARRED]` edge `(u)-[:STARRED]->(c:Case)` — only when a direct
+     * `[:ADMIN]` or `[:MEMBER]` edge already exists on the case (guard against orphans).
+     *
+     * Returns the number of `[:Case]` nodes matched (0 = user has no direct
+     * permission edge, so no star was persisted).
+     */
+    @Query(
+        $$"""MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(c:Case {id: $caseId})
+            MERGE (u)-[:STARRED]->(c)
+            RETURN count(c)
+            """,
+    )
+    fun mergeStarred(
+        @Param("userId") userId: String,
+        @Param("caseId") caseId: String,
+    ): Long
+
+    /**
+     * Removes the `[:STARRED]` edge between the user and the case, if it exists.
+     *
+     * Returns the number of `[:ADMIN]/[:MEMBER]` edges matched (0 = user has no
+     * direct permission edge; safe no-op).
+     */
+    @Query(
+        $$"""MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(c:Case {id: $caseId})
+            OPTIONAL MATCH (u)-[s:STARRED]->(c)
+            DELETE s
+            RETURN count(c)
+            """,
+    )
+    fun deleteStarred(
+        @Param("userId") userId: String,
+        @Param("caseId") caseId: String,
+    ): Long
+
+    /**
+     * Returns one row per `(user, case)` direct-permission edge, encoded as
+     * `"caseId|relation|starred"`. The `starred` flag is `true` when a
+     * `[:STARRED]` edge also exists between the user and the case.
+     *
+     * Encoded into a single string column because SDN cannot map a multi-value
+     * record without a custom mapper. The caller decodes each row and collapses
+     * duplicate ids (a user may hold both ADMIN and MEMBER on the same case).
+     */
+    @Transactional(readOnly = true)
+    @Query(
+        $$"""MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(c:Case)
+            RETURN c.id + '|' + type(r) + '|' + toString(EXISTS { (u)-[:STARRED]->(c) }) AS row
+            """,
+    )
+    fun findDirectRelations(
+        @Param("userId") userId: String,
+    ): List<String>
 }

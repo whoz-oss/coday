@@ -10,6 +10,7 @@ import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.permissions.DirectRelation
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
@@ -50,6 +51,9 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
 
     @Autowired
     lateinit var permissionNodeRepository: PermissionNodeNeo4jRepository
+
+    @Autowired
+    lateinit var caseNodeRepository: CaseNodeNeo4jRepository
 
     @Autowired
     lateinit var permissionService: PermissionService
@@ -108,17 +112,15 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityLabel = "Case",
             )
 
-            permissionNodeRepository.mergeStarred(
+            caseNodeRepository.mergeStarred(
                 userId = user.id.toString(),
-                entityId = case.id.toString(),
-                entityLabel = "Case",
+                caseId = case.id.toString(),
             )
             starredIds(user.id.toString()) shouldContain case.id.toString()
 
-            permissionNodeRepository.deleteStarred(
+            caseNodeRepository.deleteStarred(
                 userId = user.id.toString(),
-                entityId = case.id.toString(),
-                entityLabel = "Case",
+                caseId = case.id.toString(),
             )
             starredIds(user.id.toString()) shouldNotContain case.id.toString()
         }
@@ -137,10 +139,9 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             val case = createCase(namespace.id)
 
             // No ADMIN/MEMBER edge — the MATCH guard prevents orphaned [:STARRED] edges.
-            permissionNodeRepository.mergeStarred(
+            caseNodeRepository.mergeStarred(
                 userId = user.id.toString(),
-                entityId = case.id.toString(),
-                entityLabel = "Case",
+                caseId = case.id.toString(),
             )
 
             starredIds(user.id.toString()).shouldBeEmpty()
@@ -167,28 +168,25 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             )
 
             // A stars the case: only A has a [:STARRED] edge, B does not.
-            permissionNodeRepository.mergeStarred(
+            caseNodeRepository.mergeStarred(
                 userId = userA.id.toString(),
-                entityId = caseId,
-                entityLabel = "Case",
+                caseId = caseId,
             )
             starredIds(userA.id.toString()) shouldContain caseId
             starredIds(userB.id.toString()) shouldNotContain caseId
 
             // B stars it: B now has its own [:STARRED] edge, A is unaffected.
-            permissionNodeRepository.mergeStarred(
+            caseNodeRepository.mergeStarred(
                 userId = userB.id.toString(),
-                entityId = caseId,
-                entityLabel = "Case",
+                caseId = caseId,
             )
             starredIds(userB.id.toString()) shouldContain caseId
             starredIds(userA.id.toString()) shouldContain caseId
 
             // B un-stars: only B's [:STARRED] edge is removed, A's survives.
-            permissionNodeRepository.deleteStarred(
+            caseNodeRepository.deleteStarred(
                 userId = userB.id.toString(),
-                entityId = caseId,
-                entityLabel = "Case",
+                caseId = caseId,
             )
             starredIds(userB.id.toString()) shouldNotContain caseId
             starredIds(userA.id.toString()) shouldContain caseId
@@ -243,10 +241,9 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityId = caseId,
                 entityLabel = "Case",
             )
-            permissionNodeRepository.mergeStarred(
+            caseNodeRepository.mergeStarred(
                 userId = userId,
-                entityId = caseId,
-                entityLabel = "Case",
+                caseId = caseId,
             )
             starredIds(userId) shouldContain caseId
 
@@ -270,10 +267,9 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityId = caseId,
                 entityLabel = "Case",
             )
-            permissionNodeRepository.mergeStarred(
+            caseNodeRepository.mergeStarred(
                 userId = userId,
-                entityId = caseId,
-                entityLabel = "Case",
+                caseId = caseId,
             )
             starredIds(userId) shouldContain caseId
 
