@@ -3,6 +3,7 @@
 ///
 /// Captures the interaction patterns established in ActionCard (chips,
 /// icon buttons, menu items) and shared focus / reset utilities.
+/// Fallback values are sourced from _colors.scss — single source of truth.
 ///
 /// Usage:
 ///   @use 'libs/design-system/src/styles' as ds;
@@ -10,8 +11,10 @@
 ///   .my-btn     { @include ds.icon-button(32px); }
 ///   .my-item    { @include ds.menu-item; }
 ///
+@use 'colors' as c;
+@use 'typography' as t;
 
-// ── Chip / pill ───────────────────────────────────────────────────────────────
+// ── Chip / pill ────────────────────────────────────────────────────────────────────────
 
 /// Pill-shaped chip — inline tag with border, subtle background, hover state.
 /// Source: .ac-chip in action-card.component.scss
@@ -23,10 +26,10 @@
   height: 28px;
   padding: 0 12px 0 10px;
   border-radius: 999px;
-  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-  background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
-  color: var(--color-text, #1d1d1f);
-  font-family: 'Inter', sans-serif;
+  border: 1px solid var(--color-border, #{c.$color-border});
+  background: var(--color-surface-secondary, #{c.$color-surface-secondary});
+  color: var(--color-text, #{c.$color-text});
+  font-family: t.$font-ui;
   font-size: 11.5px;
   font-weight: 500;
   line-height: 1;
@@ -37,12 +40,12 @@
     border-color 120ms ease;
 
   &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
-    border-color: var(--color-border, rgba(0, 0, 0, 0.16));
+    background: var(--color-bg-hover, #{c.$color-bg-hover-chip});
+    border-color: var(--color-border, #{c.$color-border-hover});
   }
 }
 
-// ── Icon button ───────────────────────────────────────────────────────────────
+// ── Icon button ──────────────────────────────────────────────────────────────────────
 
 /// Compact icon button — square, transparent rest state, bg-hover on hover.
 /// Source: .ac__more-btn in action-card.component.scss
@@ -55,7 +58,7 @@
   width: $size;
   height: $size;
   border-radius: $radius;
-  color: var(--color-text-secondary, rgba(0, 0, 0, 0.35));
+  color: var(--color-text-secondary, #{c.$color-icon-btn-rest});
   display: flex;
   align-items: center;
   justify-content: center;
@@ -64,8 +67,8 @@
     color 120ms ease;
 
   &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
-    color: var(--color-text, #1d1d1f);
+    background: var(--color-bg-hover, #{c.$color-bg-hover-subtle});
+    color: var(--color-text, #{c.$color-text});
   }
 
   &:focus-visible {
@@ -78,7 +81,7 @@
   }
 }
 
-// ── Menu item ─────────────────────────────────────────────────────────────────
+// ── Menu item ────────────────────────────────────────────────────────────────────────
 
 /// Dropdown / contextual menu item.
 /// Source: .ac__menu-item in action-card.component.scss
@@ -94,26 +97,26 @@
   width: 100%;
   padding: 8px 10px;
   border-radius: 6px;
-  font-family: 'Inter', sans-serif;
+  font-family: t.$font-ui;
   font-size: 12.5px;
   font-weight: 500;
-  color: var(--color-text, #1d1d1f);
+  color: var(--color-text, #{c.$color-text});
   text-align: left;
   transition: background 100ms ease;
 
   &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+    background: var(--color-bg-hover, #{c.$color-bg-hover-card});
   }
 
   // Danger / destructive action variant — apply as a modifier class
   &--danger {
-    color: var(--color-error, #a5140a);
+    color: var(--color-error, #{c.$color-error-text});
 
     &:hover {
       // Translucent tint derived from the error token.
       // Note: relies on CSS relative color syntax (supported in modern browsers).
       // Fallback: rgba with a static approximation of the light-mode error color.
-      background: rgba(from var(--color-error, #ff453a) r g b / 0.08);
+      background: rgba(from var(--color-error, #{c.$color-error}) r g b / 0.08);
     }
   }
 }
@@ -122,23 +125,23 @@
 /// Source: .ac__menu-sep in action-card.component.scss
 @mixin menu-separator {
   height: 1px;
-  background: var(--color-border, rgba(0, 0, 0, 0.07));
+  background: var(--color-border, #{c.$color-border-subtle});
   margin: 4px;
   border: none;
 }
 
-// ── Accessibility utilities ───────────────────────────────────────────────────
+// ── Accessibility utilities ───────────────────────────────────────────────────────────
 
 /// Standard focus ring — 2px solid primary, offset 2px.
 /// Use inside a :focus-visible rule.
 /// Source: .ac__name:focus-visible and .entity-card--clickable:focus-visible
 @mixin focus-ring {
-  outline: 2px solid var(--color-primary, #007aff);
+  outline: 2px solid var(--color-primary, #{c.$color-primary});
   outline-offset: 2px;
   border-radius: 2px;
 }
 
-// ── Reset utilities ───────────────────────────────────────────────────────────
+// ── Reset utilities ───────────────────────────────────────────────────────────────────
 
 /// CSS reset for native <button> elements.
 /// Strips browser default styles so mixins can apply clean custom styling.

@@ -1,0 +1,131 @@
+///
+/// Coday Design System — SCSS Color Variables
+///
+/// Single source of truth for all hardcoded color fallback values used
+/// throughout the design system mixins and components.
+///
+
+// ── Text ─────────────────────────────────────────────────────────────────────
+
+/// Main text — near-black Apple system color (light theme)
+$color-text: #1d1d1f;
+
+/// Secondary / muted text — medium grey
+$color-text-secondary: #6e6e73;
+
+/// Tertiary / subtle text — light grey
+$color-text-tertiary: #a1a1a6;
+
+/// Text on colored/dark backgrounds (badges, primary buttons)
+$color-text-inverse: #ffffff;
+
+/// Text color in dark mode (used in surface-mark dark override)
+$color-text-dark: #f5f5f7;
+
+// ── Primary / Interactive ─────────────────────────────────────────────────────
+
+/// Primary brand/action color — Apple blue
+$color-primary: #007aff;
+
+/// Primary hover state
+$color-primary-hover: #0051d5;
+
+// ── Status ────────────────────────────────────────────────────────────────────
+
+/// Success — Apple green
+$color-success: #34c759;
+
+/// Warning — Apple orange
+$color-warning: #ff9500;
+
+/// Error / danger — Apple red (light theme canonical value)
+/// Note: menu-item--danger uses a darker shade (#a5140a) for text contrast
+/// on white backgrounds. See $color-error-text below.
+$color-error: #ff3b30;
+
+/// Error text on light backgrounds — darker red for WCAG contrast
+/// Used in menu-item--danger and similar text-on-white contexts
+$color-error-text: #a5140a;
+
+/// Info — Apple light blue
+$color-info: #5ac8fa;
+
+// ── Code ──────────────────────────────────────────────────────────────────────
+
+/// Inline code background — translucent grey
+$color-code-bg: rgba(142, 142, 147, 0.12);
+
+/// Inline code text — vivid pink/red
+$color-code-text: #ff375f;
+
+// ── Borders ───────────────────────────────────────────────────────────────────
+
+/// Standard border — subtle dark translucent
+$color-border: rgba(0, 0, 0, 0.1);
+
+/// Border on hover (slightly more opaque) — used on chip hover
+$color-border-hover: rgba(0, 0, 0, 0.16);
+
+/// Subtle border — used for separators, menu-separator
+$color-border-subtle: rgba(0, 0, 0, 0.07);
+
+/// Card border on hover — slightly more visible
+$color-border-card-hover: rgba(0, 0, 0, 0.15);
+
+/// Border in dark mode surfaces (mark component dark override)
+$color-border-dark: rgba(255, 255, 255, 0.15);
+
+// ── Backgrounds ───────────────────────────────────────────────────────────────
+
+/// Solid page background — white-ish (light theme)
+$color-bg: #fafbfc;
+
+/// Secondary background — translucent white (cards, panels)
+$color-bg-secondary: rgba(255, 255, 255, 0.7);
+
+/// Modal / dropdown background — opaque white
+$color-modal-bg: #ffffff;
+
+// ── Hover states ──────────────────────────────────────────────────────────────
+/// Multiple hover tint values exist because different contexts use
+/// slightly different opacities. Each is semantically named.
+
+/// Hover tint for icon buttons and compact interactive elements
+$color-bg-hover-subtle: rgba(0, 0, 0, 0.05);
+
+/// Hover tint for clickable cards
+$color-bg-hover-card: rgba(0, 0, 0, 0.04);
+
+/// Hover tint for chip elements (slightly stronger)
+$color-bg-hover-chip: rgba(0, 0, 0, 0.06);
+
+// ── Surfaces ──────────────────────────────────────────────────────────────────
+
+/// Subtle surface tint — chip and element backgrounds at rest
+$color-surface-secondary: rgba(0, 0, 0, 0.03);
+
+// ── Shadows ───────────────────────────────────────────────────────────────────
+
+/// Shadow color — translucent black (light theme)
+$color-shadow: rgba(0, 0, 0, 0.08);
+
+/// Lighter shadow — card at rest (more subtle)
+$color-shadow-subtle: rgba(0, 0, 0, 0.05);
+
+// ── Glass morphism ────────────────────────────────────────────────────────────
+
+/// Glass surface background — frosted white
+$glass-bg: rgba(255, 255, 255, 0.72);
+
+/// Glass surface border — translucent white
+$glass-border: rgba(255, 255, 255, 0.18);
+
+/// Glass surface shadow — blue-tinted depth
+$glass-shadow: rgba(31, 38, 135, 0.15);
+
+// ── Icon button specific ──────────────────────────────────────────────────────
+
+/// Icon button rest color — muted text, more transparent than $color-text-secondary
+/// Intentionally different from $color-text-secondary (which maps to #6e6e73)
+/// because icon buttons use a lighter, less prominent rest state.
+$color-icon-btn-rest: rgba(0, 0, 0, 0.35);

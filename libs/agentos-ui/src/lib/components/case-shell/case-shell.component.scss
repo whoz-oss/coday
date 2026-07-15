@@ -1,3 +1,5 @@
+@use 'libs/design-system/src/styles' as ds;
+
 :host {
   display: flex;
   flex-direction: column;
@@ -13,14 +15,14 @@
     width: 4px;
     flex-shrink: 0;
     cursor: col-resize;
-    background: var(--color-border, rgba(0, 0, 0, 0.09));
+    background: var(--color-border, #{ds.$color-border});
     transition: background 150ms;
     position: relative;
     z-index: 10;
 
     &:hover,
     &:active {
-      background: var(--color-primary, #016b71);
+      background: var(--color-primary, #{ds.$color-primary});
     }
   }
 
@@ -64,29 +66,16 @@
 
 // ── Sidebar expand button (visible only when sidebar is collapsed) ──
 .case-shell__expand-btn {
+  @include ds.icon-button(28px, 8px);
+
+  // Positioning — outside the mixin scope
   position: fixed;
   top: 14px;
   left: 14px;
   z-index: 200;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  cursor: pointer;
-  color: var(--color-text-secondary, #968f85);
-  transition: background 140ms;
 
   .material-icons {
     font-size: 22px;
-  }
-
-  &:hover {
-    background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
-    color: var(--color-text, #1b1916);
   }
 
   // Hidden on mobile — the mobile topbar handles navigation there
