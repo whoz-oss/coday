@@ -75,6 +75,7 @@ model/namespace-user-list-item.ts
 model/namespace.ts
 model/o-auth-custom-auth-setting.ts
 model/o-auth-discoverable-auth-setting.ts
+model/o-auth-mcp-discoverable-auth-setting.ts
 model/o-auth-registered-auth-setting.ts
 model/pending-confirmation-event.ts
 model/plugin-action-response.ts

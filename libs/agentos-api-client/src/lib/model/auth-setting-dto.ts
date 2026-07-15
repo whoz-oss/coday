@@ -13,6 +13,7 @@ import { BearerTokenAuthSetting } from './bearer-token-auth-setting'
 import { OAuthDiscoverableAuthSetting } from './o-auth-discoverable-auth-setting'
 import { ApiKeyAuthSetting } from './api-key-auth-setting'
 import { BasicAuthAuthSetting } from './basic-auth-auth-setting'
+import { OAuthMcpDiscoverableAuthSetting } from './o-auth-mcp-discoverable-auth-setting'
 
 export type AuthSettingDto =
   | ApiKeyAuthSetting
@@ -20,4 +21,5 @@ export type AuthSettingDto =
   | BearerTokenAuthSetting
   | OAuthCustomAuthSetting
   | OAuthDiscoverableAuthSetting
+  | OAuthMcpDiscoverableAuthSetting
   | OAuthRegisteredAuthSetting
