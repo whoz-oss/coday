@@ -309,21 +309,35 @@ export class CaseShellComponent {
   /**
    * Start a drag session to resize the sidebar.
    * Clamps the width between 200px and 500px.
+   *
+   * During drag:
+   * - The sidebar transition is disabled to avoid per-pixel animation lag.
+   * - The sidebar width is set directly on the element style (no Angular
+   *   change detection on every mousemove pixel).
+   * On mouseup the final width is committed to the signal (single CD cycle).
    */
   protected onResizeStart(event: MouseEvent): void {
     event.preventDefault()
     const startX = event.clientX
     const startWidth = this.sidebarWidth()
 
+    // Find the sidebar element and disable its CSS transition for the drag duration.
+    const sidebarEl = document.querySelector<HTMLElement>('.shell-sidebar')
+    if (sidebarEl) sidebarEl.style.transition = 'none'
+
+    let currentWidth = startWidth
+
     const onMove = (e: MouseEvent): void => {
       const delta = e.clientX - startX
-      const newWidth = Math.max(200, Math.min(500, startWidth + delta))
-      this.sidebarWidth.set(newWidth)
+      currentWidth = Math.max(200, Math.min(500, startWidth + delta))
+      if (sidebarEl) sidebarEl.style.width = `${currentWidth}px`
     }
 
     const onUp = (): void => {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
+      if (sidebarEl) sidebarEl.style.transition = ''
+      this.sidebarWidth.set(currentWidth)
     }
 
     document.addEventListener('mousemove', onMove)

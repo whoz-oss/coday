@@ -9,6 +9,7 @@
   searchPlaceholder="Filter cases…"
   cardMinWidth="100%"
   contentMaxWidth="100%"
+  contentPadding="0"
   (createRequested)="onCreateRequested()"
   (searchChanged)="onSearchChanged($event)"
 />
@@ -16,49 +17,87 @@
 @if (compact()) {
   <div class="case-drawer-compact">
     @for (item of compactItems(); track item.id) {
+      <!-- Divider before the first favorite (favorites sit at the bottom in compact mode) -->
+      @if (item.isFirstFavorite) {
+        <div class="case-drawer-compact__divider" role="separator" aria-hidden="true"></div>
+      }
       <button
         type="button"
         class="case-drawer-compact__badge"
         [class.case-drawer-compact__badge--active]="item.id === activeCaseId()"
+        [class.case-drawer-compact__badge--running]="item.status === CaseStatusEnum.RUNNING"
+        [class.case-drawer-compact__badge--pending]="item.status === CaseStatusEnum.PENDING"
+        [class.case-drawer-compact__badge--error]="
+          item.status === CaseStatusEnum.KILLED || item.status === CaseStatusEnum.ERROR
+        "
         [title]="item.name"
         (click)="onItemSelected(item.id)"
       >
-        {{ item.initials }}
+        <span class="case-drawer-compact__status-dot"></span>
       </button>
     }
   </div>
 }
 
-<!--
-  Item template: renders one case row + its sub-cases recursively.
-  Two display modes:
-  - Flat mode (search active): each match rendered directly, no tree expand/collapse.
-  - Tree mode (no search): hierarchical rendering with expandable sub-cases.
--->
 <ng-template #caseItemTpl let-item>
   @if (isSearchActive()) {
     <!-- Flat mode: render each match directly, no tree expand/collapse -->
-    <button
-      type="button"
-      class="case-tree-node__row"
-      [class.case-tree-node__row--active]="item.id === activeCaseId()"
-      (click)="onItemSelected(item.id)"
-    >
-      <span class="case-tree-node__expand-slot"></span>
-      <span class="case-tree-node__name">{{ item.name }}</span>
-    </button>
+    <div class="case-tree-node case-tree-node--flat">
+      <div
+        class="case-tree-node__summary"
+        [class.case-tree-node__summary--active]="item.id === activeCaseId()"
+        [class.case-tree-node__summary--running]="item.status === CaseStatusEnum.RUNNING"
+      >
+        <span
+          class="case-tree-node__dot"
+          [class.case-tree-node__dot--running]="item.status === CaseStatusEnum.RUNNING"
+          [class.case-tree-node__dot--error]="
+            item.status === CaseStatusEnum.KILLED || item.status === CaseStatusEnum.ERROR
+          "
+          [class.case-tree-node__dot--pending]="item.status === CaseStatusEnum.PENDING"
+          aria-hidden="true"
+        >
+        </span>
+        <button type="button" class="case-tree-node__select" (click)="onItemSelected(item.id)">
+          <span class="case-tree-node__name">{{ item.name }}</span>
+        </button>
+        <span class="case-tree-node__status-label" aria-hidden="true">{{ item.status?.toLowerCase() }}</span>
+      </div>
+      <div class="case-tree-node__detail">
+        <div class="case-tree-node__detail-inner">
+          <div class="case-tree-node__actions">
+            <button
+              type="button"
+              class="case-tree-node__action-btn"
+              [class.case-tree-node__action-btn--starred]="item.favorite"
+              [title]="item.favorite ? 'Remove from favorites' : 'Add to favorites'"
+              [attr.aria-pressed]="item.favorite"
+              (click)="onStarToggled(item)"
+            >
+              {{ item.favorite ? '★' : '☆' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   } @else {
     <!-- Tree mode: hierarchical rendering -->
     <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: item, depth: 0 }" />
   }
 </ng-template>
 
-<!-- Recursive row template: select + star + (ADMIN-gated) delete, then children -->
+<!-- Recursive row template: hover-to-reveal actions (star + delete) -->
 <ng-template #caseRowTpl let-node="node" let-depth="depth">
   <div class="case-tree-node" [style.--depth]="depth">
-    <div class="case-tree-node__row" [class.case-tree-node__row--active]="node.id === activeCaseId()">
-      <span class="case-tree-node__expand-slot">
-        @if (node.children.length) {
+    <!-- Summary — always visible -->
+    <div
+      class="case-tree-node__summary"
+      [class.case-tree-node__summary--active]="node.id === activeCaseId()"
+      [class.case-tree-node__summary--running]="node.status === CaseStatusEnum.RUNNING"
+    >
+      <!-- Expand/collapse slot — only rendered when the node has children -->
+      @if (node.children.length) {
+        <span class="case-tree-node__expand-slot">
           <button
             type="button"
             class="case-tree-node__toggle"
@@ -69,18 +108,59 @@
               >&rsaquo;</span
             >
           </button>
-        }
+        </span>
+      }
+
+      <!-- Status dot -->
+      <span
+        class="case-tree-node__dot"
+        [class.case-tree-node__dot--running]="node.status === CaseStatusEnum.RUNNING"
+        [class.case-tree-node__dot--error]="
+          node.status === CaseStatusEnum.KILLED || node.status === CaseStatusEnum.ERROR
+        "
+        [class.case-tree-node__dot--pending]="node.status === CaseStatusEnum.PENDING"
+        aria-hidden="true"
+      >
       </span>
+
+      <!-- Case name (clickable) -->
       <button type="button" class="case-tree-node__select" (click)="onItemSelected(node.id)">
         <span class="case-tree-node__name">{{ node.name }}</span>
       </button>
-      <ds-kebab-menu
-        class="case-tree-node__menu"
-        [items]="menuItemsFor(node)"
-        (itemSelected)="onMenuAction(node, $event)"
-      />
+
+      <!-- Status label -->
+      <span class="case-tree-node__status-label" aria-hidden="true">{{ node.status?.toLowerCase() }}</span>
     </div>
 
+    <!-- Detail block — revealed on hover via CSS max-height trick -->
+    <div class="case-tree-node__detail">
+      <div class="case-tree-node__detail-inner">
+        <div class="case-tree-node__actions">
+          <button
+            type="button"
+            class="case-tree-node__action-btn"
+            [class.case-tree-node__action-btn--starred]="node.favorite"
+            [title]="node.favorite ? 'Remove from favorites' : 'Add to favorites'"
+            [attr.aria-pressed]="node.favorite"
+            (click)="onStarToggled(node)"
+          >
+            {{ node.favorite ? '★' : '☆' }}
+          </button>
+          @if (node.canDelete) {
+            <button
+              type="button"
+              class="case-tree-node__action-btn case-tree-node__action-btn--danger"
+              title="Delete"
+              (click)="onDeleteRequested(node.id)"
+            >
+              Delete
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Children (tree mode) -->
     @if (isExpanded(node.id) && node.children.length) {
       @for (child of node.children; track child.id) {
         <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: child, depth: depth + 1 }" />

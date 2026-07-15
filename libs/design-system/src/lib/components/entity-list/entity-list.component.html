@@ -41,7 +41,7 @@
           @for (group of groupedItems(); track group.groupKey) {
             <mat-expansion-panel [expanded]="true" class="entity-list__panel">
               @if (group.groupLabel) {
-                <mat-expansion-panel-header>
+                <mat-expansion-panel-header class="entity-list__panel-header">
                   <mat-panel-title class="entity-list__panel-title">{{ group.groupLabel }}</mat-panel-title>
                 </mat-expansion-panel-header>
               }

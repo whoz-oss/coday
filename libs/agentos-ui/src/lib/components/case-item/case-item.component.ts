@@ -1,17 +1,18 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core'
-import { Case, CaseRoleEnum } from '@whoz-oss/agentos-api-client'
+import { Case, CaseRoleEnum, CaseStatusEnum } from '@whoz-oss/agentos-api-client'
 import { EntityListItem } from '@whoz-oss/design-system'
 
 /**
  * A drawer list item for a case. Extends the shared [EntityListItem] with the
- * case-specific `favorite` and `canDelete` flags (kept off the design-system interface,
- * which only needs `groupKey`/`groupLabel`).
+ * case-specific `favorite`, `canDelete` and `status` flags.
  */
 export interface CaseListItem extends EntityListItem {
-  /** Per-user favorite flag — drives the Favorites grouping and the star menu action. */
+  /** Per-user favorite flag — drives the Favorites grouping and the star action. */
   favorite: boolean
   /** Whether the caller may delete this case (direct ADMIN relation). Gates the delete button. */
   canDelete: boolean
+  /** Current execution status of the case — drives the dot indicator and compact badge. */
+  status: CaseStatusEnum
 }
 
 /**
@@ -37,6 +38,7 @@ export class CaseItemComponent {
       favorite: c.favorite,
       // Only a direct ADMIN can delete; MEMBER (or no direct relation) cannot.
       canDelete: c.role === CaseRoleEnum.ADMIN,
+      status: c.status,
     }
   }
 }

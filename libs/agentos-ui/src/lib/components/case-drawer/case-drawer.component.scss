@@ -6,7 +6,7 @@
   height: 100%;
 }
 
-// ── Compact / icons mode ───────────────────────────────────────────────
+// ── Compact / icons mode ─────────────────────────────────────────────────────
 
 .case-drawer-compact {
   display: flex;
@@ -16,18 +16,27 @@
   padding: 8px 0;
   overflow-y: auto;
 
-  &__badge {
-    @include ds.surface-mark;
-    @include ds.text-mark;
+  &__divider {
+    width: 20px;
+    height: 1px;
+    background: var(--color-border, rgba(0, 0, 0, 0.1));
+    margin: 4px 0;
+    flex-shrink: 0;
+  }
 
+  &__badge {
+    // surface-mark intentionally not used here — it forces border:none which
+    // conflicts with our status-colored border logic.
     width: 36px;
     height: 36px;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    cursor: pointer;
+    border-radius: 8px;
     background: var(--color-bg-secondary, #fff);
-    color: var(--color-text, #1b1916);
     border: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
     transition:
       background 120ms ease,
       border-color 120ms ease,
@@ -35,56 +44,93 @@
 
     &:hover {
       background: var(--color-bg-hover);
-      border-color: var(--color-border);
     }
 
+    // Active: fond bleuté + bordure primary
     &--active {
       background: color-mix(in srgb, var(--color-primary) 12%, transparent);
       border-color: var(--color-primary);
-      color: var(--color-primary);
 
       &:hover {
         background: color-mix(in srgb, var(--color-primary) 18%, transparent);
       }
     }
   }
+
+  &__status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-border, rgba(0, 0, 0, 0.2));
+    flex-shrink: 0;
+    transition: background 150ms ease;
+
+    .case-drawer-compact__badge--running & {
+      background: var(--color-success, #2a9d4a);
+    }
+
+    .case-drawer-compact__badge--pending & {
+      background: var(--color-warning, #f5a623);
+    }
+
+    .case-drawer-compact__badge--error & {
+      background: var(--color-error, #a5140a);
+    }
+  }
 }
 
-// ── Tree node (rendered inside ds-entity-list itemTemplate) ──────────────
+// ── Tree node (rendered inside ds-entity-list itemTemplate) ──────────────────
+// The grid has contentPadding="0", so we add a small horizontal inset on each
+// row directly — the hover background won't bleed to the drawer edges.
 
 .case-tree-node {
   width: 100%;
+  border-radius: 8px;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 
-  // The row is a flex container: expand slot + selectable label + overflow menu.
-  // In flat-search mode the row is itself the clickable button; in tree mode the
-  // inner `__select` button handles selection so the menu stays independently clickable.
-  &__row {
+  &:hover {
+    background: var(--color-bg, #fff);
+    box-shadow: 0 4px 14px var(--color-shadow, rgba(0, 0, 0, 0.08));
+  }
+
+  &__summary {
     display: flex;
     align-items: center;
-    width: 100%;
-    text-align: left;
-    padding: 0.375rem 0.5rem;
-    padding-left: calc(0.5rem + var(--depth, 0) * 1.25rem);
-    color: var(--color-text);
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    border-radius: 6px;
-    gap: 0.375rem;
-    transition: background 0.12s ease;
-    box-sizing: border-box;
+    gap: 8px;
+    padding: 9px 8px;
+    border-radius: 8px;
 
-    &:hover {
-      background: var(--color-bg-hover);
+    &--running {
+      background: color-mix(in srgb, var(--color-primary, #016b71) 8%, transparent);
     }
 
     &--active {
-      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-      color: var(--color-primary);
-
-      &:hover {
-        background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+      .case-tree-node__name {
+        color: var(--color-primary, #016b71);
+        font-weight: 600;
       }
+    }
+  }
+
+  &__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--color-border, rgba(0, 0, 0, 0.2));
+
+    &--running {
+      background: var(--color-success, #2a9d4a);
+    }
+
+    &--pending {
+      background: color-mix(in srgb, var(--color-warning, #f5a623) 70%, transparent);
+    }
+
+    &--error {
+      background: var(--color-error, #a5140a);
     }
   }
 
@@ -98,7 +144,6 @@
 
   &__toggle {
     @include ds.icon-button(1rem, 3px);
-
     color: inherit;
   }
 
@@ -114,10 +159,8 @@
     }
   }
 
-  // Clickable area that selects the case (fills the row, leaving room for actions).
   &__select {
     @include ds.button-reset;
-
     flex: 1;
     min-width: 0;
     display: flex;
@@ -126,31 +169,117 @@
   }
 
   &__name {
-    @include ds.text-label; // 500 11.5px Inter — compact label
-
+    @include ds.text-label;
     flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: var(--font-mono, #{ds.$font-code}); // case IDs in mono
+    font-family: var(--font-mono, #{ds.$font-code});
     font-size: 0.8rem;
+    font-weight: 500;
+    color: rgba(0, 0, 0, 0.75);
+    transition: white-space 0s;
+
+    .case-tree-node:hover & {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: unset;
+      line-height: 1.4;
+    }
+
+    .case-tree-node__summary--running & {
+      font-weight: 600;
+      color: var(--color-text, #161616);
+    }
   }
 
-  // Overflow menu ("⋯") stays hidden to keep the list light; it is revealed on row
-  // hover, on keyboard focus, while its menu is open, or on the active row.
-  &__menu {
-    flex: none;
+  &__status-label {
+    font:
+      400 10.5px 'Inter',
+      sans-serif;
+    color: var(--color-text-secondary, rgba(0, 0, 0, 0.45));
+    flex-shrink: 0;
+    white-space: nowrap;
     opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.12s ease;
+    transition: opacity 0.15s ease;
   }
 
-  &__row:hover &__menu,
-  &__row:focus-within &__menu,
-  &__row--active &__menu,
-  &__menu:has([aria-expanded='true']) {
+  &:hover &__status-label {
     opacity: 1;
-    pointer-events: auto;
+  }
+
+  &__detail {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition:
+      max-height 0.24s ease,
+      opacity 0.18s ease;
+  }
+
+  &:hover &__detail {
+    max-height: 80px;
+    opacity: 1;
+  }
+
+  &__detail-inner {
+    padding: 2px 8px 10px;
+  }
+
+  &__actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  &__action-btn {
+    @include ds.button-reset;
+    flex: 1;
+    font:
+      600 10.5px 'Inter',
+      sans-serif;
+    border-radius: 6px;
+    padding: 6px 0;
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    cursor: pointer;
+    text-align: center;
+    transition:
+      background 120ms ease,
+      color 120ms ease,
+      border-color 120ms ease;
+
+    color: var(--color-text-secondary, rgba(0, 0, 0, 0.55));
+    background: var(--color-surface-secondary, rgba(0, 0, 0, 0.04));
+
+    &:hover {
+      color: #8a5a00;
+      background: rgba(255, 180, 0, 0.12);
+      border-color: rgba(200, 140, 0, 0.25);
+    }
+
+    &--starred {
+      color: #8a5a00;
+      background: rgba(255, 180, 0, 0.12);
+      border-color: rgba(200, 140, 0, 0.25);
+    }
+
+    &--danger {
+      color: var(--color-error, #a5140a);
+      background: rgba(220, 38, 20, 0.08);
+      border-color: rgba(220, 38, 20, 0.2);
+
+      &:hover {
+        background: rgba(220, 38, 20, 0.14);
+        border-color: rgba(220, 38, 20, 0.35);
+      }
+    }
+
+    &:focus-visible {
+      @include ds.focus-ring;
+    }
+  }
+
+  &[style*='--depth'] &__summary {
+    padding-left: calc(8px + var(--depth, 0) * 1.25rem);
   }
 }
