@@ -576,6 +576,7 @@ paths:
                   - $ref: "#/components/schemas/BearerTokenAuthSetting"
                   - $ref: "#/components/schemas/OAuthCustomAuthSetting"
                   - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+                  - $ref: "#/components/schemas/OAuthMcpDiscoverableAuthSetting"
                   - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
           description: OK
       summary: List AuthSettings by scope
@@ -604,6 +605,7 @@ paths:
               - $ref: "#/components/schemas/BearerTokenAuthSetting"
               - $ref: "#/components/schemas/OAuthCustomAuthSetting"
               - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+              - $ref: "#/components/schemas/OAuthMcpDiscoverableAuthSetting"
               - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
         required: true
       responses:
@@ -617,6 +619,7 @@ paths:
                 - $ref: "#/components/schemas/BearerTokenAuthSetting"
                 - $ref: "#/components/schemas/OAuthCustomAuthSetting"
                 - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+                - $ref: "#/components/schemas/OAuthMcpDiscoverableAuthSetting"
                 - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
           description: Created
       summary: Create an AuthSetting
@@ -644,6 +647,7 @@ paths:
                   - $ref: "#/components/schemas/BearerTokenAuthSetting"
                   - $ref: "#/components/schemas/OAuthCustomAuthSetting"
                   - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+                  - $ref: "#/components/schemas/OAuthMcpDiscoverableAuthSetting"
                   - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
           description: OK
       tags:
@@ -683,6 +687,7 @@ paths:
                 - $ref: "#/components/schemas/BearerTokenAuthSetting"
                 - $ref: "#/components/schemas/OAuthCustomAuthSetting"
                 - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+                - $ref: "#/components/schemas/OAuthMcpDiscoverableAuthSetting"
                 - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
           description: OK
       tags:
@@ -706,6 +711,7 @@ paths:
               - $ref: "#/components/schemas/BearerTokenAuthSetting"
               - $ref: "#/components/schemas/OAuthCustomAuthSetting"
               - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+              - $ref: "#/components/schemas/OAuthMcpDiscoverableAuthSetting"
               - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
         required: true
       responses:
@@ -719,6 +725,7 @@ paths:
                 - $ref: "#/components/schemas/BearerTokenAuthSetting"
                 - $ref: "#/components/schemas/OAuthCustomAuthSetting"
                 - $ref: "#/components/schemas/OAuthDiscoverableAuthSetting"
+                - $ref: "#/components/schemas/OAuthMcpDiscoverableAuthSetting"
                 - $ref: "#/components/schemas/OAuthRegisteredAuthSetting"
           description: OK
       tags:
@@ -2937,6 +2944,7 @@ components:
           - API_KEY
           - BEARER_TOKEN
           - BASIC_AUTH
+          - OAUTH_MCP_DISCOVERABLE
         description:
           type: string
         id:
@@ -3671,6 +3679,35 @@ components:
             - string
             - "null"
             format: uuid
+          scopes:
+            type: string
+          userId:
+            type:
+            - string
+            - "null"
+            format: uuid
+      required:
+      - authType
+      - name
+    OAuthMcpDiscoverableAuthSetting:
+      allOf:
+      - $ref: "#/components/schemas/AuthSettingDto"
+      - type: object
+        properties:
+          clientId:
+            type: string
+          clientSecret:
+            type: string
+          name:
+            type: string
+            minLength: 1
+          namespaceId:
+            type:
+            - string
+            - "null"
+            format: uuid
+          resourceUrl:
+            type: string
           scopes:
             type: string
           userId:
