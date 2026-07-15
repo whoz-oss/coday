@@ -1,551 +1,159 @@
 openapi: 3.1.0
 info:
-  title: AgentOS API
   description: REST API for AgentOS — orchestration of AI agents via plugins
+  title: AgentOS API
   version: 0.0.1
 servers:
-- url: http://localhost:8124
-  description: Generated server url
+- description: Generated server url
+  url: http://localhost:8124
 tags:
-- name: sse
-  description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
+- description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
+  name: sse
 paths:
-  /api/users/{id}:
-    get:
-      tags:
-      - user-controller
-      operationId: getByIdUser
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-    put:
-      tags:
-      - user-controller
-      operationId: updateUser
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
+  /api/agent-configs:
+    post:
+      operationId: createAgentConfig
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/User"
+              $ref: "#/components/schemas/AgentConfig"
         required: true
       responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-    delete:
-      tags:
-      - user-controller
-      operationId: deleteUser
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/prompts/{id}:
-    get:
-      tags:
-      - prompt-controller
-      operationId: getByIdPrompt
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Prompt"
-    put:
-      tags:
-      - prompt-controller
-      operationId: updatePrompt
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Prompt"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Prompt"
-    delete:
-      tags:
-      - prompt-controller
-      operationId: deletePrompt
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/namespaces/{namespaceId}/members/{targetUserId}:
-    put:
-      tags:
-      - namespace-permission-endpoints
-      operationId: grantMember
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: targetUserId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-    delete:
-      tags:
-      - namespace-permission-endpoints
-      operationId: revokeMember
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: targetUserId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/namespaces/{namespaceId}/admins/{targetUserId}:
-    put:
-      tags:
-      - namespace-permission-endpoints
-      operationId: grantAdmin
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: targetUserId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-    delete:
-      tags:
-      - namespace-permission-endpoints
-      operationId: revokeAdmin
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: targetUserId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/namespaces/{id}:
-    get:
-      tags:
-      - namespace-controller
-      operationId: getByIdNamespace
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Namespace"
-    put:
-      tags:
-      - namespace-controller
-      operationId: updateNamespace
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Namespace"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Namespace"
-    delete:
-      tags:
-      - namespace-controller
-      operationId: deleteNamespace
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/integration-configs/{id}:
-    get:
-      tags:
-      - integration-config-controller
-      operationId: getByIdIntegrationConfig
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IntegrationConfig"
-    put:
-      tags:
-      - integration-config-controller
-      operationId: updateIntegrationConfig
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/IntegrationConfig"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IntegrationConfig"
-    delete:
-      tags:
-      - integration-config-controller
-      operationId: deleteIntegrationConfig
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/cases/{id}:
-    get:
-      tags:
-      - case-controller
-      operationId: getByIdCase
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Case"
-    put:
-      tags:
-      - case-controller
-      operationId: updateCase
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Case"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Case"
-    delete:
-      tags:
-      - case-controller
-      operationId: deleteCase
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/cases/{id}/star:
-    put:
-      tags:
-      - case-controller
-      operationId: starCase
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-    delete:
-      tags:
-      - case-controller
-      operationId: unstarCase
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/ai-providers/{id}:
-    get:
-      tags:
-      - ai-provider-controller
-      operationId: getByIdAiProvider
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AiProvider"
-    put:
-      tags:
-      - ai-provider-controller
-      operationId: updateAiProvider
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AiProvider"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AiProvider"
-    delete:
-      tags:
-      - ai-provider-controller
-      operationId: deleteAiProvider
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/ai-models/{id}:
-    get:
-      tags:
-      - ai-model-controller
-      operationId: getByIdAiModel
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AiModel"
-    put:
-      tags:
-      - ai-model-controller
-      operationId: updateAiModel
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AiModel"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AiModel"
-    delete:
-      tags:
-      - ai-model-controller
-      operationId: deleteAiModel
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-  /api/agent-configs/{id}:
-    get:
-      tags:
-      - agent-config-controller
-      operationId: getByIdAgentConfig
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
+        "201":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentConfig"
-    put:
+          description: Created
       tags:
       - agent-config-controller
+  /api/agent-configs/by-ids:
+    post:
+      operationId: getByIdsAgentConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentConfig"
+          description: OK
+      tags:
+      - agent-config-controller
+  /api/agent-configs/by-parentId/{parentId}:
+    get:
+      operationId: listByParentAgentConfig
+      parameters:
+      - in: path
+        name: parentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: withDisabled
+        required: false
+        schema:
+          type: boolean
+          default: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentConfig"
+          description: OK
+      tags:
+      - agent-config-controller
+  /api/agent-configs/platform:
+    get:
+      operationId: listPlatformAgentsAgentConfig
+      parameters:
+      - in: query
+        name: withDisabled
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentConfig"
+          description: OK
+      tags:
+      - agent-config-controller
+  /api/agent-configs/search:
+    post:
+      operationId: searchAgentConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentConfigSearchRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentConfig"
+          description: OK
+      tags:
+      - agent-config-controller
+  /api/agent-configs/{id}:
+    delete:
+      operationId: deleteAgentConfig
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - agent-config-controller
+    get:
+      operationId: getByIdAgentConfig
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+          description: OK
+      tags:
+      - agent-config-controller
+    put:
       operationId: updateAgentConfig
       parameters:
-      - name: id
-        in: path
+      - in: path
+        name: id
         required: true
         schema:
           type: string
@@ -558,291 +166,103 @@ paths:
         required: true
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentConfig"
-    delete:
+          description: OK
       tags:
       - agent-config-controller
-      operationId: deleteAgentConfig
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/users:
+  /api/agent-configs/{id}/definition:
     get:
-      tags:
-      - user-controller
-      operationId: listAllUser
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/User"
-    post:
-      tags:
-      - user-controller
-      operationId: createUser
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/User"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-  /api/users/groups-by-external-ids:
-    post:
-      tags:
-      - user-controller
-      operationId: getGroupsByExternalIdsUser
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GroupsByExternalIdsRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties:
-                  type: array
-                  items:
-                    $ref: "#/components/schemas/UserGroupSummary"
-  /api/users/by-ids:
-    post:
-      tags:
-      - user-controller
-      operationId: getByIdsUser
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GetByIdsRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/User"
-  /api/users/by-external-ids:
-    post:
-      tags:
-      - user-controller
-      operationId: listByExternalIdsUser
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                type: string
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/User"
-  /api/user-groups:
-    get:
-      tags:
-      - user-group-controller
-      operationId: findByNamespaceIdUserGroup
+      operationId: getDefinitionAgentConfig
       parameters:
-      - name: namespaceId
-        in: query
+      - in: path
+        name: id
         required: true
         schema:
           type: string
           format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/UserGroupSearchResult"
-    post:
-      tags:
-      - user-group-controller
-      operationId: createUserGroup
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserGroupCreateRequest"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserGroupSearchResult"
-  /api/user-groups/{userGroupId}:
-    get:
-      tags:
-      - user-group-controller
-      operationId: getByIdUserGroup
-      parameters:
-      - name: userGroupId
-        in: path
-        required: true
+      - in: query
+        name: withUserOverlay
+        required: false
         schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserGroupSearchResult"
-    post:
-      tags:
-      - user-group-controller
-      operationId: updateUserGroup
-      parameters:
-      - name: userGroupId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserGroupUpdateRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserGroupSearchResult"
-    delete:
-      tags:
-      - user-group-controller
-      operationId: deleteUserGroup
-      parameters:
-      - name: userGroupId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-  /api/prompts:
-    get:
-      tags:
-      - prompt-controller
-      summary: List Prompts by explicit scope
-      description: |-
-        Returns prompts for the given scope. `namespaceId` is required for `NAMESPACE` and `USER_NAMESPACE` scopes, and must be omitted for `PLATFORM` and `USER`.
-
-        | scope          | namespaceId | returned prompts                  | required permission       |
-        |----------------|-------------|-----------------------------------|---------------------------|
-        | PLATFORM       | absent      | platform-level (null, null)       | authenticated             |
-        | NAMESPACE      | required    | namespace-shared (ns, null)       | READ on namespace         |
-        | USER           | absent      | user-global (null, me)            | authenticated             |
-        | USER_NAMESPACE | required    | user × namespace (ns, me)        | READ on namespace         |
-      operationId: listPrompt
-      parameters:
-      - name: scope
-        in: query
-        description: Scope of prompts to return.
-        required: true
-        schema:
-          type: string
-          enum:
-          - PLATFORM
-          - NAMESPACE
-          - USER
-          - USER_NAMESPACE
-      - name: namespaceId
-        in: query
+          type: boolean
+          default: false
+      - in: query
+        name: namespaceId
         required: false
         schema:
           type: string
           format: uuid
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
-    post:
+                $ref: "#/components/schemas/AgentDefinition"
+          description: OK
       tags:
-      - prompt-controller
-      summary: Create a Prompt
-      description: |-
-        Scope is inferred from `(body.namespaceId, body.userId)`:
-
-        | body.namespaceId | body.userId      | scope           | required permission        |
-        |------------------|------------------|-----------------|----------------------------|
-        | null             | null             | platform        | Super Admin only           |
-        | present          | null             | namespace       | WRITE on the namespace     |
-        | null             | <currentUser.id> | user-global     | authenticated only         |
-        | present          | <currentUser.id> | user×namespace  | READ on the namespace      |
-
-        `body.userId` must equal the authenticated user's id when supplied. A `namespaceId` that does not exist returns 404.
-      operationId: createPrompt
+      - agent-config-controller
+  /api/agent-configs/{id}/disable:
+    post:
+      operationId: disableAgentConfig
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+          description: OK
+      tags:
+      - agent-config-controller
+  /api/agent-configs/{id}/enable:
+    post:
+      operationId: enableAgentConfig
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+          description: OK
+      tags:
+      - agent-config-controller
+  /api/ai-models:
+    post:
+      operationId: createAiModel
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Prompt"
+              $ref: "#/components/schemas/AiModel"
         required: true
       responses:
         "201":
-          description: Created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Prompt"
-  /api/prompts/by-ids:
-    post:
+                $ref: "#/components/schemas/AiModel"
+          description: Created
       tags:
-      - prompt-controller
-      operationId: getByIdsPrompt
+      - ai-model-controller
+  /api/ai-models/by-ids:
+    post:
+      operationId: getByIdsAiModel
       requestBody:
         content:
           application/json:
@@ -851,291 +271,132 @@ paths:
         required: true
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Prompt"
-  /api/plugins/{pluginId}/stop:
-    post:
-      tags:
-      - plugin-controller
-      operationId: stopPlugin
-      parameters:
-      - name: pluginId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
+                  $ref: "#/components/schemas/AiModel"
           description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/PluginActionResponse"
-  /api/plugins/{pluginId}/start:
-    post:
       tags:
-      - plugin-controller
-      operationId: startPlugin
-      parameters:
-      - name: pluginId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/PluginActionResponse"
-  /api/plugins/{pluginId}/reload:
-    post:
-      tags:
-      - plugin-controller
-      operationId: reloadPlugin
-      parameters:
-      - name: pluginId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/PluginActionResponse"
-  /api/plugins/upload:
-    post:
-      tags:
-      - plugin-controller
-      operationId: uploadPlugin
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required:
-              - file
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/PluginUploadResponse"
-  /api/plugins/reload-agents:
-    post:
-      tags:
-      - plugin-controller
-      operationId: reloadAllAgentsPlugin
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/PluginActionResponse"
-  /api/namespaces:
+      - ai-model-controller
+  /api/ai-models/by-namespaceId/{namespaceId}:
     get:
-      tags:
-      - namespace-controller
-      operationId: listAllNamespace
+      operationId: listByNamespaceIdAiModel
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/NamespaceListItem"
-    post:
+                  $ref: "#/components/schemas/AiModel"
+          description: OK
       tags:
-      - namespace-controller
-      operationId: createNamespace
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Namespace"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Namespace"
-  /api/namespaces/{namespaceId}/undeploy-agents:
-    post:
-      tags:
-      - namespace-controller
-      operationId: undeployAgentsNamespace
+      - ai-model-controller
+  /api/ai-models/by-parentId/{parentId}:
+    get:
+      operationId: listByParentAiModel
       parameters:
-      - name: namespaceId
-        in: path
+      - in: path
+        name: parentId
         required: true
         schema:
           type: string
           format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NamespaceAgentDeployRequest"
-        required: true
-      responses:
-        "204":
-          description: No Content
-  /api/namespaces/{namespaceId}/files:
-    post:
-      tags:
-      - exchange-controller
-      operationId: uploadNamespaceFileExchange
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                file:
-                  type: string
-                  format: binary
-              required:
-              - file
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExchangeFileEntry"
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiModel"
+          description: OK
+      tags:
+      - ai-model-controller
+  /api/ai-models/platform:
+    get:
+      operationId: listPlatformLevelAiModel
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiModel"
+          description: OK
+      tags:
+      - ai-model-controller
+  /api/ai-models/{id}:
     delete:
-      tags:
-      - exchange-controller
-      operationId: deleteNamespaceFileExchange
+      operationId: deleteAiModel
       parameters:
-      - name: namespaceId
-        in: path
+      - in: path
+        name: id
         required: true
         schema:
           type: string
           format: uuid
-      - name: path
-        in: query
-        required: true
-        schema:
-          type: string
       responses:
         "200":
           description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExchangeDeleteResponse"
-  /api/namespaces/{namespaceId}/deploy-agents:
-    post:
       tags:
-      - namespace-controller
-      operationId: deployAgentsNamespace
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NamespaceAgentDeployRequest"
-        required: true
-      responses:
-        "204":
-          description: No Content
-  /api/namespaces/update-roles-by-external-id:
-    post:
-      tags:
-      - namespace-permission-endpoints
-      operationId: updateRolesByExternalId
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SyncUserRolesRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SyncUserRolesRequest"
-  /api/namespaces/by-ids:
-    post:
-      tags:
-      - namespace-controller
-      operationId: getByIdsNamespace
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GetByIdsRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Namespace"
-  /api/namespaces/by-external-ids:
-    post:
-      tags:
-      - namespace-controller
-      operationId: listByExternalIdsNamespace
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                type: string
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Namespace"
-  /api/integration-configs:
+      - ai-model-controller
     get:
+      operationId: getByIdAiModel
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiModel"
+          description: OK
       tags:
-      - integration-config-controller
-      summary: List IntegrationConfigs by scope
+      - ai-model-controller
+    put:
+      operationId: updateAiModel
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiModel"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiModel"
+          description: OK
+      tags:
+      - ai-model-controller
+  /api/ai-providers:
+    get:
       description: |-
-        Scope is inferred from the query params :
+        Scope is inferred from the query params:
 
         | query                            | mode             | required permission                            |
         |----------------------------------|------------------|------------------------------------------------|
@@ -1145,64 +406,63 @@ paths:
         | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
         | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
 
-        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
-
-        When called with no params, returns platform-level configs.
-      operationId: listIntegrationConfig
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL` (listing is not exposed, mass-assignment guard, AC4).
+      operationId: listAiProvider
       parameters:
-      - name: namespaceId
-        in: query
+      - in: query
+        name: namespaceId
         required: false
         schema:
           type: string
-      - name: userId
-        in: query
+      - in: query
+        name: userId
         required: false
         schema:
           type: string
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/IntegrationConfig"
-    post:
+                  $ref: "#/components/schemas/AiProvider"
+          description: OK
+      summary: List AiProviders by scope
       tags:
-      - integration-config-controller
-      summary: Create an IntegrationConfig
+      - ai-provider-controller
+    post:
       description: |-
         Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :
 
         | body.namespaceId | body.userId        | scope         | required permission                  |
         |------------------|--------------------|---------------|--------------------------------------|
-        | null             | null               | platform      | Super Admin only                     |
+        | null             | null               | platform      | super-admin only                     |
         | present          | null               | NS-shared     | WRITE on the namespace               |
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
 
-        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404.
-      operationId: createIntegrationConfig
+        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15 / AC2-AC3). A `namespaceId` that does not exist returns 404 (Decision 15 / AC7).
+      operationId: createAiProvider
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/IntegrationConfig"
+              $ref: "#/components/schemas/AiProvider"
         required: true
       responses:
         "201":
-          description: Created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IntegrationConfig"
-  /api/integration-configs/by-ids:
-    post:
+                $ref: "#/components/schemas/AiProvider"
+          description: Created
+      summary: Create an AiProvider
       tags:
-      - integration-config-controller
-      operationId: getByIdsIntegrationConfig
+      - ai-provider-controller
+  /api/ai-providers/by-ids:
+    post:
+      operationId: getByIdsAiProvider
       requestBody:
         content:
           application/json:
@@ -1211,208 +471,74 @@ paths:
         required: true
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/IntegrationConfig"
-  /api/feedbacks:
-    post:
-      tags:
-      - feedback-controller
-      operationId: createFeedback
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/FeedbackInput"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Feedback"
-  /api/cases:
-    post:
-      tags:
-      - case-controller
-      operationId: createCase
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Case"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Case"
-  /api/cases/{caseId}/messages:
-    post:
-      tags:
-      - case-controller
-      summary: Add a message
-      description: "POST /api/cases/{caseId}/messages — add a user message to a running\
-        \ case."
-      operationId: addMessageCase
-      parameters:
-      - name: caseId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AddMessageRequest"
-        required: true
-      responses:
-        "200":
+                  $ref: "#/components/schemas/AiProvider"
           description: OK
-  /api/cases/{caseId}/kill:
-    post:
       tags:
-      - case-controller
-      summary: Kill a case
-      description: "POST /api/cases/{caseId}/kill — permanently terminate a case."
-      operationId: killCase
-      parameters:
-      - name: caseId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-  /api/cases/{caseId}/interrupt:
-    post:
-      tags:
-      - case-controller
-      summary: Interrupt a case
-      description: "POST /api/cases/{caseId}/interrupt — interrupt the current agent\
-        \ turn gracefully."
-      operationId: interruptCase
-      parameters:
-      - name: caseId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-  /api/cases/{caseId}/files:
-    post:
-      tags:
-      - exchange-controller
-      operationId: uploadCaseFileExchange
-      parameters:
-      - name: caseId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                file:
-                  type: string
-                  format: binary
-              required:
-              - file
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExchangeFileEntry"
+      - ai-provider-controller
+  /api/ai-providers/{id}:
     delete:
-      tags:
-      - exchange-controller
-      operationId: deleteCaseFileExchange
+      operationId: deleteAiProvider
       parameters:
-      - name: caseId
-        in: path
+      - in: path
+        name: id
         required: true
         schema:
           type: string
           format: uuid
-      - name: path
-        in: query
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - ai-provider-controller
+    get:
+      operationId: getByIdAiProvider
+      parameters:
+      - in: path
+        name: id
         required: true
         schema:
           type: string
+          format: uuid
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExchangeDeleteResponse"
-  /api/cases/by-user/in-namespace:
-    post:
+                $ref: "#/components/schemas/AiProvider"
+          description: OK
       tags:
-      - case-controller
-      summary: List cases by user and namespace (external IDs)
-      description: "POST /api/cases/by-user/in-namespace — list cases for a user scoped\
-        \ to a namespace, both identified by their external IDs."
-      operationId: listByUserInNamespaceCase
+      - ai-provider-controller
+    put:
+      operationId: updateAiProvider
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ListByUserInNamespaceRequest"
+              $ref: "#/components/schemas/AiProvider"
         required: true
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Case"
-  /api/cases/by-ids:
-    post:
+                $ref: "#/components/schemas/AiProvider"
+          description: OK
       tags:
-      - case-controller
-      operationId: getByIdsCase
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GetByIdsRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Case"
+      - ai-provider-controller
   /api/case-events/by-ids:
     post:
-      tags:
-      - case-event-rest-controller
       operationId: getByIdsCaseEventRest
       requestBody:
         content:
@@ -1425,7 +551,6 @@ paths:
         required: true
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
@@ -1450,731 +575,60 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
-  /api/ai-providers:
-    get:
-      tags:
-      - ai-provider-controller
-      summary: List AiProviders by scope
-      description: |-
-        Scope is inferred from the query params:
-
-        | query                            | mode             | required permission                            |
-        |----------------------------------|------------------|------------------------------------------------|
-        | (no params)                      | platform         | authenticated                                  |
-        | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
-        | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
-        | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
-        | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
-
-        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL` (listing is not exposed, mass-assignment guard, AC4).
-      operationId: listAiProvider
-      parameters:
-      - name: namespaceId
-        in: query
-        required: false
-        schema:
-          type: string
-      - name: userId
-        in: query
-        required: false
-        schema:
-          type: string
-      responses:
-        "200":
           description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiProvider"
-    post:
-      tags:
-      - ai-provider-controller
-      summary: Create an AiProvider
-      description: |-
-        Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :
-
-        | body.namespaceId | body.userId        | scope         | required permission                  |
-        |------------------|--------------------|---------------|--------------------------------------|
-        | null             | null               | platform      | super-admin only                     |
-        | present          | null               | NS-shared     | WRITE on the namespace               |
-        | null             | <currentUser.id>   | user-global   | authenticated only                   |
-        | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
-
-        `body.userId` (when supplied) MUST equal the authenticated user's id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15 / AC2-AC3). A `namespaceId` that does not exist returns 404 (Decision 15 / AC7).
-      operationId: createAiProvider
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AiProvider"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AiProvider"
-  /api/ai-providers/by-ids:
-    post:
-      tags:
-      - ai-provider-controller
-      operationId: getByIdsAiProvider
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GetByIdsRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiProvider"
-  /api/ai-models:
-    post:
-      tags:
-      - ai-model-controller
-      operationId: createAiModel
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AiModel"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AiModel"
-  /api/ai-models/by-ids:
-    post:
-      tags:
-      - ai-model-controller
-      operationId: getByIdsAiModel
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GetByIdsRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiModel"
-  /api/agent-configs:
-    post:
-      tags:
-      - agent-config-controller
-      operationId: createAgentConfig
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AgentConfig"
-        required: true
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AgentConfig"
-  /api/agent-configs/{id}/enable:
-    post:
-      tags:
-      - agent-config-controller
-      operationId: enableAgentConfig
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AgentConfig"
-  /api/agent-configs/{id}/disable:
-    post:
-      tags:
-      - agent-config-controller
-      operationId: disableAgentConfig
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AgentConfig"
-  /api/agent-configs/search:
-    post:
-      tags:
-      - agent-config-controller
-      operationId: searchAgentConfig
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AgentConfigSearchRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AgentConfig"
-  /api/agent-configs/by-ids:
-    post:
-      tags:
-      - agent-config-controller
-      operationId: getByIdsAgentConfig
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GetByIdsRequest"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AgentConfig"
-  /api/users/me:
-    get:
-      tags:
-      - user-controller
-      summary: Get the current user's profile
-      operationId: getMeUser
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-  /api/prompts/effective:
-    get:
-      tags:
-      - prompt-controller
-      summary: Effective prompts for a namespace
-      description: "Returns the resolved set of prompts accessible in the given namespace\
-        \ context. Merges platform, namespace-shared, user-global and user×namespace\
-        \ layers by name, highest-priority layer wins. Requires READ on the namespace."
-      operationId: findEffectiveByNamespaceIdPrompt
-      parameters:
-      - name: namespaceId
-        in: query
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
-  /api/prompts/by-parentId/{parentId}:
-    get:
-      tags:
-      - prompt-controller
-      operationId: listByParentPrompt
-      parameters:
-      - name: parentId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
-  /api/plugins:
-    get:
-      tags:
-      - plugin-controller
-      operationId: getAllPlugins
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/PluginInfo"
-  /api/plugins/{pluginId}:
-    get:
-      tags:
-      - plugin-controller
-      operationId: getPlugin
-      parameters:
-      - name: pluginId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/PluginInfo"
-    delete:
-      tags:
-      - plugin-controller
-      operationId: unloadPlugin
-      parameters:
-      - name: pluginId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/PluginActionResponse"
-  /api/plugins/{pluginId}/debug:
-    get:
-      tags:
-      - plugin-controller
-      operationId: debugPlugin
-      parameters:
-      - name: pluginId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/PluginActionResponse"
-  /api/plugins/debug:
-    get:
-      tags:
-      - plugin-controller
-      operationId: debugAllPlugins
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/PluginActionResponse"
-  /api/namespaces/{namespaceId}/users:
-    get:
-      tags:
-      - namespace-permission-endpoints
-      operationId: listNamespaceUsers
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/NamespaceUserListItem"
-  /api/namespaces/{namespaceId}/files/manifest:
-    get:
-      tags:
-      - exchange-controller
-      operationId: getNamespaceFilesManifestExchange
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExchangeManifest"
-  /api/namespaces/{namespaceId}/files/download:
-    get:
-      tags:
-      - exchange-controller
-      operationId: downloadNamespaceFileExchange
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: path
-        in: query
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: byte
-  /api/namespaces/{namespaceId}/files/content:
-    get:
-      tags:
-      - exchange-controller
-      operationId: getNamespaceFileContentExchange
-      parameters:
-      - name: namespaceId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: path
-        in: query
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExchangeFileContent"
-  /api/integration-types:
-    get:
-      tags:
-      - integration-type-controller
-      operationId: listTypesIntegrationType
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/IntegrationTypeDescriptor"
-  /api/integration-types/{type}:
-    get:
-      tags:
-      - integration-type-controller
-      operationId: getTypeIntegrationType
-      parameters:
-      - name: type
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IntegrationTypeDescriptor"
-  /api/feedbacks/by-parentId/{caseId}:
-    get:
-      tags:
-      - feedback-controller
-      operationId: listByCaseFeedback
-      parameters:
-      - name: caseId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Feedback"
-  /api/feedbacks/by-case-event/{caseEventId}:
-    get:
-      tags:
-      - feedback-controller
-      operationId: listByCaseEventFeedback
-      parameters:
-      - name: caseEventId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Feedback"
-  /api/cases/{caseId}/files/manifest:
-    get:
-      tags:
-      - exchange-controller
-      operationId: getCaseFilesManifestExchange
-      parameters:
-      - name: caseId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExchangeManifest"
-  /api/cases/{caseId}/files/download:
-    get:
-      tags:
-      - exchange-controller
-      operationId: downloadCaseFileExchange
-      parameters:
-      - name: caseId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: path
-        in: query
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: byte
-  /api/cases/{caseId}/files/content:
-    get:
-      tags:
-      - exchange-controller
-      operationId: getCaseFileContentExchange
-      parameters:
-      - name: caseId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: path
-        in: query
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExchangeFileContent"
-  /api/cases/{caseId}/events:
-    get:
-      tags:
-      - sse
-      summary: Stream case events via SSE
-      description: "Server-Sent Events stream emitting all events generated during\
-        \ case execution. Use the browser EventSource API to consume this endpoint,\
-        \ not a regular HTTP client."
-      operationId: streamEventsCaseEventSse
-      parameters:
-      - name: caseId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: includePreviousEvents
-        in: query
-        required: false
-        schema:
-          type: boolean
-      responses:
-        "200":
-          description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
-            \ (MessageEvent, ToolRequestEvent, etc.) with a \"type\" discriminant\
-            \ field."
-          content:
-            text/event-stream: {}
-  /api/cases/by-user/{userId}:
-    get:
-      tags:
-      - case-controller
-      summary: List cases by user
-      description: "GET /api/cases/by-user/{userId} — list all cases concerning a\
-        \ specific user."
-      operationId: listByUserCase
-      parameters:
-      - name: userId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Case"
-  /api/cases/by-user/external/{externalId}:
-    get:
-      tags:
-      - case-controller
-      summary: List cases by user external ID
-      description: "GET /api/cases/by-user/external/{externalId} — list cases for\
-        \ a user identified by their IdP key."
-      operationId: listByUserExternalIdCase
-      parameters:
-      - name: externalId
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Case"
-  /api/cases/by-parentId/{parentId}:
-    get:
-      tags:
-      - case-controller
-      summary: List cases by namespace
-      description: "GET /api/cases/by-parentId/{parentId} — list all cases belonging\
-        \ to a namespace."
-      operationId: listByParentCase
-      parameters:
-      - name: parentId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Case"
-  /api/cases/by-parentId/{parentId}/mine:
-    get:
-      tags:
-      - case-controller
-      operationId: listMineByParentCase
-      parameters:
-      - name: parentId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Case"
-  /api/case-events/{id}:
-    get:
       tags:
       - case-event-rest-controller
-      operationId: getByIdCaseEventRest
+  /api/case-events/by-parentId/{caseId}:
+    get:
+      operationId: listByCaseCaseEventRest
       parameters:
-      - name: id
-        in: path
+      - in: path
+        name: caseId
         required: true
         schema:
           type: string
           format: uuid
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                  - $ref: "#/components/schemas/AgentFinishedEvent"
+                  - $ref: "#/components/schemas/AgentRunningEvent"
+                  - $ref: "#/components/schemas/AgentSelectedEvent"
+                  - $ref: "#/components/schemas/AnswerEvent"
+                  - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/CaseUpdatedEvent"
+                  - $ref: "#/components/schemas/ConfirmationResolvedEvent"
+                  - $ref: "#/components/schemas/ErrorEvent"
+                  - $ref: "#/components/schemas/IntentionGeneratedEvent"
+                  - $ref: "#/components/schemas/MessageEvent"
+                  - $ref: "#/components/schemas/PendingConfirmationEvent"
+                  - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/TextChunkEvent"
+                  - $ref: "#/components/schemas/ThinkingEvent"
+                  - $ref: "#/components/schemas/ToolRequestEvent"
+                  - $ref: "#/components/schemas/ToolResponseEvent"
+                  - $ref: "#/components/schemas/ToolSelectedEvent"
+                  - $ref: "#/components/schemas/WarnEvent"
           description: OK
+      tags:
+      - case-event-rest-controller
+  /api/case-events/{id}:
+    get:
+      operationId: getByIdCaseEventRest
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
           content:
             application/json:
               schema:
@@ -2197,795 +651,1734 @@ paths:
                 - $ref: "#/components/schemas/ToolResponseEvent"
                 - $ref: "#/components/schemas/ToolSelectedEvent"
                 - $ref: "#/components/schemas/WarnEvent"
-  /api/case-events/by-parentId/{caseId}:
-    get:
+          description: OK
       tags:
       - case-event-rest-controller
-      operationId: listByCaseCaseEventRest
+  /api/cases:
+    post:
+      operationId: createCase
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Case"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: Created
+      tags:
+      - case-controller
+  /api/cases/by-ids:
+    post:
+      operationId: getByIdsCase
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
+          description: OK
+      tags:
+      - case-controller
+  /api/cases/by-parentId/{parentId}:
+    get:
+      description: "GET /api/cases/by-parentId/{parentId} — list all cases belonging\
+        \ to a namespace."
+      operationId: listByParentCase
       parameters:
-      - name: caseId
-        in: path
+      - in: path
+        name: parentId
         required: true
         schema:
           type: string
           format: uuid
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  oneOf:
-                  - $ref: "#/components/schemas/AgentFinishedEvent"
-                  - $ref: "#/components/schemas/AgentRunningEvent"
-                  - $ref: "#/components/schemas/AgentSelectedEvent"
-                  - $ref: "#/components/schemas/AnswerEvent"
-                  - $ref: "#/components/schemas/CaseStatusEvent"
-                  - $ref: "#/components/schemas/CaseUpdatedEvent"
-                  - $ref: "#/components/schemas/ConfirmationResolvedEvent"
-                  - $ref: "#/components/schemas/ErrorEvent"
-                  - $ref: "#/components/schemas/IntentionGeneratedEvent"
-                  - $ref: "#/components/schemas/MessageEvent"
-                  - $ref: "#/components/schemas/PendingConfirmationEvent"
-                  - $ref: "#/components/schemas/QuestionEvent"
-                  - $ref: "#/components/schemas/TextChunkEvent"
-                  - $ref: "#/components/schemas/ThinkingEvent"
-                  - $ref: "#/components/schemas/ToolRequestEvent"
-                  - $ref: "#/components/schemas/ToolResponseEvent"
-                  - $ref: "#/components/schemas/ToolSelectedEvent"
-                  - $ref: "#/components/schemas/WarnEvent"
-  /api/ai-models/platform:
-    get:
-      tags:
-      - ai-model-controller
-      operationId: listPlatformLevelAiModel
-      responses:
-        "200":
+                  $ref: "#/components/schemas/Case"
           description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AiModel"
-  /api/ai-models/by-parentId/{parentId}:
-    get:
+      summary: List cases by namespace
       tags:
-      - ai-model-controller
-      operationId: listByParentAiModel
+      - case-controller
+  /api/cases/by-parentId/{parentId}/mine:
+    get:
+      operationId: listMineByParentCase
       parameters:
-      - name: parentId
-        in: path
+      - in: path
+        name: parentId
         required: true
         schema:
           type: string
           format: uuid
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/AiModel"
-  /api/ai-models/by-namespaceId/{namespaceId}:
-    get:
+                  $ref: "#/components/schemas/Case"
+          description: OK
       tags:
-      - ai-model-controller
-      operationId: listByNamespaceIdAiModel
+      - case-controller
+  /api/cases/by-user/external/{externalId}:
+    get:
+      description: "GET /api/cases/by-user/external/{externalId} — list cases for\
+        \ a user identified by their IdP key."
+      operationId: listByUserExternalIdCase
       parameters:
-      - name: namespaceId
-        in: path
+      - in: path
+        name: externalId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
+          description: OK
+      summary: List cases by user external ID
+      tags:
+      - case-controller
+  /api/cases/by-user/in-namespace:
+    post:
+      description: "POST /api/cases/by-user/in-namespace — list cases for a user scoped\
+        \ to a namespace, both identified by their external IDs."
+      operationId: listByUserInNamespaceCase
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListByUserInNamespaceRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Case"
+          description: OK
+      summary: List cases by user and namespace (external IDs)
+      tags:
+      - case-controller
+  /api/cases/by-user/{userId}:
+    get:
+      description: "GET /api/cases/by-user/{userId} — list all cases concerning a\
+        \ specific user."
+      operationId: listByUserCase
+      parameters:
+      - in: path
+        name: userId
         required: true
         schema:
           type: string
           format: uuid
       responses:
         "200":
-          description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/AiModel"
-  /api/agent-configs/{id}/definition:
-    get:
+                  $ref: "#/components/schemas/Case"
+          description: OK
+      summary: List cases by user
       tags:
-      - agent-config-controller
-      operationId: getDefinitionAgentConfig
+      - case-controller
+  /api/cases/{caseId}/events:
+    get:
+      description: "Server-Sent Events stream emitting all events generated during\
+        \ case execution. Use the browser EventSource API to consume this endpoint,\
+        \ not a regular HTTP client."
+      operationId: streamEventsCaseEventSse
       parameters:
-      - name: id
-        in: path
+      - in: path
+        name: caseId
         required: true
         schema:
           type: string
           format: uuid
-      - name: withUserOverlay
-        in: query
+      - in: query
+        name: includePreviousEvents
         required: false
         schema:
           type: boolean
-          default: false
-      - name: namespaceId
-        in: query
-        required: false
-        schema:
-          type: string
-          format: uuid
       responses:
         "200":
-          description: OK
           content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AgentDefinition"
-  /api/agent-configs/platform:
-    get:
+            text/event-stream: {}
+          description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
+            \ (MessageEvent, ToolRequestEvent, etc.) with a \"type\" discriminant\
+            \ field."
+      summary: Stream case events via SSE
       tags:
-      - agent-config-controller
-      operationId: listPlatformAgentsAgentConfig
+      - sse
+  /api/cases/{caseId}/files:
+    delete:
+      operationId: deleteCaseFileExchange
       parameters:
-      - name: withDisabled
-        in: query
-        required: false
-        schema:
-          type: boolean
-          default: false
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AgentConfig"
-  /api/agent-configs/by-parentId/{parentId}:
-    get:
-      tags:
-      - agent-config-controller
-      operationId: listByParentAgentConfig
-      parameters:
-      - name: parentId
-        in: path
+      - in: path
+        name: caseId
         required: true
         schema:
           type: string
           format: uuid
-      - name: withDisabled
-        in: query
-        required: false
+      - in: query
+        name: path
+        required: true
         schema:
-          type: boolean
-          default: true
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDeleteResponse"
+          description: OK
+      tags:
+      - exchange-controller
+    post:
+      operationId: uploadCaseFileExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+              - file
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileEntry"
+          description: OK
+      tags:
+      - exchange-controller
+  /api/cases/{caseId}/files/content:
+    get:
+      operationId: getCaseFileContentExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileContent"
+          description: OK
+      tags:
+      - exchange-controller
+  /api/cases/{caseId}/files/download:
+    get:
+      operationId: downloadCaseFileExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: byte
+          description: OK
+      tags:
+      - exchange-controller
+  /api/cases/{caseId}/files/manifest:
+    get:
+      operationId: getCaseFilesManifestExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeManifest"
+          description: OK
+      tags:
+      - exchange-controller
+  /api/cases/{caseId}/interrupt:
+    post:
+      description: "POST /api/cases/{caseId}/interrupt — interrupt the current agent\
+        \ turn gracefully."
+      operationId: interruptCase
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
       responses:
         "200":
           description: OK
+      summary: Interrupt a case
+      tags:
+      - case-controller
+  /api/cases/{caseId}/kill:
+    post:
+      description: "POST /api/cases/{caseId}/kill — permanently terminate a case."
+      operationId: killCase
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+      summary: Kill a case
+      tags:
+      - case-controller
+  /api/cases/{caseId}/messages:
+    post:
+      description: "POST /api/cases/{caseId}/messages — add a user message to a running\
+        \ case."
+      operationId: addMessageCase
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddMessageRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+      summary: Add a message
+      tags:
+      - case-controller
+  /api/cases/{id}:
+    delete:
+      operationId: deleteCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - case-controller
+    get:
+      operationId: getByIdCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      tags:
+      - case-controller
+    put:
+      operationId: updateCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Case"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      tags:
+      - case-controller
+  /api/cases/{id}/star:
+    delete:
+      operationId: unstarCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - case-controller
+    put:
+      operationId: starCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+      tags:
+      - case-controller
+  /api/feedbacks:
+    post:
+      operationId: createFeedback
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackInput"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feedback"
+          description: Created
+      tags:
+      - feedback-controller
+  /api/feedbacks/by-case-event/{caseEventId}:
+    get:
+      operationId: listByCaseEventFeedback
+      parameters:
+      - in: path
+        name: caseEventId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/AgentConfig"
+                  $ref: "#/components/schemas/Feedback"
+          description: OK
+      tags:
+      - feedback-controller
+  /api/feedbacks/by-parentId/{caseId}:
+    get:
+      operationId: listByCaseFeedback
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Feedback"
+          description: OK
+      tags:
+      - feedback-controller
+  /api/integration-configs:
+    get:
+      description: |-
+        Scope is inferred from the query params :
+
+        | query                            | mode             | required permission                            |
+        |----------------------------------|------------------|------------------------------------------------|
+        | (no params)                      | platform         | authenticated                                  |
+        | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
+        | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
+        | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
+        | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
+
+        `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
+
+        When called with no params, returns platform-level configs.
+      operationId: listIntegrationConfig
+      parameters:
+      - in: query
+        name: namespaceId
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: userId
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationConfig"
+          description: OK
+      summary: List IntegrationConfigs by scope
+      tags:
+      - integration-config-controller
+    post:
+      description: |-
+        Scope is inferred implicitly from the body's `(namespaceId, userId)` pair :
+
+        | body.namespaceId | body.userId        | scope         | required permission                  |
+        |------------------|--------------------|---------------|--------------------------------------|
+        | null             | null               | platform      | Super Admin only                     |
+        | present          | null               | NS-shared     | WRITE on the namespace               |
+        | null             | <currentUser.id>   | user-global   | authenticated only                   |
+        | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
+
+        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404.
+      operationId: createIntegrationConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationConfig"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationConfig"
+          description: Created
+      summary: Create an IntegrationConfig
+      tags:
+      - integration-config-controller
+  /api/integration-configs/by-ids:
+    post:
+      operationId: getByIdsIntegrationConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationConfig"
+          description: OK
+      tags:
+      - integration-config-controller
+  /api/integration-configs/{id}:
+    delete:
+      operationId: deleteIntegrationConfig
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - integration-config-controller
+    get:
+      operationId: getByIdIntegrationConfig
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationConfig"
+          description: OK
+      tags:
+      - integration-config-controller
+    put:
+      operationId: updateIntegrationConfig
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationConfig"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationConfig"
+          description: OK
+      tags:
+      - integration-config-controller
+  /api/integration-types:
+    get:
+      operationId: listTypesIntegrationType
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationTypeDescriptor"
+          description: OK
+      tags:
+      - integration-type-controller
+  /api/integration-types/{type}:
+    get:
+      operationId: getTypeIntegrationType
+      parameters:
+      - in: path
+        name: type
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationTypeDescriptor"
+          description: OK
+      tags:
+      - integration-type-controller
+  /api/namespaces:
+    get:
+      operationId: listAllNamespace
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NamespaceListItem"
+          description: OK
+      tags:
+      - namespace-controller
+    post:
+      operationId: createNamespace
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Namespace"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Namespace"
+          description: Created
+      tags:
+      - namespace-controller
+  /api/namespaces/by-external-ids:
+    post:
+      operationId: listByExternalIdsNamespace
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
+          description: OK
+      tags:
+      - namespace-controller
+  /api/namespaces/by-ids:
+    post:
+      operationId: getByIdsNamespace
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
+          description: OK
+      tags:
+      - namespace-controller
+  /api/namespaces/update-roles-by-external-id:
+    post:
+      operationId: updateRolesByExternalId
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncUserRolesRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncUserRolesRequest"
+          description: OK
+      tags:
+      - namespace-permission-endpoints
+  /api/namespaces/{id}:
+    delete:
+      operationId: deleteNamespace
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - namespace-controller
+    get:
+      operationId: getByIdNamespace
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Namespace"
+          description: OK
+      tags:
+      - namespace-controller
+    put:
+      operationId: updateNamespace
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Namespace"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Namespace"
+          description: OK
+      tags:
+      - namespace-controller
+  /api/namespaces/{namespaceId}/admins/{targetUserId}:
+    delete:
+      operationId: revokeAdmin
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: targetUserId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - namespace-permission-endpoints
+    put:
+      operationId: grantAdmin
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: targetUserId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+      tags:
+      - namespace-permission-endpoints
+  /api/namespaces/{namespaceId}/deploy-agents:
+    post:
+      operationId: deployAgentsNamespace
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamespaceAgentDeployRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - namespace-controller
+  /api/namespaces/{namespaceId}/files:
+    delete:
+      operationId: deleteNamespaceFileExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDeleteResponse"
+          description: OK
+      tags:
+      - exchange-controller
+    post:
+      operationId: uploadNamespaceFileExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+              - file
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileEntry"
+          description: OK
+      tags:
+      - exchange-controller
+  /api/namespaces/{namespaceId}/files/content:
+    get:
+      operationId: getNamespaceFileContentExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileContent"
+          description: OK
+      tags:
+      - exchange-controller
+  /api/namespaces/{namespaceId}/files/download:
+    get:
+      operationId: downloadNamespaceFileExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: byte
+          description: OK
+      tags:
+      - exchange-controller
+  /api/namespaces/{namespaceId}/files/manifest:
+    get:
+      operationId: getNamespaceFilesManifestExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeManifest"
+          description: OK
+      tags:
+      - exchange-controller
+  /api/namespaces/{namespaceId}/members/{targetUserId}:
+    delete:
+      operationId: revokeMember
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: targetUserId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - namespace-permission-endpoints
+    put:
+      operationId: grantMember
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: targetUserId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+      tags:
+      - namespace-permission-endpoints
+  /api/namespaces/{namespaceId}/undeploy-agents:
+    post:
+      operationId: undeployAgentsNamespace
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamespaceAgentDeployRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - namespace-controller
+  /api/namespaces/{namespaceId}/users:
+    get:
+      operationId: listNamespaceUsers
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NamespaceUserListItem"
+          description: OK
+      tags:
+      - namespace-permission-endpoints
+  /api/plugins:
+    get:
+      operationId: getAllPlugins
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PluginInfo"
+          description: OK
+      tags:
+      - plugin-controller
+  /api/plugins/debug:
+    get:
+      operationId: debugAllPlugins
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PluginActionResponse"
+          description: OK
+      tags:
+      - plugin-controller
+  /api/plugins/reload-agents:
+    post:
+      operationId: reloadAllAgentsPlugin
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PluginActionResponse"
+          description: OK
+      tags:
+      - plugin-controller
+  /api/plugins/upload:
+    post:
+      operationId: uploadPlugin
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PluginUploadResponse"
+          description: OK
+      tags:
+      - plugin-controller
+  /api/plugins/{pluginId}:
+    delete:
+      operationId: unloadPlugin
+      parameters:
+      - in: path
+        name: pluginId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PluginActionResponse"
+          description: OK
+      tags:
+      - plugin-controller
+    get:
+      operationId: getPlugin
+      parameters:
+      - in: path
+        name: pluginId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PluginInfo"
+          description: OK
+      tags:
+      - plugin-controller
+  /api/plugins/{pluginId}/debug:
+    get:
+      operationId: debugPlugin
+      parameters:
+      - in: path
+        name: pluginId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PluginActionResponse"
+          description: OK
+      tags:
+      - plugin-controller
+  /api/plugins/{pluginId}/reload:
+    post:
+      operationId: reloadPlugin
+      parameters:
+      - in: path
+        name: pluginId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PluginActionResponse"
+          description: OK
+      tags:
+      - plugin-controller
+  /api/plugins/{pluginId}/start:
+    post:
+      operationId: startPlugin
+      parameters:
+      - in: path
+        name: pluginId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PluginActionResponse"
+          description: OK
+      tags:
+      - plugin-controller
+  /api/plugins/{pluginId}/stop:
+    post:
+      operationId: stopPlugin
+      parameters:
+      - in: path
+        name: pluginId
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PluginActionResponse"
+          description: OK
+      tags:
+      - plugin-controller
+  /api/prompts:
+    get:
+      description: |-
+        Returns prompts for the given scope. `namespaceId` is required for `NAMESPACE` and `USER_NAMESPACE` scopes, and must be omitted for `PLATFORM` and `USER`.
+
+        | scope          | namespaceId | returned prompts                  | required permission       |
+        |----------------|-------------|-----------------------------------|---------------------------|
+        | PLATFORM       | absent      | platform-level (null, null)       | authenticated             |
+        | NAMESPACE      | required    | namespace-shared (ns, null)       | READ on namespace         |
+        | USER           | absent      | user-global (null, me)            | authenticated             |
+        | USER_NAMESPACE | required    | user × namespace (ns, me)        | READ on namespace         |
+      operationId: listPrompt
+      parameters:
+      - description: Scope of prompts to return.
+        in: query
+        name: scope
+        required: true
+        schema:
+          type: string
+          enum:
+          - PLATFORM
+          - NAMESPACE
+          - USER
+          - USER_NAMESPACE
+      - in: query
+        name: namespaceId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
+          description: OK
+      summary: List Prompts by explicit scope
+      tags:
+      - prompt-controller
+    post:
+      description: |-
+        Scope is inferred from `(body.namespaceId, body.userId)`:
+
+        | body.namespaceId | body.userId      | scope           | required permission        |
+        |------------------|------------------|-----------------|----------------------------|
+        | null             | null             | platform        | Super Admin only           |
+        | present          | null             | namespace       | WRITE on the namespace     |
+        | null             | <currentUser.id> | user-global     | authenticated only         |
+        | present          | <currentUser.id> | user×namespace  | READ on the namespace      |
+
+        `body.userId` must equal the authenticated user's id when supplied. A `namespaceId` that does not exist returns 404.
+      operationId: createPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Prompt"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prompt"
+          description: Created
+      summary: Create a Prompt
+      tags:
+      - prompt-controller
+  /api/prompts/by-ids:
+    post:
+      operationId: getByIdsPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
+          description: OK
+      tags:
+      - prompt-controller
+  /api/prompts/by-parentId/{parentId}:
+    get:
+      operationId: listByParentPrompt
+      parameters:
+      - in: path
+        name: parentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
+          description: OK
+      tags:
+      - prompt-controller
+  /api/prompts/effective:
+    get:
+      description: "Returns the resolved set of prompts accessible in the given namespace\
+        \ context. Merges platform, namespace-shared, user-global and user×namespace\
+        \ layers by name, highest-priority layer wins. Requires READ on the namespace."
+      operationId: findEffectiveByNamespaceIdPrompt
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
+          description: OK
+      summary: Effective prompts for a namespace
+      tags:
+      - prompt-controller
+  /api/prompts/{id}:
+    delete:
+      operationId: deletePrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - prompt-controller
+    get:
+      operationId: getByIdPrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prompt"
+          description: OK
+      tags:
+      - prompt-controller
+    put:
+      operationId: updatePrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Prompt"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prompt"
+          description: OK
+      tags:
+      - prompt-controller
+  /api/user-groups:
+    get:
+      operationId: findByNamespaceIdUserGroup
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserGroupSearchResult"
+          description: OK
+      tags:
+      - user-group-controller
+    post:
+      operationId: createUserGroup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserGroupCreateRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
+          description: Created
+      tags:
+      - user-group-controller
+  /api/user-groups/{userGroupId}:
+    delete:
+      operationId: deleteUserGroup
+      parameters:
+      - in: path
+        name: userGroupId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - user-group-controller
+    get:
+      operationId: getByIdUserGroup
+      parameters:
+      - in: path
+        name: userGroupId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
+          description: OK
+      tags:
+      - user-group-controller
+    post:
+      operationId: updateUserGroup
+      parameters:
+      - in: path
+        name: userGroupId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserGroupUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupSearchResult"
+          description: OK
+      tags:
+      - user-group-controller
+  /api/users:
+    get:
+      operationId: listAllUser
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+          description: OK
+      tags:
+      - user-controller
+    post:
+      operationId: createUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/User"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: Created
+      tags:
+      - user-controller
+  /api/users/by-external-ids:
+    post:
+      operationId: listByExternalIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+          description: OK
+      tags:
+      - user-controller
+  /api/users/by-ids:
+    post:
+      operationId: getByIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+          description: OK
+      tags:
+      - user-controller
+  /api/users/groups-by-external-ids:
+    post:
+      operationId: getGroupsByExternalIdsUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupsByExternalIdsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/UserGroupSummary"
+          description: OK
+      tags:
+      - user-controller
+  /api/users/me:
+    get:
+      operationId: getMeUser
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: OK
+      summary: Get the current user's profile
+      tags:
+      - user-controller
+  /api/users/{id}:
+    delete:
+      operationId: deleteUser
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - user-controller
+    get:
+      operationId: getByIdUser
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: OK
+      tags:
+      - user-controller
+    put:
+      operationId: updateUser
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/User"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: OK
+      tags:
+      - user-controller
 components:
   schemas:
-    User:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        email:
-          type: string
-        externalId:
-          type: string
-        firstname:
-          type: string
-        lastname:
-          type: string
-        bio:
-          type: string
-        isAdmin:
-          type: boolean
-      required:
-      - isAdmin
-    Prompt:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        userId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        name:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        content:
-          type: array
-          items:
-            type: string
-            minLength: 1
-          minItems: 1
-        parameters:
-          type: array
-          items:
-            $ref: "#/components/schemas/PromptParameter"
-        createdBy:
-          type: string
-        createdOn:
-          type: string
-          format: date-time
-        updatedBy:
-          type: string
-        updatedOn:
-          type: string
-          format: date-time
-      required:
-      - content
-      - name
-      - parameters
-    PromptParameter:
-      type: object
-      properties:
-        name:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        defaultValue:
-          type: string
-          minLength: 1
-      required:
-      - defaultValue
-      - name
-    Namespace:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        configPath:
-          type: string
-          description: "Optional filesystem path to a directory containing base configuration\
-            \ for this namespace (agents, tools, etc.)."
-        externalId:
-          type: string
-          description: "Optional external identifier for this namespace, e.g. a federation\
-            \ id from an external system"
-        defaultAgentName:
-          type: string
-          description: "Logical name of the default agent for this namespace. Resolved\
-            \ at runtime against AgentConfig entries (case-insensitive). When null,\
-            \ messages without an @mention will produce an explicit error."
-      required:
-      - name
-    IntegrationConfig:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        userId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        name:
-          type: string
-          minLength: 1
-        integrationType:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        parameters:
-          $ref: "#/components/schemas/JsonNode"
-      required:
-      - integrationType
-      - name
-    JsonNode: {}
-    Case:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type: string
-          format: uuid
-        status:
-          type: string
-          enum:
-          - PENDING
-          - RUNNING
-          - IDLE
-          - KILLED
-          - ERROR
-        title:
-          type: string
-        parentCaseId:
-          type: string
-          format: uuid
-        created:
-          type: string
-          format: date-time
-        modified:
-          type: string
-          format: date-time
-        removed:
-          type: boolean
-        favorite:
-          type: boolean
-        role:
-          type: string
-          description: The caller's direct relation on this case
-          enum:
-          - ADMIN
-          - MEMBER
-      required:
-      - favorite
-      - namespaceId
-      - removed
-      - status
-    AiProvider:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        userId:
-          type:
-          - string
-          - "null"
-          format: uuid
-        name:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        apiType:
-          type: string
-          enum:
-          - OpenAI
-          - Anthropic
-          - Gemini
-          - vLLM
-          - Ollama
-        baseUrl:
-          type: string
-        apiKey:
-          type: string
-        headers:
-          type: object
-          additionalProperties:
-            type: string
-      required:
-      - apiType
-      - name
-    AiModel:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        aiProviderId:
-          type: string
-          format: uuid
-        namespaceId:
-          type: string
-          format: uuid
-        userId:
-          type: string
-          format: uuid
-        apiModelName:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        alias:
-          type: string
-        priority:
-          type: integer
-          format: int32
-        temperature:
-          type: number
-          format: double
-        maxTokens:
-          type: integer
-          format: int32
-      required:
-      - aiProviderId
-      - apiModelName
-      - priority
-    AgentConfig:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type: string
-          format: uuid
-        name:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        instructions:
-          type: string
-        modelName:
-          type: string
-        integrations:
-          type: object
-          additionalProperties:
-            type: array
-            items:
-              type: string
-        advancedExecution:
-          type: boolean
-        externalMetadata:
-          type: object
-          additionalProperties: {}
-        createdBy:
-          type: string
-        createdOn:
-          type: string
-          format: date-time
-        updatedBy:
-          type: string
-        updatedOn:
-          type: string
-          format: date-time
-        enabled:
-          type: boolean
-        subAgents:
-          type: array
-          items:
-            type: string
-            description: "Glob patterns controlling which agents this agent may delegate\
-              \ to. When null or empty, no delegation capability is provided. '*'\
-              \ matches any sequence of characters (anchored, case-insensitive). Examples:\
-              \ ['*'] allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, ['Fixer*']\
-              \ matches FixerHelper/FixerV2."
-            minLength: 1
-      required:
-      - name
-    GroupsByExternalIdsRequest:
-      type: object
-      properties:
-        externalIds:
-          type: array
-          items:
-            type: string
-        namespaceId:
-          type: string
-          format: uuid
-      required:
-      - externalIds
-    UserGroupSummary:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-      required:
-      - id
-      - name
-    GetByIdsRequest:
-      type: object
-      properties:
-        ids:
-          type: array
-          items:
-            type: string
-            format: uuid
-        withRemoved:
-          type: boolean
-      required:
-      - ids
-      - withRemoved
-    UserGroupCreateRequest:
-      type: object
-      properties:
-        namespaceId:
-          type: string
-          format: uuid
-        name:
-          type: string
-          maxLength: 250
-          minLength: 0
-        userExternalIdsToAdd:
-          type: array
-          items:
-            type: string
-          maxItems: 200
-          minItems: 0
-          uniqueItems: true
-        agentIds:
-          type: array
-          items:
-            type: string
-            format: uuid
-          maxItems: 200
-          minItems: 0
-          uniqueItems: true
-      required:
-      - agentIds
-      - name
-      - namespaceId
-      - userExternalIdsToAdd
-    UserGroupSearchResult:
-      type: object
-      properties:
-        userGroupId:
-          type: string
-          format: uuid
-        namespaceId:
-          type: string
-          format: uuid
-        namespaceExternalId:
-          type: string
-        name:
-          type: string
-        agentIds:
-          type: array
-          items:
-            type: string
-            format: uuid
-        userCount:
-          type: integer
-          format: int32
-      required:
-      - agentIds
-      - name
-      - namespaceExternalId
-      - namespaceId
-      - userCount
-      - userGroupId
-    UserGroupUpdateRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          maxLength: 250
-          minLength: 0
-        userExternalIdsToAdd:
-          type: array
-          items:
-            type: string
-          maxItems: 200
-          minItems: 0
-          uniqueItems: true
-        userExternalIdsToRemove:
-          type: array
-          items:
-            type: string
-          maxItems: 200
-          minItems: 0
-          uniqueItems: true
-        agentIds:
-          type: array
-          items:
-            type: string
-            format: uuid
-          maxItems: 200
-          minItems: 0
-          uniqueItems: true
-      required:
-      - agentIds
-      - name
-      - userExternalIdsToAdd
-      - userExternalIdsToRemove
-    PluginActionResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-      required:
-      - message
-      - success
-    PluginUploadResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        pluginId:
-          type: string
-      required:
-      - message
-      - success
-    NamespaceAgentDeployRequest:
-      type: object
-      properties:
-        agentIds:
-          type: array
-          items:
-            type: string
-            format: uuid
-      required:
-      - agentIds
-    ExchangeFileEntry:
-      type: object
-      description: Metadata for a single file in an exchange scope.
-      properties:
-        path:
-          type: string
-          description: "Path of the file relative to its exchange root, using forward\
-            \ slashes."
-        filename:
-          type: string
-          description: File name (last path segment).
-        size:
-          type: integer
-          format: int64
-          description: File size in bytes.
-        lastModified:
-          type: string
-          format: date-time
-          description: Last modification timestamp.
-        mimeType:
-          type: string
-          description: "Detected MIME type, or null if it could not be determined."
-        scope:
-          type: string
-          description: Scope the file belongs to.
-          enum:
-          - CASE
-          - NAMESPACE
-        etag:
-          type: string
-          description: Opaque entity tag derived from size and last-modified time.
-      required:
-      - filename
-      - lastModified
-      - path
-      - scope
-      - size
-    NamespaceRoleEntry:
-      type: object
-      properties:
-        namespaceExternalId:
-          type: string
-          minLength: 1
-        role:
-          type: string
-          pattern: ADMIN|MEMBER
-      required:
-      - namespaceExternalId
-      - role
-    SyncUserRolesRequest:
-      type: object
-      properties:
-        userExternalId:
-          type: string
-          minLength: 1
-        namespaceRoles:
-          type: array
-          items:
-            $ref: "#/components/schemas/NamespaceRoleEntry"
-      required:
-      - namespaceRoles
-      - userExternalId
-    FeedbackInput:
-      type: object
-      properties:
-        caseEventId:
-          type: string
-          format: uuid
-        positive:
-          type: boolean
-        type:
-          type: string
-          description: Optional category label. Ignored (cleared) when positive=true.
-        comment:
-          type: string
-          description: Optional free-text note. Ignored (cleared) when positive=true.
-      required:
-      - caseEventId
-      - positive
-    Feedback:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        namespaceId:
-          type: string
-          format: uuid
-        caseId:
-          type: string
-          format: uuid
-        caseEventId:
-          type: string
-          format: uuid
-        positive:
-          type: boolean
-        type:
-          type: string
-        comment:
-          type: string
-        createdBy:
-          type: string
-        createdOn:
-          type: string
-          format: date-time
-        updatedBy:
-          type: string
-        updatedOn:
-          type: string
-          format: date-time
-      required:
-      - caseEventId
-      - caseId
-      - createdOn
-      - id
-      - namespaceId
-      - positive
-      - updatedOn
-    AddMessageRequest:
-      type: object
-      properties:
-        content:
-          type: string
-        answerToEventId:
-          type: string
-          format: uuid
-        sessionContext:
-          type: object
-          additionalProperties: {}
-      required:
-      - content
-    ListByUserInNamespaceRequest:
-      type: object
-      properties:
-        userExternalId:
-          type: string
-        namespaceExternalId:
-          type: string
-      required:
-      - namespaceExternalId
-      - userExternalId
     Actor:
       type: object
       properties:
-        id:
-          type: string
         displayName:
+          type: string
+        id:
           type: string
         role:
           type: string
@@ -2996,6 +2389,148 @@ components:
       - displayName
       - id
       - role
+    AddMessageRequest:
+      type: object
+      properties:
+        answerToEventId:
+          type: string
+          format: uuid
+        content:
+          type: string
+        sessionContext:
+          type: object
+          additionalProperties: {}
+      required:
+      - content
+    AgentConfig:
+      type: object
+      properties:
+        advancedExecution:
+          type: boolean
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        description:
+          type: string
+        enabled:
+          type: boolean
+        externalMetadata:
+          type: object
+          additionalProperties: {}
+        id:
+          type: string
+          format: uuid
+        instructions:
+          type: string
+        integrations:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        modelName:
+          type: string
+        name:
+          type: string
+          minLength: 1
+        namespaceId:
+          type: string
+          format: uuid
+        subAgents:
+          type: array
+          items:
+            type: string
+            description: "Glob patterns controlling which agents this agent may delegate\
+              \ to. When null or empty, no delegation capability is provided. '*'\
+              \ matches any sequence of characters (anchored, case-insensitive). Examples:\
+              \ ['*'] allows all agents, ['*Fixer'] matches BugFixer/StoryFixer, ['Fixer*']\
+              \ matches FixerHelper/FixerV2."
+            minLength: 1
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
+      required:
+      - name
+    AgentConfigSearchRequest:
+      type: object
+      properties:
+        namespaceId:
+          type: string
+          format: uuid
+        userExternalId:
+          type: string
+          minLength: 1
+        userId:
+          type: string
+      required:
+      - namespaceId
+      - userExternalId
+    AgentDefinition:
+      type: object
+      properties:
+        advancedExecution:
+          type: boolean
+          description: Whether the agent uses the advanced multi-step execution engine.
+        agentConfigId:
+          type: string
+          format: uuid
+          description: The ID of the AgentConfig this definition was resolved from.
+        instructions:
+          type: string
+          description: "Final system instructions sent to the LLM, including injected\
+            \ namespace / integration / user context blocks."
+        name:
+          type: string
+          description: The agent's display name.
+        namespaceId:
+          type: string
+          format: uuid
+          description: The namespace this agent belongs to.
+        resolvedModelApiName:
+          type: string
+          description: The actual API model name sent to the provider.
+        resolvedProviderName:
+          type: string
+          description: The name of the resolved AI provider.
+        systemPrompt:
+          type: string
+          description: "Privileged namespace context block sent as a separate system\
+            \ message, before instructions. Null when no namespace context is available."
+        tools:
+          type: array
+          description: Summary of tools that would be made available to this agent.
+          items:
+            $ref: "#/components/schemas/AgentDefinitionToolSummary"
+        userId:
+          type: string
+          format: uuid
+          description: "The user whose overlay was applied, or null for namespace-only\
+            \ resolution."
+      required:
+      - advancedExecution
+      - agentConfigId
+      - name
+      - namespaceId
+      - resolvedModelApiName
+      - resolvedProviderName
+      - tools
+    AgentDefinitionToolSummary:
+      type: object
+      properties:
+        description:
+          type: string
+        inputSchema:
+          type: string
+        name:
+          type: string
+      required:
+      - description
+      - inputSchema
+      - name
     AgentFinishedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3061,6 +2596,81 @@ components:
       - namespaceId
       - timestamp
       - type
+    AiModel:
+      type: object
+      properties:
+        aiProviderId:
+          type: string
+          format: uuid
+        alias:
+          type: string
+        apiModelName:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        id:
+          type: string
+          format: uuid
+        maxTokens:
+          type: integer
+          format: int32
+        namespaceId:
+          type: string
+          format: uuid
+        priority:
+          type: integer
+          format: int32
+        temperature:
+          type: number
+          format: double
+        userId:
+          type: string
+          format: uuid
+      required:
+      - aiProviderId
+      - apiModelName
+      - priority
+    AiProvider:
+      type: object
+      properties:
+        apiKey:
+          type: string
+        apiType:
+          type: string
+          enum:
+          - OpenAI
+          - Anthropic
+          - Gemini
+          - vLLM
+          - Ollama
+        baseUrl:
+          type: string
+        description:
+          type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
+      required:
+      - apiType
+      - name
     AnswerEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3083,6 +2693,49 @@ components:
       - questionId
       - timestamp
       - type
+    Case:
+      type: object
+      properties:
+        created:
+          type: string
+          format: date-time
+        favorite:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        modified:
+          type: string
+          format: date-time
+        namespaceId:
+          type: string
+          format: uuid
+        parentCaseId:
+          type: string
+          format: uuid
+        removed:
+          type: boolean
+        role:
+          type: string
+          description: The caller's direct relation on this case
+          enum:
+          - ADMIN
+          - MEMBER
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - IDLE
+          - KILLED
+          - ERROR
+        title:
+          type: string
+      required:
+      - favorite
+      - namespaceId
+      - removed
+      - status
     CaseEvent:
       type: object
       discriminator:
@@ -3190,14 +2843,14 @@ components:
     EnrichmentPhaseTrace:
       type: object
       properties:
+        enrichmentContent:
+          type: string
+        llmOutput:
+          type: string
         phaseIndex:
           type: integer
           format: int32
         prompt:
-          type: string
-        llmOutput:
-          type: string
-        enrichmentContent:
           type: string
         success:
           type: boolean
@@ -3209,14 +2862,14 @@ components:
     EntityMetadata:
       type: object
       properties:
-        id:
-          type: string
-          format: uuid
         created:
           type: string
           format: date-time
         createdBy:
           type: string
+        id:
+          type: string
+          format: uuid
         modified:
           type: string
           format: date-time
@@ -3244,6 +2897,176 @@ components:
       - namespaceId
       - timestamp
       - type
+    ExchangeDeleteResponse:
+      type: object
+      description: Result of an exchange file deletion.
+      properties:
+        message:
+          type: string
+          description: Human-readable outcome message.
+        success:
+          type: boolean
+          description: Whether the deletion succeeded.
+      required:
+      - message
+      - success
+    ExchangeFileContent:
+      type: object
+      description: Text content and metadata of a single exchange file.
+      properties:
+        content:
+          type: string
+          description: UTF-8 text content of the file.
+        etag:
+          type: string
+          description: Opaque entity tag derived from size and last-modified time.
+        mimeType:
+          type: string
+          description: "Detected MIME type, or null if it could not be determined."
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes.
+      required:
+      - content
+      - size
+    ExchangeFileEntry:
+      type: object
+      description: Metadata for a single file in an exchange scope.
+      properties:
+        etag:
+          type: string
+          description: Opaque entity tag derived from size and last-modified time.
+        filename:
+          type: string
+          description: File name (last path segment).
+        lastModified:
+          type: string
+          format: date-time
+          description: Last modification timestamp.
+        mimeType:
+          type: string
+          description: "Detected MIME type, or null if it could not be determined."
+        path:
+          type: string
+          description: "Path of the file relative to its exchange root, using forward\
+            \ slashes."
+        scope:
+          type: string
+          description: Scope the file belongs to.
+          enum:
+          - CASE
+          - NAMESPACE
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes.
+      required:
+      - filename
+      - lastModified
+      - path
+      - scope
+      - size
+    ExchangeManifest:
+      type: object
+      description: Files in an exchange scope plus the caller's capability.
+      properties:
+        capability:
+          type: string
+          description: Capability the caller has over this scope.
+          enum:
+          - NONE
+          - READ
+          - READ_WRITE
+        files:
+          type: array
+          description: Files available in the scope.
+          items:
+            $ref: "#/components/schemas/ExchangeFileEntry"
+      required:
+      - capability
+      - files
+    Feedback:
+      type: object
+      properties:
+        caseEventId:
+          type: string
+          format: uuid
+        caseId:
+          type: string
+          format: uuid
+        comment:
+          type: string
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        namespaceId:
+          type: string
+          format: uuid
+        positive:
+          type: boolean
+        type:
+          type: string
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
+      required:
+      - caseEventId
+      - caseId
+      - createdOn
+      - id
+      - namespaceId
+      - positive
+      - updatedOn
+    FeedbackInput:
+      type: object
+      properties:
+        caseEventId:
+          type: string
+          format: uuid
+        comment:
+          type: string
+          description: Optional free-text note. Ignored (cleared) when positive=true.
+        positive:
+          type: boolean
+        type:
+          type: string
+          description: Optional category label. Ignored (cleared) when positive=true.
+      required:
+      - caseEventId
+      - positive
+    GetByIdsRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        withRemoved:
+          type: boolean
+      required:
+      - ids
+      - withRemoved
+    GroupsByExternalIdsRequest:
+      type: object
+      properties:
+        externalIds:
+          type: array
+          items:
+            type: string
+        namespaceId:
+          type: string
+          format: uuid
+      required:
+      - externalIds
     Image:
       allOf:
       - $ref: "#/components/schemas/MessageContent"
@@ -3251,17 +3074,64 @@ components:
         properties:
           content:
             type: string
+          height:
+            type: integer
+            format: int32
           mimeType:
             type: string
           width:
             type: integer
             format: int32
-          height:
-            type: integer
-            format: int32
       required:
       - content
       - mimeType
+    IntegrationConfig:
+      type: object
+      properties:
+        description:
+          type: string
+        id:
+          type: string
+          format: uuid
+        integrationType:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        parameters:
+          $ref: "#/components/schemas/JsonNode"
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
+      required:
+      - integrationType
+      - name
+    IntegrationTypeDescriptor:
+      type: object
+      properties:
+        builtIn:
+          type: boolean
+        configSchema:
+          $ref: "#/components/schemas/JsonNode"
+        description:
+          type: string
+        displayName:
+          type: string
+        type:
+          type: string
+      required:
+      - builtIn
+      - description
+      - displayName
+      - type
     IntentionGeneratedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3287,6 +3157,17 @@ components:
       - timestamp
       - toolName
       - type
+    JsonNode: {}
+    ListByUserInNamespaceRequest:
+      type: object
+      properties:
+        namespaceExternalId:
+          type: string
+        userExternalId:
+          type: string
+      required:
+      - namespaceExternalId
+      - userExternalId
     MessageContent:
       discriminator:
         propertyName: type
@@ -3320,6 +3201,106 @@ components:
       - namespaceId
       - timestamp
       - type
+    Namespace:
+      type: object
+      properties:
+        configPath:
+          type: string
+          description: "Optional filesystem path to a directory containing base configuration\
+            \ for this namespace (agents, tools, etc.)."
+        defaultAgentName:
+          type: string
+          description: "Logical name of the default agent for this namespace. Resolved\
+            \ at runtime against AgentConfig entries (case-insensitive). When null,\
+            \ messages without an @mention will produce an explicit error."
+        description:
+          type: string
+        externalId:
+          type: string
+          description: "Optional external identifier for this namespace, e.g. a federation\
+            \ id from an external system"
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+      required:
+      - name
+    NamespaceAgentDeployRequest:
+      type: object
+      properties:
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+      - agentIds
+    NamespaceListItem:
+      type: object
+      properties:
+        configPath:
+          type: string
+        defaultAgentName:
+          type: string
+        description:
+          type: string
+        externalId:
+          type: string
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          type: string
+          description: The caller's effective role on this namespace.
+          enum:
+          - SUPER-ADMIN
+          - ADMIN
+          - MEMBER
+      required:
+      - id
+      - name
+      - role
+    NamespaceRoleEntry:
+      type: object
+      properties:
+        namespaceExternalId:
+          type: string
+          minLength: 1
+        role:
+          type: string
+          pattern: ADMIN|MEMBER
+      required:
+      - namespaceExternalId
+      - role
+    NamespaceUserListItem:
+      type: object
+      properties:
+        email:
+          type: string
+        externalId:
+          type: string
+        firstname:
+          type: string
+        id:
+          type: string
+          format: uuid
+        lastname:
+          type: string
+        role:
+          type: string
+          description: The user's direct role on this namespace
+          enum:
+          - ADMIN
+          - MEMBER
+      required:
+      - email
+      - externalId
+      - id
+      - role
     PendingConfirmationEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3344,6 +3325,121 @@ components:
       - toolName
       - toolRequestId
       - type
+    PluginActionResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        success:
+          type: boolean
+      required:
+      - message
+      - success
+    PluginInfo:
+      type: object
+      properties:
+        agentCount:
+          type: integer
+          format: int32
+        description:
+          type: string
+        id:
+          type: string
+        pluginPath:
+          type: string
+        provider:
+          type: string
+        state:
+          type: string
+          enum:
+          - CREATED
+          - DISABLED
+          - RESOLVED
+          - STARTED
+          - STOPPED
+          - FAILED
+          - UNLOADED
+        version:
+          type: string
+      required:
+      - agentCount
+      - description
+      - id
+      - pluginPath
+      - provider
+      - state
+      - version
+    PluginUploadResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        pluginId:
+          type: string
+        success:
+          type: boolean
+      required:
+      - message
+      - success
+    Prompt:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          minItems: 1
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        description:
+          type: string
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        parameters:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromptParameter"
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
+      required:
+      - content
+      - name
+      - parameters
+    PromptParameter:
+      type: object
+      properties:
+        defaultValue:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        name:
+          type: string
+          minLength: 1
+      required:
+      - defaultValue
+      - name
     QuestionEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3370,6 +3466,19 @@ components:
       - question
       - timestamp
       - type
+    SyncUserRolesRequest:
+      type: object
+      properties:
+        namespaceRoles:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamespaceRoleEntry"
+        userExternalId:
+          type: string
+          minLength: 1
+      required:
+      - namespaceRoles
+      - userExternalId
     Text:
       allOf:
       - $ref: "#/components/schemas/MessageContent"
@@ -3480,6 +3589,129 @@ components:
       - timestamp
       - toolName
       - type
+    User:
+      type: object
+      properties:
+        bio:
+          type: string
+        email:
+          type: string
+        externalId:
+          type: string
+        firstname:
+          type: string
+        id:
+          type: string
+          format: uuid
+        isAdmin:
+          type: boolean
+        lastname:
+          type: string
+      required:
+      - isAdmin
+    UserGroupCreateRequest:
+      type: object
+      properties:
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        name:
+          type: string
+          maxLength: 250
+          minLength: 0
+        namespaceId:
+          type: string
+          format: uuid
+        userExternalIdsToAdd:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+      required:
+      - agentIds
+      - name
+      - namespaceId
+      - userExternalIdsToAdd
+    UserGroupSearchResult:
+      type: object
+      properties:
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        name:
+          type: string
+        namespaceExternalId:
+          type: string
+        namespaceId:
+          type: string
+          format: uuid
+        userCount:
+          type: integer
+          format: int32
+        userGroupId:
+          type: string
+          format: uuid
+      required:
+      - agentIds
+      - name
+      - namespaceExternalId
+      - namespaceId
+      - userCount
+      - userGroupId
+    UserGroupSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
+      - name
+    UserGroupUpdateRequest:
+      type: object
+      properties:
+        agentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        name:
+          type: string
+          maxLength: 250
+          minLength: 0
+        userExternalIdsToAdd:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        userExternalIdsToRemove:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+      required:
+      - agentIds
+      - name
+      - userExternalIdsToAdd
+      - userExternalIdsToRemove
     WarnEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3495,232 +3727,3 @@ components:
       - namespaceId
       - timestamp
       - type
-    AgentConfigSearchRequest:
-      type: object
-      properties:
-        namespaceId:
-          type: string
-          format: uuid
-        userExternalId:
-          type: string
-          minLength: 1
-        userId:
-          type: string
-      required:
-      - namespaceId
-      - userExternalId
-    PluginInfo:
-      type: object
-      properties:
-        id:
-          type: string
-        version:
-          type: string
-        state:
-          type: string
-          enum:
-          - CREATED
-          - DISABLED
-          - RESOLVED
-          - STARTED
-          - STOPPED
-          - FAILED
-          - UNLOADED
-        description:
-          type: string
-        provider:
-          type: string
-        agentCount:
-          type: integer
-          format: int32
-        pluginPath:
-          type: string
-      required:
-      - agentCount
-      - description
-      - id
-      - pluginPath
-      - provider
-      - state
-      - version
-    NamespaceListItem:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        description:
-          type: string
-        configPath:
-          type: string
-        externalId:
-          type: string
-        defaultAgentName:
-          type: string
-        role:
-          type: string
-          description: The caller's effective role on this namespace.
-          enum:
-          - SUPER-ADMIN
-          - ADMIN
-          - MEMBER
-      required:
-      - id
-      - name
-      - role
-    NamespaceUserListItem:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        externalId:
-          type: string
-        email:
-          type: string
-        firstname:
-          type: string
-        lastname:
-          type: string
-        role:
-          type: string
-          description: The user's direct role on this namespace
-          enum:
-          - ADMIN
-          - MEMBER
-      required:
-      - email
-      - externalId
-      - id
-      - role
-    ExchangeManifest:
-      type: object
-      description: Files in an exchange scope plus the caller's capability.
-      properties:
-        files:
-          type: array
-          description: Files available in the scope.
-          items:
-            $ref: "#/components/schemas/ExchangeFileEntry"
-        capability:
-          type: string
-          description: Capability the caller has over this scope.
-          enum:
-          - NONE
-          - READ
-          - READ_WRITE
-      required:
-      - capability
-      - files
-    ExchangeFileContent:
-      type: object
-      description: Text content and metadata of a single exchange file.
-      properties:
-        content:
-          type: string
-          description: UTF-8 text content of the file.
-        etag:
-          type: string
-          description: Opaque entity tag derived from size and last-modified time.
-        mimeType:
-          type: string
-          description: "Detected MIME type, or null if it could not be determined."
-        size:
-          type: integer
-          format: int64
-          description: File size in bytes.
-      required:
-      - content
-      - size
-    IntegrationTypeDescriptor:
-      type: object
-      properties:
-        type:
-          type: string
-        displayName:
-          type: string
-        description:
-          type: string
-        configSchema:
-          $ref: "#/components/schemas/JsonNode"
-      required:
-      - description
-      - displayName
-      - type
-    AgentDefinition:
-      type: object
-      properties:
-        agentConfigId:
-          type: string
-          format: uuid
-          description: The ID of the AgentConfig this definition was resolved from.
-        name:
-          type: string
-          description: The agent's display name.
-        systemPrompt:
-          type: string
-          description: "Privileged namespace context block sent as a separate system\
-            \ message, before instructions. Null when no namespace context is available."
-        instructions:
-          type: string
-          description: "Final system instructions sent to the LLM, including injected\
-            \ namespace / integration / user context blocks."
-        resolvedModelApiName:
-          type: string
-          description: The actual API model name sent to the provider.
-        resolvedProviderName:
-          type: string
-          description: The name of the resolved AI provider.
-        tools:
-          type: array
-          description: Summary of tools that would be made available to this agent.
-          items:
-            $ref: "#/components/schemas/AgentDefinitionToolSummary"
-        advancedExecution:
-          type: boolean
-          description: Whether the agent uses the advanced multi-step execution engine.
-        namespaceId:
-          type: string
-          format: uuid
-          description: The namespace this agent belongs to.
-        userId:
-          type: string
-          format: uuid
-          description: "The user whose overlay was applied, or null for namespace-only\
-            \ resolution."
-      required:
-      - advancedExecution
-      - agentConfigId
-      - name
-      - namespaceId
-      - resolvedModelApiName
-      - resolvedProviderName
-      - tools
-    AgentDefinitionToolSummary:
-      type: object
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        inputSchema:
-          type: string
-      required:
-      - description
-      - inputSchema
-      - name
-    ExchangeDeleteResponse:
-      type: object
-      description: Result of an exchange file deletion.
-      properties:
-        success:
-          type: boolean
-          description: Whether the deletion succeeded.
-        message:
-          type: string
-          description: Human-readable outcome message.
-      required:
-      - message
-      - success

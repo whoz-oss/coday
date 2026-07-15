@@ -13,11 +13,11 @@
  */
 export interface ExchangeDeleteResponse {
   /**
-   * Whether the deletion succeeded.
-   */
-  success: boolean
-  /**
    * Human-readable outcome message.
    */
   message: string
+  /**
+   * Whether the deletion succeeded.
+   */
+  success: boolean
 }

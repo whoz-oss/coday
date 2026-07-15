@@ -1,3 +1,23 @@
+## 0.214.2 (2026-07-15)
+
+### 🩹 Fixes
+
+- resolve integration type descriptor ([#1143](https://github.com/whoz-oss/coday/pull/1143))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.214.1 (2026-07-14)
+
+### 🩹 Fixes
+
+- openapi property order ([#1138](https://github.com/whoz-oss/coday/pull/1138))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.214.0 (2026-07-14)
 
 ### 🚀 Features
