@@ -56,7 +56,6 @@ model/exchange-file-entry.ts
 model/exchange-manifest.ts
 model/feedback-input.ts
 model/feedback.ts
-model/get-by-id-auth-setting200-response.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
 model/get-by-ids-request.ts
 model/groups-by-external-ids-request.ts
@@ -64,6 +63,7 @@ model/image.ts
 model/integration-config.ts
 model/integration-type-descriptor.ts
 model/intention-generated-event.ts
+model/list-auth-setting200-response-inner.ts
 model/list-by-user-in-namespace-request.ts
 model/message-content.ts
 model/message-event-all-of-content.ts

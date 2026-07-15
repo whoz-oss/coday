@@ -1,5 +1,6 @@
 package io.whozoss.agentos.integrationConfig
 
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationTypeDescriptor
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import mu.KLogging
 import org.springframework.stereotype.Component

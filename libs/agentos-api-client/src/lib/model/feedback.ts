@@ -9,15 +9,15 @@
  */
 
 export interface Feedback {
-  id: string
-  namespaceId: string
-  caseId: string
   caseEventId: string
-  positive: boolean
-  type?: string
+  caseId: string
   comment?: string
   createdBy?: string
   createdOn: string
+  id: string
+  namespaceId: string
+  positive: boolean
+  type?: string
   updatedBy?: string
   updatedOn: string
 }

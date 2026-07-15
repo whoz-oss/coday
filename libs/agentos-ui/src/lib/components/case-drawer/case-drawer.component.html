@@ -1,19 +1,40 @@
 <ds-entity-list
   title="Cases"
   [items]="displayItems()"
-  [itemTemplate]="caseItemTpl"
+  [itemTemplate]="compact() ? undefined : caseItemTpl"
   [showCreate]="true"
+  [toolbarOnly]="compact()"
   [disableInternalFilter]="true"
   emptyMessage="No cases yet. Start one below."
   searchPlaceholder="Filter cases…"
   cardMinWidth="100%"
   contentMaxWidth="100%"
-  (itemSelected)="onItemSelected($event)"
   (createRequested)="onCreateRequested()"
   (searchChanged)="onSearchChanged($event)"
->
-</ds-entity-list>
+/>
 
+@if (compact()) {
+  <div class="case-drawer-compact">
+    @for (item of compactItems(); track item.id) {
+      <button
+        type="button"
+        class="case-drawer-compact__badge"
+        [class.case-drawer-compact__badge--active]="item.id === activeCaseId()"
+        [title]="item.name"
+        (click)="onItemSelected(item.id)"
+      >
+        {{ item.initials }}
+      </button>
+    }
+  </div>
+}
+
+<!--
+  Item template: renders one case row + its sub-cases recursively.
+  Two display modes:
+  - Flat mode (search active): each match rendered directly, no tree expand/collapse.
+  - Tree mode (no search): hierarchical rendering with expandable sub-cases.
+-->
 <ng-template #caseItemTpl let-item>
   @if (isSearchActive()) {
     <!-- Flat mode: render each match directly, no tree expand/collapse -->
@@ -28,18 +49,14 @@
     </button>
   } @else {
     <!-- Tree mode: hierarchical rendering -->
-    <ng-container *ngTemplateOutlet="caseRowTpl; context: { node: item, depth: 0 }" />
+    <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: item, depth: 0 }" />
   }
 </ng-template>
 
+<!-- Recursive row template: select + star + (ADMIN-gated) delete, then children -->
 <ng-template #caseRowTpl let-node="node" let-depth="depth">
   <div class="case-tree-node" [style.--depth]="depth">
-    <button
-      type="button"
-      class="case-tree-node__row"
-      [class.case-tree-node__row--active]="node.id === activeCaseId()"
-      (click)="onItemSelected(node.id)"
-    >
+    <div class="case-tree-node__row" [class.case-tree-node__row--active]="node.id === activeCaseId()">
       <span class="case-tree-node__expand-slot">
         @if (node.children.length) {
           <button
@@ -54,12 +71,19 @@
           </button>
         }
       </span>
-      <span class="case-tree-node__name">{{ node.name }}</span>
-    </button>
+      <button type="button" class="case-tree-node__select" (click)="onItemSelected(node.id)">
+        <span class="case-tree-node__name">{{ node.name }}</span>
+      </button>
+      <ds-kebab-menu
+        class="case-tree-node__menu"
+        [items]="menuItemsFor(node)"
+        (itemSelected)="onMenuAction(node, $event)"
+      />
+    </div>
 
     @if (isExpanded(node.id) && node.children.length) {
       @for (child of node.children; track child.id) {
-        <ng-container *ngTemplateOutlet="caseRowTpl; context: { node: child, depth: depth + 1 }" />
+        <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: child, depth: depth + 1 }" />
       }
     }
   </div>

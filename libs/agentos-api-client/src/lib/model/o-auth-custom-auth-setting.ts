@@ -9,15 +9,15 @@
  */
 
 export interface OAuthCustomAuthSetting {
-  userId?: string | null
-  namespaceId?: string | null
   authType: 'OAuthCustomAuthSetting'
   description?: string
-  name: string
   id?: string
+  name: string
+  namespaceId?: string | null
+  userId?: string | null
+  authorizationUrl?: string
   clientId?: string
   clientSecret?: string
-  authorizationUrl?: string
-  tokenUrl?: string
   scopes?: string
+  tokenUrl?: string
 }

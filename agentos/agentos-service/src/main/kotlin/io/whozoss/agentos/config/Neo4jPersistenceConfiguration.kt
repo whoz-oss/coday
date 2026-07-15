@@ -17,7 +17,7 @@ import io.whozoss.agentos.authSetting.Neo4jAuthSettingRepository
 import io.whozoss.agentos.credential.CredentialNodeNeo4jRepository
 import io.whozoss.agentos.credential.CredentialRepository
 import io.whozoss.agentos.credential.Neo4jCredentialRepository
-import io.whozoss.agentos.sdk.encryption.FieldEncryptor
+import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.caseEvent.CaseEventNodeMapper
 import io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository

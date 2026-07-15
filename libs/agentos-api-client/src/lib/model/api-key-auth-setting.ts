@@ -9,11 +9,11 @@
  */
 
 export interface ApiKeyAuthSetting {
-  userId?: string | null
-  namespaceId?: string | null
   authType: 'ApiKeyAuthSetting'
   description?: string
-  name: string
   id?: string
+  name: string
+  namespaceId?: string | null
+  userId?: string | null
   apiKey?: string
 }

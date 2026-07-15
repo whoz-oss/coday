@@ -9,12 +9,12 @@
  */
 
 export interface IntegrationConfig {
-  id?: string
-  namespaceId?: string | null
-  userId?: string | null
-  name: string
-  integrationType: string
-  description?: string
-  parameters?: any | null
   authSettingName?: string
+  description?: string
+  id?: string
+  integrationType: string
+  name: string
+  namespaceId?: string | null
+  parameters?: any | null
+  userId?: string | null
 }

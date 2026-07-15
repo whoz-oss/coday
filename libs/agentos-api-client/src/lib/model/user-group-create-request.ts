@@ -9,8 +9,8 @@
  */
 
 export interface UserGroupCreateRequest {
-  namespaceId: string
-  name: string
-  userExternalIdsToAdd: Set<string>
   agentIds: Set<string>
+  name: string
+  namespaceId: string
+  userExternalIdsToAdd: Set<string>
 }

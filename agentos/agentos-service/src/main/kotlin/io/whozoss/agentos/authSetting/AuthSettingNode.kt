@@ -8,7 +8,7 @@ import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.sdk.authSetting.AuthType
 import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
 import io.whozoss.agentos.sdk.authSetting.toDataMap
-import io.whozoss.agentos.sdk.encryption.FieldEncryptor
+import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node

@@ -2,8 +2,14 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, WritableSignal,
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
-import { AgentConfig, AgentConfigControllerService, IntegrationConfig } from '@whoz-oss/agentos-api-client'
-import { forkJoin, of } from 'rxjs'
+import {
+  AgentConfig,
+  AgentConfigControllerService,
+  IntegrationConfig,
+  IntegrationTypeControllerService,
+  IntegrationTypeDescriptor,
+} from '@whoz-oss/agentos-api-client'
+import { catchError, forkJoin, map, Observable, of } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 
 /** Represents one sub-agent glob pattern entry in the list. */
@@ -20,6 +26,21 @@ interface IntegrationRow {
   config: IntegrationConfig
   enabled: WritableSignal<boolean>
   toolsControl: FormControl<string>
+}
+
+/**
+ * A built-in integration (e.g. file exchange) surfaced by the backend in /api/integration-types
+ * with no `configSchema` (null or undefined). Enabled by adding its `type` to
+ * AgentConfig.integrations — no instance, no per-tool allowlist (toggle only).
+ *
+ * Types that carry a configSchema require a dedicated IntegrationConfig instance and are
+ * handled via the regular integrationRows, not here.
+ */
+interface BuiltInIntegrationRow {
+  type: string
+  displayName: string
+  description: string
+  enabled: WritableSignal<boolean>
 }
 
 /**
@@ -55,6 +76,7 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly agentConfigController = inject(AgentConfigControllerService)
   private readonly integrationConfigState = inject(IntegrationConfigStateService)
+  private readonly integrationTypeController = inject(IntegrationTypeControllerService)
 
   /**
    * namespaceId from the route, or undefined when operating in platform mode
@@ -113,6 +135,12 @@ export class AgentConfigFormComponent implements OnInit {
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
 
+  /**
+   * Built-in integration rows (e.g. file exchange) surfaced by the backend only when their
+   * prerequisite plugin is loaded. Toggled on/off; enablement rides AgentConfig.integrations.
+   */
+  protected readonly builtInRows = signal<BuiltInIntegrationRow[]>([])
+
   /** Route to the inspect view — only valid in edit mode (agentConfigId is present). */
   protected inspectRoute(): string[] {
     const agentConfigId = this.route.snapshot.paramMap.get('agentConfigId') ?? ''
@@ -154,10 +182,11 @@ export class AgentConfigFormComponent implements OnInit {
         ? this.integrationConfigState.loadNamespaceConfigs(this.namespaceId)
         : of([]),
       platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
+      builtInTypes: this.loadBuiltInTypes(),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ config, namespaceIntegrations, platformIntegrations }) => {
+        next: ({ config, namespaceIntegrations, platformIntegrations, builtInTypes }) => {
           this.existingConfig = config
           this.nameControl.setValue(config.name)
           this.descriptionControl.setValue(config.description ?? null)
@@ -167,6 +196,7 @@ export class AgentConfigFormComponent implements OnInit {
           this.enabledControl.setValue(config.enabled ?? true)
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
+          this.builtInRows.set(this.buildBuiltInRows(builtInTypes, config.integrations ?? undefined))
           this.subAgentRows.set(
             (config.subAgents ?? []).map((p) => ({ control: new FormControl<string>(p, { nonNullable: true }) }))
           )
@@ -189,14 +219,35 @@ export class AgentConfigFormComponent implements OnInit {
         ? this.integrationConfigState.loadNamespaceConfigs(this.namespaceId)
         : of([]),
       platformIntegrations: this.integrationConfigState.loadPlatformConfigs(),
+      builtInTypes: this.loadBuiltInTypes(),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ namespaceIntegrations, platformIntegrations }) => {
+        next: ({ namespaceIntegrations, platformIntegrations, builtInTypes }) => {
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, existingIntegrations ?? undefined))
+          this.builtInRows.set(this.buildBuiltInRows(builtInTypes, existingIntegrations ?? undefined))
         },
       })
+  }
+
+  /**
+   * Resolve which integration types are built-in by checking for the absence of a configSchema.
+   * Types without a configSchema are capabilities toggled on/off directly; types with a schema
+   * require a dedicated IntegrationConfig instance and are excluded here.
+   *
+   * Resilient: any error (e.g. endpoint unavailable) resolves to [] so it never blocks the
+   * integrations load — the built-in toggles stay hidden (fail-safe).
+   */
+  private loadBuiltInTypes(): Observable<IntegrationTypeDescriptor[]> {
+    return this.integrationTypeController.listTypesIntegrationType().pipe(
+      map((types) => types.filter((t) => !t.configSchema)),
+      catchError((err) => {
+        // Fail-safe: hide the built-in toggles rather than block the form, but leave a diagnostic.
+        console.error('[agent-config-form] failed to load integration types', err)
+        return of([])
+      })
+    )
   }
 
   /**
@@ -223,8 +274,29 @@ export class AgentConfigFormComponent implements OnInit {
     })
   }
 
+  /**
+   * Build a toggle row per built-in integration type, pre-checked when the agent's integrations
+   * map already contains its `type` key.
+   */
+  private buildBuiltInRows(
+    types: IntegrationTypeDescriptor[],
+    existingIntegrations: AgentConfig['integrations']
+  ): BuiltInIntegrationRow[] {
+    return types.map((t) => ({
+      type: t.type,
+      displayName: t.displayName,
+      description: t.description,
+      enabled: signal(existingIntegrations != null && t.type in existingIntegrations),
+    }))
+  }
+
   /** Toggle the enabled signal for a given row. */
   protected toggleIntegration(row: IntegrationRow): void {
+    row.enabled.update((v) => !v)
+  }
+
+  /** Toggle a built-in integration row. */
+  protected toggleBuiltIn(row: BuiltInIntegrationRow): void {
     row.enabled.update((v) => !v)
   }
 
@@ -262,29 +334,41 @@ export class AgentConfigFormComponent implements OnInit {
    */
 
   protected buildIntegrationsPayload(): AgentConfig['integrations'] {
-    const rows = this.integrationRows()
-    const enabledRows = rows.filter((r) => r.enabled())
-    if (enabledRows.length === 0) return undefined
-
+    // null per integration means "all tools allowed" (backend contract). The generated TS type
+    // declares Array<string> but the backend accepts null; springdoc does not emit nullable:true
+    // on Map additionalProperties for Kotlin nullable generics, so the cast is intentional.
     const result: { [key: string]: Array<string> } = {}
-    for (const row of enabledRows) {
+
+    for (const row of this.integrationRows().filter((r) => r.enabled())) {
       const name = row.config.name ?? ''
       const rawTools = row.toolsControl.value.trim()
-      if (rawTools === '') {
-        // null means all tools allowed for this integration (backend contract).
-        // The generated TS type declares Array<string> but the backend accepts null
-        // per integration to mean "all tools allowed". The spec does not yet express
-        // this nullable value because springdoc does not emit nullable:true on Map
-        // additionalProperties for Kotlin nullable generics. Cast is intentional.
-        result[name] = null as any
-      } else {
-        result[name] = rawTools
-          .split(',')
-          .map((t) => t.trim())
-          .filter((t) => t.length > 0)
-      }
+      result[name] =
+        rawTools === ''
+          ? (null as any)
+          : rawTools
+              .split(',')
+              .map((t) => t.trim())
+              .filter((t) => t.length > 0)
     }
-    return result
+
+    // Built-in integrations are toggle-only: their type key with a null value (= all tools).
+    for (const row of this.builtInRows().filter((r) => r.enabled())) {
+      result[row.type] = null as any
+    }
+
+    // Preserve any existing integration key the form could not represent this session — e.g. a
+    // built-in whose type list failed to load (loadBuiltInTypes falls back to []), or an integration
+    // config no longer available. Rebuilding the map purely from the visible rows would otherwise
+    // silently drop such a key when the user saves unrelated changes.
+    const renderable = new Set<string>([
+      ...this.integrationRows().map((r) => r.config.name ?? ''),
+      ...this.builtInRows().map((r) => r.type),
+    ])
+    for (const [key, value] of Object.entries(this.existingConfig?.integrations ?? {})) {
+      if (!renderable.has(key)) result[key] = value as any
+    }
+
+    return Object.keys(result).length > 0 ? result : undefined
   }
 
   protected submit(): void {

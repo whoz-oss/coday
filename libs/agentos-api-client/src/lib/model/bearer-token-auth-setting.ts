@@ -9,11 +9,11 @@
  */
 
 export interface BearerTokenAuthSetting {
-  userId?: string | null
-  namespaceId?: string | null
   authType: 'BearerTokenAuthSetting'
   description?: string
-  name: string
   id?: string
+  name: string
+  namespaceId?: string | null
+  userId?: string | null
   token?: string
 }

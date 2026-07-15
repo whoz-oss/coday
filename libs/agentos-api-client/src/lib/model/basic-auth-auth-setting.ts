@@ -9,12 +9,12 @@
  */
 
 export interface BasicAuthAuthSetting {
-  userId?: string | null
-  namespaceId?: string | null
   authType: 'BasicAuthAuthSetting'
   description?: string
-  name: string
   id?: string
-  username?: string
+  name: string
+  namespaceId?: string | null
+  userId?: string | null
   password?: string
+  username?: string
 }

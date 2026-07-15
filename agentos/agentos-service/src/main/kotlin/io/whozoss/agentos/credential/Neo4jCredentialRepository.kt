@@ -1,7 +1,7 @@
 package io.whozoss.agentos.credential
 
 import io.whozoss.agentos.sdk.credential.Credential
-import io.whozoss.agentos.sdk.encryption.FieldEncryptor
+import io.whozoss.agentos.encryption.FieldEncryptor
 import mu.KLogging
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID

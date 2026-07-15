@@ -23,11 +23,8 @@ import java.util.UUID
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class Credential(
     override val metadata: EntityMetadata = EntityMetadata(),
-    /** The user who owns this credential. Always non-null — credentials are always personal. */
     val userId: UUID,
-    /** The [AuthSetting] this credential authenticates against, referenced by id. */
     val authSettingId: UUID,
-    /** The type of stored credential, determining which keys are expected in [data]. */
     val credentialType: CredentialType,
     val data: Map<String, String> = emptyMap(),
 ) : Entity
