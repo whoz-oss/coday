@@ -9,6 +9,7 @@
  */
 
 export interface IntegrationTypeDescriptor {
+  builtIn: boolean
   configSchema?: any | null
   description: string
   displayName: string

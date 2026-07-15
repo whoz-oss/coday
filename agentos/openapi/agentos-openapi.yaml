@@ -3117,6 +3117,8 @@ components:
     IntegrationTypeDescriptor:
       type: object
       properties:
+        builtIn:
+          type: boolean
         configSchema:
           $ref: "#/components/schemas/JsonNode"
         description:
@@ -3126,6 +3128,7 @@ components:
         type:
           type: string
       required:
+      - builtIn
       - description
       - displayName
       - type
