@@ -50,17 +50,17 @@ export class CaseDrawerComponent {
 
   /**
    * Items for compact/icons mode.
-   * Non-favorites first (chronological), favorites at the BOTTOM.
-   * `isFirstFavorite` marks the first favorite so the template inserts a divider before it.
+   * Favorites FIRST, then non-favorites.
+   * `isFirstFavorite` marks the first favorite so the template inserts a divider after it.
    */
   protected readonly compactItems = computed(() => {
     const items = this.rootItems()
-    const nonFavs = items.filter((item) => item.groupKey !== 'favorites')
     const favs = items.filter((item) => item.groupKey === 'favorites')
-    const ordered = [...nonFavs, ...favs]
+    const nonFavs = items.filter((item) => item.groupKey !== 'favorites')
+    const ordered = [...favs, ...nonFavs]
     return ordered.map((item, index) => ({
       ...item,
-      isFirstFavorite: favs.length > 0 && index === nonFavs.length,
+      isFirstFavorite: favs.length > 0 && index === favs.length - 1,
     }))
   })
 

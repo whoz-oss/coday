@@ -90,7 +90,8 @@
     background 0.15s ease,
     box-shadow 0.15s ease;
 
-  &:hover {
+  // Hover uniquement sur le noeud direct — pas propagé aux enfants imbriqués
+  &:hover:not(:has(.case-tree-node:hover)) {
     background: var(--color-bg-solid, #{ds.$color-bg});
     box-shadow: var(--shadow-lg, 0 4px 14px var(--color-shadow, #{ds.$color-shadow}));
   }
@@ -181,7 +182,7 @@
     color: var(--color-text-secondary, #{ds.$color-text-secondary});
     transition: white-space 0s;
 
-    .case-tree-node:hover & {
+    .case-tree-node:hover:not(:has(.case-tree-node:hover)) & {
       white-space: normal;
       overflow: visible;
       text-overflow: unset;
@@ -205,7 +206,7 @@
     transition: opacity 0.15s ease;
   }
 
-  &:hover &__status-label {
+  &:hover:not(:has(.case-tree-node:hover)) &__status-label {
     opacity: 1;
   }
 
@@ -218,7 +219,8 @@
       opacity 0.18s ease;
   }
 
-  &:hover &__detail {
+  // Hover uniquement sur le nœud direct — pas sur les enfants imbriqués
+  &:hover > &__summary + &__detail {
     max-height: 80px;
     opacity: 1;
   }

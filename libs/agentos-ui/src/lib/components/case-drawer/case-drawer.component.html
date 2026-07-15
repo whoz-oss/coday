@@ -17,10 +17,6 @@
 @if (compact()) {
   <div class="case-drawer-compact">
     @for (item of compactItems(); track item.id) {
-      <!-- Divider before the first favorite (favorites sit at the bottom in compact mode) -->
-      @if (item.isFirstFavorite) {
-        <div class="case-drawer-compact__divider" role="separator" aria-hidden="true"></div>
-      }
       <button
         type="button"
         class="case-drawer-compact__badge"
@@ -35,6 +31,10 @@
       >
         <span class="case-drawer-compact__status-dot"></span>
       </button>
+      <!-- Divider after the last favorite -->
+      @if (item.isFirstFavorite) {
+        <div class="case-drawer-compact__divider" role="separator" aria-hidden="true"></div>
+      }
     }
   </div>
 }
