@@ -282,7 +282,7 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
 
         "POST /search returns 403 when caller has no membership on the namespace" {
             mockMvc.perform(
-                post("/api/prompts:search")
+                post("/api/prompts/search")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "namespaceId": "${namespace.id}" }"""),
             ).andExpect(status().isForbidden)
@@ -307,7 +307,7 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             )
 
             mockMvc.perform(
-                post("/api/prompts:search")
+                post("/api/prompts/search")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "namespaceId": "${namespace.id}" }"""),
             ).andExpect(status().isOk)
@@ -333,7 +333,7 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
 
             every { userService.getCurrentUser() } returns alice
             mockMvc.perform(
-                post("/api/prompts:search")
+                post("/api/prompts/search")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{}"),
             ).andExpect(status().isOk)
@@ -355,7 +355,7 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
 
             every { userService.getCurrentUser() } returns alice
             mockMvc.perform(
-                post("/api/prompts:search")
+                post("/api/prompts/search")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{}"),
             ).andExpect(status().isOk)
@@ -378,7 +378,7 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             )
 
             mockMvc.perform(
-                post("/api/prompts:search")
+                post("/api/prompts/search")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "userId": "${alice.id}" }"""),
             ).andExpect(status().isOk)
@@ -409,7 +409,7 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             )
 
             mockMvc.perform(
-                post("/api/prompts:search")
+                post("/api/prompts/search")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "userId": "${alice.id}" }"""),
             ).andExpect(status().isOk)
@@ -429,7 +429,7 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             )
 
             mockMvc.perform(
-                post("/api/prompts:search")
+                post("/api/prompts/search")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "userId": "${alice.id}" }"""),
             ).andExpect(status().isOk)
@@ -440,7 +440,7 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             every { userService.getCurrentUser() } returns admin
 
             mockMvc.perform(
-                post("/api/prompts:search")
+                post("/api/prompts/search")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "namespaceId": "${namespace.id}" }"""),
             ).andExpect(status().isOk)
