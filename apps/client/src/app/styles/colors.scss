@@ -54,6 +54,12 @@
   --color-shadow: rgba(0, 0, 0, 0.08);
   --color-overlay: rgba(0, 0, 0, 0.4);
 
+  /* Shadow tokens — geometry + color-shadow composite */
+  --shadow-sm: 0 1px 3px var(--color-shadow);
+  --shadow-md: 0 2px 6px var(--color-shadow);
+  --shadow-lg: 0 4px 14px var(--color-shadow);
+  --shadow-xl: 0 8px 32px var(--color-shadow);
+
   /* Surfaces & extended tokens (consumed by agentos-ui) */
   --color-text-tertiary: #a1a1a6;
   --color-surface-hover: var(--color-bg-hover); /* alias: same hover tint, one source for both themes */
@@ -109,6 +115,12 @@
   /* Utility Colors */
   --color-shadow: rgba(0, 0, 0, 0.5);
   --color-overlay: rgba(0, 0, 0, 0.8);
+
+  /* Shadow tokens — geometry + color-shadow composite */
+  --shadow-sm: 0 1px 3px var(--color-shadow);
+  --shadow-md: 0 2px 6px var(--color-shadow);
+  --shadow-lg: 0 4px 14px var(--color-shadow);
+  --shadow-xl: 0 8px 32px var(--color-shadow);
 
   /* Surfaces & extended tokens (consumed by agentos-ui) */
   --color-text-tertiary: #8e8e93;
