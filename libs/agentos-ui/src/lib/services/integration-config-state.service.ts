@@ -34,6 +34,7 @@ export interface IntegrationConfigDraft {
   integrationType: string
   description: string | null
   parameters?: unknown
+  authSettingName?: string | null
 }
 
 /** Backend sentinel: `?namespaceId=none` means `namespaceId IS NULL` (user-global rows). */
@@ -170,6 +171,7 @@ export class IntegrationConfigStateService {
         integrationType: draft.integrationType,
         description: draft.description as string | undefined,
         parameters: draft.parameters,
+        authSettingName: draft.authSettingName ?? undefined,
       }
       return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
     }
@@ -182,6 +184,7 @@ export class IntegrationConfigStateService {
         description: draft.description as string | undefined,
         namespaceId,
         parameters: draft.parameters,
+        authSettingName: draft.authSettingName ?? undefined,
       }
       return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
     }
@@ -199,6 +202,7 @@ export class IntegrationConfigStateService {
       userId: myId,
       namespaceId: scope === 'userOnNs' ? (namespaceId as string) : undefined,
       parameters: draft.parameters,
+      authSettingName: draft.authSettingName ?? undefined,
     }
     return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
   }
@@ -219,6 +223,7 @@ export class IntegrationConfigStateService {
       userId: existing.userId,
       namespaceId: existing.namespaceId,
       parameters: draft.parameters,
+      authSettingName: draft.authSettingName ?? undefined,
     }
     void scope
     return this.nsController.updateIntegrationConfig(id, payload).pipe(tap(() => this.refresh()))
