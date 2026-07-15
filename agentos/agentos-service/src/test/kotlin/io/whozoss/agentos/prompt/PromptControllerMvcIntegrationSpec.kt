@@ -277,7 +277,7 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isNotFound)
         }
 
-        "GET by-parentId returns prompts for the namespace" {
+        "POST :search returns prompts for the namespace" {
             val name = "LIST-${UUID.randomUUID()}"
             promptService.create(
                 Prompt(
@@ -288,8 +288,11 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
                 ),
             )
 
-            mockMvc.perform(get("/api/prompts/by-parentId/$namespaceId"))
-                .andExpect(status().isOk)
+            mockMvc.perform(
+                post("/api/prompts/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId" }"""),
+            ).andExpect(status().isOk)
                 .andExpect(jsonPath("$").isArray)
         }
     }

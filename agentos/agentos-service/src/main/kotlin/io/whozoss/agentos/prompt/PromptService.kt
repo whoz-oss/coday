@@ -38,4 +38,11 @@ interface PromptService : EntityService<Prompt, UUID>, OwnershipAware {
      * @param callerId the authenticated user's id
      */
     fun findEffective(namespaceId: UUID, callerId: UUID): List<Prompt>
+
+    /**
+     * Find all non-removed prompts at an exact scope level — no merge, no inheritance.
+     * Scope is determined by the (namespaceId?, userId?) combination.
+     * [agentConfigIds] is an optional filter; null or empty means no filter.
+     */
+    fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<Prompt>
 }

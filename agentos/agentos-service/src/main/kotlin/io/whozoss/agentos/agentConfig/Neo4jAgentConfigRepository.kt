@@ -14,6 +14,7 @@ import java.util.UUID
 open class Neo4jAgentConfigRepository(
     private val neo4jRepository: AgentConfigNodeNeo4jRepository,
     private val childLinkService: Neo4jChildLinkService,
+    private val promptNodeNeo4jRepository: io.whozoss.agentos.prompt.PromptNodeNeo4jRepository,
 ) : AgentConfigRepository {
     override fun save(entity: AgentConfig): AgentConfig =
         neo4jRepository
@@ -50,7 +51,8 @@ open class Neo4jAgentConfigRepository(
             ?.takeIf { it.removed != true }
             ?.let { node ->
                 neo4jRepository.save(node.copy(removed = true))
-                logger.debug { "[Neo4jAgentConfigRepository] Soft-deleted agent config $id" }
+                promptNodeNeo4jRepository.softDeleteByAgentConfigId(id.toString())
+                logger.debug { "[Neo4jAgentConfigRepository] Soft-deleted agent config $id (and linked prompts)" }
                 true
             } ?: false
 

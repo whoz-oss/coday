@@ -277,15 +277,18 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // GET /by-parentId/{parentId} — @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
+        // POST :search — @PreAuthorize("isAuthenticated()") + controller-level READ check
         // -------------------------------------------------------------------------
 
-        "GET /by-parentId returns 403 when caller has no membership on the namespace" {
-            mockMvc.perform(get("/api/prompts/by-parentId/${namespace.id}"))
-                .andExpect(status().isForbidden)
+        "POST /search returns 403 when caller has no membership on the namespace" {
+            mockMvc.perform(
+                post("/api/prompts:search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}" }"""),
+            ).andExpect(status().isForbidden)
         }
 
-        "GET /by-parentId returns 200 with prompts for namespace MEMBER" {
+        "POST /search returns 200 with prompts for namespace MEMBER" {
             permissionService.grantPermission(
                 alice.id.toString(),
                 EntityType.NAMESPACE,
@@ -303,17 +306,20 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
                 ),
             )
 
-            mockMvc.perform(get("/api/prompts/by-parentId/${namespace.id}"))
-                .andExpect(status().isOk)
+            mockMvc.perform(
+                post("/api/prompts:search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}" }"""),
+            ).andExpect(status().isOk)
                 .andExpect(jsonPath("$").isArray)
                 .andExpect(jsonPath("$[?(@.name == '$name')]").exists())
         }
 
         // -------------------------------------------------------------------------
-        // GET /api/prompts (no params) — platform scope
+        // POST :search — platform scope (namespaceId=null, userId=null)
         // -------------------------------------------------------------------------
 
-        "GET /api/prompts?scope=PLATFORM returns 200 with platform prompts for any authenticated user" {
+        "POST /search with platform scope returns 200 with platform prompts for any authenticated user" {
             every { userService.getCurrentUser() } returns admin
             val name = "Platform-list-${UUID.randomUUID()}"
             promptService.create(
@@ -326,13 +332,16 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             )
 
             every { userService.getCurrentUser() } returns alice
-            mockMvc.perform(get("/api/prompts").param("scope", "PLATFORM"))
-                .andExpect(status().isOk)
+            mockMvc.perform(
+                post("/api/prompts:search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{}"),
+            ).andExpect(status().isOk)
                 .andExpect(jsonPath("$").isArray)
                 .andExpect(jsonPath("$[?(@.name == '$name')]").exists())
         }
 
-        "GET /api/prompts?scope=PLATFORM does not include namespace-scoped prompts" {
+        "POST /search with platform scope does not include namespace-scoped prompts" {
             every { userService.getCurrentUser() } returns admin
             val nsName = "NS-only-${UUID.randomUUID()}"
             promptService.create(
@@ -345,16 +354,19 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             )
 
             every { userService.getCurrentUser() } returns alice
-            mockMvc.perform(get("/api/prompts").param("scope", "PLATFORM"))
-                .andExpect(status().isOk)
+            mockMvc.perform(
+                post("/api/prompts:search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{}"),
+            ).andExpect(status().isOk)
                 .andExpect(jsonPath("$[?(@.name == '$nsName')]").doesNotExist())
         }
 
         // -------------------------------------------------------------------------
-        // GET /api/prompts?userId=me — user-scoped listing
+        // POST :search — user-global scope (namespaceId=null, userId=currentUser.id)
         // -------------------------------------------------------------------------
 
-        "GET /api/prompts?scope=USER returns 200 with user-global prompts" {
+        "POST /search with user scope returns 200 with user-global prompts" {
             promptService.create(
                 Prompt(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
@@ -365,12 +377,15 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
                 ),
             )
 
-            mockMvc.perform(get("/api/prompts").param("scope", "USER"))
-                .andExpect(status().isOk)
+            mockMvc.perform(
+                post("/api/prompts:search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
                 .andExpect(jsonPath("$").isArray)
         }
 
-        "GET /api/prompts?scope=USER returns only user-global prompts (namespaceId IS NULL)" {
+        "POST /search with user scope returns only user-global prompts (namespaceId IS NULL)" {
             val userGlobalName = "UserGlobal-${UUID.randomUUID()}"
             val userNsName = "UserNs-${UUID.randomUUID()}"
 
@@ -393,13 +408,16 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
                 ),
             )
 
-            mockMvc.perform(get("/api/prompts").param("scope", "USER"))
-                .andExpect(status().isOk)
+            mockMvc.perform(
+                post("/api/prompts:search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
                 .andExpect(jsonPath("$[?(@.name == '$userGlobalName')]").exists())
                 .andExpect(jsonPath("$[?(@.name == '$userNsName')]").doesNotExist())
         }
 
-        "GET /api/prompts?scope=USER does not return prompts owned by another user" {
+        "POST /search with user scope does not return prompts owned by another user" {
             promptService.create(
                 Prompt(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
@@ -410,16 +428,22 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
                 ),
             )
 
-            mockMvc.perform(get("/api/prompts").param("scope", "USER"))
-                .andExpect(status().isOk)
+            mockMvc.perform(
+                post("/api/prompts:search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
                 .andExpect(jsonPath("$[?(@.name =~ /Bob-only-.*/i)]").doesNotExist())
         }
 
-        "GET /by-parentId returns 200 for super-admin without explicit namespace membership" {
+        "POST /search returns 200 for super-admin without explicit namespace membership" {
             every { userService.getCurrentUser() } returns admin
 
-            mockMvc.perform(get("/api/prompts/by-parentId/${namespace.id}"))
-                .andExpect(status().isOk)
+            mockMvc.perform(
+                post("/api/prompts:search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}" }"""),
+            ).andExpect(status().isOk)
         }
 
         // -------------------------------------------------------------------------

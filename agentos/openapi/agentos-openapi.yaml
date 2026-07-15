@@ -739,47 +739,6 @@ paths:
         "204":
           description: No Content
   /api/prompts:
-    get:
-      tags:
-      - prompt-controller
-      summary: List Prompts by explicit scope
-      description: |-
-        Returns prompts for the given scope. `namespaceId` is required for `NAMESPACE` and `USER_NAMESPACE` scopes, and must be omitted for `PLATFORM` and `USER`.
-
-        | scope          | namespaceId | returned prompts                  | required permission       |
-        |----------------|-------------|-----------------------------------|---------------------------|
-        | PLATFORM       | absent      | platform-level (null, null)       | authenticated             |
-        | NAMESPACE      | required    | namespace-shared (ns, null)       | READ on namespace         |
-        | USER           | absent      | user-global (null, me)            | authenticated             |
-        | USER_NAMESPACE | required    | user × namespace (ns, me)        | READ on namespace         |
-      operationId: listPrompt
-      parameters:
-      - name: scope
-        in: query
-        description: Scope of prompts to return.
-        required: true
-        schema:
-          type: string
-          enum:
-          - PLATFORM
-          - NAMESPACE
-          - USER
-          - USER_NAMESPACE
-      - name: namespaceId
-        in: query
-        required: false
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
     post:
       tags:
       - prompt-controller
@@ -809,6 +768,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Prompt"
+  /api/prompts/search:
+    post:
+      tags:
+      - prompt-controller
+      summary: List Prompts at an exact scope level
+      description: |-
+        Returns prompts declared at a single exact scope level — no merge, no inheritance. The `(namespaceId?, userId?)` combination in the body determines the level:
+
+        | namespaceId | userId   | level            | required permission        |
+        |-------------|----------|------------------|----------------------------|
+        | null        | null     | platform         | authenticated              |
+        | non-null    | null     | namespace-shared | READ on namespace          |
+        | null        | non-null | user-global      | authenticated              |
+        | non-null    | non-null | user×namespace   | READ on namespace          |
+
+        Optional `agentConfigIds` filter restricts results to prompts linked to those agents.
+      operationId: searchPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptSearchRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
+  /api/prompts/effective:
+    post:
+      tags:
+      - prompt-controller
+      summary: Effective prompts for a user in a namespace
+      description: "Returns the resolved set of prompts accessible in the given namespace\
+        \ context. Merges platform, namespace-shared, user-global and user×namespace\
+        \ layers by name, highest-priority layer wins. Optional `agentConfigId` filter\
+        \ applied post-resolution. Requires READ on the namespace."
+      operationId: effectivePrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptEffectiveRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
   /api/prompts/by-ids:
     post:
       tags:
@@ -1655,52 +1671,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
-  /api/prompts/effective:
-    get:
-      tags:
-      - prompt-controller
-      summary: Effective prompts for a namespace
-      description: "Returns the resolved set of prompts accessible in the given namespace\
-        \ context. Merges platform, namespace-shared, user-global and user×namespace\
-        \ layers by name, highest-priority layer wins. Requires READ on the namespace."
-      operationId: findEffectiveByNamespaceIdPrompt
-      parameters:
-      - name: namespaceId
-        in: query
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
-  /api/prompts/by-parentId/{parentId}:
-    get:
-      tags:
-      - prompt-controller
-      operationId: listByParentPrompt
-      parameters:
-      - name: parentId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
   /api/plugins:
     get:
       tags:
@@ -2359,6 +2329,11 @@ components:
           - string
           - "null"
           format: uuid
+        agentConfigId:
+          type:
+          - string
+          - "null"
+          format: uuid
         name:
           type: string
           minLength: 1
@@ -2374,6 +2349,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PromptParameter"
+        externalMetadata:
+          type: object
+          additionalProperties: {}
         createdBy:
           type: string
         createdOn:
@@ -2745,6 +2723,41 @@ components:
       - name
       - userExternalIdsToAdd
       - userExternalIdsToRemove
+    PromptSearchRequest:
+      type: object
+      properties:
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        agentConfigIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+    PromptEffectiveRequest:
+      type: object
+      properties:
+        namespaceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        agentConfigId:
+          type:
+          - string
+          - "null"
+          format: uuid
+      required:
+      - namespaceId
+      - userId
     PluginActionResponse:
       type: object
       properties:

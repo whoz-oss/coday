@@ -1,6 +1,13 @@
 spring:
   application:
     name: agentos
+  web:
+    resources:
+      # AgentOS is a pure API service — no static resources are served.
+      # Without this, Spring's ResourceHttpRequestHandler intercepts paths
+      # containing colons (e.g. /api/prompts:search) before the controller
+      # can handle them, returning 404 ("No static resource ...").
+      add-mappings: false
   servlet:
     multipart:
       # Global upload limits (file-exchange uploads + plugin jars), raised from Spring's 1MB

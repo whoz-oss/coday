@@ -43,6 +43,7 @@ import { marked, Renderer } from 'marked'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
+import { UserStateService } from '../../services/user-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
@@ -112,6 +113,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly caseState = inject(CaseStateService)
   private readonly promptState = inject(PromptStateService)
+  private readonly userState = inject(UserStateService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
@@ -221,7 +223,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         switchMap((prefix) => {
           const source$ = this.promptsLoaded
             ? of(this.effectivePrompts)
-            : this.promptState.listEffective(this.namespaceId).pipe(catchError(() => of([] as Prompt[])))
+            : this.promptState
+                .listEffective(this.namespaceId, this.userState.currentUser()?.id ?? '')
+                .pipe(catchError(() => of([] as Prompt[])))
           return source$.pipe(map((prompts) => ({ prefix, prompts })))
         }),
         takeUntilDestroyed(this.destroyRef)

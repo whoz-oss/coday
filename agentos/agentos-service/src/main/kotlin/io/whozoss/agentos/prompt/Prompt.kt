@@ -31,8 +31,20 @@ data class Prompt(
     override val metadata: EntityMetadata = EntityMetadata(),
     val namespaceId: UUID? = null,
     val userId: UUID? = null,
+    /**
+     * Optional link to an [io.whozoss.agentos.agentConfig.AgentConfig].
+     * When set, this prompt acts as a Starter for that agent.
+     * Immutable post-creation — preserved on PUT by the controller.
+     * Materialised as a `(:Prompt)-[:DEPLOYED_TO]->(:AgentConfig)` edge in Neo4j.
+     */
+    val agentConfigId: UUID? = null,
     val name: String,
     val description: String? = null,
     val content: List<String>,
     val parameters: List<PromptParameter> = emptyList(),
+    /**
+     * Opaque metadata map for external consumers (Copilot, Studio).
+     * AgentOS persists this field as-is without interpreting its content.
+     */
+    val externalMetadata: Map<String, Any?>? = null,
 ) : Entity

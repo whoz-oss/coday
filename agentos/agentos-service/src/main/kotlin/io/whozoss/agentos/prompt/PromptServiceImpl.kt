@@ -69,6 +69,12 @@ class PromptServiceImpl(
             .map { (_, layers) -> layers.last() }
             .sortedBy { it.name }
 
+    override fun findByScope(
+        namespaceId: UUID?,
+        userId: UUID?,
+        agentConfigIds: List<UUID>?,
+    ): List<Prompt> = repository.findByScope(namespaceId, userId, agentConfigIds)
+
     private fun layerPriority(p: Prompt): Int =
         when {
             p.namespaceId == null && p.userId == null -> 0

@@ -30,11 +30,14 @@ open class Neo4jPromptRepository(
         neo4jRepository
             .save(PromptNode.fromDomain(entity, objectMapper))
             .also { savedNode ->
-                // Link is created only on first save — SDN sets @Version to 0 on initial persist.
-                // namespaceId is immutable post-create so the edge never needs updating.
+                // Links are created only on first save — SDN sets @Version to 0 on initial persist.
+                // namespaceId and agentConfigId are immutable post-create so edges never need updating.
                 if (savedNode.version == 0L) {
                     entity.namespaceId?.let { nsId ->
                         childLinkService.link(EntityType.PROMPT.label, savedNode.id, EntityType.NAMESPACE.label, nsId.toString())
+                    }
+                    entity.agentConfigId?.let { agentId ->
+                        childLinkService.link(EntityType.PROMPT.label, savedNode.id, "AgentConfig", agentId.toString())
                     }
                 }
             }.toDomain(objectMapper)
@@ -108,6 +111,23 @@ open class Neo4jPromptRepository(
         logger.debug { "[Neo4jPromptRepository] Soft-deleted ${active.size} prompts under namespace $parentId" }
         return active.size
     }
+
+    override fun softDeleteByAgentConfigId(agentConfigId: UUID) {
+        neo4jRepository.softDeleteByAgentConfigId(agentConfigId.toString())
+        logger.debug { "[Neo4jPromptRepository] Soft-deleted prompts linked to agentConfigId=$agentConfigId" }
+    }
+
+    override fun findByScope(
+        namespaceId: UUID?,
+        userId: UUID?,
+        agentConfigIds: List<UUID>?,
+    ): List<Prompt> =
+        neo4jRepository
+            .findByScope(
+                namespaceId = namespaceId?.toString(),
+                userId = userId?.toString(),
+                agentConfigIds = agentConfigIds?.map { it.toString() }?.takeIf { it.isNotEmpty() },
+            ).map { it.toDomain(objectMapper) }
 
     companion object : KLogging()
 }

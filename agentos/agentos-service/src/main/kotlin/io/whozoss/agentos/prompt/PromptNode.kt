@@ -14,6 +14,7 @@ import org.springframework.data.neo4j.core.schema.Node
 import java.time.Instant
 import java.util.UUID
 
+
 /**
  * Spring Data Neo4j projection for [Prompt].
  *
@@ -40,6 +41,12 @@ import java.util.UUID
  * [OverlayKeyEncoding.activeKey]; rewritten to a tombstone on soft-delete so the
  * unique slot is freed immediately for re-creation.
  *
+ * [agentConfigId] is an optional scalar FK to an AgentConfig node. The corresponding
+ * `(:Prompt)-[:DEPLOYED_TO]->(:AgentConfig)` edge is managed via [Neo4jChildLinkService]
+ * on first save (version == 0L). No `@Relationship` field to avoid SDN eager hydration.
+ *
+ * [externalMetadataJson] stores the opaque [Prompt.externalMetadata] map as a JSON string.
+ *
  * [version] backs Spring Data Neo4j optimistic locking. A null version means the
  * entity has never been persisted (new entity); SDN sets it to 0 on first save.
  */
@@ -48,10 +55,12 @@ data class PromptNode(
     @Id val id: String,
     val namespaceId: String? = null,
     val userId: String? = null,
+    val agentConfigId: String? = null,
     val name: String,
     val description: String? = null,
     val contentJson: String,
     val parametersJson: String? = null,
+    val externalMetadataJson: String? = null,
     val tripleKey: String,
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
@@ -74,15 +83,18 @@ data class PromptNode(
                 ),
             namespaceId = namespaceId?.let { UUID.fromString(it) },
             userId = userId?.let { UUID.fromString(it) },
+            agentConfigId = agentConfigId?.let { UUID.fromString(it) },
             name = name,
             description = description,
             content = objectMapper.readValue(contentJson, CONTENT_TYPE),
             parameters = parametersJson?.let { objectMapper.readValue(it, PARAMETERS_TYPE) } ?: emptyList(),
+            externalMetadata = externalMetadataJson?.let { objectMapper.readValue(it, EXTERNAL_METADATA_TYPE) },
         )
 
     companion object {
         private val CONTENT_TYPE = object : TypeReference<List<String>>() {}
         private val PARAMETERS_TYPE = object : TypeReference<List<PromptParameter>>() {}
+        private val EXTERNAL_METADATA_TYPE = object : TypeReference<Map<String, Any?>>() {}
 
         fun computeTripleKey(namespaceId: UUID?, userId: UUID?, name: String): String =
             OverlayKeyEncoding.activeKey(namespaceId, userId, name)
@@ -98,10 +110,12 @@ data class PromptNode(
                 id = idString,
                 namespaceId = prompt.namespaceId?.toString(),
                 userId = prompt.userId?.toString(),
+                agentConfigId = prompt.agentConfigId?.toString(),
                 name = prompt.name,
                 description = prompt.description,
                 contentJson = objectMapper.writeValueAsString(prompt.content),
                 parametersJson = prompt.parameters.takeIf { it.isNotEmpty() }?.let { objectMapper.writeValueAsString(it) },
+                externalMetadataJson = prompt.externalMetadata?.let { objectMapper.writeValueAsString(it) },
                 tripleKey = computeTripleKey(prompt.namespaceId, prompt.userId, prompt.name),
                 version = prompt.metadata.version,
                 created = prompt.metadata.created,

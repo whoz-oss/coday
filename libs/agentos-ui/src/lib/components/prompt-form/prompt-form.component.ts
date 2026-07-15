@@ -1,9 +1,19 @@
+import { DatePipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
 import { HttpErrorResponse } from '@angular/common/http'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
+import {
+  AbstractControl,
+  FormArray,
+  FormControl,
+  FormGroup,
+  ReactiveFormsModule,
+  ValidationErrors,
+  Validators,
+} from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Prompt, PromptParameter } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, AgentConfigControllerService, Prompt, PromptParameter } from '@whoz-oss/agentos-api-client'
+import { catchError, of } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
 
 /**
@@ -31,10 +41,16 @@ import { PromptStateService } from '../../services/prompt-state.service'
  * The `parameters` field is a dynamic list of named placeholders. Each parameter
  * has a required name, optional description, and optional defaultValue (null =
  * required at execution time).
+ *
+ * ## Agent Config (namespace scope only, immutable post-creation)
+ *
+ * In namespace mode, the form offers an optional select to link the prompt to an
+ * AgentConfig from the same namespace. This field is immutable after creation:
+ * in edit mode it is shown as read-only text when already set, and hidden otherwise.
  */
 @Component({
   selector: 'agentos-prompt-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, DatePipe],
   templateUrl: './prompt-form.component.html',
   styleUrl: './prompt-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -44,6 +60,7 @@ export class PromptFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly promptState = inject(PromptStateService)
+  private readonly agentConfigController = inject(AgentConfigControllerService)
 
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
   /** True when loaded from /admin/prompts — platform scope, no namespaceId in route. */
@@ -59,6 +76,11 @@ export class PromptFormComponent implements OnInit {
       validators: [Validators.required, Validators.minLength(1)],
     }),
     description: new FormControl<string | null>(null),
+    agentConfigId: new FormControl<string | null>(null),
+    externalMetadataJson: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [jsonValidator],
+    }),
     content: new FormArray<FormControl<string>>([this.createContentControl()], { validators: [Validators.required] }),
     parameters: new FormArray<FormGroup<ParameterGroup>>([]),
   })
@@ -69,6 +91,14 @@ export class PromptFormComponent implements OnInit {
 
   protected get descriptionControl() {
     return this.form.controls.description
+  }
+
+  protected get agentConfigIdControl() {
+    return this.form.controls.agentConfigId
+  }
+
+  protected get externalMetadataJsonControl() {
+    return this.form.controls.externalMetadataJson
   }
 
   protected get contentArray() {
@@ -91,6 +121,18 @@ export class PromptFormComponent implements OnInit {
   /** Displayed literally in the hint text — avoids Angular interpolation parsing issues. */
   protected readonly paramPlaceholderSyntax = '{{paramName}}'
 
+  /** AgentConfigs available in the current namespace (empty in platform mode). */
+  private readonly agentConfigs = signal<AgentConfig[]>([])
+
+  /** Public signal for the template — list of available AgentConfigs. */
+  protected readonly availableAgentConfigs = this.agentConfigs.asReadonly()
+
+  /**
+   * Audit metadata from the loaded prompt, exposed for read-only display in edit mode.
+   * Null in create mode.
+   */
+  protected readonly existingPromptMetadata = signal<PromptMetadata | null>(null)
+
   /** Kept for the update payload (preserves server-side fields like id). */
   private existingPrompt: Prompt | null = null
 
@@ -104,6 +146,10 @@ export class PromptFormComponent implements OnInit {
       this.isEditMode.set(true)
       this.loadPrompt(promptId)
     }
+    // Load available AgentConfigs for namespace-scoped forms (both create and edit modes).
+    if (!this.isPlatformMode && this.namespaceId) {
+      this.loadAgentConfigs(this.namespaceId)
+    }
   }
 
   private loadPrompt(id: string): void {
@@ -115,6 +161,12 @@ export class PromptFormComponent implements OnInit {
         next: (prompt) => {
           this.existingPrompt = prompt
           this.hydrateForm(prompt)
+          this.existingPromptMetadata.set({
+            createdBy: prompt.createdBy,
+            createdOn: prompt.createdOn,
+            updatedBy: prompt.updatedBy,
+            updatedOn: prompt.updatedOn,
+          })
           this.isLoading.set(false)
         },
         error: () => {
@@ -124,10 +176,26 @@ export class PromptFormComponent implements OnInit {
       })
   }
 
+  /**
+   * Load AgentConfigs available in the namespace for the optional agentConfigId select.
+   * Uses listByParentAgentConfig which returns namespace-scoped configs.
+   * Errors are silently ignored — the select simply stays hidden.
+   */
+  private loadAgentConfigs(namespaceId: string): void {
+    this.agentConfigController
+      .listByParentAgentConfig(namespaceId)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        catchError(() => of([] as AgentConfig[]))
+      )
+      .subscribe((configs) => this.agentConfigs.set(configs))
+  }
+
   /** Populate the reactive form from an existing Prompt. */
   private hydrateForm(prompt: Prompt): void {
     this.nameControl.setValue(prompt.name)
     this.descriptionControl.setValue(prompt.description ?? null)
+    this.agentConfigIdControl.setValue(prompt.agentConfigId ?? null)
 
     // Rebuild content FormArray
     this.contentArray.clear()
@@ -137,6 +205,23 @@ export class PromptFormComponent implements OnInit {
     // Rebuild parameters FormArray
     this.parametersArray.clear()
     ;(prompt.parameters ?? []).forEach((param) => this.parametersArray.push(this.createParameterGroup(param)))
+
+    // Hydrate external metadata as pretty-printed JSON string
+    this.externalMetadataJsonControl.setValue(
+      prompt.externalMetadata ? JSON.stringify(prompt.externalMetadata, null, 2) : ''
+    )
+  }
+
+  // ---------------------------------------------------------------------------
+  // AgentConfig helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Resolve an AgentConfig name by id for display in read-only edit mode.
+   * Falls back to the raw id if the config is not in the loaded list.
+   */
+  protected resolveAgentConfigName(agentConfigId: string): string {
+    return this.agentConfigs().find((c) => c.id === agentConfigId)?.name ?? agentConfigId
   }
 
   // ---------------------------------------------------------------------------
@@ -196,6 +281,8 @@ export class PromptFormComponent implements OnInit {
 
     this.isSubmitting.set(true)
 
+    const isEdit = this.isEditMode() && !!this.existingPrompt?.id
+
     const payload: Prompt = {
       ...(this.existingPrompt ?? {}),
       namespaceId: this.namespaceId,
@@ -212,10 +299,16 @@ export class PromptFormComponent implements OnInit {
       })),
     }
 
-    const call$ =
-      this.isEditMode() && this.existingPrompt?.id
-        ? this.promptState.update(this.existingPrompt.id, payload)
-        : this.promptState.create(payload)
+    if (!isEdit) {
+      // agentConfigId is immutable post-creation — only include it in the create payload.
+      payload.agentConfigId = this.agentConfigIdControl.value || null
+    }
+
+    // externalMetadata: parse JSON string, or null if empty.
+    const rawJson = this.externalMetadataJsonControl.value.trim()
+    payload.externalMetadata = rawJson ? JSON.parse(rawJson) : null
+
+    const call$ = isEdit ? this.promptState.update(this.existingPrompt!.id!, payload) : this.promptState.create(payload)
 
     this.errorMessage.set(null)
 
@@ -247,9 +340,32 @@ export class PromptFormComponent implements OnInit {
   }
 }
 
+/**
+ * Validates that the control value is either empty (allowed) or valid JSON.
+ * An empty / whitespace-only value is treated as "no metadata" and passes validation.
+ */
+function jsonValidator(control: AbstractControl): ValidationErrors | null {
+  const value = (control.value as string)?.trim()
+  if (!value) return null
+  try {
+    JSON.parse(value)
+    return null
+  } catch {
+    return { invalidJson: true }
+  }
+}
+
 /** Typed shape for a single parameter FormGroup. */
 interface ParameterGroup {
   name: FormControl<string>
   description: FormControl<string | null>
   defaultValue: FormControl<string>
+}
+
+/** Audit metadata extracted from a loaded prompt for read-only display. */
+interface PromptMetadata {
+  createdBy?: string
+  createdOn?: string
+  updatedBy?: string
+  updatedOn?: string
 }

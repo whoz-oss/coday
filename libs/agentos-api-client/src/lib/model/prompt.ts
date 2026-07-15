@@ -13,10 +13,12 @@ export interface Prompt {
   id?: string
   namespaceId?: string | null
   userId?: string | null
+  agentConfigId?: string | null
   name: string
   description?: string
   content: Array<string>
   parameters: Array<PromptParameter>
+  externalMetadata?: { [key: string]: any }
   createdBy?: string
   createdOn?: string
   updatedBy?: string
