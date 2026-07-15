@@ -41,8 +41,8 @@
         />
       </div>
 
-      <!-- Agent Config (optional, namespace scope only, immutable post-creation) -->
-      @if (!isPlatformMode && availableAgentConfigs().length > 0) {
+      <!-- Agent Config (optional, immutable post-creation) -->
+      @if (availableAgentConfigs().length > 0) {
         <div class="prompt-form__field">
           <label class="prompt-form__label" for="prompt-agent-config">Agent Config</label>
           @if (isEditMode() && agentConfigIdControl.value) {

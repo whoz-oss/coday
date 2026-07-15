@@ -139,8 +139,10 @@ export class PromptFormComponent implements OnInit {
       this.isEditMode.set(true)
       this.loadPrompt(promptId)
     }
-    // Load available AgentConfigs for namespace-scoped forms (both create and edit modes).
-    if (!this.isPlatformMode && this.namespaceId) {
+    // Load available AgentConfigs — platform agents in platform mode, namespace agents otherwise.
+    if (this.isPlatformMode) {
+      this.loadPlatformAgentConfigs()
+    } else if (this.namespaceId) {
       this.loadAgentConfigs(this.namespaceId)
     }
   }
@@ -171,6 +173,20 @@ export class PromptFormComponent implements OnInit {
   private loadAgentConfigs(namespaceId: string): void {
     this.agentConfigController
       .listByParentAgentConfig(namespaceId)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        catchError(() => of([] as AgentConfig[]))
+      )
+      .subscribe((configs) => this.agentConfigs.set(configs))
+  }
+
+  /**
+   * Load platform-level AgentConfigs for the optional agentConfigId select in platform mode.
+   * Errors are silently ignored — the select simply stays hidden.
+   */
+  private loadPlatformAgentConfigs(): void {
+    this.agentConfigController
+      .listPlatformAgentsAgentConfig()
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         catchError(() => of([] as AgentConfig[]))
