@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, signal } from '@angular/core'
-import { of } from 'rxjs'
+import { Observable, of } from 'rxjs'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
+  AuthSettingControllerService,
   IntegrationConfig,
   IntegrationTypeControllerService,
   IntegrationTypeDescriptor,
@@ -11,6 +12,9 @@ import {
 import { JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-system'
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
+
+/** Minimal shape we need from each AuthSetting — the generated union type is an empty interface. */
+type AuthSettingWithName = { name: string }
 
 const VALID_SCOPES: ReadonlySet<IntegrationScope> = new Set(['platform', 'namespace', 'userOnNs', 'userGlobal'])
 
@@ -51,6 +55,7 @@ export class IntegrationFormComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(IntegrationConfigStateService)
   private readonly integrationTypeController = inject(IntegrationTypeControllerService)
+  private readonly authSettingController = inject(AuthSettingControllerService)
   private readonly namespaceRole = inject(NamespaceRoleStateService)
 
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
@@ -112,6 +117,12 @@ export class IntegrationFormComponent implements OnInit {
     { value: 'userOnNs', label: SCOPE_LABEL.userOnNs },
     { value: 'userGlobal', label: SCOPE_LABEL.userGlobal },
   ]
+
+  /** Standalone control for authSettingName — kept outside the FormGroup, same pattern as paramsValue. */
+  protected readonly authSettingNameControl = new FormControl<string | null>(null)
+
+  /** Auth setting names available at the current scope — drives the dropdown options. */
+  protected readonly availableAuthSettings = signal<string[]>([])
 
   /** Parsed parameters value from ds-json-schema-form */
   protected readonly paramsValue = signal<Record<string, unknown> | null>(null)
@@ -178,11 +189,17 @@ export class IntegrationFormComponent implements OnInit {
     if (this.isPlatformMode) {
       this.scopeControl.setValue('platform')
       this.scopeControl.disable()
+      this.loadAuthSettingsForScope('platform')
       return
     }
 
     const hintedScope = this.parseScope(queryParams.get('scope'))
     this.scopeControl.setValue(hintedScope)
+    this.loadAuthSettingsForScope(hintedScope)
+    // Reload auth settings when the user switches scope in create mode.
+    this.scopeControl.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((scope) => {
+      this.loadAuthSettingsForScope(scope)
+    })
     const templateId = queryParams.get('template')
     if (templateId) {
       this.hydrateFromTemplate(templateId)
@@ -222,8 +239,10 @@ export class IntegrationFormComponent implements OnInit {
       .subscribe({
         next: (config) => {
           this.existingConfig = config
-          this.scopeControl.setValue(this.deriveScopeFromConfig(config))
+          const derivedScope = this.deriveScopeFromConfig(config)
+          this.scopeControl.setValue(derivedScope)
           this.applyConfigToForm(config)
+          this.loadAuthSettingsForScope(derivedScope)
           this.isLoading.set(false)
         },
         error: () => {
@@ -272,6 +291,38 @@ export class IntegrationFormComponent implements OnInit {
     this.typeControl.setValue(config.integrationType)
     this.initialParams.set(config.parameters as Record<string, unknown> | null)
     this.paramsValue.set(config.parameters as Record<string, unknown> | null)
+    this.authSettingNameControl.setValue(config.authSettingName ?? null)
+  }
+
+  /**
+   * Fetches available AuthSettings for the given scope and populates `availableAuthSettings`.
+   * The dropdown shows what exists at the same tier as the IntegrationConfig being edited/created.
+   * The backend resolves by name with 4-tier shadowing at runtime, so even an auth setting
+   * defined at a different tier will still resolve — same-scope is a sound UX default.
+   */
+  private loadAuthSettingsForScope(scope: IntegrationScope): void {
+    let obs$: Observable<AuthSettingWithName[]>
+    switch (scope) {
+      case 'platform':
+        obs$ = this.authSettingController.listAuthSetting() as Observable<AuthSettingWithName[]>
+        break
+      case 'namespace':
+        obs$ = this.authSettingController.listAuthSetting(this.namespaceId) as Observable<AuthSettingWithName[]>
+        break
+      case 'userOnNs':
+        obs$ = this.authSettingController.listAuthSetting(this.namespaceId, 'me') as Observable<AuthSettingWithName[]>
+        break
+      case 'userGlobal':
+        obs$ = this.authSettingController.listAuthSetting('none', 'me') as Observable<AuthSettingWithName[]>
+        break
+    }
+    obs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (settings) => {
+        const names = settings.map((s) => s.name).filter(Boolean)
+        this.availableAuthSettings.set([...new Set(names)])
+      },
+      error: () => this.availableAuthSettings.set([]),
+    })
   }
 
   protected onParamsChange(value: Record<string, unknown> | null): void {
@@ -297,6 +348,7 @@ export class IntegrationFormComponent implements OnInit {
       description: trimmedDescription ? trimmedDescription : null,
       integrationType: this.typeControl.value,
       parameters: this.paramsValue(),
+      authSettingName: this.authSettingNameControl.value || null,
     }
     // getRawValue() includes the scope control even when disabled in edit mode.
     const scope = this.form.getRawValue().scope
