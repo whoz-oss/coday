@@ -44,6 +44,7 @@ import java.util.UUID
     JsonSubTypes.Type(value = OAuthDiscoverableAuthSetting::class, name = "OAUTH_DISCOVERABLE"),
     JsonSubTypes.Type(value = OAuthRegisteredAuthSetting::class, name = "OAUTH_REGISTERED"),
     JsonSubTypes.Type(value = OAuthCustomAuthSetting::class, name = "OAUTH_CUSTOM"),
+    JsonSubTypes.Type(value = OAuthMcpDiscoverableAuthSetting::class, name = "OAUTH_MCP_DISCOVERABLE"),
 )
 sealed interface AuthSetting : Entity {
     val namespaceId: UUID?
@@ -141,6 +142,21 @@ data class OAuthCustomAuthSetting(
     override val authType: AuthType = AuthType.OAUTH_CUSTOM
 }
 
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class OAuthMcpDiscoverableAuthSetting(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID? = null,
+    override val userId: UUID? = null,
+    override val name: String,
+    override val description: String? = null,
+    val resourceUrl: String = "",    // The MCP server URL (entry point for discovery)
+    val clientId: String = "",       // Optional: pre-registered client ID (empty = dynamic registration)
+    val clientSecret: String = "",   // Optional: pre-registered client secret
+    val scopes: String? = null,      // Optional: override discovered scopes
+) : AuthSetting {
+    override val authType: AuthType = AuthType.OAUTH_MCP_DISCOVERABLE
+}
+
 // ---------------------------------------------------------------------------
 // Map conversion helpers
 // ---------------------------------------------------------------------------
@@ -185,6 +201,12 @@ fun AuthSetting.toDataMap(): Map<String, String> =
             if (tokenUrl.isNotBlank()) put("tokenUrl", tokenUrl)
             if (scopes != null) put("scopes", scopes)
         }
+        is OAuthMcpDiscoverableAuthSetting -> buildMap {
+            if (resourceUrl.isNotBlank()) put("resourceUrl", resourceUrl)
+            if (clientId.isNotBlank()) put("clientId", clientId)
+            if (clientSecret.isNotBlank()) put("clientSecret", clientSecret)
+            if (scopes != null) put("scopes", scopes)
+        }
     }
 
 /**
@@ -203,6 +225,7 @@ fun AuthSetting.toSensitiveKeys(): Set<String> =
         is OAuthDiscoverableAuthSetting -> setOf("clientSecret")
         is OAuthRegisteredAuthSetting -> setOf("clientSecret")
         is OAuthCustomAuthSetting -> setOf("clientSecret")
+        is OAuthMcpDiscoverableAuthSetting -> setOf("clientSecret")
     }
 
 /**
@@ -289,6 +312,18 @@ fun authSettingFromDataMap(
                 clientSecret = data["clientSecret"] ?: "",
                 authorizationUrl = data["authorizationUrl"] ?: "",
                 tokenUrl = data["tokenUrl"] ?: "",
+                scopes = data["scopes"],
+            )
+        AuthType.OAUTH_MCP_DISCOVERABLE ->
+            OAuthMcpDiscoverableAuthSetting(
+                metadata = metadata,
+                namespaceId = namespaceId,
+                userId = userId,
+                name = name,
+                description = description,
+                resourceUrl = data["resourceUrl"] ?: "",
+                clientId = data["clientId"] ?: "",
+                clientSecret = data["clientSecret"] ?: "",
                 scopes = data["scopes"],
             )
     }

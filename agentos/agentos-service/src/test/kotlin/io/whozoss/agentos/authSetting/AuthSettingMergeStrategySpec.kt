@@ -190,4 +190,39 @@ class AuthSettingMergeStrategySpec : StringSpec({
         merged.metadata.id shouldBe base.metadata.id
         merged.metadata.id shouldNotBe override.metadata.id
     }
+
+    // -------------------------------------------------------------------------
+    // OAUTH_MCP_DISCOVERABLE merge
+    // -------------------------------------------------------------------------
+
+    "OAUTH_MCP_DISCOVERABLE: merge preserves resourceUrl from base when override has none" {
+        val base = setting(
+            authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+            data = mapOf("resourceUrl" to "https://mcp.example.com", "clientId" to "base-client"),
+        )
+        val override = setting(
+            authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+            data = mapOf("scopes" to "read write"),
+        )
+
+        val merged = strategy.merge(base, override)
+        merged.data["resourceUrl"] shouldBe "https://mcp.example.com"
+        merged.data["clientId"] shouldBe "base-client"
+        merged.data["scopes"] shouldBe "read write"
+    }
+
+    "OAUTH_MCP_DISCOVERABLE: override clientId wins over base" {
+        val base = setting(
+            authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+            data = mapOf("resourceUrl" to "https://mcp.example.com", "clientId" to "base-client"),
+        )
+        val override = setting(
+            authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+            data = mapOf("clientId" to "override-client"),
+        )
+
+        val merged = strategy.merge(base, override)
+        merged.data["clientId"] shouldBe "override-client"
+        merged.data["resourceUrl"] shouldBe "https://mcp.example.com"
+    }
 })

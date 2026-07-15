@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.authSetting.BasicAuthAuthSetting
 import io.whozoss.agentos.sdk.authSetting.BearerTokenAuthSetting
 import io.whozoss.agentos.sdk.authSetting.OAuthCustomAuthSetting
 import io.whozoss.agentos.sdk.authSetting.OAuthDiscoverableAuthSetting
+import io.whozoss.agentos.sdk.authSetting.OAuthMcpDiscoverableAuthSetting
 import io.whozoss.agentos.sdk.authSetting.OAuthRegisteredAuthSetting
 import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
 import io.whozoss.agentos.sdk.authSetting.toDataMap
@@ -27,6 +28,7 @@ import io.whozoss.agentos.sdk.api.authSetting.BasicAuthAuthSettingDto
 import io.whozoss.agentos.sdk.api.authSetting.BearerTokenAuthSettingDto
 import io.whozoss.agentos.sdk.api.authSetting.OAuthCustomAuthSettingDto
 import io.whozoss.agentos.sdk.api.authSetting.OAuthDiscoverableAuthSettingDto
+import io.whozoss.agentos.sdk.api.authSetting.OAuthMcpDiscoverableAuthSettingDto
 import io.whozoss.agentos.sdk.api.authSetting.OAuthRegisteredAuthSettingDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
@@ -312,6 +314,12 @@ internal fun dtoToDataMap(dto: AuthSettingDto): Map<String, String> =
             dto.tokenUrl?.let { put("tokenUrl", it) }
             dto.scopes?.let { put("scopes", it) }
         }
+        is OAuthMcpDiscoverableAuthSettingDto -> buildMap {
+            dto.resourceUrl?.let { put("resourceUrl", it) }
+            dto.clientId?.let { put("clientId", it) }
+            dto.clientSecret?.let { put("clientSecret", it) }
+            dto.scopes?.let { put("scopes", it) }
+        }
     }
 
 /**
@@ -396,6 +404,19 @@ internal fun toDto(entity: AuthSetting): AuthSettingDto {
                 clientSecret = maskedData?.get("clientSecret"),
                 authorizationUrl = maskedData?.get("authorizationUrl"),
                 tokenUrl = maskedData?.get("tokenUrl"),
+                scopes = maskedData?.get("scopes"),
+            )
+        is OAuthMcpDiscoverableAuthSetting ->
+            OAuthMcpDiscoverableAuthSettingDto(
+                id = entity.metadata.id,
+                namespaceId = entity.namespaceId,
+                userId = entity.userId,
+                name = entity.name,
+                description = entity.description,
+                authType = entity.authType,
+                resourceUrl = maskedData?.get("resourceUrl"),
+                clientId = maskedData?.get("clientId"),
+                clientSecret = maskedData?.get("clientSecret"),
                 scopes = maskedData?.get("scopes"),
             )
     }
