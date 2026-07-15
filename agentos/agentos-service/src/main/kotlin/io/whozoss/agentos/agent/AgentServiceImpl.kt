@@ -6,6 +6,8 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.auth.AuthServiceFactory
+import io.whozoss.agentos.auth.OAuthFlowService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
@@ -23,6 +25,7 @@ import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.authSetting.AuthType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -61,7 +64,6 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
-    private val authServiceFactory: AuthServiceFactory,
     private val oAuthFlowService: OAuthFlowService,
     private val authServiceFactory: AuthServiceFactory,
     private val idCompressorService: IdCompressorService,
@@ -660,7 +662,8 @@ class AgentServiceImpl(
             // the debug getDefinition endpoint) still creates an empty scope dir.
             Files.createDirectories(root)
             val cfg =
-                objectMapper.createObjectNode()
+                objectMapper
+                    .createObjectNode()
                     .put("rootPath", root.toAbsolutePath().toString())
                     .put("readOnly", readOnly)
                     // Align the agent read tool's size cap with the exchange's own read limit, so an
@@ -683,12 +686,13 @@ class AgentServiceImpl(
             // The agent gets read/write on the case exchange by design (it produces files during a run).
             // User-facing write is separately gated: the exchange upload/delete endpoints require Case
             // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
-            tools += grant(
-                exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
-                readOnly = false,
-                configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
-                allowedTools = integrations[ExchangeIntegrationTypes.CASE],
-            )
+            tools +=
+                grant(
+                    exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
+                    readOnly = false,
+                    configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                    allowedTools = integrations[ExchangeIntegrationTypes.CASE],
+                )
         }
         if (integrations.containsKey(ExchangeIntegrationTypes.NAMESPACE)) {
             // The agent inherits the invoking user's namespace right: read/write for a namespace
@@ -701,12 +705,13 @@ class AgentServiceImpl(
                         context.namespaceId.toString(),
                     )
                 } ?: false
-            tools += grant(
-                exchangeStorageService.namespaceRoot(context.namespaceId),
-                readOnly = !userCanWriteNamespace,
-                configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
-                allowedTools = integrations[ExchangeIntegrationTypes.NAMESPACE],
-            )
+            tools +=
+                grant(
+                    exchangeStorageService.namespaceRoot(context.namespaceId),
+                    readOnly = !userCanWriteNamespace,
+                    configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                    allowedTools = integrations[ExchangeIntegrationTypes.NAMESPACE],
+                )
         }
         return tools
     }
