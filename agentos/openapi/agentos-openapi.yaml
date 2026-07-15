@@ -3117,6 +3117,12 @@ components:
     IntegrationTypeDescriptor:
       type: object
       properties:
+        builtIn:
+          type: boolean
+          description: >-
+            True for built-in integrations enabled by adding their type directly to an agent's
+            integrations map (no IntegrationConfig instance) — surfaced as a simple toggle in the
+            agent form. False for regular, instance-backed integration types.
         configSchema:
           $ref: "#/components/schemas/JsonNode"
         description:

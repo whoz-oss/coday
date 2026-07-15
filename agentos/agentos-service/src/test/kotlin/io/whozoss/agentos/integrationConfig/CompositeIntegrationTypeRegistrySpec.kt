@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationTypeDescriptor
 
 /**
  * Built-in integration types (e.g. the file exchange) are surfaced for the UI catalogue via
