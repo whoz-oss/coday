@@ -56,12 +56,16 @@ class UserGroupServiceImpl(
 
     override fun findByIdWithDetails(id: UUID): UserGroupSearchResult? = userGroupRepository.findByIdWithDetails(id)
 
+    @Transactional(readOnly = true)
+    override fun getMembers(userGroupId: UUID): List<UserGroupMember> = userGroupRepository.findMembers(userGroupId)
+
     @Transactional
     override fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult {
         val namespace =
             namespaceService.getById(request.namespaceId)
 
         validateAgentsInNamespace(request.agentIds, namespace.id)
+        validateAdminsAreMembers(request.adminExternalIds, request.userExternalIdsToAdd)
 
         val group =
             create(
@@ -80,6 +84,7 @@ class UserGroupServiceImpl(
             val missingIds = request.userExternalIdsToAdd - existingIds
             missingIds.forEach { userService.resolveOrCreateByExternalId(it) }
             userGroupRepository.addUsers(group.id, request.userExternalIdsToAdd)
+            userGroupRepository.setMemberRoles(group.id, request.adminExternalIds)
         }
 
         return userGroupRepository.findByIdWithDetails(group.id)
@@ -98,9 +103,22 @@ class UserGroupServiceImpl(
             )
         }
 
+        val adminRemoveConflict = request.adminExternalIds intersect request.userExternalIdsToRemove
+        if (adminRemoveConflict.isNotEmpty()) {
+            throw UnprocessableEntityException(
+                "User external IDs cannot appear in both adminExternalIds and removedUserExternalIds: $adminRemoveConflict",
+            )
+        }
+
         val existing = getById(userGroupId)
 
         validateAgentsInNamespace(request.agentIds, existing.namespaceId)
+
+        // Admins must be members after the update: existing members, plus the added, minus the removed.
+        val resultingMembers =
+            (userGroupRepository.findMembers(userGroupId).map { it.externalId }.toSet() - request.userExternalIdsToRemove) +
+                request.userExternalIdsToAdd
+        validateAdminsAreMembers(request.adminExternalIds, resultingMembers)
 
         update(existing.copy(name = request.name))
 
@@ -119,6 +137,10 @@ class UserGroupServiceImpl(
         if (request.userExternalIdsToRemove.isNotEmpty()) {
             userGroupRepository.removeUsers(userGroupId, request.userExternalIdsToRemove)
         }
+
+        // Reconcile roles across the resulting membership: everyone in adminExternalIds becomes ADMIN,
+        // every other member becomes MEMBER.
+        userGroupRepository.setMemberRoles(userGroupId, request.adminExternalIds)
 
         return userGroupRepository.findByIdWithDetails(userGroupId)
             ?: throw IllegalStateException("UserGroup $userGroupId not found after update")
@@ -151,6 +173,16 @@ class UserGroupServiceImpl(
         return allGroups
             .mapValues { (_, groups) -> groups.filter { it.id.toString() in visibleGroupIds } }
             .filterValues { it.isNotEmpty() }
+    }
+
+    private fun validateAdminsAreMembers(
+        adminExternalIds: Set<String>,
+        memberExternalIds: Set<String>,
+    ) {
+        val notMembers = adminExternalIds - memberExternalIds
+        if (notMembers.isNotEmpty()) {
+            throw UnprocessableEntityException("Admin external IDs must also be members: $notMembers")
+        }
     }
 
     private fun validateAgentsInNamespace(

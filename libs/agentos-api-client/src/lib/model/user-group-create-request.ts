@@ -9,6 +9,7 @@
  */
 
 export interface UserGroupCreateRequest {
+  adminExternalIds: Set<string>
   agentIds: Set<string>
   name: string
   namespaceId: string

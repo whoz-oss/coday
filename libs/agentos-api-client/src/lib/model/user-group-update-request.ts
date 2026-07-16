@@ -9,6 +9,7 @@
  */
 
 export interface UserGroupUpdateRequest {
+  adminExternalIds: Set<string>
   agentIds: Set<string>
   name: string
   userExternalIdsToAdd: Set<string>

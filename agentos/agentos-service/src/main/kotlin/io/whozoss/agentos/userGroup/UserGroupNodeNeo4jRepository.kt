@@ -55,12 +55,46 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
     @Query(
         $$"""
         UNWIND $userExternalIds AS userExternalId
-        MATCH (u:User {externalId: userExternalId})-[r:MEMBER]->(g:UserGroup {id: $groupId})
+        MATCH (u:User {externalId: userExternalId})-[r:MEMBER|ADMIN]->(g:UserGroup {id: $groupId})
         DELETE r
         """,
     )
     fun removeUsers(
         groupId: String,
         userExternalIds: List<String>,
+    )
+
+    /**
+     * Promotes the given members to ADMIN: replaces their `[:MEMBER]` edge with `[:ADMIN]`.
+     * Members already ADMIN are left untouched; ids that are not members are ignored.
+     */
+    @Query(
+        $$"""
+        UNWIND $adminExternalIds AS userExternalId
+        MATCH (u:User {externalId: userExternalId})-[m:MEMBER]->(g:UserGroup {id: $groupId})
+        MERGE (u)-[:ADMIN]->(g)
+        DELETE m
+        """,
+    )
+    fun promoteAdmins(
+        groupId: String,
+        adminExternalIds: List<String>,
+    )
+
+    /**
+     * Demotes any current ADMIN not in [adminExternalIds] back to MEMBER (replaces `[:ADMIN]` with
+     * `[:MEMBER]`). With an empty list this demotes every ADMIN of the group.
+     */
+    @Query(
+        $$"""
+        MATCH (u:User)-[a:ADMIN]->(g:UserGroup {id: $groupId})
+        WHERE NOT u.externalId IN $adminExternalIds
+        MERGE (u)-[:MEMBER]->(g)
+        DELETE a
+        """,
+    )
+    fun demoteNonAdmins(
+        groupId: String,
+        adminExternalIds: List<String>,
     )
 }

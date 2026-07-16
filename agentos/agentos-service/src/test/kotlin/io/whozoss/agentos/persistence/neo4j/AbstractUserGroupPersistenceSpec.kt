@@ -189,5 +189,93 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
                 namespaceId = null,
             ).shouldBeEmpty()
         }
+
+        "findMembers returns members ordered by externalId with display fields and MEMBER role" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Group"))
+            userRepo.save(user("bob@example.com").copy(firstname = "Bob"))
+            userRepo.save(user("alice@example.com").copy(firstname = "Alice", lastname = "Adams"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
+
+            val members = userGroupRepo.findMembers(g.id)
+
+            members.map { it.externalId } shouldBe listOf("alice@example.com", "bob@example.com")
+            members.first().firstname shouldBe "Alice"
+            members.first().lastname shouldBe "Adams"
+            members.first().email shouldBe "alice@example.com"
+            members.all { it.role == "MEMBER" } shouldBe true
+        }
+
+        "findMembers excludes soft-deleted users" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Group"))
+            val alice = userRepo.save(user("alice@example.com"))
+            userRepo.save(user("bob@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
+            userRepo.delete(alice.id)
+
+            userGroupRepo.findMembers(g.id).map { it.externalId } shouldBe listOf("bob@example.com")
+        }
+
+        "findMembers returns empty for a group with no members" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Empty"))
+
+            userGroupRepo.findMembers(g.id).shouldBeEmpty()
+        }
+
+        "setMemberRoles promotes members to ADMIN and findMembers reflects it" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Group"))
+            userRepo.save(user("alice@example.com"))
+            userRepo.save(user("bob@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
+
+            userGroupRepo.setMemberRoles(g.id, listOf("alice@example.com"))
+
+            val byExternalId = userGroupRepo.findMembers(g.id).associateBy { it.externalId }
+            byExternalId["alice@example.com"]!!.role shouldBe "ADMIN"
+            byExternalId["bob@example.com"]!!.role shouldBe "MEMBER"
+        }
+
+        "setMemberRoles demotes an admin no longer in the set" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Group"))
+            userRepo.save(user("alice@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com"))
+            userGroupRepo.setMemberRoles(g.id, listOf("alice@example.com"))
+            userGroupRepo.findMembers(g.id).first().role shouldBe "ADMIN"
+
+            userGroupRepo.setMemberRoles(g.id, emptyList())
+
+            userGroupRepo.findMembers(g.id).first().role shouldBe "MEMBER"
+        }
+
+        "setMemberRoles ignores ids that are not members" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Group"))
+            userRepo.save(user("alice@example.com"))
+            userRepo.save(user("stranger@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com"))
+
+            userGroupRepo.setMemberRoles(g.id, listOf("stranger@example.com"))
+
+            val members = userGroupRepo.findMembers(g.id)
+            members.map { it.externalId } shouldBe listOf("alice@example.com")
+            members.first().role shouldBe "MEMBER"
+        }
+
+        "removeUsers unlinks a member whatever their role" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Group"))
+            userRepo.save(user("alice@example.com"))
+            userRepo.save(user("bob@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
+            userGroupRepo.setMemberRoles(g.id, listOf("alice@example.com"))
+
+            userGroupRepo.removeUsers(g.id, listOf("alice@example.com"))
+
+            userGroupRepo.findMembers(g.id).map { it.externalId } shouldBe listOf("bob@example.com")
+        }
     }
 }

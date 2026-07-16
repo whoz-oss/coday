@@ -51,6 +51,33 @@ open class Neo4jUserGroupRepository(
             paramValue = id.toString(),
         ).one().orElse(null)
 
+    override fun findMembers(userGroupId: UUID): List<UserGroupMember> =
+        neo4jClient
+            .query(
+                $$"""
+                    MATCH (u:User)-[r:MEMBER|ADMIN]->(g:UserGroup {id: $userGroupId})
+                    WHERE NOT COALESCE(u.removed, false)
+                    WITH u, collect(type(r)) AS rels
+                    RETURN u.id AS userId, u.externalId AS externalId, u.email AS email,
+                           u.firstname AS firstname, u.lastname AS lastname,
+                           CASE WHEN 'ADMIN' IN rels THEN 'ADMIN' ELSE 'MEMBER' END AS role
+                    ORDER BY u.externalId ASC
+                """.trimIndent(),
+            ).bind(userGroupId.toString())
+            .to("userGroupId")
+            .fetchAs(UserGroupMember::class.java)
+            .mappedBy { _, record ->
+                UserGroupMember(
+                    userId = UUID.fromString(record["userId"].asString()),
+                    externalId = record["externalId"].asString(),
+                    role = record["role"].asString(),
+                    email = record["email"].takeUnless { it.isNull }?.asString(),
+                    firstname = record["firstname"].takeUnless { it.isNull }?.asString(),
+                    lastname = record["lastname"].takeUnless { it.isNull }?.asString(),
+                )
+            }.all()
+            .toList()
+
     private fun querySearchResults(
         whereClause: String,
         paramName: String,
@@ -105,6 +132,16 @@ open class Neo4jUserGroupRepository(
         userExternalIds: Collection<String>,
     ) {
         neo4jRepository.removeUsers(userGroupId.toString(), userExternalIds.toList())
+    }
+
+    override fun setMemberRoles(
+        userGroupId: UUID,
+        adminExternalIds: Collection<String>,
+    ) {
+        val groupId = userGroupId.toString()
+        val admins = adminExternalIds.toList()
+        neo4jRepository.promoteAdmins(groupId, admins)
+        neo4jRepository.demoteNonAdmins(groupId, admins)
     }
 
     /**
