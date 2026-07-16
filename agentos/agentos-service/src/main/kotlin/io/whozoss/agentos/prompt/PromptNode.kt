@@ -42,7 +42,7 @@ import java.util.UUID
  * unique slot is freed immediately for re-creation.
  *
  * [agentConfigId] is an optional scalar FK to an AgentConfig node. The corresponding
- * `(:Prompt)-[:DEPLOYED_TO]->(:AgentConfig)` edge is managed via [Neo4jChildLinkService]
+ * `(:Prompt)-[:BELONGS_TO]->(:AgentConfig)` edge is managed via [Neo4jChildLinkService]
  * on first save (version == 0L). No `@Relationship` field to avoid SDN eager hydration.
  *
  * [externalMetadataJson] stores the opaque [Prompt.externalMetadata] map as a JSON string.

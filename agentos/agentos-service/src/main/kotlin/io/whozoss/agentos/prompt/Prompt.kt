@@ -35,7 +35,7 @@ data class Prompt(
      * Optional link to an [io.whozoss.agentos.agentConfig.AgentConfig].
      * When set, this prompt acts as a Starter for that agent.
      * Immutable post-creation — preserved on PUT by the controller.
-     * Materialised as a `(:Prompt)-[:DEPLOYED_TO]->(:AgentConfig)` edge in Neo4j.
+     * Materialised as a `(:Prompt)-[:BELONGS_TO]->(:AgentConfig)` edge in Neo4j.
      */
     val agentConfigId: UUID? = null,
     val name: String,
