@@ -231,48 +231,15 @@
     opacity: 1 !important;
   }
 
-  // Mobile: panel ouvert via le chevron
-  &__detail--mobile-open {
-    @media (hover: none) {
-      max-height: 80px;
-      opacity: 1;
-    }
-  }
+  // Mobile toggle désactivé sur les cases — le hover reste le seul mode d'interaction.
 
   &__detail-inner {
     padding: 2px 12px 10px;
   }
 
-  // Mobile chevron — masqué sur desktop (hover disponible), visible sur touch uniquement
+  // Chevron mobile masqué — toujours, le hover gère l'affichage des actions.
   &__mobile-toggle {
-    @include ds.button-reset;
-
-    display: none; // masqué par défaut (desktop)
-
-    @media (hover: none) {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      flex-shrink: 0;
-      border-left: 1px solid var(--color-border, #{ds.$color-border});
-      color: var(--color-text-secondary, #{ds.$color-text-secondary});
-      font-size: 14px;
-      cursor: pointer;
-      transition:
-        color 120ms ease,
-        transform 120ms ease;
-
-      &--open {
-        color: var(--color-text, #{ds.$color-text});
-        transform: rotate(180deg);
-      }
-
-      &:focus-visible {
-        @include ds.focus-ring;
-      }
-    }
+    display: none;
   }
 
   &__actions {
