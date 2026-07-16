@@ -239,29 +239,57 @@ class AgentServiceImpl(
                 agentName = agentConfig.name,
             )
         val credentialProviderFactory: (String) -> CredentialProvider? = { authSettingName ->
+            logger.debug { "CredentialProvider invoked for '$authSettingName'" }
             context.userId?.let { userId ->
                 val svc = authServiceFactory.create(context.namespaceId, userId)
                 val provider: CredentialProvider = {
                     val setting = svc.resolveAuthSetting(authSettingName)
+                    logger.debug { "CredentialProvider for '$authSettingName': resolved authType=${setting.authType}" }
                     if (setting.authType in OAUTH_AUTH_TYPES && context.caseId != null && context.emitEvent != null) {
                         // OAuth types: delegate to OAuthFlowService for full lifecycle
                         // (check existing -> refresh -> interactive via QuestionEvent).
-                        kotlinx.coroutines.runBlocking {
-                            oAuthFlowService.resolveOAuthCredential(
-                                userId = userId,
-                                authSetting = setting,
-                                namespaceId = context.namespaceId,
-                                caseId = context.caseId,
-                                agentId = UUID.nameUUIDFromBytes(agentConfig.name.toByteArray()),
-                                agentName = agentConfig.name,
-                                emitEvent = context.emitEvent,
-                            )
+                        logger.debug { "CredentialProvider for '$authSettingName': using OAuth flow (authType=${setting.authType})" }
+                        val credential =
+                            kotlinx.coroutines.runBlocking {
+                                oAuthFlowService.resolveOAuthCredential(
+                                    userId = userId,
+                                    authSetting = setting,
+                                    namespaceId = context.namespaceId,
+                                    caseId = context.caseId,
+                                    agentId = UUID.nameUUIDFromBytes(agentConfig.name.toByteArray()),
+                                    agentName = agentConfig.name,
+                                    emitEvent = context.emitEvent,
+                                )
+                            }
+                        if (credential == null) {
+                            logger.warn { "CredentialProvider for '$authSettingName': OAuth flow returned null" }
+                        } else {
+                            logger.debug { "CredentialProvider for '$authSettingName': OAuth credential resolved" }
                         }
+                        credential
                     } else {
-                        svc.resolveCredential(setting.metadata.id)
+                        if (setting.authType in OAUTH_AUTH_TYPES) {
+                            logger.warn {
+                                "CredentialProvider for '$authSettingName': OAuth type ${setting.authType} but " +
+                                    "missing caseId=${context.caseId != null} or emitEvent=${context.emitEvent != null}, " +
+                                    "falling back to direct lookup"
+                            }
+                        } else {
+                            logger.debug { "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, using direct credential lookup" }
+                        }
+                        val credential = svc.resolveCredential(setting.metadata.id)
+                        if (credential == null) {
+                            logger.warn { "CredentialProvider for '$authSettingName': no credential found for authSetting ${setting.metadata.id}" }
+                        } else {
+                            logger.debug { "CredentialProvider for '$authSettingName': direct credential resolved" }
+                        }
+                        credential
                     }
                 }
                 provider
+            } ?: run {
+                logger.debug { "CredentialProvider for '$authSettingName': no userId in context, skipping" }
+                null
             }
         }
         val baseTools =
@@ -722,6 +750,7 @@ class AgentServiceImpl(
                 AuthType.OAUTH_DISCOVERABLE,
                 AuthType.OAUTH_REGISTERED,
                 AuthType.OAUTH_CUSTOM,
+                AuthType.OAUTH_MCP_DISCOVERABLE,
             )
     }
 }

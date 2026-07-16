@@ -20,10 +20,11 @@ import java.time.Duration
  *
  * Uses [HttpClientStreamableHttpTransport] from the MCP Java SDK 2.0.
  *
- * The URL from [McpServerConfig.url] is used as the base URI. The MCP SDK's default
- * endpoint path is `/mcp`; if the configured URL already includes the full path (e.g.
- * `https://mcp.example.com/mcp`), set [McpServerConfig.url] to the base URL
- * (`https://mcp.example.com`) and let the SDK append `/mcp`.
+ * The URL from [McpServerConfig.url] is automatically split into base URI and endpoint
+ * path to work around the MCP Java SDK's `URI.resolve` behavior. When the URL includes
+ * a path (e.g. `https://mcp.example.com/v1/mcp`), the path is extracted as the explicit
+ * endpoint. When the URL has no path (e.g. `https://mcp.example.com`), the SDK's default
+ * `/mcp` endpoint is used.
  */
 class HttpMcpConnection(
     private val config: McpServerConfig,
@@ -54,8 +55,17 @@ class HttpMcpConnection(
 
         val clientTimeout = maxOf(config.timeoutSeconds, config.toolCallTimeoutSeconds)
 
+        // The MCP Java SDK appends a default endpoint path ("/mcp") to the base URI.
+        // When the configured URL already includes the full MCP path (e.g. ends with
+        // "/mcp" or "/mcp/authv2"), we must split it into base + endpoint to prevent
+        // the SDK from producing a wrong URL like "https://host/v1/mcp" → "https://host/mcp".
+        // URI.resolve("/mcp") replaces the entire path — it does NOT append.
+        val (baseUrl, endpoint) = splitMcpUrl(url)
+        logger.debug { "[MCP-HTTP] Resolved baseUrl=$baseUrl, endpoint=$endpoint" }
+
         val transportBuilder = HttpClientStreamableHttpTransport
-            .builder(url)
+            .builder(baseUrl)
+            .also { if (endpoint != null) it.endpoint(endpoint) }
             .connectTimeout(Duration.ofSeconds(config.timeoutSeconds))
 
         // Inject Bearer token via a pre-configured request builder.
@@ -142,5 +152,38 @@ class HttpMcpConnection(
         }
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * Splits a full MCP URL into (baseUrl, endpoint) for the MCP Java SDK.
+         *
+         * The SDK's [HttpClientStreamableHttpTransport] resolves the final request URI as
+         * `URI.resolve(baseUri, endpoint)`. Because `endpoint` defaults to `"/mcp"` (an
+         * absolute path), `URI.resolve` **replaces** the entire base path rather than
+         * appending. For example:
+         *
+         *   baseUri = "https://mcp.atlassian.com/v1/mcp"
+         *   endpoint = "/mcp"
+         *   resolved = "https://mcp.atlassian.com/mcp"  ← WRONG
+         *
+         * To work around this, when the configured URL already contains the full path to
+         * the MCP endpoint, we split it into a base (scheme + authority) and the path as
+         * the explicit endpoint. This way `URI.resolve` produces the correct result.
+         *
+         * When the URL has no meaningful path (e.g. `https://mcp.example.com`), we return
+         * `null` for the endpoint and let the SDK use its default `"/mcp"`.
+         */
+        internal fun splitMcpUrl(url: String): Pair<String, String?> {
+            val uri = java.net.URI.create(url)
+            val path = uri.path
+            // If the URL has a meaningful path (more than just "/"), extract it as the endpoint
+            // and use the origin (scheme + authority) as the base URL.
+            return if (!path.isNullOrBlank() && path != "/") {
+                val origin = "${uri.scheme}://${uri.authority}"
+                Pair(origin, path)
+            } else {
+                // No path — let the SDK use its default "/mcp" endpoint
+                Pair(url, null)
+            }
+        }
+    }
 }

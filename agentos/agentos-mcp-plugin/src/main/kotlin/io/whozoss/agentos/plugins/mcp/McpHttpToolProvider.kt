@@ -49,6 +49,7 @@ class McpHttpToolProvider : ToolPlugin {
         }
 
         val bearerToken = resolveBearerToken(context, serverConfig)
+        logger.info { "MCP_HTTP integration '$configName': url=${serverConfig.url}, bearerToken=${if (bearerToken != null) "present (${bearerToken.length} chars)" else "absent"}" }
 
         val connection = HttpMcpConnection(serverConfig)
         return try {
@@ -64,7 +65,7 @@ class McpHttpToolProvider : ToolPlugin {
             // invoking McpConnectionPort.close() when the agent run completes.
             connection.tools.map { McpTool(it, connection, configName) }
         } catch (e: Exception) {
-            logger.error { "MCP_HTTP integration '$configName': could not connect — ${e.message}" }
+            logger.error(e) { "MCP_HTTP integration '$configName': could not connect — ${e.message}" }
             connection.close()
             emptyList()
         }
