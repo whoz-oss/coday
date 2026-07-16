@@ -8,7 +8,12 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.mockk.every
+import io.mockk.mockk
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
@@ -22,11 +27,13 @@ import java.util.UUID
  * layer (List<@NotBlank String> with -Xemit-jvm-type-annotations) and is not tested here.
  */
 class PromptServiceImplSpec : StringSpec() {
-    private fun newService(): PromptServiceImpl = PromptServiceImpl(InMemoryPromptRepository())
+    private val agentConfigService = mockk<AgentConfigService>(relaxed = true)
+    private fun newService(): PromptServiceImpl = PromptServiceImpl(InMemoryPromptRepository(), agentConfigService)
 
     private fun prompt(
         namespaceId: UUID? = UUID.randomUUID(),
         userId: UUID? = null,
+        agentConfigId: UUID? = null,
         name: String = "My Prompt",
         content: List<String> = listOf("Hello {{name}}"),
         parameters: List<PromptParameter> = emptyList(),
@@ -35,6 +42,7 @@ class PromptServiceImplSpec : StringSpec() {
         metadata = EntityMetadata(),
         namespaceId = namespaceId,
         userId = userId,
+        agentConfigId = agentConfigId,
         name = name,
         description = description,
         content = content,
@@ -139,6 +147,33 @@ class PromptServiceImplSpec : StringSpec() {
             )
             val saved = service.create(prompt(parameters = params))
             saved.parameters shouldHaveSize 2
+        }
+
+        // -------------------------------------------------------------------------
+        // agentConfigId validation
+        // -------------------------------------------------------------------------
+
+        "create with non-existent agentConfigId throws ResourceNotFoundException" {
+            val service = newService()
+            val unknownId = UUID.randomUUID()
+            every { agentConfigService.findById(unknownId) } returns null
+
+            shouldThrow<ResourceNotFoundException> {
+                service.create(prompt(agentConfigId = unknownId))
+            }
+        }
+
+        "create with existing agentConfigId succeeds" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId),
+                namespaceId = null,
+                name = "agent",
+            )
+
+            val saved = service.create(prompt(agentConfigId = agentId))
+            saved.agentConfigId shouldBe agentId
         }
 
         // -------------------------------------------------------------------------

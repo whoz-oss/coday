@@ -1,7 +1,9 @@
 package io.whozoss.agentos.prompt
 
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -24,9 +26,14 @@ import java.util.UUID
 @Service
 class PromptServiceImpl(
     private val repository: PromptRepository,
+    private val agentConfigService: AgentConfigService,
 ) : PromptService {
     override fun create(entity: Prompt): Prompt {
         validate(entity)
+        if (entity.agentConfigId != null) {
+            agentConfigService.findById(entity.agentConfigId)
+                ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
+        }
         repository.findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ConflictException(conflictMessage(entity))
         }

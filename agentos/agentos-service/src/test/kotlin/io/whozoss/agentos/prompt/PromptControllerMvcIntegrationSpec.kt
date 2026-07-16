@@ -4,6 +4,8 @@ import com.ninjasquad.springmockk.MockkBean
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.mockk.every
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
@@ -47,6 +49,7 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var promptService: PromptService
+    @Autowired lateinit var agentConfigService: AgentConfigService
 
     @MockkBean(relaxed = true) lateinit var userService: UserService
     @MockkBean(relaxed = true) lateinit var permissionService: PermissionService
@@ -202,6 +205,51 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "userId": "$otherId", "name": "Bad-${UUID.randomUUID()}", "content": ["Hello"] }"""),
             ).andExpect(status().isBadRequest)
+        }
+
+        // -------------------------------------------------------------------------
+        // POST — agentConfigId validation
+        // -------------------------------------------------------------------------
+
+        "POST with non-existent agentConfigId returns 404" {
+            val unknownId = UUID.randomUUID()
+            val name = "AC-MISSING-" + UUID.randomUUID()
+            mockMvc.perform(
+                post("/api/prompts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                            "namespaceId": "$namespaceId",
+                            "name": "$name",
+                            "content": ["Hello"],
+                            "agentConfigId": "$unknownId"
+                        }
+                    """.trimIndent()),
+            ).andExpect(status().isNotFound)
+        }
+
+        "POST with existing agentConfigId returns 201" {
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "agent-" + UUID.randomUUID(),
+                ),
+            )
+            val name = "AC-OK-" + UUID.randomUUID()
+            mockMvc.perform(
+                post("/api/prompts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                            "namespaceId": "$namespaceId",
+                            "name": "$name",
+                            "content": ["Hello"],
+                            "agentConfigId": "${agent.id}"
+                        }
+                    """.trimIndent()),
+            ).andExpect(status().isCreated)
+                .andExpect(jsonPath("\$.agentConfigId").value(agent.id.toString()))
         }
 
         // -------------------------------------------------------------------------
