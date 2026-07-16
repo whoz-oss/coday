@@ -1,6 +1,5 @@
 package io.whozoss.agentos.plugin
 
-import io.whozoss.agentos.sdk.agent.AgentPlugin
 import mu.KLogging
 import org.pf4j.PluginManager
 import org.pf4j.PluginState
@@ -20,8 +19,6 @@ class PluginService(
     fun getLoadedPlugins(): List<PluginInfo> =
         pluginManager.plugins.map { wrapper ->
             val descriptor = wrapper.descriptor
-            val agentExtensions = pluginManager.getExtensions(AgentPlugin::class.java, wrapper.pluginId)
-            val agentCount = agentExtensions.sumOf { it.getAgents().size }
 
             PluginInfo(
                 id = wrapper.pluginId,
@@ -29,7 +26,6 @@ class PluginService(
                 state = wrapper.pluginState,
                 description = descriptor.pluginDescription,
                 provider = descriptor.provider,
-                agentCount = agentCount,
                 pluginPath = wrapper.pluginPath.toString(),
             )
         }
@@ -119,8 +115,6 @@ class PluginService(
     fun getPluginInfo(pluginId: String): PluginInfo? {
         val wrapper = pluginManager.getPlugin(pluginId) ?: return null
         val descriptor = wrapper.descriptor
-        val extensions = pluginManager.getExtensions(AgentPlugin::class.java, pluginId)
-        val agentCount = extensions.sumOf { it.getAgents().size }
 
         return PluginInfo(
             id = wrapper.pluginId,
@@ -128,7 +122,6 @@ class PluginService(
             state = wrapper.pluginState,
             description = descriptor.pluginDescription,
             provider = descriptor.provider,
-            agentCount = agentCount,
             pluginPath = wrapper.pluginPath.toString(),
         )
     }
@@ -145,6 +138,5 @@ data class PluginInfo(
     val state: PluginState,
     val description: String,
     val provider: String,
-    val agentCount: Int,
     val pluginPath: String,
 )

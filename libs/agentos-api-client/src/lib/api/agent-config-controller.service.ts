@@ -324,6 +324,93 @@ export class AgentConfigControllerService extends BaseService {
   }
 
   /**
+   * Export an AgentConfig as a YAML file
+   * Returns the agent config as a downloadable YAML file, ready to be placed in the namespace &#x60;agents/&#x60; directory under &#x60;configPath&#x60;. Only the fields meaningful in a filesystem config are included. Scope metadata (&#x60;id&#x60;, &#x60;namespaceId&#x60;, &#x60;enabled&#x60;, &#x60;advancedExecution&#x60;, &#x60;externalMetadata&#x60;) is intentionally omitted.
+   * @param id
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public exportAgentConfig(
+    id: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<string>
+  public exportAgentConfig(
+    id: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<HttpResponse<string>>
+  public exportAgentConfig(
+    id: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<HttpEvent<string>>
+  public exportAgentConfig(
+    id: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling exportAgentConfig.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json', 'application/yaml'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/agent-configs/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/export`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<string>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
    * @param id
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
