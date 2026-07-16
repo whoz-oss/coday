@@ -635,6 +635,16 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/coday-services/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/core:
     dependencies:
       tslib:
@@ -763,6 +773,16 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handlers/config/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/handlers/load:
     dependencies:
       tslib:
@@ -784,6 +804,16 @@ importers:
         version: 5.9.3
 
   libs/handlers/looper:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/looper/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -850,6 +880,16 @@ importers:
         version: 5.9.3
 
   libs/handlers/stats:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/stats/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -980,6 +1020,19 @@ importers:
         version: 5.9.3
 
   libs/integrations/excel:
+    dependencies:
+      exceljs:
+        specifier: 4.4.0
+        version: 4.4.0
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/excel/dist:
     dependencies:
       exceljs:
         specifier: 4.4.0
@@ -1555,6 +1608,7 @@ packages:
   '@angular/platform-browser-dynamic@21.2.7':
     resolution: {integrity: sha512-P7s9ABgJqRyUS5HNRJFRr15xaXbWfSH9KjSxkBYYJbXIA986uGb6qjnHepu+2xMyZDlt2nd9Ms+t4M60/GM+FQ==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+    deprecated: '@angular/platform-browser-dynamic is deprecated. Use `@angular/platform-browser` instead.'
     peerDependencies:
       '@angular/common': 21.2.7
       '@angular/compiler': 21.2.7

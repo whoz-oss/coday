@@ -66,17 +66,22 @@ AVOID closed options unless the user explicitly needs to choose between specific
     }
 
     if (!context.oneshot) {
-      // Add redirect tool
-      const redirect = redirectFunction(context)
+      // Add redirect tool, filtered against delegatable agents
+      const delegateAgentNames = context.data?.delegateAgentNames as string[] | '__ALL__' | undefined
 
-      const agentSummaries = this.agentSummaries()
-        .map((a) => `  - ${a.name} : ${a.description}`)
-        .join('\n')
-      const redirectTool: FunctionTool<{ query: string; agentName: string }> = {
-        type: 'function',
-        function: {
-          name: `${this.name}__redirect`,
-          description: `Redirect the current query to another available agent among:
+      // If all agents are delegatable, skip redirect entirely
+      if (delegateAgentNames !== '__ALL__') {
+        const delegateLower = Array.isArray(delegateAgentNames) ? delegateAgentNames : []
+        const filteredSummaries = this.agentSummaries().filter((a) => !delegateLower.includes(a.name.toLowerCase()))
+
+        if (filteredSummaries.length > 0) {
+          const redirect = redirectFunction(context, _agentName)
+          const agentSummaries = filteredSummaries.map((a) => `  - ${a.name} : ${a.description}`).join('\n')
+          const redirectTool: FunctionTool<{ query: string; agentName: string }> = {
+            type: 'function',
+            function: {
+              name: `${this.name}__redirect`,
+              description: `Redirect the current query to another available agent among:
 ${agentSummaries}
 
 This tool allows you to select a different agent to handle the user's request when another agent is better suited for the task.
@@ -88,26 +93,28 @@ Use this when:
 
 The redirected agent will run after this conversation completes and will have access to the full conversation history.
 `,
-          parameters: {
-            type: 'object',
-            properties: {
-              agentName: {
-                type: 'string',
-                description:
-                  'Name of the agent to redirect to. Required. Should be selected based on which agent is most appropriate for the query.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  agentName: {
+                    type: 'string',
+                    description:
+                      'Name of the agent to redirect to. Required. Should be selected based on which agent is most appropriate for the query.',
+                  },
+                  query: {
+                    type: 'string',
+                    description:
+                      "The query to redirect to the selected agent. This should capture the user's intent and any necessary context.",
+                  },
+                },
               },
-              query: {
-                type: 'string',
-                description:
-                  "The query to redirect to the selected agent. This should capture the user's intent and any necessary context.",
-              },
+              parse: JSON.parse,
+              function: redirect,
             },
-          },
-          parse: JSON.parse,
-          function: redirect,
-        },
+          }
+          result.push(redirectTool)
+        }
       }
-      result.push(redirectTool)
     }
 
     return result
