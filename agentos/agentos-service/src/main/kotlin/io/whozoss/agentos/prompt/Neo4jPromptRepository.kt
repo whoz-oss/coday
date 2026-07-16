@@ -11,9 +11,13 @@ import java.util.UUID
 /**
  * Neo4j-backed implementation of [PromptRepository].
  *
- * [save] is @Transactional so the entity write and the BELONGS_TO link are part of a
- * single Neo4j transaction. When Neo4jChildLinkService.link throws mid-write the
- * transaction rolls back and no orphan Prompt node is left behind.
+ * [save] is @Transactional because it performs two distinct Neo4j operations:
+ * [neo4jRepository.save] then [childLinkService.link]. Both must succeed or roll back
+ * together — no orphan Prompt node should be left without its BELONGS_TO edge.
+ *
+ * All other methods delegate a single Neo4j operation and rely on the transaction
+ * propagated by the calling service (e.g. [AgentConfigServiceImpl.delete] is
+ * @Transactional and covers [softDeleteByAgentConfigId]).
  *
  * Platform-level prompts (namespaceId == null) skip the link step.
  *
