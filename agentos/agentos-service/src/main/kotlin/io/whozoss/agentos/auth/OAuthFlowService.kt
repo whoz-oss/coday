@@ -52,21 +52,40 @@ class OAuthFlowService(
         emitEvent: (CaseEvent) -> CaseEvent,
     ): Credential? {
         val authSettingId = authSetting.metadata.id
+        logger.debug { "[OAuth] resolveOAuthCredential: authSetting=${authSetting.name} (${authSetting.authType}), userId=$userId" }
+
         val existing = credentialService.resolve(userId, authSettingId)
-        if (existing != null && !isExpired(existing)) return existing
+        if (existing != null && !isExpired(existing)) {
+            logger.debug { "[OAuth] resolveOAuthCredential: returning existing valid credential for ${authSetting.name}" }
+            return existing
+        }
+
         if (existing != null) {
+            logger.debug { "[OAuth] resolveOAuthCredential: existing credential expired for ${authSetting.name}, attempting refresh" }
             val rt = existing.data["refreshToken"]?.takeIf { it.isNotBlank() }
             if (rt != null) {
-                val ep = resolveEndpoints(authSetting) ?: return null
-                // For MCP discoverable, check for stored dynamic client credentials
-                val (effectiveClientId, effectiveClientSecret) = resolveClientCredentials(authSetting, existing)
-                val refreshed = refreshAccessToken(ep.tokenEndpoint, rt, effectiveClientId, effectiveClientSecret)
-                if (refreshed != null) {
-                    val dynamicInfo = extractDynamicClientInfo(existing)
-                    return credentialService.store(buildCredential(userId, authSettingId, refreshed, dynamicInfo))
+                val ep = resolveEndpoints(authSetting)
+                if (ep == null) {
+                    logger.warn { "[OAuth] resolveOAuthCredential: endpoint resolution failed for ${authSetting.name}, cannot refresh — falling through to interactive flow" }
+                } else {
+                    // For MCP discoverable, check for stored dynamic client credentials
+                    val (effectiveClientId, effectiveClientSecret) = resolveClientCredentials(authSetting, existing)
+                    val refreshed = refreshAccessToken(ep.tokenEndpoint, rt, effectiveClientId, effectiveClientSecret)
+                    if (refreshed != null) {
+                        logger.debug { "[OAuth] resolveOAuthCredential: token refreshed successfully for ${authSetting.name}" }
+                        val dynamicInfo = extractDynamicClientInfo(existing)
+                        return credentialService.store(buildCredential(userId, authSettingId, refreshed, dynamicInfo))
+                    } else {
+                        logger.warn { "[OAuth] resolveOAuthCredential: token refresh failed for ${authSetting.name}, falling through to interactive flow" }
+                    }
                 }
+            } else {
+                logger.debug { "[OAuth] resolveOAuthCredential: no refresh token for ${authSetting.name}, falling through to interactive flow" }
             }
+        } else {
+            logger.debug { "[OAuth] resolveOAuthCredential: no existing credential for ${authSetting.name}" }
         }
+
         return runInteractiveFlow(userId, authSetting, namespaceId, caseId, agentId, agentName, emitEvent)
     }
 
@@ -79,8 +98,19 @@ class OAuthFlowService(
         agentName: String,
         emitEvent: (CaseEvent) -> CaseEvent,
     ): Credential? {
-        if (redirectUri.isBlank()) return null
-        val endpoints = resolveEndpoints(authSetting) ?: return null
+        logger.debug { "[OAuth] runInteractiveFlow: starting for ${authSetting.name}, userId=$userId" }
+
+        if (redirectUri.isBlank()) {
+            logger.warn { "[OAuth] runInteractiveFlow: redirectUri is blank, OAuth interactive flows disabled. Set AGENTOS_OAUTH_REDIRECT_URI." }
+            return null
+        }
+
+        val endpoints = resolveEndpoints(authSetting)
+        if (endpoints == null) {
+            logger.warn { "[OAuth] runInteractiveFlow: endpoint resolution failed for ${authSetting.name}" }
+            return null
+        }
+
         val authSettingId = authSetting.metadata.id
 
         // Resolve client credentials — may trigger dynamic registration for MCP discoverable
@@ -104,6 +134,10 @@ class OAuthFlowService(
             }
             effectiveClientId = dynamicClientInfo?.clientId ?: ""
             effectiveClientSecret = dynamicClientInfo?.clientSecret ?: ""
+            if (effectiveClientId.isBlank()) {
+                logger.warn { "[OAuth] runInteractiveFlow: no client ID available for ${authSetting.name} (dynamic registration not available or failed)" }
+                return null
+            }
         } else {
             effectiveClientId = clientIdOf(authSetting)
             effectiveClientSecret = clientSecretOf(authSetting)
@@ -123,15 +157,27 @@ class OAuthFlowService(
         val future = pendingRegistry.register(state)
         emitEvent(QuestionEvent(namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName, question = authorizationUrl, options = null, questionType = QuestionType.OAUTH_AUTHORIZE))
         logger.info { "[OAuth] Interactive flow started for user=$userId state=$state" }
+
         val code: String? = withContext(Dispatchers.IO) {
             try { future.get(FLOW_TIMEOUT_MINUTES, TimeUnit.MINUTES) }
             catch (e: TimeoutException) { pendingRegistry.cancel(state); null }
             catch (e: CancellationException) { null }
             catch (e: Exception) { logger.error("[OAuth] Error waiting for callback", e); null }
         }
-        if (code == null) return null
-        val tokenResponse = exchangeCodeForTokens(endpoints.tokenEndpoint, code, effectiveClientId, effectiveClientSecret, redirectUri, pkce.codeVerifier) ?: return null
-        return credentialService.store(buildCredential(userId, authSettingId, tokenResponse, dynamicClientInfo))
+        if (code == null) {
+            logger.warn { "[OAuth] runInteractiveFlow: no authorization code received for ${authSetting.name} (timeout or cancellation)" }
+            return null
+        }
+
+        val tokenResponse = exchangeCodeForTokens(endpoints.tokenEndpoint, code, effectiveClientId, effectiveClientSecret, redirectUri, pkce.codeVerifier)
+        if (tokenResponse == null) {
+            logger.warn { "[OAuth] runInteractiveFlow: token exchange failed for ${authSetting.name}" }
+            return null
+        }
+
+        val credential = credentialService.store(buildCredential(userId, authSettingId, tokenResponse, dynamicClientInfo))
+        logger.info { "[OAuth] runInteractiveFlow: credential obtained and stored for ${authSetting.name}" }
+        return credential
     }
 
     private fun resolveEndpoints(authSetting: AuthSetting): OAuthEndpoints? = when (authSetting) {
@@ -154,29 +200,64 @@ class OAuthFlowService(
     } catch (e: Exception) { logger.error("[OAuth] Discovery failed", e); null }
 
     private fun discoverMcpEndpoints(resourceUrl: String): OAuthEndpoints? = try {
-        // Step 1: RFC 9728 — Protected Resource Metadata
+        logger.debug { "[OAuth] discoverMcpEndpoints: starting discovery for $resourceUrl" }
+
         val resourceUri = java.net.URI.create(resourceUrl)
         val origin = "${resourceUri.scheme}://${resourceUri.authority}"
         val path = resourceUri.path.takeIf { it.isNotBlank() && it != "/" } ?: ""
-        val prmUrl = "$origin/.well-known/oauth-protected-resource$path"
 
-        val prmJson = fetchJson(prmUrl) ?: return null
-        val authServerUrl = prmJson["authorization_servers"]
-            ?.firstOrNull()
-            ?.asText()
-            ?.takeIf { it.isNotBlank() } ?: return null
-        val resource = prmJson["resource"]?.asText()?.takeIf { it.isNotBlank() }
+        var authServerUrl: String? = null
+        var resource: String? = null
+
+        // Step 1: RFC 9728 — Protected Resource Metadata (optional, may not be implemented)
+        val prmUrl = "$origin/.well-known/oauth-protected-resource$path"
+        logger.debug { "[OAuth] discoverMcpEndpoints: fetching PRM from $prmUrl" }
+        val prmJson = fetchJson(prmUrl)
+        if (prmJson != null) {
+            authServerUrl = prmJson["authorization_servers"]
+                ?.firstOrNull()
+                ?.asText()
+                ?.takeIf { it.isNotBlank() }
+            resource = prmJson["resource"]?.asText()?.takeIf { it.isNotBlank() }
+            if (authServerUrl != null) {
+                logger.debug { "[OAuth] discoverMcpEndpoints: PRM resolved authorization server = $authServerUrl" }
+            } else {
+                logger.warn { "[OAuth] discoverMcpEndpoints: PRM response had no authorization_servers" }
+            }
+        } else {
+            logger.info { "[OAuth] discoverMcpEndpoints: PRM not available at $prmUrl (RFC 9728 not implemented), falling back to direct ASM discovery" }
+        }
 
         // Step 2: RFC 8414 — Authorization Server Metadata
-        val asUri = java.net.URI.create(authServerUrl)
-        val asOrigin = "${asUri.scheme}://${asUri.authority}"
-        val asPath = asUri.path.takeIf { it.isNotBlank() && it != "/" } ?: ""
-        val asmUrl = "$asOrigin/.well-known/oauth-authorization-server$asPath"
+        // If PRM gave us an auth server URL, use it. Otherwise fall back to the resource origin.
+        val asmOrigin: String
+        val asmPath: String
+        if (authServerUrl != null) {
+            val asUri = java.net.URI.create(authServerUrl)
+            asmOrigin = "${asUri.scheme}://${asUri.authority}"
+            asmPath = asUri.path.takeIf { it.isNotBlank() && it != "/" } ?: ""
+        } else {
+            // Fallback: try ASM directly on the resource origin (no path suffix)
+            asmOrigin = origin
+            asmPath = ""
+        }
+        val asmUrl = "$asmOrigin/.well-known/oauth-authorization-server$asmPath"
+        logger.debug { "[OAuth] discoverMcpEndpoints: fetching ASM from $asmUrl" }
 
-        val asmJson = fetchJson(asmUrl) ?: return null
-        val authEndpoint = asmJson["authorization_endpoint"]?.asText()?.takeIf { it.isNotBlank() } ?: return null
-        val tokenEndpoint = asmJson["token_endpoint"]?.asText()?.takeIf { it.isNotBlank() } ?: return null
+        val asmJson = fetchJson(asmUrl)
+        if (asmJson == null) {
+            logger.warn { "[OAuth] discoverMcpEndpoints: ASM fetch failed for $asmUrl" }
+            return null
+        }
+
+        val authEndpoint = asmJson["authorization_endpoint"]?.asText()?.takeIf { it.isNotBlank() }
+        val tokenEndpoint = asmJson["token_endpoint"]?.asText()?.takeIf { it.isNotBlank() }
+        if (authEndpoint == null || tokenEndpoint == null) {
+            logger.warn { "[OAuth] discoverMcpEndpoints: ASM response missing required endpoints (auth=$authEndpoint, token=$tokenEndpoint)" }
+            return null
+        }
         val registrationEndpoint = asmJson["registration_endpoint"]?.asText()?.takeIf { it.isNotBlank() }
+        logger.debug { "[OAuth] discoverMcpEndpoints: resolved auth=$authEndpoint token=$tokenEndpoint registration=${registrationEndpoint ?: "(none)"}" }
 
         OAuthEndpoints(
             authorizationEndpoint = authEndpoint,
