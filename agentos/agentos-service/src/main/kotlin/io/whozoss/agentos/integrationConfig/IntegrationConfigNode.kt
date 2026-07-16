@@ -48,6 +48,7 @@ data class IntegrationConfigNode(
     val integrationType: String,
     val description: String? = null,
     val parametersJson: String? = null,
+    val authSettingName: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -74,6 +75,7 @@ data class IntegrationConfigNode(
             integrationType = integrationType,
             description = description,
             parameters = parametersJson?.let { objectMapper.readTree(it) },
+            authSettingName = authSettingName,
         )
 
     companion object {
@@ -104,6 +106,7 @@ data class IntegrationConfigNode(
                 integrationType = config.integrationType,
                 description = config.description,
                 parametersJson = config.parameters?.let { objectMapper.writeValueAsString(it) },
+                authSettingName = config.authSettingName,
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,
                 modified = config.metadata.modified,

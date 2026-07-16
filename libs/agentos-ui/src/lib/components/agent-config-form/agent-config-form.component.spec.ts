@@ -12,9 +12,9 @@ import { AgentConfigFormComponent } from './agent-config-form.component'
 
 /**
  * Focused on the built-in file-exchange integrations in the agent-config form: they are
- * discovered from GET /api/integration-types (builtIn === true), listed under a "Built-in
- * integrations" separator, and their enablement round-trips through AgentConfig.integrations —
- * there are no dedicated boolean fields any more.
+ * discovered from GET /api/integration-types by the absence of a configSchema, listed under a
+ * "Built-in integrations" separator, and their enablement round-trips through
+ * AgentConfig.integrations — there are no dedicated boolean fields any more.
  *
  * The component class is driven directly (ngOnInit / submit) without rendering the template,
  * except the listing tests which render via detectChanges.
@@ -36,16 +36,11 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   const NAMESPACE = 'NAMESPACE_FILE_EXCHANGE'
 
   const builtInTypes = [
-    { type: CASE, displayName: 'Case file exchange', description: 'Case files.', configSchema: null, builtIn: true },
-    {
-      type: NAMESPACE,
-      displayName: 'Namespace file exchange',
-      description: 'NS files.',
-      configSchema: null,
-      builtIn: true,
-    },
-    // a regular (non-built-in) type must be excluded from the built-in section
-    { type: 'JIRA', displayName: 'Jira', description: '', configSchema: {}, builtIn: false },
+    // configSchema: null → treated as built-in (no configuration instance required)
+    { type: CASE, displayName: 'Case file exchange', description: 'Case files.', configSchema: null },
+    { type: NAMESPACE, displayName: 'Namespace file exchange', description: 'NS files.', configSchema: null },
+    // configSchema: {} → NOT built-in (requires a dedicated IntegrationConfig instance)
+    { type: 'JIRA', displayName: 'Jira', description: '', configSchema: {} },
   ]
 
   const internals = () =>
@@ -106,7 +101,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   })
 
   describe('built-in rows', () => {
-    it('lists only builtIn integration types as built-in rows', () => {
+    it('lists only types without a configSchema as built-in rows', () => {
       component.ngOnInit()
       expect(
         internals()

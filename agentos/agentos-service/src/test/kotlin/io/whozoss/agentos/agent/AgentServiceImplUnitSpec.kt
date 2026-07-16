@@ -19,6 +19,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
@@ -59,6 +60,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val toolRegistryService: ToolRegistryService = mockk(relaxed = true)
     private val toolMetricsService: ToolMetricsService = mockk(relaxed = true)
     private val caseEventService: CaseEventService = mockk(relaxed = true)
+    private val authServiceFactory: AuthServiceFactory = mockk(relaxed = true)
     private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
@@ -78,6 +80,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             toolRegistryService = toolRegistryService,
             toolMetricsService = toolMetricsService,
             caseEventService = caseEventService,
+            authServiceFactory = authServiceFactory,
             exchangeStorageService = exchangeStorageService,
             exchangeCapabilityService = exchangeCapabilityService,
             agentDocumentResolver = agentDocumentResolver,
@@ -136,7 +139,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
     )
 
     init {
-        every { toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any()) } returns emptyList()
+        every { toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any(), credentialProviderFactory = any()) } returns
+            emptyList()
         // dedupToolsByName is the shared collision-reconciler; identity is fine (no collisions in these tests).
         every { toolResolverService.dedupToolsByName(any()) } answers { firstArg() }
         // isToolAllowed gates the exchange grant's per-tool allowlist; allow all (tests use null allowlists).
@@ -202,7 +206,14 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { toolRegistryService.findPlugin("FILE_ACCESS") } returns filePlugin
             every { exchangeStorageService.namespaceRoot(namespaceId) } returns tmp
 
-            val config = agentConfig(name = "ns-agent", modelName = "sonnet").copy(integrations = mapOf("CASE_FILE_EXCHANGE" to null, "NAMESPACE_FILE_EXCHANGE" to null))
+            val config =
+                agentConfig(name = "ns-agent", modelName = "sonnet").copy(
+                    integrations =
+                        mapOf(
+                            "CASE_FILE_EXCHANGE" to null,
+                            "NAMESPACE_FILE_EXCHANGE" to null,
+                        ),
+                )
             every { agentConfigService.findById(config.metadata.id) } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
             every { aiProviderService.getById(aiProviderId) } returns providerConfig()
@@ -415,7 +426,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val chatClient = mockk<ChatClient>(relaxed = true)
 
             // userId != null => findAgentByName takes the findDeployedByNamespaceIdAndUserIdAndName path
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(config)
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent") } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "default") } returns platformModel
             every { aiProviderService.getById(platformProviderId) } returns platformProvider
             every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-platform") } returns platformProvider
@@ -527,6 +538,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolRegistryService = toolRegistryService,
                     toolMetricsService = toolMetricsService,
                     caseEventService = caseEventService,
+                    authServiceFactory = authServiceFactory,
                     exchangeStorageService = exchangeStorageService,
                     exchangeCapabilityService = exchangeCapabilityService,
                     agentDocumentResolver = agentDocumentResolver,
@@ -782,7 +794,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             // Both namespace and platform agent returned by the query
             every {
-                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null)
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent")
             } returns listOf(nsAgent, platformAgentNullNs)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
@@ -796,18 +808,65 @@ class AgentServiceImplUnitSpec : StringSpec() {
         }
 
         "findAgentByName with userId throws when two namespace-level agents match the name" {
+            // Two distinct configs sharing the same name at namespace level is an error —
+            // resolveWithShadowing enforces uniqueness per level.
             val userId = UUID.randomUUID()
             val ns1 = agentConfig(name = "my-agent", modelName = "sonnet")
-            val ns2 = agentConfig(name = "my-agent-extra", modelName = "sonnet")
+            val ns2 = agentConfig(name = "my-agent", modelName = "sonnet") // same name, different id
             val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
 
             every {
-                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null)
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent")
             } returns listOf(ns1, ns2)
 
             io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
                 agentService.findAgentByName("my-agent", contextWithUser)
             }
+        }
+
+        "findAgentByName with userId does not match agent whose name contains the search term as substring" {
+            // Regression test for the contains() bug: searching for "Archay" must not match
+            // "Searchay" even though "archay" is a substring of "searchay".
+            val userId = UUID.randomUUID()
+            val archay = agentConfig(name = "Archay", modelName = "sonnet")
+            val searchay = agentConfig(name = "Searchay", modelName = "sonnet")
+            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "archay")
+            } returns listOf(archay, searchay)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            every { userService.findById(userId) } returns null
+
+            val agent = agentService.findAgentByName("Archay", contextWithUser)
+            agent.name shouldBe "Archay"
+        }
+
+        "findAgentByName with userId exact match is case-insensitive" {
+            val userId = UUID.randomUUID()
+            val myAgent = agentConfig(name = "MyAgent", modelName = "sonnet")
+            val contextWithUser = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "myagent")
+            } returns listOf(myAgent)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            every { userService.findById(userId) } returns null
+
+            val agent = agentService.findAgentByName("myagent", contextWithUser)
+            agent.name shouldBe "MyAgent"
         }
 
         "findAgentByName with userId resolves single platform agent when no namespace agent matches" {
@@ -825,7 +884,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val chatClient = mockk<ChatClient>(relaxed = true)
 
             every {
-                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null)
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "platform-agent")
             } returns listOf(platformAgent)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
@@ -858,7 +917,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(config)
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent") } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
 
             every { aiProviderService.getById(aiProviderId) } returns provider
@@ -894,7 +953,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(config)
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent") } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
 
             every { aiProviderService.getById(aiProviderId) } returns provider
@@ -947,7 +1006,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns listOf(config)
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent") } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns provider
@@ -985,6 +1044,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentIntegrations = null,
                     context = any(),
                     allIntegrationConfigs = any(),
+                    credentialProviderFactory = any(),
                 )
             }
         }
@@ -1008,6 +1068,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentIntegrations = integrations,
                     context = any(),
                     allIntegrationConfigs = any(),
+                    credentialProviderFactory = any(),
                 )
             }
         }

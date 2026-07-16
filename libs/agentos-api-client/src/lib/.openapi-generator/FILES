@@ -7,6 +7,7 @@ api/agent-config-controller.service.ts
 api/ai-model-controller.service.ts
 api/ai-provider-controller.service.ts
 api/api.ts
+api/auth-setting-controller.service.ts
 api/case-controller.service.ts
 api/case-event-rest-controller.service.ts
 api/exchange-controller.service.ts
@@ -36,6 +37,10 @@ model/agent-selected-event.ts
 model/ai-model.ts
 model/ai-provider.ts
 model/answer-event.ts
+model/api-key-auth-setting.ts
+model/auth-setting-dto.ts
+model/basic-auth-auth-setting.ts
+model/bearer-token-auth-setting.ts
 model/case-event.ts
 model/case-status-event.ts
 model/case-updated-event.ts
@@ -57,6 +62,7 @@ model/image.ts
 model/integration-config.ts
 model/integration-type-descriptor.ts
 model/intention-generated-event.ts
+model/list-auth-setting200-response-inner.ts
 model/list-by-user-in-namespace-request.ts
 model/message-content.ts
 model/message-event-all-of-content.ts
@@ -67,6 +73,10 @@ model/namespace-list-item.ts
 model/namespace-role-entry.ts
 model/namespace-user-list-item.ts
 model/namespace.ts
+model/o-auth-custom-auth-setting.ts
+model/o-auth-discoverable-auth-setting.ts
+model/o-auth-mcp-discoverable-auth-setting.ts
+model/o-auth-registered-auth-setting.ts
 model/pending-confirmation-event.ts
 model/plugin-action-response.ts
 model/plugin-info.ts

@@ -121,8 +121,9 @@ class IntegrationConfigControllerSpec : StringSpec({
     // toDto — mapping (file-level extension)
     // -------------------------------------------------------------------------
 
-    "toDto maps id, namespaceId, userId, name, integrationType, description, parameters" {
-        val cfg = config(name = "SLACK_DEV", integrationType = "SLACK", userId = aliceId).copy(description = "Dev Slack")
+    "toDto maps id, namespaceId, userId, name, integrationType, description, parameters, authSettingName" {
+        val cfg = config(name = "SLACK_DEV", integrationType = "SLACK", userId = aliceId)
+            .copy(description = "Dev Slack", authSettingName = "my-auth")
         val r = IntegrationConfigDto(
             id = cfg.metadata.id,
             namespaceId = cfg.namespaceId,
@@ -131,6 +132,7 @@ class IntegrationConfigControllerSpec : StringSpec({
             integrationType = cfg.integrationType,
             description = cfg.description,
             parameters = cfg.parameters,
+            authSettingName = cfg.authSettingName,
         )
 
         r.id shouldBe cfg.metadata.id
@@ -140,6 +142,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         r.integrationType shouldBe "SLACK"
         r.description shouldBe "Dev Slack"
         r.parameters shouldBe params
+        r.authSettingName shouldBe "my-auth"
     }
 
     // -------------------------------------------------------------------------

@@ -131,6 +131,31 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformAiProvidersComponent
               ),
           },
+          // --- Admin: Platform Auth Settings ---
+          {
+            path: 'admin/auth-settings/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/auth-setting-form/auth-setting-form.component').then(
+                (m) => m.AuthSettingFormComponent
+              ),
+          },
+          {
+            path: 'admin/auth-settings/:authSettingId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/auth-setting-form/auth-setting-form.component').then(
+                (m) => m.AuthSettingFormComponent
+              ),
+          },
+          {
+            path: 'admin/auth-settings',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-auth-settings/platform-auth-settings.component').then(
+                (m) => m.PlatformAuthSettingsComponent
+              ),
+          },
           // --- Admin: Platform AI Models ---
           {
             path: 'admin/ai-models/new',
@@ -197,6 +222,31 @@ export const AGENTOS_ROUTES: Route[] = [
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
               import('./components/user-profile/user-profile.component').then((m) => m.UserProfileComponent),
+          },
+          // --- Auth Settings ---
+          {
+            path: ':namespaceId/auth-settings/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/auth-setting-form/auth-setting-form.component').then(
+                (m) => m.AuthSettingFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/auth-settings/:authSettingId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/auth-setting-form/auth-setting-form.component').then(
+                (m) => m.AuthSettingFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/auth-settings',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/auth-settings-all-scopes/auth-settings-all-scopes.component').then(
+                (m) => m.AuthSettingsAllScopesComponent
+              ),
           },
           // --- Integrations ---
           {

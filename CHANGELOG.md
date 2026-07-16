@@ -1,3 +1,13 @@
+## 0.216.1 (2026-07-16)
+
+### 🩹 Fixes
+
+- agent name resolution uses exact match instead of substring contains ([#1147](https://github.com/whoz-oss/coday/pull/1147))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.216.0 (2026-07-16)
 
 ### 🚀 Features

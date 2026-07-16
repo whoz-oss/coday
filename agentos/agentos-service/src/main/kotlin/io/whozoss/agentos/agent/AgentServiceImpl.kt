@@ -6,8 +6,11 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.auth.AuthServiceFactory
+import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
@@ -19,8 +22,6 @@ import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.redirect.globToRegex
-import io.whozoss.agentos.chat.CompressingChatClient
-import io.whozoss.agentos.util.IdCompressorService
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -31,6 +32,7 @@ import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.util.IdCompressorService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
@@ -60,6 +62,7 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
+    private val authServiceFactory: AuthServiceFactory,
     private val idCompressorService: IdCompressorService,
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
@@ -70,11 +73,11 @@ class AgentServiceImpl(
      *
      * **Matching semantics differ by path:**
      * - `userId != null` path: loads all accessible agents (platform + deployed) and filters
-     *   client-side with `.contains()` (case-insensitive substring). This is intentional for
-     *   interactive use cases where a partial name typed by a user should resolve loosely.
+     *   client-side with an exact case-insensitive match (`equals(ignoreCase = true)`).
      * - `userId == null` path: delegates to [AgentConfigServiceImpl.findByName] which performs
      *   a case-insensitive exact match, then falls back to platform agents.
-     * - [resolveAgentName] with `userId != null` uses a Cypher `STARTS WITH` prefix match.
+     * - [resolveAgentName] with `userId != null` uses a Cypher `STARTS WITH` prefix match
+     *   (autocomplete — a different call site from this method).
      *
      * **Scoping / shadowing rule (both paths):**
      * Platform agents (namespaceId = null) are shadowed by namespace-scoped agents with the
@@ -90,14 +93,13 @@ class AgentServiceImpl(
         require(namePart.isNotBlank()) { "Blank agent name, cannot resolve agent" }
         val agentConfig =
             if (context.userId != null) {
-                val namePartLowercase = namePart.lowercase()
                 val agentConfigs =
                     agentConfigService
                         .findDeployedByNamespaceIdAndUserIdAndName(
                             namespaceId = context.namespaceId,
                             userId = context.userId,
-                            agentName = null,
-                        ).filter { it.name.lowercase().contains(namePartLowercase) }
+                            agentName = namePart.lowercase(),
+                        ).filter { it.name.equals(namePart, ignoreCase = true) }
                 resolveWithShadowing(agentConfigs, namePart, context.namespaceId)
             } else {
                 agentConfigService.findByName(context.namespaceId, namePart)
@@ -232,11 +234,22 @@ class AgentServiceImpl(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
                 agentName = agentConfig.name,
             )
+        val credentialProviderFactory: (String) -> CredentialProvider? = { authSettingName ->
+            context.userId?.let { userId ->
+                val svc = authServiceFactory.create(context.namespaceId, userId)
+                val provider: CredentialProvider = {
+                    val setting = svc.resolveAuthSetting(authSettingName)
+                    svc.resolveCredential(setting.metadata.id)
+                }
+                provider
+            }
+        }
         val baseTools =
             toolResolverService.resolveToolsForRun(
                 agentIntegrations = agentConfig.integrations,
                 context = toolContext,
                 allIntegrationConfigs = effectiveIntegrationConfigs,
+                credentialProviderFactory = credentialProviderFactory,
             )
         // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
         // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name
@@ -629,7 +642,8 @@ class AgentServiceImpl(
             // the debug getDefinition endpoint) still creates an empty scope dir.
             Files.createDirectories(root)
             val cfg =
-                objectMapper.createObjectNode()
+                objectMapper
+                    .createObjectNode()
                     .put("rootPath", root.toAbsolutePath().toString())
                     .put("readOnly", readOnly)
                     // Align the agent read tool's size cap with the exchange's own read limit, so an
@@ -652,12 +666,13 @@ class AgentServiceImpl(
             // The agent gets read/write on the case exchange by design (it produces files during a run).
             // User-facing write is separately gated: the exchange upload/delete endpoints require Case
             // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
-            tools += grant(
-                exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
-                readOnly = false,
-                configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
-                allowedTools = integrations[ExchangeIntegrationTypes.CASE],
-            )
+            tools +=
+                grant(
+                    exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
+                    readOnly = false,
+                    configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                    allowedTools = integrations[ExchangeIntegrationTypes.CASE],
+                )
         }
         if (integrations.containsKey(ExchangeIntegrationTypes.NAMESPACE)) {
             // The agent inherits the invoking user's namespace right: read/write for a namespace
@@ -670,12 +685,13 @@ class AgentServiceImpl(
                         context.namespaceId.toString(),
                     )
                 } ?: false
-            tools += grant(
-                exchangeStorageService.namespaceRoot(context.namespaceId),
-                readOnly = !userCanWriteNamespace,
-                configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
-                allowedTools = integrations[ExchangeIntegrationTypes.NAMESPACE],
-            )
+            tools +=
+                grant(
+                    exchangeStorageService.namespaceRoot(context.namespaceId),
+                    readOnly = !userCanWriteNamespace,
+                    configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                    allowedTools = integrations[ExchangeIntegrationTypes.NAMESPACE],
+                )
         }
         return tools
     }

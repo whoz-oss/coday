@@ -35,6 +35,13 @@ export class AdminHomeComponent {
       path: '/agentos/admin/integration-configs',
     },
     {
+      key: 'authSetting',
+      mark: '\u{1F512}',
+      name: 'Auth settings',
+      description: 'Manage auth settings shared across all namespaces.',
+      path: '/agentos/admin/auth-settings',
+    },
+    {
       key: 'ai-providers',
       mark: '\u{1F9E0}',
       name: 'Platform AI providers',

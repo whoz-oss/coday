@@ -31,8 +31,11 @@ interface IntegrationRow {
 
 /**
  * A built-in integration (e.g. file exchange) surfaced by the backend in /api/integration-types
- * with `builtIn = true`. Enabled by adding its `type` to AgentConfig.integrations — no instance,
- * no per-tool allowlist (toggle only).
+ * with no `configSchema` (null or undefined). Enabled by adding its `type` to
+ * AgentConfig.integrations — no instance, no per-tool allowlist (toggle only).
+ *
+ * Types that carry a configSchema require a dedicated IntegrationConfig instance and are
+ * handled via the regular integrationRows, not here.
  */
 interface BuiltInIntegrationRow {
   type: string
@@ -232,13 +235,16 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   /**
-   * Resolve whether the file-exchange plugin is loaded by looking for a `FILE_ACCESS`
-   * integration type. Resilient: any error (e.g. endpoint unavailable) resolves to false
-   * so it never blocks the integrations load — and the checkboxes stay hidden (fail-safe).
+   * Resolve which integration types are built-in by checking for the absence of a configSchema.
+   * Types without a configSchema are capabilities toggled on/off directly; types with a schema
+   * require a dedicated IntegrationConfig instance and are excluded here.
+   *
+   * Resilient: any error (e.g. endpoint unavailable) resolves to [] so it never blocks the
+   * integrations load — the built-in toggles stay hidden (fail-safe).
    */
   private loadBuiltInTypes(): Observable<IntegrationTypeDescriptor[]> {
     return this.integrationTypeController.listTypesIntegrationType().pipe(
-      map((types) => types.filter((t) => t.builtIn === true)),
+      map((types) => types.filter((t) => !t.configSchema)),
       catchError((err) => {
         // Fail-safe: hide the built-in toggles rather than block the form, but leave a diagnostic.
         console.error('[agent-config-form] failed to load integration types', err)
