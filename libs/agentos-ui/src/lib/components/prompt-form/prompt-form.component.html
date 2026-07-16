@@ -50,7 +50,7 @@
             <span class="prompt-form__field-hint">Agent Config cannot be changed after creation.</span>
           } @else if (!isEditMode()) {
             <select id="prompt-agent-config" class="prompt-form__select" [formControl]="agentConfigIdControl">
-              <option [value]="null">&mdash; None &mdash;</option>
+              <option [ngValue]="null">&mdash; None &mdash;</option>
               @for (agent of availableAgentConfigs(); track agent.id) {
                 <option [value]="agent.id">{{ agent.name }}</option>
               }
