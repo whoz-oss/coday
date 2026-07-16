@@ -93,19 +93,4 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
         userId: String?,
     ): List<IntegrationConfigNode>
 
-    /**
-     * Find all non-removed namespace-shared configs (userId IS NULL, namespaceId IS NOT NULL)
-     * matching the given name, across all namespaces.
-     */
-    @Query(
-        $$"""
-            MATCH (c:IntegrationConfig)
-            WHERE c.name = $name
-            AND c.userId IS NULL
-            AND c.namespaceId IS NOT NULL
-            AND (c.removed IS NULL OR c.removed = false)
-            RETURN c ORDER BY c.name ASC
-        """,
-    )
-    fun findNsSharedByName(name: String): List<IntegrationConfigNode>
 }

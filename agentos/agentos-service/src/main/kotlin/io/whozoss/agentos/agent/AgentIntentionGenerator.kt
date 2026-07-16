@@ -140,10 +140,8 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
 
             try {
                 val messages = context.buildMessages(events, fullPrompt)
-                val response = context.chatClient
-                    .prompt(Prompt(messages))
-                    .call()
-                    .content() ?: throw AgentIntentionGenerationException.InvalidFormat("Null LLM response")
+                val response = context.chatClient.prompt(Prompt(messages)).call().content()
+                    ?: throw AgentIntentionGenerationException.InvalidFormat("Null LLM response")
 
                 logger.trace { "Intention generation response:\n$response" }
 

@@ -90,11 +90,6 @@ open class Neo4jIntegrationConfigRepository(
                 it.toDomain(objectMapper)
             }
 
-    override fun findNsSharedByName(name: String): List<IntegrationConfig> =
-        neo4jRepository
-            .findNsSharedByName(name)
-            .map { it.toDomain(objectMapper) }
-
     override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())
