@@ -16,6 +16,7 @@ api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
 api/namespace-controller.service.ts
 api/namespace-permission-endpoints.service.ts
+api/o-auth-callback-controller.service.ts
 api/plugin-controller.service.ts
 api/prompt-controller.service.ts
 api/sse.service.ts
@@ -73,6 +74,7 @@ model/namespace-list-item.ts
 model/namespace-role-entry.ts
 model/namespace-user-list-item.ts
 model/namespace.ts
+model/o-auth-callback-request.ts
 model/o-auth-custom-auth-setting.ts
 model/o-auth-discoverable-auth-setting.ts
 model/o-auth-mcp-discoverable-auth-setting.ts

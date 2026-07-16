@@ -2003,6 +2003,27 @@ paths:
           description: OK
       tags:
       - namespace-permission-endpoints
+  /api/oauth/callback:
+    post:
+      description: "Called by the frontend popup after the OAuth provider redirects\
+        \ back with the authorization code. Resolves the pending server-side flow\
+        \ identified by `state`. Returns 200 when resolved, 400 when the state is\
+        \ unknown."
+      operationId: handleCallbackOAuthCallback
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuthCallbackRequest"
+        required: true
+      responses:
+        "200":
+          description: Flow resolved successfully
+        "400":
+          description: Unknown or already-consumed state
+      summary: Receive OAuth authorization code callback
+      tags:
+      - o-auth-callback-controller
   /api/plugins:
     get:
       operationId: getAllPlugins
@@ -3655,6 +3676,16 @@ components:
       - externalId
       - id
       - role
+    OAuthCallbackRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        state:
+          type: string
+      required:
+      - code
+      - state
     OAuthCustomAuthSetting:
       allOf:
       - $ref: "#/components/schemas/AuthSettingDto"

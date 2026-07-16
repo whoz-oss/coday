@@ -125,6 +125,12 @@ agentos:
     #        to x-forwarded-email; requires the User to be pre-registered.
     # Override with env var: AGENTOS_SECURITY_MODE
     mode: local
+  oauth:
+    # Absolute redirect URI sent to the OAuth provider as redirect_uri.
+    # Must match the frontend OAuth callback page URL exactly.
+    # In production, set to the deployed frontend callback URL (e.g. https://app.example.com/oauth/callback).
+    # Override with env var: AGENTOS_OAUTH_REDIRECT_URI
+    redirect-uri: ${AGENTOS_OAUTH_REDIRECT_URI:http://localhost:4100/agentos/oauth/callback}
   bootstrap:
     # Enable bootstrap service to run on startup
     # Override with env var: AGENTOS_BOOTSTRAP_ENABLED
