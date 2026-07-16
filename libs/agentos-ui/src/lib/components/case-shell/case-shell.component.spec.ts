@@ -77,18 +77,8 @@ describe('CaseShellComponent', () => {
     TestBed.resetTestingModule()
   })
 
-  describe('soft-delete', () => {
-    it('does not delete the case when the user cancels the confirmation', () => {
-      jest.spyOn(window, 'confirm').mockReturnValue(false)
-      const component = makeComponent({ ns: NS_ID })
-
-      component['onDeleteRequested']('case-1')
-
-      expect(caseStateMock.deleteCase).not.toHaveBeenCalled()
-    })
-
-    it('calls deleteCase on the state service once confirmed', () => {
-      jest.spyOn(window, 'confirm').mockReturnValue(true)
+  describe('delete', () => {
+    it('calls deleteCase on the state service immediately (confirmation is now inline in the drawer)', () => {
       const component = makeComponent({ ns: NS_ID })
 
       component['onDeleteRequested']('case-1')
@@ -97,7 +87,6 @@ describe('CaseShellComponent', () => {
     })
 
     it('navigates away when the deleted case is the active one', () => {
-      jest.spyOn(window, 'confirm').mockReturnValue(true)
       const component = makeComponent({ ns: NS_ID, case: 'active-1' })
 
       component['onDeleteRequested']('active-1')
@@ -106,7 +95,6 @@ describe('CaseShellComponent', () => {
     })
 
     it('does not navigate when the deleted case is not the active one', () => {
-      jest.spyOn(window, 'confirm').mockReturnValue(true)
       const component = makeComponent({ ns: NS_ID, case: 'active-1' })
 
       component['onDeleteRequested']('other-2')
@@ -114,26 +102,7 @@ describe('CaseShellComponent', () => {
       expect(routerMock.navigate).not.toHaveBeenCalled()
     })
 
-    it('confirms with the case title when available', () => {
-      const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false)
-      const component = makeComponent({ ns: NS_ID }, [caseWith('case-1', 'My Case')])
-
-      component['onDeleteRequested']('case-1')
-
-      expect(confirmSpy).toHaveBeenCalledWith('Delete "My Case"?')
-    })
-
-    it('confirms with the case id when the case is not in the current list', () => {
-      const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false)
-      const component = makeComponent({ ns: NS_ID }, [])
-
-      component['onDeleteRequested']('gone-9')
-
-      expect(confirmSpy).toHaveBeenCalledWith('Delete "gone-9"?')
-    })
-
-    it('logs and alerts the user when the delete request fails', () => {
-      jest.spyOn(window, 'confirm').mockReturnValue(true)
+    it('alerts the user when the delete request fails', () => {
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
       const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => undefined)
       const component = makeComponent({ ns: NS_ID, case: 'active-1' })

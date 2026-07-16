@@ -106,11 +106,10 @@ export class EntityListComponent implements AfterViewInit {
       groupMap.get(item.groupKey)!.items.push(item)
     }
 
-    const groups: GroupedItems[] = []
+    const groups: GroupedItems[] = [...groupMap.values()]
     if (ungrouped.length > 0) {
       groups.push({ groupKey: '', groupLabel: '', items: ungrouped })
     }
-    groups.push(...groupMap.values())
     return groups
   })
 

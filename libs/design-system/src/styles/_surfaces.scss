@@ -2,23 +2,25 @@
 /// Coday Design System — Surface Mixins
 ///
 /// Captures the container / background patterns established in ActionCard,
-/// EntityCard and Drawer. All mixins use CSS custom properties with fallbacks.
+/// EntityCard and Drawer. All mixins use CSS custom properties with SCSS
+/// variable fallbacks sourced from _colors.scss — single source of truth.
 ///
 /// Usage:
 ///   @use 'libs/design-system/src/styles' as ds;
 ///   .my-card { @include ds.surface-card; }
 ///
+@use 'colors' as c;
 
-// ── Card surfaces ─────────────────────────────────────────────────────────────
+// ── Card surfaces ─────────────────────────────────────────────────────────────────────
 
 /// Standard card container.
 /// Source: .ac in action-card.component.scss, .entity-card in entity-card.component.scss
 /// → bg-secondary, 1px border, radius 12px, subtle shadow, hover lift
 @mixin surface-card {
-  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.7));
-  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  background: var(--color-bg-secondary, #{c.$color-bg-secondary});
+  border: 1px solid var(--color-border, #{c.$color-border});
   border-radius: 12px;
-  box-shadow: 0 1px 3px var(--color-shadow, rgba(0, 0, 0, 0.05));
+  box-shadow: 0 1px 3px var(--color-shadow, #{c.$color-shadow-subtle});
   overflow: hidden;
   transition:
     background 0.15s ease,
@@ -26,8 +28,8 @@
     box-shadow 0.15s ease;
 
   &:hover {
-    box-shadow: 0 2px 8px var(--color-shadow, rgba(0, 0, 0, 0.08));
-    border-color: var(--color-border, rgba(0, 0, 0, 0.15));
+    box-shadow: 0 2px 8px var(--color-shadow, #{c.$color-shadow});
+    border-color: var(--color-border, #{c.$color-border-card-hover});
   }
 }
 
@@ -45,14 +47,14 @@
     transform 0.12s ease;
 
   &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
-    border-color: var(--color-primary, #007aff);
-    box-shadow: 0 2px 12px var(--color-shadow, rgba(0, 0, 0, 0.08));
+    background: var(--color-bg-hover, #{c.$color-bg-hover-card});
+    border-color: var(--color-primary, #{c.$color-primary});
+    box-shadow: 0 2px 12px var(--color-shadow, #{c.$color-shadow});
     transform: translateY(-1px);
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-primary, #007aff);
+    outline: 2px solid var(--color-primary, #{c.$color-primary});
     outline-offset: 2px;
   }
 
@@ -61,33 +63,33 @@
   }
 }
 
-// ── Dropdown / contextual menu surface ───────────────────────────────────────
+// ── Dropdown / contextual menu surface ───────────────────────────────────────────
 
 /// Floating dropdown / contextual menu container.
 /// Source: .ac__menu in action-card.component.scss
 /// → modal-bg, radius 10px, 1px border, modal-shadow
 @mixin surface-dropdown {
-  background: var(--color-modal-bg, #ffffff);
-  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  background: var(--color-modal-bg, #{c.$color-modal-bg});
+  border: 1px solid var(--color-border, #{c.$color-border});
   border-radius: 10px;
-  box-shadow: var(--color-modal-shadow, 0 6px 20px rgba(0, 0, 0, 0.08));
+  box-shadow: var(--color-modal-shadow, 0 6px 20px #{c.$color-shadow});
   padding: 5px;
 }
 
-// ── Glass surface ─────────────────────────────────────────────────────────────
+// ── Glass surface ───────────────────────────────────────────────────────────────────
 
 /// Apple Glass / glassmorphism surface.
 /// Source: .ds-drawer__sidenav in drawer.component.scss
 /// → glass-bg, glass-border, glass-shadow, backdrop-filter
 @mixin surface-glass {
-  background: var(--glass-bg, rgba(255, 255, 255, 0.72));
-  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.18));
-  box-shadow: var(--glass-shadow, 0 8px 32px 0 rgba(31, 38, 135, 0.15));
+  background: var(--glass-bg, #{c.$glass-bg});
+  border: 1px solid var(--glass-border, #{c.$glass-border});
+  box-shadow: var(--glass-shadow, 0 8px 32px 0 #{c.$glass-shadow});
   backdrop-filter: var(--glass-backdrop-blur, blur(20px));
   -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
 }
 
-// ── Mark / avatar ─────────────────────────────────────────────────────────────
+// ── Mark / avatar ──────────────────────────────────────────────────────────────────
 
 /// Mark / initials avatar — 32x32, radius 8px.
 /// Light mode: solid #161616 background with white text.
@@ -113,7 +115,63 @@
   // Dark mode: switch to outlined style
   [data-theme='dark'] & {
     background: transparent;
-    border: 1.5px solid var(--color-border, rgba(255, 255, 255, 0.15));
-    color: var(--color-text, #f5f5f7);
+    border: 1.5px solid var(--color-border, #{c.$color-border-dark});
+    color: var(--color-text, #{c.$color-text-dark});
+  }
+}
+
+// ── Chat bubbles ─────────────────────────────────────────────────────────────────
+
+@mixin surface-bubble-agent {
+  background: #f0f0ee;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px 12px 12px 3px;
+  box-shadow: 0 1px 3px var(--color-shadow, #{c.$color-shadow-subtle});
+  color: #1d1d1f;
+}
+
+@mixin surface-bubble-agent-dark {
+  background: #2c2c2e;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+  color: #f5f5f7;
+}
+
+@mixin surface-bubble-user {
+  background: #6e6e73;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px 12px 3px 12px;
+
+  [data-theme='dark'] & {
+    background: #3a3a3c;
+    color: #ffffff;
+    border: none;
+  }
+}
+
+@mixin surface-system-log {
+  background: #0f1115;
+  color: #e8eaf0;
+  border-radius: 6px;
+}
+
+// ── Scrollable panel ──────────────────────────────────────────────────────────
+
+/// Vertically scrollable flex panel with thin custom scrollbar.
+/// Use on the scrolling region of sidebars, drawers, or list containers.
+/// Source: .shell-sidebar__cases-scroll in shell-sidebar.component.scss
+@mixin scrollable-panel {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 999px;
   }
 }

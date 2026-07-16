@@ -1,10 +1,12 @@
-import { Component, Input, OnInit, OnDestroy, inject } from '@angular/core'
+import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
 import { CodayService } from '../../core/services/coday.service'
 import { ThreadApiService } from '../../core/services/thread-api.service'
+import { MarkdownService } from '../../services/markdown.service'
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { Subscription } from 'rxjs'
 import { filter } from 'rxjs/operators'
 import {
@@ -34,6 +36,7 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
   isLoading = false
   subMessages: ChatMessage[] = []
   streamingText = ''
+  renderedStreamingText: SafeHtml = ''
 
   private restLoaded = false
   private messageIds = new Set<string>()
@@ -41,6 +44,9 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
   private eventSubscription?: Subscription
   private readonly codayService = inject(CodayService)
   private readonly threadApi = inject(ThreadApiService)
+  private readonly markdownService = inject(MarkdownService)
+  private readonly sanitizer = inject(DomSanitizer)
+  private readonly cdr = inject(ChangeDetectorRef)
 
   get taskSummary(): string {
     const firstUser = this.subMessages.find((m) => m.role === 'user')
@@ -118,9 +124,14 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
       })
     } else if (event instanceof TextChunkEvent) {
       this.streamingText += event.chunk
+      this.markdownService.parse(this.streamingText).then((html) => {
+        this.renderedStreamingText = this.sanitizer.bypassSecurityTrustHtml(html)
+        this.cdr.markForCheck()
+      })
     } else if (event instanceof MessageEvent) {
       if (event.role === 'assistant') {
         this.streamingText = ''
+        this.renderedStreamingText = ''
       }
       this.addMessage({
         id: event.timestamp,

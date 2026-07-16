@@ -31,11 +31,17 @@ export class ShellSidebarComponent {
 
   private static readonly COMPACT_WIDTH = 60
 
-  /** Whether the case drawer is in compact (icons-only) mode. */
-  protected readonly isCompact = signal(false)
+  private static readonly COMPACT_KEY = 'agentos.sidebar.compact'
+
+  /** Whether the case drawer is in compact (icons-only) mode. Persisted in localStorage. */
+  protected readonly isCompact = signal(localStorage.getItem(ShellSidebarComponent.COMPACT_KEY) === 'true')
 
   protected toggleCompact(): void {
-    this.isCompact.update((v) => !v)
+    this.isCompact.update((v) => {
+      const next = !v
+      localStorage.setItem(ShellSidebarComponent.COMPACT_KEY, String(next))
+      return next
+    })
   }
 
   protected nsInitial(name: string | undefined | null): string {

@@ -9,7 +9,7 @@
   <span class="shell-case-switcher__dot" [class]="'shell-case-switcher__dot--' + activeCaseStatus()"></span>
   <span class="shell-case-switcher__title">{{ activeCaseTitle() }}</span>
   <span class="shell-case-switcher__status">{{ activeCaseStatusLabel() }}</span>
-  <span class="shell-case-switcher__chevron">⌄</span>
+  <span class="shell-case-switcher__chevron" [class.shell-case-switcher__chevron--open]="open()">⌄</span>
 </div>
 
 <!-- Expandable case list -->
@@ -29,19 +29,75 @@
 
     <!-- Other cases -->
     @for (c of otherCases(); track c.id) {
-      <div
-        class="shell-case-switcher__item"
-        tabindex="0"
-        role="button"
-        (click)="caseSelected.emit(c.id ?? '')"
-        (keyup.enter)="caseSelected.emit(c.id ?? '')"
-      >
-        <span
-          class="shell-case-switcher__dot"
-          [class]="'shell-case-switcher__dot--' + deriveMobileStatus(c.status)"
-        ></span>
-        <span class="shell-case-switcher__title">{{ c.title ?? c.id }}</span>
-        <span class="shell-case-switcher__status">{{ c.status.toLowerCase() }}</span>
+      <div class="shell-case-switcher__row-wrap">
+        <!-- Row -->
+        <div class="shell-case-switcher__item" [class.shell-case-switcher__item--running]="c.status === 'RUNNING'">
+          <!-- Title zone (tap = open case) -->
+          <div
+            class="shell-case-switcher__row-title"
+            tabindex="0"
+            role="button"
+            [attr.aria-label]="'Open case: ' + (c.title ?? c.id)"
+            (click)="onCaseSelected(c.id ?? '')"
+            (keyup.enter)="onCaseSelected(c.id ?? '')"
+          >
+            <span
+              class="shell-case-switcher__dot"
+              [class]="'shell-case-switcher__dot--' + deriveMobileStatus(c.status)"
+            ></span>
+            <span class="shell-case-switcher__title">{{ c.title ?? c.id }}</span>
+            <span class="shell-case-switcher__status">{{ c.status.toLowerCase() }}</span>
+          </div>
+
+          <!-- Chevron (tap = toggle action panel) -->
+          <button
+            type="button"
+            class="shell-case-switcher__action-toggle"
+            [class.shell-case-switcher__action-toggle--open]="expandedActionId() === c.id"
+            [attr.aria-expanded]="expandedActionId() === c.id"
+            [attr.aria-label]="expandedActionId() === c.id ? 'Hide actions' : 'Show actions'"
+            (click)="toggleActionPanel($event, c.id ?? '')"
+          >
+            ⌄
+          </button>
+        </div>
+
+        <!-- Action panel -->
+        @if (expandedActionId() === c.id) {
+          <div class="shell-case-switcher__actions">
+            @if (pendingDeleteId() === c.id) {
+              <!-- Delete confirmation -->
+              <span class="shell-case-switcher__confirm-label">Delete this case?</span>
+              <button
+                type="button"
+                class="shell-case-switcher__btn shell-case-switcher__btn--danger"
+                (click)="onDeleteConfirmed($event, c.id)"
+              >
+                Yes, delete
+              </button>
+              <button type="button" class="shell-case-switcher__btn" (click)="onDeleteCancelled($event)">Cancel</button>
+            } @else {
+              <!-- Normal actions -->
+              <button
+                type="button"
+                class="shell-case-switcher__btn"
+                [class.shell-case-switcher__btn--starred]="c.favorite"
+                [attr.aria-pressed]="c.favorite"
+                [title]="c.favorite ? 'Remove from favorites' : 'Add to favorites'"
+                (click)="onStarToggled($event, c)"
+              >
+                {{ c.favorite ? '★' : '☆' }}
+              </button>
+              <button
+                type="button"
+                class="shell-case-switcher__btn shell-case-switcher__btn--danger"
+                (click)="onDeleteRequested($event, c.id)"
+              >
+                Delete
+              </button>
+            }
+          </div>
+        }
       </div>
     }
   </div>

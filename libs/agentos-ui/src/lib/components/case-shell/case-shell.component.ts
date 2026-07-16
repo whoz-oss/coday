@@ -8,6 +8,7 @@ import { CaseHomeComponent } from '../case-home/case-home.component'
 import { THEME_PORT, ThemeMode } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { CaseStateService } from '../../services/case-state.service'
+import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
 import { ShellTopbarMobileComponent } from './shell-topbar-mobile/shell-topbar-mobile.component'
 import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/shell-case-switcher-mobile.component'
@@ -45,6 +46,7 @@ export class CaseShellComponent {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
   private readonly namespaceController = inject(NamespaceControllerService)
+  private readonly namespaceState = inject(NamespaceStateService)
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
   private readonly caseState = inject(CaseStateService)
@@ -138,7 +140,8 @@ export class CaseShellComponent {
       .subscribe((width) => localStorage.setItem('agentos.sidebar.width', String(width)))
 
     // Sync selectedNamespace whenever namespaces load or the ?ns param changes.
-    // When no ?ns is present, auto-select the first namespace and update the URL.
+    // When no ?ns is present, auto-select the last used namespace (from localStorage)
+    // or fall back to the first available one.
     effect(() => {
       const nsList = this.namespaces()
       const nsId = this.namespaceId()
@@ -147,6 +150,9 @@ export class CaseShellComponent {
       if (nsId) {
         const found = nsList.find((ns) => ns.id === nsId)
         this.selectedNamespace.set(found ?? nsList[0] ?? null)
+        // Sync into the shared service so other parts of the app (e.g. ShellTopbarComponent)
+        // can read the current namespace without needing the query param.
+        this.namespaceState.selectNamespace(nsId)
       } else {
         const first = nsList[0]
         if (first?.id) {
@@ -202,11 +208,6 @@ export class CaseShellComponent {
   }
 
   protected onDeleteRequested(caseId: string): void {
-    const target = this.cases().find((c) => c.id === caseId)
-    const label = target?.title ?? caseId
-    if (!confirm(`Delete "${label}"?`)) {
-      return
-    }
     this.caseState
       .deleteCase(caseId)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -240,7 +241,8 @@ export class CaseShellComponent {
   // ---------------------------------------------------------------------------
 
   protected navigateHome(): void {
-    this.router.navigate(['/agentos/home'])
+    const nsId = this.namespaceId()
+    this.router.navigate(['/agentos/home'], nsId ? { queryParams: { ns: nsId } } : {})
   }
 
   protected collapseSidebar(): void {
@@ -309,21 +311,35 @@ export class CaseShellComponent {
   /**
    * Start a drag session to resize the sidebar.
    * Clamps the width between 200px and 500px.
+   *
+   * During drag:
+   * - The sidebar transition is disabled to avoid per-pixel animation lag.
+   * - The sidebar width is set directly on the element style (no Angular
+   *   change detection on every mousemove pixel).
+   * On mouseup the final width is committed to the signal (single CD cycle).
    */
   protected onResizeStart(event: MouseEvent): void {
     event.preventDefault()
     const startX = event.clientX
     const startWidth = this.sidebarWidth()
 
+    // Find the sidebar element and disable its CSS transition for the drag duration.
+    const sidebarEl = document.querySelector<HTMLElement>('.shell-sidebar')
+    if (sidebarEl) sidebarEl.style.transition = 'none'
+
+    let currentWidth = startWidth
+
     const onMove = (e: MouseEvent): void => {
       const delta = e.clientX - startX
-      const newWidth = Math.max(200, Math.min(500, startWidth + delta))
-      this.sidebarWidth.set(newWidth)
+      currentWidth = Math.max(200, Math.min(500, startWidth + delta))
+      if (sidebarEl) sidebarEl.style.width = `${currentWidth}px`
     }
 
     const onUp = (): void => {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
+      if (sidebarEl) sidebarEl.style.transition = ''
+      this.sidebarWidth.set(currentWidth)
     }
 
     document.addEventListener('mousemove', onMove)

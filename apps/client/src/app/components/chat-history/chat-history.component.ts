@@ -11,6 +11,7 @@ import {
   OnChanges,
   SimpleChanges,
   inject,
+  ChangeDetectorRef,
 } from '@angular/core'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
 import { DelegationInlineComponent } from '../delegation-inline/delegation-inline.component'
@@ -67,6 +68,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private codayService = inject(CodayService)
   private markdownService = inject(MarkdownService)
   private sanitizer = inject(DomSanitizer)
+  private cdr = inject(ChangeDetectorRef)
 
   ngOnInit() {
     // Find scrollable container on startup
@@ -562,9 +564,10 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       const html = await this.markdownService.parse(this.streamingText)
       this.renderedStreamingText = this.sanitizer.bypassSecurityTrustHtml(html)
     } catch (error) {
-      console.error('[CHAT-HISTORY] Error rendering streaming text markdown:', error)
       // Fallback to plain text on error
       this.renderedStreamingText = this.sanitizer.bypassSecurityTrustHtml(this.streamingText)
+    } finally {
+      this.cdr.markForCheck()
     }
   }
 }

@@ -6,7 +6,7 @@
   height: 100%;
 }
 
-// ── Compact / icons mode ───────────────────────────────────────────────
+// ── Compact / icons mode ─────────────────────────────────────────────────────
 
 .case-drawer-compact {
   display: flex;
@@ -16,18 +16,27 @@
   padding: 8px 0;
   overflow-y: auto;
 
-  &__badge {
-    @include ds.surface-mark;
-    @include ds.text-mark;
+  &__divider {
+    width: 20px;
+    height: 1px;
+    background: var(--color-border, #{ds.$color-border});
+    margin: 4px 0;
+    flex-shrink: 0;
+  }
 
+  &__badge {
+    // surface-mark intentionally not used here — it forces border:none which
+    // conflicts with our status-colored border logic.
     width: 36px;
     height: 36px;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    cursor: pointer;
-    background: var(--color-bg-secondary, #fff);
-    color: var(--color-text, #1b1916);
+    border-radius: 8px;
+    background: var(--color-bg-secondary, #{ds.$color-bg-secondary});
     border: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
     transition:
       background 120ms ease,
       border-color 120ms ease,
@@ -35,56 +44,94 @@
 
     &:hover {
       background: var(--color-bg-hover);
-      border-color: var(--color-border);
     }
 
+    // Active: fond bleuté + bordure primary
     &--active {
-      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-      border-color: var(--color-primary);
-      color: var(--color-primary);
+      background: color-mix(in srgb, var(--color-primary, #{ds.$color-primary}) 12%, transparent);
+      border-color: var(--color-primary, #{ds.$color-primary});
 
       &:hover {
-        background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+        background: color-mix(in srgb, var(--color-primary, #{ds.$color-primary}) 18%, transparent);
       }
+    }
+  }
+
+  &__status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-border, #{ds.$color-border});
+    flex-shrink: 0;
+    transition: background 150ms ease;
+
+    .case-drawer-compact__badge--running & {
+      background: var(--color-success, #{ds.$color-success});
+    }
+
+    .case-drawer-compact__badge--pending & {
+      background: var(--color-warning, #{ds.$color-warning});
+    }
+
+    .case-drawer-compact__badge--error & {
+      background: var(--color-error, #{ds.$color-error});
     }
   }
 }
 
-// ── Tree node (rendered inside ds-entity-list itemTemplate) ──────────────
+// ── Tree node (rendered inside ds-entity-list itemTemplate) ──────────────────
+// The grid has contentPadding="0", so we add a small horizontal inset on each
+// row directly — the hover background won't bleed to the drawer edges.
 
 .case-tree-node {
   width: 100%;
+  border-radius: 8px;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 
-  // The row is a flex container: expand slot + selectable label + overflow menu.
-  // In flat-search mode the row is itself the clickable button; in tree mode the
-  // inner `__select` button handles selection so the menu stays independently clickable.
-  &__row {
+  // Hover uniquement sur le noeud direct — pas propagé aux enfants imbriqués
+  &:hover:not(:has(.case-tree-node:hover)) {
+    background: var(--color-bg-solid, #{ds.$color-bg});
+    box-shadow: var(--shadow-lg, 0 4px 14px var(--color-shadow, #{ds.$color-shadow}));
+  }
+
+  &__summary {
     display: flex;
     align-items: center;
-    width: 100%;
-    text-align: left;
-    padding: 0.375rem 0.5rem;
-    padding-left: calc(0.5rem + var(--depth, 0) * 1.25rem);
-    color: var(--color-text);
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    border-radius: 6px;
-    gap: 0.375rem;
-    transition: background 0.12s ease;
-    box-sizing: border-box;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 8px;
 
-    &:hover {
-      background: var(--color-bg-hover);
+    &--running {
+      background: color-mix(in srgb, var(--color-primary, #{ds.$color-primary}) 8%, transparent);
     }
 
     &--active {
-      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-      color: var(--color-primary);
-
-      &:hover {
-        background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+      .case-tree-node__name {
+        color: var(--color-primary, #{ds.$color-primary});
+        font-weight: 600;
       }
+    }
+  }
+
+  &__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--color-border, #{ds.$color-border});
+
+    &--running {
+      background: var(--color-success, #{ds.$color-success});
+    }
+
+    &--pending {
+      background: color-mix(in srgb, var(--color-warning, #{ds.$color-warning}) 70%, transparent);
+    }
+
+    &--error {
+      background: var(--color-error, #{ds.$color-error});
     }
   }
 
@@ -98,7 +145,6 @@
 
   &__toggle {
     @include ds.icon-button(1rem, 3px);
-
     color: inherit;
   }
 
@@ -114,10 +160,8 @@
     }
   }
 
-  // Clickable area that selects the case (fills the row, leaving room for actions).
   &__select {
     @include ds.button-reset;
-
     flex: 1;
     min-width: 0;
     display: flex;
@@ -126,31 +170,132 @@
   }
 
   &__name {
-    @include ds.text-label; // 500 11.5px Inter — compact label
-
+    @include ds.text-label;
     flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: var(--font-mono, #{ds.$font-code}); // case IDs in mono
+    font-family: var(--font-mono, #{ds.$font-code});
     font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-text-secondary, #{ds.$color-text-secondary});
+    transition: white-space 0s;
+
+    .case-tree-node:hover:not(:has(.case-tree-node:hover)) & {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: unset;
+      line-height: 1.4;
+    }
+
+    .case-tree-node__summary--running & {
+      font-weight: 600;
+      color: var(--color-text, #{ds.$color-text});
+    }
   }
 
-  // Overflow menu ("⋯") stays hidden to keep the list light; it is revealed on row
-  // hover, on keyboard focus, while its menu is open, or on the active row.
-  &__menu {
-    flex: none;
+  &__status-label {
+    font-family: ds.$font-ui;
+    font-size: 10.5px;
+    font-weight: 400;
+    color: var(--color-text-secondary, #{ds.$color-text-secondary});
+    flex-shrink: 0;
+    white-space: nowrap;
     opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.12s ease;
+    transition: opacity 0.15s ease;
   }
 
-  &__row:hover &__menu,
-  &__row:focus-within &__menu,
-  &__row--active &__menu,
-  &__menu:has([aria-expanded='true']) {
+  &:hover:not(:has(.case-tree-node:hover)) &__status-label {
     opacity: 1;
-    pointer-events: auto;
+  }
+
+  &__detail {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition:
+      max-height 0.24s ease,
+      opacity 0.18s ease;
+  }
+
+  // Hover uniquement sur le nœud direct — pas sur les enfants imbriqués
+  &:hover > &__summary + &__detail {
+    max-height: 80px;
+    opacity: 1;
+  }
+
+  // Confirmation en attente : le detail reste visible même sans hover
+  &__detail--confirming {
+    max-height: 80px !important;
+    opacity: 1 !important;
+  }
+
+  // Mobile toggle désactivé sur les cases — le hover reste le seul mode d'interaction.
+
+  &__detail-inner {
+    padding: 2px 12px 10px;
+  }
+
+  // Chevron mobile masqué — toujours, le hover gère l'affichage des actions.
+  &__mobile-toggle {
+    display: none;
+  }
+
+  &__actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  &__action-btn {
+    @include ds.button-reset;
+    flex: 1;
+    font-family: ds.$font-ui;
+    font-size: 10.5px;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 6px 0;
+    border: 1px solid var(--color-border, #{ds.$color-border});
+    cursor: pointer;
+    text-align: center;
+    transition:
+      background 120ms ease,
+      color 120ms ease,
+      border-color 120ms ease;
+
+    color: var(--color-text-secondary, #{ds.$color-text-secondary});
+    background: var(--color-surface-secondary, #{ds.$color-surface-secondary});
+
+    &:hover {
+      color: var(--color-warning, #{ds.$color-warning});
+      background: color-mix(in srgb, var(--color-warning, #{ds.$color-warning}) 12%, transparent);
+      border-color: color-mix(in srgb, var(--color-warning, #{ds.$color-warning}) 25%, transparent);
+    }
+
+    &--starred {
+      color: var(--color-warning, #{ds.$color-warning});
+      background: color-mix(in srgb, var(--color-warning, #{ds.$color-warning}) 12%, transparent);
+      border-color: color-mix(in srgb, var(--color-warning, #{ds.$color-warning}) 25%, transparent);
+    }
+
+    &--danger {
+      color: var(--color-error, #{ds.$color-error});
+      background: color-mix(in srgb, var(--color-error, #{ds.$color-error}) 8%, transparent);
+      border-color: color-mix(in srgb, var(--color-error, #{ds.$color-error}) 20%, transparent);
+
+      &:hover {
+        color: var(--color-error, #{ds.$color-error});
+        background: color-mix(in srgb, var(--color-error, #{ds.$color-error}) 14%, transparent);
+        border-color: color-mix(in srgb, var(--color-error, #{ds.$color-error}) 35%, transparent);
+      }
+    }
+
+    &:focus-visible {
+      @include ds.focus-ring;
+    }
+  }
+
+  &[style*='--depth'] &__summary {
+    padding-left: calc(12px + var(--depth, 0) * 1.25rem);
   }
 }

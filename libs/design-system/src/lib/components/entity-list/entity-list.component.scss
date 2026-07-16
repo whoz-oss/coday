@@ -1,3 +1,5 @@
+@use 'libs/design-system/src/styles' as ds;
+
 :host {
   display: flex;
   flex-direction: column;
@@ -25,7 +27,7 @@
   align-items: center;
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  border-bottom: 1px solid var(--color-border, #{ds.$color-border});
   height: 56px;
   width: 100%;
   box-sizing: border-box;
@@ -42,9 +44,7 @@
   // Intrinsic width — never shrinks, never truncates
   flex: 0 0 auto;
   margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text, #1d1d1f);
+  @include ds.text-entity-name;
   white-space: nowrap;
 }
 
@@ -63,14 +63,14 @@
   transition: border-color 150ms;
 
   &:focus-within {
-    border-color: var(--color-primary, #016b71);
-    background: var(--color-bg, #fff);
+    border-color: var(--color-primary, #{ds.$color-primary});
+    background: var(--color-bg-solid, #{ds.$color-bg});
   }
 }
 
 .entity-list__search-icon {
   font-size: 0.8rem;
-  color: var(--color-text-tertiary, #5a5449);
+  color: var(--color-text-tertiary, #{ds.$color-text-tertiary});
   flex-shrink: 0;
   line-height: 1;
 }
@@ -83,10 +83,10 @@
   outline: none;
   font: inherit;
   font-size: 0.875rem;
-  color: var(--color-text, #1b1916);
+  color: var(--color-text, #{ds.$color-text});
 
   &::placeholder {
-    color: var(--color-text-tertiary, #5a5449);
+    color: var(--color-text-tertiary, #{ds.$color-text-tertiary});
   }
 
   &::-webkit-search-cancel-button {
@@ -100,12 +100,12 @@
   background: transparent;
   cursor: pointer;
   font-size: 0.75rem;
-  color: var(--color-text-tertiary, #5a5449);
+  color: var(--color-text-tertiary, #{ds.$color-text-tertiary});
   padding: 0;
   line-height: 1;
 
   &:hover {
-    color: var(--color-text, #1b1916);
+    color: var(--color-text, #{ds.$color-text});
   }
 }
 
@@ -115,8 +115,8 @@
   height: 32px;
   border-radius: 8px;
   border: none;
-  background: var(--color-primary, #016b71);
-  color: #fff;
+  background: var(--color-primary, #{ds.$color-primary});
+  color: var(--color-text-inverse, #{ds.$color-text-inverse});
   font-size: 1.25rem;
   font-weight: 300;
   line-height: 1;
@@ -126,7 +126,7 @@
   transition: background 150ms;
 
   &:hover {
-    background: var(--color-primary-hover, #015a5f);
+    background: var(--color-primary-hover, #{ds.$color-primary-hover});
   }
 }
 
@@ -139,7 +139,7 @@
   width: 100%;
   max-width: 900px; // overridden at runtime via [style.max-width]
   margin: 0 auto;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 0;
   box-sizing: border-box;
 }
 
@@ -147,8 +147,7 @@
   margin: 0;
   padding: 2rem 0;
   text-align: center;
-  color: var(--color-text-secondary, #6e6e73);
-  font-size: 0.9375rem;
+  @include ds.text-secondary; // 13px/400/1.4 + --color-text-secondary
 }
 
 // ── Expansion panels ────────────────────────────────────────────────────
@@ -158,16 +157,20 @@
   box-shadow: none !important;
 
   & + .entity-list__panel {
-    border-top: 1px solid var(--color-border-light, rgba(40, 40, 40, 0.08));
+    border-top: 1px solid var(--color-border-light, #{ds.$color-border-subtle});
+  }
+
+  ::ng-deep .mat-expansion-panel-body {
+    padding: 0 0 0 16px;
   }
 }
 
 .entity-list__panel-title {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-secondary, #6e6e73);
+  @include ds.text-section-label; // 0.8125rem/600/uppercase + --color-text-secondary
+}
+
+.entity-list__panel-header {
+  padding-left: 16px;
 }
 
 // ── Grid ─────────────────────────────────────────────────────────────────────

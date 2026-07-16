@@ -15,16 +15,25 @@
 ///
 ///   font-family: ds.$font-ui;
 ///   font-family: ds.$font-code;
+///   color: var(--color-text, #{ds.$color-text});  // SCSS fallback variable
+///
+/// Available mixins:
+///   ds.text-section-label — uppercase muted group/panel header label
+///   ds.scrollable-panel   — flex-1 overflow-y:auto + thin scrollbar styling
 ///
 
-// ── Typography — font stacks, text-* mixins ───────────────────────────────────
+// ── Colors — SCSS $color-* variables (fallback source of truth) ───────────────
+// Must be first so all other partials can @use it.
+@forward 'colors';
+
+// ── Typography — font stacks, text-* mixins ──────────────────────────────
 @forward 'typography';
 
-// ── Surfaces — card, clickable-card, dropdown, glass, mark ───────────────────
+// ── Surfaces — card, clickable-card, dropdown, glass, mark, scrollable-panel ─
 @forward 'surfaces';
 
-// ── Interactive — chip, icon-button, menu-item, focus-ring, button-reset ─────
+// ── Interactive — chip, icon-button, menu-item, focus-ring, button-reset ────
 @forward 'interactive';
 
-// ── Badges — badge-base, badge(), badge-success/warning/error/info ────────────
+// ── Badges — badge-base, badge(), badge-success/warning/error/info ─────────
 @forward 'badges';

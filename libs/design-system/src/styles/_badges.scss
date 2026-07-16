@@ -4,14 +4,17 @@
 /// Captures the pill badge patterns established in EntityCard.
 /// Provides a generic parameterised mixin and pre-wired semantic variants
 /// (success, warning, error, info).
+/// Fallback values are sourced from _colors.scss — single source of truth.
 ///
 /// Usage:
 ///   @use 'libs/design-system/src/styles' as ds;
 ///   .my-badge         { @include ds.badge-success; }
 ///   .my-custom-badge  { @include ds.badge('--color-accent'); }
 ///
+@use 'colors' as c;
+@use 'typography' as t;
 
-// ── Base ──────────────────────────────────────────────────────────────────────
+// ── Base ──────────────────────────────────────────────────────────────────────────
 
 /// Badge base — pill shape, uppercase condensed label, white text on color.
 /// Source: .entity-card__badge in entity-card.component.scss
@@ -21,17 +24,17 @@
   align-items: center;
   padding: 0.0625rem 0.3rem; // ~1px 4.8px — matches entity-card source
   border-radius: 999px;
-  font-family: 'Inter', sans-serif;
+  font-family: t.$font-ui;
   font-size: 0.5625rem; // 9px — compact status indicator
   font-weight: 900;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   line-height: 1;
   white-space: nowrap;
-  color: var(--color-text-inverse, #ffffff);
+  color: var(--color-text-inverse, #{c.$color-text-inverse});
 }
 
-// ── Generic parameterised badge ───────────────────────────────────────────────
+// ── Generic parameterised badge ────────────────────────────────────────────────────
 
 /// Generic badge — applies badge-base and sets background from a CSS variable name.
 ///
@@ -46,14 +49,14 @@
   background: var(#{$color-var});
 }
 
-// ── Semantic status variants ──────────────────────────────────────────────────
+// ── Semantic status variants ────────────────────────────────────────────────────────
 
 /// Success badge — green background.
 /// Source: .badge-success in entity-card.component.scss
 @mixin badge-success {
   @include badge-base;
 
-  background: var(--color-success, #34c759);
+  background: var(--color-success, #{c.$color-success});
 }
 
 /// Warning badge — amber/orange background.
@@ -61,7 +64,7 @@
 @mixin badge-warning {
   @include badge-base;
 
-  background: var(--color-warning, #ff9500);
+  background: var(--color-warning, #{c.$color-warning});
 }
 
 /// Error / danger badge — red background.
@@ -69,7 +72,7 @@
 @mixin badge-error {
   @include badge-base;
 
-  background: var(--color-error, #ff3b30);
+  background: var(--color-error, #{c.$color-error});
 }
 
 /// Info badge — blue background.
@@ -77,10 +80,10 @@
 @mixin badge-info {
   @include badge-base;
 
-  background: var(--color-info, #5ac8fa);
+  background: var(--color-info, #{c.$color-info});
 }
 
-// ── Outlined variant ──────────────────────────────────────────────────────────
+// ── Outlined variant ─────────────────────────────────────────────────────────────────
 
 /// Outlined badge — border instead of filled background, text inherits color token.
 /// Useful for secondary / draft statuses where solid color is too prominent.

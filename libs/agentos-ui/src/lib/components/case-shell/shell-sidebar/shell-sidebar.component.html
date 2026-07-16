@@ -36,6 +36,13 @@
             </button>
 
             @if (nsMenuOpen()) {
+              <div
+                class="shell-sidebar__ns-backdrop"
+                role="presentation"
+                tabindex="-1"
+                (click)="nsMenuClosed.emit($event)"
+                (keyup.escape)="nsMenuClosed.emit($event)"
+              ></div>
               <div class="shell-sidebar__ns-menu">
                 @for (ns of namespaces(); track ns.id) {
                   <button
