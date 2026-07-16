@@ -149,7 +149,10 @@ export class UserGroupFormComponent implements OnInit {
           )
           this.isLoading.set(false)
         },
-        error: () => {
+        error: (err) => {
+          // Don't swallow silently: log so the failed load is diagnosable, then leave the
+          // half-loaded edit form rather than showing empty fields.
+          console.error('[UserGroupForm] Failed to load user group for editing', err)
           this.isLoading.set(false)
           this.navigateBack()
         },

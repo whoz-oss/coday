@@ -22,9 +22,9 @@ data class UserGroupCreateRequest(
     @field:Size(max = 250)
     val name: String,
     @field:Size(max = 200)
-    val userExternalIdsToAdd: Set<String> = emptySet(),
+    val userExternalIdsToAdd: Set<@NotBlank String> = emptySet(),
     @field:Size(max = 200)
-    val adminExternalIds: Set<String> = emptySet(),
+    val adminExternalIds: Set<@NotBlank String> = emptySet(),
     @field:Size(max = 200)
     val agentIds: Set<UUID> = emptySet(),
 )

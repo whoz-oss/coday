@@ -6,6 +6,7 @@ import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.maps.shouldBeEmpty
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
@@ -239,6 +240,21 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             val g = userGroupRepo.save(userGroup(ns.id, "Empty"))
 
             userGroupRepo.findMembers(g.id).shouldBeEmpty()
+        }
+
+        "findMembers excludes a soft-deleted group (consistent with findByIdWithDetails)" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Group"))
+            userRepo.save(user("alice@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com"))
+            userGroupRepo.findMembers(g.id).shouldHaveSize(1)
+
+            // Soft-delete leaves the membership edges intact; findMembers must still not
+            // return a tombstoned group's roster (findByIdWithDetails already 404s it).
+            userGroupRepo.delete(g.id)
+
+            userGroupRepo.findMembers(g.id).shouldBeEmpty()
+            userGroupRepo.findByIdWithDetails(g.id).shouldBeNull()
         }
 
         "setMemberRoles promotes members to ADMIN and findMembers reflects it" {

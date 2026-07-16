@@ -56,7 +56,7 @@ open class Neo4jUserGroupRepository(
             .query(
                 $$"""
                     MATCH (u:User)-[r:MEMBER|ADMIN]->(g:UserGroup {id: $userGroupId})
-                    WHERE NOT COALESCE(u.removed, false)
+                    WHERE NOT COALESCE(u.removed, false) AND NOT COALESCE(g.removed, false)
                     WITH u, collect(type(r)) AS rels
                     RETURN u.id AS userId, u.externalId AS externalId, u.email AS email,
                            u.firstname AS firstname, u.lastname AS lastname,
