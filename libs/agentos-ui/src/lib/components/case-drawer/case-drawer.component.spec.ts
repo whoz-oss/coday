@@ -108,6 +108,34 @@ describe('CaseDrawerComponent', () => {
     expect(roots[1].groupKey).toBeUndefined()
   })
 
+  it('keeps a favorited sub-case nested under its favorited parent (not flattened)', () => {
+    const cases: Case[] = [
+      { id: 'parent', namespaceId: 'ns', title: 'Parent', favorite: true } as unknown as Case,
+      {
+        id: 'child-fav',
+        namespaceId: 'ns',
+        title: 'Child fav',
+        parentCaseId: 'parent',
+        favorite: true,
+      } as unknown as Case,
+      {
+        id: 'child-plain',
+        namespaceId: 'ns',
+        title: 'Child plain',
+        parentCaseId: 'parent',
+        favorite: false,
+      } as unknown as Case,
+    ]
+    const component = makeComponent(cases)
+
+    const roots = component['rootItems']()
+    // Only the parent is a top-level Favorites entry — the favorited child is NOT flattened beside it.
+    expect(roots.map((i) => i.id)).toEqual(['parent'])
+    expect(roots[0].groupKey).toBe('favorites')
+    // Both children (favorited and not) stay nested under the favorited parent.
+    expect(roots[0].children.map((i) => i.id).sort()).toEqual(['child-fav', 'child-plain'])
+  })
+
   it('leaves roots ungrouped when nothing is favorited', () => {
     const cases: Case[] = [{ id: 'a', namespaceId: 'ns', favorite: false } as unknown as Case]
     const component = makeComponent(cases)
