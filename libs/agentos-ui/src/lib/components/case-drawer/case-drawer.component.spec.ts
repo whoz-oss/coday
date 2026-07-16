@@ -29,12 +29,30 @@ const caseFixture = (overrides: Partial<Case> = {}): Case =>
 describe('CaseDrawerComponent', () => {
   afterEach(() => TestBed.resetTestingModule())
 
-  it('emits deleteRequested with the case id when a delete is requested', () => {
+  it('sets pendingDeleteId when a delete is requested (confirmation is now inline)', () => {
+    const component = makeComponent()
+    component['onDeleteRequested']('case-42')
+    expect(component['pendingDeleteId']()).toBe('case-42')
+  })
+
+  it('emits deleteRequested and clears pendingDeleteId when delete is confirmed', () => {
     const component = makeComponent()
     const emitted: string[] = []
     component.deleteRequested.subscribe((id) => emitted.push(id))
     component['onDeleteRequested']('case-42')
+    component['onDeleteConfirmed']('case-42')
     expect(emitted).toEqual(['case-42'])
+    expect(component['pendingDeleteId']()).toBeNull()
+  })
+
+  it('clears pendingDeleteId without emitting when delete is cancelled', () => {
+    const component = makeComponent()
+    const emitted: string[] = []
+    component.deleteRequested.subscribe((id) => emitted.push(id))
+    component['onDeleteRequested']('case-42')
+    component['onDeleteCancelled']()
+    expect(emitted).toEqual([])
+    expect(component['pendingDeleteId']()).toBeNull()
   })
 
   it('emits starToggled with the opposite state when a star is toggled', () => {
@@ -101,21 +119,21 @@ describe('CaseDrawerComponent', () => {
     expect(component['rootItems']()[0].groupKey).toBeUndefined()
   })
 
-  it('puts non-favorites FIRST and favorites at the BOTTOM in compact mode', () => {
+  it('puts favorites FIRST and non-favorites at the BOTTOM in compact mode', () => {
     const cases: Case[] = [caseFixture({ id: 'plain', favorite: false }), caseFixture({ id: 'fav', favorite: true })]
     const component = makeComponent(cases)
     const compact = component['compactItems']()
-    // Non-favorite first, favorite last
-    expect(compact[0].id).toBe('plain')
-    expect(compact[1].id).toBe('fav')
+    // Favorites first (top of sidebar), non-favorites last
+    expect(compact[0].id).toBe('fav')
+    expect(compact[1].id).toBe('plain')
   })
 
-  it('marks isFirstFavorite on the first favorite in compact mode', () => {
+  it('marks isFirstFavorite on the last favorite in compact mode (divider position)', () => {
     const cases: Case[] = [caseFixture({ id: 'plain', favorite: false }), caseFixture({ id: 'fav', favorite: true })]
     const component = makeComponent(cases)
     const compact = component['compactItems']()
-    expect(compact[0].isFirstFavorite).toBe(false)
-    expect(compact[1].isFirstFavorite).toBe(true)
+    expect(compact[0].isFirstFavorite).toBe(true) // last favorite = divider after it
+    expect(compact[1].isFirstFavorite).toBe(false)
   })
 
   it('does not mark isFirstFavorite when there are no favorites', () => {
