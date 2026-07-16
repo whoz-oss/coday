@@ -11,6 +11,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
@@ -240,6 +241,7 @@ class CaseEventNodeMapper(
                     node.success,
                     node.metadataJson,
                     node.durationMs,
+                    node.imagesJson,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -483,6 +485,9 @@ class CaseEventNodeMapper(
             success = n.success,
             durationMs = n.durationMs,
             toolMetadata = n.metadataJson?.let { serializer.deserializeMetadata(it) } ?: emptyMap(),
+            images = n.imagesJson
+                ?.let { serializer.deserialize(it).filterIsInstance<MessageContent.Image>() }
+                ?: emptyList(),
         )
 
     private fun toDomain(n: ThinkingEventNode) =
@@ -711,6 +716,7 @@ class CaseEventNodeMapper(
             success = e.success,
             metadataJson = e.toolMetadata.takeIf { it.isNotEmpty() }?.let { serializer.serializeMetadata(it) },
             durationMs = e.durationMs,
+            imagesJson = e.images.takeIf { it.isNotEmpty() }?.let { serializer.serialize(it) },
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
