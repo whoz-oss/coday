@@ -2,7 +2,7 @@ package io.whozoss.agentos.integrationConfig
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationTypeApi
-import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationTypeDescriptor as SdkIntegrationTypeDescriptor
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationTypeDescriptor
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
@@ -27,21 +27,14 @@ class IntegrationTypeController(
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    override fun listTypes(): List<SdkIntegrationTypeDescriptor> =
-        integrationTypeRegistry.listTypes().map { it.toSdkDto() }
+    override fun listTypes(): List<IntegrationTypeDescriptor> =
+        integrationTypeRegistry.listTypes()
 
     @GetMapping("/{type}")
     @PreAuthorize("isAuthenticated()")
-    override fun getType(@PathVariable type: String): SdkIntegrationTypeDescriptor =
-        (integrationTypeRegistry.findByType(type)
-            ?: throw ResourceNotFoundException("Unknown integration type: $type")).toSdkDto()
+    override fun getType(@PathVariable type: String): IntegrationTypeDescriptor =
+        integrationTypeRegistry.findByType(type)
+            ?: throw ResourceNotFoundException("Unknown integration type: $type")
 
     companion object : KLogging()
 }
-
-private fun IntegrationTypeDescriptor.toSdkDto() = SdkIntegrationTypeDescriptor(
-    type = type,
-    displayName = displayName,
-    description = description,
-    configSchema = configSchema,
-)

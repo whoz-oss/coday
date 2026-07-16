@@ -1,17 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  Case,
-  CaseControllerService,
-  NamespaceControllerService,
-  NamespaceListItem,
-} from '@whoz-oss/agentos-api-client'
-import { BehaviorSubject, debounceTime, map, skip, switchMap } from 'rxjs'
+import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
+import { debounceTime, map, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
 import { THEME_PORT, ThemeMode } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
+import { CaseStateService } from '../../services/case-state.service'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
 import { ShellTopbarMobileComponent } from './shell-topbar-mobile/shell-topbar-mobile.component'
 import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/shell-case-switcher-mobile.component'
@@ -48,10 +44,10 @@ import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/s
 export class CaseShellComponent {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
-  private readonly caseController = inject(CaseControllerService)
   private readonly namespaceController = inject(NamespaceControllerService)
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
+  private readonly caseState = inject(CaseStateService)
   private readonly destroyRef = inject(DestroyRef)
 
   // ---------------------------------------------------------------------------
@@ -120,16 +116,8 @@ export class CaseShellComponent {
   // Data
   // ---------------------------------------------------------------------------
 
-  private readonly refresh$ = new BehaviorSubject<void>(undefined)
-
-  private readonly cases$ = this.namespaceId$.pipe(
-    switchMap((nsId) => {
-      if (!nsId) return [[] as Case[]]
-      return this.refresh$.pipe(switchMap(() => this.caseController.listByParentCase(nsId)))
-    })
-  )
-
-  protected readonly cases = toSignal(this.cases$, { initialValue: [] as Case[] })
+  /** Cases from the state service (loaded via /mine — direct ADMIN/MEMBER edge only). */
+  protected readonly cases = this.caseState.cases
 
   protected readonly namespaces = toSignal(this.namespaceController.listAllNamespace(), {
     initialValue: [] as NamespaceListItem[],
@@ -164,6 +152,14 @@ export class CaseShellComponent {
         if (first?.id) {
           this.router.navigate(['/agentos/home'], { queryParams: { ns: first.id }, replaceUrl: true })
         }
+      }
+    })
+
+    // Reload the case list whenever the namespace changes.
+    effect(() => {
+      const nsId = this.namespaceId()
+      if (nsId) {
+        this.caseState.loadCases(nsId)
       }
     })
   }
@@ -203,6 +199,40 @@ export class CaseShellComponent {
     this.router.navigate(['/agentos/home'], {
       queryParams: { ns: this.namespaceId() },
     })
+  }
+
+  protected onDeleteRequested(caseId: string): void {
+    const target = this.cases().find((c) => c.id === caseId)
+    const label = target?.title ?? caseId
+    if (!confirm(`Delete "${label}"?`)) {
+      return
+    }
+    this.caseState
+      .deleteCase(caseId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          if (caseId === this.activeCaseId()) {
+            this.router.navigate(['/agentos/home'], { queryParams: { ns: this.namespaceId() } })
+          }
+        },
+        error: (err) => {
+          console.error(`[CaseShell] Failed to delete case ${caseId}:`, err)
+          alert('Could not delete the case. Please try again.')
+        },
+      })
+  }
+
+  protected onStarToggled(event: { id: string; starred: boolean }): void {
+    this.caseState
+      .setStarred(event.id, event.starred)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => {
+          console.error(`[CaseShell] Failed to update star for case ${event.id}:`, err)
+          alert('Could not update the favorite. Please try again.')
+        },
+      })
   }
 
   // ---------------------------------------------------------------------------
@@ -298,14 +328,5 @@ export class CaseShellComponent {
 
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-  }
-
-  // ---------------------------------------------------------------------------
-  // Public API
-  // ---------------------------------------------------------------------------
-
-  /** Called after a case is created to refresh the sidebar list. */
-  refreshCases(): void {
-    this.refresh$.next()
   }
 }

@@ -9,7 +9,7 @@
  */
 
 export interface PromptParameter {
-  name: string
-  description?: string
   defaultValue: string
+  description?: string
+  name: string
 }
