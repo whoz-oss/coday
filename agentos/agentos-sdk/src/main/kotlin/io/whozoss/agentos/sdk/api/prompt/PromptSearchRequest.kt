@@ -16,6 +16,9 @@ import java.util.UUID
  * | null        | non-null | user-global     |
  * | non-null    | non-null | user×namespace  |
  *
+ * **Namespace resolution:** provide at most one of [namespaceId] or [namespaceExternalId].
+ * When [namespaceExternalId] is supplied the server resolves it to the namespace UUID internally.
+ *
  * [agentConfigIds] is an optional filter: when provided, only prompts linked
  * to one of those agents are returned. When null or empty, all prompts at the
  * resolved scope level are returned.
@@ -26,5 +29,7 @@ data class PromptSearchRequest(
     val namespaceId: UUID? = null,
     @field:Schema(types = ["string", "null"], format = "uuid")
     val userId: UUID? = null,
+    @field:Schema(types = ["string", "null"])
+    val namespaceExternalId: String? = null,
     val agentConfigIds: List<UUID>? = null,
 )

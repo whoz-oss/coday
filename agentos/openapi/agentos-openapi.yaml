@@ -3412,15 +3412,24 @@ components:
           - string
           - "null"
           format: uuid
+        namespaceExternalId:
+          type:
+          - string
+          - "null"
         namespaceId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
+        userExternalId:
+          type:
+          - string
+          - "null"
         userId:
-          type: string
+          type:
+          - string
+          - "null"
           format: uuid
-      required:
-      - namespaceId
-      - userId
     PromptParameter:
       type: object
       properties:
@@ -3443,6 +3452,10 @@ components:
           items:
             type: string
             format: uuid
+        namespaceExternalId:
+          type:
+          - string
+          - "null"
         namespaceId:
           type:
           - string

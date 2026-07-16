@@ -9,7 +9,8 @@
  */
 
 export interface PromptSearchRequest {
+  agentConfigIds?: Array<string>
+  namespaceExternalId?: string | null
   namespaceId?: string | null
   userId?: string | null
-  agentConfigIds?: Array<string>
 }

@@ -119,22 +119,23 @@ class PromptController(
         @Valid @RequestBody request: PromptSearchRequest,
     ): List<PromptDto> {
         val currentUser = userService.getCurrentUser()
+        val resolvedNamespaceId = resolveOptionalNamespaceId(request.namespaceId, request.namespaceExternalId)
 
         // Namespace-scoped levels require READ on the namespace
-        if (request.namespaceId != null) {
+        if (resolvedNamespaceId != null) {
             val granted =
                 permissionService.hasPermission(
                     userId = currentUser.id.toString(),
                     entityType = EntityType.NAMESPACE,
-                    entityId = request.namespaceId.toString(),
+                    entityId = resolvedNamespaceId.toString(),
                     action = Action.READ,
                 )
-            if (!granted) throw AccessDeniedException("Cannot read prompts in namespace ${request.namespaceId}")
+            if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $resolvedNamespaceId")
         }
 
         return promptService
             .findByScope(
-                namespaceId = request.namespaceId,
+                namespaceId = resolvedNamespaceId,
                 userId = request.userId,
                 agentConfigIds = request.agentConfigIds,
             ).map(::toDto)
@@ -152,16 +153,29 @@ class PromptController(
         "/effective",
         consumes = [MediaType.APPLICATION_JSON_VALUE],
     )
-    @PreAuthorize("hasPermission(#request.namespaceId, 'Namespace', 'READ')")
+    @PreAuthorize("isAuthenticated()")
     override fun effective(
         @Valid @RequestBody request: PromptEffectiveRequest,
     ): List<PromptDto> {
+        val nsId = resolveNamespaceId(request.namespaceId, request.namespaceExternalId)
+        val uId = resolveUserId(request.userId, request.userExternalId)
+
         val currentUser = userService.getCurrentUser()
-        if (request.userId != currentUser.id) {
-            throw BadRequestException("userId in body must match authenticated user")
+        if (uId != currentUser.id) {
+            throw BadRequestException("userId must match authenticated user")
         }
+
+        val granted =
+            permissionService.hasPermission(
+                userId = currentUser.id.toString(),
+                entityType = EntityType.NAMESPACE,
+                entityId = nsId.toString(),
+                action = Action.READ,
+            )
+        if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $nsId")
+
         return promptService
-            .findEffective(request.namespaceId, currentUser.id)
+            .findEffective(nsId, currentUser.id)
             .let { prompts ->
                 if (request.agentConfigId != null) {
                     prompts.filter { it.agentConfigId == request.agentConfigId }
@@ -283,6 +297,66 @@ class PromptController(
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    // ExternalId resolution helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Resolves a namespace UUID from either a direct UUID or an externalId.
+     * Exactly one must be provided.
+     */
+    private fun resolveNamespaceId(
+        id: UUID?,
+        externalId: String?,
+    ): UUID {
+        if (id != null && externalId != null) {
+            throw BadRequestException("Provide namespaceId or namespaceExternalId, not both")
+        }
+        return id
+            ?: externalId?.let {
+                namespaceService.findByExternalId(it)?.metadata?.id
+                    ?: throw ResourceNotFoundException("Namespace not found for externalId: $it")
+            }
+            ?: throw BadRequestException("namespaceId or namespaceExternalId is required")
+    }
+
+    /**
+     * Resolves a namespace UUID from either a direct UUID or an externalId.
+     * Both can be null (for platform-level scope).
+     */
+    private fun resolveOptionalNamespaceId(
+        id: UUID?,
+        externalId: String?,
+    ): UUID? {
+        if (id != null && externalId != null) {
+            throw BadRequestException("Provide namespaceId or namespaceExternalId, not both")
+        }
+        return id
+            ?: externalId?.let {
+                namespaceService.findByExternalId(it)?.metadata?.id
+                    ?: throw ResourceNotFoundException("Namespace not found for externalId: $it")
+            }
+    }
+
+    /**
+     * Resolves a user UUID from either a direct UUID or an externalId.
+     * Exactly one must be provided.
+     */
+    private fun resolveUserId(
+        id: UUID?,
+        externalId: String?,
+    ): UUID {
+        if (id != null && externalId != null) {
+            throw BadRequestException("Provide userId or userExternalId, not both")
+        }
+        return id
+            ?: externalId?.let {
+                userService.findByExternalId(it)?.metadata?.id
+                    ?: throw ResourceNotFoundException("User not found for externalId: $it")
+            }
+            ?: throw BadRequestException("userId or userExternalId is required")
+    }
 
     private fun toDomainForUpdate(
         resource: PromptDto,

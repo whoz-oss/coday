@@ -447,6 +447,215 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // POST :search — namespaceExternalId resolution with real NamespaceService
+        // -------------------------------------------------------------------------
+
+        "POST /search with namespaceExternalId resolves namespace and returns prompts for MEMBER" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            val name = "ExtId-search-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = name,
+                    content = listOf("Hello"),
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceExternalId": "${namespace.externalId}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$").isArray)
+                .andExpect(jsonPath("$[?(@.name == '$name')]").exists())
+        }
+
+        "POST /search with namespaceExternalId returns 403 when caller has no membership" {
+            // alice has no permission on the namespace
+            mockMvc.perform(
+                post("/api/prompts/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceExternalId": "${namespace.externalId}" }"""),
+            ).andExpect(status().isForbidden)
+        }
+
+        "POST /search with unknown namespaceExternalId returns 404" {
+            mockMvc.perform(
+                post("/api/prompts/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceExternalId": "does-not-exist" }"""),
+            ).andExpect(status().isNotFound)
+        }
+
+        "POST /search with both namespaceId and namespaceExternalId returns 400" {
+            mockMvc.perform(
+                post("/api/prompts/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "namespaceExternalId": "${namespace.externalId}" }"""),
+            ).andExpect(status().isBadRequest)
+        }
+
+        // -------------------------------------------------------------------------
+        // POST :effective — happy path and externalId resolution
+        // -------------------------------------------------------------------------
+
+        "POST /effective with namespaceId and userId returns 200 for MEMBER" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$").isArray)
+        }
+
+        "POST /effective with namespaceId and userId returns 403 when caller has no namespace READ" {
+            // alice has no permission on the namespace
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isForbidden)
+        }
+
+        "POST /effective with namespaceExternalId resolves namespace and returns 200 for MEMBER" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceExternalId": "${namespace.externalId}", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$").isArray)
+        }
+
+        "POST /effective with userExternalId resolves user and returns 200 for MEMBER" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+            every { userService.findByExternalId(alice.externalId!!) } returns alice
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userExternalId": "${alice.externalId}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$").isArray)
+        }
+
+        "POST /effective with namespaceExternalId and userExternalId both resolved returns 200" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+            every { userService.findByExternalId(alice.externalId!!) } returns alice
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                            "namespaceExternalId": "${namespace.externalId}",
+                            "userExternalId": "${alice.externalId}"
+                        }
+                    """.trimIndent()),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$").isArray)
+        }
+
+        "POST /effective includes merged prompts from all layers" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            val platformName = "platform-${UUID.randomUUID()}"
+            val nsName = "ns-shared-${UUID.randomUUID()}"
+            val userGlobalName = "user-global-${UUID.randomUUID()}"
+            val userNsName = "user-ns-${UUID.randomUUID()}"
+
+            every { userService.getCurrentUser() } returns admin
+            promptService.create(Prompt(metadata = EntityMetadata(id = UUID.randomUUID()), name = platformName, content = listOf("platform")))
+
+            every { userService.getCurrentUser() } returns alice
+            promptService.create(Prompt(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = namespace.id, name = nsName, content = listOf("ns")))
+            promptService.create(Prompt(metadata = EntityMetadata(id = UUID.randomUUID()), userId = alice.id, name = userGlobalName, content = listOf("user-global")))
+            promptService.create(Prompt(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = namespace.id, userId = alice.id, name = userNsName, content = listOf("user-ns")))
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$platformName')]").exists())
+                .andExpect(jsonPath("$[?(@.name == '$nsName')]").exists())
+                .andExpect(jsonPath("$[?(@.name == '$userGlobalName')]").exists())
+                .andExpect(jsonPath("$[?(@.name == '$userNsName')]").exists())
+        }
+
+        "POST /effective with userId not matching authenticated user returns 400" {
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${bob.id}" }"""),
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST /effective with userExternalId resolving to a different user returns 400" {
+            // alice is current user, but userExternalId resolves to bob
+            every { userService.findByExternalId(bob.externalId!!) } returns bob
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userExternalId": "${bob.externalId}" }"""),
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST /effective with unknown namespaceExternalId returns 404" {
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceExternalId": "no-such-ns", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isNotFound)
+        }
+
+        "POST /effective with unknown userExternalId returns 404" {
+            every { userService.findByExternalId("no-such-user") } returns null
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userExternalId": "no-such-user" }"""),
+            ).andExpect(status().isNotFound)
+        }
+
+        // -------------------------------------------------------------------------
         // POST — @PreAuthorize("isAuthenticated()") + controller-level WRITE check
         // -------------------------------------------------------------------------
 
