@@ -252,6 +252,30 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("\$.agentConfigId").value(agent.id.toString()))
         }
 
+        "POST with agentConfigId from different namespace returns 400" {
+            val otherNs = UUID.randomUUID()
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = otherNs,
+                    name = "foreign-agent-" + UUID.randomUUID(),
+                ),
+            )
+            val name = "AC-CROSS-NS-" + UUID.randomUUID()
+            mockMvc.perform(
+                post("/api/prompts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                            "namespaceId": "$namespaceId",
+                            "name": "$name",
+                            "content": ["Hello"],
+                            "agentConfigId": "${agent.id}"
+                        }
+                    """.trimIndent()),
+            ).andExpect(status().isBadRequest)
+        }
+
         // -------------------------------------------------------------------------
         // PUT — Bean Validation
         // -------------------------------------------------------------------------

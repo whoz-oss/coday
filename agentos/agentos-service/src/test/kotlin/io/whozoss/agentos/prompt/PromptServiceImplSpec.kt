@@ -176,6 +176,63 @@ class PromptServiceImplSpec : StringSpec() {
             saved.agentConfigId shouldBe agentId
         }
 
+        "create with agentConfigId from different namespace throws BadRequestException" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            val agentNs = UUID.randomUUID()
+            val promptNs = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId),
+                namespaceId = agentNs,
+                name = "foreign-agent",
+            )
+
+            shouldThrow<BadRequestException> {
+                service.create(prompt(namespaceId = promptNs, agentConfigId = agentId))
+            }
+        }
+
+        "create with agentConfigId from same namespace succeeds" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            val ns = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId),
+                namespaceId = ns,
+                name = "same-ns-agent",
+            )
+
+            val saved = service.create(prompt(namespaceId = ns, agentConfigId = agentId))
+            saved.agentConfigId shouldBe agentId
+        }
+
+        "create with platform agentConfigId from namespace prompt succeeds" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId),
+                namespaceId = null,
+                name = "platform-agent",
+            )
+
+            val saved = service.create(prompt(namespaceId = UUID.randomUUID(), agentConfigId = agentId))
+            saved.agentConfigId shouldBe agentId
+        }
+
+        "create platform prompt with namespace agentConfigId throws BadRequestException" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId),
+                namespaceId = UUID.randomUUID(),
+                name = "ns-agent",
+            )
+
+            shouldThrow<BadRequestException> {
+                service.create(prompt(namespaceId = null, agentConfigId = agentId))
+            }
+        }
+
         // -------------------------------------------------------------------------
         // Update validation
         // -------------------------------------------------------------------------

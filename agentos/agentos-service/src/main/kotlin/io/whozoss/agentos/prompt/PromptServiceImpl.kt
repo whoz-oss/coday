@@ -1,5 +1,6 @@
 package io.whozoss.agentos.prompt
 
+import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
@@ -31,8 +32,9 @@ class PromptServiceImpl(
     override fun create(entity: Prompt): Prompt {
         validate(entity)
         if (entity.agentConfigId != null) {
-            agentConfigService.findById(entity.agentConfigId)
+            val agentConfig = agentConfigService.findById(entity.agentConfigId)
                 ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
+            validateAgentConfigScope(entity, agentConfig)
         }
         repository.findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ConflictException(conflictMessage(entity))
@@ -117,6 +119,23 @@ class PromptServiceImpl(
         if (duplicateName != null) {
             throw BadRequestException(
                 "Duplicate parameter name '$duplicateName' \u2014 parameter names must be unique within a prompt",
+            )
+        }
+    }
+
+    private fun validateAgentConfigScope(prompt: Prompt, agentConfig: AgentConfig) {
+        val validScope = when {
+            // Platform agent is always valid (accessible from any scope)
+            agentConfig.namespaceId == null -> true
+            // Same namespace
+            agentConfig.namespaceId == prompt.namespaceId -> true
+            // Everything else is cross-scope
+            else -> false
+        }
+        if (!validScope) {
+            throw BadRequestException(
+                "AgentConfig '${agentConfig.name}' (id=${agentConfig.id}) belongs to a different namespace " +
+                    "than the prompt (agent namespace=${agentConfig.namespaceId}, prompt namespace=${prompt.namespaceId})",
             )
         }
     }
