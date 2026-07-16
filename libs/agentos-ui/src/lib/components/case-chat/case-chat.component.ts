@@ -195,6 +195,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
 
+  /** Markdown-rendered SafeHtml of the streaming text — updated on every chunk. */
+  protected readonly streamingHtml = computed<SafeHtml>(() => {
+    const text = this.streamingText()
+    if (!text) return ''
+    return this.renderMarkdown(text)
+  })
+
   /** Collapsed state per toolRequestId */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
 
