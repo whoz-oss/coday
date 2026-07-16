@@ -214,7 +214,10 @@ class CompressingChatClient(
      */
     private fun Message.compress(buffer: MessageCompressorBuffer): Message {
         return when (this) {
-            is UserMessage -> UserMessage(compressorService.compress(this.text, buffer))
+            // mutate() preserves media (image attachments) and metadata: rebuilding with
+            // UserMessage(text) would silently strip them. Media byte arrays are never
+            // regex-scanned; only the text goes through the compressor.
+            is UserMessage -> this.mutate().text(compressorService.compress(this.text, buffer)).build()
             is SystemMessage -> SystemMessage(compressorService.compress(this.text, buffer))
             is AssistantMessage -> {
                 val toolCalls = this.toolCalls

@@ -550,6 +550,78 @@ class AgentAdvancedSpec :
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
+        "tool result images are copied onto the emitted ToolResponseEvent" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val images = listOf(
+                MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 791, height = 1024),
+                MessageContent.Image(content = "d29ybGQ=", mimeType = "image/jpeg", width = 791, height = 1024),
+            )
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("The CV shows...")
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "{}"
+
+            val readAsImageTool = mockk<StandardTool<String>>(relaxed = true)
+            every { readAsImageTool.name } returns "FILES__readAsImage"
+            every { readAsImageTool.description } returns "Render an image or PDF file visually"
+            every { readAsImageTool.inputSchema } returns "{}"
+            every { readAsImageTool.paramType } returns String::class.java
+            coEvery { readAsImageTool.executeWithJson(any(), any()) } returns
+                ToolExecutionResult.successWithImages("Rendered PDF cv.pdf: page(s) 1-2 of 2", images)
+
+            val agentId = UUID.randomUUID()
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), any())
+            } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Read the CV visually.",
+                        toolName = "FILES__readAsImage",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Answer with what the CV shows.",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(readAsImageTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "VisionAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
+            toolResponse.success shouldBe true
+            toolResponse.images shouldBe images
+            toolResponse.output shouldBe MessageContent.Text("Rendered PDF cv.pdf: page(s) 1-2 of 2")
+        }
+
         // -------------------------------------------------------------------------
         // detectRepetitionLoop unit tests
         // -------------------------------------------------------------------------

@@ -65,6 +65,8 @@ data class AgentAdvancedContext(
         val responsesByRequestId = indexToolResponses(events)
         val detailedRequestIds =
             selectDetailedToolRequestIds(events, responsesByRequestId, maxDetailedChars)
+        val mediaRequestIds =
+            selectMediaToolRequestIds(events, responsesByRequestId, detailedRequestIds)
 
         val lastUserMsgIndex =
             events.indexOfLast {
@@ -84,7 +86,7 @@ data class AgentAdvancedContext(
                 }
 
                 is ToolRequestEvent -> {
-                    toToolMessages(event, detailedRequestIds, responsesByRequestId)
+                    toToolMessages(event, detailedRequestIds, mediaRequestIds, responsesByRequestId)
                 }
 
                 is IntentionGeneratedEvent -> {
@@ -129,22 +131,52 @@ data class AgentAdvancedContext(
     ): Int {
         val argsCost = request.args?.length ?: 0
         val responseCost = response?.let { extractText(it.output).length } ?: 0
-        return argsCost + responseCost
+        val imagesCost = (response?.images?.size ?: 0) * IMAGE_CHAR_COST
+        return argsCost + responseCost + imagesCost
+    }
+
+    /**
+     * Select the tool requests whose response images are actually attached as [Media],
+     * newest first, bounded by [MAX_ATTACHED_IMAGES] so a long history of image reads
+     * cannot flood the prompt. Older image responses keep their text summary and get a
+     * marker instead (see [toDetailedToolMessages]).
+     */
+    private fun selectMediaToolRequestIds(
+        events: List<CaseEvent>,
+        responsesByRequestId: Map<String, ToolResponseEvent>,
+        detailedRequestIds: Set<String>,
+    ): Set<String> {
+        val result = mutableSetOf<String>()
+        var imagesAttached = 0
+
+        for (event in events.reversed()) {
+            if (event !is ToolRequestEvent || event.toolRequestId !in detailedRequestIds) continue
+
+            val images = responsesByRequestId[event.toolRequestId]?.images ?: continue
+            if (images.isEmpty()) continue
+            if (imagesAttached + images.size > MAX_ATTACHED_IMAGES) break
+
+            result.add(event.toolRequestId)
+            imagesAttached += images.size
+        }
+        return result
     }
 
     private fun toToolMessages(
         event: ToolRequestEvent,
         detailedRequestIds: Set<String>,
+        mediaRequestIds: Set<String>,
         responsesByRequestId: Map<String, ToolResponseEvent>,
     ): List<Message> =
         if (event.toolRequestId in detailedRequestIds) {
-            toDetailedToolMessages(event, responsesByRequestId)
+            toDetailedToolMessages(event, mediaRequestIds, responsesByRequestId)
         } else {
             listOf(toToolSummaryMessage(event, responsesByRequestId))
         }
 
     private fun toDetailedToolMessages(
         event: ToolRequestEvent,
+        mediaRequestIds: Set<String>,
         responsesByRequestId: Map<String, ToolResponseEvent>,
     ): List<Message> {
         val args = normalizeArgs(event.args)
@@ -155,9 +187,12 @@ data class AgentAdvancedContext(
         // Every AssistantMessage with tool_calls MUST be followed by a ToolResponseMessage
         // for each tool_call_id — OpenAI returns 400 otherwise. Use the real response if
         // available, or synthesize a placeholder so the message list stays well-formed.
-        val responseText =
-            responsesByRequestId[event.toolRequestId]?.let { extractText(it.output) }
-                ?: "[No response recorded]"
+        val response = responsesByRequestId[event.toolRequestId]
+        val attachMedia = response != null && response.images.isNotEmpty() && event.toolRequestId in mediaRequestIds
+        var responseText = response?.let { extractText(it.output) } ?: "[No response recorded]"
+        if (response != null && response.images.isNotEmpty() && !attachMedia) {
+            responseText += "\n[${response.images.size} image(s) no longer attached, call the tool again if needed]"
+        }
 
         messages.add(
             ToolResponseMessage
@@ -172,6 +207,11 @@ data class AgentAdvancedContext(
                     ),
                 ).build(),
         )
+        // Provider tool responses are text-only: the images ride in a follow-up user
+        // message with Media attachments right after the tool response.
+        if (attachMedia) {
+            messages.add(toolImagesUserMessage(event.toolName, response!!.images))
+        }
         return messages
     }
 
@@ -185,7 +225,9 @@ data class AgentAdvancedContext(
                 response == null || response.success -> "Success"
                 else -> "Failed: ${extractText(response.output)}"
             }
-        return AssistantMessage("[Step summary] Tool: ${event.toolName} | $status")
+        val imagesSuffix =
+            response?.images?.size?.takeIf { it > 0 }?.let { " | $it image(s) (not shown)" } ?: ""
+        return AssistantMessage("[Step summary] Tool: ${event.toolName} | $status$imagesSuffix")
     }
 
     private fun toIntentionMessage(event: IntentionGeneratedEvent): List<Message> =
@@ -198,6 +240,19 @@ data class AgentAdvancedContext(
     private fun extractText(content: MessageContent): String =
         when (content) {
             is MessageContent.Text -> content.content
-            else -> content.toString()
+            is MessageContent.Image -> "[image ${content.mimeType} ${content.width}x${content.height}]"
         }
+
+    companion object {
+        /**
+         * Char-equivalent cost of one attached image against the detailed-tool budget.
+         * Derived from the legacy Coday estimate: (width * height) / 750 tokens at
+         * ~3.5 chars per token, ~4 900 chars for a full-size 1024x1024 image,
+         * rounded up to 6 000.
+         */
+        internal const val IMAGE_CHAR_COST = 6_000
+
+        /** Maximum images attached as Media across the whole prompt, newest first. */
+        internal const val MAX_ATTACHED_IMAGES = 20
+    }
 }

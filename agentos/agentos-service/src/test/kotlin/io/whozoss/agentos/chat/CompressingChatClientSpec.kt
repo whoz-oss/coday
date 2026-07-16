@@ -1,6 +1,7 @@
 package io.whozoss.agentos.chat
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -12,12 +13,16 @@ import io.mockk.verify
 import io.whozoss.agentos.util.IdCompressorService
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.content.Media
+import org.springframework.core.io.ByteArrayResource
+import org.springframework.util.MimeTypeUtils
 import reactor.core.publisher.Flux
 
 // ---------------------------------------------------------------------------
@@ -565,5 +570,33 @@ class CompressingChatClientSpec :
 
             val sentText = captured.captured.instructions.joinToString("") { it.text ?: "" }
             sentText shouldBe "hello world"
+        }
+
+        "UserMessage media survives compression while its text is compressed" {
+            val service = IdCompressorService()
+            val captured = slot<Prompt>()
+            val delegate = mockk<ChatClient>(relaxed = true)
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val callSpec = mockk<ChatClient.CallResponseSpec>(relaxed = true)
+            every { delegate.prompt(capture(captured)) } returns reqSpec
+            every { reqSpec.call() } returns callSpec
+            every { callSpec.content() } returns "ok"
+
+            val media =
+                Media
+                    .builder()
+                    .mimeType(MimeTypeUtils.IMAGE_JPEG)
+                    .data(ByteArrayResource(byteArrayOf(1, 2, 3)))
+                    .build()
+            val message = UserMessage.builder().text("image for id=$REAL_UUID").media(media).build()
+
+            val client = CompressingChatClient(delegate, service)
+            client.prompt(Prompt(listOf<Message>(message))).call().content()
+
+            val sent = captured.captured.instructions.single() as UserMessage
+            sent.text shouldNotContain REAL_UUID
+            sent.text shouldContain IdCompressorService.UUID_COMPRESSED_VALUE_PREFIX
+            sent.media shouldHaveSize 1
+            sent.media[0].dataAsByteArray shouldBe byteArrayOf(1, 2, 3)
         }
     })
