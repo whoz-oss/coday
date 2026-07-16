@@ -52,7 +52,7 @@
             <select id="prompt-agent-config" class="prompt-form__select" [formControl]="agentConfigIdControl">
               <option [ngValue]="null">&mdash; None &mdash;</option>
               @for (agent of availableAgentConfigs(); track agent.id) {
-                <option [value]="agent.id">{{ agent.name }}</option>
+                <option [ngValue]="agent.id">{{ agent.name }}</option>
               }
             </select>
             <span class="prompt-form__field-hint"
