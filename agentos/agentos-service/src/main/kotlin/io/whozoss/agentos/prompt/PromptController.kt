@@ -121,6 +121,11 @@ class PromptController(
         val currentUser = userService.getCurrentUser()
         val resolvedNamespaceId = resolveOptionalNamespaceId(request.namespaceId, request.namespaceExternalId)
 
+        // Mass-assignment guard: userId must match the authenticated user unless super-admin
+        if (request.userId != null && request.userId != currentUser.id && !currentUser.isAdmin) {
+            throw AccessDeniedException("Cannot search prompts for another user")
+        }
+
         // Namespace-scoped levels require READ on the namespace
         if (resolvedNamespaceId != null) {
             val granted =

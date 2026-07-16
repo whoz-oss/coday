@@ -436,6 +436,39 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$[?(@.name =~ /Bob-only-.*/i)]").doesNotExist())
         }
 
+        // -------------------------------------------------------------------------
+        // POST :search — cross-user isolation on userId field
+        // -------------------------------------------------------------------------
+
+        "POST /search with another user's userId returns 403 for non-admin" {
+            // alice (non-admin) sends bob's userId — must be rejected
+            mockMvc.perform(
+                post("/api/prompts/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "userId": "${bob.id}" }"""),
+            ).andExpect(status().isForbidden)
+        }
+
+        "POST /search with another user's userId returns 200 for super-admin" {
+            // admin can search any user's prompts
+            every { userService.getCurrentUser() } returns admin
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = bob.id,
+                    name = "Bob-prompt-${UUID.randomUUID()}",
+                    content = listOf("Hello"),
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "userId": "${bob.id}" }"""),
+            ).andExpect(status().isOk)
+        }
+
         "POST /search returns 200 for super-admin without explicit namespace membership" {
             every { userService.getCurrentUser() } returns admin
 
