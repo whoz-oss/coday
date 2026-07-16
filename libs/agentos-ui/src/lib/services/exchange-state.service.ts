@@ -239,7 +239,6 @@ export class ExchangeStateService {
           resolve({ success: true })
         },
         error: (err: { message?: string }) => {
-          console.warn('[exchange] download failed', err)
           resolve({ success: false, error: err?.message ?? 'Download failed' })
         },
       })

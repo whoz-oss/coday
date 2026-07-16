@@ -239,9 +239,8 @@ export class AgentConfigFormComponent implements OnInit {
   private loadBuiltInTypes(): Observable<IntegrationTypeDescriptor[]> {
     return this.integrationTypeController.listTypesIntegrationType().pipe(
       map((types) => types.filter((t) => t.builtIn === true)),
-      catchError((err) => {
+      catchError(() => {
         // Fail-safe: hide the built-in toggles rather than block the form.
-        console.warn('[agent-config-form] failed to load integration types, built-in toggles hidden', err)
         return of([])
       })
     )
