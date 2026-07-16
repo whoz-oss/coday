@@ -297,6 +297,29 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
             mockMvc.perform(delete("/api/cases/$caseId/star")).andExpect(status().isNoContent)
         }
 
+        "DELETE /api/cases/{id}/star returns 409 when the caller has no direct permission edge" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "unstar-409-ns"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1]
+
+            // Revoke the auto-granted [:ADMIN] edge so deleteStarred's MATCH finds nothing → returns 0 → 409.
+            val caller = userService.getCurrentUser()
+            permissionNodeRepository.deleteAdminPermission(
+                userId = caller.id.toString(),
+                entityId = caseId,
+                entityLabel = "Case",
+            )
+
+            mockMvc.perform(delete("/api/cases/$caseId/star"))
+                .andExpect(status().isConflict)
+        }
+
         "DELETE /api/cases/{id} returns 404 on a second attempt (already soft-deleted)" {
             val ns = namespaceService.create(
                 Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-delete-twice"),

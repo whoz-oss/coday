@@ -2,10 +2,12 @@ package io.whozoss.agentos.permissions
 
 /**
  * Repository for the per-user `[:STARRED]` relationship — orthogonal to the
- * `[:ADMIN]`/`[:MEMBER]` permission edges.
+ * `[:ADMIN]`/`[:MEMBER]` permission edges — and the single-round-trip read that
+ * resolves the caller's direct role + favorite flag per entity ([listDirectRelations]).
  *
- * Deliberately separate from [PermissionRepository]: starring is a user preference,
- * not an access-control concern.
+ * Kept separate from [PermissionRepository]: it owns the `[:STARRED]` edge (a user
+ * preference). The role it surfaces is for list decoration only; it grants and checks
+ * no access.
  */
 interface StarredRepository {
 

@@ -1,10 +1,14 @@
 package io.whozoss.agentos.permissions
 
 /**
- * Service for the per-user `[:STARRED]` (favorite) relationship.
+ * Service for the per-user `[:STARRED]` (favorite) relationship, plus the read-model
+ * that decorates case listings with the caller's own metadata.
  *
- * Deliberately separate from [PermissionService]: starring is a user preference,
- * not an access-control concern.
+ * Kept separate from [PermissionService]: it owns the `[:STARRED]` edge (a user
+ * preference) and a single-round-trip read of the caller's *direct* role + favorite
+ * flag per entity ([listDirectRelations]). It neither grants nor checks access — the
+ * role it returns is for display only; authorization stays with [PermissionService]
+ * and `@PreAuthorize`.
  */
 interface StarredService {
 

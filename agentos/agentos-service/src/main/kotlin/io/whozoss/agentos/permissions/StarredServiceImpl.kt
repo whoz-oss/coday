@@ -1,6 +1,5 @@
 package io.whozoss.agentos.permissions
 
-import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.stereotype.Service
 
@@ -12,21 +11,10 @@ import org.springframework.stereotype.Service
 class StarredServiceImpl(
     private val starredRepository: StarredRepository,
 ) : StarredService {
-    companion object : KLogging()
 
     override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean =
-        try {
-            starredRepository.setStarred(userId, entityType, entityId, starred)
-        } catch (e: Exception) {
-            logger.error(e) { "Failed to set starred=$starred for user=$userId on $entityType:$entityId" }
-            throw e
-        }
+        starredRepository.setStarred(userId, entityType, entityId, starred)
 
     override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
-        try {
-            starredRepository.listDirectRelations(userId, entityType)
-        } catch (e: Exception) {
-            logger.error(e) { "Failed to list direct relations for user=$userId, type=$entityType" }
-            emptyMap()
-        }
+        starredRepository.listDirectRelations(userId, entityType)
 }

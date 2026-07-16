@@ -40,8 +40,8 @@ import java.util.UUID
  * [EmbeddedNeo4jTestConfiguration] harness driver — no Docker).
  *
  * Verifies both layers of the plumbing:
- * - the raw Cypher on [PermissionNodeNeo4jRepository] (`mergeStarred` / `deleteStarred` / `findDirectRelations`)
- * - the typed delegation through [StarredService] (`setStarred` / `listStarred`)
+ * - the raw Cypher on [CaseNodeNeo4jRepository] (`mergeStarred` / `deleteStarred` / `findDirectRelations`)
+ * - the typed delegation through [StarredService] (`setStarred` / `listDirectRelations`)
  */
 @SpringBootTest
 @ActiveProfiles("test", "embedded-neo4j")
@@ -190,6 +190,31 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             )
             starredIds(userB.id.toString()) shouldNotContain caseId
             starredIds(userA.id.toString()) shouldContain caseId
+        }
+
+        "a user holding both [:ADMIN] and [:MEMBER] on one case collapses to a single ADMIN entry" {
+            val user = createUser()
+            val namespace = createNamespace()
+            val case = createCase(namespace.id)
+            val caseId = case.id.toString()
+            val userId = user.id.toString()
+
+            // Both direct edges coexist on the same (user, case): grantPermission MERGEs them independently.
+            permissionNodeRepository.createAdminPermission(userId = userId, entityId = caseId, entityLabel = "Case")
+            permissionNodeRepository.createMemberPermission(userId = userId, entityId = caseId, entityLabel = "Case")
+
+            // mergeStarred's MATCH yields two rows; MERGE is idempotent → a single [:STARRED] edge.
+            caseNodeRepository.mergeStarred(userId = userId, caseId = caseId)
+
+            // findDirectRelations emits two rows for the same case id; the decode collapses them (ADMIN wins).
+            val starred = starredService.listDirectRelations(userId, EntityType.CASE)
+            starred.size shouldBe 1
+            starred[caseId] shouldBe DirectRelation(PermissionRelation.ADMIN, starred = true)
+
+            // deleteStarred clears the single edge despite the two matching rows.
+            caseNodeRepository.deleteStarred(userId = userId, caseId = caseId)
+            val cleared = starredService.listDirectRelations(userId, EntityType.CASE)
+            cleared[caseId] shouldBe DirectRelation(PermissionRelation.ADMIN, starred = false)
         }
 
         "StarredService.setStarred round-trip visible via listDirectRelations" {
