@@ -9,6 +9,7 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
 import org.apache.pdfbox.Loader
+import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException
 import org.apache.pdfbox.rendering.ImageType
 import org.apache.pdfbox.rendering.PDFRenderer
@@ -54,14 +55,19 @@ class ReadAsImageTool(
         /** Maximum PDF pages / PPTX slides rendered in a single call. */
         const val MAX_PAGES_PER_CALL = 10
 
-        /** Rendering resolution before downscaling: keeps text legible at 1024px. */
+        /** Nominal PDF rendering resolution before downscaling: keeps text legible at 1024px. */
         private const val PDF_RENDER_DPI = 150f
 
+        /** PDF user-space unit: 72 points per inch. */
+        private const val POINTS_PER_INCH = 72f
+
         /**
-         * PPTX slides are rendered with their longest edge at this size (2x supersampling),
-         * then downscaled to [ImageProcessor.MAX_DIMENSION]: keeps slide text legible.
+         * PDF pages and PPTX slides are rendered with their longest edge capped at this
+         * size (2x supersampling), then downscaled to [ImageProcessor.MAX_DIMENSION].
+         * On PDFs this also bounds the render allocation: a page declaring a huge
+         * MediaBox at [PDF_RENDER_DPI] would otherwise allocate a multi-GB buffer.
          */
-        private const val SLIDE_RENDER_TARGET = 2048
+        private const val RENDER_TARGET_PX = 2048
 
         private val IMAGE_MIME_BY_EXTENSION = mapOf(
             "png" to "image/png",
@@ -70,6 +76,12 @@ class ReadAsImageTool(
             "gif" to "image/gif",
             "bmp" to "image/bmp",
         )
+
+        /**
+         * Original bytes may be sent as-is only for these mime types: the vision APIs
+         * accept png/jpeg/gif but reject image/bmp, so bmp is always re-encoded JPEG.
+         */
+        private val PASS_THROUGH_MIME_TYPES = setOf("image/png", "image/jpeg", "image/gif")
     }
 
     override val name: String = if (configName != null) "${configName}__readAsImage" else "FILES__readAsImage"
@@ -193,7 +205,7 @@ class ReadAsImageTool(
             )
         }
 
-        val image = if (ImageProcessor.passThroughEligible(width, height, file.fileSize())) {
+        val image = if (mimeType in PASS_THROUGH_MIME_TYPES && ImageProcessor.passThroughEligible(width, height, file.fileSize())) {
             MessageContent.Image(
                 content = Base64.getEncoder().encodeToString(Files.readAllBytes(file)),
                 mimeType = mimeType,
@@ -213,29 +225,36 @@ class ReadAsImageTool(
         try {
             Loader.loadPDF(file.toFile()).use { document ->
                 val pageCount = document.numberOfPages
+                if (pageCount == 0) {
+                    throw IllegalArgumentException("PDF has no page: ${file.name}")
+                }
                 val selection = selectPages(pages, pageCount, file.name)
 
                 val renderer = PDFRenderer(document)
                 val images = selection.map { page ->
                     ImageProcessor.toJpegContent(
-                        renderer.renderImageWithDPI(page - 1, PDF_RENDER_DPI, ImageType.RGB),
+                        renderer.renderImageWithDPI(page - 1, pageRenderDpi(document, page), ImageType.RGB),
                     )
                 }
 
-                val summary = buildString {
-                    append("Rendered PDF ${file.name}: page(s) ${describePages(selection)} of $pageCount (one image per page, attached).")
-                    if (pages == null && pageCount > MAX_PAGES_PER_CALL) {
-                        append(
-                            " $pageCount pages total: call again with pages=[${MAX_PAGES_PER_CALL + 1},...]" +
-                                " to view the following pages.",
-                        )
-                    }
-                }
-                return summary to images
+                return buildRenderSummary("PDF", file.name, selection, pageCount, "page", pages) to images
             }
         } catch (e: InvalidPasswordException) {
             throw IllegalArgumentException("PDF is password-protected: ${file.name}")
         }
+    }
+
+    /**
+     * DPI for one page: nominal [PDF_RENDER_DPI], reduced when the page geometry would
+     * push the rendered longest edge past [RENDER_TARGET_PX]. Bounds the render buffer
+     * (a spec-max 14400pt MediaBox at 150 DPI would allocate a ~3.4GB image and throw
+     * an uncatchable OutOfMemoryError in the service JVM).
+     */
+    private fun pageRenderDpi(document: PDDocument, page: Int): Float {
+        val box = document.getPage(page - 1).mediaBox
+        val longestEdgePt = maxOf(box.width, box.height)
+        if (longestEdgePt <= 0f) return PDF_RENDER_DPI
+        return minOf(PDF_RENDER_DPI, RENDER_TARGET_PX * POINTS_PER_INCH / longestEdgePt)
     }
 
     private fun renderPptx(file: Path, pages: List<Int>?): Pair<String, List<MessageContent.Image>> {
@@ -252,25 +271,13 @@ class ReadAsImageTool(
                     val selection = selectPages(pages, slideCount, file.name, unit = "slide")
 
                     val pageSize = presentation.pageSize
-                    val scale = SLIDE_RENDER_TARGET.toDouble() / maxOf(pageSize.width, pageSize.height)
+                    val scale = RENDER_TARGET_PX.toDouble() / maxOf(pageSize.width, pageSize.height)
                     val width = Math.round(pageSize.width * scale).toInt()
                     val height = Math.round(pageSize.height * scale).toInt()
 
                     val images = selection.map { slide -> renderSlide(presentation, slide, width, height, scale) }
 
-                    val summary = buildString {
-                        append(
-                            "Rendered PPTX ${file.name}: slide(s) ${describePages(selection)} of $slideCount" +
-                                " (one image per slide, attached).",
-                        )
-                        if (pages == null && slideCount > MAX_PAGES_PER_CALL) {
-                            append(
-                                " $slideCount slides total: call again with pages=[${MAX_PAGES_PER_CALL + 1},...]" +
-                                    " to view the following slides.",
-                            )
-                        }
-                    }
-                    return summary to images
+                    return buildRenderSummary("PPTX", file.name, selection, slideCount, "slide", pages) to images
                 }
             }
         } catch (e: EncryptedDocumentException) {
@@ -332,6 +339,31 @@ class ReadAsImageTool(
         }
         return selection
     }
+
+    /**
+     * Summary shown to the model. When the default selection was truncated by
+     * [MAX_PAGES_PER_CALL], it also doubles as the pagination affordance.
+     */
+    private fun buildRenderSummary(
+        kind: String,
+        fileName: String,
+        selection: List<Int>,
+        total: Int,
+        unit: String,
+        requestedPages: List<Int>?,
+    ): String =
+        buildString {
+            append(
+                "Rendered $kind $fileName: ${unit}(s) ${describePages(selection)} of $total" +
+                    " (one image per $unit, attached).",
+            )
+            if (requestedPages == null && total > MAX_PAGES_PER_CALL) {
+                append(
+                    " $total ${unit}s total: call again with pages=[${MAX_PAGES_PER_CALL + 1},...]" +
+                        " to view the following ${unit}s.",
+                )
+            }
+        }
 
     private fun describePages(selection: List<Int>): String {
         val contiguous = selection.size > 1 && selection.last() - selection.first() == selection.size - 1

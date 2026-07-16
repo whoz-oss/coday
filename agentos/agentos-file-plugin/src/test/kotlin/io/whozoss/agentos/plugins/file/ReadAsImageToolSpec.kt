@@ -9,6 +9,7 @@ import io.whozoss.agentos.plugins.file.tools.ReadAsImageTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.PDPage
+import org.apache.pdfbox.pdmodel.common.PDRectangle
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission
 import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import org.apache.poi.poifs.crypt.EncryptionInfo
@@ -124,6 +125,18 @@ class ReadAsImageToolSpec : StringSpec() {
             writePng("alpha.png", 1500, 1200, BufferedImage.TYPE_INT_ARGB)
 
             val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("alpha.png"), ctx)
+
+            result.success shouldBe true
+            result.images.single().mimeType shouldBe "image/jpeg"
+        }
+
+        "small BMP is re-encoded as JPEG, never passed through as image/bmp" {
+            // Vision providers reject the image/bmp media type, so bmp must not use
+            // the pass-through path even when small.
+            val file = tempDir.resolve("scan.bmp")
+            ImageIO.write(BufferedImage(100, 80, BufferedImage.TYPE_INT_RGB), "bmp", file.toFile())
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("scan.bmp"), ctx)
 
             result.success shouldBe true
             result.images.single().mimeType shouldBe "image/jpeg"
@@ -255,6 +268,33 @@ class ReadAsImageToolSpec : StringSpec() {
 
             result.success shouldBe false
             result.errorType shouldBe "INVALID_INPUT"
+        }
+
+        "zero-page PDF is rejected as invalid input" {
+            writePdf("empty.pdf", 0)
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("empty.pdf"), ctx)
+
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_INPUT"
+            result.output shouldContain "no page"
+        }
+
+        "PDF with a huge MediaBox renders with a capped resolution instead of exploding memory" {
+            // A spec-max 14400x14400pt page at the nominal 150 DPI would allocate a
+            // ~3.4GB buffer; the per-page DPI cap bounds the render to RENDER_TARGET_PX.
+            val file = tempDir.resolve("poster.pdf")
+            PDDocument().use { document ->
+                document.addPage(PDPage(PDRectangle(14400f, 14400f)))
+                document.save(file.toFile())
+            }
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("poster.pdf"), ctx)
+
+            result.success shouldBe true
+            val image = result.images.single()
+            image.width!! shouldBeLessThanOrEqual 1024
+            image.height!! shouldBeLessThanOrEqual 1024
         }
 
         "password-protected PDF is rejected" {

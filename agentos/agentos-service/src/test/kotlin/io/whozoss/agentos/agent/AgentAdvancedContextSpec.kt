@@ -667,6 +667,31 @@ class AgentAdvancedContextSpec :
             mediaMessages shouldHaveSize 1
         }
 
+        "responses with evicted media pay no image cost against the budget" {
+            // 3 responses of 10 images each: the 20-image cap attaches media for the 2
+            // newest only. The oldest must NOT be charged IMAGE_CHAR_COST for images it
+            // does not attach, so it stays detailed (with the marker) instead of being
+            // evicted from the budget by phantom cost.
+            val events =
+                (1..3).flatMap { i ->
+                    listOf(
+                        toolRequest("r$i", "FILES__readAsImage"),
+                        toolResponseWithImages("r$i", "FILES__readAsImage", "read $i", List(10) { image() }),
+                    )
+                }
+            val budget = 20 * AgentAdvancedContext.IMAGE_CHAR_COST + 500
+
+            val messages = context.convertEventsToMessages(events, maxDetailedChars = budget)
+
+            // No pair summarized: the oldest costs only its text since its media are evicted
+            val summaries = messages.filterIsInstance<AssistantMessage>().filter { it.text?.contains("[Step summary]") == true }
+            summaries shouldHaveSize 0
+            val mediaMessages = messages.filterIsInstance<UserMessage>()
+            mediaMessages shouldHaveSize 2
+            val evictedResponse = messages[1].shouldBeInstanceOf<ToolResponseMessage>()
+            evictedResponse.responses[0].responseData() shouldContain "no longer attached"
+        }
+
         "extractText never dumps base64 for image output" {
             val events =
                 listOf(

@@ -63,10 +63,8 @@ data class AgentAdvancedContext(
         maxDetailedChars: Int = 300_000,
     ): List<Message> {
         val responsesByRequestId = indexToolResponses(events)
-        val detailedRequestIds =
+        val (detailedRequestIds, mediaRequestIds) =
             selectDetailedToolRequestIds(events, responsesByRequestId, maxDetailedChars)
-        val mediaRequestIds =
-            selectMediaToolRequestIds(events, responsesByRequestId, detailedRequestIds)
 
         val lastUserMsgIndex =
             events.indexOfLast {
@@ -103,63 +101,55 @@ data class AgentAdvancedContext(
     private fun indexToolResponses(events: List<CaseEvent>): Map<String, ToolResponseEvent> =
         events.filterIsInstance<ToolResponseEvent>().associateBy { it.toolRequestId }
 
+    /**
+     * Selection of the tool requests replayed in detail, and among them the ones whose
+     * response images are actually attached as [Media].
+     */
+    private data class ToolReplaySelection(
+        val detailedRequestIds: Set<String>,
+        val mediaRequestIds: Set<String>,
+    )
+
+    /**
+     * Single newest-first walk deciding both selections coherently:
+     * - a request is detailed while its cumulated char cost fits [maxDetailedChars];
+     * - its images are attached while they fit [MAX_ATTACHED_IMAGES], and only attached
+     *   images are charged [IMAGE_CHAR_COST] against the budget. Responses whose images
+     *   are not attached keep their text summary plus a marker (see
+     *   [toDetailedToolMessages]) and cost only that text.
+     */
     private fun selectDetailedToolRequestIds(
         events: List<CaseEvent>,
         responsesByRequestId: Map<String, ToolResponseEvent>,
         maxDetailedChars: Int,
-    ): Set<String> {
-        val result = mutableSetOf<String>()
+    ): ToolReplaySelection {
+        val detailed = mutableSetOf<String>()
+        val withMedia = mutableSetOf<String>()
         var charsCollected = 0
+        var imagesAttached = 0
 
         for (event in events.reversed()) {
             if (event !is ToolRequestEvent) continue
 
             val response = responsesByRequestId[event.toolRequestId]
-            val cost = estimateDetailedCharCost(event, response)
+            val images = response?.images ?: emptyList()
+            val attachMedia = images.isNotEmpty() && imagesAttached + images.size <= MAX_ATTACHED_IMAGES
+
+            val argsCost = event.args?.length ?: 0
+            val responseCost = response?.let { extractText(it.output).length } ?: 0
+            val imagesCost = if (attachMedia) images.size * IMAGE_CHAR_COST else 0
+            val cost = argsCost + responseCost + imagesCost
 
             if (charsCollected + cost > maxDetailedChars) break
 
-            result.add(event.toolRequestId)
+            detailed.add(event.toolRequestId)
             charsCollected += cost
+            if (attachMedia) {
+                withMedia.add(event.toolRequestId)
+                imagesAttached += images.size
+            }
         }
-        return result
-    }
-
-    private fun estimateDetailedCharCost(
-        request: ToolRequestEvent,
-        response: ToolResponseEvent?,
-    ): Int {
-        val argsCost = request.args?.length ?: 0
-        val responseCost = response?.let { extractText(it.output).length } ?: 0
-        val imagesCost = (response?.images?.size ?: 0) * IMAGE_CHAR_COST
-        return argsCost + responseCost + imagesCost
-    }
-
-    /**
-     * Select the tool requests whose response images are actually attached as [Media],
-     * newest first, bounded by [MAX_ATTACHED_IMAGES] so a long history of image reads
-     * cannot flood the prompt. Older image responses keep their text summary and get a
-     * marker instead (see [toDetailedToolMessages]).
-     */
-    private fun selectMediaToolRequestIds(
-        events: List<CaseEvent>,
-        responsesByRequestId: Map<String, ToolResponseEvent>,
-        detailedRequestIds: Set<String>,
-    ): Set<String> {
-        val result = mutableSetOf<String>()
-        var imagesAttached = 0
-
-        for (event in events.reversed()) {
-            if (event !is ToolRequestEvent || event.toolRequestId !in detailedRequestIds) continue
-
-            val images = responsesByRequestId[event.toolRequestId]?.images ?: continue
-            if (images.isEmpty()) continue
-            if (imagesAttached + images.size > MAX_ATTACHED_IMAGES) break
-
-            result.add(event.toolRequestId)
-            imagesAttached += images.size
-        }
-        return result
+        return ToolReplaySelection(detailed, withMedia)
     }
 
     private fun toToolMessages(
