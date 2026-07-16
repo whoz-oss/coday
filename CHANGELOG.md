@@ -1,3 +1,13 @@
+## 0.216.0 (2026-07-16)
+
+### 🚀 Features
+
+- filesystem IntegrationConfig support and dead plugin cleanup ([#1125](https://github.com/whoz-oss/coday/pull/1125))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.215.0 (2026-07-16)
 
 ### 🚀 Features
