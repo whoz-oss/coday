@@ -347,9 +347,19 @@ openApi {
     apiDocsUrl.set("http://localhost:$agentosPort/v3/api-docs.yaml")
     // Wait up to 60s for the app to be ready
     waitTimeInSeconds.set(60)
-    // Activate the openapi profile so the app starts without real AI API keys
+    // Activate the openapi profile so the app starts without real AI API keys.
+    // embedded-bolt-port=0 (random OS-assigned port) as a command-line arg because it must
+    // beat application-embedded-neo4j.yml (last active profile wins over the openapi one):
+    // spec generation must not fail when a locally running dev stack already binds the
+    // default embedded port 7688. The driver resolves the actual port at runtime.
     customBootRun {
-        args.set(listOf("--spring.profiles.active=openapi,embedded-neo4j", "--server.port=$agentosPort"))
+        args.set(
+            listOf(
+                "--spring.profiles.active=openapi,embedded-neo4j",
+                "--server.port=$agentosPort",
+                "--agentos.persistence.embedded-bolt-port=0",
+            ),
+        )
     }
 }
 

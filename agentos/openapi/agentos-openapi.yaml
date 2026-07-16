@@ -3125,6 +3125,7 @@ components:
       required:
       - externalIds
     Image:
+      type: object
       allOf:
       - $ref: "#/components/schemas/MessageContent"
       - type: object
@@ -3609,6 +3610,10 @@ components:
           durationMs:
             type: integer
             format: int64
+          images:
+            type: array
+            items:
+              $ref: "#/components/schemas/Image"
           output:
             oneOf:
             - $ref: "#/components/schemas/Image"
@@ -3625,6 +3630,7 @@ components:
       required:
       - caseId
       - id
+      - images
       - metadata
       - namespaceId
       - output
