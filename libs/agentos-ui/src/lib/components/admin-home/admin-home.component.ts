@@ -16,8 +16,8 @@ export class AdminHomeComponent {
     {
       key: 'users',
       mark: '\u{1F464}',
-      name: 'Users',
-      description: 'Manage all platform users and their admin rights.',
+      name: 'Users & Groups',
+      description: 'Manage platform users, their admin rights, and namespace user groups.',
       path: '/agentos/admin/users',
     },
     {
