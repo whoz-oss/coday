@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
@@ -271,6 +272,8 @@ class CaseEventNodeMapper(
                     node.agentName,
                     node.question,
                     node.options,
+                    node.questionType,
+                    node.userId,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -500,6 +503,8 @@ class CaseEventNodeMapper(
             agentName = n.agentName,
             question = n.question,
             options = n.options?.let { serializer.deserializeStringList(it) },
+            questionType = try { QuestionType.valueOf(n.questionType) } catch (_: Exception) { QuestionType.FREE_TEXT },
+            userId = n.userId?.let { UUID.fromString(it) },
         )
 
     private fun toDomain(n: AnswerEventNode) =
@@ -736,6 +741,8 @@ class CaseEventNodeMapper(
             agentName = e.agentName,
             question = e.question,
             options = e.options?.let { serializer.serializeStringList(it) },
+            questionType = e.questionType.name,
+            userId = e.userId?.toString(),
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

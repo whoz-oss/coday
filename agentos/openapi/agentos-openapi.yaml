@@ -242,6 +242,34 @@ paths:
           description: OK
       tags:
       - agent-config-controller
+  /api/agent-configs/{id}/export:
+    get:
+      description: "Returns the agent config as a downloadable YAML file, ready to\
+        \ be placed in the namespace `agents/` directory under `configPath`. Only\
+        \ the fields meaningful in a filesystem config are included. Scope metadata\
+        \ (`id`, `namespaceId`, `enabled`, `advancedExecution`, `externalMetadata`)\
+        \ is intentionally omitted."
+      operationId: exportAgentConfig
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: string
+            application/yaml:
+              schema:
+                type: string
+          description: OK
+      summary: Export an AgentConfig as a YAML file
+      tags:
+      - agent-config-controller
   /api/ai-models:
     post:
       operationId: createAiModel
@@ -1498,6 +1526,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/IntegrationConfig"
           description: OK
+      tags:
+      - integration-config-controller
+  /api/integration-configs/{id}/export:
+    get:
+      description: "Returns the integration config as a downloadable YAML file, ready\
+        \ to be placed in the namespace `integrations/` directory under `configPath`.\
+        \ Only the fields meaningful in a filesystem config are included: `name`,\
+        \ `integrationType`, `description`, `parameters`. Scope metadata (`id`, `namespaceId`,\
+        \ `userId`) is intentionally omitted. **parameters are exported in clear text**\
+        \ — requires WRITE permission on the entity."
+      operationId: exportIntegrationConfig
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: string
+            application/yaml:
+              schema:
+                type: string
+          description: OK
+      summary: Export an IntegrationConfig as a YAML file
       tags:
       - integration-config-controller
   /api/integration-types:
@@ -3755,9 +3812,6 @@ components:
     PluginInfo:
       type: object
       properties:
-        agentCount:
-          type: integer
-          format: int32
         description:
           type: string
         id:
@@ -3779,7 +3833,6 @@ components:
         version:
           type: string
       required:
-      - agentCount
       - description
       - id
       - pluginPath
@@ -3873,6 +3926,16 @@ components:
               type: string
           question:
             type: string
+          questionType:
+            type: string
+            enum:
+            - FREE_TEXT
+            - SINGLE_CHOICE
+            - OPEN_CHOICE
+            - OAUTH_AUTHORIZE
+          userId:
+            type: string
+            format: uuid
       required:
       - agentId
       - agentName
@@ -3881,6 +3944,7 @@ components:
       - metadata
       - namespaceId
       - question
+      - questionType
       - timestamp
       - type
     SyncUserRolesRequest:
