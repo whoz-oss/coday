@@ -508,6 +508,12 @@ export class CodayService implements OnDestroy {
   }
 
   private handleToolRequestEvent(event: ToolRequestEvent): void {
+    let fullContent: string | undefined
+    try {
+      fullContent = `Tool: ${event.name}\n\nArguments:\n${JSON.stringify(JSON.parse(event.args), null, 2)}`
+    } catch {
+      fullContent = `Tool: ${event.name}\n\nArguments:\n${event.args}`
+    }
     const message: ChatMessage = {
       id: event.timestamp,
       role: 'system',
@@ -516,6 +522,7 @@ export class CodayService implements OnDestroy {
       timestamp: event.date,
       type: 'technical',
       eventId: event.timestamp,
+      fullContent: fullContent,
     }
 
     this.addMessage(message)

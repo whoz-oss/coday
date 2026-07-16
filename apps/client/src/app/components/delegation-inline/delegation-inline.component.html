@@ -27,7 +27,7 @@
           <app-delegation-inline [subThreadId]="msg.subThreadId!" [agentName]="msg.delegationAgentName!">
           </app-delegation-inline>
         } @else {
-          <app-chat-message [message]="msg" [canDelete]="false"> </app-chat-message>
+          <app-chat-message [message]="msg" [canDelete]="false" [subThreadId]="subThreadId"> </app-chat-message>
         }
       }
       @if (streamingText) {

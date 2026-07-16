@@ -200,6 +200,16 @@ export class Toolbox implements Killable {
     // Combine all factories
     allFactories.push(...mcpFactories)
 
+    if (integrations?.has(DelegateTools.TYPE)) {
+      const delegateAgentNames = integrations.get(DelegateTools.TYPE)!
+      if (delegateAgentNames.length === 0) {
+        // Empty allow-list means all agents are delegatable
+        context.data = { ...context.data, delegateAgentNames: '__ALL__' }
+      } else {
+        context.data = { ...context.data, delegateAgentNames: delegateAgentNames.map((n) => n.toLowerCase()) }
+      }
+    }
+
     try {
       // Process each factory to get their tools
       const toolResults = await Promise.all(

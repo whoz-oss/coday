@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core'
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject, signal } from '@angular/core'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { MessageContent } from '@coday/model'
 import { MessageContextMenuComponent, MenuAction } from '../message-context-menu/message-context-menu.component'
@@ -23,6 +23,8 @@ export interface ChatMessage {
   invite?: string // Original question (for context)
   subThreadId?: string
   delegationAgentName?: string
+  /** Full expandable content for technical messages (tool requests/responses) */
+  fullContent?: string
 }
 
 @Component({
@@ -39,12 +41,19 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   @Input() canDelete: boolean = true // Can this message be deleted (not first message, not during thinking)
   /** True when this message was sent by a different user than the current one */
   @Input() isOtherUser: boolean = false
+  /** Sub-thread ID when this message belongs to a delegation sub-thread */
+  @Input() subThreadId?: string
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   @Output() deleteRequested = new EventEmitter<ChatMessage>()
 
   renderedContent: SafeHtml = ''
   shouldHideTechnical = false
   shouldHideWarning = false
+
+  protected readonly isErrorExpanded = signal(false)
+  protected readonly isTechnicalExpanded = signal(false)
+
+  private static readonly ERROR_COLLAPSE_LINE_THRESHOLD = 5
 
   // Modern Angular dependency injection
   private sanitizer = inject(DomSanitizer)
@@ -116,6 +125,28 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
     return this.datePipe.transform(this.message.timestamp, isToday ? 'HH:mm' : 'dd/MM HH:mm')
   }
 
+  get isLongError(): boolean {
+    if (this.message.type !== 'error') return false
+    const textContent = this.extractTextContent()
+    // Support both real newlines and escaped \n (from JSON.stringify of error objects)
+    const lines = textContent.split(/\n|\\n/)
+    return lines.length > ChatMessageComponent.ERROR_COLLAPSE_LINE_THRESHOLD
+  }
+
+  get collapsedErrorText(): string {
+    const textContent = this.extractTextContent()
+    const lines = textContent.split(/\n|\\n/)
+    return lines.slice(0, ChatMessageComponent.ERROR_COLLAPSE_LINE_THRESHOLD).join('\n') + '\u2026'
+  }
+
+  toggleErrorExpanded(): void {
+    this.isErrorExpanded.update((v) => !v)
+  }
+
+  toggleTechnicalExpanded(): void {
+    this.isTechnicalExpanded.update((v) => !v)
+  }
+
   get isLongMessage(): boolean {
     const textContent = this.extractTextContent()
     return textContent.length > 1000 || textContent.split('\n').length > 20
@@ -147,11 +178,13 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   get eventLink(): string | null {
     if (!this.message.eventId) return null
 
-    // Get project and thread from state services
+    // Get project from state service
     const projectName = this.projectState.getSelectedProjectId()
-    const threadId = this.threadState.getSelectedThreadId()
+    if (!projectName) return null
 
-    if (!projectName || !threadId) return null
+    // Use sub-thread ID if provided (delegation context), otherwise use the main thread
+    const threadId = this.subThreadId ?? this.threadState.getSelectedThreadId()
+    if (!threadId) return null
 
     return `/api/projects/${projectName}/threads/${threadId}/messages/${encodeURIComponent(this.message.eventId)}/formatted`
   }
