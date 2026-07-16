@@ -76,11 +76,11 @@ class AgentServiceImpl(
      *
      * **Matching semantics differ by path:**
      * - `userId != null` path: loads all accessible agents (platform + deployed) and filters
-     *   client-side with `.contains()` (case-insensitive substring). This is intentional for
-     *   interactive use cases where a partial name typed by a user should resolve loosely.
+     *   client-side with an exact case-insensitive match (`equals(ignoreCase = true)`).
      * - `userId == null` path: delegates to [AgentConfigServiceImpl.findByName] which performs
      *   a case-insensitive exact match, then falls back to platform agents.
-     * - [resolveAgentName] with `userId != null` uses a Cypher `STARTS WITH` prefix match.
+     * - [resolveAgentName] with `userId != null` uses a Cypher `STARTS WITH` prefix match
+     *   (autocomplete — a different call site from this method).
      *
      * **Scoping / shadowing rule (both paths):**
      * Platform agents (namespaceId = null) are shadowed by namespace-scoped agents with the
@@ -96,14 +96,13 @@ class AgentServiceImpl(
         require(namePart.isNotBlank()) { "Blank agent name, cannot resolve agent" }
         val agentConfig =
             if (context.userId != null) {
-                val namePartLowercase = namePart.lowercase()
                 val agentConfigs =
                     agentConfigService
                         .findDeployedByNamespaceIdAndUserIdAndName(
                             namespaceId = context.namespaceId,
                             userId = context.userId,
-                            agentName = null,
-                        ).filter { it.name.lowercase().contains(namePartLowercase) }
+                            agentName = namePart.lowercase(),
+                        ).filter { it.name.equals(namePart, ignoreCase = true) }
                 resolveWithShadowing(agentConfigs, namePart, context.namespaceId)
             } else {
                 agentConfigService.findByName(context.namespaceId, namePart)

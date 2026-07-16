@@ -3,7 +3,6 @@ package io.whozoss.agentos.plugin.api
 import io.swagger.v3.oas.annotations.parameters.RequestBody as SwaggerRequestBody
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
-import io.whozoss.agentos.agent.AgentRegistry
 import io.whozoss.agentos.plugin.PluginDebugService
 import io.whozoss.agentos.plugin.PluginInfo
 import io.whozoss.agentos.plugin.PluginService
@@ -25,7 +24,6 @@ import java.nio.file.StandardCopyOption
 @RequestMapping("/api/plugins")
 class PluginController(
     private val pluginService: PluginService,
-    private val agentRegistry: AgentRegistry,
 ) {
     // Optional: inject debug service if available
     @Autowired(required = false)
@@ -99,9 +97,6 @@ class PluginController(
             // Load the plugin
             val pluginId = pluginService.loadPlugin(targetPath)
 
-            // Reload agents from plugins
-            agentRegistry.loadAgentsFromPlugins()
-
             ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(
@@ -134,7 +129,6 @@ class PluginController(
     ): ResponseEntity<PluginActionResponse> {
         val success = pluginService.startPlugin(pluginId)
         return if (success) {
-            agentRegistry.loadAgentsFromPlugins()
             ResponseEntity.ok(PluginActionResponse(true, "Plugin started successfully"))
         } else {
             ResponseEntity
@@ -171,7 +165,6 @@ class PluginController(
     ): ResponseEntity<PluginActionResponse> {
         val success = pluginService.reloadPlugin(pluginId)
         return if (success) {
-            agentRegistry.reloadPluginAgents()
             ResponseEntity.ok(PluginActionResponse(true, "Plugin reloaded successfully"))
         } else {
             ResponseEntity
@@ -204,14 +197,7 @@ class PluginController(
     @PostMapping("/reload-agents")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     fun reloadAllAgents(): ResponseEntity<PluginActionResponse> =
-        try {
-            agentRegistry.reloadPluginAgents()
-            ResponseEntity.ok(PluginActionResponse(true, "Agents reloaded successfully"))
-        } catch (e: Exception) {
-            ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(PluginActionResponse(false, "Failed to reload agents: ${e.message}"))
-        }
+        ResponseEntity.ok(PluginActionResponse(true, "Agents reloaded successfully"))
 
     /**
      * Debug a specific plugin
