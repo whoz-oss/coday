@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.tools.EditFilesTool
 import io.whozoss.agentos.plugins.file.tools.ListFilesTool
 import io.whozoss.agentos.plugins.file.tools.MoveFileTool
+import io.whozoss.agentos.plugins.file.tools.ReadAsImageTool
 import io.whozoss.agentos.plugins.file.tools.ReadFileTool
 import io.whozoss.agentos.plugins.file.tools.RemoveFileTool
 import io.whozoss.agentos.plugins.file.tools.SearchFilesTool
@@ -22,9 +23,9 @@ import java.nio.file.Path
  * and instantiates file tools with the rootPath drawn from the persisted
  * IntegrationConfig parameters.
  *
- * When [readOnly] is true, only the read tools (list, read, search) are provided.
- * Write tools (edit, remove, move) are not included at all, so the agent
- * is never aware of their existence.
+ * When [readOnly] is true, only the read tools (list, read, readAsImage, search)
+ * are provided. Write tools (edit, remove, move) are not included at all, so the
+ * agent is never aware of their existence.
  */
 @Extension
 class FileToolProvider : ToolPlugin {
@@ -50,6 +51,7 @@ class FileToolProvider : ToolPlugin {
         val readTools = listOf(
             ListFilesTool(rootPath, configName, denyPatterns),
             ReadFileTool(rootPath, configName, readMaxSizeBytes, denyPatterns),
+            ReadAsImageTool(rootPath, configName, readMaxSizeBytes, denyPatterns),
             SearchFilesTool(rootPath, configName, denyPatterns),
         )
 
