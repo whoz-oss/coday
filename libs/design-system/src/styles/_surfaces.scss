@@ -120,6 +120,42 @@
   }
 }
 
+// ── Chat bubbles ─────────────────────────────────────────────────────────────────
+
+@mixin surface-bubble-agent {
+  background: #f0f0ee;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px 12px 12px 3px;
+  box-shadow: 0 1px 3px var(--color-shadow, #{c.$color-shadow-subtle});
+  color: #1d1d1f;
+}
+
+@mixin surface-bubble-agent-dark {
+  background: #2c2c2e;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+  color: #f5f5f7;
+}
+
+@mixin surface-bubble-user {
+  background: #6e6e73;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px 12px 3px 12px;
+
+  [data-theme='dark'] & {
+    background: #3a3a3c;
+    color: #ffffff;
+    border: none;
+  }
+}
+
+@mixin surface-system-log {
+  background: #0f1115;
+  color: #e8eaf0;
+  border-radius: 6px;
+}
+
 // ── Scrollable panel ──────────────────────────────────────────────────────────
 
 /// Vertically scrollable flex panel with thin custom scrollbar.

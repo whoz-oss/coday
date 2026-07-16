@@ -19,6 +19,17 @@
     }
   }
 
+  &__chevron {
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    flex: none;
+    transition: transform 150ms ease;
+
+    &--open {
+      transform: rotate(180deg);
+    }
+  }
+
   &__title {
     @include ds.text-menu-item;
     font-weight: 600;
@@ -36,45 +47,175 @@
     flex: none;
   }
 
-  &__chevron {
-    color: var(--color-text-secondary);
-    font-size: 9px;
-    flex: none;
-  }
-
   &__list {
     display: flex;
     flex-direction: column;
-    border-top: 1px solid var(--color-border-light);
+    border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
     max-height: 60vh;
     overflow-y: auto;
+  }
+
+  // ── Row wrap (item + action panel) ──────────────────────────────────────────
+
+  &__row-wrap {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.05));
+
+    &:last-child {
+      border-bottom: none;
+    }
   }
 
   &__item {
     display: flex;
     align-items: center;
-    gap: 7px;
-    padding: 0 16px;
-    height: 44px;
+    min-height: 44px;
     flex-shrink: 0;
     cursor: pointer;
-
-    .shell-case-switcher__title {
-      font-weight: 500;
-      color: var(--color-text-secondary);
-    }
 
     &:hover {
       background: var(--color-bg-hover);
     }
 
+    &--running {
+      background: color-mix(in srgb, var(--color-primary, #{ds.$color-primary}) 6%, transparent);
+    }
+
     &--new {
+      gap: 7px;
+      padding: 0 16px;
       border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
 
       .shell-case-switcher__title {
         font-weight: 600;
         color: var(--color-primary, #016b71);
       }
+    }
+  }
+
+  // Row title zone — takes all available space, tap = open case
+  &__row-title {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 4px 9px 16px;
+  }
+
+  // Chevron button — tap = toggle action panel
+  &__action-toggle {
+    @include ds.button-reset;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    min-height: 44px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+    color: var(--color-text-secondary);
+    // line-height: 1 + padding-top compense le descender optique du ⌄
+    font-size: 14px;
+    line-height: 1;
+    padding-top: 2px;
+    cursor: pointer;
+    transition:
+      color 120ms ease,
+      transform 120ms ease;
+
+    &--open {
+      color: var(--color-text, #{ds.$color-text});
+      transform: rotate(180deg);
+      padding-top: 0;
+      padding-bottom: 2px;
+    }
+
+    &:focus-visible {
+      @include ds.focus-ring;
+    }
+  }
+
+  // ── Action panel ────────────────────────────────────────────────────────────
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px 10px;
+    background: var(--color-surface-secondary, #{ds.$color-surface-secondary});
+    border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.06));
+  }
+
+  &__confirm-label {
+    flex: 1;
+    font-family: ds.$font-ui;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-text-secondary, #{ds.$color-text-secondary});
+  }
+
+  &__btn {
+    @include ds.button-reset;
+
+    font-family: ds.$font-ui;
+    font-size: 10.5px;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--color-border, #{ds.$color-border});
+    cursor: pointer;
+    text-align: center;
+    white-space: nowrap;
+    transition:
+      background 120ms ease,
+      color 120ms ease,
+      border-color 120ms ease;
+
+    color: var(--color-text-secondary, #{ds.$color-text-secondary});
+    background: var(--color-bg-secondary, #{ds.$color-bg-secondary});
+
+    &:focus-visible {
+      @include ds.focus-ring;
+    }
+
+    &--starred {
+      color: var(--color-warning, #{ds.$color-warning});
+      background: color-mix(in srgb, var(--color-warning, #{ds.$color-warning}) 12%, transparent);
+      border-color: color-mix(in srgb, var(--color-warning, #{ds.$color-warning}) 25%, transparent);
+    }
+
+    &--danger {
+      color: var(--color-error, #{ds.$color-error-text});
+      background: color-mix(in srgb, var(--color-error, #{ds.$color-error}) 8%, transparent);
+      border-color: color-mix(in srgb, var(--color-error, #{ds.$color-error}) 20%, transparent);
+
+      &:hover {
+        background: color-mix(in srgb, var(--color-error, #{ds.$color-error}) 14%, transparent);
+      }
+    }
+  }
+
+  // ── Status dot ──────────────────────────────────────────────────────────────
+
+  &__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex: none;
+
+    &--run {
+      background: var(--color-success, #{ds.$color-success});
+    }
+
+    &--idle {
+      background: var(--color-border, #{ds.$color-border});
+    }
+
+    &--killed,
+    &--error {
+      background: var(--color-error, #{ds.$color-error});
     }
   }
 
@@ -88,26 +229,6 @@
     font-weight: 300;
     color: var(--color-primary, #016b71);
     flex: none;
-  }
-
-  &__dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex: none;
-
-    &--run {
-      background: var(--color-success);
-    }
-
-    &--idle {
-      background: var(--color-border);
-    }
-
-    &--killed,
-    &--error {
-      background: var(--color-error);
-    }
   }
 }
 

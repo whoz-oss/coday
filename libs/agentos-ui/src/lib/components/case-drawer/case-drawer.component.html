@@ -130,10 +130,25 @@
 
       <!-- Status label -->
       <span class="case-tree-node__status-label" aria-hidden="true">{{ node.status?.toLowerCase() }}</span>
+
+      <button
+        type="button"
+        class="case-tree-node__mobile-toggle"
+        [class.case-tree-node__mobile-toggle--open]="mobileOpenId() === node.id"
+        [attr.aria-expanded]="mobileOpenId() === node.id"
+        [attr.aria-label]="mobileOpenId() === node.id ? 'Hide actions' : 'Show actions'"
+        (click)="toggleMobileDetail($event, node.id)"
+      >
+        ⌄
+      </button>
     </div>
 
-    <!-- Detail block — revealed on hover via CSS max-height trick -->
-    <div class="case-tree-node__detail" [class.case-tree-node__detail--confirming]="pendingDeleteId() === node.id">
+    <!-- Detail block — revealed on hover (desktop) or chevron tap (mobile) -->
+    <div
+      class="case-tree-node__detail"
+      [class.case-tree-node__detail--confirming]="pendingDeleteId() === node.id"
+      [class.case-tree-node__detail--mobile-open]="mobileOpenId() === node.id"
+    >
       <div class="case-tree-node__detail-inner">
         @if (pendingDeleteId() === node.id) {
           <div class="case-tree-node__actions">

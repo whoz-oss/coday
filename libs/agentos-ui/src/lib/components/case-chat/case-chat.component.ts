@@ -72,7 +72,7 @@ export interface TechnicalItem {
 }
 
 export type TimelineItem =
-  | { kind: 'message'; event: CaseMessageEvent; html: SafeHtml }
+  | { kind: 'message'; event: CaseMessageEvent; html: SafeHtml; isFirstInGroup: boolean }
   | { kind: 'tool'; call: ToolCall }
   | { kind: 'streaming'; text: string }
   | { kind: 'technical'; item: TechnicalItem; eventId: string }
@@ -306,13 +306,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
+    // Track the last role to detect group boundaries (consecutive same-role messages).
+    // Any non-message item (tool call, technical event) resets the group.
+    let lastMessageRole: string | null = null
     for (const e of allEvents) {
       if (e.type === 'MessageEvent') {
         const msg = e as CaseMessageEvent
+        const role = msg.actor.role
+        const isFirstInGroup = role !== lastMessageRole
+        lastMessageRole = role
         items.push({
           kind: 'message',
           event: msg,
           html: this.messageHtmlCache.get(e.id) ?? '',
+          isFirstInGroup,
         })
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
         const requestId = e.toolRequestId ?? e.id
@@ -320,10 +327,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           seenToolIds.add(requestId)
           items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
         }
+        // Tool calls break the message group
+        lastMessageRole = null
       } else if (showTechnical) {
         const technical = this.toTechnicalItem(e)
         if (technical) {
           items.push({ kind: 'technical', item: technical, eventId: e.id })
+          // Technical events break the message group
+          lastMessageRole = null
         }
       }
     }

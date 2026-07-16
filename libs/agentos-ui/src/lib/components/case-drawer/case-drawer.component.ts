@@ -87,6 +87,14 @@ export class CaseDrawerComponent {
   /** Id of the case currently awaiting delete confirmation, null if none. */
   protected readonly pendingDeleteId = signal<string | null>(null)
 
+  /** Id of the case whose mobile action panel is currently open, null if none. */
+  protected readonly mobileOpenId = signal<string | null>(null)
+
+  protected toggleMobileDetail(event: Event, id: string): void {
+    event.stopPropagation()
+    this.mobileOpenId.update((current) => (current === id ? null : id))
+  }
+
   protected isExpanded(id: string): boolean {
     return this.expandOverrides().get(id) ?? this.autoExpandedIds().has(id)
   }
