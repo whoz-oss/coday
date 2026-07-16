@@ -214,21 +214,28 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     ): Long
 
     /**
-     * Returns one row per `(user, case)` direct-permission edge, encoded as
-     * `"caseId|relation|starred"`. The `starred` flag is `true` when a
-     * `[:STARRED]` edge also exists between the user and the case.
+     * Returns one entry per case the user has a direct `[:ADMIN]`/`[:MEMBER]` edge on, collapsed at
+     * the Cypher level so the caller needs no manual de-duplication. Each map holds:
+     * - `caseId` (String) — the case id,
+     * - `relations` (List<String>) — the distinct edge types (`["ADMIN"]`, `["MEMBER"]`, or both),
+     * - `starred` (Boolean) — `true` when a `[:STARRED]` edge also exists between the user and the case.
      *
-     * Encoded into a single string column because SDN cannot map a multi-value
-     * record without a custom mapper. The caller decodes each row and collapses
-     * duplicate ids (a user may hold both ADMIN and MEMBER on the same case).
+     * Built as a single-column `collect` of maps: Spring Data Neo4j rejects a multi-column
+     * `RETURN a, b, c` ("Records with more than one value cannot be converted without a mapper"),
+     * so the whole result is returned as one `List<Map>` value it can map without a custom converter.
      */
     @Transactional(readOnly = true)
     @Query(
         $$"""MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(c:Case)
-            RETURN c.id + '|' + type(r) + '|' + toString(EXISTS { (u)-[:STARRED]->(c) }) AS row
+            WITH u, c, collect(DISTINCT type(r)) AS relations
+            RETURN collect({
+                caseId: c.id,
+                relations: relations,
+                starred: EXISTS { (u)-[:STARRED]->(c) }
+            })
             """,
     )
     fun findDirectRelations(
         @Param("userId") userId: String,
-    ): List<String>
+    ): List<Map<String, Any>>
 }

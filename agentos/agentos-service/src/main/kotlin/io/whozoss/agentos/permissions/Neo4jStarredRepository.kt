@@ -37,27 +37,21 @@ class Neo4jStarredRepository(
     override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
         try {
             when (entityType) {
-                EntityType.CASE -> {
-                    val result = mutableMapOf<String, DirectRelation>()
-                    for (row in caseNodeNeo4jRepository.findDirectRelations(userId)) {
-                        // Each row is "caseId|relation|starred" (see CaseNodeNeo4jRepository.findDirectRelations).
-                        val parts = row.split('|')
-                        if (parts.size != 3) continue
-                        val id = parts[0]
-                        val relation = PermissionRelation.valueOf(parts[1])
-                        val isStarred = parts[2].toBoolean()
-                        val existing = result[id]
-                        // A user may hold both ADMIN and MEMBER edges on the same case — ADMIN wins.
-                        val mergedRelation =
-                            if (existing?.relation == PermissionRelation.ADMIN || relation == PermissionRelation.ADMIN) {
+                EntityType.CASE ->
+                    // Rows are already collapsed one-per-case by the Cypher query, so no manual
+                    // de-duplication is needed. ADMIN wins when the user holds both ADMIN and MEMBER.
+                    caseNodeNeo4jRepository.findDirectRelations(userId).associate { row ->
+                        val caseId = row["caseId"] as String
+                        val relations = (row["relations"] as List<*>).map { it.toString() }
+                        val starred = row["starred"] as Boolean
+                        val relation =
+                            if (PermissionRelation.ADMIN.name in relations) {
                                 PermissionRelation.ADMIN
                             } else {
                                 PermissionRelation.MEMBER
                             }
-                        result[id] = DirectRelation(mergedRelation, (existing?.starred ?: false) || isStarred)
+                        caseId to DirectRelation(relation, starred)
                     }
-                    result
-                }
                 else -> {
                     logger.warn { "listDirectRelations not supported for entityType=$entityType" }
                     emptyMap()
