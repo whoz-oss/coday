@@ -30,9 +30,9 @@
           <app-chat-message [message]="msg" [canDelete]="false"> </app-chat-message>
         }
       }
-      @if (streamingText) {
+      @if (renderedStreamingText) {
         <div class="streaming-message">
-          <div class="content">{{ streamingText }}</div>
+          <div class="content markdown-content" [innerHTML]="renderedStreamingText"></div>
         </div>
       }
     </div>

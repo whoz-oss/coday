@@ -1,22 +1,21 @@
 // Streaming message style (matches ChatMessageComponent assistant style exactly)
 .streaming-message {
   &.assistant {
-    // Match exact style from chat-message.component.scss .message.assistant
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    border-radius: 0;
+    background: var(--color-message-ai);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px 18px 18px 6px;
+    padding: 1rem 1.25rem 0.75rem 1.25rem;
+    width: fit-content;
+    max-width: 85%;
+    min-width: 120px;
+    word-wrap: break-word;
     margin-left: 0;
     margin-right: auto;
-    padding: 0.5rem 0 0.5rem 0;
-    width: 100%;
-    max-width: none;
-    min-width: 0;
   }
 
   .content {
     color: var(--color-text);
-    line-height: 1.5; // Match line-height from ChatMessageComponent
+    line-height: 1.5;
   }
 }
 
