@@ -1,5 +1,9 @@
 import { TestBed } from '@angular/core/testing'
-import { IntegrationConfig, IntegrationConfigControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  IntegrationConfig,
+  IntegrationConfigControllerService,
+  IntegrationConfigExportService,
+} from '@whoz-oss/agentos-api-client'
 import { firstValueFrom, of } from 'rxjs'
 import { IntegrationConfigStateService } from './integration-config-state.service'
 import { UserStateService } from './user-state.service'
@@ -62,6 +66,7 @@ describe('IntegrationConfigStateService', () => {
         IntegrationConfigStateService,
         { provide: IntegrationConfigControllerService, useValue: nsController },
         { provide: UserStateService, useValue: userStateMock },
+        { provide: IntegrationConfigExportService, useValue: { exportAsYaml: jest.fn() } },
       ],
     })
     service = TestBed.inject(IntegrationConfigStateService)

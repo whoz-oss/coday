@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
+  AgentConfigExportService,
   IntegrationConfig,
   IntegrationTypeControllerService,
   IntegrationTypeDescriptor,
@@ -75,6 +76,7 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly agentConfigController = inject(AgentConfigControllerService)
+  private readonly exportService = inject(AgentConfigExportService)
   private readonly integrationConfigState = inject(IntegrationConfigStateService)
   private readonly integrationTypeController = inject(IntegrationTypeControllerService)
 
@@ -134,6 +136,7 @@ export class AgentConfigFormComponent implements OnInit {
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
+  protected readonly isExporting = signal(false)
 
   /**
    * Built-in integration rows (e.g. file exchange) surfaced by the backend only when their
@@ -411,6 +414,29 @@ export class AgentConfigFormComponent implements OnInit {
       next: () => this.navigateBack(),
       error: () => this.isSubmitting.set(false),
     })
+  }
+
+  protected exportYaml(): void {
+    const id = this.existingConfig?.id
+    if (!id || this.isExporting()) return
+
+    this.isExporting.set(true)
+    this.exportService
+      .exportAsYaml(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (yaml) => {
+          const blob = new Blob([yaml], { type: 'application/yaml' })
+          const url = URL.createObjectURL(blob)
+          const anchor = document.createElement('a')
+          anchor.href = url
+          anchor.download = `${this.existingConfig?.name ?? 'agent'}.yaml`
+          anchor.click()
+          URL.revokeObjectURL(url)
+          this.isExporting.set(false)
+        },
+        error: () => this.isExporting.set(false),
+      })
   }
 
   protected cancel(): void {

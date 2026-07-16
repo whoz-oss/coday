@@ -195,17 +195,6 @@ class IntegrationConfigServiceImpl(
                 ?.let(::reject)
         }
 
-        // Platform entity — check for conflicting NS-shared configs across all namespaces.
-        // A platform layer merges with every NS-shared layer that carries the same name;
-        // a type mismatch would silently switch the plugin at runtime for those namespaces.
-        // Volume is bounded by the name filter: typically a single-digit number of rows.
-        if (namespaceId == null && userId == null) {
-            repository
-                .findNsSharedByName(name)
-                .firstOrNull { it.id != entityId && it.integrationType != type }
-                ?.let(::reject)
-        }
-
         if (userId != null) {
             // user-global of the same user
             repository

@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
+  AgentConfigExportService,
   IntegrationTypeControllerService,
 } from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
@@ -91,6 +92,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
         { provide: AgentConfigControllerService, useValue: controller },
         { provide: IntegrationConfigStateService, useValue: integrationState },
         { provide: IntegrationTypeControllerService, useValue: integrationType },
+        { provide: AgentConfigExportService, useValue: { exportAsYaml: jest.fn() } },
       ],
     })
 

@@ -29,6 +29,7 @@ import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
+import io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
@@ -54,6 +55,7 @@ import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Primary
 import org.springframework.data.neo4j.config.EnableNeo4jAuditing
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 
@@ -149,14 +151,35 @@ class Neo4jPersistenceConfiguration {
         return Neo4jPermissionRepository(permissionNodeNeo4jRepository)
     }
 
+    /**
+     * Inner Neo4j-backed bean, declared explicitly so that Spring AOP can proxy it and honour
+     * the [org.springframework.transaction.annotation.Transactional] boundaries declared on
+     * [Neo4jIntegrationConfigRepository.save] and [Neo4jIntegrationConfigRepository.deleteByParent].
+     *
+     * If this bean were constructed inline (via `Neo4jIntegrationConfigRepository(...)` inside
+     * the outer factory method), it would not be managed by Spring and the AOP proxy would never
+     * be applied, silently disabling rollback semantics.
+     */
     @Bean
-    fun neo4jIntegrationConfigRepository(
+    fun neo4jIntegrationConfigRepositoryDelegate(
         integrationConfigNodeNeo4jRepository: IntegrationConfigNodeNeo4jRepository,
         objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
-    ): IntegrationConfigRepository {
-        logger.info { "[Persistence] Neo4jIntegrationConfigRepository active" }
+    ): Neo4jIntegrationConfigRepository {
         return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
+    }
+
+    @Bean
+    @Primary
+    fun neo4jIntegrationConfigRepository(
+        neo4jIntegrationConfigRepositoryDelegate: Neo4jIntegrationConfigRepository,
+        namespaceRepository: NamespaceRepository,
+    ): IntegrationConfigRepository {
+        logger.info { "[Persistence] Neo4jIntegrationConfigRepository active (filesystem augmentation enabled)" }
+        return FilesystemIntegrationConfigRepository(
+            delegate = neo4jIntegrationConfigRepositoryDelegate,
+            namespaceRepository = namespaceRepository,
+        )
     }
 
     @Bean
