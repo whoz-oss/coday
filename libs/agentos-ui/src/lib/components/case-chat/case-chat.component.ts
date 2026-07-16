@@ -23,6 +23,7 @@ import {
   AgentFinishedEvent,
   AgentRunningEvent,
   AgentSelectedEvent,
+  AnswerEvent,
   CaseEvent,
   CaseStatusEvent,
   CaseUpdatedEvent,
@@ -31,6 +32,8 @@ import {
   ErrorEvent,
   IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
+  QuestionEvent,
+  QuestionEventQuestionTypeEnum,
   ToolRequestEvent,
   ToolResponseEvent,
   WarnEvent,
@@ -38,6 +41,8 @@ import {
 import { Prompt } from '@whoz-oss/agentos-api-client'
 import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import { CaseStateService } from '../../services/case-state.service'
+import { OAuthAgentosService } from '../../services/oauth-agentos.service'
+import { QuestionPanelComponent } from '../question-panel/question-panel.component'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
 import { PromptStateService } from '../../services/prompt-state.service'
@@ -76,6 +81,7 @@ export type TimelineItem =
   | { kind: 'tool'; call: ToolCall }
   | { kind: 'streaming'; text: string }
   | { kind: 'technical'; item: TechnicalItem; eventId: string }
+  | { kind: 'question'; event: QuestionEvent; answered: boolean }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
@@ -96,7 +102,14 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 @Component({
   selector: 'agentos-case-chat',
-  imports: [IconButtonComponent, JsonPipe, DrawerComponent, ExchangeShellComponent, PromptAutocompleteComponent],
+  imports: [
+    IconButtonComponent,
+    JsonPipe,
+    DrawerComponent,
+    ExchangeShellComponent,
+    PromptAutocompleteComponent,
+    QuestionPanelComponent,
+  ],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -112,6 +125,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly caseState = inject(CaseStateService)
   private readonly promptState = inject(PromptStateService)
+  private readonly oauthService = inject(OAuthAgentosService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
@@ -320,6 +334,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           seenToolIds.add(requestId)
           items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
         }
+      } else if (e.type === 'QuestionEvent') {
+        const qe = e as QuestionEvent
+        // A question is answered when there is a corresponding AnswerEvent in the stream.
+        const answered = allEvents.some((ae) => ae.type === 'AnswerEvent' && (ae as AnswerEvent).questionId === qe.id)
+        items.push({ kind: 'question', event: qe, answered })
       } else if (showTechnical) {
         const technical = this.toTechnicalItem(e)
         if (technical) {
@@ -349,7 +368,37 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         return item.eventId
       case 'streaming':
         return 'streaming'
+      case 'question':
+        return `question-${item.event.id}`
     }
+  }
+
+  /** Exposed so the template can check if the OAuth panel should be suppressed after popup opens. */
+  protected readonly oauthPendingQuestion = this.oauthService.pendingQuestion
+
+  /** Called by question-panel when the user cancels a non-OAuth question. */
+  protected onQuestionCancelled(): void {
+    // For OAUTH_AUTHORIZE, cancelRequest() was already called inside the panel.
+    // Nothing else to do here for non-OAuth types (no backend call needed for cancel).
+  }
+
+  /**
+   * Called by question-panel when the user submits a non-OAuth answer.
+   * Posts to POST /api/cases/{caseId}/messages with answerToEventId.
+   */
+  protected onQuestionAnswered(questionEvent: QuestionEvent, answer: string): void {
+    this.isRunning.set(true)
+    this.http
+      .post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
+        content: answer,
+        answerToEventId: questionEvent.id,
+      })
+      .subscribe({
+        error: (err) => {
+          console.error('[CaseChat] Failed to post answer', err)
+          this.isRunning.set(false)
+        },
+      })
   }
 
   protected get canSend(): boolean {
@@ -536,6 +585,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             return
           }
 
+          if (event.type === 'QuestionEvent') {
+            const qe = event as QuestionEvent
+            if (qe.questionType === QuestionEventQuestionTypeEnum.OAUTH_AUTHORIZE) {
+              // Delegate OAuth popup management to the service.
+              // The panel is shown via the timeline (question kind) and the service
+              // exposes pendingQuestion so the panel knows when to hide after popup opens.
+              this.oauthService.setPendingQuestion(qe)
+            }
+            return
+          }
+
           // For other events: don't force isRunning=true.
           // submit() sets isRunning=true, and we flip it back on AgentFinishedEvent.
         })
@@ -564,6 +624,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       'ErrorEvent',
       'WarnEvent',
       'IntentionGeneratedEvent',
+      'QuestionEvent',
+      'AnswerEvent',
     ] as const
 
     // handle the different event names we see in the SSE stream
