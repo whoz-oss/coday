@@ -9,8 +9,8 @@
  */
 
 export interface UserGroupUpdateRequest {
+  agentIds: Set<string>
   name: string
   userExternalIdsToAdd: Set<string>
   userExternalIdsToRemove: Set<string>
-  agentIds: Set<string>
 }

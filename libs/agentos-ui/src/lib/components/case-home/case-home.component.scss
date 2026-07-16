@@ -1,3 +1,5 @@
+@use '../../../../../design-system/src/styles' as ds;
+
 .case-home {
   display: flex;
   flex-direction: column;
@@ -20,8 +22,9 @@
     font-size: clamp(1.5rem, 4vw, 2.25rem);
     font-weight: 700;
     letter-spacing: -0.03em;
-    color: var(--color-text, #1d1d1f);
+    color: var(--color-text);
     text-align: center;
+    font-family: ds.$font-ui;
   }
 
   &__autocomplete {
@@ -45,20 +48,20 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    background: var(--glass-bg, rgba(255, 255, 255, 0.72));
-    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.18));
-    backdrop-filter: var(--glass-backdrop-blur, blur(20px));
-    -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: var(--glass-backdrop-blur);
+    -webkit-backdrop-filter: var(--glass-backdrop-blur);
     border-radius: 16px;
-    box-shadow: 0 4px 24px var(--color-shadow, rgba(0, 0, 0, 0.07));
+    box-shadow: 0 4px 24px var(--color-shadow);
     // overflow: hidden removed — would clip the absolute-positioned autocomplete dropdown
     transition:
       box-shadow 0.2s ease,
       border-color 0.2s ease;
 
     &:focus-within {
-      box-shadow: 0 4px 32px rgba(0, 122, 255, 0.15);
-      border-color: var(--color-primary, #007aff);
+      box-shadow: 0 4px 32px color-mix(in srgb, var(--color-primary) 20%, transparent);
+      border-color: var(--color-primary);
     }
   }
 
@@ -68,15 +71,15 @@
     padding: 1rem 1.25rem 0.5rem;
     border: none;
     background: transparent;
-    color: var(--color-text, #1d1d1f);
+    color: var(--color-text);
     font-size: 1rem;
-    font-family: inherit;
+    font-family: ds.$font-ui;
     line-height: 1.6;
     outline: none;
     box-sizing: border-box;
 
     &::placeholder {
-      color: var(--color-text-secondary, #6e6e73);
+      color: var(--color-text-secondary);
     }
 
     &:disabled {
@@ -93,8 +96,8 @@
   }
 
   &__hint {
+    @include ds.text-secondary;
     font-size: 0.75rem;
-    color: var(--color-text-secondary, #6e6e73);
     opacity: 0.7;
   }
 }

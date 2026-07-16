@@ -36,13 +36,16 @@ import {
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { Prompt } from '@whoz-oss/agentos-api-client'
-import { CopyButtonComponent, IconButtonComponent } from '@whoz-oss/design-system'
+import { DrawerComponent, IconButtonComponent, CopyButtonComponent } from '@whoz-oss/design-system'
 import { CaseStateService } from '../../services/case-state.service'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
+import { ExchangeStateService } from '../../services/exchange-state.service'
+import { exchangeMutationScope } from '../../services/exchange-content.utils'
+import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 
 export interface ToolCall {
   requestId: string
@@ -93,7 +96,14 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 @Component({
   selector: 'agentos-case-chat',
-  imports: [CopyButtonComponent, IconButtonComponent, JsonPipe, PromptAutocompleteComponent],
+  imports: [
+    CopyButtonComponent,
+    IconButtonComponent,
+    JsonPipe,
+    DrawerComponent,
+    ExchangeShellComponent,
+    PromptAutocompleteComponent,
+  ],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -103,12 +113,21 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly zone = inject(NgZone)
   private readonly destroyRef = inject(DestroyRef)
   private readonly domSanitizer = inject(DomSanitizer)
+  private readonly exchangeState = inject(ExchangeStateService)
   private readonly elementRef = inject(ElementRef)
 
   private readonly config = inject(Configuration)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly caseState = inject(CaseStateService)
   private readonly promptState = inject(PromptStateService)
+
+  /** Right-side file-exchange drawer open state + entry-point badge count. */
+  protected readonly exchangeOpen = signal(false)
+  protected readonly exchangeFileCount = this.exchangeState.fileCount
+
+  protected toggleExchange(): void {
+    this.exchangeOpen.update((v) => !v)
+  }
 
   // caseId and namespaceId are read from query params (?case=...&ns=...).
   // The case-shell renders this component directly (not via router-outlet),
@@ -534,6 +553,24 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             this.isRunning.set(false)
             // End-of-turn: reset streaming buffer.
             this.streamingText.set('')
+            // Safety net: refresh both scopes at end-of-turn ONLY if a tool ran (covers a mutation the
+            // per-op regex may have missed); pure-conversation turns skip the manifest fetch.
+            if (this.anyToolResponseThisTurn) {
+              this.exchangeState.refreshManifest()
+            }
+            this.anyToolResponseThisTurn = false
+            return
+          }
+
+          if (event.type === 'ToolResponseEvent') {
+            this.anyToolResponseThisTurn = true
+            // The agent mutated the exchange filesystem → refresh the affected scope's drawer + badge live.
+            const mutatedScope = exchangeMutationScope((event as ToolResponseEvent).toolName)
+            if (mutatedScope === 'case') {
+              this.exchangeState.refreshCase()
+            } else if (mutatedScope === 'namespace') {
+              this.exchangeState.refreshNamespace()
+            }
             return
           }
 
@@ -600,6 +637,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       })
     }
   }
+
+  /** Whether any tool ran this turn — gates the end-of-turn exchange refresh (skips pure-chat turns). */
+  private anyToolResponseThisTurn = false
 
   protected onInput(event: Event): void {
     const value = (event.target as HTMLTextAreaElement).value

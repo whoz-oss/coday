@@ -1,43 +1,38 @@
-<div class="ac">
+@if (clickable()) {
+  <button class="ac ac--clickable" type="button" (click)="nameClicked.emit()">
+    <ng-container *ngTemplateOutlet="cardContent" />
+  </button>
+} @else {
+  <div class="ac">
+    <ng-container *ngTemplateOutlet="cardContent" />
+  </div>
+}
+
+<ng-template #cardContent>
   <!-- ── Header ── -->
   <div class="ac__header">
     <div class="ac__id">
-      <div class="ac__mark" aria-hidden="true">{{ resolvedMark }}</div>
+      @if (logo()) {
+        <div class="ac__mark ac__mark--logo" aria-hidden="true">
+          <img [src]="logo()" [alt]="name()" class="ac__logo-img" />
+        </div>
+      } @else {
+        <div class="ac__mark" [class.ac__mark--emoji]="markIsEmoji()" aria-hidden="true">{{ resolvedMark }}</div>
+      }
       <div class="ac__meta">
-        <button class="ac__name" type="button" (click)="nameClicked.emit()">{{ name() }}</button>
+        @if (clickable()) {
+          <span class="ac__name">{{ name() }}</span>
+        } @else {
+          <button class="ac__name" type="button" (click)="nameClicked.emit()">{{ name() }}</button>
+        }
+        @if (description()) {
+          <p class="ac__description">{{ description() }}</p>
+        }
       </div>
     </div>
 
     @if (hasMenu) {
-      <div class="ac__more">
-        <button class="ac__more-btn" type="button" title="More actions" (click)="toggleMenu($event)">
-          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="6" cy="12" r="1.6" fill="currentColor" />
-            <circle cx="12" cy="12" r="1.6" fill="currentColor" />
-            <circle cx="18" cy="12" r="1.6" fill="currentColor" />
-          </svg>
-        </button>
-
-        @if (menuOpen()) {
-          <div class="ac__menu" role="menu">
-            @for (item of menuItems(); track item.key) {
-              @if (item.variant === 'separator') {
-                <div class="ac__menu-sep"></div>
-              } @else {
-                <button
-                  class="ac__menu-item"
-                  [class.ac__menu-item--danger]="item.variant === 'danger'"
-                  type="button"
-                  role="menuitem"
-                  (click)="onMenuItemClick(item.key)"
-                >
-                  {{ item.label }}
-                </button>
-              }
-            }
-          </div>
-        }
-      </div>
+      <ds-kebab-menu [items]="menuItems()" (itemSelected)="menuAction.emit($event)" />
     }
   </div>
 
@@ -47,4 +42,4 @@
       <ng-content select="[agentosCardChips]" />
     </div>
   }
-</div>
+</ng-template>

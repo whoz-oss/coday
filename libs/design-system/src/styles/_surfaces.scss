@@ -1,0 +1,119 @@
+///
+/// Coday Design System — Surface Mixins
+///
+/// Captures the container / background patterns established in ActionCard,
+/// EntityCard and Drawer. All mixins use CSS custom properties with fallbacks.
+///
+/// Usage:
+///   @use 'libs/design-system/src/styles' as ds;
+///   .my-card { @include ds.surface-card; }
+///
+
+// ── Card surfaces ─────────────────────────────────────────────────────────────
+
+/// Standard card container.
+/// Source: .ac in action-card.component.scss, .entity-card in entity-card.component.scss
+/// → bg-secondary, 1px border, radius 12px, subtle shadow, hover lift
+@mixin surface-card {
+  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.7));
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  border-radius: 12px;
+  box-shadow: 0 1px 3px var(--color-shadow, rgba(0, 0, 0, 0.05));
+  overflow: hidden;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    box-shadow: 0 2px 8px var(--color-shadow, rgba(0, 0, 0, 0.08));
+    border-color: var(--color-border, rgba(0, 0, 0, 0.15));
+  }
+}
+
+/// Clickable card — extends surface-card with primary border on hover and a
+/// subtle lift transform. Adds focus-visible ring for accessibility.
+/// Source: .entity-card--clickable in entity-card.component.scss
+@mixin surface-card-clickable {
+  @include surface-card;
+
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.12s ease;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+    border-color: var(--color-primary, #007aff);
+    box-shadow: 0 2px 12px var(--color-shadow, rgba(0, 0, 0, 0.08));
+    transform: translateY(-1px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary, #007aff);
+    outline-offset: 2px;
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+// ── Dropdown / contextual menu surface ───────────────────────────────────────
+
+/// Floating dropdown / contextual menu container.
+/// Source: .ac__menu in action-card.component.scss
+/// → modal-bg, radius 10px, 1px border, modal-shadow
+@mixin surface-dropdown {
+  background: var(--color-modal-bg, #ffffff);
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  border-radius: 10px;
+  box-shadow: var(--color-modal-shadow, 0 6px 20px rgba(0, 0, 0, 0.08));
+  padding: 5px;
+}
+
+// ── Glass surface ─────────────────────────────────────────────────────────────
+
+/// Apple Glass / glassmorphism surface.
+/// Source: .ds-drawer__sidenav in drawer.component.scss
+/// → glass-bg, glass-border, glass-shadow, backdrop-filter
+@mixin surface-glass {
+  background: var(--glass-bg, rgba(255, 255, 255, 0.72));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.18));
+  box-shadow: var(--glass-shadow, 0 8px 32px 0 rgba(31, 38, 135, 0.15));
+  backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+  -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+}
+
+// ── Mark / avatar ─────────────────────────────────────────────────────────────
+
+/// Mark / initials avatar — 32x32, radius 8px.
+/// Light mode: solid #161616 background with white text.
+/// Dark mode: transparent with border + theme text color.
+///
+/// Source: .ac__mark in action-card.component.scss
+///
+/// Exception note: #161616 and #fff are the only hardcoded color values
+/// permitted in this design system — they represent the mark's intentional
+/// high-contrast identity treatment that is independent of theming.
+@mixin surface-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #161616;
+  color: #fff;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  // Dark mode: switch to outlined style
+  [data-theme='dark'] & {
+    background: transparent;
+    border: 1.5px solid var(--color-border, rgba(255, 255, 255, 0.15));
+    color: var(--color-text, #f5f5f7);
+  }
+}

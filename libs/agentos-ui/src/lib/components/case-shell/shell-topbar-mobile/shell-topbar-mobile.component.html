@@ -4,11 +4,14 @@
     <img src="CODAY-Logo.png" alt="Coday" class="shell-topbar-mobile__logo-img" />
   </button>
 
-  <span class="shell-topbar-mobile__sep">/</span>
-
   <!-- Namespace switcher -->
   <div class="shell-topbar-mobile__ns-wrap">
-    <button class="shell-topbar-mobile__ns-btn" type="button" (click)="nsMenuToggled.emit($event)">
+    <button
+      class="shell-topbar-mobile__ns-btn"
+      type="button"
+      [class.shell-topbar-mobile__ns-btn--open]="nsMenuOpen()"
+      (click)="nsMenuToggled.emit($event)"
+    >
       {{ selectedNamespace()?.name ?? '' }}
       <span class="shell-topbar-mobile__chevron">&#9662;</span>
     </button>
@@ -28,7 +31,6 @@
             [class.shell-topbar-mobile__ns-item--active]="ns.id === selectedNamespace()?.id"
             (click)="namespaceSelected.emit(ns)"
           >
-            <span class="shell-topbar-mobile__ns-dot"></span>
             <span class="shell-topbar-mobile__ns-item-name">{{ ns.name }}</span>
             @if (ns.id === selectedNamespace()?.id) {
               <span>&#10003;</span>

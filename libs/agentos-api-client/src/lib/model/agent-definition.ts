@@ -11,21 +11,25 @@ import { AgentDefinitionToolSummary } from './agent-definition-tool-summary'
 
 export interface AgentDefinition {
   /**
+   * Whether the agent uses the advanced multi-step execution engine.
+   */
+  advancedExecution: boolean
+  /**
    * The ID of the AgentConfig this definition was resolved from.
    */
   agentConfigId: string
+  /**
+   * Final system instructions sent to the LLM, including injected namespace / integration / user context blocks.
+   */
+  instructions?: string
   /**
    * The agent\'s display name.
    */
   name: string
   /**
-   * Privileged namespace context block sent as a separate system message, before instructions. Null when no namespace context is available.
+   * The namespace this agent belongs to.
    */
-  systemPrompt?: string
-  /**
-   * Final system instructions sent to the LLM, including injected namespace / integration / user context blocks.
-   */
-  instructions?: string
+  namespaceId: string
   /**
    * The actual API model name sent to the provider.
    */
@@ -35,17 +39,13 @@ export interface AgentDefinition {
    */
   resolvedProviderName: string
   /**
+   * Privileged namespace context block sent as a separate system message, before instructions. Null when no namespace context is available.
+   */
+  systemPrompt?: string
+  /**
    * Summary of tools that would be made available to this agent.
    */
   tools: Array<AgentDefinitionToolSummary>
-  /**
-   * Whether the agent uses the advanced multi-step execution engine.
-   */
-  advancedExecution: boolean
-  /**
-   * The namespace this agent belongs to.
-   */
-  namespaceId: string
   /**
    * The user whose overlay was applied, or null for namespace-only resolution.
    */

@@ -1,3 +1,137 @@
+## 0.214.3 (2026-07-15)
+
+### 🚀 Features
+
+- **wz-33039:** implement a compression mechanism en UUID and ObjectId ([cef48bdb](https://github.com/whoz-oss/coday/commit/cef48bdb))
+- **wz-33039:** change in a IdCompressorService.kt and fix tests ([81b893c2](https://github.com/whoz-oss/coday/commit/81b893c2))
+- **wz-33039:** fix test ([89306f20](https://github.com/whoz-oss/coday/commit/89306f20))
+- **wz-33039:** openapi ([a0fbdbc4](https://github.com/whoz-oss/coday/commit/a0fbdbc4))
+- **wz-33039:** rework the logic to have the compression at the chat client level ([f9a1528b](https://github.com/whoz-oss/coday/commit/f9a1528b))
+- **wz-33039:** rework the logic to have the compression chat client be considered as a chat client ([c5d4371b](https://github.com/whoz-oss/coday/commit/c5d4371b))
+- **wz-33039:** final changes ([a21a5b65](https://github.com/whoz-oss/coday/commit/a21a5b65))
+- **wz-33039:** tests changes ([254d6bab](https://github.com/whoz-oss/coday/commit/254d6bab))
+- **wz-33039:** implement a compression mechanism en UUID and ObjectId ([#1115](https://github.com/whoz-oss/coday/pull/1115))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.214.2 (2026-07-15)
+
+### 🩹 Fixes
+
+- resolve integration type descriptor ([#1143](https://github.com/whoz-oss/coday/pull/1143))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.214.1 (2026-07-14)
+
+### 🩹 Fixes
+
+- openapi property order ([#1138](https://github.com/whoz-oss/coday/pull/1138))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.214.0 (2026-07-14)
+
+### 🚀 Features
+
+- #1014 AgentOS case management (soft-delete + star/favorite + related-only listing) ([#1084](https://github.com/whoz-oss/coday/pull/1084), [#1014](https://github.com/whoz-oss/coday/issues/1014), [#1081](https://github.com/whoz-oss/coday/issues/1081), [#1010](https://github.com/whoz-oss/coday/issues/1010))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
+## 0.213.0 (2026-07-13)
+
+### 🚀 Features
+
+- #1018 add MCP_HTTP tool provider for remote MCP servers ([#1119](https://github.com/whoz-oss/coday/pull/1119), [#1018](https://github.com/whoz-oss/coday/issues/1018), [#1095](https://github.com/whoz-oss/coday/issues/1095), [#1096](https://github.com/whoz-oss/coday/issues/1096), [#1097](https://github.com/whoz-oss/coday/issues/1097))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.212.0 (2026-07-13)
+
+### 🚀 Features
+
+- case & namespace file exchange (frontend) ([#1076](https://github.com/whoz-oss/coday/pull/1076))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
+## 0.211.1 (2026-07-13)
+
+### 🩹 Fixes
+
+- handle user load and MCP_STDIO env UI differently ([#1129](https://github.com/whoz-oss/coday/pull/1129))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.211.0 (2026-07-13)
+
+### 🚀 Features
+
+- collapsable sidebar drawer with hover chevron and floating menu button ([#1128](https://github.com/whoz-oss/coday/pull/1128), [#1127](https://github.com/whoz-oss/coday/issues/1127))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.210.0 (2026-07-13)
+
+### 🚀 Features
+
+- replace Coday label with inline namespace picker in sidebar, fix isAdmin on first load ([#1127](https://github.com/whoz-oss/coday/pull/1127))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.209.0 (2026-07-10)
+
+### 🚀 Features
+
+- wz-33118 use real agentId into events ([c10f2617](https://github.com/whoz-oss/coday/commit/c10f2617))
+- wz-33118 use real agentId into events ([#1123](https://github.com/whoz-oss/coday/pull/1123))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
+## 0.208.4 (2026-07-10)
+
+### 🩹 Fixes
+
+- openapi regen ([#1124](https://github.com/whoz-oss/coday/pull/1124))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.208.3 (2026-07-09)
+
+### 🩹 Fixes
+
+- #33235 platform integrations always read-only on namespace page ([#1120](https://github.com/whoz-oss/coday/pull/1120), [#33235](https://github.com/whoz-oss/coday/issues/33235))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.208.2 (2026-07-09)
 
 ### 🩹 Fixes

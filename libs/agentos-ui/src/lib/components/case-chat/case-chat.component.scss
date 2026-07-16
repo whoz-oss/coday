@@ -8,6 +8,42 @@
   overflow: hidden;
 }
 
+// Main content slot of the right-side exchange drawer — holds the centered chat.
+.case-chat__host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+// Floating entry point for the exchange panel (mirror of the legacy FAB + matBadge).
+.case-chat__exchange-toggle {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 10;
+}
+
+.case-chat__exchange-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--color-primary, #007aff);
+  color: var(--color-text-inverse, #ffffff);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .case-chat {
   display: flex;
   flex-direction: column;

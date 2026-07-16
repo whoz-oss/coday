@@ -147,8 +147,9 @@ data class AgentAdvancedContext(
         event: ToolRequestEvent,
         responsesByRequestId: Map<String, ToolResponseEvent>,
     ): List<Message> {
+        val args = normalizeArgs(event.args)
         val toolCall =
-            AssistantMessage.ToolCall(event.toolRequestId, "function", event.toolName, normalizeArgs(event.args))
+            AssistantMessage.ToolCall(event.toolRequestId, "function", event.toolName, args)
         val messages = mutableListOf<Message>(AssistantMessage.builder().toolCalls(listOf(toolCall)).build())
 
         // Every AssistantMessage with tool_calls MUST be followed by a ToolResponseMessage
@@ -157,6 +158,7 @@ data class AgentAdvancedContext(
         val responseText =
             responsesByRequestId[event.toolRequestId]?.let { extractText(it.output) }
                 ?: "[No response recorded]"
+
         messages.add(
             ToolResponseMessage
                 .builder()
