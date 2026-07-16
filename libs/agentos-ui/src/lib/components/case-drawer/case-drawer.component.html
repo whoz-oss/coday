@@ -133,30 +133,46 @@
     </div>
 
     <!-- Detail block — revealed on hover via CSS max-height trick -->
-    <div class="case-tree-node__detail">
+    <div class="case-tree-node__detail" [class.case-tree-node__detail--confirming]="pendingDeleteId() === node.id">
       <div class="case-tree-node__detail-inner">
-        <div class="case-tree-node__actions">
-          <button
-            type="button"
-            class="case-tree-node__action-btn"
-            [class.case-tree-node__action-btn--starred]="node.favorite"
-            [title]="node.favorite ? 'Remove from favorites' : 'Add to favorites'"
-            [attr.aria-pressed]="node.favorite"
-            (click)="onStarToggled(node)"
-          >
-            {{ node.favorite ? '★' : '☆' }}
-          </button>
-          @if (node.canDelete) {
+        @if (pendingDeleteId() === node.id) {
+          <div class="case-tree-node__actions">
             <button
               type="button"
               class="case-tree-node__action-btn case-tree-node__action-btn--danger"
-              title="Delete"
-              (click)="onDeleteRequested(node.id)"
+              title="Confirm delete"
+              (click)="onDeleteConfirmed(node.id)"
             >
-              Delete
+              Yes, delete
             </button>
-          }
-        </div>
+            <button type="button" class="case-tree-node__action-btn" title="Cancel" (click)="onDeleteCancelled()">
+              Cancel
+            </button>
+          </div>
+        } @else {
+          <div class="case-tree-node__actions">
+            <button
+              type="button"
+              class="case-tree-node__action-btn"
+              [class.case-tree-node__action-btn--starred]="node.favorite"
+              [title]="node.favorite ? 'Remove from favorites' : 'Add to favorites'"
+              [attr.aria-pressed]="node.favorite"
+              (click)="onStarToggled(node)"
+            >
+              {{ node.favorite ? '★' : '☆' }}
+            </button>
+            @if (node.canDelete) {
+              <button
+                type="button"
+                class="case-tree-node__action-btn case-tree-node__action-btn--danger"
+                title="Delete"
+                (click)="onDeleteRequested(node.id)"
+              >
+                Delete
+              </button>
+            }
+          </div>
+        }
       </div>
     </div>
 

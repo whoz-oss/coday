@@ -100,7 +100,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 9px 8px;
+    padding: 9px 12px;
     border-radius: 8px;
 
     &--running {
@@ -225,8 +225,14 @@
     opacity: 1;
   }
 
+  // Confirmation en attente : le detail reste visible même sans hover
+  &__detail--confirming {
+    max-height: 80px !important;
+    opacity: 1 !important;
+  }
+
   &__detail-inner {
-    padding: 2px 8px 10px;
+    padding: 2px 12px 10px;
   }
 
   &__actions {
@@ -271,6 +277,7 @@
       border-color: color-mix(in srgb, var(--color-error, #{ds.$color-error}) 20%, transparent);
 
       &:hover {
+        color: var(--color-error, #{ds.$color-error});
         background: color-mix(in srgb, var(--color-error, #{ds.$color-error}) 14%, transparent);
         border-color: color-mix(in srgb, var(--color-error, #{ds.$color-error}) 35%, transparent);
       }
@@ -282,6 +289,6 @@
   }
 
   &[style*='--depth'] &__summary {
-    padding-left: calc(8px + var(--depth, 0) * 1.25rem);
+    padding-left: calc(12px + var(--depth, 0) * 1.25rem);
   }
 }

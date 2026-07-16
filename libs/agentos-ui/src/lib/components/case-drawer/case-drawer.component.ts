@@ -84,6 +84,9 @@ export class CaseDrawerComponent {
 
   protected readonly expandOverrides = signal(new Map<string, boolean>())
 
+  /** Id of the case currently awaiting delete confirmation, null if none. */
+  protected readonly pendingDeleteId = signal<string | null>(null)
+
   protected isExpanded(id: string): boolean {
     return this.expandOverrides().get(id) ?? this.autoExpandedIds().has(id)
   }
@@ -111,7 +114,16 @@ export class CaseDrawerComponent {
   }
 
   protected onDeleteRequested(id: string): void {
+    this.pendingDeleteId.set(id)
+  }
+
+  protected onDeleteConfirmed(id: string): void {
+    this.pendingDeleteId.set(null)
     this.deleteRequested.emit(id)
+  }
+
+  protected onDeleteCancelled(): void {
+    this.pendingDeleteId.set(null)
   }
 
   protected onStarToggled(item: CaseListItem): void {
