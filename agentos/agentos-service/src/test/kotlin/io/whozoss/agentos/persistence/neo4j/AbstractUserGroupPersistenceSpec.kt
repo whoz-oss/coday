@@ -190,6 +190,23 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             ).shouldBeEmpty()
         }
 
+        "findGroupsByUserExternalIds includes groups where the user is an ADMIN" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Admins"))
+            userRepo.save(user("alice@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com"))
+            // Promotion replaces alice's [:MEMBER] edge with [:ADMIN]; she must still be listed here.
+            userGroupRepo.setMemberRoles(g.id, listOf("alice@example.com"))
+
+            val results = userGroupRepo.findGroupsByUserExternalIds(
+                externalIds = listOf("alice@example.com"),
+                namespaceId = null,
+            )
+
+            results["alice@example.com"]?.shouldHaveSize(1)
+            results["alice@example.com"]!!.first().name shouldBe "Admins"
+        }
+
         "findMembers returns members ordered by externalId with display fields and MEMBER role" {
             val ns = namespaceRepo.save(namespace())
             val g = userGroupRepo.save(userGroup(ns.id, "Group"))

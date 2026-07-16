@@ -146,6 +146,8 @@ open class Neo4jUserGroupRepository(
 
     /**
      * Returns groups for the given user external IDs, optionally scoped to a namespace.
+     * Both `[:MEMBER]` and `[:ADMIN]` links count as membership, so a group admin is still
+     * listed among their own groups.
      *
      * When [namespaceId] is null, groups from all namespaces are returned.
      * When [namespaceId] is provided, the Cypher query adds an extra predicate
@@ -165,7 +167,7 @@ open class Neo4jUserGroupRepository(
             namespaceClause = ""
         }
         val query = $$"""
-            MATCH (u:User)-[:MEMBER]->(g:UserGroup)
+            MATCH (u:User)-[:MEMBER|ADMIN]->(g:UserGroup)
             WHERE u.externalId IN $externalIds
               AND NOT COALESCE(g.removed, false)
               AND NOT COALESCE(u.removed, false)
