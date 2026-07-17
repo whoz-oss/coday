@@ -8,6 +8,7 @@ import { CaseHomeComponent } from '../case-home/case-home.component'
 import { THEME_PORT, ThemeMode } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { CaseStateService } from '../../services/case-state.service'
+import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
 import { ShellTopbarMobileComponent } from './shell-topbar-mobile/shell-topbar-mobile.component'
 import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/shell-case-switcher-mobile.component'
@@ -48,6 +49,7 @@ export class CaseShellComponent {
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
   private readonly caseState = inject(CaseStateService)
+  private readonly namespaceState = inject(NamespaceStateService)
   private readonly destroyRef = inject(DestroyRef)
 
   // ---------------------------------------------------------------------------
@@ -147,6 +149,9 @@ export class CaseShellComponent {
       if (nsId) {
         const found = nsList.find((ns) => ns.id === nsId)
         this.selectedNamespace.set(found ?? nsList[0] ?? null)
+        // Sync into the shared service so other parts of the app (e.g. ShellTopbarComponent)
+        // can read the current namespace without needing the query param.
+        this.namespaceState.selectNamespace(nsId)
       } else {
         const first = nsList[0]
         if (first?.id) {
@@ -240,7 +245,8 @@ export class CaseShellComponent {
   // ---------------------------------------------------------------------------
 
   protected navigateHome(): void {
-    this.router.navigate(['/agentos/home'])
+    const nsId = this.namespaceId()
+    this.router.navigate(['/agentos/home'], nsId ? { queryParams: { ns: nsId } } : {})
   }
 
   protected collapseSidebar(): void {
