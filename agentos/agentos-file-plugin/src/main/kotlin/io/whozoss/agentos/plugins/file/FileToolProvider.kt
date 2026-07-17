@@ -88,7 +88,7 @@ class FileToolProvider : ToolPlugin {
                     "readMaxSizeMb": {
                         "type": "integer",
                         "title": "Read Max Size (MB)",
-                        "description": "Maximum file size in megabytes that the read tools will read. Default is 10 MB.",
+                        "description": "Maximum file size in megabytes that readFile, readAsImage and readSpreadsheet will read. Default is 10 MB.",
                         "default": 10
                     },
                     "extraDenyPatterns": {

@@ -8,15 +8,21 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
 import mu.KLogging
 import org.apache.poi.EncryptedDocumentException
+import org.apache.poi.ooxml.POIXMLException
+import org.apache.poi.openxml4j.exceptions.InvalidFormatException
+import org.apache.poi.openxml4j.exceptions.InvalidOperationException
 import org.apache.poi.openxml4j.exceptions.NotOfficeXmlFileException
+import org.apache.poi.openxml4j.opc.OPCPackage
+import org.apache.poi.openxml4j.opc.PackageAccess
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.usermodel.DataFormatter
 import org.apache.poi.ss.usermodel.FormulaError
 import org.apache.poi.ss.usermodel.Row
 import org.apache.poi.ss.usermodel.Sheet
+import org.apache.poi.xssf.usermodel.XSSFCell
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
-import java.nio.file.Files
+import java.nio.file.FileSystemException
 import java.nio.file.Path
 import java.util.Locale
 import kotlin.io.path.fileSize
@@ -28,9 +34,12 @@ import kotlin.io.path.name
  * One block per selected sheet: a `## Sheet i/N "name"` header describing the row window,
  * then RFC 4180 CSV (fields quoted when they contain a comma, quote or newline; `\n` record
  * separator instead of CRLF, for cheaper tokens). Values are rendered as displayed in Excel
- * via [DataFormatter] (number and date formats applied); formula cells yield their cached
- * last-saved result (no evaluation, on purpose: evaluating a large workbook inside a tool
- * call is a latency trap) and error cells the Excel error literal (`#DIV/0!`, `#REF!`...).
+ * via [DataFormatter] (number and date formats applied, honoring the workbook's 1900/1904
+ * date system); formula cells yield their cached last-saved result (no evaluation, on
+ * purpose: evaluating a large workbook inside a tool call is a latency trap), formula cells
+ * saved without a cached result (openpyxl, exceljs and friends write those) render as
+ * `=formula` rather than a fabricated zero, and error cells give the Excel error literal
+ * (`#DIV/0!`, `#REF!`...).
  * Merged regions keep their value in the top-left cell only, covered cells come out empty.
  * Hidden sheets and rows are included (hidden sheets are marked): this is data extraction,
  * not visual rendering, and skipping rows would break the physical row numbering that
@@ -39,11 +48,15 @@ import kotlin.io.path.name
  * content-free rows and cells are trimmed (a sheet merely formatted down to row 1048576
  * does not blow the output).
  *
- * Budgets per call: [MAX_ROWS_PER_CALL] rows or [MAX_OUTPUT_CHARS] characters (whichever
- * trips first, truncating at a row boundary), [MAX_COLUMNS] columns and [MAX_CELL_CHARS]
- * characters per cell. A `[truncated]` notice tells the model how to continue. The whole
- * workbook is materialized in memory (XSSF DOM): raising `readMaxSizeMb` raises the parse
- * memory cost accordingly.
+ * Budgets per call: [MAX_ROWS_PER_CALL] rows or [MAX_OUTPUT_CHARS] characters of CSV body
+ * (whichever trips first; truncation happens at a row boundary, and a row longer than the
+ * remaining budget is itself cut with a `[row truncated]` marker so a single row can never
+ * blow the budget), [MAX_COLUMNS] columns and [MAX_CELL_CHARS] characters per cell. A
+ * `[truncated]` notice tells the model how to continue. The workbook is opened from the
+ * file (lazy random-access zip reading; the InputStream path would buffer the whole
+ * decompressed package in memory up front) but sheets are still materialized as XSSF DOM:
+ * raising `readMaxSizeMb` raises the parse memory cost, and the timeout cannot interrupt
+ * a POI parse mid-flight.
  */
 class ReadSpreadsheetTool(
     private val projectRoot: Path,
@@ -67,6 +80,9 @@ class ReadSpreadsheetTool(
 
         /** A single cell may hold up to 32767 characters; longer values are cut. */
         const val MAX_CELL_CHARS = 5000
+
+        private const val CELL_TRUNCATED_MARKER = "…[cell truncated]"
+        private const val ROW_TRUNCATED_MARKER = "…[row truncated]"
     }
 
     override val name: String =
@@ -77,11 +93,14 @@ class ReadSpreadsheetTool(
         Read an Excel spreadsheet (.xlsx) as text. Cell values are returned as CSV
         (RFC 4180 quoting), one block per sheet, each preceded by a header line giving
         the sheet name and the row window shown. Values appear as displayed in Excel
-        (number and date formats applied); formulas yield their last saved result and
-        error cells yield Excel error literals (#DIV/0!, #REF!...).
-        At most $MAX_ROWS_PER_CALL rows (or $MAX_OUTPUT_CHARS characters) per call: for larger
+        (number and date formats applied); formulas yield their last saved result (or
+        "=formula" when the file was saved without cached results) and error cells
+        yield Excel error literals (#DIV/0!, #REF!...).
+        At most $MAX_ROWS_PER_CALL rows (or ~$MAX_OUTPUT_CHARS characters) per call: for larger
         sheets pass "sheets" (1-based sheet numbers) and "startRow" (1-based row) to page
-        through, as instructed by the [truncated] notice.
+        through, as instructed by the [truncated] notice. Sheets wider than $MAX_COLUMNS
+        columns are cut at column $MAX_COLUMNS (flagged in the sheet header); oversized cells
+        and rows are cut with "[cell truncated]"/"[row truncated]" markers.
         .xlsx only. For .csv and other text files use readFile. Legacy .xls, .xlsm and
         .ods are not supported: convert to .xlsx first.
         """.trimIndent()
@@ -150,6 +169,15 @@ class ReadSpreadsheetTool(
                 errorType = "INVALID_INPUT",
                 errorMessage = e.message,
             )
+        } catch (e: FileSystemException) {
+            // NoSuchFileException/AccessDeniedException messages are the bare absolute
+            // server path, which must not reach the model.
+            logger.warn(e) { "readSpreadsheet failed to read '${params.filePath}'" }
+            ToolExecutionResult.error(
+                "File could not be read: ${params.filePath}",
+                errorType = "READ_ERROR",
+                errorMessage = e.javaClass.simpleName,
+            )
         } catch (e: Exception) {
             logger.warn(e) { "readSpreadsheet failed to read '${params.filePath}'" }
             ToolExecutionResult.error(
@@ -184,13 +212,21 @@ class ReadSpreadsheetTool(
         }
 
         try {
-            // XSSFWorkbook is constructed directly on purpose: WorkbookFactory resolves
-            // providers through the thread context classloader, which under PF4J is the
-            // application classloader and does not see the bundled POI classes.
-            Files.newInputStream(resolved).use { input ->
-                XSSFWorkbook(input).use { workbook ->
-                    return renderWorkbook(workbook, params, resolved.name)
-                }
+            // The workbook is opened from the file, not an InputStream: the stream path
+            // buffers every decompressed zip entry in memory up front, while the file path
+            // reads entries lazily with random access. OPCPackage/XSSFWorkbook are
+            // constructed directly on purpose: WorkbookFactory resolves providers through
+            // the thread context classloader, which under PF4J is the application
+            // classloader and does not see the bundled POI classes.
+            val opcPackage = OPCPackage.open(resolved.toFile(), PackageAccess.READ)
+            val workbook = try {
+                XSSFWorkbook(opcPackage)
+            } catch (e: Exception) {
+                opcPackage.revert()
+                throw e
+            }
+            workbook.use {
+                return renderWorkbook(it, params, resolved.name)
             }
         } catch (e: EncryptedDocumentException) {
             throw IllegalArgumentException("Excel file is password-protected: ${resolved.name}")
@@ -200,6 +236,17 @@ class ReadSpreadsheetTool(
             throw IllegalArgumentException(
                 "Not a valid .xlsx file (corrupt, password-protected, or legacy .xls; convert to .xlsx): ${resolved.name}",
             )
+        } catch (e: POIXMLException) {
+            // A valid OOXML package that is not a workbook (e.g. a .docx renamed .xlsx).
+            throw IllegalArgumentException("Not a valid .xlsx file (the package is not an Excel workbook): ${resolved.name}")
+        } catch (e: InvalidFormatException) {
+            // A valid zip that is not an OOXML package (no content-types part).
+            throw IllegalArgumentException("Not a valid .xlsx file (the package is not an Excel workbook): ${resolved.name}")
+        } catch (e: InvalidOperationException) {
+            // POI wraps open failures (e.g. permission denied) with the absolute server
+            // path in the message; rethrow with the relative path only.
+            logger.warn(e) { "readSpreadsheet could not open '${params.filePath}'" }
+            throw IllegalArgumentException("File could not be opened: ${params.filePath}")
         }
     }
 
@@ -210,6 +257,9 @@ class ReadSpreadsheetTool(
         }
 
         val selection = selectSheets(params.sheets, sheetCount, fileName)
+        if (params.startRow != null && params.startRow < 1) {
+            throw IllegalArgumentException("\"startRow\" must be at least 1 (got ${params.startRow}).")
+        }
         if (params.startRow != null && selection.size != 1) {
             throw IllegalArgumentException(
                 "\"startRow\" requires targeting exactly one sheet (pass a single entry in \"sheets\").",
@@ -217,6 +267,7 @@ class ReadSpreadsheetTool(
         }
 
         val formatter = DataFormatter(Locale.US)
+        val date1904 = workbook.isDate1904
         val out = StringBuilder()
         var rowsEmitted = 0
 
@@ -246,20 +297,41 @@ class ReadSpreadsheetTool(
             var windowEnd = startRow - 1
             var nextStartRow: Int? = null
             for (rowIndex in (startRow - 1)..range.lastContentRow) {
-                if (rowsEmitted >= MAX_ROWS_PER_CALL || out.length + body.length >= MAX_OUTPUT_CHARS) {
+                if (rowsEmitted >= MAX_ROWS_PER_CALL) {
                     nextStartRow = rowIndex + 1
                     break
                 }
-                body.append(renderRow(sheet.getRow(rowIndex), range.columnCount, formatter)).append('\n')
+                val rowText = renderRow(sheet.getRow(rowIndex), range.columnCount, formatter, date1904)
+                val used = out.length + body.length
+                if (used + rowText.length + 1 > MAX_OUTPUT_CHARS) {
+                    if (rowsEmitted == 0) {
+                        // A single row larger than the whole budget: emit what fits with a
+                        // marker so the call still makes progress; the row's tail is not
+                        // reachable by paging.
+                        val room = (MAX_OUTPUT_CHARS - used - ROW_TRUNCATED_MARKER.length - 1).coerceAtLeast(0)
+                        body.append(cutAtCharBoundary(rowText, room)).append(ROW_TRUNCATED_MARKER).append('\n')
+                        rowsEmitted++
+                        windowEnd = rowIndex + 1
+                        nextStartRow = rowIndex + 2
+                    } else {
+                        nextStartRow = rowIndex + 1
+                    }
+                    break
+                }
+                body.append(rowText).append('\n')
                 rowsEmitted++
                 windowEnd = rowIndex + 1
             }
 
-            out.append(sheetTitle(sheetNumber, sheetCount, workbook))
-                .append(": rows $startRow-$windowEnd of $totalRows, ${describeColumns(range)}\n")
-                .append(body)
+            // A break before any row of this sheet was emitted would produce a nonsense
+            // "rows N-(N-1)" header: skip straight to the truncation notice instead.
+            if (windowEnd >= startRow) {
+                out.append(sheetTitle(sheetNumber, sheetCount, workbook))
+                    .append(": rows $startRow-$windowEnd of $totalRows, ${describeColumns(range)}\n")
+                    .append(body)
+            }
 
-            if (nextStartRow != null) {
+            if (nextStartRow != null && nextStartRow <= totalRows) {
                 appendTruncationNotice(
                     out,
                     workbook,
@@ -269,6 +341,9 @@ class ReadSpreadsheetTool(
                 )
                 break
             }
+            // nextStartRow beyond the sheet's rows means the cut row was the sheet's last:
+            // nothing further to page here; the top-of-loop budget check hands any
+            // remaining sheets to the boundary notice on the next iteration.
         }
 
         return out.toString()
@@ -324,12 +399,12 @@ class ReadSpreadsheetTool(
         "columns A-${columnLetter(range.columnCount - 1)}" +
             if (range.columnsTruncated) " (truncated at $MAX_COLUMNS)" else ""
 
-    private fun renderRow(row: Row?, columnCount: Int, formatter: DataFormatter): String {
+    private fun renderRow(row: Row?, columnCount: Int, formatter: DataFormatter, date1904: Boolean): String {
         if (row == null) return ""
         return (0 until columnCount)
             .map { column ->
                 val cell = row.getCell(column)
-                if (cell == null) "" else csvField(truncateCell(renderCell(cell, formatter)))
+                if (cell == null) "" else csvField(truncateCell(renderCell(cell, formatter, date1904)))
             }
             .dropLastWhile { it.isEmpty() }
             .joinToString(",")
@@ -337,32 +412,52 @@ class ReadSpreadsheetTool(
 
     /**
      * Formula cells read the cached last-saved result: without an evaluator,
-     * [DataFormatter.formatCellValue] would return the formula text itself.
+     * [DataFormatter.formatCellValue] would return the formula text itself. A formula
+     * saved without any cached result renders as `=formula` (POI would otherwise report
+     * a fabricated numeric 0).
      */
-    private fun renderCell(cell: Cell, formatter: DataFormatter): String =
+    private fun renderCell(cell: Cell, formatter: DataFormatter, date1904: Boolean): String =
         when (cell.cellType) {
-            CellType.FORMULA -> when (cell.cachedFormulaResultType) {
-                // formatRawCellContents applies the cell's number format and detects
-                // date formats internally.
-                CellType.NUMERIC -> formatter.formatRawCellContents(
-                    cell.numericCellValue,
-                    cell.cellStyle.dataFormat.toInt(),
-                    cell.cellStyle.dataFormatString,
-                )
-                CellType.STRING -> cell.stringCellValue
-                CellType.BOOLEAN -> if (cell.booleanCellValue) "TRUE" else "FALSE"
-                CellType.ERROR -> formulaErrorText(cell.errorCellValue)
-                else -> ""
+            CellType.FORMULA -> when {
+                !hasCachedFormulaResult(cell) -> runCatching { "=${cell.cellFormula}" }.getOrDefault("")
+                else -> when (cell.cachedFormulaResultType) {
+                    // formatRawCellContents applies the cell's number format and detects
+                    // date formats internally; the flag keeps 1904-system dates correct.
+                    CellType.NUMERIC -> formatter.formatRawCellContents(
+                        cell.numericCellValue,
+                        cell.cellStyle.dataFormat.toInt(),
+                        cell.cellStyle.dataFormatString,
+                        date1904,
+                    )
+                    CellType.STRING -> cell.stringCellValue
+                    CellType.BOOLEAN -> if (cell.booleanCellValue) "TRUE" else "FALSE"
+                    CellType.ERROR -> formulaErrorText(cell.errorCellValue)
+                    else -> ""
+                }
             }
             CellType.ERROR -> formulaErrorText(cell.errorCellValue)
             else -> formatter.formatCellValue(cell)
         }
 
+    /**
+     * A formula cell written without evaluation carries no cached `<v>` element (openpyxl,
+     * exceljs and pandas produce such files); POI then reports a numeric 0 that never
+     * existed in the sheet.
+     */
+    private fun hasCachedFormulaResult(cell: Cell): Boolean = (cell as? XSSFCell)?.ctCell?.isSetV ?: true
+
     private fun formulaErrorText(code: Byte): String =
         runCatching { FormulaError.forInt(code.toInt()).string }.getOrDefault("#ERROR")
 
     private fun truncateCell(value: String): String =
-        if (value.length <= MAX_CELL_CHARS) value else value.take(MAX_CELL_CHARS) + "…[cell truncated]"
+        if (value.length <= MAX_CELL_CHARS) value else cutAtCharBoundary(value, MAX_CELL_CHARS) + CELL_TRUNCATED_MARKER
+
+    /** Cuts to at most [maxLength] UTF-16 units without splitting a surrogate pair. */
+    private fun cutAtCharBoundary(value: String, maxLength: Int): String {
+        if (value.length <= maxLength) return value
+        val cut = if (maxLength > 0 && Character.isHighSurrogate(value[maxLength - 1])) maxLength - 1 else maxLength
+        return value.take(cut)
+    }
 
     /** RFC 4180: quote fields containing a comma, quote or line break, doubling inner quotes. */
     private fun csvField(value: String): String =
@@ -405,6 +500,4 @@ class ReadSpreadsheetTool(
         val columnCount: Int,
         val columnsTruncated: Boolean,
     )
-
-    private class UnsupportedFormatException(message: String) : IllegalArgumentException(message)
 }

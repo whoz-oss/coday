@@ -408,5 +408,4 @@ class ReadAsImageTool(
         }
     }
 
-    private class UnsupportedFormatException(message: String) : IllegalArgumentException(message)
 }

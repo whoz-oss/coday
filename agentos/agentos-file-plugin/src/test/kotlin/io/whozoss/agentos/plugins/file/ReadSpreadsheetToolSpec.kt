@@ -19,6 +19,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
 import java.util.UUID
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import kotlin.io.path.pathString
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 
@@ -328,6 +331,7 @@ class ReadSpreadsheetToolSpec : StringSpec() {
             output shouldContain "[truncated]"
             output shouldContain "startRow="
             output shouldNotContain "rows 1-30 of 30"
+            output.length shouldBeLessThan 101_000
         }
 
         "truncation at a sheet boundary lists the remaining sheets" {
@@ -504,6 +508,158 @@ class ReadSpreadsheetToolSpec : StringSpec() {
 
             result.success shouldBe false
             result.errorType shouldBe "UNSUPPORTED_FORMAT"
+        }
+
+        ".xlsm is rejected with a convert hint" {
+            tempDir.resolve("macro.xlsm").writeBytes(byteArrayOf(0x00, 0x01))
+
+            val result = tool().execute(ReadSpreadsheetTool.Input("macro.xlsm"), ctx)
+
+            result.success shouldBe false
+            result.errorType shouldBe "UNSUPPORTED_FORMAT"
+            result.output shouldContain "Convert .xls/.xlsm/.ods to .xlsx"
+        }
+
+        "formula saved without a cached result renders the formula text, not a fabricated zero" {
+            writeXlsx("uncached.xlsx") {
+                val sheet = createSheet("F")
+                val row = sheet.createRow(0)
+                row.createCell(0).setCellValue(2.0)
+                // No evaluateAll(): openpyxl/exceljs-style file whose formulas carry no cached value.
+                row.createCell(1).cellFormula = "A1*2"
+            }
+
+            val output = readOk(ReadSpreadsheetTool.Input("uncached.xlsx"))
+
+            output shouldContain "2,=A1*2"
+        }
+
+        "1904 date-system workbook renders formula dates with the right epoch" {
+            writeXlsx("date1904.xlsx") {
+                val workbookPr = ctWorkbook.workbookPr ?: ctWorkbook.addNewWorkbookPr()
+                workbookPr.date1904 = true
+                val sheet = createSheet("D")
+                val style = createCellStyle().apply { dataFormat = createDataFormat().getFormat("yyyy-mm-dd") }
+                val row = sheet.createRow(0)
+                row.createCell(0).apply {
+                    setCellValue(44575.0)
+                    cellStyle = style
+                }
+                row.createCell(1).apply {
+                    cellFormula = "A1"
+                    cellStyle = style
+                }
+                creationHelper.createFormulaEvaluator().evaluateAll()
+            }
+
+            val output = readOk(ReadSpreadsheetTool.Input("date1904.xlsx"))
+
+            // Plain cell and formula cell must agree; with a 1900-epoch decode the formula
+            // cell would read 2022-01-14.
+            output shouldContain "2026-01-15,2026-01-15"
+        }
+
+        "cell truncation does not split a surrogate pair" {
+            writeXlsx("emoji.xlsx") {
+                sheetOf("E", listOf(listOf("x".repeat(4999) + "😀" + "tail")))
+            }
+
+            val output = readOk(ReadSpreadsheetTool.Input("emoji.xlsx"))
+
+            output shouldContain "x…[cell truncated]"
+            output shouldNotContain "\uD83D…[cell truncated]"
+        }
+
+        "a single row larger than the character budget is cut with a row marker and stays bounded" {
+            val wide = "z".repeat(1000)
+            writeXlsx("monster.xlsx") {
+                val sheet = createSheet("M")
+                val row = sheet.createRow(0)
+                (0 until 256).forEach { column -> row.createCell(column).setCellValue(wide) }
+            }
+
+            val output = readOk(ReadSpreadsheetTool.Input("monster.xlsx"))
+
+            output shouldContain "[row truncated]"
+            output.length shouldBeLessThan 101_000
+        }
+
+        "sheet wider than the column cap is cut and flagged in the header" {
+            writeXlsx("columns.xlsx") {
+                val sheet = createSheet("W")
+                val row = sheet.createRow(0)
+                (0 until 300).forEach { column -> row.createCell(column).setCellValue("c$column") }
+            }
+
+            val output = readOk(ReadSpreadsheetTool.Input("columns.xlsx"))
+
+            output shouldContain "columns A-IV (truncated at 256)"
+            output shouldContain "c255"
+            output shouldNotContain "c256"
+        }
+
+        "startRow below 1 is rejected" {
+            writeXlsx("zero.xlsx") { sheetOf("S", listOf(listOf("a"))) }
+
+            val result = tool().execute(ReadSpreadsheetTool.Input("zero.xlsx", startRow = 0), ctx)
+
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_INPUT"
+            result.output shouldContain "at least 1"
+        }
+
+        "duplicate and unordered sheet selection is deduplicated and rendered in workbook order" {
+            writeXlsx("dupes.xlsx") {
+                sheetOf("First", listOf(listOf("a")))
+                sheetOf("Second", listOf(listOf("b")))
+                sheetOf("Third", listOf(listOf("c")))
+            }
+
+            val output = readOk(ReadSpreadsheetTool.Input("dupes.xlsx", sheets = listOf(3, 1, 1)))
+
+            output shouldContain "## Sheet 1/3 \"First\""
+            output shouldContain "## Sheet 3/3 \"Third\""
+            output shouldNotContain "## Sheet 2/3"
+            output.indexOf("\"First\"") shouldBeLessThan output.indexOf("\"Third\"")
+            output.split("## Sheet 1/3").size shouldBe 2
+        }
+
+        "trailing empty cells are trimmed without leaving separators" {
+            writeXlsx("trailing.xlsx") {
+                sheetOf("T", listOf(listOf("a", "b", "c"), listOf("d", null, null)))
+            }
+
+            val output = readOk(ReadSpreadsheetTool.Input("trailing.xlsx"))
+
+            output shouldContain "a,b,c\nd\n"
+        }
+
+        "a valid zip that is not a workbook is rejected as invalid input" {
+            val file = tempDir.resolve("archive.xlsx")
+            ZipOutputStream(Files.newOutputStream(file)).use { zip ->
+                zip.putNextEntry(ZipEntry("hello.txt"))
+                zip.write("hello".toByteArray())
+                zip.closeEntry()
+            }
+
+            val result = tool().execute(ReadSpreadsheetTool.Input("archive.xlsx"), ctx)
+
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_INPUT"
+            result.output shouldContain "Not a valid .xlsx"
+        }
+
+        "open failure does not leak the absolute server path" {
+            val file = writeXlsx("locked-perm.xlsx") { sheetOf("S", listOf(listOf("a"))) }
+            val restricted = file.toFile().setReadable(false, false)
+            // Meaningless when the OS ignores the permission change (e.g. running as root).
+            if (restricted && !file.toFile().canRead()) {
+                val result = tool().execute(ReadSpreadsheetTool.Input("locked-perm.xlsx"), ctx)
+
+                result.success shouldBe false
+                result.output shouldNotContain tempDir.pathString
+                result.output shouldContain "locked-perm.xlsx"
+            }
         }
     }
 }
