@@ -71,7 +71,9 @@ model/pending-confirmation-event.ts
 model/plugin-action-response.ts
 model/plugin-info.ts
 model/plugin-upload-response.ts
+model/prompt-effective-request.ts
 model/prompt-parameter.ts
+model/prompt-search-request.ts
 model/prompt.ts
 model/question-event.ts
 model/sync-user-roles-request.ts

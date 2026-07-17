@@ -9,6 +9,7 @@ import { catchError, debounceTime, map, of, Subject, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
+import { UserStateService } from '../../services/user-state.service'
 
 /**
  * CaseHomeComponent — landing page for a namespace.
@@ -36,6 +37,7 @@ export class CaseHomeComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly promptState = inject(PromptStateService)
+  private readonly userState = inject(UserStateService)
 
   @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
   @ViewChild(PromptAutocompleteComponent) private autocompleteRef?: PromptAutocompleteComponent
@@ -81,7 +83,9 @@ export class CaseHomeComponent implements OnInit {
         switchMap((prefix) => {
           const source$ = this.promptsLoaded
             ? of(this.effectivePrompts)
-            : this.promptState.listEffective(this.namespaceId).pipe(catchError(() => of([] as Prompt[])))
+            : this.promptState
+                .listEffective(this.namespaceId, this.userState.currentUser()?.id ?? '')
+                .pipe(catchError(() => of([] as Prompt[])))
           return source$.pipe(map((prompts) => ({ prefix, prompts })))
         }),
         takeUntilDestroyed(this.destroyRef)

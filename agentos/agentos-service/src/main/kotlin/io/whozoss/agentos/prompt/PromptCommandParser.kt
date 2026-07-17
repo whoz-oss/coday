@@ -2,8 +2,23 @@ package io.whozoss.agentos.prompt
 
 import io.whozoss.agentos.exception.PromptResolutionException
 import mu.KotlinLogging
+import java.util.UUID
 
 private val logger = KotlinLogging.logger {}
+
+/**
+ * The result of resolving a single prompt command line.
+ *
+ * [text] is the fully substituted content string ready to be sent as a user message.
+ * [agentConfigId] carries the [Prompt.agentConfigId] of the prompt that produced this
+ * line, or `null` when the line came from a plain (non-slash) message or a prompt
+ * that has no agent link. Each resolved line independently tracks the agent that
+ * owns it — there is no inheritance from parent to child prompts.
+ */
+data class ResolvedCommand(
+    val text: String,
+    val agentConfigId: UUID? = null,
+)
 
 /**
  * Parses and resolves slash-command prompt invocations from user message text.
@@ -74,8 +89,8 @@ object PromptCommandParser {
     fun resolve(
         text: String,
         promptsProvider: () -> List<Prompt>,
-    ): List<String> {
-        if (!text.startsWith("/")) return listOf(text)
+    ): List<ResolvedCommand> {
+        if (!text.startsWith("/")) return listOf(ResolvedCommand(text, null))
         val effectivePrompts = promptsProvider()
         return resolveInternal(text, effectivePrompts, depth = 0, callStack = ArrayDeque())
     }
@@ -85,20 +100,20 @@ object PromptCommandParser {
         effectivePrompts: List<Prompt>,
         depth: Int,
         callStack: ArrayDeque<PromptCallKey>,
-    ): List<String> {
-        if (!text.startsWith("/")) return listOf(text)
+    ): List<ResolvedCommand> {
+        if (!text.startsWith("/")) return listOf(ResolvedCommand(text, null))
 
         val withoutSlash = text.removePrefix("/").trimStart()
         val spaceIdx = withoutSlash.indexOf(' ')
         val commandName = (if (spaceIdx == -1) withoutSlash else withoutSlash.substring(0, spaceIdx)).lowercase()
         val argString = if (spaceIdx == -1) "" else withoutSlash.substring(spaceIdx + 1).trim()
 
-        if (commandName.isBlank()) return listOf(text)
+        if (commandName.isBlank()) return listOf(ResolvedCommand(text, null))
 
         val prompt = effectivePrompts.firstOrNull { it.name.lowercase() == commandName }
             ?: run {
                 logger.debug { "No prompt found for slash command '/$commandName' \u2014 passing text through" }
-                return listOf(text)
+                return listOf(ResolvedCommand(text, null))
             }
 
         if (depth >= MAX_PROMPT_DEPTH) {
@@ -142,11 +157,14 @@ object PromptCommandParser {
 
             logger.debug { "Resolved prompt command '/$commandName' (${tokens.size} args provided)" }
 
+            // Each content line carries this prompt's agentConfigId, UNLESS the line
+            // is itself a sub-prompt reference — in that case the sub-prompt's own
+            // agentConfigId (or null) is used. There is no inheritance from parent to child.
             return resolved.flatMap { line ->
                 val trimmed = line.trim()
                 when {
                     trimmed.startsWith("/") -> resolveInternal(trimmed, effectivePrompts, depth + 1, callStack)
-                    else -> listOf(line)
+                    else -> listOf(ResolvedCommand(line, prompt.agentConfigId))
                 }
             }
         } finally {
