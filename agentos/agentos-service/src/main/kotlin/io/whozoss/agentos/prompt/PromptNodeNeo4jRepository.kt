@@ -68,6 +68,11 @@ interface PromptNodeNeo4jRepository : Neo4jRepository<PromptNode, String> {
      *   - user-global      (userId = $userId AND namespaceId IS NULL)
      *   - namespace-shared (namespaceId = $namespaceId AND userId IS NULL)
      *   - user×namespace   (namespaceId = $namespaceId AND userId = $userId)
+     *
+     * Prompts linked to a disabled (enabled=false) or soft-deleted AgentConfig are excluded.
+     * The OPTIONAL MATCH traverses the [:BELONGS_TO] edge to the linked AgentConfig; removed
+     * agents are filtered in the OPTIONAL MATCH WHERE so they appear as null, which the
+     * WITH/WHERE then treats as absent.
      */
     @Query(
         $$"""
@@ -79,6 +84,11 @@ interface PromptNodeNeo4jRepository : Neo4jRepository<PromptNode, String> {
                 OR (p.namespaceId = $namespaceId AND p.userId IS NULL)
                 OR (p.namespaceId = $namespaceId AND p.userId = $userId)
               )
+            OPTIONAL MATCH (p)-[:BELONGS_TO]->(a:AgentConfig)
+              WHERE NOT COALESCE(a.removed, false)
+            WITH p, a
+            WHERE p.agentConfigId IS NULL
+               OR (a IS NOT NULL AND a.enabled = true)
             RETURN p ORDER BY p.name ASC
             """,
     )
