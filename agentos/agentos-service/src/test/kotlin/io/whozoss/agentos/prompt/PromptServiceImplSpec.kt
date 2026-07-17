@@ -14,6 +14,7 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
@@ -167,7 +168,7 @@ class PromptServiceImplSpec : StringSpec() {
             val service = newService()
             val agentId = UUID.randomUUID()
             every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId),
+                metadata = EntityMetadata(id = agentId, version = 0L),
                 namespaceId = null,
                 name = "agent",
             )
@@ -182,7 +183,7 @@ class PromptServiceImplSpec : StringSpec() {
             val agentNs = UUID.randomUUID()
             val promptNs = UUID.randomUUID()
             every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId),
+                metadata = EntityMetadata(id = agentId, version = 0L),
                 namespaceId = agentNs,
                 name = "foreign-agent",
             )
@@ -197,7 +198,7 @@ class PromptServiceImplSpec : StringSpec() {
             val agentId = UUID.randomUUID()
             val ns = UUID.randomUUID()
             every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId),
+                metadata = EntityMetadata(id = agentId, version = 0L),
                 namespaceId = ns,
                 name = "same-ns-agent",
             )
@@ -210,7 +211,7 @@ class PromptServiceImplSpec : StringSpec() {
             val service = newService()
             val agentId = UUID.randomUUID()
             every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId),
+                metadata = EntityMetadata(id = agentId, version = 0L),
                 namespaceId = null,
                 name = "platform-agent",
             )
@@ -219,11 +220,29 @@ class PromptServiceImplSpec : StringSpec() {
             saved.agentConfigId shouldBe agentId
         }
 
+        "create with filesystem-only agentConfigId (version == null) throws UnprocessableEntityException" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            // Filesystem agents are built in-memory: EntityMetadata.version is null
+            // because they never go through SDN save.  Linking one would produce a
+            // dangling BELONGS_TO edge in Neo4j and silently hide the prompt from
+            // findEffective.  The service must reject such associations explicitly.
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = null),
+                namespaceId = UUID.randomUUID(),
+                name = "fs-agent",
+            )
+
+            shouldThrow<UnprocessableEntityException> {
+                service.create(prompt(namespaceId = UUID.randomUUID(), agentConfigId = agentId))
+            }
+        }
+
         "create platform prompt with namespace agentConfigId throws BadRequestException" {
             val service = newService()
             val agentId = UUID.randomUUID()
             every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId),
+                metadata = EntityMetadata(id = agentId, version = 0L),
                 namespaceId = UUID.randomUUID(),
                 name = "ns-agent",
             )
