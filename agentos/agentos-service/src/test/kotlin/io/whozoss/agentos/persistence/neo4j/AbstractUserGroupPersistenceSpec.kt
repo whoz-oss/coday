@@ -10,6 +10,9 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionRelation
+import io.whozoss.agentos.permissions.PermissionRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
@@ -26,6 +29,7 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
     @Autowired lateinit var userGroupRepo: UserGroupRepository
     @Autowired lateinit var namespaceRepo: NamespaceRepository
     @Autowired lateinit var userRepo: UserRepository
+    @Autowired lateinit var permissionRepo: PermissionRepository
     @Autowired lateinit var driver: Driver
 
     fun namespace(externalId: String? = null) = Namespace(
@@ -45,6 +49,15 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
         externalId = externalId,
         email = externalId,
     )
+
+    /** Promotes the given users to ADMIN on the group through the shared permission batch. */
+    fun grantAdmin(groupId: UUID, vararg users: User) {
+        permissionRepo.applyShareBatch(
+            EntityType.USER_GROUP,
+            groupId.toString(),
+            users.map { it.id.toString() to PermissionRelation.ADMIN },
+        )
+    }
 
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
@@ -194,10 +207,10 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
         "findGroupsByUserExternalIds includes groups where the user is an ADMIN" {
             val ns = namespaceRepo.save(namespace())
             val g = userGroupRepo.save(userGroup(ns.id, "Admins"))
-            userRepo.save(user("alice@example.com"))
+            val alice = userRepo.save(user("alice@example.com"))
             userGroupRepo.addUsers(g.id, listOf("alice@example.com"))
             // Promotion replaces alice's [:MEMBER] edge with [:ADMIN]; she must still be listed here.
-            userGroupRepo.setMemberRoles(g.id, listOf("alice@example.com"))
+            grantAdmin(g.id, alice)
 
             val results = userGroupRepo.findGroupsByUserExternalIds(
                 externalIds = listOf("alice@example.com"),
@@ -257,54 +270,93 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             userGroupRepo.findByIdWithDetails(g.id).shouldBeNull()
         }
 
-        "setMemberRoles promotes members to ADMIN and findMembers reflects it" {
+        "applyShareBatch promotes a member to ADMIN and findMembers reflects it" {
             val ns = namespaceRepo.save(namespace())
             val g = userGroupRepo.save(userGroup(ns.id, "Group"))
-            userRepo.save(user("alice@example.com"))
+            val alice = userRepo.save(user("alice@example.com"))
             userRepo.save(user("bob@example.com"))
             userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
 
-            userGroupRepo.setMemberRoles(g.id, listOf("alice@example.com"))
+            grantAdmin(g.id, alice)
 
             val byExternalId = userGroupRepo.findMembers(g.id).associateBy { it.externalId }
             byExternalId["alice@example.com"]!!.role shouldBe "ADMIN"
             byExternalId["bob@example.com"]!!.role shouldBe "MEMBER"
         }
 
-        "setMemberRoles demotes an admin no longer in the set" {
+        "applyShareBatch demotes an admin back to MEMBER and findMembers reflects it" {
             val ns = namespaceRepo.save(namespace())
             val g = userGroupRepo.save(userGroup(ns.id, "Group"))
-            userRepo.save(user("alice@example.com"))
+            val alice = userRepo.save(user("alice@example.com"))
             userGroupRepo.addUsers(g.id, listOf("alice@example.com"))
-            userGroupRepo.setMemberRoles(g.id, listOf("alice@example.com"))
+            grantAdmin(g.id, alice)
             userGroupRepo.findMembers(g.id).first().role shouldBe "ADMIN"
 
-            userGroupRepo.setMemberRoles(g.id, emptyList())
+            permissionRepo.applyShareBatch(
+                EntityType.USER_GROUP,
+                g.id.toString(),
+                listOf(alice.id.toString() to PermissionRelation.MEMBER),
+            )
 
             userGroupRepo.findMembers(g.id).first().role shouldBe "MEMBER"
         }
 
-        "setMemberRoles ignores ids that are not members" {
+        "applyShareBatch silently skips non-existent users" {
             val ns = namespaceRepo.save(namespace())
             val g = userGroupRepo.save(userGroup(ns.id, "Group"))
-            userRepo.save(user("alice@example.com"))
-            userRepo.save(user("stranger@example.com"))
+
+            val applied = permissionRepo.applyShareBatch(
+                EntityType.USER_GROUP,
+                g.id.toString(),
+                listOf(UUID.randomUUID().toString() to PermissionRelation.ADMIN),
+            )
+
+            applied.shouldBeEmpty()
+            userGroupRepo.findMembers(g.id).shouldBeEmpty()
+        }
+
+        "applyShareBatch with a null role revokes both MEMBER and ADMIN relations" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Group"))
+            val alice = userRepo.save(user("alice@example.com"))
+            val bob = userRepo.save(user("bob@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
+            grantAdmin(g.id, alice)
+
+            val applied = permissionRepo.applyShareBatch(
+                EntityType.USER_GROUP,
+                g.id.toString(),
+                listOf<Pair<String, PermissionRelation?>>(alice.id.toString() to null, bob.id.toString() to null),
+            )
+
+            applied.toSet() shouldBe setOf(alice.id.toString(), bob.id.toString())
+            userGroupRepo.findMembers(g.id).shouldBeEmpty()
+        }
+
+        "addUsers does not stack a MEMBER edge on an existing ADMIN" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Group"))
+            val alice = userRepo.save(user("alice@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com"))
+            grantAdmin(g.id, alice)
+
+            // Idempotent re-add of a current admin must not produce a parallel [:MEMBER] edge.
             userGroupRepo.addUsers(g.id, listOf("alice@example.com"))
 
-            userGroupRepo.setMemberRoles(g.id, listOf("stranger@example.com"))
-
-            val members = userGroupRepo.findMembers(g.id)
-            members.map { it.externalId } shouldBe listOf("alice@example.com")
-            members.first().role shouldBe "MEMBER"
+            userGroupRepo.findMembers(g.id).first().role shouldBe "ADMIN"
+            // One relationship only: the group must not be listed twice for alice.
+            userGroupRepo
+                .findGroupsByUserExternalIds(listOf("alice@example.com"), null)["alice@example.com"]!!
+                .shouldHaveSize(1)
         }
 
         "removeUsers unlinks a member whatever their role" {
             val ns = namespaceRepo.save(namespace())
             val g = userGroupRepo.save(userGroup(ns.id, "Group"))
-            userRepo.save(user("alice@example.com"))
+            val alice = userRepo.save(user("alice@example.com"))
             userRepo.save(user("bob@example.com"))
             userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
-            userGroupRepo.setMemberRoles(g.id, listOf("alice@example.com"))
+            grantAdmin(g.id, alice)
 
             userGroupRepo.removeUsers(g.id, listOf("alice@example.com"))
 

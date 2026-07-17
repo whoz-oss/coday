@@ -134,16 +134,6 @@ open class Neo4jUserGroupRepository(
         neo4jRepository.removeUsers(userGroupId.toString(), userExternalIds.toList())
     }
 
-    override fun setMemberRoles(
-        userGroupId: UUID,
-        adminExternalIds: Collection<String>,
-    ) {
-        val groupId = userGroupId.toString()
-        val admins = adminExternalIds.toList()
-        neo4jRepository.promoteAdmins(groupId, admins)
-        neo4jRepository.demoteNonAdmins(groupId, admins)
-    }
-
     /**
      * Returns groups for the given user external IDs, optionally scoped to a namespace.
      * Both `[:MEMBER]` and `[:ADMIN]` links count as membership, so a group admin is still

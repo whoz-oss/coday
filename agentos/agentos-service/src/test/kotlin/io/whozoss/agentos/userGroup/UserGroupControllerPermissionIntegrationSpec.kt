@@ -174,7 +174,8 @@ class UserGroupControllerPermissionIntegrationSpec : StringSpec() {
             grantNamespace(PermissionRelation.ADMIN)
 
             // Drive the SDK-request -> internal-request mapping through the controller: adminExternalIds
-            // must reach setMemberRoles. (The other spec reaches role logic via the service, bypassing it.)
+            // must reach the role-reconciliation batch. (The other spec reaches role logic via the
+            // service, bypassing it.)
             mockMvc
                 .perform(
                     post("/api/user-groups/${group.id}")
@@ -188,6 +189,38 @@ class UserGroupControllerPermissionIntegrationSpec : StringSpec() {
                 .perform(get("/api/user-groups/${group.id}/members"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$[?(@.externalId=='member@example.com')].role", contains("ADMIN")))
+        }
+
+        "POST /{id} demotes an ADMIN dropped from adminExternalIds back to MEMBER" {
+            val group = createGroup("Update-demote")
+            userRepository.save(
+                User(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    externalId = "demote-me@example.com",
+                    email = "demote-me@example.com",
+                    isAdmin = false,
+                ),
+            )
+            userGroupRepository.addUsers(group.id, listOf("demote-me@example.com"))
+            grantNamespace(PermissionRelation.ADMIN)
+
+            fun updateWithAdmins(admins: String) =
+                mockMvc
+                    .perform(
+                        post("/api/user-groups/${group.id}")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(
+                                """{ "name": "${group.name}", "userExternalIdsToAdd": [], "userExternalIdsToRemove": [], "adminExternalIds": [$admins], "agentIds": [] }""",
+                            ),
+                    ).andExpect(status().isOk)
+
+            updateWithAdmins("\"demote-me@example.com\"")
+            updateWithAdmins("")
+
+            mockMvc
+                .perform(get("/api/user-groups/${group.id}/members"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.externalId=='demote-me@example.com')].role", contains("MEMBER")))
         }
 
         // -------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupCreateRequest
 import io.whozoss.agentos.user.User
@@ -80,11 +81,17 @@ class UserGroupServiceImpl(
         }
 
         if (request.userExternalIdsToAdd.isNotEmpty()) {
-            val existingIds = userService.findByExternalIds(request.userExternalIdsToAdd).map { it.externalId }.toSet()
-            val missingIds = request.userExternalIdsToAdd - existingIds
-            missingIds.forEach { userService.resolveOrCreateByExternalId(it) }
+            val existingUsers = userService.findByExternalIds(request.userExternalIdsToAdd)
+            val missingIds = request.userExternalIdsToAdd - existingUsers.map { it.externalId }.toSet()
+            val createdUsers = userService.createByExternalIds(missingIds)
             userGroupRepository.addUsers(group.id, request.userExternalIdsToAdd)
-            userGroupRepository.setMemberRoles(group.id, request.adminExternalIds)
+            reconcileRoles(
+                userGroupId = group.id,
+                currentMembers = emptyList(),
+                addedUsers = existingUsers + createdUsers,
+                adminExternalIds = request.adminExternalIds,
+                removedExternalIds = emptySet(),
+            )
         }
 
         return userGroupRepository.findByIdWithDetails(group.id)
@@ -115,8 +122,9 @@ class UserGroupServiceImpl(
         validateAgentsInNamespace(request.agentIds, existing.namespaceId)
 
         // Admins must be members after the update: existing members, plus the added, minus the removed.
+        val currentMembers = userGroupRepository.findMembers(userGroupId)
         val resultingMembers =
-            (userGroupRepository.findMembers(userGroupId).map { it.externalId }.toSet() - request.userExternalIdsToRemove) +
+            (currentMembers.map { it.externalId }.toSet() - request.userExternalIdsToRemove) +
                 request.userExternalIdsToAdd
         validateAdminsAreMembers(request.adminExternalIds, resultingMembers)
 
@@ -127,10 +135,11 @@ class UserGroupServiceImpl(
             userGroupRepository.addAgents(userGroupId, request.agentIds)
         }
 
+        var addedUsers = emptyList<User>()
         if (request.userExternalIdsToAdd.isNotEmpty()) {
-            val existingIds = userService.findByExternalIds(request.userExternalIdsToAdd).map { it.externalId }.toSet()
-            val missingIds = request.userExternalIdsToAdd - existingIds
-            userService.createByExternalIds(missingIds)
+            val existingUsers = userService.findByExternalIds(request.userExternalIdsToAdd)
+            val missingIds = request.userExternalIdsToAdd - existingUsers.map { it.externalId }.toSet()
+            addedUsers = existingUsers + userService.createByExternalIds(missingIds)
             userGroupRepository.addUsers(userGroupId, request.userExternalIdsToAdd)
         }
 
@@ -138,9 +147,13 @@ class UserGroupServiceImpl(
             userGroupRepository.removeUsers(userGroupId, request.userExternalIdsToRemove)
         }
 
-        // Reconcile roles across the resulting membership: everyone in adminExternalIds becomes ADMIN,
-        // every other member becomes MEMBER.
-        userGroupRepository.setMemberRoles(userGroupId, request.adminExternalIds)
+        reconcileRoles(
+            userGroupId = userGroupId,
+            currentMembers = currentMembers,
+            addedUsers = addedUsers,
+            adminExternalIds = request.adminExternalIds,
+            removedExternalIds = request.userExternalIdsToRemove,
+        )
 
         return userGroupRepository.findByIdWithDetails(userGroupId)
             ?: throw IllegalStateException("UserGroup $userGroupId not found after update")
@@ -173,6 +186,44 @@ class UserGroupServiceImpl(
         return allGroups
             .mapValues { (_, groups) -> groups.filter { it.id.toString() in visibleGroupIds } }
             .filterValues { it.isNotEmpty() }
+    }
+
+    /**
+     * Reconciles member roles as a delta batch through the permission layer: promotes target
+     * admins that are not already ADMIN, demotes current ADMINs that left [adminExternalIds]
+     * (unless they leave the group via [removedExternalIds]). Members whose role does not
+     * change are not sent, so the batch only pays for actual role transitions.
+     *
+     * [currentMembers] is the membership BEFORE the update (with roles and internal user ids);
+     * [addedUsers] maps the external ids added by this request to their internal user ids.
+     */
+    private fun reconcileRoles(
+        userGroupId: UUID,
+        currentMembers: List<UserGroupMember>,
+        addedUsers: List<User>,
+        adminExternalIds: Set<String>,
+        removedExternalIds: Set<String>,
+    ) {
+        val roleByExternalId = currentMembers.associateBy({ it.externalId }, { it.role })
+        val userIdByExternalId =
+            currentMembers.associateBy({ it.externalId }, { it.userId.toString() }) +
+                addedUsers.associateBy({ it.externalId }, { it.id.toString() })
+        val promotions =
+            adminExternalIds
+                .filter { roleByExternalId[it] != PermissionRelation.ADMIN.name }
+                .mapNotNull { userIdByExternalId[it] }
+                .map { it to PermissionRelation.ADMIN }
+        val demotions =
+            currentMembers
+                .filter {
+                    it.role == PermissionRelation.ADMIN.name &&
+                        it.externalId !in adminExternalIds &&
+                        it.externalId !in removedExternalIds
+                }.map { it.userId.toString() to PermissionRelation.MEMBER }
+        val entries: List<Pair<String, PermissionRelation?>> = promotions + demotions
+        if (entries.isNotEmpty()) {
+            permissionService.applyShareBatch(EntityType.USER_GROUP, userGroupId.toString(), entries)
+        }
     }
 
     private fun validateAdminsAreMembers(

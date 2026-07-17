@@ -13,11 +13,6 @@ interface UserGroupRepository : EntityRepository<UserGroup, UUID> {
     fun removeUsers(userGroupId: UUID, userExternalIds: Collection<String>)
 
     /**
-     * Reconciles member roles: everyone in [adminExternalIds] who is a member becomes ADMIN, every
-     * other member becomes MEMBER. Ids that are not members are ignored.
-     */
-    fun setMemberRoles(userGroupId: UUID, adminExternalIds: Collection<String>)
-    /**
      * Returns groups for the given user external IDs, optionally scoped to a namespace.
      *
      * When [namespaceId] is null, groups from all namespaces are returned.

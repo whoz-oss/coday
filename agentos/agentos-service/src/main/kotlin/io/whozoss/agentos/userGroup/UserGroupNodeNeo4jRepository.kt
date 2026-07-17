@@ -38,12 +38,18 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
         agentIds: List<String>,
     )
 
+    /**
+     * Adds the given users as MEMBERs of the group. A user already holding an `[:ADMIN]` edge is
+     * left untouched — ADMIN implies membership, and merging a parallel `[:MEMBER]` edge would
+     * leave the user with both relations.
+     */
     @Query(
         $$"""
         UNWIND $userExternalIds AS userExternalId
         MATCH (g:UserGroup {id: $groupId})
         MATCH (u:User {externalId: userExternalId})
-          WHERE u.removed IS NULL OR u.removed = false
+          WHERE (u.removed IS NULL OR u.removed = false)
+            AND NOT EXISTS { (u)-[:ADMIN]->(g) }
         MERGE (u)-[:MEMBER]->(g)
         """,
     )
@@ -62,39 +68,5 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
     fun removeUsers(
         groupId: String,
         userExternalIds: List<String>,
-    )
-
-    /**
-     * Promotes the given members to ADMIN: replaces their `[:MEMBER]` edge with `[:ADMIN]`.
-     * Members already ADMIN are left untouched; ids that are not members are ignored.
-     */
-    @Query(
-        $$"""
-        UNWIND $adminExternalIds AS userExternalId
-        MATCH (u:User {externalId: userExternalId})-[m:MEMBER]->(g:UserGroup {id: $groupId})
-        MERGE (u)-[:ADMIN]->(g)
-        DELETE m
-        """,
-    )
-    fun promoteAdmins(
-        groupId: String,
-        adminExternalIds: List<String>,
-    )
-
-    /**
-     * Demotes any current ADMIN not in [adminExternalIds] back to MEMBER (replaces `[:ADMIN]` with
-     * `[:MEMBER]`). With an empty list this demotes every ADMIN of the group.
-     */
-    @Query(
-        $$"""
-        MATCH (u:User)-[a:ADMIN]->(g:UserGroup {id: $groupId})
-        WHERE NOT u.externalId IN $adminExternalIds
-        MERGE (u)-[:MEMBER]->(g)
-        DELETE a
-        """,
-    )
-    fun demoteNonAdmins(
-        groupId: String,
-        adminExternalIds: List<String>,
     )
 }
