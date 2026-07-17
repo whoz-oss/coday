@@ -8,6 +8,7 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.TimeoutCancellationException
+import mu.KLogging
 import org.apache.pdfbox.Loader
 import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException
@@ -16,6 +17,9 @@ import org.apache.pdfbox.rendering.PDFRenderer
 import org.apache.poi.EncryptedDocumentException
 import org.apache.poi.openxml4j.exceptions.NotOfficeXmlFileException
 import org.apache.poi.xslf.usermodel.XMLSlideShow
+import org.apache.poi.xslf.usermodel.XSLFGroupShape
+import org.apache.poi.xslf.usermodel.XSLFShape
+import org.apache.poi.xslf.usermodel.XSLFTable
 import java.awt.Color
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
@@ -47,7 +51,7 @@ class ReadAsImageTool(
     private val readMaxSizeBytes: Long = DEFAULT_READ_MAX_SIZE,
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
 ) : StandardTool<ReadAsImageTool.Input> {
-    companion object {
+    companion object : KLogging() {
         /** PDF/PPTX rendering is significantly slower than a plain read: distinct, larger timeout. */
         private const val IO_TIMEOUT = 60L
         private const val DEFAULT_READ_MAX_SIZE = 10L * 1024 * 1024 // 10 MB
@@ -158,6 +162,7 @@ class ReadAsImageTool(
                 errorMessage = e.message,
             )
         } catch (e: Exception) {
+            logger.warn(e) { "readAsImage failed to render '${params.filePath}'" }
             ToolExecutionResult.error(
                 "Error rendering file: ${e.message}",
                 errorType = "READ_ERROR",
@@ -268,6 +273,7 @@ class ReadAsImageTool(
                     if (slideCount == 0) {
                         throw IllegalArgumentException("PPTX has no slide: ${file.name}")
                     }
+                    sanitizeDanglingTableStyleRefs(presentation)
                     val selection = selectPages(pages, slideCount, file.name, unit = "slide")
 
                     val pageSize = presentation.pageSize
@@ -288,6 +294,33 @@ class ReadAsImageTool(
             throw IllegalArgumentException(
                 "Not a valid .pptx file (corrupt, password-protected, or legacy .ppt; convert to .pptx): ${file.name}",
             )
+        }
+    }
+
+    /**
+     * Some generators emit tables referencing a table style by id without shipping the
+     * `ppt/tableStyles.xml` part. PowerPoint falls back to default formatting, but POI
+     * dereferences the absent part and throws an NPE while drawing the table
+     * (XSLFTable.getTableStyle, still unguarded in POI 5.5.1). When the part is missing,
+     * the dangling references are dropped from the in-memory model only (the file is
+     * never written back), so rendering matches the PowerPoint fallback.
+     */
+    private fun sanitizeDanglingTableStyleRefs(presentation: XMLSlideShow) {
+        if (presentation.tableStyles != null) return
+        presentation.slides.forEach { slide -> stripTableStyleIds(slide.shapes) }
+    }
+
+    private fun stripTableStyleIds(shapes: List<XSLFShape>) {
+        shapes.forEach { shape ->
+            when (shape) {
+                is XSLFTable -> {
+                    val ctTable = shape.ctTable
+                    if (ctTable.isSetTblPr && ctTable.tblPr.isSetTableStyleId) {
+                        ctTable.tblPr.unsetTableStyleId()
+                    }
+                }
+                is XSLFGroupShape -> stripTableStyleIds(shape.shapes)
+            }
         }
     }
 

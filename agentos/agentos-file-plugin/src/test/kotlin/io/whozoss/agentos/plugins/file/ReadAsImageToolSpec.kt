@@ -1,5 +1,6 @@
 package io.whozoss.agentos.plugins.file
 
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
@@ -20,6 +21,7 @@ import java.awt.Rectangle
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Base64
@@ -59,6 +61,37 @@ class ReadAsImageToolSpec : StringSpec() {
             Files.newOutputStream(file).use { presentation.write(it) }
         }
         return file
+    }
+
+    /**
+     * Writes a deck whose slide holds a table referencing a table style by id while the
+     * package ships no `ppt/tableStyles.xml` — the (PowerPoint-tolerated) shape produced
+     * by some third-party generators. POI's empty template always includes the part, so
+     * it is stripped from the zip after writing, along with its relationship and
+     * content-type override.
+     */
+    private fun writePptxWithDanglingTableStyle(name: String): Path {
+        val file = tempDir.resolve(name)
+        XMLSlideShow().use { presentation ->
+            val table = presentation.createSlide().createTable(2, 2)
+            table.setAnchor(Rectangle(50, 50, 400, 200))
+            table.setColumnWidth(0, 150.0)
+            table.setColumnWidth(1, 150.0)
+            (0..1).forEach { row -> (0..1).forEach { col -> table.getCell(row, col).text = "R${row}C$col" } }
+            val tblPr = table.ctTable.let { if (it.isSetTblPr) it.tblPr else it.addNewTblPr() }
+            tblPr.tableStyleId = "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"
+            Files.newOutputStream(file).use { presentation.write(it) }
+        }
+        FileSystems.newFileSystem(file).use { zip ->
+            Files.delete(zip.getPath("ppt", "tableStyles.xml"))
+            stripZipEntryTag(zip.getPath("ppt", "_rels", "presentation.xml.rels"), Regex("<Relationship[^>]*tableStyles\\.xml[^>]*/>"))
+            stripZipEntryTag(zip.getPath("[Content_Types].xml"), Regex("<Override[^>]*tableStyles[^>]*/>"))
+        }
+        return file
+    }
+
+    private fun stripZipEntryTag(entry: Path, tag: Regex) {
+        Files.writeString(entry, Files.readString(entry).replace(tag, ""))
     }
 
     private fun writeProtectedPptx(name: String, password: String): Path {
@@ -361,6 +394,20 @@ class ReadAsImageToolSpec : StringSpec() {
             result.images shouldHaveSize 10
             result.output shouldContain "slide(s) 1-10 of 12"
             result.output shouldContain "12 slides total"
+        }
+
+        "PPTX table referencing a style without a tableStyles part renders with default formatting" {
+            // Some generators emit a tableStyleId while omitting ppt/tableStyles.xml;
+            // PowerPoint falls back to default formatting, POI 5.5.1 still NPEs on it
+            // (XSLFTable.getTableStyle dereferences the absent part).
+            writePptxWithDanglingTableStyle("report.pptx")
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("report.pptx"), ctx)
+
+            withClue(result.output) {
+                result.success shouldBe true
+            }
+            result.images shouldHaveSize 1
         }
 
         "password-protected PPTX is rejected" {
