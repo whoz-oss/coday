@@ -3,7 +3,7 @@ import { ComponentRef, createComponent, EnvironmentInjector, signal } from '@ang
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Configuration, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
-import { of } from 'rxjs'
+import { of, Subject } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
@@ -26,6 +26,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
     initializeForCase: jest.Mock
     canWriteNamespace: ReturnType<typeof signal<boolean>>
   }
+  let queryParams$: Subject<Record<string, string>>
   let calls: string[]
 
   function makeComponent(): ComponentRef<CaseHomeComponent> {
@@ -39,6 +40,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
 
   beforeEach(() => {
     calls = []
+    queryParams$ = new Subject<Record<string, string>>()
     http = {
       post: jest.fn().mockImplementation((url: string) => {
         if (url.endsWith('/api/cases')) {
@@ -64,7 +66,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
         { provide: HttpClient, useValue: http },
         { provide: Router, useValue: router },
         { provide: Configuration, useValue: { basePath: '' } },
-        { provide: ActivatedRoute, useValue: { snapshot: { queryParams: { ns: 'ns-1' } }, queryParams: of({}) } },
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParams: { ns: 'ns-1' } }, queryParams: queryParams$ } },
         { provide: ExchangeStateService, useValue: exchangeState },
         { provide: CaseStateService, useValue: { addCase: jest.fn() } },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
@@ -129,6 +131,22 @@ describe('CaseHomeComponent — first message with attachments', () => {
     expect(calls.filter((c) => c === 'create-case')).toHaveLength(1)
     expect(calls).toContain('send-message')
     expect(router.navigate).toHaveBeenCalled()
+  })
+
+  it('a namespace switch clears the staged files and the pending case id', async () => {
+    const ref = makeComponent()
+    ref.instance.ngOnInit()
+    ref.instance['inputValue'].set('summarize this')
+    attachments(ref).addFiles([new File(['x'], 'dup.pdf')])
+    exchangeState.uploadFile.mockResolvedValueOnce({ success: false, error: 'A file with this name already exists.' })
+    await ref.instance['submit']()
+    expect(ref.instance['pendingCaseId']()).toBe('case-9')
+
+    queryParams$.next({ ns: 'ns-2' })
+
+    expect(exchangeState.initializeForNamespace).toHaveBeenCalledWith('ns-2')
+    expect(attachments(ref).attachments()).toEqual([])
+    expect(ref.instance['pendingCaseId']()).toBeNull()
   })
 
   it('routes the upload to the namespace when asked for with write rights', async () => {

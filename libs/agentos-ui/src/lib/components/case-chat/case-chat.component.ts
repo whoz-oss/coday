@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http'
 import { JsonPipe } from '@angular/common'
-import { catchError, debounceTime, map, of, Subject, switchMap } from 'rxjs'
+import { catchError, debounceTime, firstValueFrom, map, of, Subject, switchMap } from 'rxjs'
 import {
   afterNextRender,
   Component,
@@ -29,7 +29,6 @@ import {
   Configuration,
   EnrichmentPhaseTrace,
   ErrorEvent,
-  ExchangeFileEntryScopeEnum,
   IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
   ToolRequestEvent,
@@ -50,7 +49,7 @@ import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
-import { resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
+import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 
 export interface ToolCall {
   requestId: string
@@ -135,6 +134,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly attachments = inject(ComposerAttachmentsService)
   /** Attaching goes through the case exchange: same write gate as the drawer's upload button. */
   protected readonly canAttach = this.exchangeState.canWriteCase
+  /**
+   * Files can be staged (picker + drop) only when the composer itself is usable: staging on
+   * a terminal case would be a dead end, and staging during an upload batch would be
+   * silently skipped by the in-flight loop.
+   */
+  protected readonly canStageFiles = computed(
+    () => this.canAttach() && !this.isRunning() && !this.isTerminal() && !this.attachments.isUploading()
+  )
 
   protected toggleExchange(): void {
     this.exchangeOpen.update((v) => !v)
@@ -222,10 +229,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   })
 
   /** True when the message text targets the namespace exchange (previewed on the chips). */
-  protected readonly namespaceTargeted = computed(
-    () =>
-      resolveUploadScope(this.inputValue(), this.exchangeState.canWriteNamespace()) ===
-      ExchangeFileEntryScopeEnum.NAMESPACE
+  protected readonly namespaceTargeted = computed(() =>
+    isNamespaceTargeted(this.inputValue(), this.exchangeState.canWriteNamespace())
   )
 
   /** Collapsed state per toolRequestId */
@@ -740,14 +745,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     if (!this.canSend) return
     const content = this.inputValue().trim()
     if (this.attachments.hasAttachments()) {
+      const caseIdAtSubmit = this.caseId
       const scope = resolveUploadScope(content, this.exchangeState.canWriteNamespace())
       const mention = await this.attachments.uploadAllAndBuildMention(scope)
-      // Any upload failure blocks the send: the chips carry the mapped errors, the input
-      // stays intact so the user can fix and retry (already-uploaded files are skipped).
-      if (mention === null) return
-      this.inputValue.set('')
-      this.attachments.reset()
-      this.sendMessage(content ? `${content}\n\n${mention}` : mention)
+      // An upload failure or a mid-flight case switch blocks the send: failed chips carry
+      // the mapped errors (or the switch reset the batch), the input stays intact.
+      if (mention === null || this.caseId !== caseIdAtSubmit) return
+      const sent = await this.postMessage(content ? `${content}\n\n${mention}` : mention)
+      // Only a confirmed send clears the composer: on failure the text and the uploaded
+      // chips stay, and a retry rebuilds the mention without re-uploading anything.
+      if (sent && this.caseId === caseIdAtSubmit) {
+        this.inputValue.set('')
+        this.attachments.reset()
+      }
       return
     }
     this.inputValue.set('')
@@ -755,20 +765,26 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   private sendMessage(content: string): void {
+    void this.postMessage(content)
+  }
+
+  private postMessage(content: string): Promise<boolean> {
     this.isRunning.set(true)
     this.streamingText.set('')
 
-    this.http
-      .post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
+    return firstValueFrom(
+      this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
         content,
         userId: 'default-user',
       })
-      .subscribe({
-        error: (err) => {
-          console.error('[CaseChat] Failed to send message', err)
-          this.isRunning.set(false)
-        },
-      })
+    ).then(
+      () => true,
+      (err) => {
+        console.error('[CaseChat] Failed to send message', err)
+        this.isRunning.set(false)
+        return false
+      }
+    )
   }
 
   protected interrupt(): void {

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, ElementRef, input, output, viewChild } from '@angular/core'
+import { ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import { getFileIcon } from '../../services/exchange-content.utils'
 import { kindLabel, middleTruncate, PendingAttachment } from './composer-attachments.utils'
@@ -29,9 +30,30 @@ export class ComposerAttachmentsComponent {
 
   private readonly fileInput = viewChild<ElementRef<HTMLInputElement>>('fileInput')
 
-  protected readonly getFileIcon = getFileIcon
   protected readonly kindLabel = kindLabel
   protected readonly middleTruncate = middleTruncate
+
+  protected chipIcon(attachment: PendingAttachment): string {
+    if (attachment.status === 'uploading') return 'progress_activity'
+    if (attachment.status === 'uploaded') return 'check_circle'
+    return getFileIcon(attachment.file.name)
+  }
+
+  /**
+   * The badge reflects the scope the file actually went to once uploaded; before that it
+   * previews the batch-level target resolved from the message text.
+   */
+  protected showNamespaceBadge(attachment: PendingAttachment): boolean {
+    return attachment.uploadedScope
+      ? attachment.uploadedScope === ExchangeFileEntryScopeEnum.NAMESPACE
+      : this.namespaceBadge()
+  }
+
+  protected removeTitle(attachment: PendingAttachment): string {
+    return attachment.status === 'uploaded'
+      ? `Remove ${attachment.file.name} from the list (the uploaded file stays in the exchange)`
+      : `Remove ${attachment.file.name}`
+  }
 
   /** Opens the native picker; called by the host's "+" button through a template ref. */
   openPicker(): void {

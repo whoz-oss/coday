@@ -24,6 +24,10 @@
     &--error {
       border-color: var(--color-error, #d13438);
     }
+
+    &--uploaded {
+      border-color: var(--color-success, #2e7d32);
+    }
   }
 
   &__icon {

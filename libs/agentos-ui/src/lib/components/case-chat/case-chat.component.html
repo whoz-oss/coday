@@ -3,12 +3,11 @@
 
   <div dsDrawerContent class="case-chat__host">
     <div
-      #dropzone
       class="case-chat"
-      (dragenter)="canAttach() && attachments.onDragEnter($event)"
-      (dragover)="canAttach() && attachments.onDragOver($event)"
-      (dragleave)="attachments.onDragLeave($event, dropzone)"
-      (drop)="canAttach() && attachments.onDrop($event)"
+      (dragenter)="canStageFiles() && attachments.onDragEnter($event)"
+      (dragover)="canStageFiles() && attachments.onDragOver($event)"
+      (dragleave)="attachments.onDragLeave()"
+      (drop)="canStageFiles() && attachments.onDrop($event)"
     >
       @if (attachments.isDragOver()) {
         <div class="case-chat__drop-overlay" aria-hidden="true">
@@ -194,7 +193,7 @@
               icon="add"
               variant="default"
               title="Attach files"
-              [disabled]="isRunning() || isTerminal()"
+              [disabled]="!canStageFiles()"
               (action)="attachmentsUi.openPicker()"
             />
           }
@@ -204,7 +203,7 @@
             placeholder="Reply…"
             rows="3"
             [value]="inputValue()"
-            [disabled]="isRunning() || isTerminal()"
+            [disabled]="isRunning() || isTerminal() || attachments.isUploading()"
             (input)="onInput($event)"
             (keydown)="onKeydown($event)"
           ></textarea>

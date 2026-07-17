@@ -36,6 +36,11 @@ export function resolveUploadScope(text: string, canWriteNamespace: boolean): Ex
     : ExchangeFileEntryScopeEnum.CASE
 }
 
+/** True when [resolveUploadScope] resolves to the namespace exchange (chip badge preview). */
+export function isNamespaceTargeted(text: string, canWriteNamespace: boolean): boolean {
+  return resolveUploadScope(text, canWriteNamespace) === ExchangeFileEntryScopeEnum.NAMESPACE
+}
+
 /**
  * Mention block appended to the outgoing message so the agent knows which files were just
  * attached and where — messages carry no attachment metadata, the exchange does.

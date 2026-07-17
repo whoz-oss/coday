@@ -3,7 +3,7 @@ import { ComponentRef, createComponent, EnvironmentInjector, signal } from '@ang
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import { Configuration, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
-import { of } from 'rxjs'
+import { of, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
@@ -157,5 +157,57 @@ describe('CaseChatComponent — submit with attachments', () => {
 
     expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'hello', userId: 'default-user' })
     expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+  })
+
+  it('a failed message send keeps the text and the uploaded chips for a retry', async () => {
+    const ref = makeComponent()
+    ref.instance['inputValue'].set('analyse this file')
+    attachments(ref).addFiles([new File(['x'], 'report.pdf')])
+    http.post.mockImplementationOnce(() => {
+      calls.push('post')
+      return throwError(() => new Error('network down'))
+    })
+
+    await ref.instance['submit']()
+
+    expect(ref.instance['inputValue']()).toBe('analyse this file')
+    expect(attachments(ref).attachments()[0]!.status).toBe('uploaded')
+
+    await ref.instance['submit']()
+
+    // The retry does not re-upload (chip already uploaded) and sends the same content.
+    expect(exchangeState.uploadFile).toHaveBeenCalledTimes(1)
+    expect(http.post).toHaveBeenCalledTimes(2)
+    expect(ref.instance['inputValue']()).toBe('')
+    expect(attachments(ref).attachments()).toEqual([])
+  })
+
+  it('a case switch during the upload aborts the send', async () => {
+    const ref = makeComponent()
+    ref.instance['inputValue'].set('draft written for the old case')
+    attachments(ref).addFiles([new File(['x'], 'a.pdf')])
+    exchangeState.uploadFile.mockImplementation(async () => {
+      // Simulates reinitialise() firing on a sidebar case switch mid-upload.
+      ref.instance['caseId'] = 'c-2'
+      attachments(ref).reset()
+      return { success: true }
+    })
+
+    await ref.instance['submit']()
+
+    expect(http.post).not.toHaveBeenCalled()
+  })
+
+  it('canSend is false while uploading or on a terminal case, even with attachments staged', () => {
+    const ref = makeComponent()
+    attachments(ref).addFiles([new File(['x'], 'a.pdf')])
+    expect(ref.instance['canSend']).toBe(true)
+
+    attachments(ref).isUploading.set(true)
+    expect(ref.instance['canSend']).toBe(false)
+
+    attachments(ref).isUploading.set(false)
+    ref.instance['isTerminal'].set(true)
+    expect(ref.instance['canSend']).toBe(false)
   })
 })

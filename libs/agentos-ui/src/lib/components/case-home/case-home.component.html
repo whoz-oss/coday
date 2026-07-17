@@ -1,10 +1,9 @@
 <div
-  #dropzone
   class="case-home"
-  (dragenter)="attachments.onDragEnter($event)"
-  (dragover)="attachments.onDragOver($event)"
-  (dragleave)="attachments.onDragLeave($event, dropzone)"
-  (drop)="attachments.onDrop($event)"
+  (dragenter)="!isCreating() && attachments.onDragEnter($event)"
+  (dragover)="!isCreating() && attachments.onDragOver($event)"
+  (dragleave)="attachments.onDragLeave()"
+  (drop)="!isCreating() && attachments.onDrop($event)"
 >
   @if (attachments.isDragOver()) {
     <div class="case-home__drop-overlay" aria-hidden="true">

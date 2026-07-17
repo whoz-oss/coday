@@ -253,6 +253,19 @@ describe('ExchangeStateService', () => {
       expect(result.success).toBe(true)
       expect(controller.uploadNamespaceFileExchange).toHaveBeenCalledWith('ns-1', expect.any(File))
     })
+
+    it('clear() then initializeForNamespace re-inits cleanly (chat to home transition)', () => {
+      init()
+      service.clear()
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(
+        of(manifest(ExchangeManifestCapabilityEnum.READ_WRITE, [nsFile]))
+      )
+
+      service.initializeForNamespace('ns-1')
+
+      expect(service.namespaceStatus()).toBe('ready')
+      expect(service.canWriteNamespace()).toBe(true)
+    })
   })
 
   describe('refreshCase (agent file activity)', () => {

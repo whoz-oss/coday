@@ -50,11 +50,23 @@ describe('ComposerAttachmentsService', () => {
     })
 
     it('remove() drops the chip and clears the limit message', () => {
-      service.addFiles(files(10))
+      service.addFiles(files(12))
+      expect(service.limitError()).not.toBeNull()
       const id = service.attachments()[0]!.id
       service.remove(id)
       expect(service.attachments()).toHaveLength(9)
       expect(service.attachments().some((a) => a.id === id)).toBe(false)
+      expect(service.limitError()).toBeNull()
+    })
+
+    it('staging and removal are frozen while an upload batch is in flight', () => {
+      service.addFiles(files(1))
+      service.isUploading.set(true)
+
+      service.addFiles(files(2, 'late'))
+      service.remove(service.attachments()[0]!.id)
+
+      expect(service.attachments()).toHaveLength(1)
     })
 
     it('reset() clears everything', () => {
@@ -81,24 +93,16 @@ describe('ComposerAttachmentsService', () => {
       expect(event.preventDefault).not.toHaveBeenCalled()
     })
 
-    it('dragleave to a child of the container keeps the highlight', () => {
-      const container = document.createElement('div')
-      const child = document.createElement('span')
-      container.appendChild(child)
+    it('crossing a child (enter then leave pair) keeps the highlight; leaving for real clears it', () => {
+      // Container enter, then a child boundary: child enter bubbles before the previous
+      // element's leave, so the depth counter never touches zero until the real exit.
+      // (Depth-based on purpose: WebKit reports relatedTarget as null on dragleave.)
       service.onDragEnter(dragEvent())
-
-      service.onDragLeave({ relatedTarget: child } as unknown as DragEvent, container)
-
+      service.onDragEnter(dragEvent())
+      service.onDragLeave()
       expect(service.isDragOver()).toBe(true)
-    })
 
-    it('dragleave outside the container clears the highlight', () => {
-      const container = document.createElement('div')
-      const outside = document.createElement('div')
-      service.onDragEnter(dragEvent())
-
-      service.onDragLeave({ relatedTarget: outside } as unknown as DragEvent, container)
-
+      service.onDragLeave()
       expect(service.isDragOver()).toBe(false)
     })
 
@@ -156,6 +160,35 @@ describe('ComposerAttachmentsService', () => {
 
       expect(exchangeState.uploadFile).toHaveBeenCalledTimes(1)
       expect(mention).toBe('[Files attached to the case exchange: dup.pdf, ok.txt]')
+    })
+
+    it('a reset during the batch (case switch) aborts: null returned, remaining files not uploaded', async () => {
+      service.addFiles([new File(['x'], 'a.pdf'), new File(['x'], 'b.pdf')])
+      exchangeState.uploadFile.mockImplementationOnce(async () => {
+        // Simulates reinitialise() on a mid-upload case switch.
+        service.reset()
+        return { success: true }
+      })
+
+      const mention = await service.uploadAllAndBuildMention(ExchangeFileEntryScopeEnum.CASE)
+
+      expect(mention).toBeNull()
+      expect(exchangeState.uploadFile).toHaveBeenCalledTimes(1)
+    })
+
+    it('a retry under a different scope yields a mixed-scope mention', async () => {
+      service.addFiles([new File(['x'], 'a.pdf'), new File(['x'], 'dup.pdf')])
+      exchangeState.uploadFile
+        .mockResolvedValueOnce({ success: true })
+        .mockResolvedValueOnce({ success: false, error: 'A file with this name already exists.' })
+      await service.uploadAllAndBuildMention(ExchangeFileEntryScopeEnum.CASE)
+      exchangeState.uploadFile.mockResolvedValue({ success: true })
+
+      const mention = await service.uploadAllAndBuildMention(ExchangeFileEntryScopeEnum.NAMESPACE)
+
+      expect(mention).toBe(
+        '[Files attached to the case exchange: a.pdf]\n[Files attached to the namespace exchange: dup.pdf]'
+      )
     })
 
     it('toggles isUploading around the batch', async () => {
