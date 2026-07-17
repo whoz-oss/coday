@@ -74,7 +74,7 @@ export interface TechnicalItem {
 export type TimelineItem =
   | { kind: 'message'; event: CaseMessageEvent; html: SafeHtml; isFirstInGroup: boolean }
   | { kind: 'tool'; call: ToolCall }
-  | { kind: 'streaming'; text: string }
+  | { kind: 'streaming' }
   | { kind: 'technical'; item: TechnicalItem; eventId: string }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
@@ -204,9 +204,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Collapsed state per toolRequestId */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
-
-  /** Expanded state per technical eventId — collapsed by default */
-  protected readonly expandedTechnicals = signal<Set<string>>(new Set())
 
   /**
    * Whether the user is currently scrolled to (or near) the bottom of the messages area.
@@ -352,7 +349,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const base = this.baseTimeline()
     const streamingText = this.streamingText()
     if (streamingText.trim().length === 0) return base
-    return [...base, { kind: 'streaming', text: streamingText }]
+    return [...base, { kind: 'streaming' }]
   })
 
   protected trackTimelineItem(_index: number, item: TimelineItem): string {
@@ -782,19 +779,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       localStorage.setItem(CaseChatComponent.SHOW_TECHNICAL_KEY, String(next))
       return next
     })
-  }
-
-  protected toggleTechnical(eventId: string): void {
-    this.expandedTechnicals.update((set) => {
-      const next = new Set(set)
-      if (next.has(eventId)) next.delete(eventId)
-      else next.add(eventId)
-      return next
-    })
-  }
-
-  protected isTechnicalExpanded(eventId: string): boolean {
-    return this.expandedTechnicals().has(eventId)
   }
 
   // ---------------------------------------------------------------------------
