@@ -50,13 +50,15 @@
   // Fill the :host — which is already sized by the parent flex container.
   flex: 1;
   min-height: 0;
-  max-width: 800px;
   width: 100%;
-  margin: 0 auto;
-  padding: 1.5rem;
+  padding: 1rem;
   gap: 1rem;
   // Needed so the floating scroll button is positioned relative to this container.
   position: relative;
+
+  @media (min-width: 900px) {
+    padding: 1.5rem;
+  }
 
   &__messages {
     // Flex-grow to fill available height, flex-shrink + min-height so it
@@ -100,6 +102,8 @@
     // flex-shrink: 0 prevents the flex container from compressing tool call cards
     // to zero height when the messages area has min-height: 0.
     flex-shrink: 0;
+    align-self: flex-start;
+    max-width: 90%;
     border-radius: 8px;
     border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
     background: var(--glass-bg, rgba(255, 255, 255, 0.72));
@@ -380,6 +384,129 @@
     color: var(--color-text, #1d1d1f);
     max-height: 160px;
     overflow-y: auto;
+  }
+
+  // ── Conversation turns ───────────────────────────────────────────────────────
+
+  &__turn {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 90%;
+
+    &--user {
+      align-self: flex-end;
+      align-items: flex-end;
+      max-width: 82%;
+    }
+
+    &--agent {
+      align-self: flex-start;
+      align-items: flex-start;
+    }
+
+    &--streaming {
+      opacity: 0.95;
+    }
+  }
+
+  &__role-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-secondary, rgba(0, 0, 0, 0.35));
+    line-height: 1;
+  }
+
+  &__bubble {
+    padding: 10px 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.5;
+    word-break: break-word;
+    // Agent bubble — light mode
+    background: #f0f0ee;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 12px 12px 12px 3px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    color: #1d1d1f;
+
+    :host-context([data-theme='dark']) & {
+      background: #2c2c2e;
+      border-color: rgba(255, 255, 255, 0.1);
+      box-shadow: none;
+      color: #f5f5f7;
+    }
+
+    @media (min-width: 900px) {
+      font-size: 16px;
+    }
+
+    // User bubble
+    .case-chat__turn--user & {
+      background: #6e6e73;
+      color: #ffffff;
+      border: none;
+      border-radius: 12px 12px 3px 12px;
+      box-shadow: none;
+
+      :host-context([data-theme='dark']) & {
+        background: #3a3a3c;
+        color: #ffffff;
+        border: none;
+      }
+
+      a {
+        color: rgba(255, 255, 255, 0.85);
+      }
+    }
+  }
+
+  // ── System log ───────────────────────────────────────────────────────────────
+
+  &__log {
+    flex-shrink: 0;
+    align-self: flex-start;
+    width: fit-content;
+    max-width: 90%;
+  }
+
+  &__log-summary {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-text-secondary, rgba(0, 0, 0, 0.4));
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    outline: none;
+    list-style: none;
+    background: none;
+    border: none;
+    padding: 0;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+  }
+
+  &__log-body {
+    margin-top: 4px;
+    padding: 10px 12px;
+    background: #0f1115;
+    color: #e8eaf0;
+    border-radius: 6px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   // Thinking indicator (three bouncing dots)
