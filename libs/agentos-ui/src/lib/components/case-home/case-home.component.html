@@ -1,4 +1,17 @@
-<div class="case-home">
+<div
+  #dropzone
+  class="case-home"
+  (dragenter)="attachments.onDragEnter($event)"
+  (dragover)="attachments.onDragOver($event)"
+  (dragleave)="attachments.onDragLeave($event, dropzone)"
+  (drop)="attachments.onDrop($event)"
+>
+  @if (attachments.isDragOver()) {
+    <div class="case-home__drop-overlay" aria-hidden="true">
+      <span class="material-icons">upload_file</span>
+      <span>Drop files to attach</span>
+    </div>
+  }
   <div class="case-home__hero">
     <h1 class="case-home__headline">What can I help you with?</h1>
 
@@ -12,6 +25,16 @@
           />
         </div>
       }
+      <agentos-composer-attachments
+        #attachmentsUi
+        class="case-home__attachments"
+        [attachments]="attachments.attachments()"
+        [namespaceBadge]="namespaceTargeted()"
+        [limitError]="attachments.limitError()"
+        [disabled]="attachments.isUploading()"
+        (removed)="attachments.remove($event)"
+        (filesSelected)="attachments.addFiles($event)"
+      />
       <textarea
         #composerInput
         class="case-home__input"
@@ -23,7 +46,16 @@
         (keydown)="onKeydown($event)"
       ></textarea>
       <div class="case-home__composer-footer">
-        <span class="case-home__hint">{{ preferences.composerHint() }}</span>
+        <div class="case-home__footer-left">
+          <ds-icon-button
+            icon="add"
+            variant="default"
+            title="Attach files"
+            [disabled]="isCreating()"
+            (action)="attachmentsUi.openPicker()"
+          />
+          <span class="case-home__hint">{{ preferences.composerHint() }}</span>
+        </div>
         <ds-icon-button icon="send" variant="primary" title="Start case" [disabled]="!canSend" (action)="submit()" />
       </div>
     </div>

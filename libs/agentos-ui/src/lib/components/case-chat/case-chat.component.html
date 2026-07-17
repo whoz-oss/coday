@@ -2,7 +2,20 @@
   <agentos-exchange-shell dsDrawerSide (closeRequested)="exchangeOpen.set(false)" />
 
   <div dsDrawerContent class="case-chat__host">
-    <div class="case-chat">
+    <div
+      #dropzone
+      class="case-chat"
+      (dragenter)="canAttach() && attachments.onDragEnter($event)"
+      (dragover)="canAttach() && attachments.onDragOver($event)"
+      (dragleave)="attachments.onDragLeave($event, dropzone)"
+      (drop)="canAttach() && attachments.onDrop($event)"
+    >
+      @if (attachments.isDragOver()) {
+        <div class="case-chat__drop-overlay" aria-hidden="true">
+          <span class="material-icons">upload_file</span>
+          <span>Drop files to attach</span>
+        </div>
+      }
       <div class="case-chat__exchange-toggle">
         <ds-icon-button
           [icon]="exchangeOpen() ? 'chevron_right' : 'folder'"
@@ -166,37 +179,57 @@
             />
           </div>
         }
-        <textarea
-          #composerInput
-          class="case-chat__input"
-          placeholder="Reply…"
-          rows="3"
-          [value]="inputValue()"
-          [disabled]="isRunning() || isTerminal()"
-          (input)="onInput($event)"
-          (keydown)="onKeydown($event)"
-        ></textarea>
-        <div class="case-chat__actions">
-          <ds-icon-button
-            [icon]="showTechnical() ? 'visibility_off' : 'bug_report'"
-            variant="default"
-            [title]="showTechnical() ? 'Hide technical events' : 'Show technical events'"
-            (action)="toggleShowTechnical()"
-          />
-
-          @if (isRunning()) {
-            <ds-icon-button icon="stop" variant="danger" title="Interrupt" (action)="interrupt()" />
-          } @else {
+        <agentos-composer-attachments
+          #attachmentsUi
+          [attachments]="attachments.attachments()"
+          [namespaceBadge]="namespaceTargeted()"
+          [limitError]="attachments.limitError()"
+          [disabled]="attachments.isUploading()"
+          (removed)="attachments.remove($event)"
+          (filesSelected)="attachments.addFiles($event)"
+        />
+        <div class="case-chat__composer-row">
+          @if (canAttach()) {
             <ds-icon-button
-              icon="send"
-              variant="primary"
-              [title]="preferences.composerHint()"
-              [disabled]="!canSend"
-              (action)="submit()"
+              icon="add"
+              variant="default"
+              title="Attach files"
+              [disabled]="isRunning() || isTerminal()"
+              (action)="attachmentsUi.openPicker()"
             />
           }
+          <textarea
+            #composerInput
+            class="case-chat__input"
+            placeholder="Reply…"
+            rows="3"
+            [value]="inputValue()"
+            [disabled]="isRunning() || isTerminal()"
+            (input)="onInput($event)"
+            (keydown)="onKeydown($event)"
+          ></textarea>
+          <div class="case-chat__actions">
+            <ds-icon-button
+              [icon]="showTechnical() ? 'visibility_off' : 'bug_report'"
+              variant="default"
+              [title]="showTechnical() ? 'Hide technical events' : 'Show technical events'"
+              (action)="toggleShowTechnical()"
+            />
 
-          <ds-icon-button icon="cancel" variant="danger" title="Kill" [disabled]="isTerminal()" (action)="kill()" />
+            @if (isRunning()) {
+              <ds-icon-button icon="stop" variant="danger" title="Interrupt" (action)="interrupt()" />
+            } @else {
+              <ds-icon-button
+                icon="send"
+                variant="primary"
+                [title]="preferences.composerHint()"
+                [disabled]="!canSend"
+                (action)="submit()"
+              />
+            }
+
+            <ds-icon-button icon="cancel" variant="danger" title="Kill" [disabled]="isTerminal()" (action)="kill()" />
+          </div>
         </div>
       </div>
     </div>

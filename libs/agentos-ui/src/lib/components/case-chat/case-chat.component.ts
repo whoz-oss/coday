@@ -29,6 +29,7 @@ import {
   Configuration,
   EnrichmentPhaseTrace,
   ErrorEvent,
+  ExchangeFileEntryScopeEnum,
   IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
   ToolRequestEvent,
@@ -47,6 +48,9 @@ import { UserStateService } from '../../services/user-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
+import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
+import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
+import { resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 
 export interface ToolCall {
   requestId: string
@@ -97,7 +101,15 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 @Component({
   selector: 'agentos-case-chat',
-  imports: [IconButtonComponent, JsonPipe, DrawerComponent, ExchangeShellComponent, PromptAutocompleteComponent],
+  imports: [
+    IconButtonComponent,
+    JsonPipe,
+    DrawerComponent,
+    ExchangeShellComponent,
+    PromptAutocompleteComponent,
+    ComposerAttachmentsComponent,
+  ],
+  providers: [ComposerAttachmentsService],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -118,6 +130,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
   protected readonly exchangeFileCount = this.exchangeState.fileCount
+
+  /** Files staged on the next message (component-scoped instance, see providers). */
+  protected readonly attachments = inject(ComposerAttachmentsService)
+  /** Attaching goes through the case exchange: same write gate as the drawer's upload button. */
+  protected readonly canAttach = this.exchangeState.canWriteCase
 
   protected toggleExchange(): void {
     this.exchangeOpen.update((v) => !v)
@@ -203,6 +220,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     if (!text) return ''
     return this.renderMarkdown(text)
   })
+
+  /** True when the message text targets the namespace exchange (previewed on the chips). */
+  protected readonly namespaceTargeted = computed(
+    () =>
+      resolveUploadScope(this.inputValue(), this.exchangeState.canWriteNamespace()) ===
+      ExchangeFileEntryScopeEnum.NAMESPACE
+  )
 
   /** Collapsed state per toolRequestId */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
@@ -370,7 +394,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected get canSend(): boolean {
-    return !!this.inputValue().trim() && !this.isRunning() && !this.isTerminal()
+    return (
+      (!!this.inputValue().trim() || this.attachments.hasAttachments()) &&
+      !this.isRunning() &&
+      !this.isTerminal() &&
+      !this.attachments.isUploading()
+    )
   }
 
   ngOnInit(): void {
@@ -703,12 +732,24 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.slashSuggestions.set([])
     this.effectivePrompts = []
     this.promptsLoaded = false
+    this.attachments.reset()
     this.connectSse()
   }
 
-  protected submit(): void {
+  protected async submit(): Promise<void> {
     if (!this.canSend) return
     const content = this.inputValue().trim()
+    if (this.attachments.hasAttachments()) {
+      const scope = resolveUploadScope(content, this.exchangeState.canWriteNamespace())
+      const mention = await this.attachments.uploadAllAndBuildMention(scope)
+      // Any upload failure blocks the send: the chips carry the mapped errors, the input
+      // stays intact so the user can fix and retry (already-uploaded files are skipped).
+      if (mention === null) return
+      this.inputValue.set('')
+      this.attachments.reset()
+      this.sendMessage(content ? `${content}\n\n${mention}` : mention)
+      return
+    }
     this.inputValue.set('')
     this.sendMessage(content)
   }

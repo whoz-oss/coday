@@ -1,0 +1,49 @@
+@if (attachments().length > 0 || limitError()) {
+  <div class="composer-attachments">
+    @if (attachments().length > 0) {
+      <div class="composer-attachments__chips">
+        @for (attachment of attachments(); track attachment.id) {
+          <div
+            class="composer-attachments__chip"
+            [class.composer-attachments__chip--error]="attachment.status === 'error'"
+          >
+            <span
+              class="composer-attachments__icon material-icons"
+              [class.composer-attachments__icon--spinning]="attachment.status === 'uploading'"
+              aria-hidden="true"
+              >{{ attachment.status === 'uploading' ? 'progress_activity' : getFileIcon(attachment.file.name) }}</span
+            >
+            <span class="composer-attachments__name" [title]="attachment.file.name">{{
+              middleTruncate(attachment.file.name)
+            }}</span>
+            <span class="composer-attachments__kind">{{ kindLabel(attachment.file.name) }}</span>
+            @if (namespaceBadge()) {
+              <span class="composer-attachments__badge">namespace</span>
+            }
+            <ds-icon-button
+              icon="close"
+              title="Remove attachment"
+              [disabled]="disabled()"
+              (action)="removed.emit(attachment.id)"
+            />
+            @if (attachment.status === 'error' && attachment.error) {
+              <span class="composer-attachments__error">{{ attachment.error }}</span>
+            }
+          </div>
+        }
+      </div>
+    }
+    @if (limitError(); as limit) {
+      <p class="composer-attachments__limit">{{ limit }}</p>
+    }
+  </div>
+}
+<input
+  #fileInput
+  type="file"
+  multiple
+  class="composer-attachments__file-input"
+  aria-hidden="true"
+  tabindex="-1"
+  (change)="onFileInputChange($event)"
+/>
