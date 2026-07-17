@@ -1,3 +1,13 @@
+## 0.217.1 (2026-07-17)
+
+### 🩹 Fixes
+
+- #1023 Preserve namespace when navigating home ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
 ## 0.217.0 (2026-07-17)
 
 ### 🚀 Features
