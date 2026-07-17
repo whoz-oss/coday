@@ -8,6 +8,7 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.permissions.StarredService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
@@ -60,6 +61,7 @@ class CaseController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
+    private val starredService: StarredService,
 ) : CaseApi {
 
     private val crud = EntityCrudDelegate(
@@ -158,9 +160,9 @@ class CaseController(
         cases: List<Case>,
         userId: String,
     ): List<CaseDto> {
-        val relations = permissionService.listDirectRelations(userId, EntityType.CASE)
+        val starred = starredService.listDirectRelations(userId, EntityType.CASE)
         return cases.map {
-            val meta = relations[it.metadata.id.toString()]
+            val meta = starred[it.metadata.id.toString()]
             toDto(it).copy(favorite = meta?.starred ?: false, role = meta?.relation?.name)
         }
     }
@@ -310,9 +312,9 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        if (!permissionService.setStarred(userId, EntityType.CASE, id.toString(), true)) {
-            // READ can be granted transitively (namespace-admin) but starring writes on the
-            // caller's direct edge — reject instead of reporting a success that did not persist.
+        if (!starredService.setStarred(userId, EntityType.CASE, id.toString(), true)) {
+            // READ can be granted transitively (namespace-admin) but starring requires a
+            // direct user↔case edge — reject instead of reporting a success that did not persist.
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
                 "Cannot star case $id: the caller has no direct relation on it",
@@ -329,7 +331,7 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        if (!permissionService.setStarred(userId, EntityType.CASE, id.toString(), false)) {
+        if (!starredService.setStarred(userId, EntityType.CASE, id.toString(), false)) {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
                 "Cannot unstar case $id: the caller has no direct relation on it",

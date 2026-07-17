@@ -168,4 +168,74 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
         @Param("parentCaseId") parentCaseId: String,
         @Param("childCaseId") childCaseId: String,
     )
+
+    // -------------------------------------------------------------------------
+    // Starred / favorite — per-user [:STARRED] relationship on Case nodes.
+    //
+    // The [:STARRED] edge is orthogonal to [:ADMIN]/[:MEMBER]: role transitions
+    // (promote/demote) leave it untouched. The MATCH guard on [:ADMIN|MEMBER]
+    // prevents orphaned [:STARRED] edges for users with no direct permission.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Creates a `[:STARRED]` edge `(u)-[:STARRED]->(c:Case)` — only when a direct
+     * `[:ADMIN]` or `[:MEMBER]` edge already exists on the case (guard against orphans).
+     *
+     * Returns the number of `[:Case]` nodes matched (0 = user has no direct
+     * permission edge, so no star was persisted).
+     */
+    @Query(
+        $$"""MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(c:Case {id: $caseId})
+            MERGE (u)-[:STARRED]->(c)
+            RETURN count(c)
+            """,
+    )
+    fun mergeStarred(
+        @Param("userId") userId: String,
+        @Param("caseId") caseId: String,
+    ): Long
+
+    /**
+     * Removes the `[:STARRED]` edge between the user and the case, if it exists.
+     *
+     * Returns the number of `[:ADMIN]/[:MEMBER]` edges matched (0 = user has no
+     * direct permission edge; safe no-op).
+     */
+    @Query(
+        $$"""MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(c:Case {id: $caseId})
+            OPTIONAL MATCH (u)-[s:STARRED]->(c)
+            DELETE s
+            RETURN count(c)
+            """,
+    )
+    fun deleteStarred(
+        @Param("userId") userId: String,
+        @Param("caseId") caseId: String,
+    ): Long
+
+    /**
+     * Returns one entry per case the user has a direct `[:ADMIN]`/`[:MEMBER]` edge on, collapsed at
+     * the Cypher level so the caller needs no manual de-duplication. Each map holds:
+     * - `caseId` (String) — the case id,
+     * - `relations` (List<String>) — the distinct edge types (`["ADMIN"]`, `["MEMBER"]`, or both),
+     * - `starred` (Boolean) — `true` when a `[:STARRED]` edge also exists between the user and the case.
+     *
+     * Built as a single-column `collect` of maps: Spring Data Neo4j rejects a multi-column
+     * `RETURN a, b, c` ("Records with more than one value cannot be converted without a mapper"),
+     * so the whole result is returned as one `List<Map>` value it can map without a custom converter.
+     */
+    @Transactional(readOnly = true)
+    @Query(
+        $$"""MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(c:Case)
+            WITH u, c, collect(DISTINCT type(r)) AS relations
+            RETURN collect({
+                caseId: c.id,
+                relations: relations,
+                starred: EXISTS { (u)-[:STARRED]->(c) }
+            })
+            """,
+    )
+    fun findDirectRelations(
+        @Param("userId") userId: String,
+    ): List<Map<String, Any>>
 }
