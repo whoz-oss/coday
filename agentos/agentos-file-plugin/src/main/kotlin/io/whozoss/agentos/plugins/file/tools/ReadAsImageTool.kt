@@ -99,6 +99,7 @@ class ReadAsImageTool(
         Supported: .png, .jpg, .jpeg, .gif (first frame when resized), .bmp, .pdf, .pptx.
         Do NOT use for text-based files (source code, markdown, CSV, JSON, logs...):
         use readFile instead, which returns the exact text and is far cheaper.
+        For Excel spreadsheets (.xlsx) use readSpreadsheet.
         PDF/PPTX: at most $MAX_PAGES_PER_CALL pages/slides are rendered per call; pass
         "pages" (1-based page or slide numbers) to view a specific subset of a longer document.
         """.trimIndent()
@@ -196,7 +197,7 @@ class ReadAsImageTool(
             }
             else -> throw UnsupportedFormatException(
                 "Unsupported file type '.$extension'. Supported: png, jpg, jpeg, gif, bmp, pdf, pptx. " +
-                    "For text-based files use readFile.",
+                    "For text-based files use readFile; for .xlsx use readSpreadsheet.",
             )
         }
     }
