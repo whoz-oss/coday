@@ -23,49 +23,35 @@
           @for (item of timeline(); track trackTimelineItem($index, item)) {
             @if (item.kind === 'message') {
               <div
-                class="case-chat__message"
-                [class.case-chat__message--user]="item.event.actor.role === 'USER'"
-                [class.case-chat__message--agent]="item.event.actor.role === 'AGENT'"
+                class="case-chat__turn"
+                [class.case-chat__turn--user]="item.event.actor.role === 'USER'"
+                [class.case-chat__turn--agent]="item.event.actor.role === 'AGENT'"
               >
+                @if (item.isFirstInGroup) {
+                  <span class="case-chat__role-label">
+                    {{ item.event.actor.role === 'USER' ? 'You' : item.event.actor.displayName || 'Agent' }}
+                  </span>
+                }
                 @if (showTechnical() && item.event.sessionContext) {
                   <div class="case-chat__session-context">
                     <span class="case-chat__session-context-label">session context</span>
                     <pre class="case-chat__session-context-body">{{ item.event.sessionContext | json }}</pre>
                   </div>
                 }
-                <span class="case-chat__message-author">{{ item.event.actor.displayName }}</span>
-                <div class="case-chat__message-text case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+                <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
               </div>
             } @else if (item.kind === 'streaming') {
-              <div class="case-chat__message case-chat__message--agent case-chat__message--streaming">
-                <span class="case-chat__message-author">{{ agentDisplayName() }}</span>
-                <p class="case-chat__message-text">{{ item.text }}</p>
+              <div class="case-chat__turn case-chat__turn--agent case-chat__turn--streaming">
+                <span class="case-chat__role-label">{{ agentDisplayName() }}</span>
+                <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="streamingHtml()"></div>
               </div>
             } @else if (item.kind === 'technical') {
-              <div
-                class="case-chat__technical"
-                [class.case-chat__technical--warn]="item.item.type === 'WarnEvent'"
-                [class.case-chat__technical--error]="item.item.type === 'ErrorEvent'"
-              >
+              <details class="case-chat__log">
+                <summary class="case-chat__log-summary">⚙ System log · {{ item.item.label }}</summary>
                 @if (item.item.detail) {
-                  <button
-                    type="button"
-                    class="case-chat__technical-header"
-                    (click)="toggleTechnical(item.eventId)"
-                    [attr.aria-expanded]="isTechnicalExpanded(item.eventId)"
-                  >
-                    <span class="case-chat__technical-label">{{ item.item.label }}</span>
-                    <span class="case-chat__technical-chevron">{{
-                      isTechnicalExpanded(item.eventId) ? '▼' : '▶'
-                    }}</span>
-                  </button>
-                  @if (isTechnicalExpanded(item.eventId)) {
-                    <div class="case-chat__technical-body">{{ item.item.detail }}</div>
-                  }
-                } @else {
-                  <span class="case-chat__technical-label">{{ item.item.label }}</span>
+                  <div class="case-chat__log-body">{{ item.item.detail }}</div>
                 }
-              </div>
+              </details>
             } @else {
               <div
                 class="case-chat__tool-call"

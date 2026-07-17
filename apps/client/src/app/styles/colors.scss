@@ -60,6 +60,13 @@
   --color-surface-secondary: rgba(0, 0, 0, 0.03);
   --color-surface-muted: rgba(0, 0, 0, 0.05);
   --color-success-bg: #e3f5e1;
+
+  /* Chat bubble surfaces */
+  --color-bubble-agent-bg: #f0f0ee;
+  --color-bubble-user-bg: #6e6e73;
+  --color-bubble-system-bg: #0f1115;
+  --color-bubble-system-text: #e8eaf0;
+  --color-text-on-accent: #ffffff;
 }
 
 /* Dark Theme - Apple Glass Aesthetic */
@@ -115,4 +122,11 @@
   --color-surface-secondary: rgba(255, 255, 255, 0.04);
   --color-surface-muted: rgba(255, 255, 255, 0.06);
   --color-success-bg: rgba(50, 215, 75, 0.15);
+
+  /* Chat bubble surfaces */
+  --color-bubble-agent-bg: #2c2c2e;
+  --color-bubble-user-bg: #636366;
+  --color-bubble-system-bg: #0f1115;
+  --color-bubble-system-text: #e8eaf0;
+  --color-text-on-accent: #ffffff;
 }

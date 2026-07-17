@@ -73,9 +73,9 @@ export interface TechnicalItem {
 }
 
 export type TimelineItem =
-  | { kind: 'message'; event: CaseMessageEvent; html: SafeHtml }
+  | { kind: 'message'; event: CaseMessageEvent; html: SafeHtml; isFirstInGroup: boolean }
   | { kind: 'tool'; call: ToolCall }
-  | { kind: 'streaming'; text: string }
+  | { kind: 'streaming' }
   | { kind: 'technical'; item: TechnicalItem; eventId: string }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
@@ -197,11 +197,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
 
+  /** Markdown-rendered SafeHtml of the streaming text — updated on every chunk. */
+  protected readonly streamingHtml = computed<SafeHtml>(() => {
+    const text = this.streamingText()
+    if (!text) return ''
+    return this.renderMarkdown(text)
+  })
+
   /** Collapsed state per toolRequestId */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
-
-  /** Expanded state per technical eventId — collapsed by default */
-  protected readonly expandedTechnicals = signal<Set<string>>(new Set())
 
   /**
    * Whether the user is currently scrolled to (or near) the bottom of the messages area.
@@ -310,13 +314,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
+    // Track the last role to detect group boundaries (consecutive same-role messages).
+    // Any non-message item (tool call, technical event) resets the group.
+    let lastMessageRole: string | null = null
     for (const e of allEvents) {
       if (e.type === 'MessageEvent') {
         const msg = e as CaseMessageEvent
+        const role = msg.actor.role
+        const isFirstInGroup = role !== lastMessageRole
+        lastMessageRole = role
         items.push({
           kind: 'message',
           event: msg,
           html: this.messageHtmlCache.get(e.id) ?? '',
+          isFirstInGroup,
         })
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
         const requestId = e.toolRequestId ?? e.id
@@ -324,10 +335,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           seenToolIds.add(requestId)
           items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
         }
+        lastMessageRole = null
       } else if (showTechnical) {
         const technical = this.toTechnicalItem(e)
         if (technical) {
           items.push({ kind: 'technical', item: technical, eventId: e.id })
+          lastMessageRole = null
         }
       }
     }
@@ -340,7 +353,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const base = this.baseTimeline()
     const streamingText = this.streamingText()
     if (streamingText.trim().length === 0) return base
-    return [...base, { kind: 'streaming', text: streamingText }]
+    return [...base, { kind: 'streaming' }]
   })
 
   protected trackTimelineItem(_index: number, item: TimelineItem): string {
@@ -770,19 +783,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       localStorage.setItem(CaseChatComponent.SHOW_TECHNICAL_KEY, String(next))
       return next
     })
-  }
-
-  protected toggleTechnical(eventId: string): void {
-    this.expandedTechnicals.update((set) => {
-      const next = new Set(set)
-      if (next.has(eventId)) next.delete(eventId)
-      else next.add(eventId)
-      return next
-    })
-  }
-
-  protected isTechnicalExpanded(eventId: string): boolean {
-    return this.expandedTechnicals().has(eventId)
   }
 
   // ---------------------------------------------------------------------------

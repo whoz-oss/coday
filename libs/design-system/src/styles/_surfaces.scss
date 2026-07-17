@@ -109,11 +109,27 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
 
-  // Dark mode: switch to outlined style
-  [data-theme='dark'] & {
-    background: transparent;
-    border: 1.5px solid var(--color-border, rgba(255, 255, 255, 0.15));
-    color: var(--color-text, #f5f5f7);
-  }
+// ── Chat bubbles ──────────────────────────────────────────────────────────────
+
+@mixin surface-bubble-agent {
+  background: var(--color-bubble-agent-bg, #f0f0ee);
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  border-radius: 12px 12px 12px 3px;
+  box-shadow: 0 1px 3px var(--color-shadow, rgba(0, 0, 0, 0.05));
+  color: var(--color-text, #1d1d1f);
+}
+
+@mixin surface-bubble-user {
+  background: var(--color-bubble-user-bg, #6e6e73);
+  color: var(--color-text-on-accent, #ffffff);
+  border: none;
+  border-radius: 12px 12px 3px 12px;
+}
+
+@mixin surface-system-log {
+  background: var(--color-bubble-system-bg, #0f1115);
+  color: var(--color-bubble-system-text, #e8eaf0);
+  border-radius: 6px;
 }
