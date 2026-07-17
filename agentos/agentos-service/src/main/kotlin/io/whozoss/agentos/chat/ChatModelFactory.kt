@@ -171,10 +171,11 @@ class ChatModelFactory(
         val builder = AnthropicApi.Builder().baseUrl(baseUrl).apiKey(apiKey)
         val api = builder.build()
 
+        // ANNOTATION MODE — temperature omitted: some Anthropic models (e.g. claude-opus-4-8)
+        // reject the temperature parameter. Not committed, local only.
         val options =
             AnthropicChatOptions
                 .builder()
-                .temperature(temp)
                 .model(model)
 
         if (maxTokens != null) {

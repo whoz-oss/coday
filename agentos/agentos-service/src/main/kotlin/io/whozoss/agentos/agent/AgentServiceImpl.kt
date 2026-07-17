@@ -9,6 +9,7 @@ import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
+import io.whozoss.agentos.chat.ChatModelFactory
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
@@ -21,6 +22,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -34,6 +36,7 @@ import io.whozoss.agentos.util.IdCompressorService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
+import org.springframework.ai.chat.client.ChatClient
 import org.springframework.stereotype.Service
 import java.nio.file.Files
 import java.nio.file.Path
@@ -47,6 +50,7 @@ import java.util.UUID
 @Service
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
+    private val chatModelFactory: ChatModelFactory,
     private val toolResolverService: ToolResolverService,
     private val aiModelService: AiModelService,
     private val aiProviderService: AiProviderService,
@@ -64,6 +68,8 @@ class AgentServiceImpl(
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val agentDocumentResolver: AgentDocumentResolver,
+    // ANNOTATION MODE — not committed, local only.
+    private val conversationRecorder: ConversationRecorder,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -363,7 +369,20 @@ class AgentServiceImpl(
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
-        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
+        //val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
+
+        // ANNOTATION MODE: bypass DB-resolved model and force Claude Opus 4.8 for data collection.
+        // NOT committed — local only. Revert this block to restore normal model resolution.
+        val chatClient = ChatClient.builder(
+            chatModelFactory.createChatModel(
+                apiType = AiApiType.Anthropic,
+                baseUrl = null,
+                apiKey = "MY_API_KEY",
+                modelName = "claude-opus-4-8",
+                temperature = 0.0,
+                maxTokens = 16384,
+        )
+        ).build()
 
         return if (advancedExecution) {
             val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
@@ -388,6 +407,8 @@ class AgentServiceImpl(
                 llmProvider = providerConfig.name,
                 llmModel = modelConfig.apiModelName,
                 toolMetricsService = toolMetricsService,
+                // ANNOTATION MODE — not committed, local only.
+                conversationRecorder = conversationRecorder,
             )
         } else {
             AgentSimple(

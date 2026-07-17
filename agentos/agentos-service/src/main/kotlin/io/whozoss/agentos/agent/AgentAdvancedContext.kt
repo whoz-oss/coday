@@ -200,4 +200,50 @@ data class AgentAdvancedContext(
             is MessageContent.Text -> content.content
             else -> content.toString()
         }
+
+    // ANNOTATION MODE — not committed, local only.
+    /**
+     * Converts the history built from [events] (via [buildMessages] without a task prompt)
+     * into a list of [RecordedMessage] objects that are independent of any Spring AI or
+     * AgentOS class. The result is serialized into the JSONL annotation file so a Python
+     * fine-tuning pipeline can consume it without any knowledge of the Kotlin codebase.
+     *
+     * The system message is included. Tool-call assistant messages are flattened to one
+     * [RecordedMessage] per tool call so the history is easy to iterate in Python.
+     */
+    internal fun toRecordedMessages(events: List<CaseEvent>, prompt: String): List<RecordedMessage> =
+        buildMessages(events, prompt).flatMap { message ->
+            when (message) {
+                is SystemMessage ->
+                    listOf(RecordedMessage(role = "system", content = message.text))
+                is UserMessage ->
+                    listOf(RecordedMessage(role = "user", content = message.text))
+                is AssistantMessage -> {
+                    val toolCalls = message.toolCalls
+                    if (!toolCalls.isNullOrEmpty()) {
+                        toolCalls.map { tc ->
+                            RecordedMessage(
+                                role = "assistant",
+                                content = tc.arguments,
+                                toolName = tc.name,
+                                toolCallId = tc.id,
+                            )
+                        }
+                    } else {
+                        listOf(RecordedMessage(role = "assistant", content = message.text ?: ""))
+                    }
+                }
+                is ToolResponseMessage ->
+                    message.responses.map { tr ->
+                        RecordedMessage(
+                            role = "tool",
+                            content = tr.responseData,
+                            toolName = tr.name,
+                            toolCallId = tr.id,
+                        )
+                    }
+                else ->
+                    listOf(RecordedMessage(role = "unknown", content = message.toString()))
+            }
+        }
 }

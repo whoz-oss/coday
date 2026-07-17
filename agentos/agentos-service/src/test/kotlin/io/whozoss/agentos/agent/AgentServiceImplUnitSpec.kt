@@ -21,6 +21,7 @@ import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.chat.ChatModelFactory
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
@@ -46,6 +47,7 @@ import java.util.UUID
 
 class AgentServiceImplUnitSpec : StringSpec() {
     private val chatClientProvider: ChatClientProvider = mockk()
+    private val chatModelFactory: ChatModelFactory = mockk(relaxed = true)
     private val toolResolverService: ToolResolverService = mockk()
     private val aiModelService: AiModelService = mockk()
     private val aiProviderService: AiProviderService = mockk()
@@ -62,9 +64,11 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
+    private val conversationRecorder: ConversationRecorder = ConversationRecorder()
     private val agentService =
         AgentServiceImpl(
             chatClientProvider = chatClientProvider,
+            chatModelFactory = chatModelFactory,
             toolResolverService = toolResolverService,
             aiModelService = aiModelService,
             aiProviderService = aiProviderService,
@@ -82,6 +86,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             exchangeCapabilityService = exchangeCapabilityService,
             agentDocumentResolver = agentDocumentResolver,
             idCompressorService = IdCompressorService(),
+            conversationRecorder = conversationRecorder,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -522,6 +527,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val localService =
                 AgentServiceImpl(
                     chatClientProvider = chatClientProvider,
+                    chatModelFactory = chatModelFactory,
                     toolResolverService = toolResolverService,
                     aiModelService = aiModelService,
                     aiProviderService = aiProviderService,
@@ -539,6 +545,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     exchangeCapabilityService = exchangeCapabilityService,
                     agentDocumentResolver = agentDocumentResolver,
                     idCompressorService = IdCompressorService(),
+                    conversationRecorder = conversationRecorder,
                 )
             val configs =
                 listOf(

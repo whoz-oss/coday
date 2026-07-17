@@ -17,7 +17,10 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 
 @Service
-class AgentIntentionGenerator {
+class AgentIntentionGenerator(
+    // ANNOTATION MODE — not committed, local only.
+    private val conversationRecorder: ConversationRecorder,
+) {
     fun generate(
         context: AgentAdvancedContext,
         events: List<CaseEvent>,
@@ -146,6 +149,18 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
                 logger.trace { "Intention generation response:\n$response" }
 
                 val (intention, toolName) = parseIntentionAndTool(response, toolNames)
+
+                // ANNOTATION MODE — not committed, local only.
+                // Record only the successful parse — retries with malformed output are noise.
+                conversationRecorder.appendTurn(
+                    caseId = caseId,
+                    callType = "intention",
+                    toolName = null,
+                    history = context.toRecordedMessages(events, fullPrompt),
+                    prompt = fullPrompt,
+                    rawOutput = response,
+                )
+
                 AttemptSuccess(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,

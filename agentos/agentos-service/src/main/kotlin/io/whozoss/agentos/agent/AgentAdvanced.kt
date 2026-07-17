@@ -36,6 +36,8 @@ class AgentAdvanced(
     override val llmModel: String,
     /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
     private val toolMetricsService: ToolMetricsService? = null,
+    // ANNOTATION MODE — not committed, local only.
+    private val conversationRecorder: ConversationRecorder? = null,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -46,6 +48,13 @@ class AgentAdvanced(
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
 
             val accumulatedEvents = events.toMutableList()
+
+            // ANNOTATION MODE — not committed, local only.
+            conversationRecorder?.startConversation(
+                caseId = caseId,
+                namespaceId = namespaceId,
+                agentName = name,
+            )
 
             // WZ-31596 IN-CHANNEL pre-flight: resolve unresolved PendingConfirmationEvent
             // before entering the intention loop. Mirrors Copilote.handlePendingConfirmation.
@@ -78,6 +87,7 @@ class AgentAdvanced(
                                 llmModel = llmModel,
                             ),
                         )
+                        conversationRecorder?.flush(caseId)
                         return@flow
                     }
 
@@ -244,6 +254,9 @@ class AgentAdvanced(
                         message = "Error during agent execution: ${e.message}",
                     ),
                 )
+            } finally {
+                // ANNOTATION MODE — not committed, local only.
+                conversationRecorder?.flush(caseId)
             }
         }
 
@@ -1018,12 +1031,12 @@ class AgentAdvanced(
             .asFlow()
             .takeWhile { shouldContinue() }
             .collect { response ->
-                val chunk = response.result.output.text?.takeIf { it.isNotEmpty() }
+                val chunk = response.result?.output?.text?.takeIf { it.isNotEmpty() }
                 if (chunk != null) {
                     contentBuilder.append(chunk)
                     emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
                 }
-                response.result.metadata.finishReason
+                response.result?.metadata?.finishReason
                     ?.takeIf { it.isNotBlank() }
                     ?.let { lastFinishReason = it }
             }
@@ -1036,6 +1049,16 @@ class AgentAdvanced(
             emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
         }
         val content = contentBuilder.toString().stripConversationTags()
+        // ANNOTATION MODE — not committed, local only.
+        conversationRecorder?.appendTurn(
+            caseId = caseId,
+            callType = "final_response",
+            toolName = null,
+            history = context.toRecordedMessages(accumulatedEvents, prompt),
+            prompt = prompt,
+            rawOutput = content,
+            success = content.isNotEmpty(),
+        )
         if (content.isNotEmpty()) {
             val msg =
                 MessageEvent(
@@ -1350,6 +1373,16 @@ Output requirements:
         logger.trace { "[$name] generateParameters raw response for '$toolName': $raw" }
 
         return if (isValidJson(raw)) {
+            // ANNOTATION MODE — not committed, local only.
+            conversationRecorder?.appendTurn(
+                caseId = caseId,
+                callType = "parameter",
+                toolName = toolName,
+                history = context.toRecordedMessages(events, prompt),
+                prompt = prompt,
+                rawOutput = raw,
+                success = true,
+            )
             AttemptSuccess(
                 ToolRequestEvent(
                     namespaceId = namespaceId,
