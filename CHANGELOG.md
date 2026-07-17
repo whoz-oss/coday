@@ -1,3 +1,13 @@
+## 0.217.0 (2026-07-17)
+
+### 🚀 Features
+
+- wz-32968 agent prompts ([#1146](https://github.com/whoz-oss/coday/pull/1146))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.216.1 (2026-07-16)
 
 ### 🩹 Fixes
