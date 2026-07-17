@@ -134,8 +134,7 @@ class PromptServiceImpl(
         }
         if (!validScope) {
             throw BadRequestException(
-                "AgentConfig '${agentConfig.name}' (id=${agentConfig.id}) belongs to a different namespace " +
-                    "than the prompt (agent namespace=${agentConfig.namespaceId}, prompt namespace=${prompt.namespaceId})",
+                "AgentConfig id=${prompt.agentConfigId} does not belong to the prompt's namespace",
             )
         }
     }
