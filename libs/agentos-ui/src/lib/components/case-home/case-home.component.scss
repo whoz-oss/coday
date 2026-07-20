@@ -6,6 +6,8 @@
   height: 100%;
   align-items: center;
   justify-content: center;
+  // Anchor for the drag & drop overlay.
+  position: relative;
 
   &__hero {
     display: flex;
@@ -92,7 +94,37 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.5rem 0.5rem 0.5rem 1.25rem;
+    padding: 0.5rem 0.5rem 0.5rem 0.5rem;
+  }
+
+  &__footer-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  &__attachments {
+    display: block;
+    padding: 0.75rem 0.75rem 0;
+  }
+
+  &__drop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    // pointer-events: none so the drop lands on the container and dragging over the
+    // overlay itself never triggers a flickering dragleave.
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 2px dashed var(--color-primary, #0071e3);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--color-primary, #0071e3) 8%, transparent);
+    color: var(--color-primary, #0071e3);
+    font-weight: 600;
   }
 
   &__hint {
