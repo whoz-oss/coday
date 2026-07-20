@@ -3699,6 +3699,8 @@ components:
       properties:
         adminExternalIds:
           type: array
+          description: Subset of userExternalIdsToAdd who should receive the ADMIN
+            role; each must also be a member.
           items:
             type: string
           maxItems: 200
@@ -3801,6 +3803,10 @@ components:
       properties:
         adminExternalIds:
           type: array
+          description: "Complete desired set of member external IDs holding the ADMIN\
+            \ role (replace semantics): members not listed are demoted to MEMBER,\
+            \ and an omitted or empty set demotes every current admin. Every listed\
+            \ id must be a member after the update."
           items:
             type: string
           maxItems: 200

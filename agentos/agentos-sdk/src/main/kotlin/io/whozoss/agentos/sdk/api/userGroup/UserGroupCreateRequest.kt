@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.api.userGroup
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import java.util.UUID
@@ -23,6 +24,9 @@ data class UserGroupCreateRequest(
     val name: String,
     @field:Size(max = 200)
     val userExternalIdsToAdd: Set<@NotBlank String> = emptySet(),
+    @field:Schema(
+        description = "Subset of userExternalIdsToAdd who should receive the ADMIN role; each must also be a member.",
+    )
     @field:Size(max = 200)
     val adminExternalIds: Set<@NotBlank String> = emptySet(),
     @field:Size(max = 200)

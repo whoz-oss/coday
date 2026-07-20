@@ -1,6 +1,14 @@
 import { inject, Injectable } from '@angular/core'
-import { UserGroupControllerService, UserGroupMember, UserGroupSearchResult } from '@whoz-oss/agentos-api-client'
-import { Observable } from 'rxjs'
+import {
+  AgentConfig,
+  AgentConfigControllerService,
+  NamespacePermissionEndpointsService,
+  NamespaceUserListItem,
+  UserGroupControllerService,
+  UserGroupMember,
+  UserGroupSearchResult,
+} from '@whoz-oss/agentos-api-client'
+import { forkJoin, Observable } from 'rxjs'
 
 /** Ergonomic input for creating a user group (arrays instead of the generated Set types). */
 export interface CreateUserGroupInput {
@@ -22,6 +30,20 @@ export interface UpdateUserGroupInput {
   adminExternalIds: string[]
 }
 
+/** Everything the create/edit form needs before rendering: agent choices, sibling groups, users. */
+export interface UserGroupFormData {
+  namespaceAgents: AgentConfig[]
+  platformAgents: AgentConfig[]
+  groups: UserGroupSearchResult[]
+  users: NamespaceUserListItem[]
+}
+
+/** An existing group plus its members, for the edit form. */
+export interface ExistingUserGroup {
+  group: UserGroupSearchResult
+  members: UserGroupMember[]
+}
+
 /**
  * UserGroupStateService — API-layer facade for UserGroup entities.
  *
@@ -36,9 +58,29 @@ export interface UpdateUserGroupInput {
 @Injectable({ providedIn: 'root' })
 export class UserGroupStateService {
   private readonly controller = inject(UserGroupControllerService)
+  private readonly agentConfigController = inject(AgentConfigControllerService)
+  private readonly namespacePermissions = inject(NamespacePermissionEndpointsService)
 
   listByNamespace(namespaceId: string): Observable<UserGroupSearchResult[]> {
     return this.controller.findByNamespaceIdUserGroup(namespaceId)
+  }
+
+  /** Loads the create/edit form's reference data in one round-trip. */
+  loadFormData(namespaceId: string): Observable<UserGroupFormData> {
+    return forkJoin({
+      namespaceAgents: this.agentConfigController.listByParentAgentConfig(namespaceId, false),
+      platformAgents: this.agentConfigController.listPlatformAgentsAgentConfig(false),
+      groups: this.listByNamespace(namespaceId),
+      users: this.namespacePermissions.listNamespaceUsers(namespaceId),
+    })
+  }
+
+  /** Loads an existing group and its members for the edit form. */
+  loadExistingGroup(userGroupId: string): Observable<ExistingUserGroup> {
+    return forkJoin({
+      group: this.getById(userGroupId),
+      members: this.getMembers(userGroupId),
+    })
   }
 
   getById(userGroupId: string): Observable<UserGroupSearchResult> {

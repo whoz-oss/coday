@@ -145,6 +145,13 @@ class UserGroupServiceImpl(
 
         if (request.userExternalIdsToRemove.isNotEmpty()) {
             userGroupRepository.removeUsers(userGroupId, request.userExternalIdsToRemove)
+            // removeUsers deletes the [:MEMBER|ADMIN] edges directly, bypassing the permission
+            // cache. A removed group ADMIN would otherwise keep a cached WRITE/DELETE grant on
+            // the group until the TTL expires (and could re-add themselves as admin). Invalidate
+            // each removed member; the promote/demote path already clears the cache via applyShareBatch.
+            currentMembers
+                .filter { it.externalId in request.userExternalIdsToRemove }
+                .forEach { permissionService.clearUserCache(it.userId.toString()) }
         }
 
         reconcileRoles(

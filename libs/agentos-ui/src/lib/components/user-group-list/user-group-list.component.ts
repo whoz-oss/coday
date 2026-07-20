@@ -3,7 +3,7 @@ import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-i
 import { Router } from '@angular/router'
 import { Namespace, UserGroupSearchResult } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
-import { combineLatest, switchMap } from 'rxjs'
+import { catchError, combineLatest, of, switchMap } from 'rxjs'
 import { UserGroupStateService } from '../../services/user-group-state.service'
 import { NamespaceSelectComponent } from '../namespace-select/namespace-select.component'
 import { UserGroupItemComponent } from '../user-group-item/user-group-item.component'
@@ -50,7 +50,17 @@ export class UserGroupListComponent {
 
   private readonly groups = toSignal(
     combineLatest([toObservable(this.namespaceId), toObservable(this.refresh)]).pipe(
-      switchMap(([namespaceId]) => this.userGroupState.listByNamespace(namespaceId))
+      // catchError on the inner observable so a transient failure (e.g. switching namespace)
+      // does not terminate the outer stream and freeze the list in an error state; fall back
+      // to an empty list and log so the failure stays diagnosable (#1076).
+      switchMap(([namespaceId]) =>
+        this.userGroupState.listByNamespace(namespaceId).pipe(
+          catchError((err) => {
+            console.error('[UserGroupList] Failed to load user groups', err)
+            return of([] as UserGroupSearchResult[])
+          })
+        )
+      )
     ),
     { initialValue: [] as UserGroupSearchResult[] }
   )

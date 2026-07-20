@@ -3,7 +3,7 @@ import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-i
 import { Router } from '@angular/router'
 import { Namespace, NamespacePermissionEndpointsService, User } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { map, of, switchMap } from 'rxjs'
+import { catchError, map, of, switchMap } from 'rxjs'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
 import { NamespaceSelectComponent } from '../namespace-select/namespace-select.component'
 import { UserItemComponent } from '../user-item/user-item.component'
@@ -54,9 +54,16 @@ export class UserListComponent implements OnInit {
     toObservable(this.selectedNamespaceId).pipe(
       switchMap((namespaceId) =>
         namespaceId
-          ? this.namespacePermissions
-              .listNamespaceUsers(namespaceId)
-              .pipe(map((users) => new Set(users.map((user) => user.id))))
+          ? this.namespacePermissions.listNamespaceUsers(namespaceId).pipe(
+              map((users) => new Set(users.map((user) => user.id))),
+              // catchError on the inner observable so a failed load does not terminate the
+              // outer stream (which would freeze the signal in an error state for the session);
+              // fall back to unfiltered and log so the failure stays diagnosable (#1076).
+              catchError((err) => {
+                console.error('[UserList] Failed to load namespace users', err)
+                return of(null)
+              })
+            )
           : of(null)
       )
     ),

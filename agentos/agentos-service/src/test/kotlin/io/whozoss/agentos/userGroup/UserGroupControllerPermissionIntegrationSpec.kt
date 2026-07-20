@@ -146,12 +146,41 @@ class UserGroupControllerPermissionIntegrationSpec : StringSpec() {
                 ).andExpect(status().isCreated)
         }
 
+        "POST returns 400 when adminExternalIds exceeds the 200-entry cap (@Size validated at the edge)" {
+            // Auth must pass first (@PreAuthorize precedes body validation, else access-denied hides
+            // as 404), so grant WRITE; then the @Size(max = 200) cap trips before the service runs.
+            grantNamespace(PermissionRelation.ADMIN)
+            val admins = (1..201).joinToString(",") { "\"u$it@example.com\"" }
+            mockMvc
+                .perform(
+                    post("/api/user-groups")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """{ "namespaceId": "${namespace.id}", "name": "Group-${UUID.randomUUID()}", "adminExternalIds": [$admins] }""",
+                        ),
+                ).andExpect(status().isBadRequest)
+        }
+
         // -------------------------------------------------------------------------
         // POST /{id} — update — @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'WRITE')")
         // -------------------------------------------------------------------------
 
         "POST /{id} returns 403 when caller lacks WRITE on the group" {
             val group = createGroup("Update-blocked")
+            mockMvc
+                .perform(
+                    post("/api/user-groups/${group.id}")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "name": "Renamed" }"""),
+                ).andExpect(status().isForbidden)
+        }
+
+        "POST /{id} returns 403 for a namespace MEMBER: transitive READ is not enough for WRITE" {
+            // Symmetric negative for the WRITE guard: a namespace MEMBER holds transitive group READ
+            // (it can GET /{id}/members) but must still be denied the update/promote endpoint. Without
+            // this, a downgrade of the guard from WRITE to READ would go unnoticed.
+            val group = createGroup("Update-member-denied")
+            grantNamespace(PermissionRelation.MEMBER)
             mockMvc
                 .perform(
                     post("/api/user-groups/${group.id}")

@@ -866,6 +866,32 @@ class UserGroupServiceImplUnitSpec :
             // A demotion entry would re-create a MEMBER edge for the user removeUsers just unlinked.
             verify(exactly = 0) { permissionService.applyShareBatch(any(), any(), any()) }
             verify(exactly = 1) { userGroupRepository.removeUsers(groupId, setOf("carol@example.com")) }
+            // removeUsers bypasses the permission cache, so the removed group ADMIN's cache must be
+            // invalidated explicitly or a stale WRITE/DELETE grant survives until the TTL expires.
+            verify(exactly = 1) { permissionService.clearUserCache(carol.id.toString()) }
+        }
+
+        "updateFromRequest does not clear the cache for users it did not remove" {
+            val groupId = randomUUID()
+            val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Renamed",
+                )
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            val permissionService = mockk<PermissionService>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
+            every { userGroupRepository.save(any()) } returns existing
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+            every { userGroupRepository.findMembers(groupId) } returns emptyList()
+
+            val service = buildService(userGroupRepository = userGroupRepository, permissionService = permissionService)
+            service.updateFromRequest(groupId, UserGroupUpdateRequest(name = "Renamed"))
+
+            verify(exactly = 0) { permissionService.clearUserCache(any()) }
         }
 
         "updateFromRequest skips the permission share batch when no role changes" {

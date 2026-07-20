@@ -6,14 +6,12 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   AgentConfig,
-  AgentConfigControllerService,
-  NamespacePermissionEndpointsService,
   NamespaceUserListItem,
   UserGroupMemberRoleEnum,
   UserGroupSearchResult,
 } from '@whoz-oss/agentos-api-client'
 import { AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-system'
-import { forkJoin, Observable } from 'rxjs'
+import { Observable } from 'rxjs'
 import { UserGroupStateService } from '../../services/user-group-state.service'
 import { UserGroupMemberAutocompleteDataSource } from './user-group-member.data-source'
 import { computeMemberDiff, computeTakenElsewhere, memberLabel } from './user-group-form.util'
@@ -41,6 +39,11 @@ const MAX_NAME_LENGTH = 250
  * and its members (an inline list with a per-member MEMBER/ADMIN role select + a type-ahead over
  * the namespace's users). On submit, member changes are diffed into the add/remove lists and the
  * full ADMIN set is sent as adminExternalIds.
+ *
+ * Slightly over the ~200-line component guideline: HTTP orchestration is already extracted to
+ * UserGroupStateService and pure transforms to user-group-form.util.ts. What remains is the
+ * agent- and member-selection handlers, which the template binds to directly and cannot move
+ * out without a child-component split not warranted here. Kept as one cohesive form.
  */
 @Component({
   selector: 'agentos-user-group-form',
@@ -54,8 +57,6 @@ export class UserGroupFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly userGroupState = inject(UserGroupStateService)
-  private readonly agentConfigController = inject(AgentConfigControllerService)
-  private readonly namespacePermissions = inject(NamespacePermissionEndpointsService)
 
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
   private readonly userGroupId = this.route.snapshot.paramMap.get('userGroupId')
@@ -102,12 +103,8 @@ export class UserGroupFormComponent implements OnInit {
 
   private loadFormData(): void {
     this.isLoading.set(true)
-    forkJoin({
-      namespaceAgents: this.agentConfigController.listByParentAgentConfig(this.namespaceId, false),
-      platformAgents: this.agentConfigController.listPlatformAgentsAgentConfig(false),
-      groups: this.userGroupState.listByNamespace(this.namespaceId),
-      users: this.namespacePermissions.listNamespaceUsers(this.namespaceId),
-    })
+    this.userGroupState
+      .loadFormData(this.namespaceId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: ({ namespaceAgents, platformAgents, groups, users }) => {
@@ -121,7 +118,10 @@ export class UserGroupFormComponent implements OnInit {
             this.isLoading.set(false)
           }
         },
-        error: () => {
+        error: (err) => {
+          // Don't swallow silently: log so the failed load is diagnosable (#1076), matching
+          // loadExistingGroup below.
+          console.error('[UserGroupForm] Failed to load form data', err)
           this.isLoading.set(false)
           this.errorMessage.set('Failed to load form data. Please try again.')
         },
@@ -129,10 +129,8 @@ export class UserGroupFormComponent implements OnInit {
   }
 
   private loadExistingGroup(id: string): void {
-    forkJoin({
-      group: this.userGroupState.getById(id),
-      members: this.userGroupState.getMembers(id),
-    })
+    this.userGroupState
+      .loadExistingGroup(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: ({ group, members }) => {
