@@ -1,3 +1,14 @@
+## 0.218.0 (2026-07-20)
+
+### 🚀 Features
+
+- chat composer file attachments (drag & drop, + button, exchange upload) ([#1152](https://github.com/whoz-oss/coday/pull/1152))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 0.217.1 (2026-07-17)
 
 ### 🩹 Fixes
