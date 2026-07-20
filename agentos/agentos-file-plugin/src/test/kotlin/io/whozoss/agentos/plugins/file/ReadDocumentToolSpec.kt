@@ -45,6 +45,13 @@ class ReadDocumentToolSpec : StringSpec() {
         paragraph.createRun().setText(text)
     }
 
+    /** High-entropy text so POI's ZipSecureFile does not reject the fixture as a zip bomb. */
+    private fun randomText(length: Int, seed: Int): String {
+        val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        val random = java.util.Random(seed.toLong())
+        return buildString(length) { repeat(length) { append(alphabet[random.nextInt(alphabet.length)]) } }
+    }
+
     private fun pngBytes(width: Int, height: Int): ByteArray =
         ByteArrayOutputStream().also { ImageIO.write(BufferedImage(width, height, BufferedImage.TYPE_INT_RGB), "png", it) }
             .toByteArray()
@@ -226,6 +233,55 @@ class ReadDocumentToolSpec : StringSpec() {
             withClue(result.output) { result.success shouldBe true }
             result.output shouldContain "Paragraph 4"
             result.output shouldContain "Paragraph 5"
+        }
+
+        "block content control text is included, not silently dropped" {
+            writeDocx("sdt.docx") {
+                paragraph("Before control")
+                // Block-level structured document tag (content control): its paragraph lives
+                // under w:sdtContent, so getBodyElements() surfaces it only as an XWPFSDT.
+                val content = document.body.addNewSdt().addNewSdtContent()
+                content.addNewP().addNewR().addNewT().stringValue = "Inside a content control"
+                paragraph("After control")
+            }
+
+            val result = ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("sdt.docx"), ctx)
+
+            withClue(result.output) { result.success shouldBe true }
+            result.output shouldContain "Before control"
+            result.output shouldContain "Inside a content control"
+            result.output shouldContain "After control"
+        }
+
+        "a single oversized table is truncated in place instead of blowing the budget" {
+            writeDocx("huge-table.docx") {
+                val table = createTable(200, 1)
+                // Distinct high-entropy text per row: a repeated filler would trip POI's zip-bomb guard.
+                table.rows.forEachIndexed { index, row -> row.getCell(0).setText(randomText(1000, index)) }
+            }
+
+            val result = ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("huge-table.docx"), ctx)
+
+            withClue(result.output.take(200)) { result.success shouldBe true }
+            result.output shouldContain "table truncated"
+            // The whole 200x1 table would be ~200 KB; the per-row budget caps it near 100 KB.
+            withClue("output length ${result.output.length}") {
+                (result.output.length < ReadDocumentTool.MAX_OUTPUT_CHARS + 5000) shouldBe true
+            }
+        }
+
+        "a single oversized paragraph is capped to the budget" {
+            writeDocx("huge-paragraph.docx") {
+                paragraph(randomText(ReadDocumentTool.MAX_OUTPUT_CHARS * 2, seed = 7))
+            }
+
+            val result = ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("huge-paragraph.docx"), ctx)
+
+            withClue(result.output.take(200)) { result.success shouldBe true }
+            result.output shouldContain "truncated"
+            withClue("output length ${result.output.length}") {
+                (result.output.length < ReadDocumentTool.MAX_OUTPUT_CHARS + 5000) shouldBe true
+            }
         }
 
         "startElement out of range is rejected with the element count" {

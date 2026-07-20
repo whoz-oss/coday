@@ -19,6 +19,7 @@ import org.apache.poi.openxml4j.opc.PackageAccess
 import org.apache.poi.xwpf.usermodel.XWPFDocument
 import org.apache.poi.xwpf.usermodel.XWPFParagraph
 import org.apache.poi.xwpf.usermodel.XWPFPictureData
+import org.apache.poi.xwpf.usermodel.XWPFSDT
 import org.apache.poi.xwpf.usermodel.XWPFTable
 import java.io.ByteArrayInputStream
 import java.nio.file.FileSystemException
@@ -33,9 +34,9 @@ import kotlin.io.path.name
  * A Word document is text with structure, not a fixed-layout visual (POI has no layout engine
  * to rasterize it, unlike a PDF), so it is projected to Markdown rather than rendered to
  * images: headings become `#`..`######`, list paragraphs become `-` bullets, tables become
- * Markdown tables (`|` escaped, newlines flattened). Body elements are walked in document
- * order via [XWPFDocument.getBodyElements]. This gives exact, quotable, searchable text at
- * minimal token cost.
+ * Markdown tables (`|` escaped, newlines flattened). Body elements (paragraphs, tables, and
+ * block content controls) are walked in document order via [XWPFDocument.getBodyElements].
+ * This gives exact, quotable, searchable text at minimal token cost.
  *
  * Embedded pictures (diagrams, screenshots, scans) are where vision is useful, so they ARE
  * attached: [XWPFDocument.getAllPictures] yields the embedded bitmaps directly (no rendering),
@@ -46,6 +47,8 @@ import kotlin.io.path.name
  * Budgets per call: [MAX_OUTPUT_CHARS] characters of Markdown; [startElement] (1-based body
  * element index) pages through a long document, with a `[truncated]` notice telling the model
  * how to continue. Tables are cut at [MAX_TABLE_COLUMNS] columns and [MAX_CELL_CHARS] per cell.
+ * A single element larger than the budget (a very large table or paragraph) is cut in place
+ * with a marker rather than emitted whole, so one element cannot blow past the budget.
  *
  * For a document whose visual LAYOUT is itself the content (a form, a designed one-pager),
  * export it to PDF (Word's own layout engine, highest fidelity) and use readAsImage instead.
@@ -260,6 +263,10 @@ class ReadDocumentTool(
             when (val element = elements[index]) {
                 is XWPFParagraph -> appendParagraph(out, element)
                 is XWPFTable -> appendTable(out, element)
+                // Block-level content controls (structured document tags) wrap their own
+                // paragraphs/tables under w:sdtContent, so getBodyElements() surfaces them only
+                // as this XWPFSDT; without this branch their text would be silently dropped.
+                is XWPFSDT -> appendSdt(out, element)
                 else -> {}
             }
         }
@@ -277,7 +284,7 @@ class ReadDocumentTool(
     }
 
     private fun appendParagraph(out: StringBuilder, paragraph: XWPFParagraph) {
-        val text = paragraph.text.trim()
+        val text = capToBudget(out, paragraph.text.trim())
         if (text.isEmpty()) {
             out.append('\n')
             return
@@ -290,12 +297,24 @@ class ReadDocumentTool(
         }
     }
 
+    private fun appendSdt(out: StringBuilder, sdt: XWPFSDT) {
+        val text = capToBudget(out, sdt.content?.text?.trim().orEmpty())
+        if (text.isEmpty()) return
+        out.append(text).append("\n\n")
+    }
+
     private fun appendTable(out: StringBuilder, table: XWPFTable) {
         val rows = table.rows
         if (rows.isEmpty()) return
         val columns = rows.maxOf { it.tableCells.size }.coerceIn(1, MAX_TABLE_COLUMNS)
 
         rows.forEachIndexed { rowIndex, row ->
+            // Row count is unbounded, so enforce the budget per row here; the outer loop only
+            // checks between elements and a single huge table would otherwise blow past it.
+            if (out.length >= MAX_OUTPUT_CHARS) {
+                out.append("_[table truncated: $rowIndex of ${rows.size} rows shown]_\n")
+                return
+            }
             val cells = row.tableCells
             out.append('|')
             for (column in 0 until columns) {
@@ -309,6 +328,17 @@ class ReadDocumentTool(
             }
         }
         out.append('\n')
+    }
+
+    /**
+     * Cap a single element's text to the remaining [MAX_OUTPUT_CHARS] budget so one oversized
+     * element (a very long paragraph or content control) cannot blow past it. The outer loop
+     * only enters an element while under budget, so `remaining` is positive there.
+     */
+    private fun capToBudget(out: StringBuilder, text: String): String {
+        val remaining = MAX_OUTPUT_CHARS - out.length
+        if (remaining <= 0) return ""
+        return if (text.length > remaining) text.take(remaining) + "…[truncated]" else text
     }
 
     private fun escapeCell(value: String): String =
