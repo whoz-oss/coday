@@ -68,7 +68,15 @@ class FileToolProvider : ToolPlugin {
                 imageMaxSourcePixels = imageMaxSourcePixels,
                 imagePassThroughMaxBytes = imagePassThroughMaxBytes,
             ),
-            ReadDocumentTool(rootPath, configName, readMaxSizeBytes, denyPatterns),
+            ReadDocumentTool(
+                rootPath,
+                configName,
+                readMaxSizeBytes,
+                denyPatterns,
+                imageMaxDimension = imageMaxDimension,
+                imageJpegQuality = imageJpegQuality,
+                imageMaxSourcePixels = imageMaxSourcePixels,
+            ),
             SearchFilesTool(rootPath, configName, denyPatterns),
         )
 
@@ -109,19 +117,19 @@ class FileToolProvider : ToolPlugin {
                     "imageMaxDimension": {
                         "type": "integer",
                         "title": "Image Max Dimension (px)",
-                        "description": "Longest-edge size, in pixels, that readAsImage sends to the LLM; larger images are downscaled. Default is 1024.",
+                        "description": "Longest-edge size, in pixels, that readAsImage and readDocument send to the LLM; larger images are downscaled. Default is 1024.",
                         "default": 1024
                     },
                     "imageJpegQuality": {
                         "type": "number",
                         "title": "Image JPEG Quality",
-                        "description": "JPEG re-encoding quality for readAsImage, between 0 and 1. Default is 0.80.",
+                        "description": "JPEG re-encoding quality for readAsImage and readDocument, between 0 and 1. Default is 0.80.",
                         "default": 0.80
                     },
                     "imageMaxSourcePixels": {
                         "type": "integer",
                         "title": "Image Max Source Pixels",
-                        "description": "Decode-bomb guard: readAsImage refuses to decode any source or embedded image above this pixel count. Default is 50000000.",
+                        "description": "Decode-bomb guard: readAsImage and readDocument refuse to decode any source or embedded image above this pixel count. Default is 50000000.",
                         "default": 50000000
                     },
                     "imagePassThroughMaxBytes": {

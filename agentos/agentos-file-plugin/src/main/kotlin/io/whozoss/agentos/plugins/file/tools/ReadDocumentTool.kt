@@ -42,7 +42,7 @@ import kotlin.io.path.name
  *
  * Embedded pictures (diagrams, screenshots, scans) are where vision is useful, so they ARE
  * attached: [XWPFDocument.getAllPictures] yields the embedded bitmaps directly (no rendering),
- * each is checked against [ImageProcessor.MAX_SOURCE_PIXELS] and re-encoded as JPEG, up to
+ * each is checked against [imageMaxSourcePixels] and re-encoded as JPEG, up to
  * [MAX_ATTACHED_IMAGES]. An oversized or unreadable picture is skipped (the text still reads),
  * not fatal. Pictures are document-global, so they are attached only on the first page (when
  * [startElement] is 1) to avoid re-sending them on every paged continuation; a notice reports any
@@ -65,37 +65,11 @@ class ReadDocumentTool(
     private val configName: String? = null,
     private val readMaxSizeBytes: Long = DEFAULT_READ_MAX_SIZE,
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
+    private val ioTimeoutSeconds: Long = IO_TIMEOUT,
+    private val imageMaxDimension: Int = ImageProcessor.MAX_DIMENSION,
+    private val imageJpegQuality: Float = ImageProcessor.JPEG_QUALITY,
+    private val imageMaxSourcePixels: Long = ImageProcessor.MAX_SOURCE_PIXELS,
 ) : StandardTool<ReadDocumentTool.Input> {
-    companion object : KLogging() {
-        /** Parsing a whole XWPF DOM is heavy like PDF/PPTX rendering: distinct, larger timeout. */
-        private const val IO_TIMEOUT = 60L
-        private const val DEFAULT_READ_MAX_SIZE = 10L * 1024 * 1024 // 10 MB
-
-        /** Markdown character budget per call: the real guard for very long documents. */
-        const val MAX_OUTPUT_CHARS = 100_000
-
-        /** Table columns beyond this are not emitted. */
-        const val MAX_TABLE_COLUMNS = 64
-
-        /** A single table cell longer than this is cut. */
-        const val MAX_CELL_CHARS = 5000
-
-        /** Maximum embedded pictures attached as vision images per call, newest layout order. */
-        const val MAX_ATTACHED_IMAGES = 10
-
-        /** CommonMark supports at most 6 heading levels; deeper Word headings are clamped to this. */
-        private const val MAX_HEADING_LEVEL = 6
-
-        /** JVM-wide bound on concurrent full-resolution image decodes (same intent as ReadAsImageTool's render pool). */
-        private const val MAX_CONCURRENT_DECODES = 4
-        private val decodeSemaphore = Semaphore(MAX_CONCURRENT_DECODES)
-
-        // Built-in heading style IDs are localised by Word's authoring language, and Word sometimes
-        // strips accents from the style id. Cover the common locales (accents optional); unusual
-        // locales or custom styles fall through to a plain paragraph (text kept, only the level lost).
-        private val HEADING_STYLE =
-            Regex("""(?iu)^(?:heading|titre|titolo|t[íi]?tulo|(?:ü|u)?berschrift|kop|rubrik|overskrift)\s*([1-9])$""")
-    }
 
     override val name: String =
         if (configName != null) "${configName}__readDocument" else "FILES__readDocument"
@@ -151,11 +125,11 @@ class ReadDocumentTool(
         val params = input ?: Input()
 
         return try {
-            val (text, images) = runIOWithTimeout(IO_TIMEOUT) { read(params) }
+            val (text, images) = runIOWithTimeout(ioTimeoutSeconds) { read(params) }
             ToolExecutionResult.successWithImages(text, images)
         } catch (e: TimeoutCancellationException) {
             ToolExecutionResult.error(
-                "Operation timed out after $IO_TIMEOUT seconds",
+                "Operation timed out after $ioTimeoutSeconds seconds",
                 errorType = "TIMEOUT",
                 errorMessage = e.message,
             )
@@ -413,7 +387,7 @@ class ReadDocumentTool(
     private fun toImage(picture: XWPFPictureData, fileName: String): MessageContent.Image? {
         val bytes = runCatching { picture.data }.getOrNull() ?: return null
         val header = runCatching { ImageProcessor.readHeader(ByteArrayInputStream(bytes)) }.getOrNull() ?: return null
-        if (header.width.toLong() * header.height > ImageProcessor.MAX_SOURCE_PIXELS) {
+        if (header.width.toLong() * header.height > imageMaxSourcePixels) {
             logger.warn {
                 "readDocument skipped an oversized embedded image (${header.width}x${header.height}) in $fileName"
             }
@@ -425,7 +399,8 @@ class ReadDocumentTool(
         try {
             val decoded = runCatching { ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull() ?: return null
             // A decode/encode failure on one picture must never abort the whole document read.
-            return runCatching { ImageProcessor.toJpegContent(decoded) }.getOrNull()
+            return runCatching { ImageProcessor.toJpegContent(decoded, imageMaxDimension, imageJpegQuality) }
+                .getOrNull()
         } finally {
             decodeSemaphore.release()
         }
@@ -434,4 +409,35 @@ class ReadDocumentTool(
     // Local to this tool on the readAsImage base branch; #1151 promotes an identical exception
     // to a shared UnsupportedFormatException.kt — deduplicate to it if #1151 lands first.
     private class UnsupportedFormatException(message: String) : IllegalArgumentException(message)
+
+    companion object : KLogging() {
+        /** Parsing a whole XWPF DOM is heavy like PDF/PPTX rendering: distinct, larger timeout. */
+        private const val IO_TIMEOUT = 60L
+        private const val DEFAULT_READ_MAX_SIZE = 10L * 1024 * 1024 // 10 MB
+
+        /** Markdown character budget per call: the real guard for very long documents. */
+        const val MAX_OUTPUT_CHARS = 100_000
+
+        /** Table columns beyond this are not emitted. */
+        const val MAX_TABLE_COLUMNS = 64
+
+        /** A single table cell longer than this is cut. */
+        const val MAX_CELL_CHARS = 5000
+
+        /** Maximum embedded pictures attached as vision images per call, newest layout order. */
+        const val MAX_ATTACHED_IMAGES = 10
+
+        /** CommonMark supports at most 6 heading levels; deeper Word headings are clamped to this. */
+        private const val MAX_HEADING_LEVEL = 6
+
+        /** JVM-wide bound on concurrent full-resolution image decodes (same intent as ReadAsImageTool's render pool). */
+        private const val MAX_CONCURRENT_DECODES = 4
+        private val decodeSemaphore = Semaphore(MAX_CONCURRENT_DECODES)
+
+        // Built-in heading style IDs are localised by Word's authoring language, and Word sometimes
+        // strips accents from the style id. Cover the common locales (accents optional); unusual
+        // locales or custom styles fall through to a plain paragraph (text kept, only the level lost).
+        private val HEADING_STYLE =
+            Regex("""(?iu)^(?:heading|titre|titolo|t[íi]?tulo|(?:ü|u)?berschrift|kop|rubrik|overskrift)\s*([1-9])$""")
+    }
 }

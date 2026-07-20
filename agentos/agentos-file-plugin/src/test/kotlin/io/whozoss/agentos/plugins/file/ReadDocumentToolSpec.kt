@@ -156,6 +156,23 @@ class ReadDocumentToolSpec : StringSpec() {
             result.output shouldContain "text before the bomb"
         }
 
+        "a configured imageMaxSourcePixels is honored: an embedded image over the cap is skipped" {
+            val file = writeDocx("configured-cap.docx") { paragraph("see the diagram:") }
+            XWPFDocument(Files.newInputStream(file)).use { document ->
+                document.createParagraph().createRun()
+                    .addPicture(ByteArrayInputStream(pngBytes(60, 40)), Document.PICTURE_TYPE_PNG, "diagram.png", 60, 40)
+                Files.newOutputStream(file).use { document.write(it) }
+            }
+
+            // 60x40 = 2400 source pixels, above the configured 1000-pixel cap: skipped, text still returns.
+            val tool = ReadDocumentTool(tempDir, imageMaxSourcePixels = 1000)
+            val result = tool.execute(ReadDocumentTool.Input("configured-cap.docx"), ctx)
+
+            withClue(result.output) { result.success shouldBe true }
+            result.images shouldHaveSize 0
+            result.output shouldContain "none could be shown"
+        }
+
         "legacy .doc is rejected with UNSUPPORTED_FORMAT" {
             tempDir.resolve("old.doc").writeBytes(byteArrayOf(0xD0.toByte(), 0xCF.toByte(), 0x11, 0xE0.toByte()))
 
