@@ -23,16 +23,16 @@ import kotlin.io.path.inputStream
  */
 object ImageProcessor {
 
-    /** Maximum width/height sent to the LLM. Hard-coded for now, configurable later. */
+    /** Default maximum width/height sent to the LLM; overridable per FILE_ACCESS integration (`imageMaxDimension`). */
     const val MAX_DIMENSION = 1024
 
-    /** JPEG re-encoding quality. */
+    /** Default JPEG re-encoding quality; overridable per FILE_ACCESS integration (`imageJpegQuality`). */
     const val JPEG_QUALITY = 0.80f
 
-    /** Decode-bomb guard: refuse to decode sources above this pixel count. */
+    /** Default decode-bomb guard: refuse to decode sources above this pixel count (`imageMaxSourcePixels`). */
     const val MAX_SOURCE_PIXELS = 50_000_000L
 
-    /** Original bytes below this size that already fit [MAX_DIMENSION] are passed through untouched. */
+    /** Default: original bytes below this size that already fit the max dimension are passed through untouched (`imagePassThroughMaxBytes`). */
     const val PASS_THROUGH_MAX_BYTES = 1L * 1024 * 1024
 
     /** Mime type by ImageIO reader format name — the format of the actual BYTES, not the file name. */
@@ -82,11 +82,17 @@ object ImageProcessor {
 
     /**
      * True when the original file bytes can be sent as-is: the image already fits
-     * [MAX_DIMENSION] and the file is small enough that re-encoding would not
+     * [maxDimension] and the file is small enough that re-encoding would not
      * meaningfully reduce the payload (also preserves GIF animation and PNG sharpness).
      */
-    fun passThroughEligible(width: Int, height: Int, fileSizeBytes: Long): Boolean =
-        width <= MAX_DIMENSION && height <= MAX_DIMENSION && fileSizeBytes <= PASS_THROUGH_MAX_BYTES
+    fun passThroughEligible(
+        width: Int,
+        height: Int,
+        fileSizeBytes: Long,
+        maxDimension: Int = MAX_DIMENSION,
+        passThroughMaxBytes: Long = PASS_THROUGH_MAX_BYTES,
+    ): Boolean =
+        width <= maxDimension && height <= maxDimension && fileSizeBytes <= passThroughMaxBytes
 
     /**
      * Target dimensions scaled to fit [maxDimension] on the longest edge,
@@ -136,12 +142,16 @@ object ImageProcessor {
     }
 
     /**
-     * Scales [source] to fit [MAX_DIMENSION] (never enlarging), flattens alpha and
-     * encodes JPEG at [JPEG_QUALITY], as a ready-to-send [MessageContent.Image].
+     * Scales [source] to fit [maxDimension] (never enlarging), flattens alpha and
+     * encodes JPEG at [quality], as a ready-to-send [MessageContent.Image].
      */
-    fun toJpegContent(source: BufferedImage): MessageContent.Image {
-        val (targetWidth, targetHeight) = scaleDimensions(source.width, source.height)
-        val bytes = encodeJpeg(renderRgb(source, targetWidth, targetHeight))
+    fun toJpegContent(
+        source: BufferedImage,
+        maxDimension: Int = MAX_DIMENSION,
+        quality: Float = JPEG_QUALITY,
+    ): MessageContent.Image {
+        val (targetWidth, targetHeight) = scaleDimensions(source.width, source.height, maxDimension)
+        val bytes = encodeJpeg(renderRgb(source, targetWidth, targetHeight), quality)
         return MessageContent.Image(
             content = Base64.getEncoder().encodeToString(bytes),
             mimeType = "image/jpeg",

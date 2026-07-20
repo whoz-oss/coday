@@ -45,7 +45,7 @@ import kotlin.time.Duration.Companion.seconds
  * Render an image, PDF or PPTX file into [MessageContent.Image] attachments so a
  * vision-capable model can see it.
  *
- * Images (png/jpg/jpeg/gif/bmp) are bounded to [ImageProcessor.MAX_DIMENSION] and
+ * Images (png/jpg/jpeg/gif/bmp) are bounded to [imageMaxDimension] and
  * re-encoded JPEG when needed; small originals pass through untouched. PDFs are
  * rendered one image per page, PPTX presentations one image per slide (at most
  * [MAX_PAGES_PER_CALL] per call, selectable via the `pages` parameter). The textual
@@ -57,7 +57,7 @@ import kotlin.time.Duration.Companion.seconds
  * SmartArt is not rendered and embedded charts come out blank.
  *
  * Decompression-bomb guards (PDFBox/POI decode embedded bitmaps at full source
- * resolution): standalone images are rejected above [ImageProcessor.MAX_SOURCE_PIXELS]
+ * resolution): standalone images are rejected above [imageMaxSourcePixels]
  * from their declared header before any decode. Inside a PDF every image is intercepted
  * at [PageDrawer.drawImage] ([BoundedPageDrawer]) and checked against the same cap before
  * PDFBox materializes it: that is the single decode point for XObjects, inline images
@@ -70,52 +70,11 @@ class ReadAsImageTool(
     private val readMaxSizeBytes: Long = DEFAULT_READ_MAX_SIZE,
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
     private val ioTimeoutSeconds: Long = IO_TIMEOUT,
+    private val imageMaxDimension: Int = ImageProcessor.MAX_DIMENSION,
+    private val imageJpegQuality: Float = ImageProcessor.JPEG_QUALITY,
+    private val imageMaxSourcePixels: Long = ImageProcessor.MAX_SOURCE_PIXELS,
+    private val imagePassThroughMaxBytes: Long = ImageProcessor.PASS_THROUGH_MAX_BYTES,
 ) : StandardTool<ReadAsImageTool.Input> {
-    companion object : KLogging() {
-        /** PDF/PPTX rendering is significantly slower than a plain read: distinct, larger timeout. */
-        private const val IO_TIMEOUT = 60L
-        private const val DEFAULT_READ_MAX_SIZE = 10L * 1024 * 1024 // 10 MB
-
-        /** Maximum PDF pages / PPTX slides rendered in a single call. */
-        const val MAX_PAGES_PER_CALL = 10
-
-        /** Nominal PDF rendering resolution before downscaling: keeps text legible at 1024px. */
-        private const val PDF_RENDER_DPI = 150f
-
-        /** PDF user-space unit: 72 points per inch. */
-        private const val POINTS_PER_INCH = 72f
-
-        /**
-         * PDF pages and PPTX slides are rendered with their longest edge capped at this
-         * size (2x supersampling), then downscaled to [ImageProcessor.MAX_DIMENSION].
-         * On PDFs this also bounds the render allocation: a page declaring a huge
-         * MediaBox at [PDF_RENDER_DPI] would otherwise allocate a multi-GB buffer.
-         */
-        private const val RENDER_TARGET_PX = 2048
-
-        /** Extensions routed to the standalone-image path. */
-        private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "bmp")
-
-        /**
-         * Original bytes may be sent as-is only for these mime types, DETECTED FROM THE
-         * CONTENT by [ImageProcessor.readHeader] (never from the file extension, which the
-         * provider would reject on a mismatched payload): the vision APIs accept
-         * png/jpeg/gif but reject image/bmp, so bmp is always re-encoded JPEG.
-         */
-        private val PASS_THROUGH_MIME_TYPES = setOf("image/png", "image/jpeg", "image/gif")
-
-        /** Maximum concurrent renders across all instances of this tool. */
-        private const val MAX_CONCURRENT_RENDERS = 4
-
-        /**
-         * Bounded, abandonable pool for the blocking renders. Coroutine cancellation is
-         * cooperative and PDFBox/POI rendering never suspends, so a timed-out render
-         * cannot be stopped: it is left to finish here (result discarded) instead of
-         * pinning the caller or an unbounded share of the Dispatchers.IO workers.
-         */
-        private val renderScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(MAX_CONCURRENT_RENDERS))
-    }
-
     override val name: String = if (configName != null) "${configName}__readAsImage" else "FILES__readAsImage"
 
     override val description: String =
@@ -249,10 +208,10 @@ class ReadAsImageTool(
     private fun renderImage(file: Path): Pair<String, List<MessageContent.Image>> {
         val header = ImageProcessor.readHeader(file)
             ?: throw IllegalArgumentException("File does not contain a readable image: ${file.name}")
-        if (header.width.toLong() * header.height > ImageProcessor.MAX_SOURCE_PIXELS) {
+        if (header.width.toLong() * header.height > imageMaxSourcePixels) {
             throw IllegalArgumentException(
                 "Image is too large to decode (${header.width}x${header.height}," +
-                    " max ${ImageProcessor.MAX_SOURCE_PIXELS} pixels): ${file.name}",
+                    " max $imageMaxSourcePixels pixels): ${file.name}",
             )
         }
 
@@ -262,7 +221,13 @@ class ReadAsImageTool(
         val image = if (
             contentMime != null &&
             contentMime in PASS_THROUGH_MIME_TYPES &&
-            ImageProcessor.passThroughEligible(header.width, header.height, file.fileSize())
+            ImageProcessor.passThroughEligible(
+                header.width,
+                header.height,
+                file.fileSize(),
+                imageMaxDimension,
+                imagePassThroughMaxBytes,
+            )
         ) {
             MessageContent.Image(
                 content = Base64.getEncoder().encodeToString(Files.readAllBytes(file)),
@@ -273,7 +238,7 @@ class ReadAsImageTool(
         } else {
             val decoded = ImageIO.read(file.toFile())
                 ?: throw IllegalArgumentException("File does not contain a readable image: ${file.name}")
-            ImageProcessor.toJpegContent(decoded)
+            ImageProcessor.toJpegContent(decoded, imageMaxDimension, imageJpegQuality)
         }
 
         return "Loaded image ${file.name} (${image.width}x${image.height}, ${image.mimeType}, attached)." to listOf(image)
@@ -296,6 +261,8 @@ class ReadAsImageTool(
                 val images = selection.map { page ->
                     ImageProcessor.toJpegContent(
                         renderer.renderImageWithDPI(page - 1, pageRenderDpi(document, page), ImageType.RGB),
+                        imageMaxDimension,
+                        imageJpegQuality,
                     )
                 }
 
@@ -329,7 +296,7 @@ class ReadAsImageTool(
     }
 
     /**
-     * Rejects any image over [ImageProcessor.MAX_SOURCE_PIXELS] from its DECLARED dimensions
+     * Rejects any image over [imageMaxSourcePixels] from its DECLARED dimensions
      * before PDFBox decodes it. [PageDrawer.drawImage] is the single decode entry point for
      * every image PDFBox draws — image XObjects, inline images (BI/ID/EI), Type3 glyph
      * images, and images reachable through forms/patterns/annotations at any nesting depth —
@@ -357,7 +324,7 @@ class ReadAsImageTool(
      * Decompression-bomb guard for pictures embedded in a PPTX: sniffs the header of every
      * picture part in the package (slides, layouts, masters and backgrounds share the same
      * part pool) and rejects the deck when a picture's declared dimensions exceed
-     * [ImageProcessor.MAX_SOURCE_PIXELS]. POI decodes pictures at full source resolution
+     * [imageMaxSourcePixels]. POI decodes pictures at full source resolution
      * while drawing. Header-only sniff: no pixel data is decoded; unrecognized parts
      * (vector metafiles, corrupt data) are skipped, as POI itself skips them.
      */
@@ -371,10 +338,10 @@ class ReadAsImageTool(
     }
 
     private fun checkEmbeddedImageSize(width: Int, height: Int, fileName: String) {
-        if (width.toLong() * height > ImageProcessor.MAX_SOURCE_PIXELS) {
+        if (width.toLong() * height > imageMaxSourcePixels) {
             throw IllegalArgumentException(
                 "Embedded image is too large to decode (${width}x$height," +
-                    " max ${ImageProcessor.MAX_SOURCE_PIXELS} pixels): $fileName",
+                    " max $imageMaxSourcePixels pixels): $fileName",
             )
         }
     }
@@ -462,7 +429,7 @@ class ReadAsImageTool(
         } finally {
             graphics.dispose()
         }
-        return ImageProcessor.toJpegContent(target)
+        return ImageProcessor.toJpegContent(target, imageMaxDimension, imageJpegQuality)
     }
 
     private fun selectPages(
@@ -526,4 +493,49 @@ class ReadAsImageTool(
     }
 
     private class UnsupportedFormatException(message: String) : IllegalArgumentException(message)
+
+    companion object : KLogging() {
+        /** PDF/PPTX rendering is significantly slower than a plain read: distinct, larger timeout. */
+        private const val IO_TIMEOUT = 60L
+        private const val DEFAULT_READ_MAX_SIZE = 10L * 1024 * 1024 // 10 MB
+
+        /** Maximum PDF pages / PPTX slides rendered in a single call. */
+        const val MAX_PAGES_PER_CALL = 10
+
+        /** Nominal PDF rendering resolution before downscaling: keeps text legible at 1024px. */
+        private const val PDF_RENDER_DPI = 150f
+
+        /** PDF user-space unit: 72 points per inch. */
+        private const val POINTS_PER_INCH = 72f
+
+        /**
+         * PDF pages and PPTX slides are rendered with their longest edge capped at this
+         * size (2x supersampling), then downscaled to [ImageProcessor.MAX_DIMENSION].
+         * On PDFs this also bounds the render allocation: a page declaring a huge
+         * MediaBox at [PDF_RENDER_DPI] would otherwise allocate a multi-GB buffer.
+         */
+        private const val RENDER_TARGET_PX = 2048
+
+        /** Extensions routed to the standalone-image path. */
+        private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "bmp")
+
+        /**
+         * Original bytes may be sent as-is only for these mime types, DETECTED FROM THE
+         * CONTENT by [ImageProcessor.readHeader] (never from the file extension, which the
+         * provider would reject on a mismatched payload): the vision APIs accept
+         * png/jpeg/gif but reject image/bmp, so bmp is always re-encoded JPEG.
+         */
+        private val PASS_THROUGH_MIME_TYPES = setOf("image/png", "image/jpeg", "image/gif")
+
+        /** Maximum concurrent renders across all instances of this tool. */
+        private const val MAX_CONCURRENT_RENDERS = 4
+
+        /**
+         * Bounded, abandonable pool for the blocking renders. Coroutine cancellation is
+         * cooperative and PDFBox/POI rendering never suspends, so a timed-out render
+         * cannot be stopped: it is left to finish here (result discarded) instead of
+         * pinning the caller or an unbounded share of the Dispatchers.IO workers.
+         */
+        private val renderScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(MAX_CONCURRENT_RENDERS))
+    }
 }

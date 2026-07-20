@@ -628,7 +628,7 @@ class AgentAdvancedContextSpec :
             messages shouldHaveSize 2
         }
 
-        "image tool responses beyond MAX_ATTACHED_IMAGES lose their media, newest kept" {
+        "image tool responses beyond maxAttachedImages lose their media, newest kept" {
             // 3 reads of 10 images each: only the 2 most recent fit the 20-image cap
             val events =
                 (1..3).flatMap { i ->
@@ -648,7 +648,7 @@ class AgentAdvancedContextSpec :
         }
 
         "image cost counts against the detailed-tool budget" {
-            // Image response costs IMAGE_CHAR_COST each: with a tiny budget the older
+            // Image response costs imageCharCost each: with a tiny budget the older
             // pair is summarized while the newest stays detailed.
             val events =
                 listOf(
@@ -658,7 +658,7 @@ class AgentAdvancedContextSpec :
                     toolResponseWithImages("r2", "FILES__readAsImage", "read 2", List(2) { image() }),
                 )
             val messages =
-                context.convertEventsToMessages(events, maxDetailedChars = 2 * AgentAdvancedContext.IMAGE_CHAR_COST + 100)
+                context.convertEventsToMessages(events, maxDetailedChars = 2 * context.imageCharCost + 100)
 
             val summaries = messages.filterIsInstance<AssistantMessage>().filter { it.text?.contains("[Step summary]") == true }
             summaries shouldHaveSize 1
@@ -669,7 +669,7 @@ class AgentAdvancedContextSpec :
 
         "responses with evicted media pay no image cost against the budget" {
             // 3 responses of 10 images each: the 20-image cap attaches media for the 2
-            // newest only. The oldest must NOT be charged IMAGE_CHAR_COST for images it
+            // newest only. The oldest must NOT be charged imageCharCost for images it
             // does not attach, so it stays detailed (with the marker) instead of being
             // evicted from the budget by phantom cost.
             val events =
@@ -679,7 +679,7 @@ class AgentAdvancedContextSpec :
                         toolResponseWithImages("r$i", "FILES__readAsImage", "read $i", List(10) { image() }),
                     )
                 }
-            val budget = 20 * AgentAdvancedContext.IMAGE_CHAR_COST + 500
+            val budget = 20 * context.imageCharCost + 500
 
             val messages = context.convertEventsToMessages(events, maxDetailedChars = budget)
 

@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.file
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.plugins.file.image.ImageProcessor
 import io.whozoss.agentos.plugins.file.tools.EditFilesTool
 import io.whozoss.agentos.plugins.file.tools.ListFilesTool
 import io.whozoss.agentos.plugins.file.tools.MoveFileTool
@@ -46,13 +47,27 @@ class FileToolProvider : ToolPlugin {
             ?.map { it.asText() }
             ?: emptyList()
 
+        val imageMaxDimension = config.get("imageMaxDimension")?.asInt() ?: ImageProcessor.MAX_DIMENSION
+        val imageJpegQuality = config.get("imageJpegQuality")?.asDouble()?.toFloat() ?: ImageProcessor.JPEG_QUALITY
+        val imageMaxSourcePixels = config.get("imageMaxSourcePixels")?.asLong() ?: ImageProcessor.MAX_SOURCE_PIXELS
+        val imagePassThroughMaxBytes = config.get("imagePassThroughMaxBytes")?.asLong() ?: ImageProcessor.PASS_THROUGH_MAX_BYTES
+
         val readMaxSizeBytes = readMaxSizeMb * 1024 * 1024
         val denyPatterns = SensitiveFilePatterns.DEFAULT_PATTERNS + extraDenyPatterns
 
         val readTools = listOf(
             ListFilesTool(rootPath, configName, denyPatterns),
             ReadFileTool(rootPath, configName, readMaxSizeBytes, denyPatterns),
-            ReadAsImageTool(rootPath, configName, readMaxSizeBytes, denyPatterns),
+            ReadAsImageTool(
+                rootPath,
+                configName,
+                readMaxSizeBytes,
+                denyPatterns,
+                imageMaxDimension = imageMaxDimension,
+                imageJpegQuality = imageJpegQuality,
+                imageMaxSourcePixels = imageMaxSourcePixels,
+                imagePassThroughMaxBytes = imagePassThroughMaxBytes,
+            ),
             ReadDocumentTool(rootPath, configName, readMaxSizeBytes, denyPatterns),
             SearchFilesTool(rootPath, configName, denyPatterns),
         )
@@ -90,6 +105,30 @@ class FileToolProvider : ToolPlugin {
                         "title": "Read Max Size (MB)",
                         "description": "Maximum file size in megabytes that readFile, readAsImage and readDocument will read. Default is 10 MB.",
                         "default": 10
+                    },
+                    "imageMaxDimension": {
+                        "type": "integer",
+                        "title": "Image Max Dimension (px)",
+                        "description": "Longest-edge size, in pixels, that readAsImage sends to the LLM; larger images are downscaled. Default is 1024.",
+                        "default": 1024
+                    },
+                    "imageJpegQuality": {
+                        "type": "number",
+                        "title": "Image JPEG Quality",
+                        "description": "JPEG re-encoding quality for readAsImage, between 0 and 1. Default is 0.80.",
+                        "default": 0.80
+                    },
+                    "imageMaxSourcePixels": {
+                        "type": "integer",
+                        "title": "Image Max Source Pixels",
+                        "description": "Decode-bomb guard: readAsImage refuses to decode any source or embedded image above this pixel count. Default is 50000000.",
+                        "default": 50000000
+                    },
+                    "imagePassThroughMaxBytes": {
+                        "type": "integer",
+                        "title": "Image Pass-Through Max Size (bytes)",
+                        "description": "Originals at or below this byte size that already fit the max dimension are sent untouched instead of re-encoded. Default is 1048576 (1 MB).",
+                        "default": 1048576
                     },
                     "extraDenyPatterns": {
                         "type": "array",
