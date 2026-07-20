@@ -8,24 +8,33 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.whozoss.agentos.plugins.file.tools.ReadAsImageTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import org.apache.pdfbox.cos.COSName
 import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.PDPage
+import org.apache.pdfbox.pdmodel.PDPageContentStream
 import org.apache.pdfbox.pdmodel.common.PDRectangle
+import org.apache.pdfbox.pdmodel.common.PDStream
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission
 import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject
 import org.apache.poi.poifs.crypt.EncryptionInfo
 import org.apache.poi.poifs.crypt.EncryptionMode
 import org.apache.poi.poifs.filesystem.POIFSFileSystem
+import org.apache.poi.sl.usermodel.PictureData
 import org.apache.poi.xslf.usermodel.XMLSlideShow
 import java.awt.Rectangle
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Base64
 import java.util.UUID
+import java.util.zip.CRC32
+import java.util.zip.DeflaterOutputStream
 import javax.imageio.ImageIO
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
@@ -58,6 +67,71 @@ class ReadAsImageToolSpec : StringSpec() {
                 box.setAnchor(Rectangle(50, 50, 400, 100))
                 box.text = "Slide ${index + 1}"
             }
+            Files.newOutputStream(file).use { presentation.write(it) }
+        }
+        return file
+    }
+
+    /**
+     * Minimal valid PNG header (signature + IHDR with correct CRC, no pixel data):
+     * enough for the header sniff to report the declared dimensions, tiny on disk.
+     */
+    private fun pngHeaderBytes(width: Int, height: Int): ByteArray {
+        val ihdr = ByteBuffer.allocate(13)
+            .putInt(width)
+            .putInt(height)
+            .put(8.toByte()) // bit depth
+            .put(2.toByte()) // color type: truecolor
+            .put(0.toByte()) // compression
+            .put(0.toByte()) // filter
+            .put(0.toByte()) // interlace
+            .array()
+        val crc = CRC32().apply {
+            update("IHDR".toByteArray(Charsets.US_ASCII))
+            update(ihdr)
+        }
+        return ByteBuffer.allocate(33)
+            .put(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+            .putInt(13)
+            .put("IHDR".toByteArray(Charsets.US_ASCII))
+            .put(ihdr)
+            .putInt(crc.value.toInt())
+            .array()
+    }
+
+    /**
+     * PDF whose single page draws an image XObject DECLARING huge dimensions (the Flate
+     * payload is garbage: the pre-scan must reject on the declared header, before any
+     * decode is attempted).
+     */
+    private fun writePdfWithHugeEmbeddedImage(name: String): Path {
+        val file = tempDir.resolve(name)
+        PDDocument().use { document ->
+            val page = PDPage()
+            document.addPage(page)
+            val deflated = ByteArrayOutputStream().also { buffer ->
+                DeflaterOutputStream(buffer).use { it.write(ByteArray(64)) }
+            }.toByteArray()
+            val stream = PDStream(document, ByteArrayInputStream(deflated), COSName.FLATE_DECODE)
+            val dictionary = stream.cosObject
+            dictionary.setItem(COSName.TYPE, COSName.XOBJECT)
+            dictionary.setItem(COSName.SUBTYPE, COSName.IMAGE)
+            dictionary.setInt(COSName.WIDTH, 30_000)
+            dictionary.setInt(COSName.HEIGHT, 30_000)
+            dictionary.setInt(COSName.BITS_PER_COMPONENT, 8)
+            dictionary.setItem(COSName.COLORSPACE, COSName.DEVICEGRAY)
+            val image = PDImageXObject(stream, null)
+            PDPageContentStream(document, page).use { it.drawImage(image, 50f, 50f, 100f, 100f) }
+            document.save(file.toFile())
+        }
+        return file
+    }
+
+    private fun writePptxWithPicture(name: String, pictureBytes: ByteArray): Path {
+        val file = tempDir.resolve(name)
+        XMLSlideShow().use { presentation ->
+            val picture = presentation.addPicture(pictureBytes, PictureData.PictureType.PNG)
+            presentation.createSlide().createPicture(picture)
             Files.newOutputStream(file).use { presentation.write(it) }
         }
         return file
@@ -212,6 +286,33 @@ class ReadAsImageToolSpec : StringSpec() {
             result.output shouldContain "readable image"
         }
 
+        "image declaring more pixels than the decode cap is rejected before decoding" {
+            // 30000x30000 = 900M pixels, way over MAX_SOURCE_PIXELS; the file is a
+            // 33-byte header, so any attempt to actually decode would fail differently.
+            tempDir.resolve("huge.png").writeBytes(pngHeaderBytes(30_000, 30_000))
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("huge.png"), ctx)
+
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_INPUT"
+            result.output shouldContain "too large to decode"
+        }
+
+        "image content wins over the file extension for the pass-through mime type" {
+            // A JPEG named .png must be labeled image/jpeg (the content), not image/png
+            // (the extension): providers reject a mismatched declared media type.
+            val file = tempDir.resolve("fake.png")
+            ImageIO.write(BufferedImage(100, 80, BufferedImage.TYPE_INT_RGB), "jpg", file.toFile())
+            val originalBytes = Files.readAllBytes(file)
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("fake.png"), ctx)
+
+            result.success shouldBe true
+            val image = result.images.single()
+            image.mimeType shouldBe "image/jpeg"
+            Base64.getDecoder().decode(image.content) shouldBe originalBytes
+        }
+
         "file exceeding size cap is rejected before decoding" {
             val file = writePng("big.png", 50, 50)
             val tool = ReadAsImageTool(tempDir, readMaxSizeBytes = Files.size(file) - 1)
@@ -260,6 +361,16 @@ class ReadAsImageToolSpec : StringSpec() {
             result.success shouldBe true
             result.images shouldHaveSize 1
             result.output shouldContain "page(s) 2 of 3"
+        }
+
+        "pages selection with duplicates and gaps is deduplicated, sorted and summarized as a list" {
+            writePdf("cv.pdf", 5)
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("cv.pdf", pages = listOf(3, 1, 3)), ctx)
+
+            result.success shouldBe true
+            result.images shouldHaveSize 2
+            result.output shouldContain "page(s) 1,3 of 5"
         }
 
         "page out of range is rejected with the actual page count" {
@@ -338,6 +449,37 @@ class ReadAsImageToolSpec : StringSpec() {
             result.success shouldBe false
             result.errorType shouldBe "INVALID_INPUT"
             result.output shouldContain "password-protected"
+        }
+
+        "PDF embedding an image larger than the decode cap is rejected before rendering" {
+            // PDFBox decodes embedded image XObjects at full declared resolution while
+            // drawing: the pre-scan must reject on the declared dimensions, before the
+            // (garbage) payload is ever decoded.
+            writePdfWithHugeEmbeddedImage("bomb.pdf")
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("bomb.pdf"), ctx)
+
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_INPUT"
+            result.output shouldContain "Embedded image is too large"
+        }
+
+        "PDF with a small embedded image still renders" {
+            val file = tempDir.resolve("photo.pdf")
+            PDDocument().use { document ->
+                val page = PDPage()
+                document.addPage(page)
+                val image = LosslessFactory.createFromImage(document, BufferedImage(60, 40, BufferedImage.TYPE_INT_RGB))
+                PDPageContentStream(document, page).use { it.drawImage(image, 50f, 50f, 120f, 80f) }
+                document.save(file.toFile())
+            }
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("photo.pdf"), ctx)
+
+            withClue(result.output) {
+                result.success shouldBe true
+            }
+            result.images shouldHaveSize 1
         }
 
         "pages parameter on an image file is rejected" {
@@ -427,6 +569,32 @@ class ReadAsImageToolSpec : StringSpec() {
 
             result.success shouldBe false
             result.errorType shouldBe "INVALID_INPUT"
+        }
+
+        "PPTX embedding a picture larger than the decode cap is rejected before rendering" {
+            // POI decodes embedded pictures at full source resolution while drawing: the
+            // header pre-scan must reject on the declared dimensions before any decode.
+            writePptxWithPicture("bomb.pptx", pngHeaderBytes(30_000, 30_000))
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("bomb.pptx"), ctx)
+
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_INPUT"
+            result.output shouldContain "Embedded image is too large"
+        }
+
+        "PPTX with a small embedded picture still renders" {
+            val pngBytes = ByteArrayOutputStream().also { buffer ->
+                ImageIO.write(BufferedImage(60, 40, BufferedImage.TYPE_INT_RGB), "png", buffer)
+            }.toByteArray()
+            writePptxWithPicture("photo.pptx", pngBytes)
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("photo.pptx"), ctx)
+
+            withClue(result.output) {
+                result.success shouldBe true
+            }
+            result.images shouldHaveSize 1
         }
     }
 }

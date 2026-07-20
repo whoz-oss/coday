@@ -5,6 +5,7 @@ import java.awt.Color
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.nio.file.Path
 import java.util.Base64
 import javax.imageio.IIOImage
@@ -34,23 +35,48 @@ object ImageProcessor {
     /** Original bytes below this size that already fit [MAX_DIMENSION] are passed through untouched. */
     const val PASS_THROUGH_MAX_BYTES = 1L * 1024 * 1024
 
+    /** Mime type by ImageIO reader format name — the format of the actual BYTES, not the file name. */
+    private val MIME_BY_FORMAT = mapOf(
+        "png" to "image/png",
+        "jpeg" to "image/jpeg",
+        "jpg" to "image/jpeg",
+        "gif" to "image/gif",
+        "bmp" to "image/bmp",
+    )
+
     /**
-     * Reads the dimensions (width x height) of an image file from its header,
+     * Image header sniffed without decoding any pixel data: dimensions plus the mime type
+     * of the actual content. [mimeType] is null when the detected format has no mime
+     * mapping (the content is readable but must go through the re-encoding path).
+     */
+    data class ImageHeader(val width: Int, val height: Int, val mimeType: String?)
+
+    /**
+     * Reads the header of an image file (dimensions and content-detected mime type)
      * without decoding the pixel data. Returns null when no installed reader
      * recognizes the format (e.g. corrupt or misnamed file).
      */
-    fun readDimensions(file: Path): Pair<Int, Int>? =
-        file.inputStream().use { input ->
-            ImageIO.createImageInputStream(input).use { imageInput ->
-                val readers = ImageIO.getImageReaders(imageInput)
-                if (!readers.hasNext()) return null
-                val reader = readers.next()
-                try {
-                    reader.input = imageInput
-                    reader.getWidth(0) to reader.getHeight(0)
-                } finally {
-                    reader.dispose()
-                }
+    fun readHeader(file: Path): ImageHeader? = file.inputStream().use { readHeader(it) }
+
+    /**
+     * Reads the header of an image stream (dimensions and content-detected mime type)
+     * without decoding the pixel data. Returns null when no installed reader
+     * recognizes the format. Only the header bytes are consumed.
+     */
+    fun readHeader(input: InputStream): ImageHeader? =
+        ImageIO.createImageInputStream(input).use { imageInput ->
+            val readers = ImageIO.getImageReaders(imageInput)
+            if (!readers.hasNext()) return null
+            val reader = readers.next()
+            try {
+                reader.input = imageInput
+                ImageHeader(
+                    width = reader.getWidth(0),
+                    height = reader.getHeight(0),
+                    mimeType = MIME_BY_FORMAT[reader.formatName.lowercase()],
+                )
+            } finally {
+                reader.dispose()
             }
         }
 
