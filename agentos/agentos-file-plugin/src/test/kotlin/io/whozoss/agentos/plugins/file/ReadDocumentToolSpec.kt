@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.whozoss.agentos.plugins.file.tools.ReadDocumentTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import org.apache.poi.poifs.crypt.EncryptionInfo
@@ -282,6 +283,124 @@ class ReadDocumentToolSpec : StringSpec() {
             withClue("output length ${result.output.length}") {
                 (result.output.length < ReadDocumentTool.MAX_OUTPUT_CHARS + 5000) shouldBe true
             }
+        }
+
+        "embedded images are attached on the first page only, not on paged continuations" {
+            val file = writeDocx("paged-image.docx") { repeat(3) { paragraph("Paragraph ${it + 1}") } }
+            XWPFDocument(Files.newInputStream(file)).use { document ->
+                document.createParagraph().createRun()
+                    .addPicture(ByteArrayInputStream(pngBytes(60, 40)), Document.PICTURE_TYPE_PNG, "diagram.png", 60, 40)
+                Files.newOutputStream(file).use { document.write(it) }
+            }
+
+            val firstPage = ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("paged-image.docx"), ctx)
+            firstPage.images shouldHaveSize 1
+
+            val secondPage =
+                ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("paged-image.docx", startElement = 2), ctx)
+            secondPage.success shouldBe true
+            secondPage.images shouldHaveSize 0
+        }
+
+        "more pictures than the cap: only the cap is attached and the notice reports the rest" {
+            val file = writeDocx("gallery.docx") { paragraph("gallery") }
+            XWPFDocument(Files.newInputStream(file)).use { document ->
+                // Distinct dimensions per picture so POI does not deduplicate identical bytes.
+                repeat(ReadDocumentTool.MAX_ATTACHED_IMAGES + 1) { i ->
+                    document.createParagraph().createRun()
+                        .addPicture(ByteArrayInputStream(pngBytes(60 + i, 40)), Document.PICTURE_TYPE_PNG, "img$i.png", 60, 40)
+                }
+                Files.newOutputStream(file).use { document.write(it) }
+            }
+
+            val result = ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("gallery.docx"), ctx)
+
+            withClue(result.output) { result.success shouldBe true }
+            result.images shouldHaveSize ReadDocumentTool.MAX_ATTACHED_IMAGES
+            result.output shouldContain "(1 of ${ReadDocumentTool.MAX_ATTACHED_IMAGES + 1} not shown)"
+        }
+
+        "a document whose pictures are all oversized reports them present but not shown" {
+            val file = writeDocx("all-oversized.docx") { paragraph("text") }
+            XWPFDocument(Files.newInputStream(file)).use { document ->
+                document.createParagraph().createRun()
+                    .addPicture(ByteArrayInputStream(pngHeaderBytes(30_000, 30_000)), Document.PICTURE_TYPE_PNG, "huge.png", 10, 10)
+                Files.newOutputStream(file).use { document.write(it) }
+            }
+
+            val result = ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("all-oversized.docx"), ctx)
+
+            withClue(result.output) { result.success shouldBe true }
+            result.images shouldHaveSize 0
+            result.output shouldContain "none could be shown"
+        }
+
+        "a table cell with a backslash before a pipe is fully escaped, not corrupted" {
+            val raw = "a\\|b" // a, backslash, pipe, b
+            writeDocx("backslash.docx") {
+                val table = createTable(2, 1)
+                table.getRow(0).getCell(0).setText("H")
+                table.getRow(1).getCell(0).setText(raw)
+            }
+
+            val result = ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("backslash.docx"), ctx)
+
+            withClue(result.output) { result.success shouldBe true }
+            // Backslash escaped first, then the pipe: round-trips to the literal "a\|b".
+            result.output shouldContain raw.replace("\\", "\\\\").replace("|", "\\|")
+        }
+
+        "a multi-paragraph table cell is joined, not concatenated without a separator" {
+            writeDocx("multipara.docx") {
+                val table = createTable(2, 1)
+                table.getRow(0).getCell(0).setText("Header")
+                val cell = table.getRow(1).getCell(0)
+                cell.paragraphs[0].createRun().setText("Total")
+                cell.addParagraph().createRun().setText("100")
+            }
+
+            val result = ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("multipara.docx"), ctx)
+
+            withClue(result.output) { result.success shouldBe true }
+            result.output shouldContain "Total<br>100"
+            result.output shouldNotContain "Total100"
+        }
+
+        "a heading level deeper than 6 is clamped to valid CommonMark" {
+            writeDocx("deep-heading.docx") { paragraph("Deep", style = "Heading7") }
+
+            val result = ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("deep-heading.docx"), ctx)
+
+            withClue(result.output) { result.success shouldBe true }
+            result.output shouldContain "###### Deep"
+            result.output shouldNotContain "####### Deep"
+        }
+
+        "content exceeding the budget across elements reports [truncated] with a continuation startElement" {
+            writeDocx("huge-multi.docx") { repeat(130) { paragraph(randomText(1000, it)) } }
+
+            val result = ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("huge-multi.docx"), ctx)
+
+            withClue(result.output.take(200)) { result.success shouldBe true }
+            result.output shouldContain "[truncated]"
+            result.output shouldContain "startElement="
+        }
+
+        "a ragged table (rows with unequal cell counts) is padded to a consistent column count" {
+            writeDocx("ragged.docx") {
+                val table = createTable(2, 2)
+                table.getRow(0).getCell(0).setText("A")
+                table.getRow(0).getCell(1).setText("B")
+                table.getRow(0).createCell().setText("C") // row 0 widened to 3 cells
+                table.getRow(1).getCell(0).setText("D")
+                table.getRow(1).getCell(1).setText("E") // row 1 stays at 2 cells
+            }
+
+            val result = ReadDocumentTool(tempDir).execute(ReadDocumentTool.Input("ragged.docx"), ctx)
+
+            withClue(result.output) { result.success shouldBe true }
+            result.output shouldContain "| --- | --- | --- |" // separator widened to the max column count
+            result.output shouldContain "| D | E |  |" // short row padded to 3 columns
         }
 
         "startElement out of range is rejected with the element count" {
