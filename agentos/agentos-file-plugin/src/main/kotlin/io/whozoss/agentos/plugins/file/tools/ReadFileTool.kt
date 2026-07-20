@@ -34,7 +34,7 @@ class ReadFileTool(
     override val description: String =
         """
         Read content from a text file. Use searchFiles to find files.
-        Text files only (UTF-8). For images and PDFs use readAsImage.
+        Text files only (UTF-8). For images and PDFs use readAsImage; for Word (.docx) use readDocument.
         """.trimIndent()
 
     override val version: String = "1.0.0"

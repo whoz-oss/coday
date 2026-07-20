@@ -6,6 +6,7 @@ import io.whozoss.agentos.plugins.file.tools.EditFilesTool
 import io.whozoss.agentos.plugins.file.tools.ListFilesTool
 import io.whozoss.agentos.plugins.file.tools.MoveFileTool
 import io.whozoss.agentos.plugins.file.tools.ReadAsImageTool
+import io.whozoss.agentos.plugins.file.tools.ReadDocumentTool
 import io.whozoss.agentos.plugins.file.tools.ReadFileTool
 import io.whozoss.agentos.plugins.file.tools.RemoveFileTool
 import io.whozoss.agentos.plugins.file.tools.SearchFilesTool
@@ -23,7 +24,7 @@ import java.nio.file.Path
  * and instantiates file tools with the rootPath drawn from the persisted
  * IntegrationConfig parameters.
  *
- * When [readOnly] is true, only the read tools (list, read, readAsImage, search)
+ * When [readOnly] is true, only the read tools (list, read, readAsImage, readDocument, search)
  * are provided. Write tools (edit, remove, move) are not included at all, so the
  * agent is never aware of their existence.
  */
@@ -52,6 +53,7 @@ class FileToolProvider : ToolPlugin {
             ListFilesTool(rootPath, configName, denyPatterns),
             ReadFileTool(rootPath, configName, readMaxSizeBytes, denyPatterns),
             ReadAsImageTool(rootPath, configName, readMaxSizeBytes, denyPatterns),
+            ReadDocumentTool(rootPath, configName, readMaxSizeBytes, denyPatterns),
             SearchFilesTool(rootPath, configName, denyPatterns),
         )
 
@@ -86,7 +88,7 @@ class FileToolProvider : ToolPlugin {
                     "readMaxSizeMb": {
                         "type": "integer",
                         "title": "Read Max Size (MB)",
-                        "description": "Maximum file size in megabytes that ReadFileTool will read. Default is 10 MB.",
+                        "description": "Maximum file size in megabytes that readFile, readAsImage and readDocument will read. Default is 10 MB.",
                         "default": 10
                     },
                     "extraDenyPatterns": {
