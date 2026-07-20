@@ -63,27 +63,8 @@ class ReadSpreadsheetTool(
     private val configName: String? = null,
     private val readMaxSizeBytes: Long = DEFAULT_READ_MAX_SIZE,
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
+    private val ioTimeoutSeconds: Long = IO_TIMEOUT,
 ) : StandardTool<ReadSpreadsheetTool.Input> {
-    companion object : KLogging() {
-        /** Parsing a whole XSSF DOM is heavy like PDF/PPTX rendering: distinct, larger timeout. */
-        private const val IO_TIMEOUT = 60L
-        private const val DEFAULT_READ_MAX_SIZE = 10L * 1024 * 1024 // 10 MB
-
-        /** Maximum rows emitted in a single call, across all selected sheets. */
-        const val MAX_ROWS_PER_CALL = 1000
-
-        /** Output character budget per call: the real guard for very wide sheets. */
-        const val MAX_OUTPUT_CHARS = 100_000
-
-        /** Columns beyond this are not emitted (xlsx allows 16384 columns). */
-        const val MAX_COLUMNS = 256
-
-        /** A single cell may hold up to 32767 characters; longer values are cut. */
-        const val MAX_CELL_CHARS = 5000
-
-        private const val CELL_TRUNCATED_MARKER = "…[cell truncated]"
-        private const val ROW_TRUNCATED_MARKER = "…[row truncated]"
-    }
 
     override val name: String =
         if (configName != null) "${configName}__readSpreadsheet" else "FILES__readSpreadsheet"
@@ -149,11 +130,11 @@ class ReadSpreadsheetTool(
         val params = input ?: Input()
 
         return try {
-            val content = runIOWithTimeout(IO_TIMEOUT) { read(params) }
+            val content = runIOWithTimeout(ioTimeoutSeconds) { read(params) }
             ToolExecutionResult.success(content)
         } catch (e: TimeoutCancellationException) {
             ToolExecutionResult.error(
-                "Operation timed out after $IO_TIMEOUT seconds",
+                "Operation timed out after $ioTimeoutSeconds seconds",
                 errorType = "TIMEOUT",
                 errorMessage = e.message,
             )
@@ -500,4 +481,25 @@ class ReadSpreadsheetTool(
         val columnCount: Int,
         val columnsTruncated: Boolean,
     )
+
+    companion object : KLogging() {
+        /** Parsing a whole XSSF DOM is heavy like PDF/PPTX rendering: distinct, larger timeout. */
+        private const val IO_TIMEOUT = 60L
+        private const val DEFAULT_READ_MAX_SIZE = 10L * 1024 * 1024 // 10 MB
+
+        /** Maximum rows emitted in a single call, across all selected sheets. */
+        const val MAX_ROWS_PER_CALL = 1000
+
+        /** Output character budget per call: the real guard for very wide sheets. */
+        const val MAX_OUTPUT_CHARS = 100_000
+
+        /** Columns beyond this are not emitted (xlsx allows 16384 columns). */
+        const val MAX_COLUMNS = 256
+
+        /** A single cell may hold up to 32767 characters; longer values are cut. */
+        const val MAX_CELL_CHARS = 5000
+
+        private const val CELL_TRUNCATED_MARKER = "…[cell truncated]"
+        private const val ROW_TRUNCATED_MARKER = "…[row truncated]"
+    }
 }
