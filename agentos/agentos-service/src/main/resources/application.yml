@@ -116,6 +116,12 @@ agentos:
   # defaultAgentName configured. The named agent must exist in the case's namespace.
   # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME
   # agent-name: copilot
+  # Char-equivalent cost of one tool-response image against the agent's detailed-context budget.
+  # Override with env var: AGENTOS_DEFAULTS_IMAGE_CHAR_COST
+  # image-char-cost: 6000
+  # Maximum tool-response images attached as Media across a whole prompt (newest first).
+  # Override with env var: AGENTOS_DEFAULTS_MAX_ATTACHED_IMAGES
+  # max-attached-images: 20
   plugins:
     dir: ${PLUGINS_DIR:plugins/}
   security:

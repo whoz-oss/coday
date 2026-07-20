@@ -64,6 +64,7 @@ class AgentServiceImpl(
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val agentDocumentResolver: AgentDocumentResolver,
+    private val agentConfigProperties: AgentConfigProperties,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -376,6 +377,8 @@ class AgentServiceImpl(
                     agentId = agentId,
                     confirmationManager = confirmationManager,
                     systemPrompt = resolvedSystemPrompt,
+                    imageCharCost = agentConfigProperties.imageCharCost,
+                    maxAttachedImages = agentConfigProperties.maxAttachedImages,
                 )
             AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),

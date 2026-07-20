@@ -24,6 +24,13 @@ data class AgentAdvancedContext(
     val confirmationManager: ConfirmationManager,
     /** Namespace context block sent as a privileged system message, prepended before event history. */
     val systemPrompt: String? = null,
+    /**
+     * Char-equivalent cost of one attached image against the detailed-tool budget.
+     * Default mirrors [AgentConfigProperties.imageCharCost].
+     */
+    val imageCharCost: Int = 6_000,
+    /** Maximum images attached as Media across the whole prompt, newest first. Default mirrors [AgentConfigProperties.maxAttachedImages]. */
+    val maxAttachedImages: Int = 20,
 ) {
     /**
      * Build the complete message list for a single LLM call.
@@ -64,7 +71,11 @@ data class AgentAdvancedContext(
     ): List<Message> {
         val responsesByRequestId = indexToolResponses(events)
         val (detailedRequestIds, mediaRequestIds) =
-            selectDetailedToolRequestIds(events, responsesByRequestId, maxDetailedChars)
+            selectDetailedToolRequestIds(
+                events = events,
+                responsesByRequestId = responsesByRequestId,
+                maxDetailedChars = maxDetailedChars,
+            )
 
         val lastUserMsgIndex =
             events.indexOfLast {
@@ -84,7 +95,12 @@ data class AgentAdvancedContext(
                 }
 
                 is ToolRequestEvent -> {
-                    toToolMessages(event, detailedRequestIds, mediaRequestIds, responsesByRequestId)
+                    toToolMessages(
+                        event = event,
+                        detailedRequestIds = detailedRequestIds,
+                        mediaRequestIds = mediaRequestIds,
+                        responsesByRequestId = responsesByRequestId,
+                    )
                 }
 
                 is IntentionGeneratedEvent -> {
@@ -113,8 +129,8 @@ data class AgentAdvancedContext(
     /**
      * Single newest-first walk deciding both selections coherently:
      * - a request is detailed while its cumulated char cost fits [maxDetailedChars];
-     * - its images are attached while they fit [MAX_ATTACHED_IMAGES], and only attached
-     *   images are charged [IMAGE_CHAR_COST] against the budget. Responses whose images
+     * - its images are attached while they fit [maxAttachedImages], and only attached
+     *   images are charged [imageCharCost] against the budget. Responses whose images
      *   are not attached keep their text summary plus a marker (see
      *   [toDetailedToolMessages]) and cost only that text.
      */
@@ -133,13 +149,9 @@ data class AgentAdvancedContext(
 
             val response = responsesByRequestId[event.toolRequestId]
             val images = response?.images ?: emptyList()
-            val attachMedia = images.isNotEmpty() && imagesAttached + images.size <= MAX_ATTACHED_IMAGES
+            val attachMedia = images.isNotEmpty() && imagesAttached + images.size <= maxAttachedImages
 
-            val argsCost = event.args?.length ?: 0
-            val responseCost = response?.let { extractText(it.output).length } ?: 0
-            val imagesCost = if (attachMedia) images.size * IMAGE_CHAR_COST else 0
-            val cost = argsCost + responseCost + imagesCost
-
+            val cost = detailedCharCost(event, response, attachMedia)
             if (charsCollected + cost > maxDetailedChars) break
 
             detailed.add(event.toolRequestId)
@@ -150,6 +162,22 @@ data class AgentAdvancedContext(
             }
         }
         return ToolReplaySelection(detailed, withMedia)
+    }
+
+    /**
+     * Char-equivalent cost charged against the detailed-tool budget for one request/response:
+     * the request args, the response text, and — only when [attachMedia] is true — the attached
+     * images at [imageCharCost] each.
+     */
+    private fun detailedCharCost(
+        event: ToolRequestEvent,
+        response: ToolResponseEvent?,
+        attachMedia: Boolean,
+    ): Int {
+        val argsCost = event.args?.length ?: 0
+        val responseCost = response?.let { extractText(it.output).length } ?: 0
+        val imagesCost = if (attachMedia) (response?.images?.size ?: 0) * imageCharCost else 0
+        return argsCost + responseCost + imagesCost
     }
 
     private fun toToolMessages(
@@ -232,17 +260,4 @@ data class AgentAdvancedContext(
             is MessageContent.Text -> content.content
             is MessageContent.Image -> "[image ${content.mimeType} ${content.width}x${content.height}]"
         }
-
-    companion object {
-        /**
-         * Char-equivalent cost of one attached image against the detailed-tool budget.
-         * Derived from the legacy Coday estimate: (width * height) / 750 tokens at
-         * ~3.5 chars per token, ~4 900 chars for a full-size 1024x1024 image,
-         * rounded up to 6 000.
-         */
-        internal const val IMAGE_CHAR_COST = 6_000
-
-        /** Maximum images attached as Media across the whole prompt, newest first. */
-        internal const val MAX_ATTACHED_IMAGES = 20
-    }
 }
