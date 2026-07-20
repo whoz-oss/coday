@@ -198,6 +198,22 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(http.post).not.toHaveBeenCalled()
   })
 
+  it('is not re-entrant: a second submit while one is in flight does not double-send', async () => {
+    const ref = makeComponent()
+    ref.instance['inputValue'].set('analyse this file')
+    attachments(ref).addFiles([new File(['x'], 'report.pdf')])
+    let resolveUpload!: (v: { success: boolean }) => void
+    exchangeState.uploadFile.mockReturnValue(new Promise<{ success: boolean }>((resolve) => (resolveUpload = resolve)))
+
+    const first = ref.instance['submit']()
+    await ref.instance['submit']() // fired while the first is still awaiting the upload
+    resolveUpload({ success: true })
+    await first
+
+    expect(exchangeState.uploadFile).toHaveBeenCalledTimes(1)
+    expect(http.post).toHaveBeenCalledTimes(1)
+  })
+
   it('canSend is false while uploading or on a terminal case, even with attachments staged', () => {
     const ref = makeComponent()
     attachments(ref).addFiles([new File(['x'], 'a.pdf')])

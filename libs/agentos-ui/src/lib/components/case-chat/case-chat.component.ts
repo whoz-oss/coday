@@ -741,22 +741,35 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.connectSse()
   }
 
+  /**
+   * Re-entrancy guard for the async attachment path. canSend alone is not enough: it goes
+   * false during the upload (isUploading), but that flag is cleared by the service before
+   * postMessage sets isRunning, leaving a window where a second submit() could pass the
+   * guard and post the same message twice. Set synchronously, cleared in a finally.
+   */
+  private submitting = false
+
   protected async submit(): Promise<void> {
-    if (!this.canSend) return
+    if (this.submitting || !this.canSend) return
     const content = this.inputValue().trim()
     if (this.attachments.hasAttachments()) {
-      const caseIdAtSubmit = this.caseId
-      const scope = resolveUploadScope(content, this.exchangeState.canWriteNamespace())
-      const mention = await this.attachments.uploadAllAndBuildMention(scope)
-      // An upload failure or a mid-flight case switch blocks the send: failed chips carry
-      // the mapped errors (or the switch reset the batch), the input stays intact.
-      if (mention === null || this.caseId !== caseIdAtSubmit) return
-      const sent = await this.postMessage(content ? `${content}\n\n${mention}` : mention)
-      // Only a confirmed send clears the composer: on failure the text and the uploaded
-      // chips stay, and a retry rebuilds the mention without re-uploading anything.
-      if (sent && this.caseId === caseIdAtSubmit) {
-        this.inputValue.set('')
-        this.attachments.reset()
+      this.submitting = true
+      try {
+        const caseIdAtSubmit = this.caseId
+        const scope = resolveUploadScope(content, this.exchangeState.canWriteNamespace())
+        const mention = await this.attachments.uploadAllAndBuildMention(scope)
+        // An upload failure or a mid-flight case switch blocks the send: failed chips carry
+        // the mapped errors (or the switch reset the batch), the input stays intact.
+        if (mention === null || this.caseId !== caseIdAtSubmit) return
+        const sent = await this.postMessage(content ? `${content}\n\n${mention}` : mention)
+        // Only a confirmed send clears the composer: on failure the text and the uploaded
+        // chips stay, and a retry rebuilds the mention without re-uploading anything.
+        if (sent && this.caseId === caseIdAtSubmit) {
+          this.inputValue.set('')
+          this.attachments.reset()
+        }
+      } finally {
+        this.submitting = false
       }
       return
     }
