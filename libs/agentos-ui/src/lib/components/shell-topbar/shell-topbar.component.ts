@@ -3,6 +3,7 @@ import { Router } from '@angular/router'
 import { THEME_PORT } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { ShellUserMenuComponent } from '../case-shell/shell-user-menu/shell-user-menu.component'
+import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 
 /**
  * ShellTopbarComponent — barre de navigation supérieure réutilisable.
@@ -25,6 +26,7 @@ export class ShellTopbarComponent {
   private readonly router = inject(Router)
   private readonly userState = inject(UserStateService)
   private readonly themePort = inject(THEME_PORT)
+  private readonly namespaceState = inject(NamespaceStateService)
 
   protected readonly menuOpen = signal(false)
 
@@ -49,7 +51,8 @@ export class ShellTopbarComponent {
   protected readonly showTechnical = signal(false)
 
   protected navigateHome(): void {
-    this.router.navigate(['/agentos/home'])
+    const nsId = this.namespaceState.activeNamespaceId()
+    this.router.navigate(['/agentos/home'], nsId ? { queryParams: { ns: nsId } } : {})
   }
 
   protected toggleMenu(event: MouseEvent): void {

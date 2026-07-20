@@ -1,3 +1,44 @@
+## 0.218.0 (2026-07-20)
+
+### 🚀 Features
+
+- chat composer file attachments (drag & drop, + button, exchange upload) ([#1152](https://github.com/whoz-oss/coday/pull/1152))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.217.1 (2026-07-17)
+
+### 🩹 Fixes
+
+- #1023 Preserve namespace when navigating home ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
+## 0.217.0 (2026-07-17)
+
+### 🚀 Features
+
+- wz-32968 agent prompts ([#1146](https://github.com/whoz-oss/coday/pull/1146))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.216.1 (2026-07-16)
+
+### 🩹 Fixes
+
+- agent name resolution uses exact match instead of substring contains ([#1147](https://github.com/whoz-oss/coday/pull/1147))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.216.0 (2026-07-16)
 
 ### 🚀 Features

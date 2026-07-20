@@ -10,13 +10,17 @@
 /* tslint:disable:no-unused-variable member-ordering */
 
 import { Inject, Injectable, Optional } from '@angular/core'
-import { HttpClient, HttpParams, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
+import { HttpClient, HttpResponse, HttpEvent, HttpContext } from '@angular/common/http'
 import { Observable } from 'rxjs'
 
 // @ts-ignore
 import { GetByIdsRequest } from '../model/get-by-ids-request'
 // @ts-ignore
 import { Prompt } from '../model/prompt'
+// @ts-ignore
+import { PromptEffectiveRequest } from '../model/prompt-effective-request'
+// @ts-ignore
+import { PromptSearchRequest } from '../model/prompt-search-request'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -184,44 +188,39 @@ export class PromptControllerService extends BaseService {
   }
 
   /**
-   * Effective prompts for a namespace
-   * Returns the resolved set of prompts accessible in the given namespace context. Merges platform, namespace-shared, user-global and user×namespace layers by name, highest-priority layer wins. Requires READ on the namespace.
-   * @param namespaceId
+   * Effective prompts for a user in a namespace
+   * Returns the resolved set of prompts accessible in the given namespace context. Merges platform, namespace-shared, user-global and user×namespace layers by name, highest-priority layer wins. Optional &#x60;agentConfigId&#x60; filter applied post-resolution. Requires READ on the namespace.
+   * @param promptEffectiveRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public findEffectiveByNamespaceIdPrompt(
-    namespaceId: string,
+  public effectivePrompt(
+    promptEffectiveRequest: PromptEffectiveRequest,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<Prompt>>
-  public findEffectiveByNamespaceIdPrompt(
-    namespaceId: string,
+  public effectivePrompt(
+    promptEffectiveRequest: PromptEffectiveRequest,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<Prompt>>>
-  public findEffectiveByNamespaceIdPrompt(
-    namespaceId: string,
+  public effectivePrompt(
+    promptEffectiveRequest: PromptEffectiveRequest,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<Prompt>>>
-  public findEffectiveByNamespaceIdPrompt(
-    namespaceId: string,
+  public effectivePrompt(
+    promptEffectiveRequest: PromptEffectiveRequest,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (namespaceId === null || namespaceId === undefined) {
-      throw new Error(
-        'Required parameter namespaceId was null or undefined when calling findEffectiveByNamespaceIdPrompt.'
-      )
+    if (promptEffectiveRequest === null || promptEffectiveRequest === undefined) {
+      throw new Error('Required parameter promptEffectiveRequest was null or undefined when calling effectivePrompt.')
     }
-
-    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
-    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
 
     let localVarHeaders = this.defaultHeaders
 
@@ -234,6 +233,13 @@ export class PromptControllerService extends BaseService {
     const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
 
     const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
 
     let responseType_: 'text' | 'json' | 'blob' = 'json'
     if (localVarHttpHeaderAcceptSelected) {
@@ -248,9 +254,9 @@ export class PromptControllerService extends BaseService {
 
     let localVarPath = `/api/prompts/effective`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<Prompt>>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<Prompt>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      params: localVarQueryParameters,
+      body: promptEffectiveRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -407,36 +413,38 @@ export class PromptControllerService extends BaseService {
   }
 
   /**
-   * @param parentId
+   * List Prompts at an exact scope level
+   * Returns prompts declared at a single exact scope level — no merge, no inheritance. The &#x60;(namespaceId?, userId?)&#x60; combination in the body determines the level:  | namespaceId | userId   | level            | required permission        | |-------------|----------|------------------|----------------------------| | null        | null     | platform         | authenticated              | | non-null    | null     | namespace-shared | READ on namespace          | | null        | non-null | user-global      | authenticated              | | non-null    | non-null | user×namespace   | READ on namespace          |  Optional &#x60;agentConfigIds&#x60; filter restricts results to prompts linked to those agents.
+   * @param promptSearchRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
-  public listByParentPrompt(
-    parentId: string,
+  public searchPrompt(
+    promptSearchRequest: PromptSearchRequest,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<Prompt>>
-  public listByParentPrompt(
-    parentId: string,
+  public searchPrompt(
+    promptSearchRequest: PromptSearchRequest,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<Prompt>>>
-  public listByParentPrompt(
-    parentId: string,
+  public searchPrompt(
+    promptSearchRequest: PromptSearchRequest,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<Prompt>>>
-  public listByParentPrompt(
-    parentId: string,
+  public searchPrompt(
+    promptSearchRequest: PromptSearchRequest,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (parentId === null || parentId === undefined) {
-      throw new Error('Required parameter parentId was null or undefined when calling listByParentPrompt.')
+    if (promptSearchRequest === null || promptSearchRequest === undefined) {
+      throw new Error('Required parameter promptSearchRequest was null or undefined when calling searchPrompt.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -451,85 +459,12 @@ export class PromptControllerService extends BaseService {
 
     const localVarTransferCache: boolean = options?.transferCache ?? true
 
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
     }
-
-    let localVarPath = `/api/prompts/by-parentId/${this.configuration.encodeParam({ name: 'parentId', value: parentId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<Prompt>>('get', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
-   * List Prompts by explicit scope
-   * Returns prompts for the given scope. &#x60;namespaceId&#x60; is required for &#x60;NAMESPACE&#x60; and &#x60;USER_NAMESPACE&#x60; scopes, and must be omitted for &#x60;PLATFORM&#x60; and &#x60;USER&#x60;.  | scope          | namespaceId | returned prompts                  | required permission       | |----------------|-------------|-----------------------------------|---------------------------| | PLATFORM       | absent      | platform-level (null, null)       | authenticated             | | NAMESPACE      | required    | namespace-shared (ns, null)       | READ on namespace         | | USER           | absent      | user-global (null, me)            | authenticated             | | USER_NAMESPACE | required    | user × namespace (ns, me)        | READ on namespace         |
-   * @param scope Scope of prompts to return.
-   * @param namespaceId
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public listPrompt(
-    scope: 'PLATFORM' | 'NAMESPACE' | 'USER' | 'USER_NAMESPACE',
-    namespaceId?: string,
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<Prompt>>
-  public listPrompt(
-    scope: 'PLATFORM' | 'NAMESPACE' | 'USER' | 'USER_NAMESPACE',
-    namespaceId?: string,
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<Prompt>>>
-  public listPrompt(
-    scope: 'PLATFORM' | 'NAMESPACE' | 'USER' | 'USER_NAMESPACE',
-    namespaceId?: string,
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<Prompt>>>
-  public listPrompt(
-    scope: 'PLATFORM' | 'NAMESPACE' | 'USER' | 'USER_NAMESPACE',
-    namespaceId?: string,
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    if (scope === null || scope === undefined) {
-      throw new Error('Required parameter scope was null or undefined when calling listPrompt.')
-    }
-
-    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
-    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>scope, 'scope')
-    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
-
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
-    }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
 
     let responseType_: 'text' | 'json' | 'blob' = 'json'
     if (localVarHttpHeaderAcceptSelected) {
@@ -542,11 +477,11 @@ export class PromptControllerService extends BaseService {
       }
     }
 
-    let localVarPath = `/api/prompts`
+    let localVarPath = `/api/prompts/search`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<Prompt>>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<Prompt>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      params: localVarQueryParameters,
+      body: promptSearchRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

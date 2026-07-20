@@ -230,6 +230,44 @@ describe('ExchangeStateService', () => {
     })
   })
 
+  describe('initializeForNamespace (composer outside any case)', () => {
+    it('fetches only the namespace manifest and enables canWriteNamespace on READ_WRITE', () => {
+      controller.getCaseFilesManifestExchange.mockClear()
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(
+        of(manifest(ExchangeManifestCapabilityEnum.READ_WRITE, [nsFile]))
+      )
+
+      service.initializeForNamespace('ns-1')
+
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledWith('ns-1')
+      expect(controller.getCaseFilesManifestExchange).not.toHaveBeenCalled()
+      expect(service.canWriteNamespace()).toBe(true)
+    })
+
+    it('uploads to the namespace without any case initialised', async () => {
+      controller.uploadNamespaceFileExchange.mockReturnValue(of(nsFile))
+
+      service.initializeForNamespace('ns-1')
+      const result = await service.uploadFile(ExchangeFileEntryScopeEnum.NAMESPACE, new File(['x'], 'shared.md'))
+
+      expect(result.success).toBe(true)
+      expect(controller.uploadNamespaceFileExchange).toHaveBeenCalledWith('ns-1', expect.any(File))
+    })
+
+    it('clear() then initializeForNamespace re-inits cleanly (chat to home transition)', () => {
+      init()
+      service.clear()
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(
+        of(manifest(ExchangeManifestCapabilityEnum.READ_WRITE, [nsFile]))
+      )
+
+      service.initializeForNamespace('ns-1')
+
+      expect(service.namespaceStatus()).toBe('ready')
+      expect(service.canWriteNamespace()).toBe(true)
+    })
+  })
+
   describe('refreshCase (agent file activity)', () => {
     it('refetches only the case manifest, leaving the read-only namespace scope untouched', () => {
       init()

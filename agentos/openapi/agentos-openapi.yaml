@@ -1975,47 +1975,6 @@ paths:
       tags:
       - plugin-controller
   /api/prompts:
-    get:
-      description: |-
-        Returns prompts for the given scope. `namespaceId` is required for `NAMESPACE` and `USER_NAMESPACE` scopes, and must be omitted for `PLATFORM` and `USER`.
-
-        | scope          | namespaceId | returned prompts                  | required permission       |
-        |----------------|-------------|-----------------------------------|---------------------------|
-        | PLATFORM       | absent      | platform-level (null, null)       | authenticated             |
-        | NAMESPACE      | required    | namespace-shared (ns, null)       | READ on namespace         |
-        | USER           | absent      | user-global (null, me)            | authenticated             |
-        | USER_NAMESPACE | required    | user × namespace (ns, me)        | READ on namespace         |
-      operationId: listPrompt
-      parameters:
-      - description: Scope of prompts to return.
-        in: query
-        name: scope
-        required: true
-        schema:
-          type: string
-          enum:
-          - PLATFORM
-          - NAMESPACE
-          - USER
-          - USER_NAMESPACE
-      - in: query
-        name: namespaceId
-        required: false
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
-          description: OK
-      summary: List Prompts by explicit scope
-      tags:
-      - prompt-controller
     post:
       description: |-
         Scope is inferred from `(body.namespaceId, body.userId)`:
@@ -2065,40 +2024,19 @@ paths:
           description: OK
       tags:
       - prompt-controller
-  /api/prompts/by-parentId/{parentId}:
-    get:
-      operationId: listByParentPrompt
-      parameters:
-      - in: path
-        name: parentId
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
-          description: OK
-      tags:
-      - prompt-controller
   /api/prompts/effective:
-    get:
+    post:
       description: "Returns the resolved set of prompts accessible in the given namespace\
         \ context. Merges platform, namespace-shared, user-global and user×namespace\
-        \ layers by name, highest-priority layer wins. Requires READ on the namespace."
-      operationId: findEffectiveByNamespaceIdPrompt
-      parameters:
-      - in: query
-        name: namespaceId
+        \ layers by name, highest-priority layer wins. Optional `agentConfigId` filter\
+        \ applied post-resolution. Requires READ on the namespace."
+      operationId: effectivePrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptEffectiveRequest"
         required: true
-        schema:
-          type: string
-          format: uuid
       responses:
         "200":
           content:
@@ -2108,7 +2046,39 @@ paths:
                 items:
                   $ref: "#/components/schemas/Prompt"
           description: OK
-      summary: Effective prompts for a namespace
+      summary: Effective prompts for a user in a namespace
+      tags:
+      - prompt-controller
+  /api/prompts/search:
+    post:
+      description: |-
+        Returns prompts declared at a single exact scope level — no merge, no inheritance. The `(namespaceId?, userId?)` combination in the body determines the level:
+
+        | namespaceId | userId   | level            | required permission        |
+        |-------------|----------|------------------|----------------------------|
+        | null        | null     | platform         | authenticated              |
+        | non-null    | null     | namespace-shared | READ on namespace          |
+        | null        | non-null | user-global      | authenticated              |
+        | non-null    | non-null | user×namespace   | READ on namespace          |
+
+        Optional `agentConfigIds` filter restricts results to prompts linked to those agents.
+      operationId: searchPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptSearchRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
+          description: OK
+      summary: List Prompts at an exact scope level
       tags:
       - prompt-controller
   /api/prompts/{id}:
@@ -3438,6 +3408,11 @@ components:
     Prompt:
       type: object
       properties:
+        agentConfigId:
+          type:
+          - string
+          - "null"
+          format: uuid
         content:
           type: array
           items:
@@ -3451,6 +3426,9 @@ components:
           format: date-time
         description:
           type: string
+        externalMetadata:
+          type: object
+          additionalProperties: {}
         id:
           type: string
           format: uuid
@@ -3480,6 +3458,32 @@ components:
       - content
       - name
       - parameters
+    PromptEffectiveRequest:
+      type: object
+      properties:
+        agentConfigId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        namespaceExternalId:
+          type:
+          - string
+          - "null"
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        userExternalId:
+          type:
+          - string
+          - "null"
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
     PromptParameter:
       type: object
       properties:
@@ -3494,6 +3498,28 @@ components:
       required:
       - defaultValue
       - name
+    PromptSearchRequest:
+      type: object
+      properties:
+        agentConfigIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        namespaceExternalId:
+          type:
+          - string
+          - "null"
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
     QuestionEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"

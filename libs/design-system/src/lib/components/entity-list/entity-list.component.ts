@@ -61,6 +61,13 @@ export class EntityListComponent implements AfterViewInit {
    */
   readonly disableInternalFilter = input<boolean>(false)
   readonly toolbarOnly = input<boolean>(false)
+  /**
+   * When true, keep rendering the grouped (accordion) view while a search is active,
+   * showing only the groups that still have matching items (a group with no match is
+   * dropped, since [groupedItems] never creates an empty group). Default false keeps the
+   * historical flat-while-searching behaviour for callers that don't opt in.
+   */
+  readonly keepGroupsWhileSearching = input<boolean>(false)
 
   readonly itemSelected = output<string>()
   readonly createRequested = output<void>()
@@ -88,34 +95,30 @@ export class EntityListComponent implements AfterViewInit {
 
   protected readonly groupedItems = computed<GroupedItems[]>(() => {
     const items = this.filteredItems()
-    const ungrouped: EntityListItem[] = []
-    const groupMap = new Map<string, GroupedItems>()
-
-    for (const item of items) {
-      if (!item.groupKey) {
-        ungrouped.push(item)
-        continue
-      }
-      if (!groupMap.has(item.groupKey)) {
-        groupMap.set(item.groupKey, {
-          groupKey: item.groupKey,
-          groupLabel: item.groupLabel ?? item.groupKey,
-          items: [],
-        })
-      }
-      groupMap.get(item.groupKey)!.items.push(item)
-    }
-
     const groups: GroupedItems[] = []
-    if (ungrouped.length > 0) {
-      groups.push({ groupKey: '', groupLabel: '', items: ungrouped })
+    const byKey = new Map<string, GroupedItems>()
+
+    // Preserve the order in which group keys first appear in [items], so the caller
+    // controls group ordering purely through item order. Ungrouped items form a single
+    // headerless group ('') positioned where the first ungrouped item appears — a named
+    // group listed before it (e.g. "Favorites") therefore renders above the ungrouped rest.
+    for (const item of items) {
+      const key = item.groupKey ?? ''
+      let group = byKey.get(key)
+      if (!group) {
+        group = { groupKey: key, groupLabel: key ? (item.groupLabel ?? key) : '', items: [] }
+        byKey.set(key, group)
+        groups.push(group)
+      }
+      group.items.push(item)
     }
-    groups.push(...groupMap.values())
+
     return groups
   })
 
   protected readonly hasGroups = computed(
-    () => !this.isSearchActive() && this.groupedItems().some((g) => g.groupKey !== '')
+    () =>
+      (this.keepGroupsWhileSearching() || !this.isSearchActive()) && this.groupedItems().some((g) => g.groupKey !== '')
   )
 
   ngAfterViewInit(): void {
