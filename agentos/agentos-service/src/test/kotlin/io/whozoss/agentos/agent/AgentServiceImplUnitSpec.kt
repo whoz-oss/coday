@@ -82,6 +82,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             exchangeCapabilityService = exchangeCapabilityService,
             agentDocumentResolver = agentDocumentResolver,
             idCompressorService = IdCompressorService(),
+            agentConfigProperties = AgentConfigProperties(),
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -531,6 +532,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     exchangeCapabilityService = exchangeCapabilityService,
                     agentDocumentResolver = agentDocumentResolver,
                     idCompressorService = IdCompressorService(),
+                    agentConfigProperties = AgentConfigProperties(),
                 )
             val configs =
                 listOf(

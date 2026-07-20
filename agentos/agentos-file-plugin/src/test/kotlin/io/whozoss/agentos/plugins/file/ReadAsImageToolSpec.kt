@@ -249,6 +249,20 @@ class ReadAsImageToolSpec : StringSpec() {
             decoded.height shouldBe 745
         }
 
+        "a custom imageMaxDimension from config bounds the rendered image" {
+            writePng("large.png", 2200, 1600)
+
+            val result =
+                ReadAsImageTool(tempDir, imageMaxDimension = 512)
+                    .execute(ReadAsImageTool.Input("large.png"), ctx)
+
+            result.success shouldBe true
+            val image = result.images.single()
+            image.mimeType shouldBe "image/jpeg"
+            image.width shouldBe 512
+            image.height shouldBe 372
+        }
+
         "large PNG with alpha is flattened and encoded as JPEG" {
             writePng("alpha.png", 1500, 1200, BufferedImage.TYPE_INT_ARGB)
 

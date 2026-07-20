@@ -55,7 +55,7 @@ mcpSdk = "2.0.0"
 
 # Apache PDFBox — PDF page rendering for the file plugin's readAsImage tool.
 # Bundled fat-jar style in agentos-file-plugin (not on the service classpath).
-pdfbox = "3.0.7"
+pdfbox = "3.0.8"
 
 # Apache POI — PPTX slide rendering for the file plugin's readAsImage tool.
 # Bundled fat-jar style in agentos-file-plugin (not on the service classpath).
