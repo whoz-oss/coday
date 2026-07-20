@@ -127,6 +127,27 @@ class ReadAsImageToolSpec : StringSpec() {
         return file
     }
 
+    /**
+     * PDF whose page content stream draws an INLINE image (BI/ID/EI) DECLARING huge
+     * dimensions. Inline images live in the content stream, not in the resources dictionary,
+     * so a resource-tree scan would miss them entirely — only the per-image decode
+     * interception catches this. The ASCIIHex payload is a single byte: the guard must reject
+     * on the declared /W /H before any decode.
+     */
+    private fun writePdfWithHugeInlineImage(name: String): Path {
+        val file = tempDir.resolve(name)
+        PDDocument().use { document ->
+            val page = PDPage(PDRectangle(200f, 200f))
+            document.addPage(page)
+            val content = "q 100 0 0 100 0 0 cm\nBI /W 30000 /H 30000 /BPC 8 /CS /G /F /AHx ID\n00>\nEI\nQ\n"
+            val stream = PDStream(document)
+            stream.createOutputStream().use { it.write(content.toByteArray(Charsets.US_ASCII)) }
+            page.setContents(stream)
+            document.save(file.toFile())
+        }
+        return file
+    }
+
     private fun writePptxWithPicture(name: String, pictureBytes: ByteArray): Path {
         val file = tempDir.resolve(name)
         XMLSlideShow().use { presentation ->
@@ -480,6 +501,31 @@ class ReadAsImageToolSpec : StringSpec() {
                 result.success shouldBe true
             }
             result.images shouldHaveSize 1
+        }
+
+        "PDF with a huge INLINE image (content stream, not a resource) is rejected before rendering" {
+            // Inline images bypass any resource-tree scan; the per-image decode interception
+            // catches them at the same point as XObjects.
+            writePdfWithHugeInlineImage("inline-bomb.pdf")
+
+            val result = ReadAsImageTool(tempDir).execute(ReadAsImageTool.Input("inline-bomb.pdf"), ctx)
+
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_INPUT"
+            result.output shouldContain "Embedded image is too large"
+        }
+
+        "render exceeding the timeout returns a TIMEOUT error and releases the caller" {
+            // ioTimeoutSeconds=0 makes withTimeout fire at the first suspension (the render
+            // await), exercising the abandonable-render timeout path deterministically.
+            writePdf("cv.pdf", 1)
+            val tool = ReadAsImageTool(tempDir, ioTimeoutSeconds = 0)
+
+            val result = tool.execute(ReadAsImageTool.Input("cv.pdf"), ctx)
+
+            result.success shouldBe false
+            result.errorType shouldBe "TIMEOUT"
+            result.output shouldContain "timed out"
         }
 
         "pages parameter on an image file is rejected" {

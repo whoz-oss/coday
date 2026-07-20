@@ -7,6 +7,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,17 +16,14 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeout
 import mu.KLogging
 import org.apache.pdfbox.Loader
-import org.apache.pdfbox.cos.COSBase
-import org.apache.pdfbox.cos.COSName
-import org.apache.pdfbox.cos.COSStream
 import org.apache.pdfbox.pdmodel.PDDocument
-import org.apache.pdfbox.pdmodel.PDResources
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException
-import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject
+import org.apache.pdfbox.pdmodel.graphics.image.PDImage
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject
-import org.apache.pdfbox.pdmodel.graphics.pattern.PDTilingPattern
 import org.apache.pdfbox.rendering.ImageType
 import org.apache.pdfbox.rendering.PDFRenderer
+import org.apache.pdfbox.rendering.PageDrawer
+import org.apache.pdfbox.rendering.PageDrawerParameters
 import org.apache.poi.EncryptedDocumentException
 import org.apache.poi.openxml4j.exceptions.NotOfficeXmlFileException
 import org.apache.poi.xslf.usermodel.XMLSlideShow
@@ -58,16 +56,20 @@ import kotlin.time.Duration.Companion.seconds
  * well; fonts absent from the host are substituted (e.g. Calibri to DejaVu),
  * SmartArt is not rendered and embedded charts come out blank.
  *
- * Decompression-bomb guards: standalone images are rejected above
- * [ImageProcessor.MAX_SOURCE_PIXELS]; images EMBEDDED in a PDF or PPTX are pre-checked
- * against the same cap from their declared header dimensions before anything is decoded
- * (PDFBox/POI otherwise decode embedded bitmaps at full source resolution).
+ * Decompression-bomb guards (PDFBox/POI decode embedded bitmaps at full source
+ * resolution): standalone images are rejected above [ImageProcessor.MAX_SOURCE_PIXELS]
+ * from their declared header before any decode. Inside a PDF every image is intercepted
+ * at [PageDrawer.drawImage] ([BoundedPageDrawer]) and checked against the same cap before
+ * PDFBox materializes it: that is the single decode point for XObjects, inline images
+ * (BI/ID/EI), Type3 glyph images, forms at any nesting depth, patterns and annotations,
+ * so no path is missed. Inside a PPTX every embedded picture's header is pre-checked.
  */
 class ReadAsImageTool(
     private val projectRoot: Path,
     private val configName: String? = null,
     private val readMaxSizeBytes: Long = DEFAULT_READ_MAX_SIZE,
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
+    private val ioTimeoutSeconds: Long = IO_TIMEOUT,
 ) : StandardTool<ReadAsImageTool.Input> {
     companion object : KLogging() {
         /** PDF/PPTX rendering is significantly slower than a plain read: distinct, larger timeout. */
@@ -104,9 +106,6 @@ class ReadAsImageTool(
 
         /** Maximum concurrent renders across all instances of this tool. */
         private const val MAX_CONCURRENT_RENDERS = 4
-
-        /** Nesting bound for the embedded-image resource scan (form XObjects, patterns). */
-        private const val MAX_EMBEDDED_SCAN_DEPTH = 5
 
         /**
          * Bounded, abandonable pool for the blocking renders. Coroutine cancellation is
@@ -171,7 +170,7 @@ class ReadAsImageTool(
 
         return try {
             val (summary, images) =
-                withTimeout(IO_TIMEOUT.seconds) {
+                withTimeout(ioTimeoutSeconds.seconds) {
                     // Rendering is blocking, CPU-bound PDFBox/POI work that ignores
                     // cooperative cancellation: run it as an abandonable job on the bounded
                     // [renderScope] pool so the timeout releases the caller immediately and a
@@ -181,14 +180,19 @@ class ReadAsImageTool(
             ToolExecutionResult.successWithImages(summary, images)
         } catch (e: TimeoutCancellationException) {
             logger.warn {
-                "readAsImage timed out after ${IO_TIMEOUT}s on '${params.filePath}'; " +
+                "readAsImage timed out after ${ioTimeoutSeconds}s on '${params.filePath}'; " +
                     "the abandoned render keeps its pool slot until it completes"
             }
             ToolExecutionResult.error(
-                "Operation timed out after $IO_TIMEOUT seconds",
+                "Operation timed out after $ioTimeoutSeconds seconds",
                 errorType = "TIMEOUT",
                 errorMessage = e.message,
             )
+        } catch (e: CancellationException) {
+            // The tool coroutine was cancelled for an external reason (case aborted, stream
+            // closed). Never swallow it into a READ_ERROR: rethrow so cancellation propagates.
+            // Must sit after the TimeoutCancellationException catch (that one is our own timeout).
+            throw e
         } catch (e: UnsupportedFormatException) {
             ToolExecutionResult.error(
                 e.message ?: "Unsupported file format",
@@ -282,12 +286,11 @@ class ReadAsImageTool(
                     throw IllegalArgumentException("PDF has no page: ${file.name}")
                 }
                 val selection = selectPages(pages, pageCount, file.name)
-                checkPdfEmbeddedImages(document, selection, file.name)
 
-                val renderer = PDFRenderer(document)
-                // Belt-and-braces behind the declared-dimension pre-scan above: subsampled
-                // decode keeps even a legitimate large embedded image from materializing
-                // at full resolution.
+                // [BoundedRenderer] rejects any embedded image over the cap at the single
+                // decode point (see [BoundedPageDrawer]); subsampling is belt-and-braces so
+                // an in-cap-but-still-large image does not materialize at full resolution.
+                val renderer = BoundedRenderer(document, file.name)
                 renderer.isSubsamplingAllowed = true
                 val images = selection.map { page ->
                     ImageProcessor.toJpegContent(
@@ -316,59 +319,37 @@ class ReadAsImageTool(
     }
 
     /**
-     * Decompression-bomb guard for images embedded in a PDF: walks the resources of the
-     * selected pages (nested form XObjects, tiling patterns and annotation appearances,
-     * depth-bounded) and rejects any image XObject whose DECLARED dimensions exceed
-     * [ImageProcessor.MAX_SOURCE_PIXELS], before anything is decoded. PDFBox decodes
-     * embedded images at full source resolution while drawing, so without this check a
-     * sub-cap file declaring a huge image would allocate a multi-GB raster (uncatchable
-     * OutOfMemoryError) — the same failure mode [pageRenderDpi] guards for the page buffer.
+     * A [PDFRenderer] whose page drawer enforces the embedded-image cap. Overriding the
+     * renderer's single factory hook is what lets [BoundedPageDrawer] see every image.
      */
-    private fun checkPdfEmbeddedImages(document: PDDocument, selection: List<Int>, fileName: String) {
-        val visited = mutableSetOf<COSBase>()
-        selection.forEach { pageNumber ->
-            val page = document.getPage(pageNumber - 1)
-            checkPdfResources(page.resources, fileName, visited, depth = 0)
-            page.annotations.forEach { annotation ->
-                annotation.normalAppearanceStream?.let {
-                    checkPdfResources(it.resources, fileName, visited, depth = 1)
-                }
-            }
-        }
+    private inner class BoundedRenderer(document: PDDocument, private val fileName: String) : PDFRenderer(document) {
+        override fun createPageDrawer(parameters: PageDrawerParameters): PageDrawer =
+            BoundedPageDrawer(parameters, fileName)
     }
 
-    private fun checkPdfResources(
-        resources: PDResources?,
-        fileName: String,
-        visited: MutableSet<COSBase>,
-        depth: Int,
-    ) {
-        if (resources == null || depth > MAX_EMBEDDED_SCAN_DEPTH || !visited.add(resources.cosObject)) return
-        for (name in resources.xObjectNames) {
-            // An entry that cannot be materialized would not render either: skip it here
-            // and let the renderer apply its own tolerance for broken objects.
-            when (val xObject = runCatching { resources.getXObject(name) }.getOrNull()) {
-                is PDImageXObject -> {
-                    checkEmbeddedImageSize(xObject.width, xObject.height, fileName)
-                    checkImageMaskSize(xObject, COSName.SMASK, fileName)
-                    checkImageMaskSize(xObject, COSName.MASK, fileName)
-                }
-                is PDFormXObject -> checkPdfResources(xObject.resources, fileName, visited, depth + 1)
-                else -> {}
+    /**
+     * Rejects any image over [ImageProcessor.MAX_SOURCE_PIXELS] from its DECLARED dimensions
+     * before PDFBox decodes it. [PageDrawer.drawImage] is the single decode entry point for
+     * every image PDFBox draws — image XObjects, inline images (BI/ID/EI), Type3 glyph
+     * images, and images reachable through forms/patterns/annotations at any nesting depth —
+     * so this one check covers them all, where a resource-tree walk would miss inline and
+     * content-stream images. Without it a sub-cap file declaring a huge image would allocate
+     * a multi-GB raster and throw an uncatchable OutOfMemoryError in the shared service JVM.
+     */
+    private inner class BoundedPageDrawer(
+        parameters: PageDrawerParameters,
+        private val fileName: String,
+    ) : PageDrawer(parameters) {
+        override fun drawImage(pdImage: PDImage) {
+            checkEmbeddedImageSize(pdImage.width, pdImage.height, fileName)
+            if (pdImage is PDImageXObject) {
+                // A small base image can carry a huge /SMask or /Mask that PDFBox decodes at
+                // its own full resolution while compositing.
+                pdImage.softMask?.let { checkEmbeddedImageSize(it.width, it.height, fileName) }
+                pdImage.mask?.let { checkEmbeddedImageSize(it.width, it.height, fileName) }
             }
+            super.drawImage(pdImage)
         }
-        for (name in resources.patternNames) {
-            val pattern = runCatching { resources.getPattern(name) }.getOrNull()
-            if (pattern is PDTilingPattern) {
-                checkPdfResources(pattern.resources, fileName, visited, depth + 1)
-            }
-        }
-    }
-
-    /** Declared dimensions of an image's /SMask or /Mask stream, checked without decoding. */
-    private fun checkImageMaskSize(image: PDImageXObject, key: COSName, fileName: String) {
-        val mask = image.cosObject.getDictionaryObject(key) as? COSStream ?: return
-        checkEmbeddedImageSize(mask.getInt(COSName.WIDTH, 0), mask.getInt(COSName.HEIGHT, 0), fileName)
     }
 
     /**
