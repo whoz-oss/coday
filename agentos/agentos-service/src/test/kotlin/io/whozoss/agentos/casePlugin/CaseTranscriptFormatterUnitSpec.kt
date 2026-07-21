@@ -284,6 +284,28 @@ class CaseTranscriptFormatterUnitSpec : StringSpec({
         result shouldContain "TOOL_RESPONSE: [error, ?ms] not found"
     }
 
+    "full mode: ToolResponseEvent with images renders a count, not the base64" {
+        val events = listOf(
+            ToolResponseEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                timestamp = t0,
+                toolRequestId = "req-1",
+                toolName = "FILES__readAsImage",
+                output = MessageContent.Text("Rendered PDF cv.pdf: page(s) 1-2 of 2"),
+                success = true,
+                durationMs = 42,
+                images = listOf(
+                    MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 800, height = 600),
+                    MessageContent.Image(content = "d29ybGQ=", mimeType = "image/jpeg", width = 800, height = 600),
+                ),
+            ),
+        )
+        val result = CaseTranscriptFormatter.format(events, includesTechnicalEvents = true)
+        result shouldContain "TOOL_RESPONSE: [success, 42ms] Rendered PDF cv.pdf: page(s) 1-2 of 2 [+2 image(s)]"
+        result shouldNotContain "aGVsbG8="
+    }
+
     "full mode: includes IntentionGeneratedEvent" {
         val events = listOf(
             IntentionGeneratedEvent(
