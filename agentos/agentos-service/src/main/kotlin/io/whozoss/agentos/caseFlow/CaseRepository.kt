@@ -84,4 +84,6 @@ interface CaseRepository : EntityRepository<Case, UUID> {
         parentCaseId: UUID,
         childCaseId: UUID,
     )
+
+
 }

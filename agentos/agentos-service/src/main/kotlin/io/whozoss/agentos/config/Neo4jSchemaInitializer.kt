@@ -50,6 +50,14 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Index user_externalId created" }
 
+        // Index on MessageEvent.caseId
+        // queries to sort conversations by last-message date without scanning all events.
+        neo4jClient
+            .query(
+                "CREATE INDEX message_event_caseId IF NOT EXISTS FOR (e:MessageEvent) ON (e.caseId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index message_event_caseId created" }
+
         // ── Per-node id uniqueness constraints ──────────────────────────────
         // Every node label that carries an `id` property gets a UNIQUE
         // constraint so Neo4j enforces identity at the storage level and
@@ -76,10 +84,11 @@ class Neo4jSchemaInitializer(
         val caseEventIdConstraints =
             listOf("case_event_id_unique" to "CaseEvent") +
                 CaseEventType.entries.map { type ->
-                    val constraintName = type.value
-                        .replace(Regex("([A-Z])")) { "_${it.value}" }
-                        .trimStart('_')
-                        .lowercase() + "_id_unique"
+                    val constraintName =
+                        type.value
+                            .replace(Regex("([A-Z])")) { "_${it.value}" }
+                            .trimStart('_')
+                            .lowercase() + "_id_unique"
                     constraintName to type.value
                 }
 
@@ -118,7 +127,7 @@ class Neo4jSchemaInitializer(
                 ).fetchAs(Long::class.java)
                 .mappedBy { _, record -> record["count"].asLong() }
                 .one()
-                .orElse(0L)
+                .orElse(0L) ?: 0L
         if (backfilledEnabled > 0L) {
             logger.info { "[Neo4jSchemaInitializer] Backfilled enabled=false on $backfilledEnabled AgentConfig node(s)" }
         }

@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -58,6 +59,7 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 )
 class CaseController(
     private val caseService: CaseService,
+    private val caseEventService: CaseEventService,
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
@@ -152,18 +154,29 @@ class CaseController(
 
     /**
      * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
-     * relation (`role`) and favorite flag. A single companion query resolves the whole
-     * set (no per-case round-trip). Cases the user has no direct edge on get `role = null`
-     * and `favorite = false` (e.g. the namespace-admin fast path in [listByParent]).
+     * relation (`role`), favorite flag, and [CaseDto.lastMessageAt].
+     *
+     * Two batch queries resolve the whole set (no per-case round-trips):
+     * - [StarredService.listDirectRelations] for role/favorite metadata
+     * - [CaseEventService.findLastMessageTimestamps] for the last-message timestamp
+     *   used by the frontend to sort and group conversations.
+     *
+     * Cases the user has no direct edge on get `role = null` and `favorite = false`
+     * (e.g. the namespace-admin fast path in [listByParent]).
      */
     private fun withCallerMeta(
         cases: List<Case>,
         userId: String,
     ): List<CaseDto> {
         val starred = starredService.listDirectRelations(userId, EntityType.CASE)
+        val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(cases.map { it.id })
         return cases.map {
             val meta = starred[it.metadata.id.toString()]
-            toDto(it).copy(favorite = meta?.starred ?: false, role = meta?.relation?.name)
+            toDto(it).copy(
+                favorite = meta?.starred ?: false,
+                role = meta?.relation?.name,
+                lastMessageAt = lastMessageTimestamps[it.id],
+            )
         }
     }
 
@@ -352,5 +365,8 @@ internal fun toDto(entity: Case) =
         parentCaseId = entity.parentCaseId,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
+        // lastMessageAt is not stored on Case — it is resolved at list time by
+        // withCallerMeta via CaseEventService.findLastMessageTimestamps and injected
+        // via .copy() after this mapping. Single-case endpoints leave it null.
         removed = entity.metadata.removed,
     )

@@ -5,6 +5,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -33,7 +34,10 @@ open class Neo4jCaseEventRepository(
             .let { mapper.toDomain(it) }
             .also { logger.debug { "[Neo4jCaseEventRepository] Saved ${entity.type.value} event ${entity.id} for case ${entity.caseId}" } }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<CaseEvent> =
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<CaseEvent> =
         caseEventNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
             .filter { withRemoved || it.removed != true }
@@ -55,11 +59,19 @@ open class Neo4jCaseEventRepository(
             } ?: false
 
     @Transactional
-    open override fun deleteByParent(parentId: UUID): Int {
+    override fun deleteByParent(parentId: UUID): Int {
         val active = caseEventNodeNeo4jRepository.findActiveByCaseId(parentId.toString())
         caseEventNodeNeo4jRepository.saveAll(active.map { mapper.withRemoved(it, true) })
         logger.debug { "[Neo4jCaseEventRepository] Soft-deleted ${active.size} events for case $parentId" }
         return active.size
+    }
+
+    override fun findLastMessageTimestamps(caseIds: Collection<UUID>): Map<UUID, Instant> {
+        if (caseIds.isEmpty()) return emptyMap()
+        val rows = caseEventNodeNeo4jRepository.findLastMessageTimestamps(caseIds.map { it.toString() })
+        return rows.associate { row ->
+            UUID.fromString(row["caseId"] as String) to (row["lastMessageAt"] as Instant)
+        }
     }
 
     companion object : KLogging()
