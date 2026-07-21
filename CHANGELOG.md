@@ -1,3 +1,14 @@
+## 0.219.0 (2026-07-21)
+
+### 🚀 Features
+
+- readAsImage tool to let agents read images, PDFs and PPTX visually ([#1148](https://github.com/whoz-oss/coday/pull/1148))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 0.218.0 (2026-07-20)
 
 ### 🚀 Features
