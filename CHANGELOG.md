@@ -1,3 +1,14 @@
+## 0.220.0 (2026-07-21)
+
+### 🚀 Features
+
+- readSpreadsheet file tool reading xlsx sheets as CSV text ([#1151](https://github.com/whoz-oss/coday/pull/1151), [#1148](https://github.com/whoz-oss/coday/issues/1148))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 0.219.1 (2026-07-21)
 
 ### 🩹 Fixes
