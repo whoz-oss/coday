@@ -136,8 +136,8 @@ class NamespacePermissionServiceImpl(
     }
 
     /**
-     * Atomically promotes [:MEMBER] to [:ADMIN] on a namespace, preserving
-     * relation properties (e.g. `starred`). Prefer over revoke+grant which drops them.
+     * Atomically promotes [:MEMBER] to [:ADMIN] on a namespace.
+     * The [:STARRED] edge survives untouched (separate relationship).
      */
     private fun promote(
         userIdStr: String,
@@ -148,8 +148,8 @@ class NamespacePermissionServiceImpl(
     }
 
     /**
-     * Atomically demotes [:ADMIN] to [:MEMBER] on a namespace, preserving
-     * relation properties (e.g. `starred`). Prefer over revoke+grant which drops them.
+     * Atomically demotes [:ADMIN] to [:MEMBER] on a namespace.
+     * The [:STARRED] edge survives untouched (separate relationship).
      */
     private fun demote(
         userIdStr: String,

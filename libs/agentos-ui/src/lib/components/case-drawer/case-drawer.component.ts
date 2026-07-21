@@ -63,8 +63,9 @@ export class CaseDrawerComponent {
   protected readonly isSearchActive = computed(() => this.searchQuery().trim().length > 0)
 
   /**
-   * Tree rebuilt automatically when cases() changes. Favorited cases (at any depth) are
-   * promoted to a "Favorites" group at the top; the rest keep their newest-first order.
+   * Tree rebuilt automatically when cases() changes. Favorited cases are promoted to a
+   * "Favorites" group at the top (nesting among favorites is preserved); the rest keep their
+   * newest-first order below.
    */
   protected readonly rootItems = computed(() => promoteFavorites(buildTree(this.cases())))
 
@@ -239,37 +240,46 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
 }
 
 /**
- * Promote favorited cases (at any depth) to a "Favorites" group at the top of the list.
+ * Promote favorited cases to a "Favorites" group at the top of the list. Hierarchy among
+ * favorites is preserved: a favorited case whose ancestor is also favorited stays NESTED
+ * under that ancestor rather than being flattened to the same level. A favorited case with
+ * no favorited ancestor becomes a top-level Favorites entry and keeps its whole subtree.
  * The remaining cases keep their newest-first order and render ungrouped below. When there
  * are no favorites the list is returned unchanged (no empty section header).
  */
 function promoteFavorites(roots: CaseTreeItem[]): CaseTreeItem[] {
-  const promoted: CaseTreeItem[] = []
-  const remaining = extractFavorites(roots, promoted)
-  if (!promoted.length) return roots
-  for (const node of promoted) {
+  const favorites: CaseTreeItem[] = []
+  const remaining: CaseTreeItem[] = []
+  for (const root of roots) {
+    const kept = liftFavoriteSubtrees(root, favorites)
+    if (kept) remaining.push(kept)
+  }
+  if (!favorites.length) return roots
+  for (const node of favorites) {
     node.groupKey = 'favorites'
     node.groupLabel = 'Favorites'
   }
-  return [...promoted, ...remaining]
+  return [...favorites, ...remaining]
 }
 
 /**
- * Recursively walk [nodes], collect favorited nodes into [favorites], and return the
- * remaining (non-favorited) nodes with their children similarly pruned. A favorited node
- * keeps its (already-pruned) children with it. Order within each group is preserved.
+ * Split [node] (assumed to have no favorited ancestor) between the Favorites group and the
+ * remaining tree. A favorited node is lifted whole — with its entire subtree, so favorited
+ * descendants stay nested under it instead of being promoted to the same level — and removed
+ * from the remaining tree (returns null). A non-favorited node stays in the remaining tree,
+ * with any favorited sub-branches lifted out of it.
  */
-function extractFavorites(nodes: CaseTreeItem[], favorites: CaseTreeItem[]): CaseTreeItem[] {
-  const remaining: CaseTreeItem[] = []
-  for (const node of nodes) {
-    const prunedChildren = extractFavorites(node.children, favorites)
-    if (node.favorite) {
-      favorites.push({ ...node, children: prunedChildren, groupKey: undefined, groupLabel: undefined })
-    } else {
-      remaining.push({ ...node, children: prunedChildren })
-    }
+function liftFavoriteSubtrees(node: CaseTreeItem, favorites: CaseTreeItem[]): CaseTreeItem | null {
+  if (node.favorite) {
+    favorites.push({ ...node })
+    return null
   }
-  return remaining
+  const remainingChildren: CaseTreeItem[] = []
+  for (const child of node.children) {
+    const kept = liftFavoriteSubtrees(child, favorites)
+    if (kept) remainingChildren.push(kept)
+  }
+  return { ...node, children: remainingChildren }
 }
 
 /**
