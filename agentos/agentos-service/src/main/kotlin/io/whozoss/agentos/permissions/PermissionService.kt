@@ -134,7 +134,7 @@ interface PermissionService {
      * The [:STARRED] edge (if any) is a separate relationship and survives untouched.
      *
      * @return true if a [:MEMBER] edge was found and promoted; false if the user had
-     *   no MEMBER relation (the [:ADMIN] edge is still created in that case).
+     *   no MEMBER relation (no-op: no [:ADMIN] edge is created).
      */
     fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean
 
@@ -144,7 +144,7 @@ interface PermissionService {
      * The [:STARRED] edge (if any) is a separate relationship and survives untouched.
      *
      * @return true if a [:ADMIN] edge was found and demoted; false if the user had
-     *   no ADMIN relation (the [:MEMBER] edge is still created in that case).
+     *   no ADMIN relation (no-op: no [:MEMBER] edge is created).
      */
     fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean
 
@@ -159,10 +159,11 @@ interface PermissionService {
     /**
      * Batch-apply share entries on an entity in a single Cypher round-trip per role group.
      * Each entry is a (userId, targetRole?) pair:
-     * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER
-     *   preserving relation properties such as `starred`, or create directly)
-     * - targetRole = [PermissionRelation.MEMBER] → ensure user has MEMBER (demote from ADMIN
-     *   preserving relation properties, or create directly)
+<<<<<<< HEAD
+     * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER,
+     *   or create directly)
+     * - targetRole = [PermissionRelation.MEMBER] → ensure user has MEMBER (demote from ADMIN,
+     *   or create directly)
      * - targetRole = null → revoke all relations (ADMIN and MEMBER)
      *
      * Non-existent User nodes are silently skipped — the Cypher MATCH filters them out.

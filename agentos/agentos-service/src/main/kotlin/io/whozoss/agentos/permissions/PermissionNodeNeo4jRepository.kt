@@ -92,11 +92,17 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     // Permission management queries — separate methods per relationship type
     // because Neo4j does not support parameterized relationship types.
 
+    /**
+     * Grants [:ADMIN], replacing any existing [:MEMBER] edge — a user holds a single
+     * permission relation per entity (see [PermissionRelation]).
+     */
     @Query(
         $$"""
         MATCH (u:User {id: $userId})
         MATCH (e {id: $entityId})
         WHERE $entityLabel IN labels(e)
+        OPTIONAL MATCH (u)-[oldMember:MEMBER]->(e)
+        DELETE oldMember
         MERGE (u)-[r:ADMIN]->(e)
         RETURN r
     """,
@@ -107,11 +113,17 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         @Param("entityLabel") entityLabel: String,
     )
 
+    /**
+     * Grants [:MEMBER], replacing any existing [:ADMIN] edge — a user holds a single
+     * permission relation per entity (see [PermissionRelation]).
+     */
     @Query(
         $$"""
         MATCH (u:User {id: $userId})
         MATCH (e {id: $entityId})
         WHERE $entityLabel IN labels(e)
+        OPTIONAL MATCH (u)-[oldAdmin:ADMIN]->(e)
+        DELETE oldAdmin
         MERGE (u)-[r:MEMBER]->(e)
         RETURN r
     """,
@@ -154,8 +166,8 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * The [:STARRED] edge (if any) is untouched — it is a separate relationship and
      * survives the permission-type change without any property-copying logic.
      *
-     * Returns the number of [:MEMBER] relations deleted (0 = user had no MEMBER edge;
-     * 1 = promotion succeeded). The [:ADMIN] edge is always created-or-kept regardless.
+     * Returns the number of [:MEMBER] relations deleted (0 = user had no MEMBER edge —
+     * the query is then a no-op and creates nothing; 1 = promotion succeeded).
      */
     @Query(
         $$"""
@@ -178,8 +190,8 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * The [:STARRED] edge (if any) is untouched — it is a separate relationship and
      * survives the permission-type change without any property-copying logic.
      *
-     * Returns the number of [:ADMIN] relations deleted (0 = user had no ADMIN edge;
-     * 1 = demotion succeeded). The [:MEMBER] edge is always created-or-kept regardless.
+     * Returns the number of [:ADMIN] relations deleted (0 = user had no ADMIN edge —
+     * the query is then a no-op and creates nothing; 1 = demotion succeeded).
      */
     @Query(
         $$"""
@@ -343,7 +355,9 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     ): List<String>
 
     /**
-     * Batch-apply ADMIN role to users on an entity.
+     * Batch-sets the ADMIN role on users of an entity. The [:ADMIN] edge replaces any
+     * [:MEMBER] edge — a user holds a single permission relation per entity
+     * (see [PermissionRelation]).
      *
      * For each userId in [userIds]:
      * - Deletes any existing [:MEMBER] relation and creates/keeps [:ADMIN].
@@ -351,31 +365,33 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * - No-op when [:ADMIN] already exists and no [:MEMBER] needs deleting.
      * - Silently skips non-existent User nodes (the `MATCH (u:User {id: uid})` filters them).
      *
+     * The [:STARRED] edge (if any) is untouched — it is a separate relationship and
+     * survives the permission-type change without any property-copying logic.
+     *
      * Returns the userIds that were successfully processed.
      */
-    // TODO: once [:STARRED] is a dedicated relationship (see linked issue), the
-    //  existing promoteMemberToAdmin / demoteAdminToMember queries can be simplified
-    //  the same way — plain delete + merge without property copying.
     @Query(
         $$"""
-            UNWIND $userIds AS uid 
-            MATCH (u:User {id: uid}) 
-            MATCH (e {id: $entityId}) 
-            WHERE $entityLabel IN labels(e) 
-            OPTIONAL MATCH (u)-[oldMember:MEMBER]->(e) 
-            DELETE oldMember 
-            MERGE (u)-[:ADMIN]->(e) 
+            UNWIND $userIds AS uid
+            MATCH (u:User {id: uid})
+            MATCH (e {id: $entityId})
+            WHERE $entityLabel IN labels(e)
+            OPTIONAL MATCH (u)-[oldMember:MEMBER]->(e)
+            DELETE oldMember
+            MERGE (u)-[:ADMIN]->(e)
             RETURN uid
             """,
     )
-    fun batchGrantAdmin(
+    fun batchSetAdminRole(
         @Param("userIds") userIds: List<String>,
         @Param("entityId") entityId: String,
         @Param("entityLabel") entityLabel: String,
     ): List<String>
 
     /**
-     * Batch-apply MEMBER role to users on an entity.
+     * Batch-sets the MEMBER role on users of an entity. The [:MEMBER] edge replaces any
+     * [:ADMIN] edge — a user holds a single permission relation per entity
+     * (see [PermissionRelation]).
      *
      * For each userId in [userIds]:
      * - Deletes any existing [:ADMIN] relation and creates/keeps [:MEMBER].
@@ -383,21 +399,24 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * - No-op when [:MEMBER] already exists and no [:ADMIN] needs deleting.
      * - Silently skips non-existent User nodes.
      *
+     * The [:STARRED] edge (if any) is untouched — it is a separate relationship and
+     * survives the permission-type change without any property-copying logic.
+     *
      * Returns the userIds that were successfully processed.
      */
     @Query(
         $$"""
-            UNWIND $userIds AS uid 
-            MATCH (u:User {id: uid}) 
-            MATCH (e {id: $entityId}) 
-            WHERE $entityLabel IN labels(e) 
-            OPTIONAL MATCH (u)-[oldAdmin:ADMIN]->(e) 
-            DELETE oldAdmin 
-            MERGE (u)-[:MEMBER]->(e) 
+            UNWIND $userIds AS uid
+            MATCH (u:User {id: uid})
+            MATCH (e {id: $entityId})
+            WHERE $entityLabel IN labels(e)
+            OPTIONAL MATCH (u)-[oldAdmin:ADMIN]->(e)
+            DELETE oldAdmin
+            MERGE (u)-[:MEMBER]->(e)
             RETURN uid
             """,
     )
-    fun batchGrantMember(
+    fun batchSetMemberRole(
         @Param("userIds") userIds: List<String>,
         @Param("entityId") entityId: String,
         @Param("entityLabel") entityLabel: String,

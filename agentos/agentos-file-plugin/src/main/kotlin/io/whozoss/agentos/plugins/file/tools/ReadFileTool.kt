@@ -15,8 +15,9 @@ import kotlin.io.path.fileSize
 /**
  * Read content from a text file.
  *
- * V1: Text files only (UTF-8). Binary files return "[binary or unreadable file]".
- * V2 planned: PDF and image support via MessageContent polymorphism.
+ * Text files only (UTF-8). Binary files return "[binary or unreadable file]".
+ * For images and PDFs use [ReadAsImageTool]; for Excel spreadsheets use
+ * [ReadSpreadsheetTool].
  */
 class ReadFileTool(
     private val projectRoot: Path,
@@ -34,7 +35,8 @@ class ReadFileTool(
     override val description: String =
         """
         Read content from a text file. Use searchFiles to find files.
-        V1: text files only (UTF-8). PDF and image support planned for V2.
+        Text files only (UTF-8). For images and PDFs use readAsImage; for Excel
+        spreadsheets (.xlsx) use readSpreadsheet.
         """.trimIndent()
 
     override val version: String = "1.0.0"

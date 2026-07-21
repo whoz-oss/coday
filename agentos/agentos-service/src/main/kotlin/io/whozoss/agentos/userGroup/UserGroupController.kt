@@ -1,6 +1,7 @@
 package io.whozoss.agentos.userGroup
 
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupApi
+import io.whozoss.agentos.sdk.api.userGroup.UserGroupMember
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupSearchResult
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import jakarta.validation.Valid
@@ -43,6 +44,13 @@ class UserGroupController(
         userGroupService.findByIdWithDetails(userGroupId)?.toDto()
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND)
 
+    @GetMapping("/{userGroupId}/members")
+    @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'READ')")
+    @HideOnAccessDenied
+    override fun getMembers(
+        @PathVariable userGroupId: UUID,
+    ): List<UserGroupMember> = userGroupService.getMembers(userGroupId).map { it.toDto() }
+
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasPermission(#request.namespaceId, 'Namespace', 'WRITE')")
@@ -63,6 +71,7 @@ class UserGroupController(
                     name = request.name,
                     userExternalIdsToAdd = request.userExternalIdsToAdd,
                     userExternalIdsToRemove = request.userExternalIdsToRemove,
+                    adminExternalIds = request.adminExternalIds,
                     agentIds = request.agentIds,
                 ),
             ).toDto()
@@ -90,4 +99,18 @@ private fun io.whozoss.agentos.userGroup.UserGroupSearchResult.toDto() =
         name = name,
         agentIds = agentIds,
         userCount = userCount,
+    )
+
+// ---------------------------------------------------------------------------
+// Extension: service-internal UserGroupMember → SDK UserGroupMember
+// ---------------------------------------------------------------------------
+
+private fun io.whozoss.agentos.userGroup.UserGroupMember.toDto() =
+    UserGroupMember(
+        userId = userId,
+        externalId = externalId,
+        role = role,
+        email = email,
+        firstname = firstname,
+        lastname = lastname,
     )
