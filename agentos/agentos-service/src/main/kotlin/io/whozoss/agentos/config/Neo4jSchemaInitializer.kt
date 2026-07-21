@@ -112,7 +112,7 @@ class Neo4jSchemaInitializer(
                 ).fetchAs(Long::class.java)
                 .mappedBy { _, record -> record["count"].asLong() }
                 .one()
-                .orElse(0L)
+                .orElse(0L) ?: 0L
         if (backfilled > 0L) {
             logger.info { "[Neo4jSchemaInitializer] Backfilled version=0 on $backfilled AgentConfig node(s)" }
         }

@@ -96,7 +96,7 @@ class CaseControllerSpec :
         // -------------------------------------------------------------------------
 
         "toDto maps all case fields including namespaceId, status, created and modified" {
-            val now = java.time.Instant.now()
+            val now = Instant.now()
             val later = now.plusSeconds(60)
             val entity =
                 caseEntity(title = "engineering case").copy(
@@ -489,9 +489,7 @@ class CaseControllerSpec :
             val namespaceExternalId = "ext-ns-1"
             val namespace =
                 io.whozoss.agentos.namespace.Namespace(
-                    metadata =
-                        io.whozoss.agentos.sdk.entity
-                            .EntityMetadata(id = namespaceId),
+                    metadata = EntityMetadata(id = namespaceId),
                     name = "test-ns",
                     externalId = namespaceExternalId,
                 )
@@ -513,9 +511,7 @@ class CaseControllerSpec :
             val namespaceExternalId = "ext-ns-empty"
             val namespace =
                 io.whozoss.agentos.namespace.Namespace(
-                    metadata =
-                        io.whozoss.agentos.sdk.entity
-                            .EntityMetadata(id = namespaceId),
+                    metadata = EntityMetadata(id = namespaceId),
                     name = "test-ns",
                     externalId = namespaceExternalId,
                 )
