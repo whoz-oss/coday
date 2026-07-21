@@ -199,9 +199,16 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             val caseId = case.id.toString()
             val userId = user.id.toString()
 
-            // Both direct edges coexist on the same (user, case): grantPermission MERGEs them independently.
+            // Dual edges can no longer be produced through the permission API (single-relation
+            // invariant, see PermissionRelation) but may exist as legacy data in deployed
+            // databases — build the state with raw Cypher to verify the defensive collapse.
             permissionNodeRepository.createAdminPermission(userId = userId, entityId = caseId, entityLabel = "Case")
-            permissionNodeRepository.createMemberPermission(userId = userId, entityId = caseId, entityLabel = "Case")
+            driver.session().use { session ->
+                session.run(
+                    $$"MATCH (u:User {id: $userId}), (c:Case {id: $caseId}) MERGE (u)-[:MEMBER]->(c)",
+                    mapOf("userId" to userId, "caseId" to caseId),
+                )
+            }
 
             // mergeStarred's MATCH yields two rows; MERGE is idempotent → a single [:STARRED] edge.
             caseNodeRepository.mergeStarred(userId = userId, caseId = caseId)

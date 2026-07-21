@@ -1,0 +1,11 @@
+<label class="namespace-select">
+  <span class="namespace-select__label">Namespace</span>
+  <select class="namespace-select__control" [value]="value() ?? ''" (change)="onChange($event)">
+    @if (includeAllOption()) {
+      <option value="">All namespaces</option>
+    }
+    @for (namespace of namespaces(); track namespace.id) {
+      <option [value]="namespace.id">{{ namespace.name }}</option>
+    }
+  </select>
+</label>

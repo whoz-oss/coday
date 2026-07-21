@@ -204,6 +204,35 @@ class PermissionServiceImplSpec :
             verify { mockPermissionRepository.revokePermission(userId, entityType, entityId, PermissionRelation.MEMBER) }
         }
 
+        "applyShareBatch should delegate to the repository and invalidate entire cache" {
+            // Given
+            val entries =
+                listOf<Pair<String, PermissionRelation?>>(
+                    userId to PermissionRelation.ADMIN,
+                    UUID.randomUUID().toString() to null,
+                )
+            every { mockPermissionRepository.applyShareBatch(entityType, entityId, entries) } returns listOf(userId)
+            every { mockPermissionCache.clear() } just Runs
+
+            // When
+            val result = permissionService.applyShareBatch(entityType, entityId, entries)
+
+            // Then
+            result shouldBe listOf(userId)
+            verify { mockPermissionRepository.applyShareBatch(entityType, entityId, entries) }
+            verify { mockPermissionCache.clear() }
+        }
+
+        "applyShareBatch should skip the repository and cache entirely for an empty batch" {
+            // When
+            val result = permissionService.applyShareBatch(entityType, entityId, emptyList())
+
+            // Then
+            result shouldBe emptyList()
+            verify(exactly = 0) { mockPermissionRepository.applyShareBatch(any(), any(), any()) }
+            verify(exactly = 0) { mockPermissionCache.clear() }
+        }
+
         "READ action should accept MEMBER or ADMIN permission" {
             // Given
             val regularUser =

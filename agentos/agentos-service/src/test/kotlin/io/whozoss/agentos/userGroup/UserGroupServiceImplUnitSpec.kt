@@ -16,6 +16,7 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupCreateRequest
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -198,7 +199,7 @@ class UserGroupServiceImplUnitSpec :
         // createFromRequest — user linking
         // -------------------------------------------------------------------------
 
-        "createFromRequest resolves or creates only missing users before calling addUsers" {
+        "createFromRequest creates only missing users before calling addUsers" {
             val groupId = randomUUID()
             val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team E")
             val searchResult =
@@ -220,7 +221,8 @@ class UserGroupServiceImplUnitSpec :
             // alice already exists, bob does not
             every { userService.findByExternalIds(setOf("alice@example.com", "bob@example.com")) } returns
                 listOf(makeUser("alice@example.com"))
-            every { userService.resolveOrCreateByExternalId("bob@example.com") } returns makeUser("bob@example.com")
+            every { userService.createByExternalIds(setOf("bob@example.com")) } returns
+                listOf(makeUser("bob@example.com"))
 
             val service = buildService(userGroupRepository, namespaceService, userService = userService)
             service.createFromRequest(
@@ -231,8 +233,7 @@ class UserGroupServiceImplUnitSpec :
                 ),
             )
 
-            verify(exactly = 0) { userService.resolveOrCreateByExternalId("alice@example.com") }
-            verify(exactly = 1) { userService.resolveOrCreateByExternalId("bob@example.com") }
+            verify(exactly = 1) { userService.createByExternalIds(setOf("bob@example.com")) }
             verify(exactly = 1) {
                 userGroupRepository.addUsers(
                     groupId,
@@ -580,5 +581,391 @@ class UserGroupServiceImplUnitSpec :
             )
 
             verify(exactly = 0) { userGroupRepository.addUsers(any(), any()) }
+        }
+
+        // -------------------------------------------------------------------------
+        // Member roles (getMembers / adminExternalIds)
+        // -------------------------------------------------------------------------
+
+        "getMembers delegates to the repository" {
+            val groupId = randomUUID()
+            val members =
+                listOf(
+                    UserGroupMember(
+                        userId = randomUUID(),
+                        externalId = "alice@example.com",
+                        role = "ADMIN",
+                        email = "alice@example.com",
+                        firstname = "Alice",
+                        lastname = null,
+                    ),
+                )
+            val userGroupRepository = mockk<UserGroupRepository>()
+            every { userGroupRepository.findMembers(groupId) } returns members
+
+            val service = buildService(userGroupRepository = userGroupRepository)
+
+            service.getMembers(groupId) shouldBe members
+            verify(exactly = 1) { userGroupRepository.findMembers(groupId) }
+        }
+
+        "createFromRequest promotes admins through the permission share batch" {
+            val groupId = randomUUID()
+            val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team",
+                    userCount = 2,
+                )
+            val alice = makeUser("alice@example.com")
+            val bob = makeUser("bob@example.com")
+
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            val namespaceService = mockk<NamespaceService>()
+            val userService = mockk<UserService>(relaxed = true)
+            val permissionService = mockk<PermissionService>(relaxed = true)
+
+            every { namespaceService.getById(namespaceId) } returns namespace
+            every { userGroupRepository.save(any()) } returns group
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+            every { userService.findByExternalIds(setOf("alice@example.com", "bob@example.com")) } returns
+                listOf(alice, bob)
+
+            val service =
+                buildService(
+                    userGroupRepository = userGroupRepository,
+                    namespaceService = namespaceService,
+                    userService = userService,
+                    permissionService = permissionService,
+                )
+            service.createFromRequest(
+                UserGroupCreateRequest(
+                    namespaceId = namespaceId,
+                    name = "Team",
+                    userExternalIdsToAdd = setOf("alice@example.com", "bob@example.com"),
+                    adminExternalIds = setOf("alice@example.com"),
+                ),
+            )
+
+            verify(exactly = 1) {
+                permissionService.applyShareBatch(
+                    EntityType.USER_GROUP,
+                    groupId.toString(),
+                    listOf(alice.id.toString() to PermissionRelation.ADMIN),
+                )
+            }
+        }
+
+        "createFromRequest throws 422 when an admin is not among the members" {
+            val namespaceService = mockk<NamespaceService> { every { getById(namespaceId) } returns namespace }
+            val service = buildService(namespaceService = namespaceService)
+
+            shouldThrow<UnprocessableEntityException> {
+                service.createFromRequest(
+                    UserGroupCreateRequest(
+                        namespaceId = namespaceId,
+                        name = "Team",
+                        userExternalIdsToAdd = setOf("alice@example.com"),
+                        adminExternalIds = setOf("carol@example.com"),
+                    ),
+                )
+            }
+        }
+
+        "updateFromRequest applies only actual role changes through the permission share batch" {
+            val groupId = randomUUID()
+            val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team",
+                    userCount = 3,
+                )
+            val alice = makeUser("alice@example.com") // MEMBER promoted to ADMIN
+            val carol = makeUser("carol@example.com") // ADMIN dropped from the set, demoted
+            val dave = makeUser("dave@example.com") // ADMIN staying ADMIN, untouched
+
+            fun member(user: User, role: String) =
+                UserGroupMember(
+                    userId = user.id,
+                    externalId = user.externalId,
+                    role = role,
+                    email = user.externalId,
+                    firstname = null,
+                    lastname = null,
+                )
+
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            val permissionService = mockk<PermissionService>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
+            every { userGroupRepository.save(any()) } returns existing
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+            every { userGroupRepository.findMembers(groupId) } returns
+                listOf(member(alice, "MEMBER"), member(carol, "ADMIN"), member(dave, "ADMIN"))
+
+            val service = buildService(userGroupRepository = userGroupRepository, permissionService = permissionService)
+            service.updateFromRequest(
+                groupId,
+                UserGroupUpdateRequest(
+                    name = "Team",
+                    adminExternalIds = setOf("alice@example.com", "dave@example.com"),
+                ),
+            )
+
+            verify(exactly = 1) {
+                permissionService.applyShareBatch(
+                    EntityType.USER_GROUP,
+                    groupId.toString(),
+                    listOf(
+                        alice.id.toString() to PermissionRelation.ADMIN,
+                        carol.id.toString() to PermissionRelation.MEMBER,
+                    ),
+                )
+            }
+        }
+
+        "createFromRequest promotes an admin that is created on the fly" {
+            val groupId = randomUUID()
+            val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team",
+                    userCount = 1,
+                )
+            val newcomer = makeUser("newcomer@example.com")
+
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            val namespaceService = mockk<NamespaceService>()
+            val userService = mockk<UserService>(relaxed = true)
+            val permissionService = mockk<PermissionService>(relaxed = true)
+
+            every { namespaceService.getById(namespaceId) } returns namespace
+            every { userGroupRepository.save(any()) } returns group
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+            every { userService.findByExternalIds(setOf("newcomer@example.com")) } returns emptyList()
+            every { userService.createByExternalIds(setOf("newcomer@example.com")) } returns listOf(newcomer)
+
+            val service =
+                buildService(
+                    userGroupRepository = userGroupRepository,
+                    namespaceService = namespaceService,
+                    userService = userService,
+                    permissionService = permissionService,
+                )
+            service.createFromRequest(
+                UserGroupCreateRequest(
+                    namespaceId = namespaceId,
+                    name = "Team",
+                    userExternalIdsToAdd = setOf("newcomer@example.com"),
+                    adminExternalIds = setOf("newcomer@example.com"),
+                ),
+            )
+
+            verify(exactly = 1) {
+                permissionService.applyShareBatch(
+                    EntityType.USER_GROUP,
+                    groupId.toString(),
+                    listOf(newcomer.id.toString() to PermissionRelation.ADMIN),
+                )
+            }
+        }
+
+        "updateFromRequest promotes an admin that is among the newly added users" {
+            val groupId = randomUUID()
+            val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team",
+                    userCount = 1,
+                )
+            val newcomer = makeUser("newcomer@example.com")
+
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            val userService = mockk<UserService>(relaxed = true)
+            val permissionService = mockk<PermissionService>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
+            every { userGroupRepository.save(any()) } returns existing
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+            every { userGroupRepository.findMembers(groupId) } returns emptyList()
+            every { userService.findByExternalIds(setOf("newcomer@example.com")) } returns listOf(newcomer)
+
+            val service =
+                buildService(
+                    userGroupRepository = userGroupRepository,
+                    userService = userService,
+                    permissionService = permissionService,
+                )
+            service.updateFromRequest(
+                groupId,
+                UserGroupUpdateRequest(
+                    name = "Team",
+                    userExternalIdsToAdd = setOf("newcomer@example.com"),
+                    adminExternalIds = setOf("newcomer@example.com"),
+                ),
+            )
+
+            verify(exactly = 1) {
+                permissionService.applyShareBatch(
+                    EntityType.USER_GROUP,
+                    groupId.toString(),
+                    listOf(newcomer.id.toString() to PermissionRelation.ADMIN),
+                )
+            }
+        }
+
+        "updateFromRequest does not demote an admin that is being removed from the group" {
+            val groupId = randomUUID()
+            val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team",
+                    userCount = 0,
+                )
+            val carol = makeUser("carol@example.com")
+
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            val permissionService = mockk<PermissionService>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
+            every { userGroupRepository.save(any()) } returns existing
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+            every { userGroupRepository.findMembers(groupId) } returns
+                listOf(
+                    UserGroupMember(
+                        userId = carol.id,
+                        externalId = carol.externalId,
+                        role = "ADMIN",
+                        email = carol.externalId,
+                        firstname = null,
+                        lastname = null,
+                    ),
+                )
+
+            val service = buildService(userGroupRepository = userGroupRepository, permissionService = permissionService)
+            service.updateFromRequest(
+                groupId,
+                UserGroupUpdateRequest(
+                    name = "Team",
+                    userExternalIdsToRemove = setOf("carol@example.com"),
+                ),
+            )
+
+            // A demotion entry would re-create a MEMBER edge for the user removeUsers just unlinked.
+            verify(exactly = 0) { permissionService.applyShareBatch(any(), any(), any()) }
+            verify(exactly = 1) { userGroupRepository.removeUsers(groupId, setOf("carol@example.com")) }
+            // removeUsers bypasses the permission cache, so the removed group ADMIN's cache must be
+            // invalidated explicitly or a stale WRITE/DELETE grant survives until the TTL expires.
+            verify(exactly = 1) { permissionService.clearUserCache(carol.id.toString()) }
+        }
+
+        "updateFromRequest does not clear the cache for users it did not remove" {
+            val groupId = randomUUID()
+            val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Renamed",
+                )
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            val permissionService = mockk<PermissionService>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
+            every { userGroupRepository.save(any()) } returns existing
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+            every { userGroupRepository.findMembers(groupId) } returns emptyList()
+
+            val service = buildService(userGroupRepository = userGroupRepository, permissionService = permissionService)
+            service.updateFromRequest(groupId, UserGroupUpdateRequest(name = "Renamed"))
+
+            verify(exactly = 0) { permissionService.clearUserCache(any()) }
+        }
+
+        "updateFromRequest skips the permission share batch when no role changes" {
+            val groupId = randomUUID()
+            val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val searchResult =
+                UserGroupSearchResult(
+                    userGroupId = groupId,
+                    namespaceId = namespaceId,
+                    namespaceExternalId = externalId,
+                    name = "Team",
+                    userCount = 1,
+                )
+            val alice = makeUser("alice@example.com")
+
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            val permissionService = mockk<PermissionService>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
+            every { userGroupRepository.save(any()) } returns existing
+            every { userGroupRepository.findByIdWithDetails(groupId) } returns searchResult
+            every { userGroupRepository.findMembers(groupId) } returns
+                listOf(
+                    UserGroupMember(
+                        userId = alice.id,
+                        externalId = alice.externalId,
+                        role = "ADMIN",
+                        email = alice.externalId,
+                        firstname = null,
+                        lastname = null,
+                    ),
+                )
+
+            val service = buildService(userGroupRepository = userGroupRepository, permissionService = permissionService)
+            service.updateFromRequest(
+                groupId,
+                UserGroupUpdateRequest(
+                    name = "Team",
+                    adminExternalIds = setOf("alice@example.com"),
+                ),
+            )
+
+            verify(exactly = 0) { permissionService.applyShareBatch(any(), any(), any()) }
+        }
+
+        "updateFromRequest throws 422 when an admin is not a member" {
+            val groupId = randomUUID()
+            val existing = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
+            every { userGroupRepository.findByIds(listOf(groupId), withRemoved = true) } returns listOf(existing)
+            every { userGroupRepository.findMembers(groupId) } returns emptyList()
+
+            val service = buildService(userGroupRepository)
+
+            shouldThrow<UnprocessableEntityException> {
+                service.updateFromRequest(
+                    groupId,
+                    UserGroupUpdateRequest(name = "Team", adminExternalIds = setOf("carol@example.com")),
+                )
+            }
+        }
+
+        "updateFromRequest throws 422 when an admin is also being removed" {
+            val groupId = randomUUID()
+            val service = buildService()
+
+            shouldThrow<UnprocessableEntityException> {
+                service.updateFromRequest(
+                    groupId,
+                    UserGroupUpdateRequest(
+                        name = "Team",
+                        userExternalIdsToRemove = setOf("alice@example.com"),
+                        adminExternalIds = setOf("alice@example.com"),
+                    ),
+                )
+            }
         }
     })
