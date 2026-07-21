@@ -1,3 +1,14 @@
+## 0.221.0 (2026-07-21)
+
+### 🚀 Features
+
+- #1019 Agentos UserGroup UI + admin Users & Groups console ([#1107](https://github.com/whoz-oss/coday/pull/1107), [#1019](https://github.com/whoz-oss/coday/issues/1019))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 0.220.0 (2026-07-21)
 
 ### 🚀 Features
