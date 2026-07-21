@@ -320,6 +320,20 @@ class ReadSpreadsheetToolSpec : StringSpec() {
             output shouldContain "sheets=[1], startRow=1001"
         }
 
+        "a custom spreadsheetMaxRows from config caps the rows emitted" {
+            writeXlsx("cap.xlsx") {
+                sheetOf("S", (1..5).map { listOf("row$it") })
+            }
+
+            val result =
+                ReadSpreadsheetTool(tempDir, spreadsheetMaxRows = 2).execute(ReadSpreadsheetTool.Input("cap.xlsx"), ctx)
+
+            withClue(result.output) { result.success shouldBe true }
+            result.output shouldContain "rows 1-2 of 5"
+            result.output shouldContain "[truncated]"
+            result.output shouldContain "startRow=3"
+        }
+
         "character budget truncates wide sheets before the row cap" {
             val wide = "x".repeat(4500)
             writeXlsx("wide.xlsx") {

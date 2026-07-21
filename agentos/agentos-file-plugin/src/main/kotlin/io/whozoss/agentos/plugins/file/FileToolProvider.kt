@@ -52,6 +52,11 @@ class FileToolProvider : ToolPlugin {
         val imageMaxSourcePixels = config.get("imageMaxSourcePixels")?.asLong() ?: ImageProcessor.MAX_SOURCE_PIXELS
         val imagePassThroughMaxBytes = config.get("imagePassThroughMaxBytes")?.asLong() ?: ImageProcessor.PASS_THROUGH_MAX_BYTES
 
+        val spreadsheetMaxRows = config.get("spreadsheetMaxRows")?.asInt() ?: ReadSpreadsheetTool.MAX_ROWS_PER_CALL
+        val spreadsheetMaxOutputChars = config.get("spreadsheetMaxOutputChars")?.asInt() ?: ReadSpreadsheetTool.MAX_OUTPUT_CHARS
+        val spreadsheetMaxColumns = config.get("spreadsheetMaxColumns")?.asInt() ?: ReadSpreadsheetTool.MAX_COLUMNS
+        val spreadsheetMaxCellChars = config.get("spreadsheetMaxCellChars")?.asInt() ?: ReadSpreadsheetTool.MAX_CELL_CHARS
+
         val readMaxSizeBytes = readMaxSizeMb * 1024 * 1024
         val denyPatterns = SensitiveFilePatterns.DEFAULT_PATTERNS + extraDenyPatterns
 
@@ -68,7 +73,16 @@ class FileToolProvider : ToolPlugin {
                 imageMaxSourcePixels = imageMaxSourcePixels,
                 imagePassThroughMaxBytes = imagePassThroughMaxBytes,
             ),
-            ReadSpreadsheetTool(rootPath, configName, readMaxSizeBytes, denyPatterns),
+            ReadSpreadsheetTool(
+                rootPath,
+                configName,
+                readMaxSizeBytes,
+                denyPatterns,
+                spreadsheetMaxRows = spreadsheetMaxRows,
+                spreadsheetMaxOutputChars = spreadsheetMaxOutputChars,
+                spreadsheetMaxColumns = spreadsheetMaxColumns,
+                spreadsheetMaxCellChars = spreadsheetMaxCellChars,
+            ),
             SearchFilesTool(rootPath, configName, denyPatterns),
         )
 
@@ -129,6 +143,30 @@ class FileToolProvider : ToolPlugin {
                         "title": "Image Pass-Through Max Size (bytes)",
                         "description": "Originals at or below this byte size that already fit the max dimension are sent untouched instead of re-encoded. Default is 1048576 (1 MB).",
                         "default": 1048576
+                    },
+                    "spreadsheetMaxRows": {
+                        "type": "integer",
+                        "title": "Spreadsheet Max Rows",
+                        "description": "Maximum rows readSpreadsheet emits per call across the selected sheets; a larger sheet is paged via startRow. Default is 1000.",
+                        "default": 1000
+                    },
+                    "spreadsheetMaxOutputChars": {
+                        "type": "integer",
+                        "title": "Spreadsheet Max Output Chars",
+                        "description": "CSV character budget per readSpreadsheet call. Default is 100000.",
+                        "default": 100000
+                    },
+                    "spreadsheetMaxColumns": {
+                        "type": "integer",
+                        "title": "Spreadsheet Max Columns",
+                        "description": "Columns beyond this are not emitted by readSpreadsheet (flagged in the sheet header). Default is 256.",
+                        "default": 256
+                    },
+                    "spreadsheetMaxCellChars": {
+                        "type": "integer",
+                        "title": "Spreadsheet Max Cell Chars",
+                        "description": "A single cell longer than this is cut by readSpreadsheet. Default is 5000.",
+                        "default": 5000
                     },
                     "extraDenyPatterns": {
                         "type": "array",

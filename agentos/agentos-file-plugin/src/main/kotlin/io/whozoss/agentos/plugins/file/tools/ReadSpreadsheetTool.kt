@@ -48,10 +48,10 @@ import kotlin.io.path.name
  * content-free rows and cells are trimmed (a sheet merely formatted down to row 1048576
  * does not blow the output).
  *
- * Budgets per call: [MAX_ROWS_PER_CALL] rows or [MAX_OUTPUT_CHARS] characters of CSV body
+ * Budgets per call: [spreadsheetMaxRows] rows or [spreadsheetMaxOutputChars] characters of CSV body
  * (whichever trips first; truncation happens at a row boundary, and a row longer than the
  * remaining budget is itself cut with a `[row truncated]` marker so a single row can never
- * blow the budget), [MAX_COLUMNS] columns and [MAX_CELL_CHARS] characters per cell. A
+ * blow the budget), [spreadsheetMaxColumns] columns and [spreadsheetMaxCellChars] characters per cell. A
  * `[truncated]` notice tells the model how to continue. The workbook is opened from the
  * file (lazy random-access zip reading; the InputStream path would buffer the whole
  * decompressed package in memory up front) but sheets are still materialized as XSSF DOM:
@@ -64,6 +64,10 @@ class ReadSpreadsheetTool(
     private val readMaxSizeBytes: Long = DEFAULT_READ_MAX_SIZE,
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
     private val ioTimeoutSeconds: Long = IO_TIMEOUT,
+    private val spreadsheetMaxRows: Int = MAX_ROWS_PER_CALL,
+    private val spreadsheetMaxOutputChars: Int = MAX_OUTPUT_CHARS,
+    private val spreadsheetMaxColumns: Int = MAX_COLUMNS,
+    private val spreadsheetMaxCellChars: Int = MAX_CELL_CHARS,
 ) : StandardTool<ReadSpreadsheetTool.Input> {
 
     override val name: String =
@@ -77,10 +81,10 @@ class ReadSpreadsheetTool(
         (number and date formats applied); formulas yield their last saved result (or
         "=formula" when the file was saved without cached results) and error cells
         yield Excel error literals (#DIV/0!, #REF!...).
-        At most $MAX_ROWS_PER_CALL rows (or ~$MAX_OUTPUT_CHARS characters) per call: for larger
+        At most $spreadsheetMaxRows rows (or ~$spreadsheetMaxOutputChars characters) per call: for larger
         sheets pass "sheets" (1-based sheet numbers) and "startRow" (1-based row) to page
-        through, as instructed by the [truncated] notice. Sheets wider than $MAX_COLUMNS
-        columns are cut at column $MAX_COLUMNS (flagged in the sheet header); oversized cells
+        through, as instructed by the [truncated] notice. Sheets wider than $spreadsheetMaxColumns
+        columns are cut at column $spreadsheetMaxColumns (flagged in the sheet header); oversized cells
         and rows are cut with "[cell truncated]"/"[row truncated]" markers.
         .xlsx only. For .csv and other text files use readFile. Legacy .xls, .xlsm and
         .ods are not supported: convert to .xlsx first.
@@ -246,7 +250,7 @@ class ReadSpreadsheetTool(
         var rowsEmitted = 0
 
         for ((position, sheetNumber) in selection.withIndex()) {
-            if (rowsEmitted >= MAX_ROWS_PER_CALL || out.length >= MAX_OUTPUT_CHARS) {
+            if (rowsEmitted >= spreadsheetMaxRows || out.length >= spreadsheetMaxOutputChars) {
                 appendTruncationNotice(out, workbook, continueSheets = selection.drop(position))
                 break
             }
@@ -325,18 +329,18 @@ class ReadSpreadsheetTool(
         var windowEnd = startRow - 1
         var nextStartRow: Int? = null
         for (rowIndex in (startRow - 1)..range.lastContentRow) {
-            if (rowsAlreadyEmitted + emitted >= MAX_ROWS_PER_CALL) {
+            if (rowsAlreadyEmitted + emitted >= spreadsheetMaxRows) {
                 nextStartRow = rowIndex + 1
                 break
             }
             val rowText = renderRow(sheet.getRow(rowIndex), range.columnCount, formatter, date1904)
             val used = charsAlreadyUsed + body.length
-            if (used + rowText.length + 1 > MAX_OUTPUT_CHARS) {
+            if (used + rowText.length + 1 > spreadsheetMaxOutputChars) {
                 if (rowsAlreadyEmitted + emitted == 0) {
                     // A single row larger than the whole budget: emit what fits with a
                     // marker so the call still makes progress; the row's tail is not
                     // reachable by paging.
-                    val room = (MAX_OUTPUT_CHARS - used - ROW_TRUNCATED_MARKER.length - 1).coerceAtLeast(0)
+                    val room = (spreadsheetMaxOutputChars - used - ROW_TRUNCATED_MARKER.length - 1).coerceAtLeast(0)
                     body.append(cutAtCharBoundary(rowText, room)).append(ROW_TRUNCATED_MARKER).append('\n')
                     emitted++
                     windowEnd = rowIndex + 1
@@ -378,8 +382,8 @@ class ReadSpreadsheetTool(
                 ?: return@fold acc // row with no content: leaves the range unchanged
             UsedRange(
                 lastContentRow = maxOf(acc.lastContentRow, row.rowNum),
-                columnCount = maxOf(acc.columnCount, minOf(lastCol + 1, MAX_COLUMNS)),
-                columnsTruncated = acc.columnsTruncated || lastCol + 1 > MAX_COLUMNS,
+                columnCount = maxOf(acc.columnCount, minOf(lastCol + 1, spreadsheetMaxColumns)),
+                columnsTruncated = acc.columnsTruncated || lastCol + 1 > spreadsheetMaxColumns,
             )
         }
 
@@ -392,7 +396,7 @@ class ReadSpreadsheetTool(
 
     private fun describeColumns(range: UsedRange): String =
         "columns A-${columnLetter(range.columnCount - 1)}" +
-            if (range.columnsTruncated) " (truncated at $MAX_COLUMNS)" else ""
+            if (range.columnsTruncated) " (truncated at $spreadsheetMaxColumns)" else ""
 
     private fun renderRow(row: Row?, columnCount: Int, formatter: DataFormatter, date1904: Boolean): String {
         if (row == null) return ""
@@ -447,7 +451,7 @@ class ReadSpreadsheetTool(
         runCatching { FormulaError.forInt(code.toInt()).string }.getOrDefault("#ERROR")
 
     private fun truncateCell(value: String): String =
-        if (value.length <= MAX_CELL_CHARS) value else cutAtCharBoundary(value, MAX_CELL_CHARS) + CELL_TRUNCATED_MARKER
+        if (value.length <= spreadsheetMaxCellChars) value else cutAtCharBoundary(value, spreadsheetMaxCellChars) + CELL_TRUNCATED_MARKER
 
     /** Cuts to at most [maxLength] UTF-16 units without splitting a surrogate pair. */
     private fun cutAtCharBoundary(value: String, maxLength: Int): String {
@@ -471,7 +475,7 @@ class ReadSpreadsheetTool(
         nextStartRow: Int? = null,
         notShown: List<Int> = emptyList(),
     ) {
-        out.append("\n[truncated] Per-call limit reached (max $MAX_ROWS_PER_CALL rows / $MAX_OUTPUT_CHARS chars). ")
+        out.append("\n[truncated] Per-call limit reached (max $spreadsheetMaxRows rows / $spreadsheetMaxOutputChars chars). ")
         out.append("Continue with sheets=[${continueSheets.joinToString(", ")}]")
         out.append(if (nextStartRow != null) ", startRow=$nextStartRow." else ".")
         if (notShown.isNotEmpty()) {
