@@ -9,7 +9,6 @@
  */
 
 export interface PluginInfo {
-  agentCount: number
   description: string
   id: string
   pluginPath: string

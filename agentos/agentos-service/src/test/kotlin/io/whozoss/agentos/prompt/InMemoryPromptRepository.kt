@@ -48,6 +48,23 @@ class InMemoryPromptRepository : PromptRepository {
                 (p.namespaceId == namespaceId && p.userId == userId)
         }
 
+    override fun findByScope(
+        namespaceId: UUID?,
+        userId: UUID?,
+        agentConfigIds: List<UUID>?,
+    ): List<Prompt> =
+        delegate.findAll().filter { p ->
+            p.namespaceId == namespaceId &&
+                p.userId == userId &&
+                (agentConfigIds.isNullOrEmpty() || p.agentConfigId in agentConfigIds)
+        }
+
+    override fun softDeleteByAgentConfigId(agentConfigId: UUID) {
+        delegate.findAll()
+            .filter { it.agentConfigId == agentConfigId }
+            .forEach { delegate.delete(it.metadata.id) }
+    }
+
     companion object {
         private const val ALL_KEY = "all"
     }

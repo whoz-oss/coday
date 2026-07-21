@@ -1,7 +1,11 @@
 package io.whozoss.agentos.prompt
 
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -24,9 +28,22 @@ import java.util.UUID
 @Service
 class PromptServiceImpl(
     private val repository: PromptRepository,
+    private val agentConfigService: AgentConfigService,
 ) : PromptService {
     override fun create(entity: Prompt): Prompt {
         validate(entity)
+        if (entity.agentConfigId != null) {
+            val agentConfig = agentConfigService.findById(entity.agentConfigId)
+                ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
+            if (agentConfig.metadata.version == null) {
+                // version is null for entities that have never been persisted in Neo4j
+                // (filesystem agents are built in-memory and never go through SDN save).
+                throw UnprocessableEntityException(
+                    "AgentConfig id=${entity.agentConfigId} is a filesystem-only agent and cannot be linked to a prompt",
+                )
+            }
+            validateAgentConfigScope(entity, agentConfig)
+        }
         repository.findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ConflictException(conflictMessage(entity))
         }
@@ -69,6 +86,12 @@ class PromptServiceImpl(
             .map { (_, layers) -> layers.last() }
             .sortedBy { it.name }
 
+    override fun findByScope(
+        namespaceId: UUID?,
+        userId: UUID?,
+        agentConfigIds: List<UUID>?,
+    ): List<Prompt> = repository.findByScope(namespaceId, userId, agentConfigIds)
+
     private fun layerPriority(p: Prompt): Int =
         when {
             p.namespaceId == null && p.userId == null -> 0
@@ -104,6 +127,22 @@ class PromptServiceImpl(
         if (duplicateName != null) {
             throw BadRequestException(
                 "Duplicate parameter name '$duplicateName' \u2014 parameter names must be unique within a prompt",
+            )
+        }
+    }
+
+    private fun validateAgentConfigScope(prompt: Prompt, agentConfig: AgentConfig) {
+        val validScope = when {
+            // Platform agent is always valid (accessible from any scope)
+            agentConfig.namespaceId == null -> true
+            // Same namespace
+            agentConfig.namespaceId == prompt.namespaceId -> true
+            // Everything else is cross-scope
+            else -> false
+        }
+        if (!validScope) {
+            throw BadRequestException(
+                "AgentConfig id=${prompt.agentConfigId} does not belong to the prompt's namespace",
             )
         }
     }

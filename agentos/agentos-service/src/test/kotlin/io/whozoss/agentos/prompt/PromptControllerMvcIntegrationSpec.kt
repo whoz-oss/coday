@@ -4,6 +4,8 @@ import com.ninjasquad.springmockk.MockkBean
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.mockk.every
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
@@ -47,6 +49,7 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var promptService: PromptService
+    @Autowired lateinit var agentConfigService: AgentConfigService
 
     @MockkBean(relaxed = true) lateinit var userService: UserService
     @MockkBean(relaxed = true) lateinit var permissionService: PermissionService
@@ -205,6 +208,183 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // POST — agentConfigId validation
+        // -------------------------------------------------------------------------
+
+        "POST with non-existent agentConfigId returns 404" {
+            val unknownId = UUID.randomUUID()
+            val name = "AC-MISSING-" + UUID.randomUUID()
+            mockMvc.perform(
+                post("/api/prompts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                            "namespaceId": "$namespaceId",
+                            "name": "$name",
+                            "content": ["Hello"],
+                            "agentConfigId": "$unknownId"
+                        }
+                    """.trimIndent()),
+            ).andExpect(status().isNotFound)
+        }
+
+        "POST with existing agentConfigId returns 201" {
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "agent-" + UUID.randomUUID(),
+                ),
+            )
+            val name = "AC-OK-" + UUID.randomUUID()
+            mockMvc.perform(
+                post("/api/prompts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                            "namespaceId": "$namespaceId",
+                            "name": "$name",
+                            "content": ["Hello"],
+                            "agentConfigId": "${agent.id}"
+                        }
+                    """.trimIndent()),
+            ).andExpect(status().isCreated)
+                .andExpect(jsonPath("\$.agentConfigId").value(agent.id.toString()))
+        }
+
+        "POST with agentConfigId from different namespace returns 400" {
+            val otherNs = UUID.randomUUID()
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = otherNs,
+                    name = "foreign-agent-" + UUID.randomUUID(),
+                ),
+            )
+            val name = "AC-CROSS-NS-" + UUID.randomUUID()
+            mockMvc.perform(
+                post("/api/prompts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                            "namespaceId": "$namespaceId",
+                            "name": "$name",
+                            "content": ["Hello"],
+                            "agentConfigId": "${agent.id}"
+                        }
+                    """.trimIndent()),
+            ).andExpect(status().isBadRequest)
+        }
+
+        // -------------------------------------------------------------------------
+        // POST /effective — disabled agent filtering
+        // -------------------------------------------------------------------------
+
+        "effective excludes prompts linked to disabled agents" {
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "disabled-agent-" + UUID.randomUUID(),
+                    enabled = false,
+                ),
+            )
+            val name = "EFF-DISABLED-" + UUID.randomUUID()
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = name,
+                    content = listOf("Hello"),
+                    agentConfigId = agent.id,
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$name')]").doesNotExist())
+        }
+
+        "effective includes prompts linked to enabled agents" {
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "enabled-agent-" + UUID.randomUUID(),
+                    enabled = true,
+                ),
+            )
+            val name = "EFF-ENABLED-" + UUID.randomUUID()
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = name,
+                    content = listOf("Hello"),
+                    agentConfigId = agent.id,
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$name')]").exists())
+        }
+
+        "effective includes prompts with no agentConfigId" {
+            val name = "EFF-NO-AGENT-" + UUID.randomUUID()
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = name,
+                    content = listOf("Hello"),
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$name')]").exists())
+        }
+
+        "effective excludes prompts linked to deleted agents" {
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "to-delete-agent-" + UUID.randomUUID(),
+                    enabled = true,
+                ),
+            )
+            val name = "EFF-DELETED-AGENT-" + UUID.randomUUID()
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = name,
+                    content = listOf("Hello"),
+                    agentConfigId = agent.id,
+                ),
+            )
+            agentConfigService.delete(agent.id)
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$name')]").doesNotExist())
+        }
+
+        // -------------------------------------------------------------------------
         // PUT — Bean Validation
         // -------------------------------------------------------------------------
 
@@ -277,7 +457,7 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isNotFound)
         }
 
-        "GET by-parentId returns prompts for the namespace" {
+        "POST :search returns prompts for the namespace" {
             val name = "LIST-${UUID.randomUUID()}"
             promptService.create(
                 Prompt(
@@ -288,9 +468,126 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
                 ),
             )
 
-            mockMvc.perform(get("/api/prompts/by-parentId/$namespaceId"))
-                .andExpect(status().isOk)
+            mockMvc.perform(
+                post("/api/prompts/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId" }"""),
+            ).andExpect(status().isOk)
                 .andExpect(jsonPath("$").isArray)
+        }
+
+        // -------------------------------------------------------------------------
+        // POST :search — namespaceExternalId resolution
+        // -------------------------------------------------------------------------
+
+        "POST :search with namespaceExternalId resolves to namespace and returns 200" {
+            every { namespaceService.findByExternalId(ns.externalId!!) } returns ns
+
+            val name = "EXT-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = name,
+                    content = listOf("Hello"),
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceExternalId": "${ns.externalId}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$").isArray)
+        }
+
+        "POST :search with unknown namespaceExternalId returns 404" {
+            every { namespaceService.findByExternalId("unknown-ext-id") } returns null
+
+            mockMvc.perform(
+                post("/api/prompts/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceExternalId": "unknown-ext-id" }"""),
+            ).andExpect(status().isNotFound)
+        }
+
+        "POST :search with both namespaceId and namespaceExternalId returns 400" {
+            mockMvc.perform(
+                post("/api/prompts/search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "namespaceExternalId": "${ns.externalId}" }"""),
+            ).andExpect(status().isBadRequest)
+        }
+
+        // -------------------------------------------------------------------------
+        // POST :effective — externalId resolution (MVC/validation layer)
+        // -------------------------------------------------------------------------
+
+        "POST :effective with both namespaceId and namespaceExternalId returns 400" {
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                            "namespaceId": "$namespaceId",
+                            "namespaceExternalId": "${ns.externalId}",
+                            "userId": "${aliceId}"
+                        }
+                    """.trimIndent()),
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST :effective with both userId and userExternalId returns 400" {
+            every { namespaceService.findByExternalId(ns.externalId!!) } returns ns
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                            "namespaceId": "$namespaceId",
+                            "userId": "${aliceId}",
+                            "userExternalId": "alice@example.com"
+                        }
+                    """.trimIndent()),
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST :effective with neither namespaceId nor namespaceExternalId returns 400" {
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "userId": "${aliceId}" }"""),
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST :effective with neither userId nor userExternalId returns 400" {
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId" }"""),
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST :effective with unknown namespaceExternalId returns 404" {
+            every { namespaceService.findByExternalId("no-such-ns") } returns null
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceExternalId": "no-such-ns", "userId": "${aliceId}" }"""),
+            ).andExpect(status().isNotFound)
+        }
+
+        "POST :effective with unknown userExternalId returns 404" {
+            every { namespaceService.findByExternalId(ns.externalId!!) } returns ns
+            every { userService.findByExternalId("no-such-user") } returns null
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "$namespaceId", "userExternalId": "no-such-user" }"""),
+            ).andExpect(status().isNotFound)
         }
     }
 }

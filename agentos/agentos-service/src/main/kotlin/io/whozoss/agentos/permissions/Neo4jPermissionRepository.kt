@@ -336,19 +336,6 @@ class Neo4jPermissionRepository(
         }
     }
 
-    override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean =
-        try {
-            permissionNodeRepository.setStarred(
-                userId = userId,
-                entityId = entityId,
-                entityLabel = entityType.label,
-                starred = starred,
-            ) > 0
-        } catch (e: Exception) {
-            logger.error(e) { "Error setting starred=$starred for user=$userId on $entityType:$entityId" }
-            throw e
-        }
-
     override fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean =
         try {
             permissionNodeRepository.promoteMemberToAdmin(

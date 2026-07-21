@@ -10,10 +10,12 @@
 import { PromptParameter } from './prompt-parameter'
 
 export interface Prompt {
+  agentConfigId?: string | null
   content: Array<string>
   createdBy?: string
   createdOn?: string
   description?: string
+  externalMetadata?: { [key: string]: any }
   id?: string
   name: string
   namespaceId?: string | null

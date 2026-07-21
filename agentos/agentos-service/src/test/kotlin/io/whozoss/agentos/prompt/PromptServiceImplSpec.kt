@@ -8,7 +8,13 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.mockk.every
+import io.mockk.mockk
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
@@ -22,11 +28,13 @@ import java.util.UUID
  * layer (List<@NotBlank String> with -Xemit-jvm-type-annotations) and is not tested here.
  */
 class PromptServiceImplSpec : StringSpec() {
-    private fun newService(): PromptServiceImpl = PromptServiceImpl(InMemoryPromptRepository())
+    private val agentConfigService = mockk<AgentConfigService>(relaxed = true)
+    private fun newService(): PromptServiceImpl = PromptServiceImpl(InMemoryPromptRepository(), agentConfigService)
 
     private fun prompt(
         namespaceId: UUID? = UUID.randomUUID(),
         userId: UUID? = null,
+        agentConfigId: UUID? = null,
         name: String = "My Prompt",
         content: List<String> = listOf("Hello {{name}}"),
         parameters: List<PromptParameter> = emptyList(),
@@ -35,6 +43,7 @@ class PromptServiceImplSpec : StringSpec() {
         metadata = EntityMetadata(),
         namespaceId = namespaceId,
         userId = userId,
+        agentConfigId = agentConfigId,
         name = name,
         description = description,
         content = content,
@@ -139,6 +148,108 @@ class PromptServiceImplSpec : StringSpec() {
             )
             val saved = service.create(prompt(parameters = params))
             saved.parameters shouldHaveSize 2
+        }
+
+        // -------------------------------------------------------------------------
+        // agentConfigId validation
+        // -------------------------------------------------------------------------
+
+        "create with non-existent agentConfigId throws ResourceNotFoundException" {
+            val service = newService()
+            val unknownId = UUID.randomUUID()
+            every { agentConfigService.findById(unknownId) } returns null
+
+            shouldThrow<ResourceNotFoundException> {
+                service.create(prompt(agentConfigId = unknownId))
+            }
+        }
+
+        "create with existing agentConfigId succeeds" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = null,
+                name = "agent",
+            )
+
+            val saved = service.create(prompt(agentConfigId = agentId))
+            saved.agentConfigId shouldBe agentId
+        }
+
+        "create with agentConfigId from different namespace throws BadRequestException" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            val agentNs = UUID.randomUUID()
+            val promptNs = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = agentNs,
+                name = "foreign-agent",
+            )
+
+            shouldThrow<BadRequestException> {
+                service.create(prompt(namespaceId = promptNs, agentConfigId = agentId))
+            }
+        }
+
+        "create with agentConfigId from same namespace succeeds" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            val ns = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = ns,
+                name = "same-ns-agent",
+            )
+
+            val saved = service.create(prompt(namespaceId = ns, agentConfigId = agentId))
+            saved.agentConfigId shouldBe agentId
+        }
+
+        "create with platform agentConfigId from namespace prompt succeeds" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = null,
+                name = "platform-agent",
+            )
+
+            val saved = service.create(prompt(namespaceId = UUID.randomUUID(), agentConfigId = agentId))
+            saved.agentConfigId shouldBe agentId
+        }
+
+        "create with filesystem-only agentConfigId (version == null) throws UnprocessableEntityException" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            // Filesystem agents are built in-memory: EntityMetadata.version is null
+            // because they never go through SDN save.  Linking one would produce a
+            // dangling BELONGS_TO edge in Neo4j and silently hide the prompt from
+            // findEffective.  The service must reject such associations explicitly.
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = null),
+                namespaceId = UUID.randomUUID(),
+                name = "fs-agent",
+            )
+
+            shouldThrow<UnprocessableEntityException> {
+                service.create(prompt(namespaceId = UUID.randomUUID(), agentConfigId = agentId))
+            }
+        }
+
+        "create platform prompt with namespace agentConfigId throws BadRequestException" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = UUID.randomUUID(),
+                name = "ns-agent",
+            )
+
+            shouldThrow<BadRequestException> {
+                service.create(prompt(namespaceId = null, agentConfigId = agentId))
+            }
         }
 
         // -------------------------------------------------------------------------
