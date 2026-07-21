@@ -2731,6 +2731,9 @@ components:
         id:
           type: string
           format: uuid
+        lastMessageAt:
+          type: string
+          format: date-time
         modified:
           type: string
           format: date-time
