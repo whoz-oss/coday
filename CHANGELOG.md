@@ -1,3 +1,13 @@
+## 0.219.1 (2026-07-21)
+
+### 🩹 Fixes
+
+- tolerate a null ChatResponse.getResult() in CompressingChatClient ([#1154](https://github.com/whoz-oss/coday/pull/1154), [#1115](https://github.com/whoz-oss/coday/issues/1115))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 0.219.0 (2026-07-21)
 
 ### 🚀 Features
