@@ -131,7 +131,7 @@ interface PermissionRepository {
      * no property-preservation logic is needed.
      *
      * @return true if a [:MEMBER] edge was found and promoted; false if the user had
-     *   no MEMBER relation on the entity (the [:ADMIN] edge is still created in that case).
+     *   no MEMBER relation on the entity (no-op: no [:ADMIN] edge is created).
      */
     fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean
 
@@ -142,7 +142,7 @@ interface PermissionRepository {
      * no property-preservation logic is needed.
      *
      * @return true if a [:ADMIN] edge was found and demoted; false if the user had
-     *   no ADMIN relation on the entity (the [:MEMBER] edge is still created in that case).
+     *   no ADMIN relation on the entity (no-op: no [:MEMBER] edge is created).
      */
     fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean
 

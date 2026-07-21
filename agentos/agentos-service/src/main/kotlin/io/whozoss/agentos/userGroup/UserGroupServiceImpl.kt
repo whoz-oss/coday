@@ -66,7 +66,7 @@ class UserGroupServiceImpl(
             namespaceService.getById(request.namespaceId)
 
         validateAgentsInNamespace(request.agentIds, namespace.id)
-        validateAdminsAreMembers(request.adminExternalIds, request.userExternalIdsToAdd)
+        validateAdminsBelongToGroup(request.adminExternalIds, request.userExternalIdsToAdd)
 
         val group =
             create(
@@ -121,12 +121,12 @@ class UserGroupServiceImpl(
 
         validateAgentsInNamespace(request.agentIds, existing.namespaceId)
 
-        // Admins must be members after the update: existing members, plus the added, minus the removed.
+        // Admins must belong to the group after the update: existing members, plus the added, minus the removed.
         val currentMembers = userGroupRepository.findMembers(userGroupId)
         val resultingMembers =
             (currentMembers.map { it.externalId }.toSet() - request.userExternalIdsToRemove) +
                 request.userExternalIdsToAdd
-        validateAdminsAreMembers(request.adminExternalIds, resultingMembers)
+        validateAdminsBelongToGroup(request.adminExternalIds, resultingMembers)
 
         update(existing.copy(name = request.name))
 
@@ -141,6 +141,10 @@ class UserGroupServiceImpl(
             val missingIds = request.userExternalIdsToAdd - existingUsers.map { it.externalId }.toSet()
             addedUsers = existingUsers + userService.createByExternalIds(missingIds)
             userGroupRepository.addUsers(userGroupId, request.userExternalIdsToAdd)
+            // addUsers creates the [:MEMBER] edges directly, bypassing the permission cache.
+            // A user who probed the group before being added would keep a cached denial until
+            // the TTL expires; invalidate each added member (mirror of the removal path below).
+            addedUsers.forEach { permissionService.clearUserCache(it.id.toString()) }
         }
 
         if (request.userExternalIdsToRemove.isNotEmpty()) {
@@ -233,13 +237,26 @@ class UserGroupServiceImpl(
         }
     }
 
-    private fun validateAdminsAreMembers(
+    /**
+     * Guards that every designated admin belongs to the group: [adminExternalIds] must be a subset
+     * of [memberExternalIds], the external ids that are (or will be) on the group's roster.
+     *
+     * "Member" here is group-roster membership (a user holding either a [PermissionRelation.MEMBER]
+     * or [PermissionRelation.ADMIN] edge — an admin IS a group member), not the exclusive
+     * [PermissionRelation.MEMBER] role. Without this guard, an admin absent from the roster would be
+     * silently dropped by [reconcileRoles] (its `mapNotNull` cannot resolve a non-member's user id),
+     * returning 200 while failing to grant the role.
+     *
+     * This roster + admin-sublist request shape is specific to UserGroup; Namespace and Case assign a
+     * single role per user, so they have no equivalent membership precondition.
+     */
+    private fun validateAdminsBelongToGroup(
         adminExternalIds: Set<String>,
         memberExternalIds: Set<String>,
     ) {
         val notMembers = adminExternalIds - memberExternalIds
         if (notMembers.isNotEmpty()) {
-            throw UnprocessableEntityException("Admin external IDs must also be members: $notMembers")
+            throw UnprocessableEntityException("Admin external IDs must belong to the group: $notMembers")
         }
     }
 

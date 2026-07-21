@@ -51,6 +51,10 @@ open class Neo4jUserGroupRepository(
             paramValue = id.toString(),
         ).one().orElse(null)
 
+    // neo4jClient + mappedBy: SDN cannot project a multi-column RETURN (here incl. the computed
+    // `role` from collect(type(r))) onto a non-entity DTO via @Query — it rejects the multi-column
+    // result, the same limitation documented on CaseNodeNeo4jRepository.findDirectRelations. Mirrors
+    // the two sibling projections below (querySearchResults, findGroupsByUserExternalIds).
     override fun findMembers(userGroupId: UUID): List<UserGroupMember> =
         neo4jClient
             .query(

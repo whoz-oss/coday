@@ -134,7 +134,7 @@ interface PermissionService {
      * The [:STARRED] edge (if any) is a separate relationship and survives untouched.
      *
      * @return true if a [:MEMBER] edge was found and promoted; false if the user had
-     *   no MEMBER relation (the [:ADMIN] edge is still created in that case).
+     *   no MEMBER relation (no-op: no [:ADMIN] edge is created).
      */
     fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean
 
@@ -144,7 +144,7 @@ interface PermissionService {
      * The [:STARRED] edge (if any) is a separate relationship and survives untouched.
      *
      * @return true if a [:ADMIN] edge was found and demoted; false if the user had
-     *   no ADMIN relation (the [:MEMBER] edge is still created in that case).
+     *   no ADMIN relation (no-op: no [:MEMBER] edge is created).
      */
     fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean
 

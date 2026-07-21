@@ -367,28 +367,40 @@ class Neo4jPermissionRepository(
     ): List<String> {
         if (entries.isEmpty()) return emptyList()
         val label = entityType.label
-        val result = mutableSetOf<String>()
         try {
-            val adminUserIds = entries.filter { it.second == PermissionRelation.ADMIN }.map { it.first }
-            val memberUserIds = entries.filter { it.second == PermissionRelation.MEMBER }.map { it.first }
-            val revokeUserIds = entries.filter { it.second == null }.map { it.first }
-
-            if (adminUserIds.isNotEmpty()) {
-                result.addAll(permissionNodeRepository.batchGrantAdmin(adminUserIds, entityId, label))
-            }
-            if (memberUserIds.isNotEmpty()) {
-                result.addAll(permissionNodeRepository.batchGrantMember(memberUserIds, entityId, label))
-            }
-            if (revokeUserIds.isNotEmpty()) {
-                result.addAll(permissionNodeRepository.batchRevoke(revokeUserIds, entityId, label))
-            }
+            val userIdsByRelation = entries.groupBy({ (_, relation) -> relation }, { (userId, _) -> userId })
+            val appliedUserIds =
+                userIdsByRelation
+                    .flatMap { (relation, userIds) ->
+                        when (relation) {
+                            PermissionRelation.ADMIN ->
+                                permissionNodeRepository.batchSetAdminRole(
+                                    userIds = userIds,
+                                    entityId = entityId,
+                                    entityLabel = label,
+                                )
+                            PermissionRelation.MEMBER ->
+                                permissionNodeRepository.batchSetMemberRole(
+                                    userIds = userIds,
+                                    entityId = entityId,
+                                    entityLabel = label,
+                                )
+                            null ->
+                                permissionNodeRepository.batchRevoke(
+                                    userIds = userIds,
+                                    entityId = entityId,
+                                    entityLabel = label,
+                                )
+                        }
+                    }.distinct()
 
             logger.info {
+                val sizes = userIdsByRelation.mapValues { (_, userIds) -> userIds.size }
                 "applyShareBatch on $entityType:$entityId — " +
-                    "admin=${adminUserIds.size}, member=${memberUserIds.size}, revoke=${revokeUserIds.size}, " +
-                    "applied=${result.size}"
+                    "admin=${sizes[PermissionRelation.ADMIN] ?: 0}, member=${sizes[PermissionRelation.MEMBER] ?: 0}, " +
+                    "revoke=${sizes[null] ?: 0}, applied=${appliedUserIds.size}"
             }
-            return result.toList()
+            return appliedUserIds
         } catch (e: Exception) {
             logger.error(e) { "Error applying share batch on $entityType:$entityId" }
             throw e
