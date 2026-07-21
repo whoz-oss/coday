@@ -43,14 +43,14 @@ import kotlin.io.path.name
  * Embedded pictures (diagrams, screenshots, scans) are where vision is useful, so they ARE
  * attached: [XWPFDocument.getAllPictures] yields the embedded bitmaps directly (no rendering),
  * each is checked against [imageMaxSourcePixels] and re-encoded as JPEG, up to
- * [MAX_ATTACHED_IMAGES]. An oversized or unreadable picture is skipped (the text still reads),
+ * [documentMaxAttachedImages]. An oversized or unreadable picture is skipped (the text still reads),
  * not fatal. Pictures are document-global, so they are attached only on the first page (when
  * [startElement] is 1) to avoid re-sending them on every paged continuation; a notice reports any
  * pictures not shown. Image delivery to the model is an AgentAdvanced feature (see [ToolExecutionResult.images]).
  *
- * Budgets per call: [MAX_OUTPUT_CHARS] characters of Markdown; [startElement] (1-based body
+ * Budgets per call: [documentMaxOutputChars] characters of Markdown; [startElement] (1-based body
  * element index) pages through a long document, with a `[truncated]` notice telling the model
- * how to continue. Tables are cut at [MAX_TABLE_COLUMNS] columns and [MAX_CELL_CHARS] per cell.
+ * how to continue. Tables are cut at [documentMaxTableColumns] columns and [documentMaxCellChars] per cell.
  * A single element larger than the budget (a very large table or paragraph) is cut in place
  * with a marker rather than emitted whole, so one element cannot blow past the budget.
  *
@@ -69,6 +69,10 @@ class ReadDocumentTool(
     private val imageMaxDimension: Int = ImageProcessor.MAX_DIMENSION,
     private val imageJpegQuality: Float = ImageProcessor.JPEG_QUALITY,
     private val imageMaxSourcePixels: Long = ImageProcessor.MAX_SOURCE_PIXELS,
+    private val documentMaxOutputChars: Int = MAX_OUTPUT_CHARS,
+    private val documentMaxAttachedImages: Int = MAX_ATTACHED_IMAGES,
+    private val documentMaxTableColumns: Int = MAX_TABLE_COLUMNS,
+    private val documentMaxCellChars: Int = MAX_CELL_CHARS,
 ) : StandardTool<ReadDocumentTool.Input> {
 
     override val name: String =
@@ -78,9 +82,9 @@ class ReadDocumentTool(
         """
         Read a Word document (.docx) as Markdown text. Headings become #.., list paragraphs
         become - bullets, tables become Markdown tables; the body is read in document order.
-        Returns exact, quotable text (far cheaper than images). Up to $MAX_ATTACHED_IMAGES embedded
+        Returns exact, quotable text (far cheaper than images). Up to $documentMaxAttachedImages embedded
         pictures are also attached as images (on the first page) so you can see diagrams and scans.
-        At most ~$MAX_OUTPUT_CHARS characters per call: for a longer document pass "startElement"
+        At most ~$documentMaxOutputChars characters per call: for a longer document pass "startElement"
         (1-based body element index) to page through, as instructed by the [truncated] notice.
         .docx only. Legacy .doc, .odt and .rtf are not supported: convert to .docx first.
         If a document's visual LAYOUT is the content (a form, a designed page), export it to
@@ -245,7 +249,7 @@ class ReadDocumentTool(
         val out = StringBuilder()
         var nextElement: Int? = null
         for (index in (startElement - 1) until elements.size) {
-            if (out.length >= MAX_OUTPUT_CHARS) {
+            if (out.length >= documentMaxOutputChars) {
                 nextElement = index + 1 // 1-based
                 break
             }
@@ -304,12 +308,12 @@ class ReadDocumentTool(
     private fun appendTable(out: StringBuilder, table: XWPFTable) {
         val rows = table.rows
         if (rows.isEmpty()) return
-        val columns = rows.maxOf { it.tableCells.size }.coerceIn(1, MAX_TABLE_COLUMNS)
+        val columns = rows.maxOf { it.tableCells.size }.coerceIn(1, documentMaxTableColumns)
 
         rows.forEachIndexed { rowIndex, row ->
             // Row count is unbounded, so enforce the budget per row here; the outer loop only
             // checks between elements and a single huge table would otherwise blow past it.
-            if (out.length >= MAX_OUTPUT_CHARS) {
+            if (out.length >= documentMaxOutputChars) {
                 out.append("_[table truncated: $rowIndex of ${rows.size} rows shown]_\n")
                 return
             }
@@ -329,12 +333,12 @@ class ReadDocumentTool(
     }
 
     /**
-     * Cap a single element's text to the remaining [MAX_OUTPUT_CHARS] budget so one oversized
+     * Cap a single element's text to the remaining [documentMaxOutputChars] budget so one oversized
      * element (a very long paragraph or content control) cannot blow past it. The outer loop
      * only enters an element while under budget, so `remaining` is positive there.
      */
     private fun capToBudget(out: StringBuilder, text: String): String {
-        val remaining = MAX_OUTPUT_CHARS - out.length
+        val remaining = documentMaxOutputChars - out.length
         if (remaining <= 0) return ""
         return if (text.length > remaining) text.take(remaining) + "…[truncated]" else text
     }
@@ -368,7 +372,7 @@ class ReadDocumentTool(
             .replace("\\", "\\\\")
             .replace("|", "\\|")
             .replace(Regex("[\r\n]+"), "<br>")
-            .let { if (it.length > MAX_CELL_CHARS) it.take(MAX_CELL_CHARS) + "…[cell truncated]" else it }
+            .let { if (it.length > documentMaxCellChars) it.take(documentMaxCellChars) + "…[cell truncated]" else it }
 
     /**
      * Embedded pictures attached as vision images. Each is checked against the decode-bomb cap
@@ -378,7 +382,7 @@ class ReadDocumentTool(
     private fun collectImages(document: XWPFDocument, fileName: String): List<MessageContent.Image> {
         val images = mutableListOf<MessageContent.Image>()
         for (picture in document.allPictures) {
-            if (images.size >= MAX_ATTACHED_IMAGES) break
+            if (images.size >= documentMaxAttachedImages) break
             toImage(picture, fileName)?.let { images.add(it) }
         }
         return images

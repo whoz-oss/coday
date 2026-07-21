@@ -302,6 +302,21 @@ class ReadDocumentToolSpec : StringSpec() {
             }
         }
 
+        "a custom documentMaxOutputChars from config bounds the output" {
+            // 2000 chars: over the configured 500 budget but far under the 100000 default, so
+            // truncation here can only come from the injected config value being honored.
+            writeDocx("budget.docx") { paragraph(randomText(2000, seed = 9)) }
+
+            val result =
+                ReadDocumentTool(tempDir, documentMaxOutputChars = 500).execute(ReadDocumentTool.Input("budget.docx"), ctx)
+
+            result.success shouldBe true
+            result.output shouldContain "truncated"
+            withClue("output length ${result.output.length}") {
+                (result.output.length < 700) shouldBe true
+            }
+        }
+
         "embedded images are attached on the first page only, not on paged continuations" {
             val file = writeDocx("paged-image.docx") { repeat(3) { paragraph("Paragraph ${it + 1}") } }
             XWPFDocument(Files.newInputStream(file)).use { document ->

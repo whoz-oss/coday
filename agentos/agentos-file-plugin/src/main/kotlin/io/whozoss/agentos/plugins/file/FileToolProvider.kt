@@ -52,6 +52,11 @@ class FileToolProvider : ToolPlugin {
         val imageMaxSourcePixels = config.get("imageMaxSourcePixels")?.asLong() ?: ImageProcessor.MAX_SOURCE_PIXELS
         val imagePassThroughMaxBytes = config.get("imagePassThroughMaxBytes")?.asLong() ?: ImageProcessor.PASS_THROUGH_MAX_BYTES
 
+        val documentMaxOutputChars = config.get("documentMaxOutputChars")?.asInt() ?: ReadDocumentTool.MAX_OUTPUT_CHARS
+        val documentMaxAttachedImages = config.get("documentMaxAttachedImages")?.asInt() ?: ReadDocumentTool.MAX_ATTACHED_IMAGES
+        val documentMaxTableColumns = config.get("documentMaxTableColumns")?.asInt() ?: ReadDocumentTool.MAX_TABLE_COLUMNS
+        val documentMaxCellChars = config.get("documentMaxCellChars")?.asInt() ?: ReadDocumentTool.MAX_CELL_CHARS
+
         val readMaxSizeBytes = readMaxSizeMb * 1024 * 1024
         val denyPatterns = SensitiveFilePatterns.DEFAULT_PATTERNS + extraDenyPatterns
 
@@ -76,6 +81,10 @@ class FileToolProvider : ToolPlugin {
                 imageMaxDimension = imageMaxDimension,
                 imageJpegQuality = imageJpegQuality,
                 imageMaxSourcePixels = imageMaxSourcePixels,
+                documentMaxOutputChars = documentMaxOutputChars,
+                documentMaxAttachedImages = documentMaxAttachedImages,
+                documentMaxTableColumns = documentMaxTableColumns,
+                documentMaxCellChars = documentMaxCellChars,
             ),
             SearchFilesTool(rootPath, configName, denyPatterns),
         )
@@ -137,6 +146,30 @@ class FileToolProvider : ToolPlugin {
                         "title": "Image Pass-Through Max Size (bytes)",
                         "description": "Originals at or below this byte size that already fit the max dimension are sent untouched instead of re-encoded. Default is 1048576 (1 MB).",
                         "default": 1048576
+                    },
+                    "documentMaxOutputChars": {
+                        "type": "integer",
+                        "title": "Document Max Output Chars",
+                        "description": "Markdown character budget per readDocument call; a longer document is paged via startElement. Default is 100000.",
+                        "default": 100000
+                    },
+                    "documentMaxAttachedImages": {
+                        "type": "integer",
+                        "title": "Document Max Attached Images",
+                        "description": "Maximum embedded pictures readDocument attaches as images per call. Default is 10.",
+                        "default": 10
+                    },
+                    "documentMaxTableColumns": {
+                        "type": "integer",
+                        "title": "Document Max Table Columns",
+                        "description": "Table columns beyond this are dropped when readDocument renders a .docx table to Markdown. Default is 64.",
+                        "default": 64
+                    },
+                    "documentMaxCellChars": {
+                        "type": "integer",
+                        "title": "Document Max Cell Chars",
+                        "description": "A single table cell longer than this is cut by readDocument. Default is 5000.",
+                        "default": 5000
                     },
                     "extraDenyPatterns": {
                         "type": "array",
