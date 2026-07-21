@@ -177,18 +177,15 @@ class ReadSpreadsheetTool(
         // decompression bombs; POI's built-in ZipSecureFile checks (inflate ratio cap,
         // max entry size) cover the xlsx zip itself.
         val size = resolved.fileSize()
-        if (size > readMaxSizeBytes) {
-            throw IllegalArgumentException(
-                "File exceeds maximum size of ${readMaxSizeBytes / 1024 / 1024} MB: ${params.filePath}",
-            )
+        require(size <= readMaxSizeBytes) {
+            "File exceeds maximum size of ${readMaxSizeBytes / 1024 / 1024} MB: ${params.filePath}"
         }
 
         when (val extension = resolved.name.substringAfterLast('.', "").lowercase()) {
             "xlsx" -> Unit
             "csv" -> throw UnsupportedFormatException("'.csv' is plain text: use readFile instead.")
             else -> throw UnsupportedFormatException(
-                "Unsupported file type '.$extension'. Supported: .xlsx only. " +
-                    "Convert .xls/.xlsm/.ods to .xlsx; for .csv use readFile.",
+                "Unsupported file type '.$extension'. Supported: .xlsx only. Convert .xls/.xlsm/.ods to .xlsx.",
             )
         }
 
@@ -233,18 +230,14 @@ class ReadSpreadsheetTool(
 
     private fun renderWorkbook(workbook: XSSFWorkbook, params: Input, fileName: String): String {
         val sheetCount = workbook.numberOfSheets
-        if (sheetCount == 0) {
-            throw IllegalArgumentException("Workbook has no sheet: $fileName")
-        }
+        require(sheetCount > 0) { "Workbook has no sheet: $fileName" }
 
         val selection = selectSheets(params.sheets, sheetCount, fileName)
-        if (params.startRow != null && params.startRow < 1) {
-            throw IllegalArgumentException("\"startRow\" must be at least 1 (got ${params.startRow}).")
+        require(params.startRow == null || params.startRow >= 1) {
+            "\"startRow\" must be at least 1 (got ${params.startRow})."
         }
-        if (params.startRow != null && selection.size != 1) {
-            throw IllegalArgumentException(
-                "\"startRow\" requires targeting exactly one sheet (pass a single entry in \"sheets\").",
-            )
+        require(params.startRow == null || selection.size == 1) {
+            "\"startRow\" requires targeting exactly one sheet (pass a single entry in \"sheets\")."
         }
 
         val formatter = DataFormatter(Locale.US)
@@ -262,10 +255,9 @@ class ReadSpreadsheetTool(
             val range = scanUsedRange(sheet)
             val totalRows = range.lastContentRow + 1
             val startRow = params.startRow ?: 1
-            if (startRow > 1 && startRow > totalRows) {
-                throw IllegalArgumentException(
-                    "startRow $startRow out of range: sheet $sheetNumber \"${sheet.sheetName}\" has $totalRows row(s).",
-                )
+            // startRow <= 1: never reject the default start on an empty sheet — the totalRows == 0 path below handles it.
+            require(startRow <= 1 || startRow <= totalRows) {
+                "startRow $startRow out of range: sheet $sheetNumber \"${sheet.sheetName}\" has $totalRows row(s)."
             }
 
             if (position > 0) out.append('\n')
@@ -274,50 +266,23 @@ class ReadSpreadsheetTool(
                 continue
             }
 
-            val body = StringBuilder()
-            var windowEnd = startRow - 1
-            var nextStartRow: Int? = null
-            for (rowIndex in (startRow - 1)..range.lastContentRow) {
-                if (rowsEmitted >= MAX_ROWS_PER_CALL) {
-                    nextStartRow = rowIndex + 1
-                    break
-                }
-                val rowText = renderRow(sheet.getRow(rowIndex), range.columnCount, formatter, date1904)
-                val used = out.length + body.length
-                if (used + rowText.length + 1 > MAX_OUTPUT_CHARS) {
-                    if (rowsEmitted == 0) {
-                        // A single row larger than the whole budget: emit what fits with a
-                        // marker so the call still makes progress; the row's tail is not
-                        // reachable by paging.
-                        val room = (MAX_OUTPUT_CHARS - used - ROW_TRUNCATED_MARKER.length - 1).coerceAtLeast(0)
-                        body.append(cutAtCharBoundary(rowText, room)).append(ROW_TRUNCATED_MARKER).append('\n')
-                        rowsEmitted++
-                        windowEnd = rowIndex + 1
-                        nextStartRow = rowIndex + 2
-                    } else {
-                        nextStartRow = rowIndex + 1
-                    }
-                    break
-                }
-                body.append(rowText).append('\n')
-                rowsEmitted++
-                windowEnd = rowIndex + 1
-            }
+            val rows = renderSheetRows(sheet, range, startRow, out.length, rowsEmitted, formatter, date1904)
+            rowsEmitted += rows.rowsEmitted
 
-            // A break before any row of this sheet was emitted would produce a nonsense
-            // "rows N-(N-1)" header: skip straight to the truncation notice instead.
-            if (windowEnd >= startRow) {
+            // windowEnd < startRow means no row of this sheet was emitted: skip the header
+            // (it would read a nonsense "rows N-(N-1)") and fall through to the notice.
+            if (rows.windowEnd >= startRow) {
                 out.append(sheetTitle(sheetNumber, sheetCount, workbook))
-                    .append(": rows $startRow-$windowEnd of $totalRows, ${describeColumns(range)}\n")
-                    .append(body)
+                    .append(": rows $startRow-${rows.windowEnd} of $totalRows, ${describeColumns(range)}\n")
+                    .append(rows.body)
             }
 
-            if (nextStartRow != null && nextStartRow <= totalRows) {
+            if (rows.nextStartRow != null && rows.nextStartRow <= totalRows) {
                 appendTruncationNotice(
                     out,
                     workbook,
                     continueSheets = listOf(sheetNumber),
-                    nextStartRow = nextStartRow,
+                    nextStartRow = rows.nextStartRow,
                     notShown = selection.drop(position + 1),
                 )
                 break
@@ -330,18 +295,72 @@ class ReadSpreadsheetTool(
         return out.toString()
     }
 
+    /** Rows of one sheet emitted from a paged loop, plus where the render stopped. */
+    private data class SheetRows(
+        val body: String,
+        val rowsEmitted: Int,
+        /** Last physical row (1-based) written to [body]; `startRow - 1` when nothing was emitted. */
+        val windowEnd: Int,
+        /** Row (1-based) where paging must resume within this sheet, or null when the sheet fit. */
+        val nextStartRow: Int?,
+    )
+
+    /**
+     * Emits the CSV rows of [sheet] from [startRow] (1-based) while the shared per-call budget
+     * holds. [charsAlreadyUsed] and [rowsAlreadyEmitted] are the call-wide totals at entry (the
+     * sheet header is not counted, matching the surrounding accounting). A single row larger than
+     * the whole char budget is emitted cut with a marker so the call still makes progress.
+     */
+    private fun renderSheetRows(
+        sheet: Sheet,
+        range: UsedRange,
+        startRow: Int,
+        charsAlreadyUsed: Int,
+        rowsAlreadyEmitted: Int,
+        formatter: DataFormatter,
+        date1904: Boolean,
+    ): SheetRows {
+        val body = StringBuilder()
+        var emitted = 0
+        var windowEnd = startRow - 1
+        var nextStartRow: Int? = null
+        for (rowIndex in (startRow - 1)..range.lastContentRow) {
+            if (rowsAlreadyEmitted + emitted >= MAX_ROWS_PER_CALL) {
+                nextStartRow = rowIndex + 1
+                break
+            }
+            val rowText = renderRow(sheet.getRow(rowIndex), range.columnCount, formatter, date1904)
+            val used = charsAlreadyUsed + body.length
+            if (used + rowText.length + 1 > MAX_OUTPUT_CHARS) {
+                if (rowsAlreadyEmitted + emitted == 0) {
+                    // A single row larger than the whole budget: emit what fits with a
+                    // marker so the call still makes progress; the row's tail is not
+                    // reachable by paging.
+                    val room = (MAX_OUTPUT_CHARS - used - ROW_TRUNCATED_MARKER.length - 1).coerceAtLeast(0)
+                    body.append(cutAtCharBoundary(rowText, room)).append(ROW_TRUNCATED_MARKER).append('\n')
+                    emitted++
+                    windowEnd = rowIndex + 1
+                    nextStartRow = rowIndex + 2
+                } else {
+                    nextStartRow = rowIndex + 1
+                }
+                break
+            }
+            body.append(rowText).append('\n')
+            emitted++
+            windowEnd = rowIndex + 1
+        }
+        return SheetRows(body.toString(), emitted, windowEnd, nextStartRow)
+    }
+
     private fun selectSheets(sheets: List<Int>?, sheetCount: Int, fileName: String): List<Int> {
         if (sheets == null) return (1..sheetCount).toList()
 
         val selection = sheets.distinct().sorted()
-        if (selection.isEmpty()) {
-            throw IllegalArgumentException("\"sheets\" must not be empty: $fileName")
-        }
+        require(selection.isNotEmpty()) { "\"sheets\" must not be empty: $fileName" }
         val outOfRange = selection.filter { it !in 1..sheetCount }
-        if (outOfRange.isNotEmpty()) {
-            throw IllegalArgumentException(
-                "Sheet(s) $outOfRange out of range: $fileName has $sheetCount sheet(s).",
-            )
+        require(outOfRange.isEmpty()) {
+            "Sheet(s) $outOfRange out of range: $fileName has $sheetCount sheet(s)."
         }
         return selection
     }
@@ -351,23 +370,18 @@ class ReadSpreadsheetTool(
      * parsed): trailing style-only rows are excluded from the row total, and the column
      * count covers the whole sheet so it stays stable across paged calls.
      */
-    private fun scanUsedRange(sheet: Sheet): UsedRange {
-        var lastContentRow = -1
-        var columnCount = 0
-        var columnsTruncated = false
-        sheet.rowIterator().forEach { row ->
-            var lastContentCell = -1
-            row.cellIterator().forEach { cell ->
-                if (cell.cellType != CellType.BLANK) lastContentCell = maxOf(lastContentCell, cell.columnIndex)
-            }
-            if (lastContentCell >= 0) {
-                lastContentRow = maxOf(lastContentRow, row.rowNum)
-                if (lastContentCell + 1 > MAX_COLUMNS) columnsTruncated = true
-                columnCount = maxOf(columnCount, minOf(lastContentCell + 1, MAX_COLUMNS))
-            }
+    private fun scanUsedRange(sheet: Sheet): UsedRange =
+        sheet.rowIterator().asSequence().fold(UsedRange(lastContentRow = -1, columnCount = 0, columnsTruncated = false)) { acc, row ->
+            val lastCol = row.cellIterator().asSequence()
+                .filter { it.cellType != CellType.BLANK }
+                .maxOfOrNull { it.columnIndex }
+                ?: return@fold acc // row with no content: leaves the range unchanged
+            UsedRange(
+                lastContentRow = maxOf(acc.lastContentRow, row.rowNum),
+                columnCount = maxOf(acc.columnCount, minOf(lastCol + 1, MAX_COLUMNS)),
+                columnsTruncated = acc.columnsTruncated || lastCol + 1 > MAX_COLUMNS,
+            )
         }
-        return UsedRange(lastContentRow, columnCount, columnsTruncated)
-    }
 
     private fun sheetTitle(sheetNumber: Int, sheetCount: Int, workbook: XSSFWorkbook): String {
         val index = sheetNumber - 1
@@ -391,34 +405,36 @@ class ReadSpreadsheetTool(
             .joinToString(",")
     }
 
+    private fun renderCell(cell: Cell, formatter: DataFormatter, date1904: Boolean): String =
+        when (cell.cellType) {
+            CellType.FORMULA -> renderFormulaCell(cell, formatter, date1904)
+            CellType.ERROR -> formulaErrorText(cell.errorCellValue)
+            else -> formatter.formatCellValue(cell)
+        }
+
     /**
      * Formula cells read the cached last-saved result: without an evaluator,
      * [DataFormatter.formatCellValue] would return the formula text itself. A formula
      * saved without any cached result renders as `=formula` (POI would otherwise report
      * a fabricated numeric 0).
      */
-    private fun renderCell(cell: Cell, formatter: DataFormatter, date1904: Boolean): String =
-        when (cell.cellType) {
-            CellType.FORMULA -> when {
-                !hasCachedFormulaResult(cell) -> runCatching { "=${cell.cellFormula}" }.getOrDefault("")
-                else -> when (cell.cachedFormulaResultType) {
-                    // formatRawCellContents applies the cell's number format and detects
-                    // date formats internally; the flag keeps 1904-system dates correct.
-                    CellType.NUMERIC -> formatter.formatRawCellContents(
-                        cell.numericCellValue,
-                        cell.cellStyle.dataFormat.toInt(),
-                        cell.cellStyle.dataFormatString,
-                        date1904,
-                    )
-                    CellType.STRING -> cell.stringCellValue
-                    CellType.BOOLEAN -> if (cell.booleanCellValue) "TRUE" else "FALSE"
-                    CellType.ERROR -> formulaErrorText(cell.errorCellValue)
-                    else -> ""
-                }
-            }
+    private fun renderFormulaCell(cell: Cell, formatter: DataFormatter, date1904: Boolean): String {
+        if (!hasCachedFormulaResult(cell)) return runCatching { "=${cell.cellFormula}" }.getOrDefault("")
+        return when (cell.cachedFormulaResultType) {
+            // formatRawCellContents applies the cell's number format and detects
+            // date formats internally; the flag keeps 1904-system dates correct.
+            CellType.NUMERIC -> formatter.formatRawCellContents(
+                cell.numericCellValue,
+                cell.cellStyle.dataFormat.toInt(),
+                cell.cellStyle.dataFormatString,
+                date1904,
+            )
+            CellType.STRING -> cell.stringCellValue
+            CellType.BOOLEAN -> if (cell.booleanCellValue) "TRUE" else "FALSE"
             CellType.ERROR -> formulaErrorText(cell.errorCellValue)
-            else -> formatter.formatCellValue(cell)
+            else -> ""
         }
+    }
 
     /**
      * A formula cell written without evaluation carries no cached `<v>` element (openpyxl,
