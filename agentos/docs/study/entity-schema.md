@@ -7,6 +7,10 @@
 > - `|{`: 1..2+
 > - `||`: only 1
 > - `o|`: 0..1
+>
+> "ADMIN or MEMBER" is an **exclusive** or: a user holds at most ONE of the two edges per
+> entity (the relation is a role — role changes swap the edge type, they never stack edges,
+> see `PermissionRelation`). ADMIN supersedes MEMBER: membership reads traverse `[:ADMIN|MEMBER]`.
 
 ```mermaid
 erDiagram

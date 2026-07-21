@@ -316,6 +316,83 @@ class CompressingChatClientSpec :
         }
 
         // -----------------------------------------------------------------------
+        // Null-result chunks (regression, #1115 / wz-33039)
+        //
+        // A streaming provider emits metadata-only chunks whose ChatResponse has no
+        // generations, so getResult() is null — e.g. the Anthropic MESSAGE_START event
+        // with an empty content list. These must be tolerated, not throw an NPE.
+        // -----------------------------------------------------------------------
+
+        "prompt(Prompt) stream: a chunk whose result is null is skipped, not fatal" {
+            val service = IdCompressorService()
+            val delegate = mockk<ChatClient>(relaxed = true)
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val streamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { delegate.prompt(any<Prompt>()) } returns reqSpec
+            every { reqSpec.stream() } returns streamSpec
+            // First chunk carries no generations (getResult() == null), then a real text chunk.
+            every { streamSpec.chatResponse() } returns Flux.just(
+                ChatResponse(emptyList<Generation>()),
+                ChatResponse(
+                    listOf(
+                        Generation(
+                            AssistantMessage("hello"),
+                            ChatGenerationMetadata.builder().finishReason("stop").build(),
+                        ),
+                    ),
+                ),
+            )
+
+            val responses = CompressingChatClient(delegate, service)
+                .prompt(Prompt(listOf(UserMessage("hi"))))
+                .stream().chatResponse().collectList().block()!!
+
+            responses.joinToString("") { it.result?.output?.text ?: "" } shouldContain "hello"
+        }
+
+        "prompt(Prompt) stream content(): a chunk whose result is null is skipped, not fatal" {
+            val service = IdCompressorService()
+            val delegate = mockk<ChatClient>(relaxed = true)
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val streamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { delegate.prompt(any<Prompt>()) } returns reqSpec
+            every { reqSpec.stream() } returns streamSpec
+            every { streamSpec.chatResponse() } returns Flux.just(
+                ChatResponse(emptyList<Generation>()),
+                ChatResponse(
+                    listOf(
+                        Generation(
+                            AssistantMessage("world"),
+                            ChatGenerationMetadata.builder().finishReason("stop").build(),
+                        ),
+                    ),
+                ),
+            )
+
+            val strings = CompressingChatClient(delegate, service)
+                .prompt(Prompt(listOf(UserMessage("hi"))))
+                .stream().content().collectList().block()!!
+
+            strings.joinToString("") shouldContain "world"
+        }
+
+        "prompt(Prompt) call: a chatResponse whose result is null is returned untouched (no NPE)" {
+            val service = IdCompressorService()
+            val delegate = mockk<ChatClient>(relaxed = true)
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val callSpec = mockk<ChatClient.CallResponseSpec>(relaxed = true)
+            every { delegate.prompt(any<Prompt>()) } returns reqSpec
+            every { reqSpec.call() } returns callSpec
+            every { callSpec.chatResponse() } returns ChatResponse(emptyList<Generation>())
+
+            val response = CompressingChatClient(delegate, service)
+                .prompt(Prompt(listOf(UserMessage("hi")))).call().chatResponse()
+
+            response shouldNotBe null
+            response!!.result shouldBe null
+        }
+
+        // -----------------------------------------------------------------------
         // prompt(String) — string shorthand
         // -----------------------------------------------------------------------
 

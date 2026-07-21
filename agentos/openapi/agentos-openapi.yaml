@@ -2233,6 +2233,27 @@ paths:
           description: OK
       tags:
       - user-group-controller
+  /api/user-groups/{userGroupId}/members:
+    get:
+      operationId: getMembersUserGroup
+      parameters:
+      - in: path
+        name: userGroupId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserGroupMember"
+          description: OK
+      tags:
+      - user-group-controller
   /api/users:
     get:
       operationId: listAllUser
@@ -3708,6 +3729,15 @@ components:
     UserGroupCreateRequest:
       type: object
       properties:
+        adminExternalIds:
+          type: array
+          description: Subset of userExternalIdsToAdd who should receive the ADMIN
+            role; each must also be a member.
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
         agentIds:
           type: array
           items:
@@ -3731,10 +3761,36 @@ components:
           minItems: 0
           uniqueItems: true
       required:
+      - adminExternalIds
       - agentIds
       - name
       - namespaceId
       - userExternalIdsToAdd
+    UserGroupMember:
+      type: object
+      properties:
+        email:
+          type: string
+        externalId:
+          type: string
+          description: Identity-provider key used to add or remove this member
+        firstname:
+          type: string
+        lastname:
+          type: string
+        role:
+          type: string
+          description: The user's relation to the group
+          enum:
+          - ADMIN
+          - MEMBER
+        userId:
+          type: string
+          format: uuid
+      required:
+      - externalId
+      - role
+      - userId
     UserGroupSearchResult:
       type: object
       properties:
@@ -3777,6 +3833,17 @@ components:
     UserGroupUpdateRequest:
       type: object
       properties:
+        adminExternalIds:
+          type: array
+          description: "Complete desired set of member external IDs holding the ADMIN\
+            \ role (replace semantics): members not listed are demoted to MEMBER,\
+            \ and an omitted or empty set demotes every current admin. Every listed\
+            \ id must be a member after the update."
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
         agentIds:
           type: array
           items:
@@ -3804,6 +3871,7 @@ components:
           minItems: 0
           uniqueItems: true
       required:
+      - adminExternalIds
       - agentIds
       - name
       - userExternalIdsToAdd

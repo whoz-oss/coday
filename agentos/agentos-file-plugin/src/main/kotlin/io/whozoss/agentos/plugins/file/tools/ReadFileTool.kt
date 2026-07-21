@@ -16,7 +16,8 @@ import kotlin.io.path.fileSize
  * Read content from a text file.
  *
  * Text files only (UTF-8). Binary files return "[binary or unreadable file]".
- * For images and PDFs use [ReadAsImageTool].
+ * For images and PDFs use [ReadAsImageTool]; for Word (.docx) use [ReadDocumentTool];
+ * for Excel spreadsheets use [ReadSpreadsheetTool].
  */
 class ReadFileTool(
     private val projectRoot: Path,
@@ -34,7 +35,8 @@ class ReadFileTool(
     override val description: String =
         """
         Read content from a text file. Use searchFiles to find files.
-        Text files only (UTF-8). For images and PDFs use readAsImage; for Word (.docx) use readDocument.
+        Text files only (UTF-8). For images and PDFs use readAsImage; for Word (.docx) use
+        readDocument; for Excel spreadsheets (.xlsx) use readSpreadsheet.
         """.trimIndent()
 
     override val version: String = "1.0.0"

@@ -1,0 +1,63 @@
+<div class="admin-users-groups">
+  <header class="admin-users-groups__header">
+    <button class="admin-users-groups__back" type="button" (click)="goBack()">&#8592; Admin</button>
+    <h1 class="admin-users-groups__title">Users &amp; Groups</h1>
+  </header>
+
+  <div class="admin-users-groups__tabs" role="tablist" aria-label="Users and Groups">
+    <button
+      id="admin-tab-users"
+      class="admin-users-groups__tab"
+      type="button"
+      role="tab"
+      aria-controls="admin-users-groups-panel"
+      [class.admin-users-groups__tab--active]="activeTab() === 'users'"
+      [attr.aria-selected]="activeTab() === 'users'"
+      (click)="setTab('users')"
+    >
+      Users
+    </button>
+    <button
+      id="admin-tab-groups"
+      class="admin-users-groups__tab"
+      type="button"
+      role="tab"
+      aria-controls="admin-users-groups-panel"
+      [class.admin-users-groups__tab--active]="activeTab() === 'groups'"
+      [attr.aria-selected]="activeTab() === 'groups'"
+      (click)="setTab('groups')"
+    >
+      Groups
+    </button>
+  </div>
+
+  <div
+    id="admin-users-groups-panel"
+    class="admin-users-groups__panel"
+    role="tabpanel"
+    tabindex="0"
+    [attr.aria-labelledby]="activeTab() === 'users' ? 'admin-tab-users' : 'admin-tab-groups'"
+  >
+    @if (activeTab() === 'users') {
+      <agentos-user-list
+        [showBackButton]="false"
+        [hideTitle]="true"
+        [namespaces]="namespaces()"
+        [selectedNamespaceId]="usersNamespaceFilter()"
+        (namespaceFilterChange)="onUsersNamespaceChange($event)"
+      />
+    } @else {
+      @if (namespaces().length === 0) {
+        <p class="admin-users-groups__empty">No namespaces yet. Create one before managing groups.</p>
+      } @else if (groupsNamespaceId(); as namespaceId) {
+        <agentos-user-group-list
+          [namespaceId]="namespaceId"
+          [hideTitle]="true"
+          [namespaces]="namespaces()"
+          [returnTo]="returnTo()"
+          (namespaceChange)="onGroupsNamespaceChange($event)"
+        />
+      }
+    }
+  </div>
+</div>

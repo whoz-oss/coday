@@ -1,3 +1,35 @@
+## 0.221.0 (2026-07-21)
+
+### 🚀 Features
+
+- #1019 Agentos UserGroup UI + admin Users & Groups console ([#1107](https://github.com/whoz-oss/coday/pull/1107), [#1019](https://github.com/whoz-oss/coday/issues/1019))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.220.0 (2026-07-21)
+
+### 🚀 Features
+
+- readSpreadsheet file tool reading xlsx sheets as CSV text ([#1151](https://github.com/whoz-oss/coday/pull/1151), [#1148](https://github.com/whoz-oss/coday/issues/1148))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.219.1 (2026-07-21)
+
+### 🩹 Fixes
+
+- tolerate a null ChatResponse.getResult() in CompressingChatClient ([#1154](https://github.com/whoz-oss/coday/pull/1154), [#1115](https://github.com/whoz-oss/coday/issues/1115))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 0.219.0 (2026-07-21)
 
 ### 🚀 Features

@@ -10,6 +10,8 @@ interface UserGroupService : EntityService<UserGroup, UUID> {
 
     fun findByIdWithDetails(id: UUID): UserGroupSearchResult?
 
+    fun getMembers(userGroupId: UUID): List<UserGroupMember>
+
     fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult
 
     fun updateFromRequest(

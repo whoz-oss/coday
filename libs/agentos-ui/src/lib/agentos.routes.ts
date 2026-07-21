@@ -62,7 +62,10 @@ export const AGENTOS_ROUTES: Route[] = [
           {
             path: 'admin/users',
             canActivate: [agentosReadyGuard],
-            loadComponent: () => import('./components/user-list/user-list.component').then((m) => m.UserListComponent),
+            loadComponent: () =>
+              import('./components/admin-users-groups/admin-users-groups.component').then(
+                (m) => m.AdminUsersGroupsComponent
+              ),
           },
           // --- Admin: Platform Integration Configs ---
           {
@@ -317,6 +320,27 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/namespace-agent-configs/namespace-agent-configs.component').then(
                 (m) => m.NamespaceAgentConfigsComponent
+              ),
+          },
+          // --- User Groups ---
+          {
+            path: ':namespaceId/user-groups/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/user-group-form/user-group-form.component').then((m) => m.UserGroupFormComponent),
+          },
+          {
+            path: ':namespaceId/user-groups/:userGroupId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/user-group-form/user-group-form.component').then((m) => m.UserGroupFormComponent),
+          },
+          {
+            path: ':namespaceId/user-groups',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-user-groups/namespace-user-groups.component').then(
+                (m) => m.NamespaceUserGroupsComponent
               ),
           },
           {
