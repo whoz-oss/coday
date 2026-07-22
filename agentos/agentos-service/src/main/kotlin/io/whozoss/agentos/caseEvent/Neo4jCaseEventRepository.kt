@@ -67,7 +67,6 @@ open class Neo4jCaseEventRepository(
     }
 
     override fun findLastMessageTimestamps(caseIds: Collection<UUID>): Map<UUID, Instant> {
-        if (caseIds.isEmpty()) return emptyMap()
         val rows = caseEventNodeNeo4jRepository.findLastMessageTimestamps(caseIds.map { it.toString() })
         return rows.associate { row ->
             UUID.fromString(row["caseId"] as String) to (row["lastMessageAt"] as Instant)
