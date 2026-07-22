@@ -1,3 +1,13 @@
+## 0.223.0 (2026-07-22)
+
+### 🚀 Features
+
+- wz-33579: exchange API definition into SDK ([#1157](https://github.com/whoz-oss/coday/pull/1157))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.222.1 (2026-07-22)
 
 ### 🩹 Fixes

@@ -62,8 +62,8 @@ pdfbox = "3.0.8"
 poi = "5.5.1"
 
 # AgentOS modules versions
-agentosSdk = "0.222.1"
-agentosService = "0.222.1"
+agentosSdk = "0.223.0"
+agentosService = "0.223.0"
 
 [libraries]
 # Jakarta Validation API — annotation-only, for compileOnly use in agentos-sdk
