@@ -1,3 +1,13 @@
+## 0.222.1 (2026-07-22)
+
+### 🩹 Fixes
+
+- wz-32890 add copy button on chat messages and preserve text sele… ([#1156](https://github.com/whoz-oss/coday/pull/1156))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.222.0 (2026-07-22)
 
 ### 🚀 Features
