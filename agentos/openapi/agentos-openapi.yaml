@@ -865,6 +865,8 @@ paths:
       - sse
   /api/cases/{caseId}/files:
     delete:
+      description: "DELETE /api/cases/{caseId}/files — delete a file from the case-private\
+        \ exchange scope."
       operationId: deleteCaseFileExchange
       parameters:
       - in: path
@@ -885,6 +887,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeDeleteResponse"
           description: OK
+      summary: Delete case exchange file
       tags:
       - exchange-controller
     post:
@@ -918,6 +921,8 @@ paths:
       - exchange-controller
   /api/cases/{caseId}/files/content:
     get:
+      description: "GET /api/cases/{caseId}/files/content — read the UTF-8 text content\
+        \ of a case exchange file."
       operationId: getCaseFileContentExchange
       parameters:
       - in: path
@@ -938,6 +943,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeFileContent"
           description: OK
+      summary: Read case exchange file content
       tags:
       - exchange-controller
   /api/cases/{caseId}/files/download:
@@ -967,6 +973,8 @@ paths:
       - exchange-controller
   /api/cases/{caseId}/files/manifest:
     get:
+      description: "GET /api/cases/{caseId}/files/manifest — list all files in the\
+        \ case-private exchange scope."
       operationId: getCaseFilesManifestExchange
       parameters:
       - in: path
@@ -982,6 +990,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeManifest"
           description: OK
+      summary: List case exchange files
       tags:
       - exchange-controller
   /api/cases/{caseId}/interrupt:
@@ -1608,6 +1617,8 @@ paths:
       - namespace-controller
   /api/namespaces/{namespaceId}/files:
     delete:
+      description: "DELETE /api/namespaces/{namespaceId}/files — delete a file from\
+        \ the namespace-shared exchange scope."
       operationId: deleteNamespaceFileExchange
       parameters:
       - in: path
@@ -1628,6 +1639,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeDeleteResponse"
           description: OK
+      summary: Delete namespace exchange file
       tags:
       - exchange-controller
     post:
@@ -1661,6 +1673,8 @@ paths:
       - exchange-controller
   /api/namespaces/{namespaceId}/files/content:
     get:
+      description: "GET /api/namespaces/{namespaceId}/files/content — read the UTF-8\
+        \ text content of a namespace exchange file."
       operationId: getNamespaceFileContentExchange
       parameters:
       - in: path
@@ -1681,6 +1695,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeFileContent"
           description: OK
+      summary: Read namespace exchange file content
       tags:
       - exchange-controller
   /api/namespaces/{namespaceId}/files/download:
@@ -1710,6 +1725,8 @@ paths:
       - exchange-controller
   /api/namespaces/{namespaceId}/files/manifest:
     get:
+      description: "GET /api/namespaces/{namespaceId}/files/manifest — list all files\
+        \ in the namespace-shared exchange scope."
       operationId: getNamespaceFilesManifestExchange
       parameters:
       - in: path
@@ -1725,6 +1742,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeManifest"
           description: OK
+      summary: List namespace exchange files
       tags:
       - exchange-controller
   /api/namespaces/{namespaceId}/members/{targetUserId}:
