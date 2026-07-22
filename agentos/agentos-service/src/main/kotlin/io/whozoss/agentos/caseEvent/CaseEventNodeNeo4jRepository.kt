@@ -29,8 +29,10 @@ interface CaseEventNodeNeo4jRepository : Neo4jRepository<CaseEventNode, String> 
      * Returns one row per case that has at least one message. Cases with no messages are absent
      * from the result — the caller should fall back to the case's own creation timestamp.
      *
-     * The result is a list of maps each holding `caseId` (String) and `lastMessageAt` (Instant),
+     * The result is a list of maps each holding `caseId` (String) and `lastMessageAt` (ZonedDateTime),
      * returned as a single `collect(...)` column so SDN can map it without a custom converter.
+     * The Neo4j driver returns temporal values as [java.time.ZonedDateTime] in raw Map projections;
+     * the caller must convert to [java.time.Instant] via [java.time.ZonedDateTime.toInstant].
      *
      * Used by [io.whozoss.agentos.caseFlow.CaseController] to enrich list responses with
      * [io.whozoss.agentos.sdk.api.case.CaseDto.lastMessageAt] without storing the value
@@ -39,9 +41,9 @@ interface CaseEventNodeNeo4jRepository : Neo4jRepository<CaseEventNode, String> 
     @Transactional(readOnly = true)
     @Query(
         $$"""UNWIND $caseIds AS cid
-            "MATCH (msg:MessageEvent {caseId: cid})
-            "WITH cid, max(msg.timestamp) AS lastMessageAt
-            "RETURN collect({caseId: cid, lastMessageAt: lastMessageAt})
+            MATCH (msg:MessageEvent {caseId: cid})
+            WITH cid, max(msg.timestamp) AS lastMessageAt
+            RETURN collect({caseId: cid, lastMessageAt: lastMessageAt})
             """,
     )
     fun findLastMessageTimestamps(

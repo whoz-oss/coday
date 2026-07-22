@@ -69,7 +69,11 @@ open class Neo4jCaseEventRepository(
     override fun findLastMessageTimestamps(caseIds: Collection<UUID>): Map<UUID, Instant> {
         val rows = caseEventNodeNeo4jRepository.findLastMessageTimestamps(caseIds.map { it.toString() })
         return rows.associate { row ->
-            UUID.fromString(row["caseId"] as String) to (row["lastMessageAt"] as Instant)
+            // The Neo4j driver returns temporal values as ZonedDateTime in raw Map projections
+            // (no SDN entity converter runs). Convert to Instant here so callers see a
+            // stable type regardless of the underlying driver version.
+            UUID.fromString(row["caseId"] as String) to
+                (row["lastMessageAt"] as java.time.ZonedDateTime).toInstant()
         }
     }
 
