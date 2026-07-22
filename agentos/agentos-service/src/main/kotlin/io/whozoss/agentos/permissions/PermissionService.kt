@@ -159,6 +159,7 @@ interface PermissionService {
     /**
      * Batch-apply share entries on an entity in a single Cypher round-trip per role group.
      * Each entry is a (userId, targetRole?) pair:
+<<<<<<< HEAD
      * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER,
      *   or create directly)
      * - targetRole = [PermissionRelation.MEMBER] → ensure user has MEMBER (demote from ADMIN,

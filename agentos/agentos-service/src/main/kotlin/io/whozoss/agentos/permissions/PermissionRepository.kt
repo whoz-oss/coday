@@ -148,6 +148,7 @@ interface PermissionRepository {
 
     /**
      * Batch-apply share entries on an entity. Each entry is a (userId, targetRole) pair:
+<<<<<<< HEAD
      * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER,
      *   or create directly)
      * - targetRole = [PermissionRelation.MEMBER] → ensure user has MEMBER (demote from ADMIN,
