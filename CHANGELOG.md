@@ -1,3 +1,14 @@
+## 0.222.0 (2026-07-22)
+
+### 🚀 Features
+
+- readDocument tool reading .docx as Markdown with embedded images ([#1153](https://github.com/whoz-oss/coday/pull/1153), [#1148](https://github.com/whoz-oss/coday/issues/1148), [#1151](https://github.com/whoz-oss/coday/issues/1151))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 0.221.0 (2026-07-21)
 
 ### 🚀 Features
