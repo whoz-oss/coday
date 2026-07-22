@@ -1,5 +1,8 @@
 package io.whozoss.agentos.exchange
 
+import io.whozoss.agentos.sdk.api.exchange.ExchangeFileContent
+import io.whozoss.agentos.sdk.api.exchange.ExchangeFileEntry
+import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.io.IOException

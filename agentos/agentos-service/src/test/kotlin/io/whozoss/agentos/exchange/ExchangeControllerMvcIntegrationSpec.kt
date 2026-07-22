@@ -11,6 +11,9 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.sdk.api.exchange.ExchangeFileContent
+import io.whozoss.agentos.sdk.api.exchange.ExchangeFileEntry
+import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
