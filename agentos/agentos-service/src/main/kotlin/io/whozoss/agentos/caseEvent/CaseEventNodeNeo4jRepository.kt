@@ -15,10 +15,11 @@ interface CaseEventNodeNeo4jRepository : Neo4jRepository<CaseEventNode, String> 
      * Returns `e, r, c` so SDN maps the [CaseEventNode.case] @Relationship field.
      */
     @Query(
-        "MATCH (e:CaseEvent) " +
-            "WHERE e.caseId = ${'$'}caseId AND (e.removed IS NULL OR e.removed = false) " +
-            "OPTIONAL MATCH (e)-[r:BELONGS_TO]->(c:Case) " +
-            "RETURN e, r, c ORDER BY e.timestamp ASC, e.id ASC",
+        $$"""MATCH (e:CaseEvent)
+            WHERE e.caseId = $caseId AND (e.removed IS NULL OR e.removed = false)
+            OPTIONAL MATCH (e)-[r:BELONGS_TO]->(c:Case)
+            RETURN e, r, c ORDER BY e.timestamp ASC, e.id ASC
+            """,
     )
     fun findActiveByCaseId(caseId: String): List<CaseEventNode>
 
@@ -37,10 +38,11 @@ interface CaseEventNodeNeo4jRepository : Neo4jRepository<CaseEventNode, String> 
      */
     @Transactional(readOnly = true)
     @Query(
-        "UNWIND ${'$'}caseIds AS cid " +
-            "MATCH (msg:MessageEvent {caseId: cid}) " +
-            "WITH cid, max(msg.timestamp) AS lastMessageAt " +
-            "RETURN collect({caseId: cid, lastMessageAt: lastMessageAt})",
+        $$"""UNWIND $caseIds AS cid
+            "MATCH (msg:MessageEvent {caseId: cid})
+            "WITH cid, max(msg.timestamp) AS lastMessageAt
+            "RETURN collect({caseId: cid, lastMessageAt: lastMessageAt})
+            """,
     )
     fun findLastMessageTimestamps(
         @Param("caseIds") caseIds: List<String>,
