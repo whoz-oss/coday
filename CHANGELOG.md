@@ -1,3 +1,13 @@
+## 0.224.1 (2026-07-23)
+
+### 🩹 Fixes
+
+- wz-33587: fix last message mapping on ([#1163](https://github.com/whoz-oss/coday/pull/1163))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.224.0 (2026-07-23)
 
 ### 🚀 Features
