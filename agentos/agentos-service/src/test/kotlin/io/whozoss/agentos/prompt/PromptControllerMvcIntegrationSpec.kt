@@ -14,6 +14,7 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.user.UserService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
@@ -50,33 +51,42 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var promptService: PromptService
     @Autowired lateinit var agentConfigService: AgentConfigService
+    @Autowired lateinit var userRepository: UserRepository
 
     @MockkBean(relaxed = true) lateinit var userService: UserService
     @MockkBean(relaxed = true) lateinit var permissionService: PermissionService
     @MockkBean(relaxed = true) lateinit var namespaceService: NamespaceService
 
-    private val aliceId = UUID.randomUUID()
-    private val alice = User(
-        metadata = EntityMetadata(id = aliceId),
-        externalId = "alice@example.com",
-        email = "alice@example.com",
-        isAdmin = false,
-    )
-    private val admin = User(
-        metadata = EntityMetadata(id = aliceId),
-        externalId = "admin@example.com",
-        email = "admin@example.com",
-        isAdmin = true,
-    )
-    private val namespaceId = UUID.randomUUID()
-    private val ns = Namespace(
-        metadata = EntityMetadata(id = namespaceId),
-        externalId = "ns-$namespaceId",
-        name = "ns",
-    )
+    // IDs are declared as lateinit vars and re-initialized in beforeEach with fresh UUIDs
+    // to avoid Neo4j unique-constraint conflicts across test runs on the shared embedded instance.
+    private lateinit var aliceId: UUID
+    private lateinit var alice: User
+    private lateinit var adminUser: User
+    private lateinit var namespaceId: UUID
+    private lateinit var ns: Namespace
 
     init {
         beforeEach {
+            aliceId = UUID.randomUUID()
+            alice = User(
+                metadata = EntityMetadata(id = aliceId),
+                externalId = "alice-${aliceId}@example.com",
+                email = "alice-${aliceId}@example.com",
+                isAdmin = false,
+            )
+            adminUser = User(
+                metadata = EntityMetadata(id = aliceId),
+                externalId = "admin-${aliceId}@example.com",
+                email = "admin-${aliceId}@example.com",
+                isAdmin = true,
+            )
+            namespaceId = UUID.randomUUID()
+            ns = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                externalId = "ns-$namespaceId",
+                name = "ns",
+            )
+
             every { userService.getCurrentUser() } returns alice
             every { permissionService.hasPermission(any(), any(), any(), any()) } returns false
             every { namespaceService.findById(namespaceId) } returns ns
@@ -280,7 +290,13 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
         // POST /effective — disabled agent filtering
         // -------------------------------------------------------------------------
 
+        // Note: the effective endpoint tests below save alice as a super-admin in Neo4j so that
+        // the findEffective Cypher query (which checks graph-level access via u.isAdmin = true)
+        // returns the expected prompts. Graph-level access control scenarios (user-group membership,
+        // namespace membership) are covered by AbstractPromptPersistenceSpec.
+
         "effective excludes prompts linked to disabled agents" {
+            userRepository.save(adminUser.copy(metadata = EntityMetadata(id = aliceId)))
             val agent = agentConfigService.create(
                 AgentConfig(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
@@ -309,6 +325,8 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
         }
 
         "effective includes prompts linked to enabled agents" {
+            // alice is saved as super-admin so the Cypher graph access check passes
+            userRepository.save(adminUser.copy(metadata = EntityMetadata(id = aliceId)))
             val agent = agentConfigService.create(
                 AgentConfig(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
@@ -337,6 +355,8 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
         }
 
         "effective includes prompts with no agentConfigId" {
+            // alice is saved as super-admin so the Cypher graph access check passes
+            userRepository.save(adminUser.copy(metadata = EntityMetadata(id = aliceId)))
             val name = "EFF-NO-AGENT-" + UUID.randomUUID()
             promptService.create(
                 Prompt(
@@ -356,6 +376,7 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
         }
 
         "effective excludes prompts linked to deleted agents" {
+            userRepository.save(adminUser.copy(metadata = EntityMetadata(id = aliceId)))
             val agent = agentConfigService.create(
                 AgentConfig(
                     metadata = EntityMetadata(id = UUID.randomUUID()),

@@ -4,6 +4,8 @@ import com.ninjasquad.springmockk.MockkBean
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.mockk.every
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
@@ -14,6 +16,9 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.userGroup.UserGroup
+import io.whozoss.agentos.userGroup.UserGroupRepository
+import io.whozoss.agentos.userGroup.UserGroupService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
@@ -69,6 +74,9 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
     @Autowired lateinit var promptService: PromptService
     @Autowired lateinit var namespaceService: NamespaceService
     @Autowired lateinit var permissionService: PermissionService
+    @Autowired lateinit var agentConfigService: AgentConfigService
+    @Autowired lateinit var userGroupService: UserGroupService
+    @Autowired lateinit var userGroupRepository: UserGroupRepository
 
     /**
      * UserRepository (real Neo4j-backed bean) used to persist `(:User)` nodes so that
@@ -1065,6 +1073,327 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             mockMvc.perform(delete("/api/prompts/${userPrompt.id}"))
                 .andExpect(status().isNotFound)
         }
+
+        // -------------------------------------------------------------------------
+        // POST :effective — user-group access control on agent-linked prompts
+        // -------------------------------------------------------------------------
+
+        "POST /effective excludes namespace-shared prompt linked to agent not deployed to user's group" {
+            // alice is namespace MEMBER (controller READ check passes)
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            // Create an agent and a user-group, but alice is NOT in the group
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = "agent-no-access-${UUID.randomUUID()}",
+                    enabled = true,
+                ),
+            )
+            val group = userGroupService.create(
+                UserGroup(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = "restricted-group-${UUID.randomUUID()}",
+                ),
+            )
+            // Deploy agent to the group (alice is not a member)
+            userGroupRepository.addAgents(group.id, listOf(agent.id))
+
+            val promptName = "agent-prompt-no-access-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = promptName,
+                    content = listOf("Hello"),
+                    agentConfigId = agent.id,
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$promptName')]").doesNotExist())
+        }
+
+        "POST /effective includes namespace-shared prompt linked to agent deployed to user's group" {
+            // alice is namespace MEMBER (controller READ check passes)
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            // Create agent and group, add alice to the group, deploy agent to group
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = "agent-with-access-${UUID.randomUUID()}",
+                    enabled = true,
+                ),
+            )
+            val group = userGroupService.create(
+                UserGroup(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = "alice-group-${UUID.randomUUID()}",
+                ),
+            )
+            userGroupRepository.addAgents(group.id, listOf(agent.id))
+            userGroupRepository.addUsers(group.id, listOf(alice.externalId!!))
+
+            val promptName = "agent-prompt-with-access-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = promptName,
+                    content = listOf("Hello"),
+                    agentConfigId = agent.id,
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$promptName')]").exists())
+        }
+
+        "POST /effective: super-admin sees agent-linked prompt even when not in any user-group" {
+            every { userService.getCurrentUser() } returns admin
+
+            // Create agent and group, but admin is NOT a member of the group
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = "agent-admin-sees-${UUID.randomUUID()}",
+                    enabled = true,
+                ),
+            )
+            val group = userGroupService.create(
+                UserGroup(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = "group-admin-not-in-${UUID.randomUUID()}",
+                ),
+            )
+            userGroupRepository.addAgents(group.id, listOf(agent.id))
+
+            val promptName = "agent-prompt-admin-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = promptName,
+                    content = listOf("Hello"),
+                    agentConfigId = agent.id,
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${admin.id}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$promptName')]").exists())
+        }
+
+        "POST /effective excludes agent-linked prompt when agent has no user-group deployment (non-admin user)" {
+            // alice is namespace MEMBER (controller READ check passes)
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            // Agent created but NOT deployed to any user-group
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = "agent-no-group-${UUID.randomUUID()}",
+                    enabled = true,
+                ),
+            )
+
+            val promptName = "agent-prompt-no-group-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = promptName,
+                    content = listOf("Hello"),
+                    agentConfigId = agent.id,
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$promptName')]").doesNotExist())
+        }
+
+        "POST /effective: prompt without agent is visible to namespace MEMBER (no user-group needed)" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            val promptName = "no-agent-prompt-member-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = promptName,
+                    content = listOf("Hello"),
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$promptName')]").exists())
+        }
+
+        "POST /effective: namespace-shared prompt (no agent) visible to namespace MEMBER via graph edge" {
+            // This test verifies that the Cypher MEMBER|ADMIN edge check on ns works:
+            // a user with the graph MEMBER edge on the namespace sees namespace-shared prompts without agent.
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            val promptName = "no-agent-ns-member-visible-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = promptName,
+                    content = listOf("Hello"),
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$promptName')]").exists())
+        }
+
+        "POST /effective: platform prompt (no namespace) is always visible regardless of membership" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            // Create platform prompt (namespaceId=null) as admin
+            every { userService.getCurrentUser() } returns admin
+            val platformName = "platform-always-visible-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    name = platformName,
+                    content = listOf("Hello"),
+                ),
+            )
+
+            // Switch back to alice
+            every { userService.getCurrentUser() } returns alice
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$platformName')]").exists())
+        }
+
+        "POST /effective: user-group membership on one group does not grant access to agent in another group" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
+            val agent = agentConfigService.create(
+                AgentConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = "agent-other-group-${UUID.randomUUID()}",
+                    enabled = true,
+                ),
+            )
+
+            // Group A: alice is a member
+            val groupA = userGroupService.create(
+                UserGroup(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = "group-a-${UUID.randomUUID()}",
+                ),
+            )
+            userGroupRepository.addUsers(groupA.id, listOf(alice.externalId!!))
+
+            // Group B: agent is deployed here, but alice is NOT a member
+            val groupB = userGroupService.create(
+                UserGroup(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = "group-b-${UUID.randomUUID()}",
+                ),
+            )
+            userGroupRepository.addAgents(groupB.id, listOf(agent.id))
+
+            val promptName = "agent-wrong-group-${UUID.randomUUID()}"
+            promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespace.id,
+                    name = promptName,
+                    content = listOf("Hello"),
+                    agentConfigId = agent.id,
+                ),
+            )
+
+            mockMvc.perform(
+                post("/api/prompts/effective")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${namespace.id}", "userId": "${alice.id}" }"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.name == '$promptName')]").doesNotExist())
+        }
+
+        // -------------------------------------------------------------------------
+        // Cross-user isolation: bob cannot access alice's namespace resources
+        // -------------------------------------------------------------------------
 
         "granting bob MEMBER on the namespace allows him to read the prompt" {
             permissionService.grantPermission(
