@@ -1,3 +1,17 @@
+## 0.224.3 (2026-07-23)
+
+### 🩹 Fixes
+
+- #1160 Prevent corrupted thread YAML round-trips ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 repair scripts ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 doc scripts ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 Prevent corrupted thread YAML round-trips ([#1161](https://github.com/whoz-oss/coday/pull/1161), [#1160](https://github.com/whoz-oss/coday/issues/1160))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.224.2 (2026-07-23)
 
 ### 🩹 Fixes
