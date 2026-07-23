@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import mu.KLogging
 import org.springframework.stereotype.Service
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -51,6 +52,9 @@ class CaseEventServiceImpl(
      * Useful for cascade deletion when a case is removed.
      */
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
+
+    override fun findLastMessageTimestamps(caseIds: Collection<UUID>): Map<UUID, Instant> =
+        repository.findLastMessageTimestamps(caseIds)
 
     companion object : KLogging()
 }
