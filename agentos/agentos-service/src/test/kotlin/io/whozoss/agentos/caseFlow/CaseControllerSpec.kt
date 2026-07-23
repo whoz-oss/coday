@@ -49,7 +49,15 @@ class CaseControllerSpec :
         val userService = mockk<UserService>()
         val permissionService = mockk<PermissionService>()
         val starredService = mockk<StarredService>()
-        val controller = CaseController(caseService, caseEventService, namespaceService, userService, permissionService, starredService)
+        val controller =
+            CaseController(
+                caseService,
+                caseEventService,
+                namespaceService,
+                userService,
+                permissionService,
+                starredService,
+            )
 
         val callerId = UUID.randomUUID()
         val caller =
@@ -122,7 +130,12 @@ class CaseControllerSpec :
             val saved = caseEntity()
             every { userService.getCurrentUser() } returns caller
             every {
-                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+                permissionService.hasPermission(
+                    callerId.toString(),
+                    EntityType.NAMESPACE,
+                    namespaceId.toString(),
+                    Action.READ,
+                )
             } returns true
             every { caseService.create(any()) } returns saved
             every {
@@ -202,7 +215,12 @@ class CaseControllerSpec :
             val case3 = caseEntity(title = "c")
             every { userService.getCurrentUser() } returns caller
             every {
-                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+                permissionService.hasPermission(
+                    callerId.toString(),
+                    EntityType.NAMESPACE,
+                    namespaceId.toString(),
+                    Action.WRITE,
+                )
             } returns true
             every { caseService.findByParent(namespaceId) } returns listOf(case1, case2, case3)
 
@@ -220,7 +238,12 @@ class CaseControllerSpec :
             val ownCase = caseEntity(title = "mine")
             every { userService.getCurrentUser() } returns caller
             every {
-                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+                permissionService.hasPermission(
+                    callerId.toString(),
+                    EntityType.NAMESPACE,
+                    namespaceId.toString(),
+                    Action.WRITE,
+                )
             } returns false
             // The permission-filtered repo method returns only cases the user has
             // access to — the repo applies the FR15 rule, controller just maps.
@@ -242,7 +265,12 @@ class CaseControllerSpec :
         "listByParent non-admin path returns empty list when the user has no accessible case" {
             every { userService.getCurrentUser() } returns caller
             every {
-                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+                permissionService.hasPermission(
+                    callerId.toString(),
+                    EntityType.NAMESPACE,
+                    namespaceId.toString(),
+                    Action.WRITE,
+                )
             } returns false
             every {
                 caseService.findAccessibleByUserInNamespace(callerId, namespaceId)
@@ -263,7 +291,12 @@ class CaseControllerSpec :
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = true))
             every {
-                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+                permissionService.hasPermission(
+                    callerId.toString(),
+                    EntityType.NAMESPACE,
+                    namespaceId.toString(),
+                    Action.WRITE,
+                )
             } returns true
             every { caseService.findByParent(namespaceId) } returns listOf(starred, plain)
 
@@ -279,7 +312,12 @@ class CaseControllerSpec :
             val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
             every { userService.getCurrentUser() } returns caller
             every {
-                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+                permissionService.hasPermission(
+                    callerId.toString(),
+                    EntityType.NAMESPACE,
+                    namespaceId.toString(),
+                    Action.WRITE,
+                )
             } returns true
             every { caseService.findByParent(namespaceId) } returns listOf(withMsg, noMsg)
             every {
@@ -300,7 +338,12 @@ class CaseControllerSpec :
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
             every {
-                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+                permissionService.hasPermission(
+                    callerId.toString(),
+                    EntityType.NAMESPACE,
+                    namespaceId.toString(),
+                    Action.WRITE,
+                )
             } returns false
             every {
                 caseService.findAccessibleByUserInNamespace(callerId, namespaceId)
@@ -319,7 +362,14 @@ class CaseControllerSpec :
         "starCase delegates to starredService.setStarred with starred=true for the current user" {
             val caseId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns caller
-            every { starredService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), true) } returns true
+            every {
+                starredService.setStarred(
+                    callerId.toString(),
+                    EntityType.CASE,
+                    caseId.toString(),
+                    true,
+                )
+            } returns true
 
             controller.starCase(caseId)
 
@@ -331,7 +381,14 @@ class CaseControllerSpec :
         "starCase throws 409 when the caller has no direct relation (setStarred wrote nothing)" {
             val caseId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns caller
-            every { starredService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), true) } returns false
+            every {
+                starredService.setStarred(
+                    callerId.toString(),
+                    EntityType.CASE,
+                    caseId.toString(),
+                    true,
+                )
+            } returns false
 
             val ex = shouldThrow<ResponseStatusException> { controller.starCase(caseId) }
             ex.statusCode shouldBe HttpStatus.CONFLICT
@@ -340,7 +397,14 @@ class CaseControllerSpec :
         "unstarCase delegates to starredService.setStarred with starred=false for the current user" {
             val caseId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns caller
-            every { starredService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), false) } returns true
+            every {
+                starredService.setStarred(
+                    callerId.toString(),
+                    EntityType.CASE,
+                    caseId.toString(),
+                    false,
+                )
+            } returns true
 
             controller.unstarCase(caseId)
 
@@ -352,7 +416,14 @@ class CaseControllerSpec :
         "unstarCase throws 409 when the caller has no direct relation (setStarred wrote nothing)" {
             val caseId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns caller
-            every { starredService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), false) } returns false
+            every {
+                starredService.setStarred(
+                    callerId.toString(),
+                    EntityType.CASE,
+                    caseId.toString(),
+                    false,
+                )
+            } returns false
 
             val ex = shouldThrow<ResponseStatusException> { controller.unstarCase(caseId) }
             ex.statusCode shouldBe HttpStatus.CONFLICT
@@ -410,7 +481,11 @@ class CaseControllerSpec :
                     adminCase.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = false),
                     memberCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = false),
                 )
-            every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(adminCase, memberCase)
+            every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns
+                listOf(
+                    adminCase,
+                    memberCase,
+                )
 
             val result = controller.listMineByParent(namespaceId)
 
@@ -448,9 +523,40 @@ class CaseControllerSpec :
             controller.listByUser(callerId) shouldBe emptyList()
         }
 
+        "listByUser populates lastMessageAt from caseEventService" {
+            val withMsg = caseEntity(title = "has messages")
+            val noMsg = caseEntity(title = "no messages")
+            val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
+            every { caseService.findConcerningUser(callerId) } returns listOf(withMsg, noMsg)
+            every {
+                caseEventService.findLastMessageTimestamps(listOf(withMsg.id, noMsg.id))
+            } returns mapOf(withMsg.id to msgTimestamp)
+
+            val result = controller.listByUser(callerId)
+
+            result.single { it.id == withMsg.metadata.id }.lastMessageAt shouldBe msgTimestamp
+            result.single { it.id == noMsg.metadata.id }.lastMessageAt shouldBe null
+        }
+
         // -------------------------------------------------------------------------
         // listByUserExternalId — GET /api/cases/by-user/external/{externalId}
         // -------------------------------------------------------------------------
+
+        "listByUserExternalId populates lastMessageAt from caseEventService" {
+            val withMsg = caseEntity(title = "has messages")
+            val noMsg = caseEntity(title = "no messages")
+            val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
+            every { userService.findByExternalId(caller.externalId) } returns caller
+            every { caseService.findConcerningUser(callerId) } returns listOf(withMsg, noMsg)
+            every {
+                caseEventService.findLastMessageTimestamps(listOf(withMsg.id, noMsg.id))
+            } returns mapOf(withMsg.id to msgTimestamp)
+
+            val result = controller.listByUserExternalId(caller.externalId)
+
+            result.single { it.id == withMsg.metadata.id }.lastMessageAt shouldBe msgTimestamp
+            result.single { it.id == noMsg.metadata.id }.lastMessageAt shouldBe null
+        }
 
         "listByUserExternalId returns cases concerning the resolved user" {
             val ns2 = UUID.randomUUID()
@@ -484,6 +590,36 @@ class CaseControllerSpec :
         // listByUserInNamespace — POST /api/cases/by-user/in-namespace
         // -------------------------------------------------------------------------
 
+        "listByUserInNamespace populates lastMessageAt from caseEventService" {
+            val withMsg = caseEntity(title = "has messages")
+            val noMsg = caseEntity(title = "no messages")
+            val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
+            val namespaceExternalId = "ext-ns-last-msg"
+            val namespace =
+                io.whozoss.agentos.namespace.Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-ns",
+                    externalId = namespaceExternalId,
+                )
+            every { userService.findByExternalId(caller.externalId) } returns caller
+            every { namespaceService.findByExternalId(namespaceExternalId) } returns namespace
+            every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(withMsg, noMsg)
+            every {
+                caseEventService.findLastMessageTimestamps(listOf(withMsg.id, noMsg.id))
+            } returns mapOf(withMsg.id to msgTimestamp)
+
+            val result =
+                controller.listByUserInNamespace(
+                    ListByUserInNamespaceRequest(
+                        userExternalId = caller.externalId,
+                        namespaceExternalId = namespaceExternalId,
+                    ),
+                )
+
+            result.single { it.id == withMsg.metadata.id }.lastMessageAt shouldBe msgTimestamp
+            result.single { it.id == noMsg.metadata.id }.lastMessageAt shouldBe null
+        }
+
         "listByUserInNamespace returns only cases in the requested namespace" {
             val caseInNs = caseEntity(title = "in ns")
             val namespaceExternalId = "ext-ns-1"
@@ -499,7 +635,10 @@ class CaseControllerSpec :
 
             val result =
                 controller.listByUserInNamespace(
-                    ListByUserInNamespaceRequest(userExternalId = caller.externalId, namespaceExternalId = namespaceExternalId),
+                    ListByUserInNamespaceRequest(
+                        userExternalId = caller.externalId,
+                        namespaceExternalId = namespaceExternalId,
+                    ),
                 )
 
             result.map { it.id } shouldBe listOf(caseInNs.metadata.id)
@@ -520,7 +659,10 @@ class CaseControllerSpec :
             every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns emptyList()
 
             controller.listByUserInNamespace(
-                ListByUserInNamespaceRequest(userExternalId = caller.externalId, namespaceExternalId = namespaceExternalId),
+                ListByUserInNamespaceRequest(
+                    userExternalId = caller.externalId,
+                    namespaceExternalId = namespaceExternalId,
+                ),
             ) shouldBe emptyList()
         }
 
@@ -540,7 +682,10 @@ class CaseControllerSpec :
 
             shouldThrow<io.whozoss.agentos.exception.ResourceNotFoundException> {
                 controller.listByUserInNamespace(
-                    ListByUserInNamespaceRequest(userExternalId = caller.externalId, namespaceExternalId = "unknown-ns"),
+                    ListByUserInNamespaceRequest(
+                        userExternalId = caller.externalId,
+                        namespaceExternalId = "unknown-ns",
+                    ),
                 )
             }
         }
@@ -550,7 +695,12 @@ class CaseControllerSpec :
             val case1 = caseEntity()
             every { userService.getCurrentUser() } returns superAdmin
             every {
-                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+                permissionService.hasPermission(
+                    callerId.toString(),
+                    EntityType.NAMESPACE,
+                    namespaceId.toString(),
+                    Action.WRITE,
+                )
             } returns true
             every { caseService.findByParent(namespaceId) } returns listOf(case1)
 
