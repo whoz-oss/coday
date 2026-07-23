@@ -1,3 +1,15 @@
+## 0.223.1 (2026-07-23)
+
+### 🚀 Features
+
+- **wz-33656:** improve intention generation ([bcedf6fe](https://github.com/whoz-oss/coday/commit/bcedf6fe))
+- **wz-33656:** improve intention generation ([#1158](https://github.com/whoz-oss/coday/pull/1158))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 0.223.0 (2026-07-22)
 
 ### 🚀 Features
