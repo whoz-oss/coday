@@ -120,8 +120,15 @@ export class AiThread {
     this.projectId = thread.projectId ?? ''
     this.name = thread.name ?? ''
     this.summary = thread.summary ?? ''
-    this.starring = thread.starring ?? []
-    this.users = thread.users ?? (thread.username ? [{ userId: thread.username }] : [])
+    // Defensive: starring must be an array (YAML round-trip can produce false instead of [])
+    this.starring = Array.isArray(thread.starring) ? thread.starring : []
+    // Defensive: users must be a non-empty array (empty [] from YAML won't trigger ?? fallback)
+    this.users =
+      Array.isArray(thread.users) && thread.users.length > 0
+        ? thread.users
+        : thread.username
+          ? [{ userId: thread.username }]
+          : []
     this.createdDate = thread.createdDate ?? new Date().toISOString()
     this.modifiedDate = thread.modifiedDate ?? this.createdDate
     this.price = thread.price ?? 0
