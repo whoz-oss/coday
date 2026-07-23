@@ -1,3 +1,13 @@
+## 0.224.0 (2026-07-23)
+
+### 🚀 Features
+
+- wz-33579: update README of sdk to mention API endpoints ([#1159](https://github.com/whoz-oss/coday/pull/1159))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.223.1 (2026-07-23)
 
 ### 🚀 Features
