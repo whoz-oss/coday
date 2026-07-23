@@ -352,6 +352,16 @@ abstract class AbstractPromptPersistenceSpec : StringSpec() {
             result.shouldBeEmpty()
         }
 
+        "prompt linked to deleted agent is NOT returned even when user has group access" {
+            val (ns, agent, alice) = setupGroupAccess("to-delete-agent")
+            promptRepo.save(prompt(ns.id, "deleted-agent-prompt", agentConfigId = agent.id))
+            agentConfigRepo.delete(agent.id)
+
+            val result = promptRepo.findEffective(ns.id, alice.id)
+
+            result.shouldBeEmpty()
+        }
+
         // -------------------------------------------------------------------------
         // Cross-namespace isolation
         // -------------------------------------------------------------------------
