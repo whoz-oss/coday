@@ -21,6 +21,7 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -42,6 +43,7 @@ class A2AService(
     private val caseService: CaseService,
     private val namespaceService: NamespaceService,
     private val caseEventService: CaseEventService,
+    private val userService: UserService,
 ) {
     /**
      * Resolve an [AgentConfig] published in [namespaceId] under [agentName].
@@ -144,15 +146,9 @@ class A2AService(
             else -> text
         }
 
-        val actor = Actor(
-            id = "a2a:${message.messageId}",
-            displayName = "A2A Client",
-            role = ActorRole.USER,
-        )
-
         caseService.addMessage(
             caseId = case.id,
-            actor = actor,
+            actor = currentActor(),
             content = listOf(MessageContent.Text(prefixedText)),
             answerToEventId = null,
             sessionContext = mapOf(
@@ -247,18 +243,32 @@ class A2AService(
      * JSON-RPC path (task follow-up) and the REST path.
      */
     fun sendFollowUp(config: AgentConfig, case: Case, text: String, messageId: String) {
-        val actor = Actor(
-            id = "a2a:$messageId",
-            displayName = "A2A Client",
-            role = ActorRole.USER,
-        )
         val prefixed = if (case.status == CaseStatus.PENDING) "@${config.name} $text" else text
         caseService.addMessage(
             caseId = case.id,
-            actor = actor,
+            actor = currentActor(),
             content = listOf(MessageContent.Text(prefixed)),
             answerToEventId = null,
             sessionContext = mapOf("a2a.messageId" to messageId),
+        )
+    }
+
+    /**
+     * Resolve the [Actor] for the message author of an A2A call.
+     *
+     * The prototype has no A2A-specific authentication (see docs/a2a.md §4):
+     * the identity is whatever [UserService.getCurrentUser] resolves for the
+     * incoming request — the OS username in `local` security mode, or the
+     * caller identity in `auth` mode. This is required because
+     * [io.whozoss.agentos.caseFlow.CaseServiceImpl.runAgent] rejects any case
+     * whose last user message doesn't carry a resolvable [UUID] actor id.
+     */
+    private fun currentActor(): Actor {
+        val user = userService.getCurrentUser()
+        return Actor(
+            id = user.id.toString(),
+            displayName = user.displayName(),
+            role = ActorRole.USER,
         )
     }
 

@@ -333,7 +333,7 @@ curl -X POST http://localhost:8124/api/a2a/<namespaceId>/<agentName> \
 curl -X POST http://localhost:8124/api/a2a/<namespaceId>/<agentName>/message:send \
   -H 'Content-Type: application/json' \
   -d '{
-    "request": {
+    "message": {
       "role": "ROLE_USER",
       "messageId": "msg-1",
       "parts": [{ "text": "Hello, who are you?" }]
@@ -348,7 +348,7 @@ curl -N -X POST http://localhost:8124/api/a2a/<namespaceId>/<agentName>/message:
   -H 'Content-Type: application/json' \
   -H 'Accept: text/event-stream' \
   -d '{
-    "request": {
+    "message": {
       "role": "ROLE_USER",
       "messageId": "msg-2",
       "parts": [{ "text": "Count from 1 to 5." }]

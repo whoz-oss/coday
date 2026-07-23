@@ -111,7 +111,9 @@ data class RestTask(
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class RestSendMessageRequest(
-    val request: RestMessage,
+    // Field name "message" per spec §11.4 (`SendMessageRequest.message`) —
+    // also what promptfoo's `a2a` provider actually sends on the wire.
+    val message: RestMessage,
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val configuration: SendMessageConfiguration? = null,
     @JsonInclude(JsonInclude.Include.NON_NULL)

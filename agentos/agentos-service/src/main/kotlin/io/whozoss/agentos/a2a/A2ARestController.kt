@@ -54,6 +54,14 @@ import java.util.UUID
  * used by the A2A REST binding. Spring MVC's `@PostMapping` accepts colons in
  * path segments without any special escaping.
  */
+/**
+ * Some A2A HTTP+JSON clients (e.g. promptfoo's `a2a` provider) send
+ * `Content-Type: application/a2a+json` instead of plain `application/json`.
+ * The wire payload is identical JSON, so both media types are accepted on
+ * request bodies below.
+ */
+private const val A2A_JSON_VALUE = "application/a2a+json"
+
 @Tag(name = "a2a-rest", description = "A2A HTTP+JSON REST binding — used by promptfoo, etc.")
 @RestController
 @RequestMapping("/api/a2a")
@@ -68,7 +76,7 @@ class A2ARestController(
     @Operation(summary = "A2A HTTP+JSON: send a message (non-streaming)")
     @PostMapping(
         "/{namespaceId}/{agentName}/message:send",
-        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        consumes = [MediaType.APPLICATION_JSON_VALUE, A2A_JSON_VALUE],
         produces = [MediaType.APPLICATION_JSON_VALUE],
     )
     fun sendMessage(
@@ -77,15 +85,15 @@ class A2ARestController(
         @RequestBody body: RestSendMessageRequest,
     ): RestTask {
         val config = a2aService.resolveAgent(namespaceId, agentName)
-        val text = extractText(body.request)
+        val text = extractText(body.message)
         require(text.isNotBlank()) { "A2A message must contain at least one non-empty text part" }
 
         val (case, _) = a2aService.getOrCreateCase(
             namespaceId = namespaceId,
-            taskId = body.request.taskId,
+            taskId = body.message.taskId,
             seedTitle = text,
         )
-        a2aService.sendFollowUp(config, case, text, body.request.messageId)
+        a2aService.sendFollowUp(config, case, text, body.message.messageId)
         val refreshed = a2aService.requireCase(case.id)
         return snapshotWithArtifacts(refreshed)
     }
@@ -119,7 +127,7 @@ class A2ARestController(
     @Operation(summary = "A2A HTTP+JSON: send a message and stream updates (SSE)")
     @PostMapping(
         "/{namespaceId}/{agentName}/message:stream",
-        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        consumes = [MediaType.APPLICATION_JSON_VALUE, A2A_JSON_VALUE],
         produces = ["text/event-stream"],
     )
     fun streamMessage(
@@ -128,15 +136,15 @@ class A2ARestController(
         @RequestBody body: RestSendMessageRequest,
     ): SseEmitter {
         val config = a2aService.resolveAgent(namespaceId, agentName)
-        val text = extractText(body.request)
+        val text = extractText(body.message)
         require(text.isNotBlank()) { "A2A message must contain at least one non-empty text part" }
 
         val (case, _) = a2aService.getOrCreateCase(
             namespaceId = namespaceId,
-            taskId = body.request.taskId,
+            taskId = body.message.taskId,
             seedTitle = text,
         )
-        a2aService.sendFollowUp(config, case, text, body.request.messageId)
+        a2aService.sendFollowUp(config, case, text, body.message.messageId)
 
         val emitter = SseEmitter(0L)
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())

@@ -16,7 +16,8 @@ This folder shows how to test an AgentOS agent through the A2A prototype using
    `enabled = true`. You can list them via:
 
    ```bash
-   curl http://localhost:8124/api/agent-configs   # or via the UI
+   curl http://localhost:8124/api/namespaces
+   curl http://localhost:8124/api/agent-configs/by-parentId/<NAMESPACE_ID>   # or via the UI
    ```
 
    Note both the namespace UUID and the agent name.
@@ -46,7 +47,7 @@ For each test in the config, promptfoo:
    with a body like:
    ```json
    {
-     "request": {
+     "message": {
        "role": "ROLE_USER",
        "messageId": "<generated>",
        "parts": [{ "text": "<prompt>" }]

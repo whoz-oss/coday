@@ -47,7 +47,8 @@ tests:
     vars:
       prompt: 'Bonjour ! Peux-tu te présenter en une phrase ?'
     assert:
-      - type: not-empty
+      - type: javascript
+        value: output.trim().length > 0
       - type: contains-any
         value: [ 'agent', 'assistant', 'aide', 'help' ]
 
