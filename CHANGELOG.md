@@ -1,3 +1,13 @@
+## 0.224.2 (2026-07-23)
+
+### 🩹 Fixes
+
+- wz-33213 prompt findEffective does not enforce user-group access control ([#1162](https://github.com/whoz-oss/coday/pull/1162))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.224.1 (2026-07-23)
 
 ### 🩹 Fixes
