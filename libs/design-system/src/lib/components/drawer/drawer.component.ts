@@ -4,11 +4,10 @@ import {
   Component,
   computed,
   DestroyRef,
-  EventEmitter,
   inject,
-  Input,
+  input,
+  model,
   OnInit,
-  Output,
   signal,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
@@ -48,32 +47,38 @@ export class DrawerComponent implements OnInit {
   private readonly breakpointObserver = inject(BreakpointObserver)
   private readonly destroyRef = inject(DestroyRef)
 
-  /** Whether the sidenav is open. Supports two-way binding via [(open)]. */
-  @Input() open: boolean = true
+  /** Whether the sidenav is open. Supports two-way binding via [(open)] (openChange is auto-provided). */
+  readonly open = model<boolean>(true)
+
+  /** Side of the container the drawer is anchored to. Default: 'start' (left). */
+  readonly position = input<'start' | 'end'>('start')
 
   /** Width of the sidenav panel. */
-  @Input() drawerWidth: string = '280px'
+  readonly drawerWidth = input<string>('280px')
+
+  /**
+   * When true, the panel spans the full viewport width (100vw) in mobile overlay mode,
+   * where a fixed `drawerWidth` would be too wide. Opt-in so existing drawers are unaffected.
+   */
+  readonly mobileFullWidth = input<boolean>(false)
 
   /**
    * Viewport width threshold (px) below which the drawer switches to overlay mode.
    * Default: 768px.
    */
-  @Input() mobileBreakpoint: number = 768
-
-  /** Emitted when the open state changes (close on backdrop click or programmatic toggle). */
-  @Output() openChange = new EventEmitter<boolean>()
+  readonly mobileBreakpoint = input<number>(768)
 
   protected readonly isMobile = signal(false)
   protected readonly drawerMode = computed(() => (this.isMobile() ? 'over' : 'side'))
 
   ngOnInit(): void {
     this.breakpointObserver
-      .observe([`(max-width: ${this.mobileBreakpoint - 1}px)`])
+      .observe([`(max-width: ${this.mobileBreakpoint() - 1}px)`])
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((state) => this.isMobile.set(state.matches))
   }
 
   protected onOpenedChange(opened: boolean): void {
-    this.openChange.emit(opened)
+    this.open.set(opened)
   }
 }

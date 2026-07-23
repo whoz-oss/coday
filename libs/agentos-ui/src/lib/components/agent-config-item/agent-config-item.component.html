@@ -15,7 +15,7 @@
       <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
       <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
     } @else {
-      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+      <ds-kebab-menu [items]="readOnly() ? readOnlyMenuItems : menuItems" (itemSelected)="onMenuAction($event)" />
     }
   </div>
 </div>

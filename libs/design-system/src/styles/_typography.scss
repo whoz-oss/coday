@@ -1,0 +1,107 @@
+///
+/// Coday Design System — Typography Mixins
+///
+/// Captures the typographic patterns established in ActionCard and EntityCard.
+/// All mixins use CSS custom properties with fallbacks (contract: _contract.scss).
+///
+/// Usage:
+///   @use 'libs/design-system/src/styles' as ds;
+///   .my-title { @include ds.text-title; }
+///
+
+// ── Font stacks ─────────────────────────────────────────────────────────────
+
+/// UI font — Inter, used for all Coday-specific components
+$font-ui: 'Inter', sans-serif;
+
+/// Code font — monospace stack for inline code and code blocks
+$font-code: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+
+// ── Mixins ───────────────────────────────────────────────────────────────────
+
+/// Card / section title.
+/// Source: .ac__name in action-card.component.scss
+/// → font: 600 14px/1.3 'Inter', color: --color-text
+@mixin text-title {
+  font-family: $font-ui;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-text, #1d1d1f);
+}
+
+/// Entity name — slightly larger title variant.
+/// Source: .entity-card__name in entity-card.component.scss
+/// → font-size: 0.9375rem (15px), font-weight: 600, line-height: 1.3
+@mixin text-entity-name {
+  font-family: $font-ui;
+  font-size: 0.9375rem; // 15px — kept as rem to respect user font-size preference
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-text, #1d1d1f);
+}
+
+/// Standard body text.
+/// → font: 400 14px/1.5 Inter
+@mixin text-body {
+  font-family: $font-ui;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-text, #1d1d1f);
+}
+
+/// Secondary / muted body text.
+/// Source: .entity-card__description in entity-card.component.scss
+/// → font-size: 0.8125rem (13px), color: --color-text-secondary
+@mixin text-secondary {
+  font-family: $font-ui;
+  font-size: 0.8125rem; // 13px
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--color-text-secondary, #6e6e73);
+}
+
+/// Compact label — used for chips, pill badges, count indicators.
+/// Source: .ac-chip in action-card.component.scss
+/// → font: 500 11.5px Inter
+@mixin text-label {
+  font-family: $font-ui;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--color-text, #1d1d1f);
+}
+
+/// Dropdown / contextual menu item text.
+/// Source: .ac__menu-item in action-card.component.scss
+/// → font: 500 12.5px Inter
+@mixin text-menu-item {
+  font-family: $font-ui;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--color-text, #1d1d1f);
+}
+
+/// Mark / avatar initials — bold, compact label inside a 32x32 container.
+/// Source: .ac__mark in action-card.component.scss
+/// → font: 700 13px Inter
+@mixin text-mark {
+  font-family: $font-ui;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/// Inline code snippet.
+/// → SF Mono / Monaco stack, 0.9em, code colors
+@mixin text-code {
+  font-family: $font-code;
+  font-size: 0.9em;
+  font-weight: 400;
+  background: var(--color-code-bg, rgba(142, 142, 147, 0.12));
+  color: var(--color-code-text, #ff375f);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+}

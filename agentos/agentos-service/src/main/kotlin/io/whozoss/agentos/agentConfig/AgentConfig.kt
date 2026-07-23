@@ -51,6 +51,11 @@ data class AgentConfig(
      * Map key = integration name (matches [IntegrationConfig.name] or
      * [ToolPlugin.integrationType] for config-less plugins).
      * Map value = allowed tool names, or null for all tools of that integration.
+     *
+     * Reserved keys `CASE_FILE_EXCHANGE` / `NAMESPACE_FILE_EXCHANGE`
+     * (see [io.whozoss.agentos.exchange.ExchangeIntegrationTypes]) enable the built-in
+     * file-exchange integrations: they have no [IntegrationConfig] instance and are resolved by
+     * `AgentServiceImpl.buildExchangeTools` rather than the normal plugin path.
      */
     val integrations: Map<String, List<String>?>? = null,
     /**
@@ -87,4 +92,16 @@ data class AgentConfig(
      * Examples: `["*"]` allows all agents, `["*Fixer"]` allows `BugFixer`, `StoryFixer`, etc.
      */
     val subAgents: List<String>? = null,
+    /**
+     * Paths to documents whose full content is injected into the agent's instructions.
+     *
+     * Three path patterns are supported (resolved relative to the namespace configPath):
+     * - explicit file path: single file, content injected verbatim
+     * - path ending with slash: directory listing (first-level only, no content)
+     * - path ending with slash-star: all readable files in the directory, content injected
+     *
+     * Only applicable for filesystem-backed agents (namespace with a configPath).
+     * Silently ignored when configPath is absent.
+     */
+    val docs: List<String>? = null,
 ) : Entity

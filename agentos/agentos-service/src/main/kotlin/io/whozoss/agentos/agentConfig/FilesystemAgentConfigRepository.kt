@@ -103,6 +103,34 @@ class FilesystemAgentConfigRepository(
     override fun findByParent(parentId: UUID?): List<AgentConfig> = findByParent(parentId, withDisabled = true)
 
     /**
+     * Augments the delegate lookup with filesystem agents.
+     *
+     * For IDs that Neo4j does not know about, scans every namespace that has a
+     * [configPath] and checks whether the synthetic filesystem ID matches.  The
+     * scan is cheap because [FilesystemYamlCacheRegistry] caches per directory.
+     */
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<AgentConfig> {
+        val fromDelegate = delegate.findByIds(ids, withRemoved)
+        val foundIds = fromDelegate.mapTo(HashSet()) { it.metadata.id }
+        val missing = ids.filter { it !in foundIds }
+        if (missing.isEmpty()) return fromDelegate
+
+        val missingSet = missing.toHashSet()
+        val fromFilesystem = namespaceRepository
+            .findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY)
+            .filter { it.configPath != null }
+            .flatMap { namespace ->
+                filesystemAgents(namespace.metadata.id)
+                    .filter { it.metadata.id in missingSet }
+            }
+
+        return fromDelegate + fromFilesystem
+    }
+
+    /**
      * Loads and returns agent configs from the filesystem for [parentId].
      *
      * When [excludeNames] is provided, any filesystem agent whose lowercased name
@@ -140,6 +168,21 @@ class FilesystemAgentConfigRepository(
             modelName = model.modelName,
             integrations = model.integrations,
             subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
+            docs = (model.docs ?: model.mandatoryDocs)
+                ?.filter { it.isNotBlank() }
+                ?.map { entry ->
+                    // Preserve the trailing pattern marker ('/' or '/*') before normalization:
+                    // Path.normalize() strips trailing slashes, which would make the
+                    // directory-listing pattern (endsWith("/")) undetectable downstream.
+                    val suffix = when {
+                        entry.endsWith("/*") -> "/*"
+                        entry.endsWith("/") -> "/"
+                        else -> ""
+                    }
+                    val rawPath = entry.removeSuffix(suffix)
+                    file.parent.resolve(rawPath).toAbsolutePath().normalize().toString() + suffix
+                }
+                ?.takeIf { it.isNotEmpty() },
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,
         )
@@ -173,4 +216,7 @@ private data class AgentConfigYamlModel(
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
     val subAgents: List<String>? = null,
+    val docs: List<String>? = null,
+    // mandatoryDocs kept for backward compat with existing YAML files
+    val mandatoryDocs: List<String>? = null,
 )

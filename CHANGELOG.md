@@ -1,3 +1,377 @@
+## 0.223.0 (2026-07-22)
+
+### 🚀 Features
+
+- wz-33579: exchange API definition into SDK ([#1157](https://github.com/whoz-oss/coday/pull/1157))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.222.1 (2026-07-22)
+
+### 🩹 Fixes
+
+- wz-32890 add copy button on chat messages and preserve text sele… ([#1156](https://github.com/whoz-oss/coday/pull/1156))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.222.0 (2026-07-22)
+
+### 🚀 Features
+
+- readDocument tool reading .docx as Markdown with embedded images ([#1153](https://github.com/whoz-oss/coday/pull/1153), [#1148](https://github.com/whoz-oss/coday/issues/1148), [#1151](https://github.com/whoz-oss/coday/issues/1151))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.221.0 (2026-07-21)
+
+### 🚀 Features
+
+- #1019 Agentos UserGroup UI + admin Users & Groups console ([#1107](https://github.com/whoz-oss/coday/pull/1107), [#1019](https://github.com/whoz-oss/coday/issues/1019))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.220.0 (2026-07-21)
+
+### 🚀 Features
+
+- readSpreadsheet file tool reading xlsx sheets as CSV text ([#1151](https://github.com/whoz-oss/coday/pull/1151), [#1148](https://github.com/whoz-oss/coday/issues/1148))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.219.1 (2026-07-21)
+
+### 🩹 Fixes
+
+- tolerate a null ChatResponse.getResult() in CompressingChatClient ([#1154](https://github.com/whoz-oss/coday/pull/1154), [#1115](https://github.com/whoz-oss/coday/issues/1115))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.219.0 (2026-07-21)
+
+### 🚀 Features
+
+- readAsImage tool to let agents read images, PDFs and PPTX visually ([#1148](https://github.com/whoz-oss/coday/pull/1148))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.218.0 (2026-07-20)
+
+### 🚀 Features
+
+- chat composer file attachments (drag & drop, + button, exchange upload) ([#1152](https://github.com/whoz-oss/coday/pull/1152))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.217.1 (2026-07-17)
+
+### 🩹 Fixes
+
+- #1023 Preserve namespace when navigating home ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
+## 0.217.0 (2026-07-17)
+
+### 🚀 Features
+
+- wz-32968 agent prompts ([#1146](https://github.com/whoz-oss/coday/pull/1146))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.216.1 (2026-07-16)
+
+### 🩹 Fixes
+
+- agent name resolution uses exact match instead of substring contains ([#1147](https://github.com/whoz-oss/coday/pull/1147))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.216.0 (2026-07-16)
+
+### 🚀 Features
+
+- filesystem IntegrationConfig support and dead plugin cleanup ([#1125](https://github.com/whoz-oss/coday/pull/1125))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.215.0 (2026-07-16)
+
+### 🚀 Features
+
+- #1130 add questionType discriminant to QuestionEvent ([#1131](https://github.com/whoz-oss/coday/pull/1131), [#1130](https://github.com/whoz-oss/coday/issues/1130))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.214.3 (2026-07-15)
+
+### 🚀 Features
+
+- **wz-33039:** implement a compression mechanism en UUID and ObjectId ([cef48bdb](https://github.com/whoz-oss/coday/commit/cef48bdb))
+- **wz-33039:** change in a IdCompressorService.kt and fix tests ([81b893c2](https://github.com/whoz-oss/coday/commit/81b893c2))
+- **wz-33039:** fix test ([89306f20](https://github.com/whoz-oss/coday/commit/89306f20))
+- **wz-33039:** openapi ([a0fbdbc4](https://github.com/whoz-oss/coday/commit/a0fbdbc4))
+- **wz-33039:** rework the logic to have the compression at the chat client level ([f9a1528b](https://github.com/whoz-oss/coday/commit/f9a1528b))
+- **wz-33039:** rework the logic to have the compression chat client be considered as a chat client ([c5d4371b](https://github.com/whoz-oss/coday/commit/c5d4371b))
+- **wz-33039:** final changes ([a21a5b65](https://github.com/whoz-oss/coday/commit/a21a5b65))
+- **wz-33039:** tests changes ([254d6bab](https://github.com/whoz-oss/coday/commit/254d6bab))
+- **wz-33039:** implement a compression mechanism en UUID and ObjectId ([#1115](https://github.com/whoz-oss/coday/pull/1115))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.214.2 (2026-07-15)
+
+### 🩹 Fixes
+
+- resolve integration type descriptor ([#1143](https://github.com/whoz-oss/coday/pull/1143))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.214.1 (2026-07-14)
+
+### 🩹 Fixes
+
+- openapi property order ([#1138](https://github.com/whoz-oss/coday/pull/1138))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.214.0 (2026-07-14)
+
+### 🚀 Features
+
+- #1014 AgentOS case management (soft-delete + star/favorite + related-only listing) ([#1084](https://github.com/whoz-oss/coday/pull/1084), [#1014](https://github.com/whoz-oss/coday/issues/1014), [#1081](https://github.com/whoz-oss/coday/issues/1081), [#1010](https://github.com/whoz-oss/coday/issues/1010))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
+## 0.213.0 (2026-07-13)
+
+### 🚀 Features
+
+- #1018 add MCP_HTTP tool provider for remote MCP servers ([#1119](https://github.com/whoz-oss/coday/pull/1119), [#1018](https://github.com/whoz-oss/coday/issues/1018), [#1095](https://github.com/whoz-oss/coday/issues/1095), [#1096](https://github.com/whoz-oss/coday/issues/1096), [#1097](https://github.com/whoz-oss/coday/issues/1097))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.212.0 (2026-07-13)
+
+### 🚀 Features
+
+- case & namespace file exchange (frontend) ([#1076](https://github.com/whoz-oss/coday/pull/1076))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
+## 0.211.1 (2026-07-13)
+
+### 🩹 Fixes
+
+- handle user load and MCP_STDIO env UI differently ([#1129](https://github.com/whoz-oss/coday/pull/1129))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.211.0 (2026-07-13)
+
+### 🚀 Features
+
+- collapsable sidebar drawer with hover chevron and floating menu button ([#1128](https://github.com/whoz-oss/coday/pull/1128), [#1127](https://github.com/whoz-oss/coday/issues/1127))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.210.0 (2026-07-13)
+
+### 🚀 Features
+
+- replace Coday label with inline namespace picker in sidebar, fix isAdmin on first load ([#1127](https://github.com/whoz-oss/coday/pull/1127))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.209.0 (2026-07-10)
+
+### 🚀 Features
+
+- wz-33118 use real agentId into events ([c10f2617](https://github.com/whoz-oss/coday/commit/c10f2617))
+- wz-33118 use real agentId into events ([#1123](https://github.com/whoz-oss/coday/pull/1123))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
+## 0.208.4 (2026-07-10)
+
+### 🩹 Fixes
+
+- openapi regen ([#1124](https://github.com/whoz-oss/coday/pull/1124))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.208.3 (2026-07-09)
+
+### 🩹 Fixes
+
+- #33235 platform integrations always read-only on namespace page ([#1120](https://github.com/whoz-oss/coday/pull/1120), [#33235](https://github.com/whoz-oss/coday/issues/33235))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.208.2 (2026-07-09)
+
+### 🩹 Fixes
+
+- #33273 case search flattens tree and matches on id ([#1117](https://github.com/whoz-oss/coday/pull/1117), [#33273](https://github.com/whoz-oss/coday/issues/33273))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.208.1 (2026-07-08)
+
+### 🩹 Fixes
+
+- wz-32749: fix nullable namespaceId in GroupsByExternalIdsRequest ([#1113](https://github.com/whoz-oss/coday/pull/1113))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.208.0 (2026-07-08)
+
+### 🚀 Features
+
+- #1013 filesystem agent document injection ([#1089](https://github.com/whoz-oss/coday/pull/1089), [#1013](https://github.com/whoz-oss/coday/issues/1013), [#1054](https://github.com/whoz-oss/coday/issues/1054))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.207.2 (2026-07-08)
+
+### 🩹 Fixes
+
+- build angular post-merge ([#1112](https://github.com/whoz-oss/coday/pull/1112))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.207.1 (2026-07-08)
+
+### 🩹 Fixes
+
+- #33235 platform-level entities visible and read-only in namespace views ([#1110](https://github.com/whoz-oss/coday/pull/1110), [#33235](https://github.com/whoz-oss/coday/issues/33235))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.207.0 (2026-07-08)
+
+### 🚀 Features
+
+- case & namespace file exchange (backend) ([#1075](https://github.com/whoz-oss/coday/pull/1075))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+- selim
+- selim-bensenouci-ep-whoz
+- vincent.audibert
+
+## 0.206.0 (2026-07-08)
+
+### 🚀 Features
+
+- wz-32968 prompt call ([#1092](https://github.com/whoz-oss/coday/pull/1092))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.205.0 (2026-07-08)
+
+### 🚀 Features
+
+- #1023 add reusable action card for namespace items ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 add reusable action card for namespace items ([#1109](https://github.com/whoz-oss/coday/pull/1109), [#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.204.3 (2026-07-08)
+
+### 🩹 Fixes
+
+- navigate back to home from namespace list ([#1108](https://github.com/whoz-oss/coday/pull/1108))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.204.2 (2026-07-07)
+
+### 🩹 Fixes
+
+- #31851 platform agents require explicit DEPLOYED_TO relation ([#1101](https://github.com/whoz-oss/coday/pull/1101), [#31851](https://github.com/whoz-oss/coday/issues/31851))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.204.1 (2026-07-07)
 
 ### 🩹 Fixes

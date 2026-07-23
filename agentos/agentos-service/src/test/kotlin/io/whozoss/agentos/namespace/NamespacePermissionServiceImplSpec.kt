@@ -7,7 +7,6 @@ import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
-import io.mockk.verifyOrder
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
@@ -199,41 +198,37 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
     }
 
-    "syncUserRoles revokes MEMBER and grants ADMIN on role upgrade" {
+    "syncUserRoles uses atomic promote (MEMBER -> ADMIN) preserving relation properties" {
         every { userService.findByExternalId(user.externalId) } returns user
         every { namespaceService.findByExternalIds(listOf(namespace.externalId!!)) } returns listOf(namespace)
         stubCurrentRoles(readIds = listOf(namespaceId.toString()))
-        every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
-        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+        every { permissionService.promoteMemberToAdmin(any(), any(), any()) } returns true
 
         service.syncUserRoles(
             SyncUserRolesRequest(user.externalId, listOf(NamespaceRoleEntry(namespace.externalId!!, "ADMIN"))),
         )
 
-        verifyOrder {
-            permissionService.revokePermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
-            permissionService.grantPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
-        }
+        verify(exactly = 1) { permissionService.promoteMemberToAdmin(userId.toString(), EntityType.NAMESPACE, namespaceId.toString()) }
+        verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
+        verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
     }
 
-    "syncUserRoles revokes ADMIN and grants MEMBER on role downgrade" {
+    "syncUserRoles uses atomic demote (ADMIN -> MEMBER) preserving relation properties" {
         every { userService.findByExternalId(user.externalId) } returns user
         every { namespaceService.findByExternalIds(listOf(namespace.externalId!!)) } returns listOf(namespace)
         stubCurrentRoles(
             adminIds = listOf(namespaceId.toString()),
             readIds = listOf(namespaceId.toString()),
         )
-        every { permissionService.revokePermission(any(), any(), any(), any()) } just Runs
-        every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+        every { permissionService.demoteAdminToMember(any(), any(), any()) } returns true
 
         service.syncUserRoles(
             SyncUserRolesRequest(user.externalId, listOf(NamespaceRoleEntry(namespace.externalId!!, "MEMBER"))),
         )
 
-        verifyOrder {
-            permissionService.revokePermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
-            permissionService.grantPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
-        }
+        verify(exactly = 1) { permissionService.demoteAdminToMember(userId.toString(), EntityType.NAMESPACE, namespaceId.toString()) }
+        verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
+        verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
     }
 
     // -------------------------------------------------------------------------

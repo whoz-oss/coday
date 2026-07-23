@@ -1,5 +1,12 @@
 package io.whozoss.agentos.agentConfig
 
+import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
+import com.fasterxml.jackson.module.kotlin.KotlinModule
+import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
@@ -15,8 +22,10 @@ import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -178,6 +187,31 @@ class AgentConfigController(
             .findAvailableByUserExternalId(request.namespaceId, request.userExternalId)
             .map(::toDto)
 
+    @Operation(
+        summary = "Export an AgentConfig as a YAML file",
+        description = "Returns the agent config as a downloadable YAML file, ready to be placed in " +
+            "the namespace `agents/` directory under `configPath`. " +
+            "Only the fields meaningful in a filesystem config are included. " +
+            "Scope metadata (`id`, `namespaceId`, `enabled`, `advancedExecution`, `externalMetadata`) is intentionally omitted.",
+    )
+    @GetMapping("/{id}/export", produces = [MediaType.APPLICATION_YAML_VALUE])
+    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
+    @HideOnAccessDenied
+    fun export(
+        @PathVariable id: UUID,
+    ): ResponseEntity<String> {
+        val entity =
+            agentConfigService.findById(id)
+                ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        val yaml = YAML_MAPPER.writeValueAsString(toExportModel(entity))
+        val filename = entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-") + ".yaml"
+        return ResponseEntity
+            .ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
+            .contentType(MediaType.parseMediaType(MediaType.APPLICATION_YAML_VALUE))
+            .body(yaml)
+    }
+
     @GetMapping("/{id}/definition")
     @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
     @HideOnAccessDenied
@@ -223,7 +257,23 @@ class AgentConfigController(
         )
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * YAML mapper configured for clean, human-readable output:
+         * - No `---` document start marker
+         * - No Jackson type tags
+         * - Null and empty values omitted (via [toExportModel] filtering + NON_EMPTY inclusion)
+         */
+        private val YAML_MAPPER: ObjectMapper =
+            ObjectMapper(
+                YAMLFactory
+                    .builder()
+                    .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
+                    .build(),
+            ).registerModule(KotlinModule.Builder().build())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
+    }
 }
 
 internal fun toDomain(resource: AgentConfigDto): AgentConfig {
@@ -261,3 +311,26 @@ internal fun toDto(entity: AgentConfig) =
         enabled = entity.enabled,
         subAgents = entity.subAgents,
     )
+
+/**
+ * Produces the filesystem-ready export model from a persisted [AgentConfig].
+ *
+ * Scope fields (`id`, `namespaceId`, `enabled`, `advancedExecution`, `externalMetadata`) are
+ * intentionally excluded — they are persistence artefacts with no meaning in a YAML file.
+ * Only the fields that [FilesystemAgentConfigRepository] reads are included, so the exported
+ * file can be dropped directly into the namespace `agents/` directory.
+ *
+ * The map is built explicitly rather than via a data class so that null/empty values can be
+ * omitted without a per-field `@JsonInclude` annotation. The YAML_MAPPER's
+ * `NON_EMPTY` inclusion policy then handles the rest.
+ */
+private fun toExportModel(entity: AgentConfig): Map<String, Any?> =
+    buildMap {
+        put("name", entity.name)
+        entity.description?.let { put("description", it) }
+        entity.instructions?.let { put("instructions", it) }
+        entity.modelName?.let { put("modelName", it) }
+        entity.integrations?.takeIf { it.isNotEmpty() }?.let { put("integrations", it) }
+        entity.subAgents?.takeIf { it.isNotEmpty() }?.let { put("subAgents", it) }
+        entity.docs?.takeIf { it.isNotEmpty() }?.let { put("docs", it) }
+    }

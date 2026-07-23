@@ -11,7 +11,7 @@
 export interface Image {
   type: 'Image'
   content: string
+  height?: number
   mimeType: string
   width?: number
-  height?: number
 }

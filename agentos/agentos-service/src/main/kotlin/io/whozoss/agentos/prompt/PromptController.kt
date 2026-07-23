@@ -1,10 +1,8 @@
 package io.whozoss.agentos.prompt
 
 import io.swagger.v3.oas.annotations.Operation
-import io.swagger.v3.oas.annotations.Parameter
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
-import io.whozoss.agentos.entity.OverlayScope
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
@@ -13,7 +11,9 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.prompt.PromptApi
 import io.whozoss.agentos.sdk.api.prompt.PromptDto
+import io.whozoss.agentos.sdk.api.prompt.PromptEffectiveRequest
 import io.whozoss.agentos.sdk.api.prompt.PromptParameterDto
+import io.whozoss.agentos.sdk.api.prompt.PromptSearchRequest
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -30,11 +30,9 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
-import io.swagger.v3.oas.annotations.media.Schema as ApiSchema
 import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 
 /**
@@ -49,12 +47,14 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * - `(null, user)`   → user-global (authenticated only)
  * - `(ns, user)`     → user × namespace (READ on namespace)
  *
- * `body.userId` must equal the authenticated user's id when supplied (mass-assignment guard).
+ * `body.userId` must equal the authenticated user’s id when supplied (mass-assignment guard).
  *
- * Authorization on PUT / DELETE is fully handled by @PreAuthorize("hasPermission(#id, 'Prompt', ACTION)").
+ * **Mass-assignment guard on PUT**: [namespaceId], [userId] and [agentConfigId] are
+ * immutable post-create — preserved from the persisted entity.
+ * Mutable fields: name, description, content, parameters, externalMetadata.
  *
- * Mass-assignment guard on PUT: [namespaceId] and [userId] are immutable post-create.
- * Mutable fields: name, description, content, parameters.
+ * **[search]** returns prompts at an exact scope level — no merge, no inheritance.
+ * **[effective]** returns the merged set across the four overlay layers.
  */
 @RestController
 @RequestMapping(
@@ -97,99 +97,97 @@ class PromptController(
         @RequestBody request: SdkGetByIdsRequest,
     ): List<PromptDto> = crud.getByIds(GetByIdsRequest(request.ids, request.withRemoved))
 
-    /**
-     * List all prompts belonging to a namespace.
-     *
-     * Uses the standard `by-parentId` pattern with READ permission on the namespace.
-     * Platform-level prompts (namespaceId == null) are not returned by this endpoint.
-     */
-    @GetMapping("/by-parentId/{parentId}")
-    @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
-    override fun listByParent(
-        @PathVariable parentId: UUID,
-    ): List<PromptDto> = promptService.findByParent(parentId).map(::toDto)
-
     @Operation(
-        summary = "List Prompts by explicit scope",
+        summary = "List Prompts at an exact scope level",
         description =
-            "Returns prompts for the given scope. `namespaceId` is required for " +
-                "`NAMESPACE` and `USER_NAMESPACE` scopes, and must be omitted for `PLATFORM` and `USER`.\n\n" +
-                "| scope          | namespaceId | returned prompts                  | required permission       |\n" +
-                "|----------------|-------------|-----------------------------------|---------------------------|\n" +
-                "| PLATFORM       | absent      | platform-level (null, null)       | authenticated             |\n" +
-                "| NAMESPACE      | required    | namespace-shared (ns, null)       | READ on namespace         |\n" +
-                "| USER           | absent      | user-global (null, me)            | authenticated             |\n" +
-                "| USER_NAMESPACE | required    | user × namespace (ns, me)        | READ on namespace         |",
+            "Returns prompts declared at a single exact scope level — no merge, no inheritance. " +
+                "The `(namespaceId?, userId?)` combination in the body determines the level:\n\n" +
+                "| namespaceId | userId   | level            | required permission        |\n" +
+                "|-------------|----------|------------------|----------------------------|\n" +
+                "| null        | null     | platform         | authenticated              |\n" +
+                "| non-null    | null     | namespace-shared | READ on namespace          |\n" +
+                "| null        | non-null | user-global      | authenticated              |\n" +
+                "| non-null    | non-null | user×namespace   | READ on namespace          |\n\n" +
+                "Optional `agentConfigIds` filter restricts results to prompts linked to those agents.",
     )
-    @GetMapping
+    @PostMapping(
+        "/search",
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+    )
     @PreAuthorize("isAuthenticated()")
-    override fun list(
-        @Parameter(
-            description = "Scope of prompts to return.",
-            schema = ApiSchema(allowableValues = ["PLATFORM", "NAMESPACE", "USER", "USER_NAMESPACE"]),
-        )
-        @RequestParam scope: String,
-        @RequestParam(required = false) namespaceId: UUID?,
+    override fun search(
+        @Valid @RequestBody request: PromptSearchRequest,
     ): List<PromptDto> {
-        val overlayScope =
-            runCatching { OverlayScope.valueOf(scope) }
-                .getOrElse { throw BadRequestException("Unknown scope: '$scope'") }
-        validateScopeConstraints(overlayScope, namespaceId)
         val currentUser = userService.getCurrentUser()
+        val resolvedNamespaceId = resolveOptionalNamespaceId(request.namespaceId, request.namespaceExternalId)
 
-        return when (overlayScope) {
-            OverlayScope.PLATFORM -> {
-                promptService.findPlatform()
-            }
+        // Mass-assignment guard: userId must match the authenticated user unless super-admin
+        if (request.userId != null && request.userId != currentUser.id && !currentUser.isAdmin) {
+            throw AccessDeniedException("Cannot search prompts for another user")
+        }
 
-            OverlayScope.NAMESPACE -> {
-                val granted =
-                    permissionService.hasPermission(
-                        userId = currentUser.id.toString(),
-                        entityType = EntityType.NAMESPACE,
-                        entityId = namespaceId!!.toString(),
-                        action = Action.READ,
-                    )
-                if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $namespaceId")
-                promptService.findByParent(namespaceId)
-            }
+        // Namespace-scoped levels require READ on the namespace
+        if (resolvedNamespaceId != null) {
+            val granted =
+                permissionService.hasPermission(
+                    userId = currentUser.id.toString(),
+                    entityType = EntityType.NAMESPACE,
+                    entityId = resolvedNamespaceId.toString(),
+                    action = Action.READ,
+                )
+            if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $resolvedNamespaceId")
+        }
 
-            OverlayScope.USER -> {
-                promptService
-                    .findByUserId(currentUser.id)
-                    .filter { it.namespaceId == null }
-            }
-
-            OverlayScope.USER_NAMESPACE -> {
-                val granted =
-                    permissionService.hasPermission(
-                        userId = currentUser.id.toString(),
-                        entityType = EntityType.NAMESPACE,
-                        entityId = namespaceId!!.toString(),
-                        action = Action.READ,
-                    )
-                if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $namespaceId")
-                promptService
-                    .findByUserId(currentUser.id)
-                    .filter { it.namespaceId == namespaceId }
-            }
-        }.map(::toDto)
+        return promptService
+            .findByScope(
+                namespaceId = resolvedNamespaceId,
+                userId = request.userId,
+                agentConfigIds = request.agentConfigIds,
+            ).map(::toDto)
     }
 
     @Operation(
-        summary = "Effective prompts for a namespace",
+        summary = "Effective prompts for a user in a namespace",
         description =
             "Returns the resolved set of prompts accessible in the given namespace context. " +
                 "Merges platform, namespace-shared, user-global and user×namespace layers by name, " +
-                "highest-priority layer wins. Requires READ on the namespace.",
+                "highest-priority layer wins. Optional `agentConfigId` filter applied post-resolution. " +
+                "Requires READ on the namespace.",
     )
-    @GetMapping("/effective")
-    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
-    override fun findEffectiveByNamespaceId(
-        @RequestParam namespaceId: UUID,
+    @PostMapping(
+        "/effective",
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+    )
+    @PreAuthorize("isAuthenticated()")
+    override fun effective(
+        @Valid @RequestBody request: PromptEffectiveRequest,
     ): List<PromptDto> {
+        val nsId = resolveNamespaceId(request.namespaceId, request.namespaceExternalId)
+        val uId = resolveUserId(request.userId, request.userExternalId)
+
         val currentUser = userService.getCurrentUser()
-        return promptService.findEffective(namespaceId, currentUser.id).map(::toDto)
+        if (uId != currentUser.id) {
+            throw BadRequestException("userId must match authenticated user")
+        }
+
+        val granted =
+            permissionService.hasPermission(
+                userId = currentUser.id.toString(),
+                entityType = EntityType.NAMESPACE,
+                entityId = nsId.toString(),
+                action = Action.READ,
+            )
+        if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $nsId")
+
+        return promptService
+            .findEffective(nsId, currentUser.id)
+            .let { prompts ->
+                if (request.agentConfigId != null) {
+                    prompts.filter { it.agentConfigId == request.agentConfigId }
+                } else {
+                    prompts
+                }
+            }.map(::toDto)
     }
 
     // -------------------------------------------------------------------------
@@ -206,7 +204,7 @@ class PromptController(
                 "| present          | null             | namespace       | WRITE on the namespace     |\n" +
                 "| null             | <currentUser.id> | user-global     | authenticated only         |\n" +
                 "| present          | <currentUser.id> | user×namespace  | READ on the namespace      |\n\n" +
-                "`body.userId` must equal the authenticated user's id when supplied. " +
+                "`body.userId` must equal the authenticated user\'s id when supplied. " +
                 "A `namespaceId` that does not exist returns 404.",
     )
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -231,14 +229,13 @@ class PromptController(
         val resolvedUser: UUID? = if (resource.userId != null) me else null
         val isPlatform = resolvedNs == null && resolvedUser == null
 
-        // Phase 3 — per-scope authorization, run BEFORE existence check
+        // Phase 3 — per-scope authorization
         when {
             isPlatform -> {
                 if (!currentUser.isAdmin) {
                     throw AccessDeniedException("Platform-level Prompt requires Super Admin")
                 }
             }
-
             resolvedNs != null -> {
                 val authzAction = if (resolvedUser != null) Action.READ else Action.WRITE
                 val granted =
@@ -264,13 +261,15 @@ class PromptController(
 
         val target =
             Prompt(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
+                metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
                 namespaceId = resolvedNs,
                 userId = resolvedUser,
+                agentConfigId = resource.agentConfigId,
                 name = resource.name,
                 description = resource.description,
                 content = resource.content,
                 parameters = resource.parameters.map { it.toDomain() },
+                externalMetadata = resource.externalMetadata,
             )
         return toDto(promptService.create(target))
     }
@@ -304,15 +303,77 @@ class PromptController(
     // Private helpers
     // -------------------------------------------------------------------------
 
+    // -------------------------------------------------------------------------
+    // ExternalId resolution helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Resolves a namespace UUID from either a direct UUID or an externalId.
+     * Exactly one must be provided.
+     */
+    private fun resolveNamespaceId(
+        id: UUID?,
+        externalId: String?,
+    ): UUID {
+        if (id != null && externalId != null) {
+            throw BadRequestException("Provide namespaceId or namespaceExternalId, not both")
+        }
+        return id
+            ?: externalId?.let {
+                namespaceService.findByExternalId(it)?.metadata?.id
+                    ?: throw ResourceNotFoundException("Namespace not found for externalId: $it")
+            }
+            ?: throw BadRequestException("namespaceId or namespaceExternalId is required")
+    }
+
+    /**
+     * Resolves a namespace UUID from either a direct UUID or an externalId.
+     * Both can be null (for platform-level scope).
+     */
+    private fun resolveOptionalNamespaceId(
+        id: UUID?,
+        externalId: String?,
+    ): UUID? {
+        if (id != null && externalId != null) {
+            throw BadRequestException("Provide namespaceId or namespaceExternalId, not both")
+        }
+        return id
+            ?: externalId?.let {
+                namespaceService.findByExternalId(it)?.metadata?.id
+                    ?: throw ResourceNotFoundException("Namespace not found for externalId: $it")
+            }
+    }
+
+    /**
+     * Resolves a user UUID from either a direct UUID or an externalId.
+     * Exactly one must be provided.
+     */
+    private fun resolveUserId(
+        id: UUID?,
+        externalId: String?,
+    ): UUID {
+        if (id != null && externalId != null) {
+            throw BadRequestException("Provide userId or userExternalId, not both")
+        }
+        return id
+            ?: externalId?.let {
+                userService.findByExternalId(it)?.metadata?.id
+                    ?: throw ResourceNotFoundException("User not found for externalId: $it")
+            }
+            ?: throw BadRequestException("userId or userExternalId is required")
+    }
+
     private fun toDomainForUpdate(
         resource: PromptDto,
         existing: Prompt,
     ): Prompt =
         existing.copy(
+            // Immutable: namespaceId, userId, agentConfigId
             name = resource.name,
             description = resource.description,
             content = resource.content,
             parameters = resource.parameters.map { it.toDomain() },
+            externalMetadata = resource.externalMetadata,
         )
 
     private fun PromptParameterDto.toDomain(): PromptParameter =
@@ -322,30 +383,6 @@ class PromptController(
             defaultValue = defaultValue,
         )
 
-    /**
-     * Validates the scope/namespaceId parameter combination:
-     * - NAMESPACE, USER_NAMESPACE require a non-null namespaceId.
-     * - PLATFORM, USER forbid namespaceId.
-     */
-    private fun validateScopeConstraints(
-        scope: OverlayScope,
-        namespaceId: UUID?,
-    ) {
-        when (scope) {
-            OverlayScope.NAMESPACE, OverlayScope.USER_NAMESPACE -> {
-                if (namespaceId == null) {
-                    throw BadRequestException("namespaceId is required for scope=$scope")
-                }
-            }
-
-            OverlayScope.PLATFORM, OverlayScope.USER -> {
-                if (namespaceId != null) {
-                    throw BadRequestException("namespaceId must not be provided for scope=$scope")
-                }
-            }
-        }
-    }
-
     companion object : KLogging()
 }
 
@@ -354,6 +391,7 @@ internal fun toDto(entity: Prompt): PromptDto =
         id = entity.metadata.id,
         namespaceId = entity.namespaceId,
         userId = entity.userId,
+        agentConfigId = entity.agentConfigId,
         name = entity.name,
         description = entity.description,
         content = entity.content,
@@ -365,6 +403,7 @@ internal fun toDto(entity: Prompt): PromptDto =
                     defaultValue = p.defaultValue,
                 )
             },
+        externalMetadata = entity.externalMetadata,
         createdBy = entity.metadata.createdBy,
         createdOn = entity.metadata.created,
         updatedBy = entity.metadata.modifiedBy,
@@ -376,6 +415,7 @@ internal fun toDomain(resource: PromptDto): Prompt =
         metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
         namespaceId = resource.namespaceId,
         userId = resource.userId,
+        agentConfigId = resource.agentConfigId,
         name = resource.name,
         description = resource.description,
         content = resource.content,
@@ -387,4 +427,5 @@ internal fun toDomain(resource: PromptDto): Prompt =
                     defaultValue = p.defaultValue,
                 )
             },
+        externalMetadata = resource.externalMetadata,
     )

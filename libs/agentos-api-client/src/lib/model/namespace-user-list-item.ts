@@ -9,10 +9,10 @@
  */
 
 export interface NamespaceUserListItem {
-  id: string
-  externalId: string
   email: string
+  externalId: string
   firstname?: string
+  id: string
   lastname?: string
   /**
    * The user\'s direct role on this namespace

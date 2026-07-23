@@ -1,3 +1,5 @@
+@use '../../../../../../design-system/src/styles' as ds;
+
 :host {
   display: none; // hidden on desktop, shown via media query
 }
@@ -13,15 +15,13 @@
     user-select: none;
 
     &:hover {
-      background: rgba(0, 0, 0, 0.02);
+      background: var(--color-bg-hover);
     }
   }
 
   &__title {
-    font:
-      600 12.5px 'Inter',
-      sans-serif;
-    color: var(--color-text, #161616);
+    @include ds.text-menu-item;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -30,15 +30,14 @@
   }
 
   &__status {
-    font:
-      400 11px 'Inter',
-      sans-serif;
-    color: rgba(0, 0, 0, 0.4);
+    font: inherit;
+    font-size: 0.6875rem;
+    color: var(--color-text-secondary);
     flex: none;
   }
 
   &__chevron {
-    color: rgba(0, 0, 0, 0.35);
+    color: var(--color-text-secondary);
     font-size: 9px;
     flex: none;
   }
@@ -46,7 +45,7 @@
   &__list {
     display: flex;
     flex-direction: column;
-    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    border-top: 1px solid var(--color-border-light);
     max-height: 60vh;
     overflow-y: auto;
   }
@@ -62,11 +61,11 @@
 
     .shell-case-switcher__title {
       font-weight: 500;
-      color: rgba(0, 0, 0, 0.7);
+      color: var(--color-text-secondary);
     }
 
     &:hover {
-      background: rgba(0, 0, 0, 0.03);
+      background: var(--color-bg-hover);
     }
 
     &--new {
@@ -98,16 +97,16 @@
     flex: none;
 
     &--run {
-      background: #2a9d4a;
+      background: var(--color-success);
     }
 
     &--idle {
-      background: rgba(0, 0, 0, 0.2);
+      background: var(--color-border);
     }
 
     &--killed,
     &--error {
-      background: #dc2614;
+      background: var(--color-error);
     }
   }
 }

@@ -6,13 +6,15 @@ import { UserStateService } from './user-state.service'
 
 /**
  * Scope of an AI provider row in the unified 3-section view.
+ * - `platform`  : provider defined at platform level (read-only for namespace admins)
  * - `namespace` : provider shared at the namespace level
  * - `userOnNs`  : the caller's personal override scoped to the current namespace
  * - `userGlobal`: the caller's personal override that applies cross-namespace
  */
-export type AiProviderScope = 'namespace' | 'userOnNs' | 'userGlobal'
+export type AiProviderScope = 'platform' | 'namespace' | 'userOnNs' | 'userGlobal'
 
 export interface AiProviderConfigViewModel {
+  platform: AiProvider[]
   namespace: AiProvider[]
   userOnNs: AiProvider[]
   userGlobal: AiProvider[]
@@ -83,17 +85,27 @@ export class AiProviderConfigStateService {
    */
   readonly vm$: Observable<AiProviderConfigViewModel> = combineLatest([this.namespaceId$, this.refresh$]).pipe(
     switchMap(([namespaceId]) => {
+      const platform$ = this.loadPlatformProviders().pipe(catchError(() => of([] as AiProvider[])))
       if (!namespaceId) {
         return combineLatest([
+          platform$,
           this.loadNamespaceProviders('').pipe(catchError(() => of([] as AiProvider[]))),
           this.loadUserProviders('global').pipe(catchError(() => of([] as AiProvider[]))),
-        ]).pipe(map(([namespace, userGlobal]) => ({ namespace, userOnNs: [] as AiProvider[], userGlobal })))
+        ]).pipe(
+          map(([platform, namespace, userGlobal]) => ({
+            platform,
+            namespace,
+            userOnNs: [] as AiProvider[],
+            userGlobal,
+          }))
+        )
       }
       return combineLatest([
+        platform$,
         this.loadNamespaceProviders(namespaceId).pipe(catchError(() => of([] as AiProvider[]))),
         this.loadUserProviders(namespaceId).pipe(catchError(() => of([] as AiProvider[]))),
         this.loadUserProviders('global').pipe(catchError(() => of([] as AiProvider[]))),
-      ]).pipe(map(([namespace, userOnNs, userGlobal]) => ({ namespace, userOnNs, userGlobal })))
+      ]).pipe(map(([platform, namespace, userOnNs, userGlobal]) => ({ platform, namespace, userOnNs, userGlobal })))
     }),
     shareReplay({ bufferSize: 1, refCount: true })
   )
@@ -124,6 +136,11 @@ export class AiProviderConfigStateService {
     () => this.loadUserProviders('global'),
     [] as AiProvider[]
   )
+
+  /** Platform-level providers: namespaceId IS NULL, no userId. */
+  loadPlatformProviders(): Observable<AiProvider[]> {
+    return this.nsController.listAiProvider(NAMESPACE_NONE_SENTINEL)
+  }
 
   loadNamespaceProviders(namespaceId: string): Observable<AiProvider[]> {
     if (!namespaceId) return of([])

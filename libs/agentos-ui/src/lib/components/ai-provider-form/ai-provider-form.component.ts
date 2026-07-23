@@ -6,9 +6,11 @@ import { AiProvider, AiProviderApiTypeEnum } from '@whoz-oss/agentos-api-client'
 import { AiProviderConfigStateService, AiProviderScope } from '../../services/ai-provider-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 
+/** Scopes available for creation/editing — platform is read-only, never selectable in a form. */
 const VALID_SCOPES: ReadonlySet<AiProviderScope> = new Set(['namespace', 'userOnNs', 'userGlobal'])
 
 const SCOPE_LABEL: Readonly<Record<AiProviderScope, string>> = Object.freeze({
+  platform: 'Configuration de niveau plateforme',
   namespace: 'Configuration du namespace',
   userOnNs: 'Pour moi sur ce namespace',
   userGlobal: 'Pour moi globalement',

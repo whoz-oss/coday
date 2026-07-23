@@ -1,0 +1,75 @@
+.prompt-autocomplete {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 400px;
+  width: 100%;
+  overflow-y: auto;
+
+  // Smooth scrollbar
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border, rgba(0, 0, 0, 0.15));
+    border-radius: 4px;
+
+    &:hover {
+      background: var(--color-text-secondary, #6e6e73);
+    }
+  }
+
+  display: grid;
+  grid-template-columns: max-content 1fr;
+
+  &__item {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+    cursor: pointer;
+    transition: background 0.2s;
+    border-left: 3px solid transparent;
+    padding: 0.5rem 0;
+
+    &:hover,
+    &--active {
+      background: var(--color-bg-hover, rgba(0, 113, 227, 0.08));
+    }
+
+    &--active {
+      border-left-color: var(--color-primary, #007aff);
+    }
+  }
+
+  &__name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--color-text, #1d1d1f);
+    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Cascadia Code', 'Consolas', monospace;
+    white-space: nowrap;
+    padding: 0 1.5rem 0 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  &__param {
+    font-size: 0.85rem;
+    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Cascadia Code', 'Consolas', monospace;
+    color: var(--color-text-secondary, #6e6e73);
+    font-weight: 400;
+  }
+
+  &__description {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary, #6e6e73);
+    line-height: 1.3;
+    padding: 0 1rem 0 0;
+  }
+}

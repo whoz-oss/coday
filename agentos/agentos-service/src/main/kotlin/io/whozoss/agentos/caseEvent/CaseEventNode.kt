@@ -196,6 +196,12 @@ class ToolResponseEventNode(
      */
     val metadataJson: String? = null,
     val durationMs: Long? = null,
+    /**
+     * JSON-serialised [List]<[io.whozoss.agentos.sdk.caseEvent.MessageContent.Image]> of images
+     * produced by the tool, or null when the tool produced no image. Stored as a nullable
+     * string for backward compatibility with existing nodes that pre-date this field.
+     */
+    val imagesJson: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -227,6 +233,16 @@ class QuestionEventNode(
     val question: String,
     /** JSON-serialised [List]<[String]>?, null when no options */
     val options: String? = null,
+    /**
+     * Stored as a String for forward compatibility. Defaults to "FREE_TEXT" so that
+     * existing nodes written before this field was introduced deserialise correctly.
+     */
+    val questionType: String = "FREE_TEXT",
+    /**
+     * UUID of the specific user this question is directed at, or null when addressed
+     * to any user of the case. Null default ensures backward compat with existing nodes.
+     */
+    val userId: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

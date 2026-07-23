@@ -1,5 +1,7 @@
+@use 'libs/design-system/src/styles' as ds;
+
 :host {
-  display: contents; // laisse le .shell-sidebar gérer son propre display
+  display: contents;
 
   @media (max-width: 900px) {
     display: none !important;
@@ -10,85 +12,87 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: hidden;
-  border-right: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
-  background: var(--color-bg, #f4f3ef);
+  overflow: visible;
+  position: relative;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg);
   flex-shrink: 0;
+  transition: width 240ms cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
 
-  // ── Top bar ──
+  // Top bar
   &__top {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 14px 12px 6px;
+    gap: 6px;
+    padding: 10px;
+    border-bottom: 1px solid var(--color-border);
     flex-shrink: 0;
+    overflow: visible;
   }
 
   &__brand {
+    @include ds.button-reset;
+
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 6px;
+    padding: 4px;
     border-radius: 8px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
+    flex-shrink: 0;
     transition: background 140ms;
 
     &:hover {
-      background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+      background: var(--color-bg-hover);
     }
   }
 
   &__logo-img {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border-radius: 6px;
     object-fit: contain;
   }
 
-  // logo-text removed (text label hidden, logo only)
+  &__logo-chevron {
+    width: 28px;
+    height: 28px;
+    font-size: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-secondary);
+  }
 
-  // ── User menu ──
+  // User menu
   &__user-menu {
     position: relative;
     flex-shrink: 0;
   }
 
   &__user-btn {
+    @include ds.text-mark;
+
     width: 32px;
     height: 32px;
-    border-radius: 50%;
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
-    background: color-mix(in srgb, var(--color-primary, #016b71) 15%, transparent);
+    border-radius: 8px;
+    border: none;
+    background: var(--color-primary, #016b71);
+    color: #fff;
     cursor: pointer;
     display: grid;
     place-items: center;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    color: var(--color-primary, #016b71);
-    transition: all 140ms;
+    transition: background 140ms ease;
 
     &:hover {
-      background: color-mix(in srgb, var(--color-primary, #016b71) 25%, transparent);
+      background: var(--color-primary-hover, #015a5f);
     }
   }
 
-  // ── Namespace picker ──
+  // Namespace picker
   &__ns-wrap {
-    padding: 12px 12px 6px;
+    flex: 1;
+    min-width: 0;
     position: relative;
-  }
-
-  &__ns-label {
-    padding: 0 2px 7px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--color-text-tertiary, #5a5449);
   }
 
   &__ns-picker {
@@ -96,31 +100,41 @@
   }
 
   &__ns-trigger {
+    @include ds.button-reset;
+
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: 12px;
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
-    background: var(--color-bg-secondary, #faf9f7);
-    cursor: pointer;
-    color: var(--color-text, #1b1916);
+    gap: 8px;
+    padding: 5px 8px 5px 5px;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+    color: var(--color-text);
     transition: all 150ms;
-    font: inherit;
-    font-size: 0.82rem;
-    font-weight: 700;
 
     &:hover {
-      border-color: var(--color-border-light, rgba(0, 0, 0, 0.15));
+      background: var(--color-bg-hover);
+    }
+
+    &--open {
+      border-color: var(--color-primary);
+    }
+
+    &--readonly {
+      cursor: default;
+      pointer-events: none;
     }
   }
 
-  &__ns-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--color-primary, #5aadb5);
+  &__ns-mark {
+    @include ds.surface-mark;
+    @include ds.text-mark;
+
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    font-size: 11px;
     flex-shrink: 0;
   }
 
@@ -130,51 +144,47 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: 0.8rem;
+    font-weight: 600;
   }
 
   &__ns-chevron {
-    color: var(--color-text-secondary, #968f85);
-    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    font-size: 0.7rem;
+    flex-shrink: 0;
   }
 
   &__ns-menu {
+    @include ds.surface-dropdown;
+
     position: absolute;
     left: 0;
     right: 0;
     top: calc(100% + 4px);
-    background: var(--color-bg, #f4f3ef);
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
-    border-radius: 14px;
-    padding: 6px;
     z-index: 100;
-    box-shadow:
-      0 6px 20px rgba(0, 0, 0, 0.09),
-      0 1px 4px rgba(0, 0, 0, 0.05);
   }
 
   &__ns-item {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px;
-    border-radius: 10px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    color: var(--color-text, #1b1916);
-    font: inherit;
-    font-size: 0.8rem;
-    transition: all 130ms;
+    @include ds.menu-item;
 
-    &:hover {
-      background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
-    }
+    gap: 8px;
+    padding: 6px 8px;
 
     &--active {
-      background: color-mix(in srgb, var(--color-primary, #016b71) 12%, transparent);
-      color: var(--color-primary, #016b71);
+      background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+      color: var(--color-primary);
     }
+  }
+
+  &__ns-item-mark {
+    @include ds.surface-mark;
+    @include ds.text-mark;
+
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    font-size: 10px;
+    flex-shrink: 0;
   }
 
   &__ns-item-name {
@@ -185,21 +195,17 @@
     text-overflow: ellipsis;
   }
 
-  &__ns-name-static {
-    display: block;
-    padding: 10px 12px;
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: var(--color-text, #1b1916);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  &__ns-item-check {
+    color: var(--color-primary);
+    font-size: 0.75rem;
+    flex-shrink: 0;
   }
 
-  // ── Case list ──
+  // Case list
   &__cases-scroll {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding-bottom: 16px;
 
     &::-webkit-scrollbar {
@@ -207,8 +213,46 @@
     }
 
     &::-webkit-scrollbar-thumb {
-      background: var(--color-border-light, rgba(255, 255, 255, 0.12));
+      background: var(--color-border);
       border-radius: 999px;
+    }
+  }
+
+  // Compact toggle pill
+  &__compact-toggle {
+    @include ds.button-reset;
+
+    position: absolute;
+    top: 50%;
+    right: 3px;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 40px;
+    border-radius: 20px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    box-shadow: 0 2px 6px var(--color-shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    color: var(--color-text-secondary);
+    transition:
+      color 140ms ease,
+      box-shadow 140ms ease;
+
+    &:hover {
+      color: var(--color-text);
+      box-shadow: 0 3px 10px var(--color-shadow);
+    }
+  }
+
+  &__compact-toggle-icon {
+    font-size: 18px;
+    transition: transform 200ms ease;
+
+    .shell-sidebar__compact-toggle--compact & {
+      transform: rotate(180deg);
     }
   }
 }

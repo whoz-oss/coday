@@ -73,6 +73,16 @@
         >
           {{ isEditMode() ? 'Save changes' : 'Create' }}
         </button>
+        @if (isEditMode()) {
+          <button
+            class="integration-form__btn integration-form__btn--export"
+            type="button"
+            [disabled]="isExporting()"
+            (click)="exportYaml()"
+          >
+            {{ isExporting() ? 'Exporting…' : 'Export as YAML' }}
+          </button>
+        }
         <button class="integration-form__btn" type="button" (click)="cancel()">Cancel</button>
       </div>
     </form>

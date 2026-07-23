@@ -9,6 +9,6 @@
  */
 
 export interface ListByUserInNamespaceRequest {
-  userExternalId: string
   namespaceExternalId: string
+  userExternalId: string
 }

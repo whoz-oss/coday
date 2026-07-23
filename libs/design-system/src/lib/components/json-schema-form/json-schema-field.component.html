@@ -93,6 +93,39 @@
         <button class="ds-field__array-add" type="button" (click)="addObjectItem()">+ Add {{ label }}</button>
       </div>
     }
+    @case ('map') {
+      <div class="ds-field__map">
+        @for (entry of mapEntries(); track entry.uid) {
+          <div class="ds-field__map-row">
+            <input
+              class="ds-field__input ds-field__map-key"
+              type="text"
+              [value]="entry.key"
+              (input)="onMapKeyChange(entry.uid, $event)"
+              placeholder="key"
+              [attr.aria-label]="label + ' key ' + ($index + 1)"
+            />
+            <input
+              class="ds-field__input ds-field__map-value"
+              type="text"
+              [value]="entry.value"
+              (input)="onMapValueChange(entry.uid, $event)"
+              placeholder="value"
+              [attr.aria-label]="label + ' value ' + ($index + 1)"
+            />
+            <button
+              class="ds-field__array-remove"
+              type="button"
+              (click)="removeMapEntry(entry.uid)"
+              [attr.aria-label]="'Remove ' + label + ' entry ' + ($index + 1)"
+            >
+              &times;
+            </button>
+          </div>
+        }
+        <button class="ds-field__array-add" type="button" (click)="addMapEntry()">+ Add entry</button>
+      </div>
+    }
     @case ('nested-object') {
       <div class="ds-field__nested">
         <ds-json-schema-form

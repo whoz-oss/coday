@@ -6,36 +6,13 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
-import io.mockk.coEvery
-import io.mockk.coVerify
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.slot
-import io.mockk.verify
+import io.mockk.*
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
-import io.whozoss.agentos.sdk.caseEvent.CaseEvent
-import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
-import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
-import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
-import io.whozoss.agentos.sdk.caseEvent.MessageContent
-import io.whozoss.agentos.sdk.caseEvent.MessageEvent
-import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
-import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
-import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
-import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
-import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
-import io.whozoss.agentos.sdk.caseEvent.WarnEvent
+import io.whozoss.agentos.sdk.caseEvent.*
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.tool.ConfirmationMode
-import io.whozoss.agentos.sdk.tool.EnrichmentResult
-import io.whozoss.agentos.sdk.tool.IntermediatePhaseDescriptor
-import io.whozoss.agentos.sdk.tool.StandardTool
-import io.whozoss.agentos.sdk.tool.ToolContext
-import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.sdk.tool.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.withContext
@@ -48,7 +25,7 @@ import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import reactor.core.publisher.Flux
 import java.nio.file.Files
-import java.util.UUID
+import java.util.*
 import kotlin.io.path.exists
 import kotlin.io.path.writeText
 
@@ -571,6 +548,78 @@ class AgentAdvancedSpec :
             intentionEvents.last().toolName shouldBe "Answer"
 
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "tool result images are copied onto the emitted ToolResponseEvent" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val images = listOf(
+                MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 791, height = 1024),
+                MessageContent.Image(content = "d29ybGQ=", mimeType = "image/jpeg", width = 791, height = 1024),
+            )
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.chatResponse() } returns chatResponseFlux("The CV shows...")
+            every { mockChatClient.prompt(any<Prompt>()).call().content() } returns "{}"
+
+            val readAsImageTool = mockk<StandardTool<String>>(relaxed = true)
+            every { readAsImageTool.name } returns "FILES__readAsImage"
+            every { readAsImageTool.description } returns "Render an image or PDF file visually"
+            every { readAsImageTool.inputSchema } returns "{}"
+            every { readAsImageTool.paramType } returns String::class.java
+            coEvery { readAsImageTool.executeWithJson(any(), any()) } returns
+                ToolExecutionResult.successWithImages("Rendered PDF cv.pdf: page(s) 1-2 of 2", images)
+
+            val agentId = UUID.randomUUID()
+            val mockGenerator = mockk<AgentIntentionGenerator>()
+            every {
+                mockGenerator.generate(any(), any(), any(), any(), any())
+            } returnsMany
+                listOf(
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Read the CV visually.",
+                        toolName = "FILES__readAsImage",
+                    ),
+                    IntentionGeneratedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentId,
+                        intention = "Answer with what the CV shows.",
+                        toolName = "Answer",
+                    ),
+                )
+
+            val context =
+                AgentAdvancedContext(
+                    chatClient = mockChatClient,
+                    tools = listOf(readAsImageTool),
+                    instructions = null,
+                    agentId = agentId,
+                    confirmationManager = mockk(relaxed = true),
+                )
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "VisionAgent",
+                    context = context,
+                    intentionGenerator = mockGenerator,
+                    objectMapper = testObjectMapper,
+                    maxIterations = 5,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
+                )
+
+            val events = agent.run(makeInitialEvents(namespaceId, caseId)).toList()
+
+            val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
+            toolResponse.success shouldBe true
+            toolResponse.images shouldBe images
+            toolResponse.output shouldBe MessageContent.Text("Rendered PDF cv.pdf: page(s) 1-2 of 2")
         }
 
         // -------------------------------------------------------------------------
@@ -2992,38 +3041,41 @@ class AgentAdvancedSpec :
             val sameArgs = """{"profile":"A"}"""
 
             // Previous turn: user message + REPETITION_WINDOW calls to the same tool
-            val previousUserMsg = MessageEvent(
-                namespaceId = namespaceId,
-                caseId = caseId,
-                actor = Actor("user1", "User", ActorRole.USER),
-                content = listOf(MessageContent.Text("first turn")),
-            )
-            val previousTurnEvents = (1..AgentAdvanced.REPETITION_WINDOW).flatMap { i ->
-                listOf(
-                    ToolRequestEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        toolRequestId = "prev-req-$i",
-                        toolName = "SelectActiveProfile",
-                        args = sameArgs,
-                    ),
-                    ToolResponseEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        toolRequestId = "prev-req-$i",
-                        toolName = "SelectActiveProfile",
-                        output = MessageContent.Text("profile A selected"),
-                    ),
+            val previousUserMsg =
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User", ActorRole.USER),
+                    content = listOf(MessageContent.Text("first turn")),
                 )
-            }
+            val previousTurnEvents =
+                (1..AgentAdvanced.REPETITION_WINDOW).flatMap { i ->
+                    listOf(
+                        ToolRequestEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "prev-req-$i",
+                            toolName = "SelectActiveProfile",
+                            args = sameArgs,
+                        ),
+                        ToolResponseEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            toolRequestId = "prev-req-$i",
+                            toolName = "SelectActiveProfile",
+                            output = MessageContent.Text("profile A selected"),
+                        ),
+                    )
+                }
 
             // New turn: new user message, no tool calls yet
-            val newUserMsg = MessageEvent(
-                namespaceId = namespaceId,
-                caseId = caseId,
-                actor = Actor("user1", "User", ActorRole.USER),
-                content = listOf(MessageContent.Text("second turn")),
-            )
+            val newUserMsg =
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user1", "User", ActorRole.USER),
+                    content = listOf(MessageContent.Text("second turn")),
+                )
 
             val events = listOf(previousUserMsg) + previousTurnEvents + listOf(newUserMsg)
 

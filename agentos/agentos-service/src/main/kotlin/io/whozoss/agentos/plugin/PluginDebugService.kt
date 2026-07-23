@@ -1,6 +1,5 @@
 package io.whozoss.agentos.plugin
 
-import io.whozoss.agentos.sdk.agent.AgentPlugin
 import mu.KLogging
 import org.pf4j.PluginManager
 import org.springframework.stereotype.Service
@@ -55,10 +54,6 @@ class PluginDebugService(
                                 logger.info("    Interfaces: ${clazz.interfaces.joinToString { it.name }}")
                                 logger.info("    Annotations: ${clazz.annotations.joinToString { it.annotationClass.simpleName ?: "?" }}")
 
-                                // Check if it implements AgentPlugin
-                                val implementsAgentPlugin = clazz.interfaces.any { it.name.contains("AgentPlugin") }
-                                logger.info("    Implements AgentPlugin: $implementsAgentPlugin")
-
                                 // Check for @Extension annotation
                                 val hasExtension = clazz.annotations.any { it.annotationClass.simpleName == "Extension" }
                                 logger.info("    Has @Extension: $hasExtension")
@@ -85,10 +80,6 @@ class PluginDebugService(
 
         // Check what PF4J sees
         logger.info("PluginManager type: ${pluginManager.javaClass.name}")
-
-        // Try to get extensions
-        val extensions = pluginManager.getExtensions(AgentPlugin::class.java, pluginId)
-        logger.info("Extensions found by PF4J: ${extensions.size}")
 
         logger.info("=== End Debug ===")
     }

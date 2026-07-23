@@ -51,6 +51,37 @@ open class Neo4jUserGroupRepository(
             paramValue = id.toString(),
         ).one().orElse(null)
 
+    // neo4jClient + mappedBy: SDN cannot project a multi-column RETURN (here incl. the computed
+    // `role` from collect(type(r))) onto a non-entity DTO via @Query — it rejects the multi-column
+    // result, the same limitation documented on CaseNodeNeo4jRepository.findDirectRelations. Mirrors
+    // the two sibling projections below (querySearchResults, findGroupsByUserExternalIds).
+    override fun findMembers(userGroupId: UUID): List<UserGroupMember> =
+        neo4jClient
+            .query(
+                $$"""
+                    MATCH (u:User)-[r:MEMBER|ADMIN]->(g:UserGroup {id: $userGroupId})
+                    WHERE NOT COALESCE(u.removed, false) AND NOT COALESCE(g.removed, false)
+                    WITH u, collect(type(r)) AS rels
+                    RETURN u.id AS userId, u.externalId AS externalId, u.email AS email,
+                           u.firstname AS firstname, u.lastname AS lastname,
+                           CASE WHEN 'ADMIN' IN rels THEN 'ADMIN' ELSE 'MEMBER' END AS role
+                    ORDER BY u.externalId ASC
+                """.trimIndent(),
+            ).bind(userGroupId.toString())
+            .to("userGroupId")
+            .fetchAs(UserGroupMember::class.java)
+            .mappedBy { _, record ->
+                UserGroupMember(
+                    userId = UUID.fromString(record["userId"].asString()),
+                    externalId = record["externalId"].asString(),
+                    role = record["role"].asString(),
+                    email = record["email"].takeUnless { it.isNull }?.asString(),
+                    firstname = record["firstname"].takeUnless { it.isNull }?.asString(),
+                    lastname = record["lastname"].takeUnless { it.isNull }?.asString(),
+                )
+            }.all()
+            .toList()
+
     private fun querySearchResults(
         whereClause: String,
         paramName: String,
@@ -109,6 +140,8 @@ open class Neo4jUserGroupRepository(
 
     /**
      * Returns groups for the given user external IDs, optionally scoped to a namespace.
+     * Both `[:MEMBER]` and `[:ADMIN]` links count as membership, so a group admin is still
+     * listed among their own groups.
      *
      * When [namespaceId] is null, groups from all namespaces are returned.
      * When [namespaceId] is provided, the Cypher query adds an extra predicate
@@ -128,7 +161,7 @@ open class Neo4jUserGroupRepository(
             namespaceClause = ""
         }
         val query = $$"""
-            MATCH (u:User)-[:MEMBER]->(g:UserGroup)
+            MATCH (u:User)-[:MEMBER|ADMIN]->(g:UserGroup)
             WHERE u.externalId IN $externalIds
               AND NOT COALESCE(g.removed, false)
               AND NOT COALESCE(u.removed, false)

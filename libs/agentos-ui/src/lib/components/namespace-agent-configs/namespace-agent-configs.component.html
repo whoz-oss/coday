@@ -15,6 +15,11 @@
 <!-- Item template: renders AgentConfigItemComponent for each entity-list card slot -->
 <ng-template #agentConfigItemTpl let-item>
   @if (resolveConfig(item.id); as config) {
-    <agentos-agent-config-item [config]="config" [namespaceId]="namespaceId" (deleteRequested)="deleteConfig($event)" />
+    <agentos-agent-config-item
+      [config]="config"
+      [namespaceId]="namespaceId"
+      [readOnly]="isPlatformConfig(item.id)"
+      (deleteRequested)="deleteConfig($event)"
+    />
   }
 </ng-template>

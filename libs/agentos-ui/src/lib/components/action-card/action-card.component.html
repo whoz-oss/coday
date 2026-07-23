@@ -1,0 +1,45 @@
+@if (clickable()) {
+  <button class="ac ac--clickable" type="button" (click)="nameClicked.emit()">
+    <ng-container *ngTemplateOutlet="cardContent" />
+  </button>
+} @else {
+  <div class="ac">
+    <ng-container *ngTemplateOutlet="cardContent" />
+  </div>
+}
+
+<ng-template #cardContent>
+  <!-- ── Header ── -->
+  <div class="ac__header">
+    <div class="ac__id">
+      @if (logo()) {
+        <div class="ac__mark ac__mark--logo" aria-hidden="true">
+          <img [src]="logo()" [alt]="name()" class="ac__logo-img" />
+        </div>
+      } @else {
+        <div class="ac__mark" [class.ac__mark--emoji]="markIsEmoji()" aria-hidden="true">{{ resolvedMark }}</div>
+      }
+      <div class="ac__meta">
+        @if (clickable()) {
+          <span class="ac__name">{{ name() }}</span>
+        } @else {
+          <button class="ac__name" type="button" (click)="nameClicked.emit()">{{ name() }}</button>
+        }
+        @if (description()) {
+          <p class="ac__description">{{ description() }}</p>
+        }
+      </div>
+    </div>
+
+    @if (hasMenu) {
+      <ds-kebab-menu [items]="menuItems()" (itemSelected)="menuAction.emit($event)" />
+    }
+  </div>
+
+  <!-- ── Chips ── -->
+  @if (hasChips) {
+    <div class="ac__chips">
+      <ng-content select="[agentosCardChips]" />
+    </div>
+  }
+</ng-template>

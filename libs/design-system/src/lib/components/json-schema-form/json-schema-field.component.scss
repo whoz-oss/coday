@@ -146,6 +146,28 @@
     }
   }
 
+  &__map {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  &__map-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  &__map-key {
+    flex: 0 0 40%;
+    min-width: 0;
+  }
+
+  &__map-value {
+    flex: 1;
+    min-width: 0;
+  }
+
   &__nested {
     border: 1px solid var(--color-border-light, #e5e5ea);
     border-radius: 8px;

@@ -4,8 +4,10 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.user.UserService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
@@ -45,6 +47,8 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var namespaceService: NamespaceService
     @Autowired lateinit var userService: UserService
+    @Autowired lateinit var userRepository: UserRepository
+    @Autowired lateinit var permissionNodeRepository: PermissionNodeNeo4jRepository
 
     init {
 
@@ -229,6 +233,92 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
         // -------------------------------------------------------------------------
         // DELETE /api/cases/{id} returns 404 on a second attempt (already soft-deleted)
         // -------------------------------------------------------------------------
+
+        // -------------------------------------------------------------------------
+        // PUT /api/cases/{id}/star and DELETE /api/cases/{id}/star
+        // -------------------------------------------------------------------------
+
+        "PUT /api/cases/{id}/star returns 200 when the caller has a direct permission edge" {
+            // POST /api/cases auto-grants [:ADMIN] on the case via permissionService.grantPermission
+            // (PermissionServiceImpl is active in embedded-neo4j profile). No manual setup needed.
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "star-ok-ns"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1]
+
+            // starCase is @ResponseStatus(OK) — returns 200, not 204.
+            mockMvc.perform(put("/api/cases/$caseId/star"))
+                .andExpect(status().isOk)
+        }
+
+        "PUT /api/cases/{id}/star returns 409 when the caller has no direct permission edge" {
+            // POST /api/cases auto-grants [:ADMIN] on the new case via permissionService.grantPermission.
+            // To test the 409 path we must revoke that edge after creation.
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "star-409-ns"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1]
+
+            // Revoke the auto-granted [:ADMIN] edge so mergeStarred's MATCH finds nothing → returns 0 → 409.
+            val caller = userService.getCurrentUser()
+            permissionNodeRepository.deleteAdminPermission(
+                userId = caller.id.toString(),
+                entityId = caseId,
+                entityLabel = "Case",
+            )
+
+            mockMvc.perform(put("/api/cases/$caseId/star"))
+                .andExpect(status().isConflict)
+        }
+
+        "DELETE /api/cases/{id}/star returns 204 when the caller has a direct permission edge" {
+            // POST auto-grants [:ADMIN]; star (200) then unstar (204).
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "unstar-ok-ns"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1]
+
+            mockMvc.perform(put("/api/cases/$caseId/star")).andExpect(status().isOk)
+            mockMvc.perform(delete("/api/cases/$caseId/star")).andExpect(status().isNoContent)
+        }
+
+        "DELETE /api/cases/{id}/star returns 409 when the caller has no direct permission edge" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "unstar-409-ns"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1]
+
+            // Revoke the auto-granted [:ADMIN] edge so deleteStarred's MATCH finds nothing → returns 0 → 409.
+            val caller = userService.getCurrentUser()
+            permissionNodeRepository.deleteAdminPermission(
+                userId = caller.id.toString(),
+                entityId = caseId,
+                entityLabel = "Case",
+            )
+
+            mockMvc.perform(delete("/api/cases/$caseId/star"))
+                .andExpect(status().isConflict)
+        }
 
         "DELETE /api/cases/{id} returns 404 on a second attempt (already soft-deleted)" {
             val ns = namespaceService.create(

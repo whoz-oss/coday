@@ -336,6 +336,77 @@ class Neo4jPermissionRepository(
         }
     }
 
+    override fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean =
+        try {
+            permissionNodeRepository.promoteMemberToAdmin(
+                userId = userId,
+                entityId = entityId,
+                entityLabel = entityType.label,
+            ) > 0
+        } catch (e: Exception) {
+            logger.error(e) { "Error promoting MEMBER to ADMIN for user=$userId on $entityType:$entityId" }
+            throw e
+        }
+
+    override fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean =
+        try {
+            permissionNodeRepository.demoteAdminToMember(
+                userId = userId,
+                entityId = entityId,
+                entityLabel = entityType.label,
+            ) > 0
+        } catch (e: Exception) {
+            logger.error(e) { "Error demoting ADMIN to MEMBER for user=$userId on $entityType:$entityId" }
+            throw e
+        }
+
+    override fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String> {
+        if (entries.isEmpty()) return emptyList()
+        val label = entityType.label
+        try {
+            val userIdsByRelation = entries.groupBy({ (_, relation) -> relation }, { (userId, _) -> userId })
+            val appliedUserIds =
+                userIdsByRelation
+                    .flatMap { (relation, userIds) ->
+                        when (relation) {
+                            PermissionRelation.ADMIN ->
+                                permissionNodeRepository.batchSetAdminRole(
+                                    userIds = userIds,
+                                    entityId = entityId,
+                                    entityLabel = label,
+                                )
+                            PermissionRelation.MEMBER ->
+                                permissionNodeRepository.batchSetMemberRole(
+                                    userIds = userIds,
+                                    entityId = entityId,
+                                    entityLabel = label,
+                                )
+                            null ->
+                                permissionNodeRepository.batchRevoke(
+                                    userIds = userIds,
+                                    entityId = entityId,
+                                    entityLabel = label,
+                                )
+                        }
+                    }.distinct()
+
+            logger.info {
+                val sizes = userIdsByRelation.mapValues { (_, userIds) -> userIds.size }
+                "applyShareBatch on $entityType:$entityId — " +
+                    "admin=${sizes[PermissionRelation.ADMIN] ?: 0}, member=${sizes[PermissionRelation.MEMBER] ?: 0}, " +
+                    "revoke=${sizes[null] ?: 0}, applied=${appliedUserIds.size}"
+            }
+            return appliedUserIds
+        } catch (e: Exception) {
+            logger.error(e) { "Error applying share batch on $entityType:$entityId" }
+            throw e
+        }
+    }
+
     /**
      * Checks if the entity type is a child of Namespace in the hierarchy.
      * These entities support transitive permissions through their parent namespace.

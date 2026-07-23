@@ -123,4 +123,43 @@ interface PermissionRepository {
         ids: Collection<String>,
         relation: PermissionRelation,
     ): Set<String>
+
+    /**
+     * Atomically promotes a [:MEMBER] relation to [:ADMIN].
+     *
+     * The [:STARRED] edge (if any) is a separate relationship and survives untouched —
+     * no property-preservation logic is needed.
+     *
+     * @return true if a [:MEMBER] edge was found and promoted; false if the user had
+     *   no MEMBER relation on the entity (no-op: no [:ADMIN] edge is created).
+     */
+    fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean
+
+    /**
+     * Atomically demotes a [:ADMIN] relation to [:MEMBER].
+     *
+     * The [:STARRED] edge (if any) is a separate relationship and survives untouched —
+     * no property-preservation logic is needed.
+     *
+     * @return true if a [:ADMIN] edge was found and demoted; false if the user had
+     *   no ADMIN relation on the entity (no-op: no [:MEMBER] edge is created).
+     */
+    fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean
+
+    /**
+     * Batch-apply share entries on an entity. Each entry is a (userId, targetRole) pair:
+     * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER,
+     *   or create directly)
+     * - targetRole = [PermissionRelation.MEMBER] → ensure user has MEMBER (demote from ADMIN,
+     *   or create directly)
+     * - targetRole = null → revoke all relations (ADMIN and MEMBER)
+     *
+     * Non-existent User nodes are silently skipped by the Cypher MATCH.
+     * Returns the list of userIds for which at least one operation was applied.
+     */
+    fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String>
 }

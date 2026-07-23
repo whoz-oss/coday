@@ -2,9 +2,10 @@ import { AsyncPipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
-import { Prompt, PromptControllerService } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
+import { Prompt } from '@whoz-oss/agentos-api-client'
+import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptItemComponent } from '../prompt-item/prompt-item.component'
 
 /**
@@ -18,7 +19,7 @@ import { PromptItemComponent } from '../prompt-item/prompt-item.component'
  */
 @Component({
   selector: 'agentos-platform-prompts',
-  imports: [AsyncPipe, EntityListComponent, PromptItemComponent],
+  imports: [AsyncPipe, EntityListComponent, PromptItemComponent, IconButtonComponent],
   templateUrl: './platform-prompts.component.html',
   styleUrl: './platform-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -26,12 +27,12 @@ import { PromptItemComponent } from '../prompt-item/prompt-item.component'
 export class PlatformPromptsComponent {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly promptController = inject(PromptControllerService)
+  private readonly promptState = inject(PromptStateService)
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   /** Raw platform prompts, kept for delete lookups. */
-  private readonly prompts$ = this.refresh$.pipe(switchMap(() => this.promptController.listPlatformPrompt()))
+  private readonly prompts$ = this.refresh$.pipe(switchMap(() => this.promptState.listPlatform()))
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly promptItems$ = this.prompts$.pipe(
@@ -64,8 +65,8 @@ export class PlatformPromptsComponent {
   }
 
   protected deletePrompt(prompt: Prompt): void {
-    this.promptController
-      .deletePrompt(prompt.id ?? '')
+    this.promptState
+      .delete(prompt.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }

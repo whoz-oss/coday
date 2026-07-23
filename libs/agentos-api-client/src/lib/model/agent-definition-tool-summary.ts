@@ -9,7 +9,7 @@
  */
 
 export interface AgentDefinitionToolSummary {
-  name: string
   description: string
   inputSchema: string
+  name: string
 }

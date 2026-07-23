@@ -20,4 +20,13 @@ export interface QuestionEvent {
   agentName: string
   options?: Array<string>
   question: string
+  questionType: QuestionEventQuestionTypeEnum
+  userId?: string
+}
+
+export enum QuestionEventQuestionTypeEnum {
+  FREE_TEXT = 'FREE_TEXT',
+  SINGLE_CHOICE = 'SINGLE_CHOICE',
+  OPEN_CHOICE = 'OPEN_CHOICE',
+  OAUTH_AUTHORIZE = 'OAUTH_AUTHORIZE',
 }

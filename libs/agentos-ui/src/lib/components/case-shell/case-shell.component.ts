@@ -1,17 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core'
-import { toSignal } from '@angular/core/rxjs-interop'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core'
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  Case,
-  CaseControllerService,
-  NamespaceControllerService,
-  NamespaceListItem,
-} from '@whoz-oss/agentos-api-client'
-import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
+import { debounceTime, map, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
 import { THEME_PORT, ThemeMode } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
+import { CaseStateService } from '../../services/case-state.service'
+import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
 import { ShellTopbarMobileComponent } from './shell-topbar-mobile/shell-topbar-mobile.component'
 import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/shell-case-switcher-mobile.component'
@@ -48,10 +45,12 @@ import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/s
 export class CaseShellComponent {
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
-  private readonly caseController = inject(CaseControllerService)
   private readonly namespaceController = inject(NamespaceControllerService)
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
+  private readonly caseState = inject(CaseStateService)
+  private readonly namespaceState = inject(NamespaceStateService)
+  private readonly destroyRef = inject(DestroyRef)
 
   // ---------------------------------------------------------------------------
   // User
@@ -82,14 +81,17 @@ export class CaseShellComponent {
   // UI state
   // ---------------------------------------------------------------------------
 
-  /** Sidebar width in pixels — adjustable via drag handle */
-  protected readonly sidebarWidth = signal(300)
+  /** Sidebar width in pixels — adjustable via drag handle, persisted in localStorage */
+  protected readonly sidebarWidth = signal(Number(localStorage.getItem('agentos.sidebar.width')) || 300)
 
   /** Whether the user context menu is open */
   protected readonly menuOpen = signal(false)
 
   /** Whether the namespace dropdown is open */
   protected readonly nsMenuOpen = signal(false)
+
+  /** Whether the desktop sidebar is expanded — persisted in localStorage */
+  protected readonly sidebarOpen = signal(localStorage.getItem('agentos.sidebar.open') !== 'false')
 
   /** Whether the mobile case switcher is open */
   protected readonly mobileSwitcherOpen = signal(false)
@@ -116,16 +118,8 @@ export class CaseShellComponent {
   // Data
   // ---------------------------------------------------------------------------
 
-  private readonly refresh$ = new BehaviorSubject<void>(undefined)
-
-  private readonly cases$ = this.namespaceId$.pipe(
-    switchMap((nsId) => {
-      if (!nsId) return [[] as Case[]]
-      return this.refresh$.pipe(switchMap(() => this.caseController.listByParentCase(nsId)))
-    })
-  )
-
-  protected readonly cases = toSignal(this.cases$, { initialValue: [] as Case[] })
+  /** Cases from the state service (loaded via /mine — direct ADMIN/MEMBER edge only). */
+  protected readonly cases = this.caseState.cases
 
   protected readonly namespaces = toSignal(this.namespaceController.listAllNamespace(), {
     initialValue: [] as NamespaceListItem[],
@@ -134,6 +128,17 @@ export class CaseShellComponent {
   protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
 
   constructor() {
+    // Load the current user eagerly so isAdmin() and userInitials() are available
+    // as soon as the shell renders, without waiting for a /me navigation.
+    if (!this.userState.currentUser()) {
+      this.userState.loadMe().pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
+    }
+
+    // Persist sidebar width to localStorage, debounced to avoid writing on every drag pixel.
+    toObservable(this.sidebarWidth)
+      .pipe(skip(1), debounceTime(300), takeUntilDestroyed(this.destroyRef))
+      .subscribe((width) => localStorage.setItem('agentos.sidebar.width', String(width)))
+
     // Sync selectedNamespace whenever namespaces load or the ?ns param changes.
     // When no ?ns is present, auto-select the first namespace and update the URL.
     effect(() => {
@@ -144,11 +149,22 @@ export class CaseShellComponent {
       if (nsId) {
         const found = nsList.find((ns) => ns.id === nsId)
         this.selectedNamespace.set(found ?? nsList[0] ?? null)
+        // Sync into the shared service so other parts of the app (e.g. ShellTopbarComponent)
+        // can read the current namespace without needing the query param.
+        this.namespaceState.selectNamespace(nsId)
       } else {
         const first = nsList[0]
         if (first?.id) {
           this.router.navigate(['/agentos/home'], { queryParams: { ns: first.id }, replaceUrl: true })
         }
+      }
+    })
+
+    // Reload the case list whenever the namespace changes.
+    effect(() => {
+      const nsId = this.namespaceId()
+      if (nsId) {
+        this.caseState.loadCases(nsId)
       }
     })
   }
@@ -190,12 +206,57 @@ export class CaseShellComponent {
     })
   }
 
+  protected onDeleteRequested(caseId: string): void {
+    const target = this.cases().find((c) => c.id === caseId)
+    const label = target?.title ?? caseId
+    if (!confirm(`Delete "${label}"?`)) {
+      return
+    }
+    this.caseState
+      .deleteCase(caseId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          if (caseId === this.activeCaseId()) {
+            this.router.navigate(['/agentos/home'], { queryParams: { ns: this.namespaceId() } })
+          }
+        },
+        error: (err) => {
+          console.error(`[CaseShell] Failed to delete case ${caseId}:`, err)
+          alert('Could not delete the case. Please try again.')
+        },
+      })
+  }
+
+  protected onStarToggled(event: { id: string; starred: boolean }): void {
+    this.caseState
+      .setStarred(event.id, event.starred)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => {
+          console.error(`[CaseShell] Failed to update star for case ${event.id}:`, err)
+          alert('Could not update the favorite. Please try again.')
+        },
+      })
+  }
+
   // ---------------------------------------------------------------------------
   // Navigation
   // ---------------------------------------------------------------------------
 
   protected navigateHome(): void {
-    this.router.navigate(['/agentos/home'])
+    const nsId = this.namespaceId()
+    this.router.navigate(['/agentos/home'], nsId ? { queryParams: { ns: nsId } } : {})
+  }
+
+  protected collapseSidebar(): void {
+    this.sidebarOpen.set(false)
+    localStorage.setItem('agentos.sidebar.open', 'false')
+  }
+
+  protected expandSidebar(): void {
+    this.sidebarOpen.set(true)
+    localStorage.setItem('agentos.sidebar.open', 'true')
   }
 
   protected onMenuNavigate(path: string): void {
@@ -273,14 +334,5 @@ export class CaseShellComponent {
 
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-  }
-
-  // ---------------------------------------------------------------------------
-  // Public API
-  // ---------------------------------------------------------------------------
-
-  /** Called after a case is created to refresh the sidebar list. */
-  refreshCases(): void {
-    this.refresh$.next()
   }
 }

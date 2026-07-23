@@ -7,7 +7,6 @@
 .case-shell {
   display: flex;
   height: 100%;
-  overflow: hidden;
 
   // ── Resize handle ──
   &__resize-handle {
@@ -62,3 +61,36 @@
 }
 
 // La sidebar gère sa propre visibilité via :host dans son propre scss
+
+// ── Sidebar expand button (visible only when sidebar is collapsed) ──
+.case-shell__expand-btn {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 200;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-text-secondary, #968f85);
+  transition: background 140ms;
+
+  .material-icons {
+    font-size: 22px;
+  }
+
+  &:hover {
+    background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+    color: var(--color-text, #1b1916);
+  }
+
+  // Hidden on mobile — the mobile topbar handles navigation there
+  @media (max-width: 900px) {
+    display: none;
+  }
+}

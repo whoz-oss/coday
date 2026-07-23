@@ -3,6 +3,14 @@ import { FormArray, FormControl, ReactiveFormsModule } from '@angular/forms'
 import { JsonSchemaFormComponent } from './json-schema-form.component'
 import { JsonSchemaObject } from './json-schema.model'
 
+/** A single row in a map (key-value) field. */
+interface MapEntry {
+  /** Stable uid for @for tracking — never changes after creation. */
+  uid: number
+  key: string
+  value: string
+}
+
 /** Wrapper giving each array-of-objects item a stable identity for @for tracking. */
 interface ObjectItem {
   /** Stable unique id — never changes after creation. Used for @for track. */
@@ -69,6 +77,17 @@ export class JsonSchemaFieldComponent implements OnInit {
   protected readonly itemArray = new FormArray<FormControl<unknown>>([])
 
   // ---------------------------------------------------------------------------
+  // Map (key-value) state
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Internal row list for the 'map' field type.
+   * Each entry has a stable uid (for @for tracking), a key string and a value string.
+   * The parent FormControl is kept in sync as a plain Record<string, string>.
+   */
+  protected readonly mapEntries = signal<MapEntry[]>([])
+
+  // ---------------------------------------------------------------------------
   // Array-of-objects state
   // ---------------------------------------------------------------------------
 
@@ -96,12 +115,63 @@ export class JsonSchemaFieldComponent implements OnInit {
       this.initScalarArray()
     } else if (this.fieldType === 'array-object') {
       this.initObjectArray()
+    } else if (this.fieldType === 'map') {
+      this.initMapEntries()
     } else if (this.fieldType === 'nested-object') {
       const v = this.control().value
       this.nestedInitialValue.set(
         v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
       )
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Map (key-value) helpers
+  // ---------------------------------------------------------------------------
+
+  private initMapEntries(): void {
+    const existing = this.control().value
+    const entries: MapEntry[] =
+      existing && typeof existing === 'object' && !Array.isArray(existing)
+        ? Object.entries(existing as Record<string, unknown>).map(([k, v]) => ({
+            uid: nextUid++,
+            key: k,
+            value: String(v ?? ''),
+          }))
+        : []
+    this.mapEntries.set(entries)
+  }
+
+  protected addMapEntry(): void {
+    this.mapEntries.update((entries) => [...entries, { uid: nextUid++, key: '', value: '' }])
+    // No sync needed — an empty key is excluded from the emitted object.
+  }
+
+  protected removeMapEntry(uid: number): void {
+    this.mapEntries.update((entries) => entries.filter((e) => e.uid !== uid))
+    this.syncMapToControl()
+  }
+
+  protected onMapKeyChange(uid: number, event: Event): void {
+    const key = (event.target as HTMLInputElement).value
+    this.mapEntries.update((entries) => entries.map((e) => (e.uid === uid ? { ...e, key } : e)))
+    this.syncMapToControl()
+  }
+
+  protected onMapValueChange(uid: number, event: Event): void {
+    const value = (event.target as HTMLInputElement).value
+    this.mapEntries.update((entries) => entries.map((e) => (e.uid === uid ? { ...e, value } : e)))
+    this.syncMapToControl()
+  }
+
+  private syncMapToControl(): void {
+    const obj: Record<string, string> = {}
+    for (const entry of this.mapEntries()) {
+      if (entry.key !== '') {
+        obj[entry.key] = entry.value
+      }
+    }
+    this.control().setValue(obj, { emitEvent: true })
   }
 
   // ---------------------------------------------------------------------------
@@ -195,6 +265,7 @@ export class JsonSchemaFieldComponent implements OnInit {
     | 'nested-object'
     | 'array-scalar'
     | 'array-object'
+    | 'map'
     | 'textarea' {
     const schema = this.fieldSchema()
     if (schema.enum?.length) return 'enum'
@@ -215,7 +286,9 @@ export class JsonSchemaFieldComponent implements OnInit {
         return itemType === 'object' && itemsSchema?.properties ? 'array-object' : 'array-scalar'
       }
       case 'object':
-        return schema.properties ? 'nested-object' : 'textarea'
+        if (schema.properties) return 'nested-object'
+        if (schema.additionalProperties && schema.additionalProperties !== false) return 'map'
+        return 'textarea'
       default:
         return 'text'
     }

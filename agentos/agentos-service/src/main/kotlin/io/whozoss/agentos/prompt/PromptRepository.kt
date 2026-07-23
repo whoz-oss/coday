@@ -34,4 +34,17 @@ interface PromptRepository : EntityRepository<Prompt, UUID> {
      * Returned in name-ascending order; callers are responsible for priority folding.
      */
     fun findEffective(namespaceId: UUID, userId: UUID): List<Prompt>
+
+    /**
+     * Find all non-removed prompts at an exact scope level (no merge, no inheritance).
+     * Scope is determined by the (namespaceId?, userId?) combination.
+     * [agentConfigIds] is an optional filter; null or empty means no filter.
+     */
+    fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<Prompt>
+
+    /**
+     * Soft-delete all non-removed prompts linked to the given agentConfigId.
+     * Called on AgentConfig soft-delete for cascade.
+     */
+    fun softDeleteByAgentConfigId(agentConfigId: UUID)
 }

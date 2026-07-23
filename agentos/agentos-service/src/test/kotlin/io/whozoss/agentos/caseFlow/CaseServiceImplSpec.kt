@@ -20,6 +20,8 @@ import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.prompt.Prompt
+import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -182,6 +184,7 @@ class CaseServiceImplSpec :
         val noOpCaseNamingService: CaseNamingService = mockk(relaxed = true)
 
         val permissionService: PermissionService = mockk(relaxed = true)
+        val promptService: PromptService = mockk(relaxed = true)
 
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
         fun buildService(
@@ -220,6 +223,7 @@ class CaseServiceImplSpec :
                 namespaceService,
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
                 permissionService = permissionService,
+                promptService = promptService,
                 caseNamingService = noOpCaseNamingService,
             )
         }
@@ -361,6 +365,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -585,6 +590,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -684,6 +690,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -756,6 +763,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -802,6 +810,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -872,6 +881,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -940,6 +950,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1046,6 +1057,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1144,6 +1156,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1432,6 +1445,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val parentCase = service.create(Case(namespaceId = namespaceId))
@@ -1566,6 +1580,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1656,6 +1671,177 @@ class CaseServiceImplSpec :
         // Rehydration: crash recovery from persisted AgentRunningEvent
         // -------------------------------------------------------------------------
 
+        // -------------------------------------------------------------------------
+        // Multi-line prompt resolution
+        // -------------------------------------------------------------------------
+
+        "multi-command prompt resolution executes each command as a separate sequential agent turn" {
+            // Override the default promptService mock to return a real prompt with 3 content lines
+            val multiPromptService = mockk<PromptService>(relaxed = true) {
+                every { findEffective(any(), any()) } returns listOf(
+                    Prompt(
+                        metadata = EntityMetadata(),
+                        name = "multi-prompt",
+                        content = listOf("resolved-1", "resolved-2", "resolved-3"),
+                    ),
+                )
+            }
+
+            var runCallCount = 0
+            val countingAgent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = agentId)
+                every { name } returns agentName
+                every { id } returns agentId
+                every { llmProvider } returns "test-provider"
+                every { llmModel } returns "test-model"
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    runCallCount++
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = agentId,
+                                agentName = agentName,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns countingAgent
+            }
+            val userService = mockk<UserService> {
+                every { findById(userId) } returns activeUser
+                every { getById(userId) } returns activeUser
+            }
+            val service = CaseServiceImpl(
+                agentService,
+                allowAllAgentConfigService,
+                AgentConfigProperties(),
+                InMemoryCaseRepository(),
+                CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                userService,
+                namespaceService,
+                caseConfig = CaseConfigProperties(),
+                permissionService = permissionService,
+                promptService = multiPromptService,
+                caseNamingService = noOpCaseNamingService,
+            )
+
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val idleCount = java.util.concurrent.atomic.AtomicInteger(0)
+            val awaiter = scope.launch {
+                withTimeout(8_000) {
+                    runtime.events
+                        .filterIsInstance<CaseStatusEvent>()
+                        .first { event ->
+                            when {
+                                event.status == CaseStatus.ERROR -> true
+                                event.status == CaseStatus.IDLE -> idleCount.incrementAndGet() >= 3
+                                else -> false
+                            }
+                        }
+                }
+            }
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("/multi-prompt")),
+            )
+            awaiter.join()
+
+            runCallCount shouldBe 3
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+        }
+
+        // -------------------------------------------------------------------------
+        // Prompt resolution failure: case must still reach IDLE
+        // -------------------------------------------------------------------------
+
+        "PromptResolutionException emits WarnEvent and case reaches IDLE" {
+            // Regression test for the missing scope.launch { runtime.run() } in the
+            // PromptResolutionException catch block.
+            //
+            // Before the fix, addMessage() caught the exception, called addUserMessage()
+            // (which stored MessageEvent + AgentSelectedEvent), emitted a WarnEvent,
+            // then returned without launching run(). The runtime had a pending
+            // AgentSelectedEvent in its history but no one ever called run(), so the
+            // case stayed in PENDING status forever — it never transitioned to IDLE.
+            //
+            // After the fix, run() is launched even when prompt resolution fails,
+            // and the runtime processes the AgentSelectedEvent normally.
+
+            val throwingPromptService = mockk<PromptService>(relaxed = true) {
+                every { findEffective(any(), any()) } throws
+                    io.whozoss.agentos.exception.PromptResolutionException("cycle detected")
+            }
+
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
+            }
+            val userService = mockk<UserService> {
+                every { findById(userId) } returns activeUser
+                every { getById(userId) } returns activeUser
+            }
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = CaseServiceImpl(
+                agentService,
+                allowAllAgentConfigService,
+                AgentConfigProperties(),
+                InMemoryCaseRepository(),
+                caseEventService,
+                userService,
+                namespaceService,
+                caseConfig = CaseConfigProperties(),
+                permissionService = permissionService,
+                promptService = throwingPromptService,
+                caseNamingService = noOpCaseNamingService,
+            )
+
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("/some-prompt")),
+            )
+            awaiter.join()
+
+            // The case must reach IDLE — not stay blocked in PENDING
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+            // A WarnEvent must have been persisted describing the resolution failure
+            val persistedEvents = caseEventService.findByParent(case.id)
+            persistedEvents.filterIsInstance<WarnEvent>() shouldHaveAtLeastSize 1
+            persistedEvents
+                .filterIsInstance<WarnEvent>()
+                .any { it.message.contains("Prompt resolution failed") } shouldBe true
+        }
+
         "rehydrated case with AgentRunningEvent as last event runs agent exactly once and reaches IDLE" {
             // Regression: when a case is rehydrated from persistence after a crash,
             // the last persisted event may be an AgentRunningEvent (emitted by runAgent
@@ -1719,6 +1905,7 @@ class CaseServiceImplSpec :
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
+                    promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                 )
 

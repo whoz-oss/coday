@@ -9,22 +9,19 @@
  */
 
 export interface AgentConfig {
-  id?: string
-  namespaceId?: string
-  name: string
-  description?: string
-  instructions?: string
-  modelName?: string
-  integrations?: { [key: string]: Array<string> }
   advancedExecution?: boolean
-  externalMetadata?: { [key: string]: any }
   createdBy?: string
-  createdOn: string
-  updatedBy?: string
-  updatedOn: string
+  createdOn?: string
+  description?: string
   enabled?: boolean
-  /**
-   * Glob patterns controlling which agents this agent may delegate to. When null or empty, no delegation capability is provided. \'*\' matches any sequence of characters (anchored, case-insensitive). Examples: [\'*\'] allows all agents, [\'*Fixer\'] matches BugFixer/StoryFixer, [\'Fixer*\'] matches FixerHelper/FixerV2.
-   */
+  externalMetadata?: { [key: string]: any }
+  id?: string
+  instructions?: string
+  integrations?: { [key: string]: Array<string> }
+  modelName?: string
+  name: string
+  namespaceId?: string
   subAgents?: Array<string>
+  updatedBy?: string
+  updatedOn?: string
 }

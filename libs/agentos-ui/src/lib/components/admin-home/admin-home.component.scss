@@ -1,5 +1,7 @@
+@use '../../../../../design-system/src/styles' as ds;
+
 .admin-home {
-  max-width: 640px;
+  max-width: 860px;
   margin: 0 auto;
   padding: 2rem 1rem;
   display: flex;
@@ -15,61 +17,24 @@
   &__title {
     margin: 0;
     font-size: 1.5rem;
-    font-weight: 600;
-    color: var(--color-text, #1d1d1f);
+    font-weight: 700;
     letter-spacing: -0.02em;
+    color: var(--color-text);
+    font-family: ds.$font-ui;
   }
 
   &__subtitle {
     margin: 0;
-    font-size: 0.875rem;
-    color: var(--color-text-secondary, #6e6e73);
+    @include ds.text-secondary;
   }
 
   &__sections {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 1rem;
-  }
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
 
-  &__card {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 1.25rem;
-    border-radius: 12px;
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-    background: var(--color-surface, #fff);
-    cursor: pointer;
-    text-align: left;
-    font-family: inherit;
-    transition:
-      background 0.15s ease,
-      border-color 0.15s ease,
-      box-shadow 0.15s ease;
-
-    &:hover {
-      background: var(--color-surface-hover, rgba(0, 0, 0, 0.02));
-      border-color: var(--color-primary, #007aff);
-      box-shadow: 0 2px 8px rgba(0, 122, 255, 0.08);
+    agentos-action-card {
+      --ac-height: 120px;
     }
-  }
-
-  &__card-icon {
-    font-size: 1.75rem;
-    line-height: 1;
-  }
-
-  &__card-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-text, #1d1d1f);
-  }
-
-  &__card-description {
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary, #6e6e73);
-    line-height: 1.4;
   }
 }

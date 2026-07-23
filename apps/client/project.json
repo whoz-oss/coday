@@ -36,6 +36,9 @@
           }
         ],
         "styles": ["apps/client/src/styles.scss"],
+        "stylePreprocessorOptions": {
+          "includePaths": [".", "libs", "libs/design-system/src"]
+        }
       },
       "configurations": {
         "production": {

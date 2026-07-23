@@ -1,9 +1,6 @@
 <div class="user-profile">
   <header class="user-profile__header">
-    <button class="user-profile__back" type="button" (click)="goBack()" title="Go back">
-      <span class="user-profile__back-icon">&#8592;</span>
-      Back
-    </button>
+    <ds-icon-button icon="arrow_back" title="Back" (action)="goBack()" />
     <h1 class="user-profile__title">My profile</h1>
   </header>
 

@@ -29,15 +29,15 @@
   }
 
   &__logo-img {
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
     object-fit: contain;
   }
 
   &__logo-text {
     font-size: 1rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
+    font-weight: 700;
+    letter-spacing: -0.01em;
     color: var(--color-text, #1d1d1f);
   }
 

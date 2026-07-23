@@ -3,6 +3,7 @@
   [class]="'icon-button variant-' + variant"
   [disabled]="disabled"
   [title]="title"
+  [attr.aria-label]="title || null"
   type="button"
   (click)="onClick()"
 >

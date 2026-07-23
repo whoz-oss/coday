@@ -1,5 +1,6 @@
 package io.whozoss.agentos.integrationConfig
 
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationTypeDescriptor
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import mu.KLogging
 import org.springframework.stereotype.Component
@@ -49,6 +50,11 @@ class CompositeIntegrationTypeRegistry : IntegrationTypeRegistry {
         } else {
             logger.info { "Registered integration type descriptor from plugin: '${plugin.integrationType}'" }
         }
+    }
+
+    override fun registerBuiltIn(descriptor: IntegrationTypeDescriptor) {
+        pluginDescriptors[descriptor.type] = descriptor
+        logger.info { "Registered built-in integration type descriptor: '${descriptor.type}'" }
     }
 
     companion object : KLogging()

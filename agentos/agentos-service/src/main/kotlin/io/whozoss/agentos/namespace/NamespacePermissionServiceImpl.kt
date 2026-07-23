@@ -105,13 +105,13 @@ class NamespacePermissionServiceImpl(
                 }
 
                 targetRole == NamespaceRole.ADMIN -> {
-                    revoke(userIdStr, namespaceId, PermissionRelation.MEMBER)
-                    grant(userIdStr, namespaceId, PermissionRelation.ADMIN)
+                    // Atomic promote: preserves relation properties (e.g. starred).
+                    promote(userIdStr, namespaceId)
                 }
 
                 else -> {
-                    revoke(userIdStr, namespaceId, PermissionRelation.ADMIN)
-                    grant(userIdStr, namespaceId, PermissionRelation.MEMBER)
+                    // Atomic demote: preserves relation properties (e.g. starred).
+                    demote(userIdStr, namespaceId)
                 }
             }
         }
@@ -133,6 +133,30 @@ class NamespacePermissionServiceImpl(
     ) {
         permissionService.revokePermission(userIdStr, EntityType.NAMESPACE, namespaceId, relation)
         logger.info { "Revoked $relation on namespace $namespaceId from user $userIdStr" }
+    }
+
+    /**
+     * Atomically promotes [:MEMBER] to [:ADMIN] on a namespace.
+     * The [:STARRED] edge survives untouched (separate relationship).
+     */
+    private fun promote(
+        userIdStr: String,
+        namespaceId: String,
+    ) {
+        permissionService.promoteMemberToAdmin(userIdStr, EntityType.NAMESPACE, namespaceId)
+        logger.info { "Promoted MEMBER to ADMIN on namespace $namespaceId for user $userIdStr" }
+    }
+
+    /**
+     * Atomically demotes [:ADMIN] to [:MEMBER] on a namespace.
+     * The [:STARRED] edge survives untouched (separate relationship).
+     */
+    private fun demote(
+        userIdStr: String,
+        namespaceId: String,
+    ) {
+        permissionService.demoteAdminToMember(userIdStr, EntityType.NAMESPACE, namespaceId)
+        logger.info { "Demoted ADMIN to MEMBER on namespace $namespaceId for user $userIdStr" }
     }
 
     companion object : KLogging()

@@ -60,8 +60,8 @@ export class NamespaceListComponent {
 
   // --- Navigation ---
 
-  protected navigateToCases(id: string): void {
-    this.router.navigate(['/agentos', id, 'cases'])
+  protected navigateToHome(id: string): void {
+    this.router.navigate(['/agentos/home'], { queryParams: { ns: id } })
   }
 
   protected navigateToCreate(): void {
@@ -90,6 +90,10 @@ export class NamespaceListComponent {
 
   protected openPrompts(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'prompts'])
+  }
+
+  protected openUserGroups(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'user-groups'])
   }
 
   // --- Delete ---

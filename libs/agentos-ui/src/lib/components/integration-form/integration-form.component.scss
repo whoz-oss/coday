@@ -178,5 +178,15 @@
         border-color: var(--color-primary-hover, #0051d5);
       }
     }
+
+    &--export {
+      border-color: var(--color-border, rgba(0, 0, 0, 0.1));
+      color: var(--color-text-secondary, #6e6e73);
+
+      &:hover:not(:disabled) {
+        border-color: var(--color-primary, #007aff);
+        color: var(--color-primary, #007aff);
+      }
+    }
   }
 }

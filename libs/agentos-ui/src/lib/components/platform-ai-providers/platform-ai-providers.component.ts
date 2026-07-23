@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { AiProvider, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
+import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
 import { AiProviderItemComponent } from '../ai-provider-item/ai-provider-item.component'
 
@@ -19,7 +19,7 @@ import { AiProviderItemComponent } from '../ai-provider-item/ai-provider-item.co
  */
 @Component({
   selector: 'agentos-platform-ai-providers',
-  imports: [AsyncPipe, EntityListComponent, AiProviderItemComponent],
+  imports: [AsyncPipe, EntityListComponent, AiProviderItemComponent, IconButtonComponent],
   templateUrl: './platform-ai-providers.component.html',
   styleUrl: './platform-ai-providers.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

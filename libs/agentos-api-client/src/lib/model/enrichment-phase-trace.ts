@@ -9,9 +9,9 @@
  */
 
 export interface EnrichmentPhaseTrace {
+  enrichmentContent?: string
+  llmOutput: string
   phaseIndex: number
   prompt: string
-  llmOutput: string
-  enrichmentContent?: string
   success: boolean
 }

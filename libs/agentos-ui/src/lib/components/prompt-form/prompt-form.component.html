@@ -41,6 +41,27 @@
         />
       </div>
 
+      <!-- Agent Config (optional, immutable post-creation) -->
+      @if (availableAgentConfigs().length > 0) {
+        <div class="prompt-form__field">
+          <label class="prompt-form__label" for="prompt-agent-config">Agent Config</label>
+          @if (isEditMode() && agentConfigIdControl.value) {
+            <p class="prompt-form__readonly-value">{{ resolveAgentConfigName(agentConfigIdControl.value) }}</p>
+            <span class="prompt-form__field-hint">Agent Config cannot be changed after creation.</span>
+          } @else if (!isEditMode()) {
+            <select id="prompt-agent-config" class="prompt-form__select" [formControl]="agentConfigIdControl">
+              <option [ngValue]="null">&mdash; None &mdash;</option>
+              @for (agent of availableAgentConfigs(); track agent.id) {
+                <option [ngValue]="agent.id">{{ agent.name }}</option>
+              }
+            </select>
+            <span class="prompt-form__field-hint"
+              >Optional. Links this prompt to an agent as a starter. Immutable after creation.</span
+            >
+          }
+        </div>
+      }
+
       <!-- Parameters -->
       <fieldset class="prompt-form__section" [formArrayName]="'parameters'">
         <legend class="prompt-form__label">
@@ -159,6 +180,24 @@
       @if (errorMessage()) {
         <p class="prompt-form__error">{{ errorMessage() }}</p>
       }
+
+      <!-- External Metadata (optional JSON, editable in create and edit modes) -->
+      <div class="prompt-form__field">
+        <label class="prompt-form__label" for="prompt-external-metadata">External Metadata</label>
+        <textarea
+          id="prompt-external-metadata"
+          class="prompt-form__textarea prompt-form__textarea--code"
+          rows="6"
+          placeholder='{ "key": "value" }'
+          [formControl]="externalMetadataJsonControl"
+          spellcheck="false"
+          autocomplete="off"
+        ></textarea>
+        @if (externalMetadataJsonControl.invalid && externalMetadataJsonControl.touched) {
+          <span class="prompt-form__field-error">Invalid JSON.</span>
+        }
+        <span class="prompt-form__field-hint">Optional. Opaque JSON object stored as-is. Leave empty to clear.</span>
+      </div>
 
       <!-- Actions -->
       <div class="prompt-form__actions">

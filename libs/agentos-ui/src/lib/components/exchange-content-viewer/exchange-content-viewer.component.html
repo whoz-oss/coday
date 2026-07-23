@@ -1,0 +1,38 @@
+<div class="exchange-content-viewer">
+  <header class="exchange-content-viewer__header">
+    <ds-icon-button #backButton icon="chevron_left" variant="default" title="Back to files" (action)="onClose()" />
+    <span class="exchange-content-viewer__filename" [title]="filename()">{{ filename() }}</span>
+    <ds-icon-button icon="download" variant="default" [title]="'Download ' + filename()" (action)="onDownload()" />
+  </header>
+
+  <div class="exchange-content-viewer__body">
+    @if (!canView()) {
+      <ds-empty-state
+        icon="insert_drive_file"
+        title="Preview not available"
+        hint="This file is binary or too large to display. Download it to view the contents."
+      >
+        <button class="exchange-content-viewer__cta" type="button" (click)="onDownload()">Download instead</button>
+      </ds-empty-state>
+    } @else if (status() === 'loading') {
+      <div class="exchange-content-viewer__center">
+        <ds-spinner size="md" label="Loading content" />
+      </div>
+    } @else if (status() === 'error') {
+      <ds-empty-state icon="error_outline" title="Couldn't load this file" hint="The content could not be retrieved.">
+        <button class="exchange-content-viewer__cta" type="button" (click)="onDownload()">Download instead</button>
+      </ds-empty-state>
+    } @else if (format() === 'markdown') {
+      <div class="exchange-content-viewer__markdown" [innerHTML]="content() | agentosMarkdown"></div>
+    } @else if (format() === 'html') {
+      <iframe
+        class="exchange-content-viewer__iframe"
+        [srcdoc]="displayContent()"
+        [title]="'Preview of ' + filename()"
+        sandbox=""
+      ></iframe>
+    } @else {
+      <pre class="exchange-content-viewer__pre">{{ displayContent() }}</pre>
+    }
+  </div>
+</div>

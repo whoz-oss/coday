@@ -8,7 +8,7 @@ import {
   AiModelControllerService,
   AiProviderControllerService,
 } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
+import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, combineLatest, map, Observable, switchMap } from 'rxjs'
 import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
 
@@ -26,7 +26,7 @@ import { AiModelItemComponent } from '../ai-model-item/ai-model-item.component'
  */
 @Component({
   selector: 'agentos-platform-ai-models',
-  imports: [AsyncPipe, EntityListComponent, AiModelItemComponent],
+  imports: [AsyncPipe, EntityListComponent, AiModelItemComponent, IconButtonComponent],
   templateUrl: './platform-ai-models.component.html',
   styleUrl: './platform-ai-models.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

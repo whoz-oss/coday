@@ -9,8 +9,8 @@
  */
 
 export interface Actor {
-  id: string
   displayName: string
+  id: string
   role: ActorRoleEnum
 }
 export enum ActorRoleEnum {

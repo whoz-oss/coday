@@ -49,9 +49,6 @@ class InMemoryIntegrationConfigRepository : IntegrationConfigRepository {
             it.namespaceId == namespaceId && it.userId == userId && it.name == name
         }
 
-    override fun findNsSharedByName(name: String): List<IntegrationConfig> =
-        delegate.findAll().filter { it.userId == null && it.namespaceId != null && it.name == name }
-
     companion object {
         private const val ALL_KEY = "all"
     }

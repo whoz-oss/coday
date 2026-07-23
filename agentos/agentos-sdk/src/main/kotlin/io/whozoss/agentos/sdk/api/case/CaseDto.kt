@@ -21,7 +21,12 @@ import java.util.UUID
  * @property status Current lifecycle status. Defaults to [CaseStatus.PENDING] on create.
  * @property title Optional human-readable title.
  * @property created Server-set creation timestamp. Present in responses only.
+ * @property modified Server-set last-modification timestamp. Present in responses only.
  * @property removed Soft-delete flag. False by default.
+ * @property favorite Per-user favorite flag. Populated by list endpoints; defaults to false on single-case fetches.
+ * @property role The caller's direct relation on this case (`ADMIN` or `MEMBER`), or null when the
+ *   caller has no direct edge (e.g. transitive namespace-admin access). Populated by list endpoints;
+ *   null on single-case fetches.
  */
 @Schema(name = "Case")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -33,5 +38,18 @@ data class CaseDto(
     val title: String? = null,
     val parentCaseId: UUID? = null,
     val created: Instant? = null,
+    val modified: Instant? = null,
     val removed: Boolean = false,
+    /**
+     * Per-user favorite flag. Populated by the case-list endpoints;
+     * single-case fetches (get/create/update) return the default `false`.
+     */
+    val favorite: Boolean = false,
+    /**
+     * The caller's direct relation on this case (`ADMIN` or `MEMBER`), or `null` when the
+     * caller has no direct edge (e.g. transitive namespace-admin access). Populated by the
+     * case-list endpoints; lets the UI gate ADMIN-only actions (delete). Null on single-case fetches.
+     */
+    @field:Schema(description = "The caller's direct relation on this case", allowableValues = ["ADMIN", "MEMBER"])
+    val role: String? = null,
 )
