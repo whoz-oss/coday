@@ -8,87 +8,148 @@
   }
 }
 
+// ── Root container ────────────────────────────────────────────────────────────────────────────────────
+
 .shell-sidebar {
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: visible;
   position: relative;
-  border-right: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-divider);
   background: var(--color-bg);
   flex-shrink: 0;
   transition: width 240ms cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
 
-  // Top bar
-  &__top {
-    display: flex;
+  // Compact mode: rail layout (centered column)
+  &--compact {
     align-items: center;
-    gap: 6px;
-    padding: 10px;
-    border-bottom: 1px solid var(--color-border);
-    flex-shrink: 0;
-    overflow: visible;
+    gap: 10px;
+    padding: 16px 0 12px;
+    overflow: hidden;
   }
 
-  &__brand {
+  // ── Logo ──────────────────────────────────────────────────────────────────────
+  &__logo {
     @include ds.button-reset;
 
     display: flex;
     align-items: center;
-    padding: 4px;
-    border-radius: 8px;
-    flex-shrink: 0;
-    transition: background 140ms;
+    gap: 8px;
+    flex: none;
+    background: transparent;
+    cursor: pointer;
+    transition: opacity 140ms ease;
 
     &:hover {
-      background: var(--color-bg-hover);
+      opacity: 0.8;
+    }
+
+    // Compact rail variant: only the mark, no label
+    &--compact {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
     }
   }
 
-  &__logo-img {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    object-fit: contain;
+  // Nom de l'app à côté du logo
+  &__logo-name {
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--color-text);
+    letter-spacing: -0.02em;
+    white-space: nowrap;
   }
 
-  &__logo-chevron {
-    width: 28px;
+  // Logo image (expanded: full logo, compact: small square)
+  &__logo-img {
     height: 28px;
-    font-size: 22px;
+    width: auto;
+    object-fit: contain;
+    display: block;
+    flex: none;
+
+    // Compact rail: crop to square icon size
+    &--compact {
+      height: 26px;
+      width: 26px;
+      object-fit: cover;
+      object-position: left center;
+    }
+  }
+
+  // ── Top bar (expanded only) ───────────────────────────────────────────────────────
+  &__top {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'logo'
+      'ns'
+      'new'
+      'search';
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-divider);
+    flex-shrink: 0;
+    overflow: visible;
+    width: 100%;
+    box-sizing: border-box;
+
+    // Mode large : logo + ns sur la même ligne, new case + search en dessous
+    &--wide {
+      grid-template-columns: 1fr 1fr;
+      grid-template-areas:
+        'logo  ns'
+        'new   search';
+    }
+  }
+
+  &__top-row {
+    grid-area: logo;
+  }
+  &__ns-wrap {
+    grid-area: ns;
+  }
+  &__new-case-btn {
+    grid-area: new;
+  }
+  &__search {
+    grid-area: search;
+  }
+
+  // Row 1 inside top bar: logo + new case button
+  &__top-row {
     display: flex;
     align-items: center;
-    justify-content: center;
-    color: var(--color-text-secondary);
+    justify-content: space-between;
+    gap: 8px;
   }
 
-  // User menu
-  &__user-menu {
-    position: relative;
+  // New case button with text label
+  &__new-case-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    height: 34px;
+    font-size: 14px;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    white-space: nowrap;
     flex-shrink: 0;
   }
 
-  &__user-btn {
-    @include ds.text-mark;
-
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    border: none;
-    background: var(--color-primary, #016b71);
-    color: #fff;
-    cursor: pointer;
-    display: grid;
-    place-items: center;
-    transition: background 140ms ease;
-
-    &:hover {
-      background: var(--color-primary-hover, #015a5f);
-    }
+  // Search input inside top bar
+  &__search {
+    width: 100%;
+    min-height: 34px;
+    font-size: 14px;
   }
 
-  // Namespace picker
+  // ── Namespace picker ──────────────────────────────────────────────────────────────────
   &__ns-wrap {
     flex: 1;
     min-width: 0;
@@ -105,37 +166,33 @@
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 5px 8px 5px 5px;
-    border-radius: 8px;
-    border: 1px solid var(--color-border);
-    background: var(--color-bg-secondary);
+    gap: 6px;
+    padding: 5px 8px;
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface);
     color: var(--color-text);
-    transition: all 150ms;
+    transition: border-color 150ms;
 
     &:hover {
-      background: var(--color-bg-hover);
+      border-color: var(--color-accent);
     }
 
     &--open {
-      border-color: var(--color-primary);
-    }
-
-    &--readonly {
-      cursor: default;
-      pointer-events: none;
+      border-color: var(--color-accent);
     }
   }
 
   &__ns-mark {
-    @include ds.surface-mark;
-    @include ds.text-mark;
-
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
+    width: 20px;
+    height: 20px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    background: var(--color-accent-900);
+    color: var(--color-accent-100);
+    font-family: var(--font-heading);
+    font-weight: 600;
     font-size: 11px;
-    flex-shrink: 0;
   }
 
   &__ns-name {
@@ -144,47 +201,69 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: 0.8rem;
+    font-size: 14px;
+    font-family: var(--font-heading);
     font-weight: 600;
   }
 
   &__ns-chevron {
-    color: var(--color-text-secondary);
+    color: var(--color-neutral-500);
     font-size: 0.7rem;
     flex-shrink: 0;
   }
 
-  &__ns-menu {
-    @include ds.surface-dropdown;
+  &__ns-chevron-icon {
+    flex-shrink: 0;
+    color: var(--color-neutral-500);
+    opacity: 0.7;
+  }
 
+  &__ns-menu {
     position: absolute;
     left: 0;
     right: 0;
     top: calc(100% + 4px);
     z-index: 100;
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    box-shadow: var(--shadow-lg);
+    padding: 4px;
   }
 
   &__ns-item {
-    @include ds.menu-item;
+    @include ds.button-reset;
 
-    gap: 8px;
-    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 7px 8px;
+    color: var(--color-text);
+    font-size: 14px;
+    transition: background 100ms;
+
+    &:hover {
+      background: var(--color-bg-hover);
+    }
 
     &--active {
-      background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-      color: var(--color-primary);
+      background: var(--color-accent-100);
+      color: var(--color-accent-900);
     }
   }
 
   &__ns-item-mark {
-    @include ds.surface-mark;
-    @include ds.text-mark;
-
-    width: 22px;
-    height: 22px;
-    border-radius: 5px;
+    width: 18px;
+    height: 18px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface-secondary);
+    color: var(--color-neutral-600);
+    font-family: var(--font-heading);
+    font-weight: 600;
     font-size: 10px;
-    flex-shrink: 0;
   }
 
   &__ns-item-name {
@@ -196,63 +275,270 @@
   }
 
   &__ns-item-check {
-    color: var(--color-primary);
+    color: var(--color-accent);
     font-size: 0.75rem;
     flex-shrink: 0;
   }
 
-  // Case list
+  // ── Case list scroll area ──────────────────────────────────────────────────────────────
   &__cases-scroll {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding-bottom: 16px;
+    padding: 2px 0 10px;
+
+    // Compact rail: stack glyphs vertically
+    .shell-sidebar--compact & {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding: 2px 0;
+      width: 100%;
+      align-items: center;
+    }
 
     &::-webkit-scrollbar {
       width: 4px;
     }
 
     &::-webkit-scrollbar-thumb {
-      background: var(--color-border);
-      border-radius: 999px;
+      background: var(--color-divider);
     }
   }
 
-  // Compact toggle pill
-  &__compact-toggle {
-    @include ds.button-reset;
+  // ── Rail divider (compact mode) ───────────────────────────────────────────────────────
+  &__rail-divider {
+    width: 26px;
+    height: 1px;
+    background: var(--color-divider);
+    flex-shrink: 0;
+  }
 
-    position: absolute;
-    top: 50%;
-    right: 3px;
-    transform: translateY(-50%);
-    width: 24px;
-    height: 40px;
-    border-radius: 20px;
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border);
-    box-shadow: 0 2px 6px var(--color-shadow);
+  // ── Bottom bar (expanded mode) ───────────────────────────────────────────────────────
+  &__bottom {
     display: flex;
     align-items: center;
-    justify-content: center;
-    z-index: 10;
-    color: var(--color-text-secondary);
+    gap: 6px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--color-divider);
+    flex-shrink: 0;
+  }
+
+  // ── User menu wrapper ──────────────────────────────────────────────────────────────────
+  &__user-menu {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  // User button: full-width flex row inside bottom bar
+  &__user-btn {
+    @include ds.button-reset;
+
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 5px 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-text);
     transition:
-      color 140ms ease,
-      box-shadow 140ms ease;
+      background 140ms,
+      border-color 140ms;
+
+    &:hover {
+      background: var(--color-bg-hover);
+      border-color: var(--color-divider);
+    }
+  }
+
+  // Initials square inside user button
+  &__user-avatar {
+    width: 28px;
+    height: 28px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--color-accent-700);
+  }
+
+  // Name/role text block
+  &__user-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__user-name {
+    display: block;
+    font-size: 15px;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  // ── User avatar button (compact rail only) ───────────────────────────────────────────────
+  &__user-avatar-btn {
+    @include ds.button-reset;
+
+    position: relative;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--color-accent-700);
+    cursor: pointer;
+    transition: border-color 140ms;
+
+    &:hover {
+      border-color: var(--color-accent);
+    }
+  }
+
+  // ── Compact rail — namespace button ───────────────────────────────────────────────
+
+  &__compact-ns-btn {
+    @include ds.button-reset;
+
+    width: 30px;
+    height: 30px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--color-divider);
+    background: var(--color-accent-900);
+    color: var(--color-accent-100);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 140ms;
+
+    &:hover,
+    &--open {
+      border-color: var(--color-accent);
+    }
+  }
+
+  // Menu namespace compact — position: fixed, ancré à droite du rail
+  &__compact-ns-menu {
+    position: fixed;
+    z-index: 500;
+    min-width: 200px;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    box-shadow: var(--shadow-lg);
+    padding: 4px;
+  }
+
+  // ── Compact rail — search button ───────────────────────────────────────────────
+
+  &__compact-search-btn {
+    @include ds.button-reset;
+
+    width: 30px;
+    height: 30px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--color-divider);
+    background: transparent;
+    color: var(--color-neutral-600);
+    cursor: pointer;
+    transition:
+      border-color 140ms,
+      color 140ms;
+
+    &:hover,
+    &--active {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+  }
+
+  // Panel search compact — position: fixed, ancré à droite du rail
+  &__compact-search-panel {
+    position: fixed;
+    z-index: 500;
+    width: 220px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    box-shadow: var(--shadow-lg);
+    padding: 6px;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  &__compact-search-input {
+    width: 100%;
+    min-height: 34px;
+    font-size: 14px;
+  }
+
+  &__compact-search-clear {
+    @include ds.button-reset;
+
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    color: var(--color-neutral-500);
+    transition: color 120ms;
 
     &:hover {
       color: var(--color-text);
-      box-shadow: 0 3px 10px var(--color-shadow);
     }
   }
 
-  &__compact-toggle-icon {
-    font-size: 18px;
-    transition: transform 200ms ease;
+  // Backdrop invisible — ferme les menus/panels au clic en dehors
+  &__compact-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 499;
+  }
 
-    .shell-sidebar__compact-toggle--compact & {
-      transform: rotate(180deg);
+  // ── Collapse / Expand button (shared) ──────────────────────────────────────────────────
+  &__collapse-btn {
+    @include ds.button-reset;
+
+    width: 30px;
+    height: 30px;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-divider);
+    background: transparent;
+    color: var(--color-neutral-600);
+    cursor: pointer;
+    transition:
+      border-color 140ms,
+      color 140ms;
+
+    &:hover {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
     }
   }
 }

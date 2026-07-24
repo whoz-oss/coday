@@ -13,21 +13,21 @@
 
 // ── Chip / pill ───────────────────────────────────────────────────────────────
 
-/// Pill-shaped chip — inline tag with border, subtle background, hover state.
+/// Chip — inline tag avec border, fond subtil, hover state.
 /// Source: .ac-chip in action-card.component.scss
-/// → height 28px, radius 999px, surface-secondary bg, 11.5px Inter 500
+/// → height 28px, carré (radius 0), divider border, font-body 11.5px 500
 @mixin chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 28px;
+  height: 30px;
   padding: 0 12px 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-  background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
-  color: var(--color-text, #1d1d1f);
-  font-family: 'Inter', sans-serif;
-  font-size: 11.5px;
+  border-radius: 0; // carré — aligné design system Industry
+  border: 1px solid var(--color-divider);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 13px;
   font-weight: 500;
   line-height: 1;
   cursor: pointer;
@@ -37,8 +37,8 @@
     border-color 120ms ease;
 
   &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
-    border-color: var(--color-border, rgba(0, 0, 0, 0.16));
+    background: var(--color-bg-hover);
+    border-color: var(--color-neutral-500);
   }
 }
 
@@ -49,13 +49,13 @@
 ///
 /// @param {Length} $size [26px] — width and height of the button
 /// @param {Length} $radius [6px] — border-radius of the button
-@mixin icon-button($size: 26px, $radius: 6px) {
+@mixin icon-button($size: 26px, $radius: 0px) {
   @include button-reset;
 
   width: $size;
   height: $size;
-  border-radius: $radius;
-  color: var(--color-text-secondary, rgba(0, 0, 0, 0.35));
+  border-radius: $radius; // 0 par défaut — aligné design system
+  color: var(--color-text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -64,8 +64,8 @@
     color 120ms ease;
 
   &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
-    color: var(--color-text, #1d1d1f);
+    background: var(--color-bg-hover);
+    color: var(--color-text);
   }
 
   &:focus-visible {
@@ -93,28 +93,143 @@
   align-items: center;
   width: 100%;
   padding: 8px 10px;
-  border-radius: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 12.5px;
+  border-radius: 0; // carré — aligné design system
+  font-family: var(--font-body);
+  font-size: 14.5px;
   font-weight: 500;
-  color: var(--color-text, #1d1d1f);
+  color: var(--color-text);
   text-align: left;
   transition: background 100ms ease;
 
   &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+    background: var(--color-bg-hover);
   }
 
   // Danger / destructive action variant — apply as a modifier class
   &--danger {
-    color: var(--color-error, #a5140a);
+    color: var(--red);
 
     &:hover {
-      // Translucent tint derived from the error token.
-      // Note: relies on CSS relative color syntax (supported in modern browsers).
-      // Fallback: rgba with a static approximation of the light-mode error color.
-      background: rgba(from var(--color-error, #ff453a) r g b / 0.08);
+      background: color-mix(in srgb, var(--red) 10%, transparent);
     }
+  }
+}
+
+// ── Action button (star / delete inline) ────────────────────────────────────
+
+/// Inline icon action button — revealed on row hover (star, delete, etc.).
+/// Variants: --active (accent fill), --danger (red on hover), --confirm-yes (red solid).
+///
+/// @param {Length} $size [28px] — width and height of the button
+@mixin action-btn($size: 28px) {
+  @include button-reset;
+
+  width: $size;
+  height: $size;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-neutral-500);
+  transition:
+    color 120ms,
+    background 120ms;
+
+  &:hover {
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  }
+
+  &--active {
+    color: var(--color-accent);
+
+    svg {
+      fill: currentColor;
+    }
+  }
+
+  &--danger:hover {
+    color: var(--red);
+    background: color-mix(in srgb, var(--red) 12%, transparent);
+  }
+
+  // Confirmation state — solid red button with text label
+  &--confirm-yes {
+    width: auto;
+    padding: 0 8px;
+    gap: 4px;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 11px;
+    color: #fff;
+    background: var(--red);
+
+    &:hover {
+      background: var(--red-deep);
+      color: #fff;
+    }
+  }
+}
+
+// ── Status tag ────────────────────────────────────────────────────────────────
+
+/// Inline status tag — bordered, uppercase, heading font.
+/// Used in case-drawer tree nodes, case-chat header badge, compact tooltip.
+/// Apply status-specific color via modifier classes (--running, --error, etc.).
+@mixin status-tag {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid currentColor;
+  font-size: 9.5px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 1px 6px;
+  color: var(--status-idle-text);
+
+  &--running {
+    color: var(--color-accent-700);
+  }
+  &--error {
+    color: var(--red-deep);
+  }
+  &--pending {
+    color: var(--status-pending-text);
+  }
+  &--killed {
+    color: var(--status-killed-text);
+  }
+}
+
+// ── Confirm danger button (standalone) ───────────────────────────────────────
+
+/// Standalone destructive confirm button — solid red, heading font.
+/// Used in delete confirmation flows (tooltip compact, header inline, tree node).
+///
+/// @param {Length} $height [26px] — button height
+@mixin confirm-btn-danger($height: 26px) {
+  @include button-reset;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: $height;
+  padding: 0 10px;
+  border: 1px solid var(--red);
+  background: var(--red);
+  color: #fff;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    background 140ms,
+    border-color 140ms;
+
+  &:hover {
+    background: var(--red-deep);
+    border-color: var(--red-deep);
   }
 }
 
@@ -122,7 +237,7 @@
 /// Source: .ac__menu-sep in action-card.component.scss
 @mixin menu-separator {
   height: 1px;
-  background: var(--color-border, rgba(0, 0, 0, 0.07));
+  background: var(--color-divider);
   margin: 4px;
   border: none;
 }
@@ -133,9 +248,9 @@
 /// Use inside a :focus-visible rule.
 /// Source: .ac__name:focus-visible and .entity-card--clickable:focus-visible
 @mixin focus-ring {
-  outline: 2px solid var(--color-primary, #007aff);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: 0; // carré — aligné design system
 }
 
 // ── Reset utilities ───────────────────────────────────────────────────────────

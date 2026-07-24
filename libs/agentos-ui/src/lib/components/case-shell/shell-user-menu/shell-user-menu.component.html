@@ -8,27 +8,73 @@
     (keyup.escape)="onClose($event)"
   ></div>
 
-  <div class="shell-user-menu__overlay" [class.shell-user-menu__overlay--mobile]="variant() === 'mobile'">
-    <button class="shell-user-menu__item" type="button" (click)="onNavigate('/agentos/user')">👤 User</button>
+  <div
+    class="shell-user-menu__overlay"
+    [class.shell-user-menu__overlay--topbar]="variant() === 'topbar'"
+    [class.shell-user-menu__overlay--mobile]="variant() === 'mobile'"
+    [class.shell-user-menu__overlay--compact]="variant() === 'compact'"
+    [style.top.px]="variant() === 'compact' ? fixedTop() : null"
+    [style.left.px]="variant() === 'compact' ? fixedLeft() : null"
+  >
+    <button class="shell-user-menu__item" type="button" (click)="onNavigate('/agentos/user')">
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="8" r="4" />
+        <path d="M20 21a8 8 0 0 0-16 0" />
+      </svg>
+      User settings
+    </button>
 
     @if (isAdmin()) {
-      <button class="shell-user-menu__item" type="button" (click)="onNavigate('/agentos/admin')">⚙️ Admin</button>
+      <button class="shell-user-menu__item" type="button" (click)="onNavigate('/agentos/admin')">
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path
+            d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1 1 0 0 1 1.52 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"
+          />
+        </svg>
+        Administration
+      </button>
     }
 
     <div class="shell-user-menu__separator"></div>
 
     <button class="shell-user-menu__item" type="button" (click)="onNavigate('/agentos/namespaces')">
-      🌐 Namespaces
-    </button>
-
-    <div class="shell-user-menu__separator"></div>
-
-    <button class="shell-user-menu__item" type="button" (click)="onThemeToggle()">
-      @if (isDark()) {
-        ☀️ Light mode
-      } @else {
-        🌙 Dark mode
-      }
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <rect width="7" height="7" x="3" y="3" />
+        <rect width="7" height="7" x="14" y="3" />
+        <rect width="7" height="7" x="14" y="14" />
+        <rect width="7" height="7" x="3" y="14" />
+      </svg>
+      Namespaces
     </button>
 
     <button
@@ -37,7 +83,63 @@
       type="button"
       (click)="onLogsToggle()"
     >
-      &lt;/&gt; Technical logs
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <polyline points="4 17 10 11 4 5" />
+        <line x1="12" x2="20" y1="19" y2="19" />
+      </svg>
+      Technical logs
+      @if (showTechnical()) {
+        <span class="shell-user-menu__item-badge">On</span>
+      }
+    </button>
+
+    <div class="shell-user-menu__separator"></div>
+
+    <button class="shell-user-menu__item" type="button" (click)="onThemeToggle()">
+      @if (isDark()) {
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="4" />
+          <path
+            d="M12 2v2M12 20v2m-7.07-14.07 1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2m-4.93-7.07-1.41 1.41M6.34 17.66l-1.41 1.41"
+          />
+        </svg>
+        Light mode
+      } @else {
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+        </svg>
+        Dark mode
+      }
     </button>
   </div>
 }

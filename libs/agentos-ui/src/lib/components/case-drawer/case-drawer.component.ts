@@ -9,8 +9,8 @@ import {
   ViewChild,
 } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
-import { Case } from '@whoz-oss/agentos-api-client'
-import { EntityListComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
+import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
+import { Case, CaseStatusEventStatusEnum } from '@whoz-oss/agentos-api-client'
 import { CaseItemComponent, CaseListItem } from '../case-item/case-item.component'
 
 /**
@@ -21,6 +21,8 @@ import { CaseItemComponent, CaseListItem } from '../case-item/case-item.componen
  */
 export interface CaseTreeItem extends CaseListItem {
   children: CaseTreeItem[]
+  /** Raw case status — used for the compact-mode status glyph. */
+  status: string
 }
 
 /**
@@ -40,7 +42,7 @@ export interface CaseTreeItem extends CaseListItem {
  */
 @Component({
   selector: 'agentos-case-drawer',
-  imports: [EntityListComponent, KebabMenuComponent, NgTemplateOutlet],
+  imports: [NgTemplateOutlet, CaseStatusGlyphComponent],
   templateUrl: './case-drawer.component.html',
   styleUrl: './case-drawer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -49,36 +51,54 @@ export class CaseDrawerComponent {
   readonly cases = input<Case[]>([])
   readonly activeCaseId = input<string | null>(null)
   readonly compact = input<boolean>(false)
+  /** External filter query (from the sidebar search input). Overrides internal search when provided. */
+  readonly filterQuery = input<string>('')
 
   readonly caseSelected = output<string>()
   readonly createRequested = output<void>()
   readonly deleteRequested = output<string>()
   readonly starToggled = output<{ id: string; starred: boolean }>()
 
-  @ViewChild('caseItemTpl', { static: true }) caseItemTpl!: TemplateRef<{ $implicit: CaseTreeItem }>
+  @ViewChild('caseRowTpl', { static: true }) caseRowTpl!: TemplateRef<{ node: CaseTreeItem; depth: number }>
 
   /** Current search query, driven by ds-entity-list's searchChanged output. */
   protected readonly searchQuery = signal('')
 
-  protected readonly isSearchActive = computed(() => this.searchQuery().trim().length > 0)
+  /** Active query: external filterQuery takes priority over internal search. */
+  protected readonly activeQuery = computed(() => this.filterQuery().trim() || this.searchQuery().trim())
+
+  protected readonly isSearchActive = computed(() => this.activeQuery().length > 0)
 
   /**
-   * Tree rebuilt automatically when cases() changes. Favorited cases are promoted to a
-   * "Favorites" group at the top (nesting among favorites is preserved); the rest keep their
-   * newest-first order below.
+   * Tree rebuilt automatically when cases() changes.
+   * Favorited cases are promoted to a "Pinned" group at the top;
+   * remaining cases are grouped by recency (Today / Yesterday / Previous 7 days / Older).
    */
-  protected readonly rootItems = computed(() => promoteFavorites(buildTree(this.cases())))
+  protected readonly rootItems = computed(() => {
+    const cases = this.cases()
+    const modifiedAt = new Map(cases.map((c) => [c.id ?? '', c.modified ?? c.created ?? '']))
+    return promoteFavoritesAndGroup(buildTree(cases), modifiedAt)
+  })
 
   /**
-   * Root items enriched with initials, used in compact/icons mode.
+   * Root items enriched with initials and status, used in compact/icons mode.
    * Initials = first letter of the first two words of the title, uppercased.
    */
-  protected readonly compactItems = computed(() =>
-    this.rootItems().map((item) => ({
+  /**
+   * Items affichés dans le rail compact :
+   * - Si une recherche est active : liste plate des résultats filtrés (tous les niveaux)
+   * - Sinon : racines groupées par date/favoris
+   * Chaque item est enrichi des initiales et d'un flag de premier groupe.
+   */
+  protected readonly compactItems = computed(() => {
+    const source = this.isSearchActive() ? this.flatFilteredItems() : this.rootItems()
+    return source.map((item, i, arr) => ({
       ...item,
       initials: getInitials(item.name),
+      /** Vrai si cet item est le premier de son groupe dans le rail compact. */
+      isFirstInCompactGroup: i === 0 || item.groupKey !== arr[i - 1]?.groupKey,
     }))
-  )
+  })
 
   /**
    * Flat list of all cases matching the current search query.
@@ -87,7 +107,7 @@ export class CaseDrawerComponent {
    * Used in flat mode (search active).
    */
   protected readonly flatFilteredItems = computed((): CaseTreeItem[] => {
-    const query = this.searchQuery().toLowerCase().trim()
+    const query = this.activeQuery().toLowerCase()
     if (!query) return []
     return collectMatching(this.rootItems(), query)
   })
@@ -118,6 +138,57 @@ export class CaseDrawerComponent {
    * overrides the auto-expanded default, so a user CAN collapse an ancestor of the active case
    * (which [autoExpandedIds] would otherwise force open).
    */
+  // ---------------------------------------------------------------------------
+  // Compact tooltip (position: fixed — échappe au overflow:hidden du rail)
+  // ---------------------------------------------------------------------------
+
+  /** Item survolé en mode compact — null = tooltip masqué. */
+  protected readonly hoveredCompactItem = signal<
+    (typeof this.compactItems extends () => (infer T)[] ? T : never) | null
+  >(null)
+
+  /** Position fixe du tooltip calculée depuis le badge survolé. */
+  protected readonly tooltipPos = signal<{ top: number; left: number }>({ top: 0, left: 0 })
+
+  /** Id du case en attente de confirmation de suppression dans le tooltip compact. */
+  protected readonly compactConfirmingDeleteId = signal<string | null>(null)
+
+  /** Id du case en attente de confirmation de suppression en mode expanded. */
+  protected readonly expandedConfirmingDeleteId = signal<string | null>(null)
+
+  protected onCompactBadgeEnter(event: MouseEvent, item: ReturnType<typeof this.compactItems>[number]): void {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    this.tooltipPos.set({ top: rect.top + rect.height / 2, left: rect.right + 8 })
+    this.hoveredCompactItem.set(item)
+    // Réinitialise la confirmation si on survole un autre case
+    if (this.compactConfirmingDeleteId() !== item.id) {
+      this.compactConfirmingDeleteId.set(null)
+    }
+  }
+
+  protected onCompactBadgeLeave(event: MouseEvent): void {
+    // Le pont CSS (::before) couvre le gap — mais on vérifie aussi via relatedTarget
+    const related = event.relatedTarget as HTMLElement | null
+    if (related?.closest('.case-drawer-compact__tooltip-fixed')) return
+    // Petit délai pour laisser le temps à la souris de traverser le gap
+    setTimeout(() => {
+      if (!this._mouseOnTooltip) this.hoveredCompactItem.set(null)
+    }, 80)
+  }
+
+  protected onTooltipLeave(event: MouseEvent): void {
+    this._mouseOnTooltip = false
+    const related = event.relatedTarget as HTMLElement | null
+    if (related?.closest('.case-drawer-compact__badge')) return
+    this.hoveredCompactItem.set(null)
+  }
+
+  protected onTooltipEnter(): void {
+    this._mouseOnTooltip = true
+  }
+
+  private _mouseOnTooltip = false
+
   protected readonly expandOverrides = signal(new Map<string, boolean>())
 
   protected isExpanded(id: string): boolean {
@@ -134,8 +205,19 @@ export class CaseDrawerComponent {
     })
   }
 
+  /** Called from ShellSidebarComponent’s search input via the filterQuery input. */
   protected onSearchChanged(query: string): void {
     this.searchQuery.set(query)
+  }
+
+  /**
+   * Returns true if this item is the first in its group (so we render the group label above it).
+   * Compares groupKey with the previous item in the flat display list.
+   */
+  protected isFirstInGroup(item: CaseTreeItem, list: CaseTreeItem[]): boolean {
+    const idx = list.indexOf(item)
+    if (idx === 0) return !!item.groupKey
+    return item.groupKey !== list[idx - 1]?.groupKey
   }
 
   protected onItemSelected(id: string): void {
@@ -150,37 +232,37 @@ export class CaseDrawerComponent {
     this.deleteRequested.emit(id)
   }
 
+  /**
+   * @internal Used by tests via component['menuItemsFor']
+   * Kept for backward-compat with existing specs.
+   */
+  protected menuItemsFor(node: CaseTreeItem): Array<{ key: string; label: string; variant?: string }> {
+    const items: Array<{ key: string; label: string; variant?: string }> = [
+      { key: 'star', label: node.favorite ? 'Remove from favorites' : 'Add to favorites' },
+    ]
+    if (node.canDelete) {
+      items.push({ key: 'delete', label: 'Delete', variant: 'danger' })
+    }
+    return items
+  }
+
+  /**
+   * @internal Used by tests via component['onMenuAction']
+   * Kept for backward-compat with existing specs.
+   */
+  protected onMenuAction(node: CaseTreeItem, action: string): void {
+    if (action === 'star') this.onStarToggled(node)
+    if (action === 'delete') this.onDeleteRequested(node.id)
+  }
+
   protected onStarToggled(item: CaseListItem): void {
     // Emit the desired state; CaseStateService applies the optimistic flip on the list signal,
     // which rebuilds the tree (and re-groups favorites) reactively.
     this.starToggled.emit({ id: item.id, starred: !item.favorite })
   }
 
-  /** Overflow-menu entries for a row: star toggle, plus delete when the caller may delete. */
-  protected menuItemsFor(node: CaseTreeItem): KebabMenuItem[] {
-    const items: KebabMenuItem[] = [
-      {
-        key: 'star',
-        label: node.favorite ? 'Remove from favorites' : 'Add to favorites',
-        icon: node.favorite ? 'star' : 'star_border',
-      },
-    ]
-    if (node.canDelete) {
-      items.push({ key: 'delete', label: 'Delete', icon: 'delete', variant: 'danger' })
-    }
-    return items
-  }
-
-  protected onMenuAction(node: CaseTreeItem, key: string): void {
-    switch (key) {
-      case 'star':
-        this.onStarToggled(node)
-        break
-      case 'delete':
-        this.onDeleteRequested(node.id)
-        break
-    }
-  }
+  // Exposed to the template for use in @switch / [class] bindings
+  protected readonly Status = CaseStatusEventStatusEnum
 }
 
 /**
@@ -212,6 +294,7 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
   const toNode = (c: Case): CaseTreeItem => ({
     ...CaseItemComponent.toListItem(c),
     description: c.id ?? '',
+    status: c.status ?? 'IDLE',
     children: [],
   })
 
@@ -240,25 +323,46 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
 }
 
 /**
- * Promote favorited cases to a "Favorites" group at the top of the list. Hierarchy among
- * favorites is preserved: a favorited case whose ancestor is also favorited stays NESTED
- * under that ancestor rather than being flattened to the same level. A favorited case with
- * no favorited ancestor becomes a top-level Favorites entry and keeps its whole subtree.
- * The remaining cases keep their newest-first order and render ungrouped below. When there
- * are no favorites the list is returned unchanged (no empty section header).
+ * Promote favorited cases to a "Favorites" group at the top, then group remaining
+ * cases by recency (only when favorites exist): Today / Yesterday / Previous 7 days / Older.
  */
-function promoteFavorites(roots: CaseTreeItem[]): CaseTreeItem[] {
+function promoteFavoritesAndGroup(roots: CaseTreeItem[], modifiedAt: Map<string, string>): CaseTreeItem[] {
   const favorites: CaseTreeItem[] = []
   const remaining: CaseTreeItem[] = []
   for (const root of roots) {
     const kept = liftFavoriteSubtrees(root, favorites)
     if (kept) remaining.push(kept)
   }
-  if (!favorites.length) return roots
+
+  // Label favorites
   for (const node of favorites) {
     node.groupKey = 'favorites'
     node.groupLabel = 'Favorites'
   }
+
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfYesterday = new Date(startOfToday.getTime() - 86400000)
+  const start7Days = new Date(startOfToday.getTime() - 6 * 86400000)
+
+  for (const node of remaining) {
+    const ts = modifiedAt.get(node.id) ?? ''
+    const d = ts ? new Date(ts) : null
+    if (d && d >= startOfToday) {
+      node.groupKey = 'today'
+      node.groupLabel = 'Today'
+    } else if (d && d >= startOfYesterday) {
+      node.groupKey = 'yesterday'
+      node.groupLabel = 'Yesterday'
+    } else if (d && d >= start7Days) {
+      node.groupKey = 'week'
+      node.groupLabel = 'Previous 7 days'
+    } else {
+      node.groupKey = 'older'
+      node.groupLabel = 'Older'
+    }
+  }
+
   return [...favorites, ...remaining]
 }
 

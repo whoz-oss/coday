@@ -52,8 +52,8 @@
     align-self: flex-start;
 
     &--logo {
-      background: var(--color-bg-secondary);
-      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      border: 1px solid var(--color-divider);
       padding: 4px;
 
       [data-theme='dark'] & {
@@ -64,8 +64,8 @@
     &--emoji {
       font-size: 18px;
       line-height: 32px;
-      background: var(--color-bg-secondary);
-      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      border: 1px solid var(--color-divider);
       color: inherit;
 
       [data-theme='dark'] & {
@@ -78,7 +78,7 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
-    border-radius: 4px;
+    border-radius: 0;
     display: block;
   }
 
@@ -117,7 +117,7 @@
   }
 }
 
-// ── Chip style — pill arrondi, via .ac-chip sur les boutons projetés ──
+// ── Chip style — carré, via .ac-chip sur les boutons projetés ──
 :host ::ng-deep .ac-chip {
   @include ds.chip;
 

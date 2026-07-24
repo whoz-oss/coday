@@ -3,41 +3,46 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 12px 14px;
-  border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.09));
-  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.7));
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--color-divider);
+  background: var(--color-bg);
   flex-shrink: 0;
+
+  // ── Logo / brand ──────────────────────────────────────────────────────────
 
   &__brand {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 6px;
-    border-radius: 8px;
+    padding: 0;
     border: none;
     background: transparent;
     cursor: pointer;
-    transition: background 140ms;
+    transition: opacity 140ms ease;
 
     &:hover {
-      background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+      opacity: 0.8;
     }
   }
 
   &__logo-img {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
+    height: 28px;
+    width: auto;
     object-fit: contain;
+    display: block;
+    flex: none;
   }
 
+  // Aligné sur shell-sidebar__logo-name
   &__logo-text {
-    font-size: 1rem;
     font-weight: 700;
+    font-size: 18px;
     color: var(--color-text);
+    letter-spacing: -0.02em;
     white-space: nowrap;
-    letter-spacing: -0.01em;
   }
+
+  // ── User menu ─────────────────────────────────────────────────────────────
 
   &__user-menu {
     position: relative;
@@ -47,20 +52,21 @@
   &__user-btn {
     width: 32px;
     height: 32px;
-    border-radius: 8px;
-    border: none;
-    background: var(--color-primary, #016b71);
-    color: #fff;
-    cursor: pointer;
+    flex: none;
     display: grid;
     place-items: center;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    transition: background 140ms;
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--color-accent-700);
+    cursor: pointer;
+    transition: border-color 140ms;
+    border-radius: 0; // carré — aligné maquette
 
     &:hover {
-      background: var(--color-primary-hover, #015a5f);
+      border-color: var(--color-accent);
     }
   }
 }

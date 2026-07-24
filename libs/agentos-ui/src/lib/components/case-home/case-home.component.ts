@@ -6,6 +6,7 @@ import {
   DestroyRef,
   ElementRef,
   inject,
+  input,
   OnInit,
   signal,
   ViewChild,
@@ -14,7 +15,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Case, Configuration, Prompt } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
-import { IconButtonComponent } from '@whoz-oss/design-system'
+import { BlueprintDirective, IconButtonComponent } from '@whoz-oss/design-system'
 import { catchError, debounceTime, firstValueFrom, map, of, Subject, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
@@ -42,7 +43,7 @@ import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments
  */
 @Component({
   selector: 'agentos-case-home',
-  imports: [IconButtonComponent, PromptAutocompleteComponent, ComposerAttachmentsComponent],
+  imports: [BlueprintDirective, IconButtonComponent, PromptAutocompleteComponent, ComposerAttachmentsComponent],
   providers: [ComposerAttachmentsService],
   templateUrl: './case-home.component.html',
   styleUrl: './case-home.component.scss',
@@ -57,6 +58,8 @@ export class CaseHomeComponent implements OnInit {
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly promptState = inject(PromptStateService)
   private readonly userState = inject(UserStateService)
+  /** Nom du namespace actif — passé par CaseShellComponent */
+  readonly namespaceName = input<string | null>(null)
   private readonly exchangeState = inject(ExchangeStateService)
 
   /** Files staged on the first message (component-scoped instance, see providers). */

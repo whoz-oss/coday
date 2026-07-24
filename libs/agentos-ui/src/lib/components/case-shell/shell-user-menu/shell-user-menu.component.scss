@@ -1,4 +1,4 @@
-@use '../../../../../../design-system/src/styles' as ds;
+@use 'libs/design-system/src/styles' as ds;
 
 .shell-user-menu {
   &__backdrop {
@@ -8,12 +8,20 @@
   }
 
   &__overlay {
-    @include ds.surface-dropdown;
     position: absolute;
-    top: calc(100% + 6px);
+    bottom: calc(100% + 6px); // défaut : vers le haut (sidebar)
     right: 0;
-    min-width: 180px;
+    min-width: 226px;
     z-index: 200;
+    background: var(--color-bg);
+    border: 1px solid var(--color-divider);
+    box-shadow: var(--shadow-lg);
+
+    // Topbar : s'ouvre vers le bas
+    &--topbar {
+      bottom: auto;
+      top: calc(100% + 6px);
+    }
 
     &--mobile {
       position: absolute;
@@ -22,14 +30,61 @@
       left: auto;
       z-index: 300;
     }
+
+    // Compact rail : position fixed pour échapper à overflow:hidden
+    // top/left injectés via [style] depuis le parent (getBoundingClientRect)
+    // Le menu s'ouvre vers le haut depuis le bas du bouton avatar
+    &--compact {
+      position: fixed;
+      bottom: auto;
+      right: auto;
+      z-index: 500;
+      transform: translateY(-100%);
+    }
   }
 
   &__item {
-    @include ds.menu-item;
+    @include ds.button-reset;
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 13.5px;
+    color: var(--color-text);
+    text-align: left;
+    transition: background 100ms;
+
+    &:hover {
+      background: color-mix(in srgb, var(--color-text) 6%, transparent);
+    }
+
+    svg {
+      color: var(--color-neutral-600);
+      flex-shrink: 0;
+    }
 
     &--active {
-      background: color-mix(in srgb, var(--color-primary, #016b71) 12%, transparent);
-      color: var(--color-primary, #016b71);
+      background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+      color: var(--color-accent-700);
+
+      svg {
+        color: var(--color-accent-700);
+      }
+    }
+
+    // Badge d'état inline (ex: "On" pour technical logs)
+    &-badge {
+      margin-left: auto;
+      font-size: 10px;
+      font-family: var(--font-heading);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-accent-700);
+      border: 1px solid var(--color-accent-300);
+      padding: 1px 5px;
     }
   }
 

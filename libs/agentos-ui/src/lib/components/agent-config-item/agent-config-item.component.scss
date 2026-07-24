@@ -2,18 +2,17 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-radius: 10px;
-  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
-  background: var(--glass-bg, rgba(255, 255, 255, 0.72));
-  backdrop-filter: var(--glass-backdrop-blur, blur(20px));
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
+  padding: 14px 16px;
+  position: relative;
+  border-radius: 0;
+  border: 1px solid var(--color-divider);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-sm);
+  overflow: visible;
+  transition: border-color 0.15s ease;
 
   &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
-    border-color: var(--color-primary, #007aff);
+    border-color: var(--color-accent);
   }
 
   &__body {
@@ -25,26 +24,25 @@
   }
 
   &__name {
-    font-size: 0.95rem;
-    font-weight: 500;
-    color: var(--color-text, #1d1d1f);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   &__model {
-    font-size: 0.78rem;
-    color: var(--color-text-secondary, #6e6e73);
-    font-family: monospace;
+    font-size: 13px;
+    color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   &__description {
-    font-size: 0.75rem;
-    color: var(--color-text-secondary, #6e6e73);
+    font-size: 13px;
+    color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -65,9 +63,12 @@
   }
 
   &__confirm-label {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: var(--color-error, #ff3b30);
+    font-family: var(--font-heading);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--red-deep);
     margin-right: 0.25rem;
     white-space: nowrap;
   }

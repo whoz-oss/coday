@@ -1,132 +1,212 @@
 /**
  * Coday Color Variables
  *
- * A simplified theme system with essential color variables.
+ * Design system Industry (bleu acier) + rouge sémantique Modernist.
  * Default theme is light, with dark theme available via data-theme="dark".
+ *
+ * Migration notes:
+ *   --color-border  → kept as alias for --color-divider (backward compat)
+ *   --glass-*       → kept for apps/client legacy components, not used in agentos-ui
  */
 
 :root {
-  /* Light Theme (Default) - Apple Glass Aesthetic */
+  /* ── Typographie ────────────────────────────────────────────────────── */
+  /* ── Accent acier (Industry) — light ─────────────────────────────────────────────── */
+  --color-accent: #5980a6;
+  --color-accent-100: #eef6ff;
+  --color-accent-200: #d6ebff;
+  --color-accent-300: #b5d9fd;
+  --color-accent-600: #597ea3;
+  --color-accent-700: #416180;
+  --color-accent-800: #2c455d;
+  --color-accent-900: #1d2d3d;
 
-  /* Base Colors */
-  --color-bg: linear-gradient(135deg, #fafbfc 0%, #f5f6f8 100%);
-  --color-bg-solid: #fafbfc;
-  --color-bg-secondary: rgba(255, 255, 255, 0.7);
+  /* ── Neutral scale (Industry) — light ─────────────────────────────────────────────── */
+  --color-neutral-100: #f5f5f8;
+  --color-neutral-200: #e9e9ea;
+  --color-neutral-500: #98989b;
+  --color-neutral-600: #7a7a7d;
+  --color-neutral-700: #374151;
+  --color-neutral-900: #111827;
+
+  /* ── Sémantique — rouge (Modernist) — light ─────────────────────────────────────────────── */
+  --red: #ec3013;
+  --red-deep: #ae1800;
+  --red-bg: #ffe0d9;
+
+  /* ── Light mode — Surface / fond ─────────────────────────────────────────────── */
+  --color-bg: #f2f2f3;
+  --color-bg-solid: #f2f2f3;
+  --color-surface: #e9e9ea;
+  --color-surface-secondary: #e9e9ea;
+  --color-bg-secondary: rgba(255, 255, 255, 0.7); /* legacy alias */
   --color-bg-secondary-rgb: 255 255 255;
-  --color-text: #1d1d1f;
-  --color-text-secondary: #6e6e73;
+  --color-text: #1d1f20;
+  --color-text-secondary: #7a7a7d;
+  --color-text-tertiary: #98989b;
   --color-text-inverse: #ffffff;
+  --color-text-on-accent: #ffffff;
 
-  /* Interactive Elements */
-  --color-primary: #007aff;
-  --color-primary-hover: #0051d5;
-  --color-accent: #8b5cf6;
-  --color-link: #007aff;
-  --color-border: rgba(0, 0, 0, 0.1);
-  --color-border-light: rgba(40, 40, 40, 0.08);
-  --color-input-bg: rgba(255, 255, 255, 0.8);
+  /* ── Light mode — Interactive ─────────────────────────────────────────────── */
+  --color-primary: #5980a6;
+  --color-primary-hover: #416180;
+  --color-link: #416180;
+  --color-bg-hover: rgba(29, 31, 32, 0.06);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-muted: rgba(29, 31, 32, 0.04);
+  --color-input-bg: #e9e9ea;
 
-  /* Status Colors */
+  /* ── Light mode — Borders / Dividers ─────────────────────────────────────────────── */
+  --color-divider: rgba(29, 31, 32, 0.16);
+  --color-border: var(--color-divider); /* alias — migrate usages to --color-divider */
+  --color-border-light: rgba(29, 31, 32, 0.08);
+
+  /* ── Light mode — Shadows ───────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 10px rgba(0, 0, 0, 0.06);
+  --color-shadow: rgba(0, 0, 0, 0.08); /* legacy alias */
+
+  /* ── Light mode — Status ───────────────────────────────────────────────── */
   --color-success: #34c759;
-  --color-error: #ff3b30;
+  --color-success-bg: #e3f5e1;
+  --color-error: #ec3013;
   --color-warning: #ff9500;
   --color-info: #5ac8fa;
 
-  /* Application-Specific - Glass morphism */
-  --color-message-user: rgba(0, 122, 255, 0.1);
-  --color-message-ai: rgba(255, 255, 255, 0.8);
-  --color-code-bg: rgba(142, 142, 147, 0.12);
-  --color-code-text: #ff375f;
-  --color-bg-hover: rgba(0, 0, 0, 0.04);
+  /* ── Light mode — Case status ──────────────────────────────────────────── */
+  /* RUNNING → var(--color-accent) / var(--color-accent-700)                  */
+  /* ERROR   → var(--red) / var(--red-deep)                                   */
+  --status-pending-color: #d98a2b;
+  --status-pending-text: #b06f1e;
+  --status-pending-bg: rgba(217, 138, 43, 0.1);
+  --status-idle-color: #8a949e;
+  --status-idle-text: var(--color-neutral-600);
+  --status-idle-bg: rgba(138, 148, 158, 0.08);
+  --status-killed-color: #6b7178;
+  --status-killed-text: var(--color-neutral-700);
+  --status-killed-bg: rgba(107, 113, 120, 0.08);
 
-  /* Glass Effect Variables */
-  --glass-bg: rgba(255, 255, 255, 0.72);
+  /* ── Light mode — Modal / Dialog ─────────────────────────────────────────────── */
+  --color-modal-bg: #f2f2f3;
+  --color-modal-border: rgba(29, 31, 32, 0.16);
+  --color-modal-shadow: 0 8px 40px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.1);
+  --color-overlay: rgba(0, 0, 0, 0.4);
+
+  /* ── Light mode — Code ───────────────────────────────────────────────── */
+  --color-code-bg: rgba(29, 31, 32, 0.06);
+  --color-code-text: #ec3013;
+
+  /* ── Light mode — Chat bubbles ─────────────────────────────────────────────── */
+  --color-message-user: rgba(89, 128, 166, 0.12);
+  --color-message-ai: rgba(255, 255, 255, 0.8);
+  --color-bubble-agent-bg: #f5f5f8;
+  --color-bubble-user-bg: #d6ebff;
+  --color-bubble-system-bg: #1d1f20;
+  --color-bubble-system-text: #f2f2f3;
+
+  /* ── Glass morphism — legacy (apps/client only, not used in agentos-ui) ──── */
+  --glass-bg: rgba(242, 242, 243, 0.72);
   --glass-border: rgba(255, 255, 255, 0.18);
   --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
   --glass-backdrop-blur: blur(20px);
-
-  /* Modal / Dialog */
-  --color-modal-bg: #ffffff;
-  --color-modal-border: rgba(0, 0, 0, 0.12);
-  --color-modal-shadow: 0 8px 40px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.1);
-
-  /* Utility Colors */
-  --color-shadow: rgba(0, 0, 0, 0.08);
-  --color-overlay: rgba(0, 0, 0, 0.4);
-
-  /* Surfaces & extended tokens (consumed by agentos-ui) */
-  --color-text-tertiary: #a1a1a6;
-  --color-surface-hover: var(--color-bg-hover); /* alias: same hover tint, one source for both themes */
-  --color-surface-secondary: rgba(0, 0, 0, 0.03);
-  --color-surface-muted: rgba(0, 0, 0, 0.05);
-  --color-success-bg: #e3f5e1;
-
-  /* Chat bubble surfaces */
-  --color-bubble-agent-bg: #f0f0ee;
-  --color-bubble-user-bg: #6e6e73;
-  --color-bubble-system-bg: #0f1115;
-  --color-bubble-system-text: #e8eaf0;
-  --color-text-on-accent: #ffffff;
 }
 
-/* Dark Theme - Apple Glass Aesthetic */
+/* ── Dark Theme ────────────────────────────────────────────────────────────────────── */
 [data-theme='dark'] {
-  /* Base Colors */
-  --color-bg: linear-gradient(135deg, #1c1c1e 0%, #2c2c2e 100%);
-  --color-bg-solid: #1c1c1e;
-  --color-bg-secondary: rgba(44, 44, 46, 0.72);
-  --color-bg-secondary-rgb: 44 44 46;
-  --color-text: #f5f5f7;
-  --color-text-secondary: #98989d;
-  --color-text-inverse: #ffffff;
+  /* ── Accent acier (Industry) — dark ─────────────────────────────────────────────── */
+  --color-accent: #749dc4;
+  --color-accent-100: #1d2d3d;
+  --color-accent-200: #2c455d;
+  --color-accent-300: #416180;
+  --color-accent-600: #94bce3;
+  --color-accent-700: #b5d9fd;
+  --color-accent-800: #d6ebff;
+  --color-accent-900: #eef6ff;
 
-  /* Interactive Elements */
-  --color-primary: #0a84ff;
-  --color-primary-hover: #409cff;
-  --color-accent: #a78bfa;
-  --color-link: #0a84ff;
-  --color-border: rgba(255, 255, 255, 0.15);
-  --color-border-light: rgba(255, 255, 255, 0.05);
-  --color-input-bg: rgba(44, 44, 46, 0.8);
+  /* ── Neutral scale (Industry) — dark ─────────────────────────────────────────────── */
+  --color-neutral-100: #2b2b2d;
+  --color-neutral-200: #232527;
+  --color-neutral-500: #98989b;
+  --color-neutral-600: #b7b7ba;
+  --color-neutral-700: #d1d5db;
+  --color-neutral-900: #f2f2f3;
 
-  /* Status Colors */
+  /* ── Sémantique — rouge (Modernist) — dark ─────────────────────────────────────────────── */
+  --red: #ff563c;
+  --red-deep: #ff9783;
+  --red-bg: #4d170e;
+
+  /* ── Dark mode — Surface / fond ─────────────────────────────────────────────── */
+  --color-bg: #191b1d;
+  --color-bg-solid: #191b1d;
+  --color-surface: #232527;
+  --color-surface-secondary: #232527;
+  --color-bg-secondary: rgba(35, 37, 39, 0.72); /* legacy alias */
+  --color-bg-secondary-rgb: 35 37 39;
+  --color-text: #f2f2f3;
+  --color-text-secondary: #b7b7ba;
+  --color-text-tertiary: #98989b;
+  --color-text-inverse: #1d1f20;
+  --color-text-on-accent: #ffffff;
+
+  /* ── Dark mode — Interactive ─────────────────────────────────────────────── */
+  --color-primary: #749dc4;
+  --color-primary-hover: #94bce3;
+  --color-link: #b5d9fd;
+  --color-bg-hover: rgba(242, 242, 243, 0.08);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-muted: rgba(242, 242, 243, 0.05);
+  --color-input-bg: #232527;
+
+  /* ── Dark mode — Borders / Dividers ─────────────────────────────────────────────── */
+  --color-divider: rgba(242, 242, 243, 0.14);
+  --color-border: var(--color-divider); /* alias */
+  --color-border-light: rgba(242, 242, 243, 0.07);
+
+  /* ── Dark mode — Shadows ─────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.4), 0 4px 10px rgba(0, 0, 0, 0.3);
+  --color-shadow: rgba(0, 0, 0, 0.5); /* legacy alias */
+
+  /* ── Dark mode — Status ─────────────────────────────────────────────── */
   --color-success: #32d74b;
-  --color-error: #ff453a;
+  --color-success-bg: rgba(50, 215, 75, 0.15);
+  --color-error: #ff563c;
   --color-warning: #ff9f0a;
   --color-info: #64d2ff;
 
-  /* Application-Specific - Glass morphism */
-  --color-message-user: rgba(10, 132, 255, 0.15);
-  --color-message-ai: rgba(58, 58, 60, 0.72);
-  --color-code-bg: rgba(142, 142, 147, 0.24);
-  --color-code-text: #ff375f;
-  --color-bg-hover: rgba(255, 255, 255, 0.08);
+  /* ── Dark mode — Case status ────────────────────────────────────────── */
+  --status-pending-color: #e8a547;
+  --status-pending-text: #f0be78;
+  --status-pending-bg: rgba(232, 165, 71, 0.12);
+  --status-idle-color: #6e7880;
+  --status-idle-text: var(--color-neutral-600);
+  --status-idle-bg: rgba(110, 120, 128, 0.1);
+  --status-killed-color: #55595e;
+  --status-killed-text: var(--color-neutral-700);
+  --status-killed-bg: rgba(85, 89, 94, 0.12);
 
-  /* Glass Effect Variables */
-  --glass-bg: rgba(40, 42, 44);
-  --glass-border: rgba(255, 255, 255, 0.18);
-  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  --glass-backdrop-blur: blur(20px);
-
-  /* Modal / Dialog */
-  --color-modal-bg: #2c2c2e;
-  --color-modal-border: rgba(255, 255, 255, 0.12);
+  /* ── Dark mode — Modal / Dialog ─────────────────────────────────────────────── */
+  --color-modal-bg: #232527;
+  --color-modal-border: rgba(242, 242, 243, 0.14);
   --color-modal-shadow: 0 8px 48px rgba(0, 0, 0, 0.55), 0 2px 12px rgba(0, 0, 0, 0.35);
-
-  /* Utility Colors */
-  --color-shadow: rgba(0, 0, 0, 0.5);
   --color-overlay: rgba(0, 0, 0, 0.8);
 
-  /* Surfaces & extended tokens (consumed by agentos-ui) */
-  --color-text-tertiary: #8e8e93;
-  --color-surface-secondary: rgba(255, 255, 255, 0.04);
-  --color-surface-muted: rgba(255, 255, 255, 0.06);
-  --color-success-bg: rgba(50, 215, 75, 0.15);
+  /* ── Dark mode — Code ─────────────────────────────────────────────── */
+  --color-code-bg: rgba(242, 242, 243, 0.1);
+  --color-code-text: #ff563c;
 
-  /* Chat bubble surfaces */
-  --color-bubble-agent-bg: #2c2c2e;
-  --color-bubble-user-bg: #636366;
-  --color-bubble-system-bg: #0f1115;
-  --color-bubble-system-text: #e8eaf0;
-  --color-text-on-accent: #ffffff;
+  /* ── Dark mode — Chat bubbles ─────────────────────────────────────────────── */
+  --color-message-user: rgba(116, 157, 196, 0.15);
+  --color-message-ai: rgba(35, 37, 39, 0.72);
+  --color-bubble-agent-bg: #2b2b2d;
+  --color-bubble-user-bg: #2c455d;
+  --color-bubble-system-bg: #191b1d;
+  --color-bubble-system-text: #f2f2f3;
+
+  /* ── Glass morphism — legacy ─────────────────────────────────────────────── */
+  --glass-bg: rgba(35, 37, 39, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --glass-backdrop-blur: blur(20px);
 }

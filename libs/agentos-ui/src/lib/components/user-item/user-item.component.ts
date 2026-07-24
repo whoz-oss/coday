@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core'
 import { User } from '@whoz-oss/agentos-api-client'
-import { KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
+import { BlueprintDirective, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
  * UserItemComponent — presentational component for a single user card.
@@ -13,7 +13,7 @@ import { KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
  */
 @Component({
   selector: 'agentos-user-item',
-  imports: [KebabMenuComponent],
+  imports: [BlueprintDirective, KebabMenuComponent],
   templateUrl: './user-item.component.html',
   styleUrl: './user-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

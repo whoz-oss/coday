@@ -1,2 +1,65 @@
-// Layout and grid fully delegated to ds-entity-list.
-// No local styles needed.
+// Override entity-list cards to use blueprint pattern (sharp corners, flat)
+// These deep overrides target the action-card inside namespace-item.
+
+:host ::ng-deep {
+  // Action card inner shell
+  // border-radius: 0 et tokens viennent du mixin ds.surface-card
+  .ac,
+  .ac--clickable {
+    background: var(--color-bg);
+    border: 1px solid var(--color-divider);
+    box-shadow: none;
+
+    &:hover {
+      border-color: var(--color-accent);
+      box-shadow: none;
+    }
+  }
+
+  // Mark / initials: blueprint style
+  .ac__mark {
+    width: 28px;
+    height: 28px;
+    border-radius: 0;
+    // maquette: bg accent-900, color accent-100, font-heading 600 13px
+    background: var(--color-accent-900);
+    color: var(--color-accent-100);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  // Namespace name: heading font, 16.5px
+  .ac__name {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 16.5px;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+    color: var(--color-text);
+  }
+
+  // Chips row: gap 6px (maquette)
+  .ac__chips {
+    gap: 6px;
+    padding: 0 16px 16px;
+  }
+
+  // Chips: tag-neutral style (border-radius: 0 vient du mixin ds.chip)
+  .ac-chip {
+    border: 1px solid var(--color-divider);
+    color: var(--color-neutral-600);
+    background: transparent;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+
+    &:hover {
+      background: var(--color-accent-100);
+      border-color: var(--color-accent-300);
+      color: var(--color-accent-700);
+    }
+  }
+}

@@ -13,6 +13,7 @@ import {
   NgZone,
   OnDestroy,
   OnInit,
+  output,
   signal,
   ViewChild,
 } from '@angular/core'
@@ -24,6 +25,7 @@ import {
   AgentRunningEvent,
   AgentSelectedEvent,
   CaseEvent,
+  CaseStatusEnum,
   CaseStatusEvent,
   CaseUpdatedEvent,
   Configuration,
@@ -36,7 +38,8 @@ import {
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { Prompt } from '@whoz-oss/agentos-api-client'
-import { DrawerComponent, IconButtonComponent, CopyButtonComponent } from '@whoz-oss/design-system'
+import { BlueprintDirective, CopyButtonComponent, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
+import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { CaseStateService } from '../../services/case-state.service'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
@@ -47,8 +50,8 @@ import { UserStateService } from '../../services/user-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
-import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
+import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 
 export interface ToolCall {
@@ -108,11 +111,13 @@ function hasActiveSelection(): boolean {
   selector: 'agentos-case-chat',
   imports: [
     IconButtonComponent,
-    CopyButtonComponent,
     JsonPipe,
     DrawerComponent,
     ExchangeShellComponent,
     PromptAutocompleteComponent,
+    BlueprintDirective,
+    CaseStatusGlyphComponent,
+    CopyButtonComponent,
     ComposerAttachmentsComponent,
   ],
   providers: [ComposerAttachmentsService],
@@ -157,7 +162,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // caseId and namespaceId are read from query params (?case=...&ns=...).
   // The case-shell renders this component directly (not via router-outlet),
   // so route params are empty — all context comes through query params.
-  private caseId = this.route.snapshot.queryParams['case'] as string
+  protected caseId = this.route.snapshot.queryParams['case'] as string
   private readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
 
   /** Markdown renderer shared across all message pre-computations. */
@@ -202,6 +207,29 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected isRunning = signal(false)
   protected isTerminal = signal(false)
 
+  /** Active case from the shared case list (title + stored status). */
+  protected readonly activeCase = computed(() => this.caseState.cases().find((c) => c.id === this.caseId) ?? null)
+
+  /**
+   * Raw SSE status — empty string until a CaseStatusEvent arrives for this case.
+   * Resets to '' on case switch so the stored status takes over immediately.
+   */
+  private readonly _sseStatus = signal<string>('')
+
+  /**
+   * Effective status driving the header glyph + badge.
+   * Priority: SSE event > stored case status > 'IDLE'.
+   */
+  protected readonly caseStatus = computed(() => this._sseStatus() || this.activeCase()?.status || 'IDLE')
+
+  /** Whether the delete confirmation inline is showing. */
+  protected readonly confirmingDelete = signal(false)
+
+  // Header action outputs — handled by CaseShellComponent
+  readonly starToggled = output<{ id: string; starred: boolean }>()
+  readonly deleteRequested = output<string>()
+  readonly logsToggled = output<void>()
+
   // ---------------------------------------------------------------------------
   // Slash-command autocomplete
   // ---------------------------------------------------------------------------
@@ -217,13 +245,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Filtered prompts matching the current slash prefix. Empty list = dropdown closed. */
   protected readonly slashSuggestions = signal<Prompt[]>([])
 
-  private static readonly SHOW_TECHNICAL_KEY = 'agentos.case-chat.showTechnical'
-
-  /** When true, technical events are shown in the timeline. Persisted in localStorage. */
-  protected readonly showTechnical = signal<boolean>(
-    localStorage.getItem(CaseChatComponent.SHOW_TECHNICAL_KEY) === 'true'
-  )
   readonly showTechnicalOverride = input(false)
+  protected readonly showTechnical = computed(() => this.showTechnicalOverride())
 
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
@@ -275,11 +298,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         this.promptsLoaded = true
         this.slashSuggestions.set(prompts.filter((p) => p.name.toLowerCase().startsWith(prefix.toLowerCase())))
       })
-
-    // Sync showTechnical from parent shell override
-    effect(() => {
-      this.showTechnical.set(this.showTechnicalOverride())
-    })
 
     // Restore focus to the composer whenever we return to an interactive state,
     // but only when the user has no active text selection (avoid clearing copy intent).
@@ -553,6 +571,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             // Source of truth for running/terminal states.
             // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
             const status = (event as CaseStatusEvent).status as string
+            this._sseStatus.set(status)
+            // Sync the drawer list so both header and drawer show the same status
+            this.caseState.updateCaseStatus(this.caseId, status)
 
             const isTerminal = status === 'KILLED' || status === 'ERROR'
             this.isTerminal.set(isTerminal)
@@ -744,6 +765,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.inputValue.set('')
     this.isRunning.set(false)
     this.isTerminal.set(false)
+    this._sseStatus.set('')
+    this.confirmingDelete.set(false)
     this.streamingText.set('')
     this.collapsedTools.set(new Set())
     this.isAtBottom.set(true)
@@ -861,11 +884,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected toggleShowTechnical(): void {
-    this.showTechnical.update((v) => {
-      const next = !v
-      localStorage.setItem(CaseChatComponent.SHOW_TECHNICAL_KEY, String(next))
-      return next
-    })
+    this.logsToggled.emit()
   }
 
   /** Extract plain text from a message item for clipboard copy. */
@@ -962,4 +981,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         return null
     }
   }
+
+  protected readonly CaseStatusEnum = CaseStatusEnum
 }

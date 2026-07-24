@@ -23,7 +23,7 @@ export class ShellUserMenuComponent {
   /** Whether dark mode is active */
   readonly isDark = input.required<boolean>()
 
-  /** Whether technical logs are currently shown */
+  /** Whether technical logs are currently shown — drives the active state of the menu item */
   readonly showTechnical = input.required<boolean>()
 
   /**
@@ -31,7 +31,11 @@ export class ShellUserMenuComponent {
    * - 'desktop': absolute positioned relative to the user button in the sidebar
    * - 'mobile': absolute positioned relative to the mobile topbar
    */
-  readonly variant = input<'desktop' | 'mobile'>('desktop')
+  readonly variant = input<'desktop' | 'topbar' | 'mobile' | 'compact'>('desktop')
+
+  /** Coordonnées fixes pour le variant 'compact' (calculées par le parent depuis getBoundingClientRect) */
+  readonly fixedTop = input<number>(0)
+  readonly fixedLeft = input<number>(0)
 
   /** Emits the route path to navigate to */
   readonly navigateTo = output<string>()

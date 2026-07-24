@@ -16,25 +16,21 @@
 
   &__title {
     margin: 0;
-    font-size: 1.5rem;
+    font-size: 28px;
     font-weight: 700;
-    letter-spacing: -0.02em;
     color: var(--color-text);
-    font-family: ds.$font-ui;
+    font-family: var(--font-heading);
   }
 
   &__subtitle {
     margin: 0;
-    @include ds.text-secondary;
+    font-size: 13px;
+    color: var(--color-neutral-600);
   }
 
   &__sections {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 0.75rem;
-
-    agentos-action-card {
-      --ac-height: 120px;
-    }
+    gap: 12px;
   }
 }

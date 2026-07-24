@@ -1,33 +1,34 @@
 <div class="case-shell">
-  <!-- ═══ MOBILE TOP BAR ═══ -->
+  <!-- ═══ MOBILE TOP BAR ═══
+       hamburger | {C} | NS picker | spacer | + New case
+  -->
   <agentos-shell-topbar-mobile
     [selectedNamespace]="selectedNamespace()"
     [namespaces]="namespaces()"
     [nsMenuOpen]="nsMenuOpen()"
-    [userInitials]="userInitials()"
-    [menuOpen]="menuOpen()"
-    [isAdmin]="isAdmin()"
-    [isDark]="isDark()"
-    [showTechnical]="showTechnical()"
-    (homeClicked)="navigateHome()"
+    (drawerToggled)="toggleMobileDrawer()"
+    (createRequested)="onMobileCreateCase()"
     (namespaceSelected)="onNamespaceSelected($event)"
     (nsMenuToggled)="toggleNsMenu($event)"
     (nsMenuClosed)="closeNsMenu($event)"
-    (menuToggled)="toggleMenu($event)"
-    (menuClosed)="closeMenu($event)"
+  />
+
+  <!-- ═══ MOBILE CASE DRAWER (overlay slide-in) ═══ -->
+  <agentos-shell-case-switcher-mobile
+    [open]="mobileDrawerOpen()"
+    [cases]="cases()"
+    [activeCaseId]="activeCaseId()"
+    [userInitials]="userInitials()"
+    [userName]="userName()"
+    [isAdmin]="isAdmin()"
+    [isDark]="isDark()"
+    (closed)="mobileDrawerOpen.set(false)"
+    (caseSelected)="onMobileCaseSelect($event)"
+    (starToggled)="onStarToggled($event)"
+    (deleteRequested)="onDeleteRequested($event)"
     (navigateTo)="onMenuNavigate($event)"
     (themeToggled)="onMenuToggleTheme()"
     (logsToggled)="onMenuToggleLogs()"
-  />
-
-  <!-- ═══ MOBILE CASE SWITCHER ═══ -->
-  <agentos-shell-case-switcher-mobile
-    [cases]="cases()"
-    [activeCaseId]="activeCaseId()"
-    [open]="mobileSwitcherOpen()"
-    (caseSelected)="onMobileCaseSelect($event)"
-    (createRequested)="onMobileCreateCase()"
-    (toggled)="toggleMobileSwitcher()"
   />
 
   <!-- ═══ DESKTOP SIDEBAR ═══ -->
@@ -41,6 +42,7 @@
     [cases]="cases()"
     [activeCaseId]="activeCaseId()"
     [userInitials]="userInitials()"
+    [userName]="userName()"
     [menuOpen]="menuOpen()"
     [isAdmin]="isAdmin()"
     [isDark]="isDark()"
@@ -82,9 +84,14 @@
   <!-- ═══ MAIN ═══ -->
   <main class="case-shell__main">
     @if (activeCaseId()) {
-      <agentos-case-chat [showTechnicalOverride]="showTechnical()" />
+      <agentos-case-chat
+        [showTechnicalOverride]="showTechnical()"
+        (starToggled)="onStarToggled($event)"
+        (deleteRequested)="onDeleteRequested($event)"
+        (logsToggled)="onMenuToggleLogs()"
+      />
     } @else {
-      <agentos-case-home />
+      <agentos-case-home [namespaceName]="selectedNamespace()?.name ?? null" />
     }
   </main>
 </div>

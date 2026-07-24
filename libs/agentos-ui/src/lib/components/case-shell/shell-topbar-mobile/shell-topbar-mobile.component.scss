@@ -1,155 +1,197 @@
-@use '../../../../../../design-system/src/styles' as ds;
+@use 'libs/design-system/src/styles' as ds;
 
 :host {
   display: none; // hidden on desktop, shown via media query
 }
 
-.shell-topbar-mobile {
-  &__brand {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    flex: 1;
-    overflow: hidden;
-  }
+// ── Main topbar row ───────────────────────────────────────────────────────────
 
-  &__logo-btn {
-    @include ds.button-reset;
+.shell-topbar-mobile__inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 0 10px;
+}
 
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex: none;
-  }
+// ── Hamburger button ──────────────────────────────────────────────────────────
 
-  &__logo-img {
-    height: 28px;
-    width: auto;
-    border-radius: 6px;
-    object-fit: contain;
-  }
+.shell-topbar-mobile__hamburger {
+  @include ds.button-reset;
 
-  &__logo-text {
-    @include ds.text-label;
-  }
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+  transition: color 140ms;
 
-  &__sep {
-    color: var(--color-text-tertiary);
-    font: inherit;
-    font-size: 0.75rem;
-    flex: none;
-  }
-
-  // Namespace switcher
-  &__ns-wrap {
-    position: static;
-    min-width: 0;
-  }
-
-  &__ns-btn {
-    @include ds.button-reset;
-    @include ds.text-menu-item;
-
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    border-radius: 6px;
-    border: 1px solid transparent;
-    transition: all 150ms;
-    max-width: 160px;
-
-    &:hover {
-      background: var(--color-bg-hover);
-      border-color: var(--color-border);
-    }
-
-    // Open state: primary border — aligns with desktop trigger style
-    &--open {
-      border-color: var(--color-primary);
-      background: color-mix(in srgb, var(--color-primary) 6%, transparent);
-    }
-  }
-
-  &__chevron {
-    color: var(--color-text-secondary);
-    font-size: 9px;
-    flex: none;
-  }
-
-  &__ns-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 299;
-  }
-
-  &__ns-menu {
-    @include ds.surface-dropdown;
-
-    position: fixed;
-    top: 44px;
-    left: 16px;
-    min-width: 200px;
-    z-index: 300;
-  }
-
-  &__ns-item {
-    @include ds.menu-item;
-
-    &--active {
-      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-      color: var(--color-primary);
-    }
-  }
-
-  &__ns-item-name {
-    flex: 1;
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  // Avatar
-  &__avatar-wrap {
-    position: relative;
-    flex-shrink: 0;
-  }
-
-  &__avatar {
-    @include ds.text-mark;
-
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    border: none;
-    background: var(--color-primary, #016b71);
-    color: #fff;
-    display: grid;
-    place-items: center;
-    cursor: pointer;
-    user-select: none;
-    transition: background 140ms ease;
-
-    &:hover {
-      background: var(--color-primary-hover, #015a5f);
-    }
+  &:hover {
+    color: var(--color-accent);
   }
 }
+
+// ── Logo image ─────────────────────────────────────────────────────────────────
+
+.shell-topbar-mobile__logo-img {
+  height: 26px;
+  width: 26px;
+  flex: none;
+  object-fit: cover;
+  object-position: left center;
+  display: block;
+}
+
+// ── Namespace picker ──────────────────────────────────────────────────────────
+
+.shell-topbar-mobile__ns-wrap {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+  max-width: 200px;
+}
+
+.shell-topbar-mobile__ns-btn {
+  @include ds.button-reset;
+
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  color: var(--color-text);
+  font-size: 13px;
+  width: 100%;
+  min-width: 0;
+  transition: border-color 140ms;
+
+  &:hover {
+    border-color: var(--color-neutral-500);
+  }
+
+  &--open {
+    border-color: var(--color-accent);
+  }
+}
+
+.shell-topbar-mobile__ns-mark {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--color-accent-900);
+  color: var(--color-accent-100);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.shell-topbar-mobile__ns-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  max-width: 110px;
+}
+
+.shell-topbar-mobile__ns-chevron {
+  flex: none;
+  opacity: 0.6;
+}
+
+.shell-topbar-mobile__ns-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.shell-topbar-mobile__ns-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 31;
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  box-shadow: var(--shadow-lg);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.shell-topbar-mobile__ns-item {
+  @include ds.button-reset;
+
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  color: var(--color-text);
+  text-align: left;
+  transition: background 100ms;
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  }
+
+  &--active {
+    color: var(--color-accent-700);
+  }
+}
+
+.shell-topbar-mobile__ns-item-mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-divider);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--color-neutral-600);
+}
+
+.shell-topbar-mobile__ns-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ── Spacer ────────────────────────────────────────────────────────────────────
+
+.shell-topbar-mobile__spacer {
+  flex: 1;
+}
+
+// ── New case button ───────────────────────────────────────────────────────────
+
+.shell-topbar-mobile__new-btn {
+  width: 32px;
+  height: 32px;
+  flex: none;
+}
+
+// ── Media query — show on mobile ──────────────────────────────────────────────
 
 @media (max-width: 900px) {
   :host {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 0 16px;
-    min-height: 44px;
-    border-bottom: 1px solid var(--color-border);
+    height: 52px;
+    flex: none;
+    border-bottom: 1px solid var(--color-divider);
     background: var(--color-bg);
     flex-shrink: 0;
     position: relative;
+    z-index: 10;
   }
 }

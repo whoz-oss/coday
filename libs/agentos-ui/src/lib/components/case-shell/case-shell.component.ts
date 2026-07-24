@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  ElementRef,
+  inject,
+  signal,
+} from '@angular/core'
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
@@ -66,6 +75,12 @@ export class CaseShellComponent {
     return (first + last).toUpperCase() || user.email?.[0]?.toUpperCase() || ''
   })
 
+  protected readonly userName = computed(() => {
+    const user = this.userState.currentUser()
+    if (!user) return ''
+    return [user.firstname, user.lastname].filter(Boolean).join(' ') || user.email || ''
+  })
+
   // ---------------------------------------------------------------------------
   // Theme
   // ---------------------------------------------------------------------------
@@ -82,7 +97,7 @@ export class CaseShellComponent {
   // ---------------------------------------------------------------------------
 
   /** Sidebar width in pixels — adjustable via drag handle, persisted in localStorage */
-  protected readonly sidebarWidth = signal(Number(localStorage.getItem('agentos.sidebar.width')) || 300)
+  protected readonly sidebarWidth = signal(Number(localStorage.getItem('agentos.sidebar.width')) || 400)
 
   /** Whether the user context menu is open */
   protected readonly menuOpen = signal(false)
@@ -93,11 +108,13 @@ export class CaseShellComponent {
   /** Whether the desktop sidebar is expanded — persisted in localStorage */
   protected readonly sidebarOpen = signal(localStorage.getItem('agentos.sidebar.open') !== 'false')
 
-  /** Whether the mobile case switcher is open */
-  protected readonly mobileSwitcherOpen = signal(false)
+  /** Whether the mobile case drawer is open */
+  protected readonly mobileDrawerOpen = signal(false)
 
-  /** Shared technical logs toggle — passed down to CaseChatComponent */
-  protected readonly showTechnical = signal(false)
+  private static readonly SHOW_TECHNICAL_KEY = 'agentos.case-chat.showTechnical'
+
+  /** Source de vérité globale pour les technical logs — persisté en localStorage. */
+  protected readonly showTechnical = signal(localStorage.getItem(CaseShellComponent.SHOW_TECHNICAL_KEY) === 'true')
 
   /** Whether to show the namespace picker (admin or multiple namespaces) */
   protected readonly showNsPicker = computed(() => this.isAdmin() || this.namespaces().length > 1)
@@ -207,11 +224,6 @@ export class CaseShellComponent {
   }
 
   protected onDeleteRequested(caseId: string): void {
-    const target = this.cases().find((c) => c.id === caseId)
-    const label = target?.title ?? caseId
-    if (!confirm(`Delete "${label}"?`)) {
-      return
-    }
     this.caseState
       .deleteCase(caseId)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -223,7 +235,6 @@ export class CaseShellComponent {
         },
         error: (err) => {
           console.error(`[CaseShell] Failed to delete case ${caseId}:`, err)
-          alert('Could not delete the case. Please try again.')
         },
       })
   }
@@ -287,24 +298,28 @@ export class CaseShellComponent {
 
   protected onMenuToggleLogs(): void {
     this.menuOpen.set(false)
-    this.showTechnical.update((v) => !v)
+    this.showTechnical.update((v) => {
+      const next = !v
+      localStorage.setItem(CaseShellComponent.SHOW_TECHNICAL_KEY, String(next))
+      return next
+    })
   }
 
   // ---------------------------------------------------------------------------
-  // Mobile case switcher
+  // Mobile drawer
   // ---------------------------------------------------------------------------
 
-  protected toggleMobileSwitcher(): void {
-    this.mobileSwitcherOpen.update((v) => !v)
+  protected toggleMobileDrawer(): void {
+    this.mobileDrawerOpen.update((v) => !v)
   }
 
   protected onMobileCaseSelect(caseId: string): void {
-    this.mobileSwitcherOpen.set(false)
+    this.mobileDrawerOpen.set(false)
     this.onCaseSelected(caseId)
   }
 
   protected onMobileCreateCase(): void {
-    this.mobileSwitcherOpen.set(false)
+    this.mobileDrawerOpen.set(false)
     this.onCreateRequested()
   }
 
@@ -312,24 +327,54 @@ export class CaseShellComponent {
   // Sidebar resize
   // ---------------------------------------------------------------------------
 
+  private readonly hostEl = inject(ElementRef<HTMLElement>)
+
   /**
    * Start a drag session to resize the sidebar.
-   * Clamps the width between 200px and 500px.
+   *
+   * Strategy: manipulate the sidebar DOM width directly during the drag
+   * (zero Angular change detection overhead), then commit to the signal
+   * on mouseup so the rest of the app re-renders only once.
    */
   protected onResizeStart(event: MouseEvent): void {
     event.preventDefault()
+
     const startX = event.clientX
     const startWidth = this.sidebarWidth()
+    const maxWidth = Math.floor(window.innerWidth * 0.5)
+
+    // Grab the sidebar element directly — avoids going through Angular bindings
+    const sidebarEl = this.hostEl.nativeElement.querySelector(
+      'agentos-shell-sidebar > .shell-sidebar'
+    ) as HTMLElement | null
+
+    // Disable CSS transition during drag for immediate feedback
+    if (sidebarEl) sidebarEl.style.transition = 'none'
+
+    // Prevent text selection while dragging
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+
+    let currentWidth = startWidth
 
     const onMove = (e: MouseEvent): void => {
       const delta = e.clientX - startX
-      const newWidth = Math.max(200, Math.min(500, startWidth + delta))
-      this.sidebarWidth.set(newWidth)
+      currentWidth = Math.max(200, Math.min(maxWidth, startWidth + delta))
+      // Direct DOM mutation — no Angular involvement
+      if (sidebarEl) sidebarEl.style.width = `${currentWidth}px`
     }
 
     const onUp = (): void => {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
+
+      // Restore styles
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+      if (sidebarEl) sidebarEl.style.transition = ''
+
+      // Commit final value to signal — single re-render + localStorage persist
+      this.sidebarWidth.set(currentWidth)
     }
 
     document.addEventListener('mousemove', onMove)
