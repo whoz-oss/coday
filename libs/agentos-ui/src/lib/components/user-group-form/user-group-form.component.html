@@ -1,0 +1,150 @@
+<div class="user-group-form">
+  <header class="user-group-form__header">
+    <button class="user-group-form__back" type="button" (click)="cancel()" title="Back to user groups">
+      <span class="user-group-form__back-icon">&#8592;</span>
+      User Groups
+    </button>
+    <h1 class="user-group-form__title">{{ isEditMode() ? 'Edit user group' : 'New user group' }}</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="user-group-form__loading">Loading&hellip;</p>
+  } @else {
+    <form class="user-group-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <!-- Name -->
+      <div class="user-group-form__field">
+        <label class="user-group-form__label" for="user-group-name">Name <span aria-hidden="true">*</span></label>
+        <input
+          id="user-group-name"
+          class="user-group-form__input"
+          [class.user-group-form__input--invalid]="nameControl.invalid && nameControl.touched"
+          type="text"
+          placeholder="e.g. Support team"
+          formControlName="name"
+          autocomplete="off"
+        />
+        @if (nameControl.invalid && nameControl.touched) {
+          <span class="user-group-form__field-error">Name is required.</span>
+        }
+      </div>
+
+      <!-- Deployed agents -->
+      <fieldset class="user-group-form__section">
+        <legend class="user-group-form__label">
+          Deployed agents
+          <span class="user-group-form__label-hint">Agents this group can use</span>
+        </legend>
+        <p class="user-group-form__section-hint">
+          Pick from platform agents and this namespace's agents. An agent already deployed to another group in this
+          namespace is unavailable here.
+        </p>
+
+        @if (platformAgents().length === 0 && namespaceAgents().length === 0) {
+          <p class="user-group-form__empty-hint">No agent configs available in this namespace.</p>
+        }
+
+        @if (platformAgents().length > 0) {
+          <div class="user-group-form__agent-group">
+            <span class="user-group-form__agent-group-title">Platform</span>
+            @for (agent of platformAgents(); track agent.id) {
+              <ng-container *ngTemplateOutlet="agentRow; context: { $implicit: agent }" />
+            }
+          </div>
+        }
+
+        @if (namespaceAgents().length > 0) {
+          <div class="user-group-form__agent-group">
+            <span class="user-group-form__agent-group-title">Namespace</span>
+            @for (agent of namespaceAgents(); track agent.id) {
+              <ng-container *ngTemplateOutlet="agentRow; context: { $implicit: agent }" />
+            }
+          </div>
+        }
+      </fieldset>
+
+      <!-- Members -->
+      <fieldset class="user-group-form__section">
+        <legend class="user-group-form__label">
+          Members
+          <span class="user-group-form__label-hint">Users in this group</span>
+        </legend>
+
+        <p class="user-group-form__section-hint">ADMIN members can manage this group; MEMBER is read-only.</p>
+
+        @if (selectedMembers().length === 0) {
+          <p class="user-group-form__empty-hint">No members yet.</p>
+        } @else {
+          <ul class="user-group-form__members">
+            @for (member of selectedMembers(); track member.externalId) {
+              <li class="user-group-form__member">
+                <div class="user-group-form__member-info">
+                  <span class="user-group-form__member-name">{{ member.label }}</span>
+                  @if (member.email && member.email !== member.label) {
+                    <span class="user-group-form__member-email">{{ member.email }}</span>
+                  }
+                </div>
+                <select
+                  class="user-group-form__member-role"
+                  [value]="member.role"
+                  [attr.aria-label]="'Role of ' + member.label"
+                  (change)="setMemberRole(member.externalId, $any($event.target).value)"
+                >
+                  <option value="MEMBER">Member</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+                <button
+                  class="user-group-form__member-remove"
+                  type="button"
+                  [title]="'Remove ' + member.label"
+                  (click)="removeMember(member.externalId)"
+                >
+                  &#215;
+                </button>
+              </li>
+            }
+          </ul>
+        }
+
+        <ds-autocomplete-input
+          [dataSource]="memberDataSource"
+          placeholder="Add a member…"
+          (itemSelected)="onMemberSelected($event)"
+        />
+      </fieldset>
+
+      <!-- Error message -->
+      @if (errorMessage()) {
+        <p class="user-group-form__error">{{ errorMessage() }}</p>
+      }
+
+      <!-- Actions -->
+      <div class="user-group-form__actions">
+        <button
+          class="user-group-form__btn user-group-form__btn--primary"
+          type="submit"
+          [disabled]="nameControl.invalid || isSubmitting()"
+        >
+          {{ isEditMode() ? 'Save changes' : 'Create' }}
+        </button>
+        <button class="user-group-form__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+</div>
+
+<!-- Agent checkbox row (shared by the platform + namespace groups) -->
+<ng-template #agentRow let-agent>
+  <label class="user-group-form__agent" [class.user-group-form__agent--disabled]="isAgentDisabled(agent)">
+    <input
+      type="checkbox"
+      class="user-group-form__agent-checkbox"
+      [checked]="isAgentSelected(agent)"
+      [disabled]="isAgentDisabled(agent)"
+      (change)="toggleAgent(agent)"
+    />
+    <span class="user-group-form__agent-name">{{ agent.name }}</span>
+    @if (isAgentDisabled(agent)) {
+      <span class="user-group-form__agent-note">in {{ agentOwnerGroup(agent) }}</span>
+    }
+  </label>
+</ng-template>

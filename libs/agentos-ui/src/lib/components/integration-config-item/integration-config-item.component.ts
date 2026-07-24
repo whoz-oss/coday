@@ -10,11 +10,12 @@ interface ScopeBadge {
 }
 
 /**
- * Badge labels are kept short (NS / USER × NS / USER GLOBAL) so the row stays scannable.
+ * Badge labels are kept short (PLATFORM / NS / USER × NS / USER GLOBAL) so the row stays scannable.
  * The `ariaLabel` carries the human-readable French translation for screen readers — the
  * `×` glyph in the visible label would otherwise be announced as "multiplication sign".
  */
 const SCOPE_BADGES: Readonly<Record<IntegrationScope, ScopeBadge>> = Object.freeze({
+  platform: { label: 'PLATFORM', ariaLabel: 'Configuration partagée plateforme', variant: 'neutral' },
   namespace: { label: 'NS', ariaLabel: 'Configuration partagée du namespace', variant: 'neutral' },
   userOnNs: { label: 'USER × NS', ariaLabel: 'Configuration utilisateur sur ce namespace', variant: 'info' },
   userGlobal: { label: 'USER GLOBAL', ariaLabel: 'Configuration utilisateur globale', variant: 'warning' },
@@ -36,7 +37,6 @@ const SCOPE_BADGES: Readonly<Record<IntegrationScope, ScopeBadge>> = Object.free
  */
 @Component({
   selector: 'agentos-integration-config-item',
-  standalone: true,
   imports: [IconButtonComponent],
   templateUrl: './integration-config-item.component.html',
   styleUrl: './integration-config-item.component.scss',

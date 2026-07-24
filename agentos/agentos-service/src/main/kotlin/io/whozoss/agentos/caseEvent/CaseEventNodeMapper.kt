@@ -11,14 +11,17 @@ import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -81,6 +84,10 @@ class CaseEventNodeMapper(
             is TextChunkEvent -> fromDomain(event)
             is PendingConfirmationEvent -> fromDomain(event)
             is ConfirmationResolvedEvent -> fromDomain(event)
+            // CaseUpdatedEvent is transient — it must never reach the persistence layer.
+            // storeEvent() in CaseServiceImpl skips TransientCaseEvent instances, so this
+            // branch is a programming-error guard rather than a reachable path.
+            is CaseUpdatedEvent -> error("CaseUpdatedEvent is transient and must not be persisted")
         }
 
     fun withRemoved(
@@ -234,6 +241,7 @@ class CaseEventNodeMapper(
                     node.success,
                     node.metadataJson,
                     node.durationMs,
+                    node.imagesJson,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -266,6 +274,8 @@ class CaseEventNodeMapper(
                     node.agentName,
                     node.question,
                     node.options,
+                    node.questionType,
+                    node.userId,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -475,6 +485,9 @@ class CaseEventNodeMapper(
             success = n.success,
             durationMs = n.durationMs,
             toolMetadata = n.metadataJson?.let { serializer.deserializeMetadata(it) } ?: emptyMap(),
+            images = n.imagesJson
+                ?.let { serializer.deserialize(it).filterIsInstance<MessageContent.Image>() }
+                ?: emptyList(),
         )
 
     private fun toDomain(n: ThinkingEventNode) =
@@ -495,6 +508,8 @@ class CaseEventNodeMapper(
             agentName = n.agentName,
             question = n.question,
             options = n.options?.let { serializer.deserializeStringList(it) },
+            questionType = try { QuestionType.valueOf(n.questionType) } catch (_: Exception) { QuestionType.FREE_TEXT },
+            userId = n.userId?.let { UUID.fromString(it) },
         )
 
     private fun toDomain(n: AnswerEventNode) =
@@ -701,6 +716,7 @@ class CaseEventNodeMapper(
             success = e.success,
             metadataJson = e.toolMetadata.takeIf { it.isNotEmpty() }?.let { serializer.serializeMetadata(it) },
             durationMs = e.durationMs,
+            imagesJson = e.images.takeIf { it.isNotEmpty() }?.let { serializer.serialize(it) },
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -731,6 +747,8 @@ class CaseEventNodeMapper(
             agentName = e.agentName,
             question = e.question,
             options = e.options?.let { serializer.serializeStringList(it) },
+            questionType = e.questionType.name,
+            userId = e.userId?.toString(),
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

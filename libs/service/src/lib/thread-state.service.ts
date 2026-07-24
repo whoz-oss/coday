@@ -41,9 +41,14 @@ export class ThreadStateService implements Killable {
     if (thread && thread.messagesLength > 0) {
       try {
         await this.threadRepository.save(this.projectId, thread)
+        console.log(`[THREAD_STATE] Kill-save succeeded for thread ${thread.id} (${thread.messagesLength} messages)`)
       } catch (error) {
         console.log('Kill-save failed:', error instanceof Error ? error.message : error)
       }
+    } else {
+      console.log(
+        `[THREAD_STATE] Kill-save skipped: ${thread ? `thread ${thread.id} has ${thread.messagesLength} messages` : 'no active thread'}`
+      )
     }
     this.isKilled = true
     this.activeThread$.complete()
@@ -107,14 +112,17 @@ export class ThreadStateService implements Killable {
   async autoSave(newName?: string): Promise<void> {
     // Check if service has been killed
     if (this.isKilled) {
-      console.log('Autosave skipped: service has been killed')
+      console.warn(
+        `[AUTOSAVE] SKIPPED for project ${this.projectId}: service already killed (thread data may be lost if no prior save succeeded)`
+      )
       return
     }
 
     const thread = this.activeThread$.value
     if (!thread || thread.messagesLength == 0) {
-      // skip saving a thread that has no messages
-      console.warn(`Autosave of an empty or falsy thread aborted, threadId: ${thread?.id}, user: ${this.username}`)
+      console.warn(
+        `[AUTOSAVE] Skipped: ${!thread ? 'no active thread' : `thread ${thread.id} has 0 messages`} (project: ${this.projectId}, user: ${this.username})`
+      )
       return
     }
 
@@ -123,6 +131,9 @@ export class ThreadStateService implements Killable {
         thread.name = newName
       }
       await this.threadRepository.save(this.projectId, thread)
+      console.log(
+        `[AUTOSAVE] Thread ${thread.id} saved (${thread.messagesLength} messages, project: ${this.projectId})`
+      )
 
       // Emit thread update event whenever we save
       // Always include the current name to ensure frontend list stays in sync

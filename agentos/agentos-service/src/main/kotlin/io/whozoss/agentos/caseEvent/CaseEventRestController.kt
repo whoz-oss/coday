@@ -2,13 +2,13 @@
 
 package io.whozoss.agentos.caseEvent
 
-import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -68,10 +68,10 @@ class CaseEventRestController(
      * factorised pattern would require either an abstract `parentIdOf(entity): String` method
      * (overkill for a single use case) or running the wrong query (event id instead of case id).
      *
-     * As a result, fixes applied to [io.whozoss.agentos.entity.EntityController.getByIds]
+     * As a result, fixes applied to [io.whozoss.agentos.entity.DefaultEntityCrud.getByIds]
      * (input order preservation, batch size cap, log WARN on parse failure) **must be
      * replicated manually here**. Today this method preserves order (`events.filter { ... }`
-     * is stable) and applies the same [EntityController.MAX_BATCH_SIZE] cap as the base
+     * is stable) and applies the same [DefaultEntityCrud.MAX_BATCH_SIZE] cap as the base
      * (closes adversarial review P2 of story 5-4).
      */
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -79,10 +79,10 @@ class CaseEventRestController(
     fun getByIds(
         @RequestBody ids: List<UUID>,
     ): List<CaseEvent> {
-        if (ids.size > EntityController.MAX_BATCH_SIZE) {
+        if (ids.size > EntityCrudDelegate.MAX_BATCH_SIZE) {
             throw ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
-                "Batch size ${ids.size} exceeds maximum of ${EntityController.MAX_BATCH_SIZE}",
+                "Batch size ${ids.size} exceeds maximum of ${EntityCrudDelegate.MAX_BATCH_SIZE}",
             )
         }
         if (ids.isEmpty()) return emptyList()
@@ -99,8 +99,9 @@ class CaseEventRestController(
         val events = caseEventService.findByIds(ids)
         if (events.isEmpty()) return emptyList()
         val caseIds = events.map { it.caseId.toString() }.distinct()
-        val visibleCaseIds = permissionService
-            .filterVisibleIds(currentUser.id.toString(), EntityType.CASE, caseIds, Action.READ)
+        val visibleCaseIds =
+            permissionService
+                .filterVisibleIds(currentUser.id.toString(), EntityType.CASE, caseIds, Action.READ)
         return events.filter { it.caseId.toString() in visibleCaseIds }
     }
 

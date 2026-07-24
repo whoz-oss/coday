@@ -1,11 +1,11 @@
 <div class="agent-config-item" role="listitem">
   <div class="agent-config-item__body">
-    <span class="agent-config-item__name">{{ config.name }}</span>
-    @if (config.modelName) {
-      <span class="agent-config-item__model">{{ config.modelName }}</span>
+    <span class="agent-config-item__name">{{ config().name }}</span>
+    @if (config().modelName) {
+      <span class="agent-config-item__model">{{ config().modelName }}</span>
     }
-    @if (config.description) {
-      <span class="agent-config-item__description">{{ config.description }}</span>
+    @if (config().description) {
+      <span class="agent-config-item__description">{{ config().description }}</span>
     }
   </div>
 
@@ -15,7 +15,7 @@
       <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
       <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
     } @else {
-      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+      <ds-kebab-menu [items]="readOnly() ? readOnlyMenuItems : menuItems" (itemSelected)="onMenuAction($event)" />
     }
   </div>
 </div>

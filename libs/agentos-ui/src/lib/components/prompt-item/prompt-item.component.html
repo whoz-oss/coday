@@ -1,0 +1,18 @@
+<div class="prompt-item" role="listitem" [class.prompt-item--pending-delete]="pendingDelete()">
+  <div class="prompt-item__body">
+    <span class="prompt-item__name">{{ prompt().name }}</span>
+    @if (prompt().description) {
+      <span class="prompt-item__description">{{ prompt().description }}</span>
+    }
+  </div>
+
+  <div class="prompt-item__actions">
+    @if (pendingDelete()) {
+      <span class="prompt-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else if (!readOnly()) {
+      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+    }
+  </div>
+</div>

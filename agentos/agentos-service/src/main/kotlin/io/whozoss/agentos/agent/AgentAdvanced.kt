@@ -7,39 +7,20 @@ import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
-import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.CaseEvent
-import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
-import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
-import io.whozoss.agentos.sdk.caseEvent.MessageContent
-import io.whozoss.agentos.sdk.caseEvent.MessageEvent
-import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
-import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
-import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
-import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
-import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
-import io.whozoss.agentos.sdk.caseEvent.WarnEvent
+import io.whozoss.agentos.sdk.caseEvent.*
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.tool.ConfirmationMode
-import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
-import io.whozoss.agentos.sdk.tool.StandardTool
-import io.whozoss.agentos.sdk.tool.ToolContext
-import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import io.whozoss.agentos.util.AttemptFailure
-import io.whozoss.agentos.util.AttemptResult
-import io.whozoss.agentos.util.AttemptSuccess
-import io.whozoss.agentos.util.mapWhile
-import io.whozoss.agentos.util.retryWithFallback
+import io.whozoss.agentos.sdk.tool.*
+import io.whozoss.agentos.util.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
+import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
-import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
-import java.util.UUID
+import java.util.*
 
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -157,6 +138,7 @@ class AgentAdvanced(
 
                     val intention =
                         intentionGenerator.generate(
+                            agentName = name,
                             context = context,
                             events = accumulatedEvents,
                             namespaceId = namespaceId,
@@ -606,6 +588,7 @@ class AgentAdvanced(
                     success = result.success,
                     durationMs = durationMs,
                     toolMetadata = result.metadata,
+                    images = result.images,
                 )
             } catch (e: Exception) {
                 logger.warn(e) {
@@ -985,6 +968,9 @@ class AgentAdvanced(
         // Build the final prompt in clear, composable sections
         val prompt =
             buildString {
+                appendLine("Available agents and tools:")
+                val toolsDescription = context.tools.joinToString("\n") { "- ${it.name}: ${it.description}" }
+                appendLine(toolsDescription)
                 lastIntention?.let {
                     if (it.isFailedIntention) {
                         appendLine("Your analysis:")
@@ -994,7 +980,7 @@ class AgentAdvanced(
                         appendLine()
                         appendLine("I must inform the user that something went wrong, and suggest they try again or contact the support.")
                     } else {
-                        appendLine("Your analysis: ${it.intention}")
+                        appendLine("Your have decided to answer the user because: ${it.intention}")
                     }
                     appendLine()
                 }
@@ -1033,10 +1019,8 @@ class AgentAdvanced(
             .chatResponse()
             .asFlow()
             .takeWhile { shouldContinue() }
-            .collect { response: ChatResponse ->
-                val chunk =
-                    response.result.output.text
-                        ?.takeIf { it.isNotEmpty() }
+            .collect { response ->
+                val chunk = response.result.output.text?.takeIf { it.isNotEmpty() }
                 if (chunk != null) {
                     contentBuilder.append(chunk)
                     emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
@@ -1093,6 +1077,22 @@ class AgentAdvanced(
                         "clarify with the user that this cannot be done.",
                 )
                 add(
+                    "GENDER-NEUTRAL LANGUAGE — HARD CONSTRAINT (not a preference):\n" +
+                            "You must NEVER output any gendered pronoun or gendered possessive when referring to a person. " +
+                            "Forbidden tokens (case-insensitive): 'he', 'she', 'him', 'her', 'hers', 'his', 'himself', 'herself', " +
+                            "'il', 'elle', 'lui', 'son', 'sa', 'ses'.\n" +
+                            "Never infer or assume a person's gender from their name, profile, or any other indirect signal. " +
+                            "Always refer to a person by their name, their job title, or a neutral noun " +
+                            "('this person', 'the candidate', 'the profile', 'the talent' / 'cette personne', 'le profil', 'le talent', 'le candidat'). " +
+                            "When a pronoun is grammatically unavoidable in English, use singular 'they/their/them'. " +
+                            "In French, never use a gendered pronoun or gendered agreement — repeat the name or use a neutral noun instead, " +
+                            "and rephrase the sentence if needed to avoid gendered agreement.\n" +
+                            "This applies even if the user uses gendered pronouns: do NOT mirror them, and do NOT correct the user. " +
+                            "Simply respond in gender-neutral language.\n" +
+                            "FINAL CHECK: Before returning any response, scan your entire output for the forbidden tokens above. " +
+                            "If any of them refers to a person, rewrite that sentence using the person's name or a neutral noun before sending.",
+                )
+                add(
                     "Do not reference technical IDs unless explicitly asked. Instead, use a readable format " +
                         "such as the object's name, title, or a markdown representation.",
                 )
@@ -1100,6 +1100,17 @@ class AgentAdvanced(
                     "When you have just created an object, always include a direct link " +
                         "or navigation path to it in your response so the user can access it immediately. " +
                         "Use the URL or the most actionable reference available in the tool response.",
+                )
+                add(
+                    "When you respond, keep your answers short and focused by giving only what is needed to fulfill " +
+                        "the request and leaving out extra explanation, filler, or repeated points; use plain, direct " +
+                        "language and avoid complicated phrasing or technical jargon unless it is specifically called for; " +
+                        "stay strictly on topic by not adding information the user did not ask for and not offering " +
+                        "unsolicited context, suggestions, or side details; address exactly what the user wants without " +
+                        "broadening the scope of your reply; and begin every response immediately with the substance itself, " +
+                        "a quick confirmation of the action taken, or a heading, never opening with a sentence that introduces, " +
+                        "restates, or comments on the request, and skipping any overall preamble, summary, or account " +
+                        "of what you did or why."
                 )
             }
         return lines.joinToString("\n").ifBlank { null }
@@ -1162,16 +1173,7 @@ class AgentAdvanced(
 
         val raw =
             runCatching {
-                context.chatClient
-                    .prompt(
-                        Prompt(
-                            listOf(
-                                UserMessage(prompt),
-                            ),
-                        ),
-                    ).call()
-                    .content()
-                    ?.trim()
+                context.chatClient.prompt(Prompt(listOf(UserMessage(prompt)))).call().content()
             }.getOrNull() ?: return null
 
         // Extract the language name from <language>...</language> tags.
@@ -1366,15 +1368,7 @@ Output requirements:
         }
     }
 
-    private fun callLlmForParameters(messages: List<org.springframework.ai.chat.messages.Message>): String {
-        val raw =
-            context.chatClient
-                .prompt(Prompt(messages))
-                .call()
-                .content()
-                ?.trim() ?: "{}"
-        return stripJsonFence(raw)
-    }
+    private fun callLlmForParameters(messages: List<Message>): String = stripJsonFence(context.chatClient.prompt(Prompt(messages)).call().content() ?: "{}")
 
     private fun isValidJson(raw: String): Boolean =
         runCatching {
@@ -1453,13 +1447,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
 
         logger.debug { "[$name] enrichment phase $phaseIndex for '${tool.name}' — sending ${messages.size} messages" }
 
-        val rawJson =
-            context.chatClient
-                .prompt(Prompt(messages))
-                .call()
-                .content()
-                ?.trim() ?: "{}"
-        val phaseJson = stripJsonFence(rawJson)
+        val phaseJson = callLlmForParameters(messages)
 
         logger.debug { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }
 
@@ -1543,6 +1531,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                         success = result.success,
                         durationMs = durationMs,
                         toolMetadata = result.metadata,
+                        images = result.images,
                     )
                 } catch (e: AgentInterrupt) {
                     // Re-throw so handleToolExecution() can emit a proper ToolResponseEvent

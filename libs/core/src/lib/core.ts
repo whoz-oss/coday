@@ -35,6 +35,7 @@ export class Coday {
   initialPrompts: string[] = []
   aiThreadService: ThreadStateService
   private killed: boolean = false
+  private cleanedUp: boolean = false
   private isReplaying: boolean = false
   private pendingQuestionEvent: QuestionEvent | null = null
   private messageQueue: Array<{ username: string; message: string }> = []
@@ -245,16 +246,27 @@ export class Coday {
    * - Called when conversation ends normally (exit, oneshot completion)
    */
   async cleanup(): Promise<void> {
+    if (this.cleanedUp) {
+      console.log('[CODAY] cleanup: already cleaned up, skipping (double-cleanup prevented)')
+      return
+    }
+    this.cleanedUp = true
     try {
+      // Save thread FIRST to prevent data loss if subsequent cleanup steps hang or fail
+      // (e.g. MCP process cleanup after SIGINT propagation).
+      // An in-flight tool response could still land after this save, but losing one
+      // response is far less damaging than losing the entire thread.
+      console.log('[CODAY] cleanup: starting autoSave...')
+      await this.aiThreadService.autoSave()
+      console.log('[CODAY] cleanup: autoSave done, killing agent...')
+
       if (this.services.agent) {
         await this.services.agent.kill()
       }
+      console.log('[CODAY] cleanup: agent killed, killing thread service...')
 
-      // Save thread AFTER agent.kill() to ensure all tool responses are written to the thread,
-      // and BEFORE aiThreadService.kill() which sets isKilled=true blocking autoSave.
-      await this.aiThreadService.autoSave()
-
-      this.aiThreadService.kill()
+      await this.aiThreadService.kill()
+      console.log('[CODAY] cleanup: thread service killed')
 
       // Reset AI client provider for fresh connections
       this.aiClientProvider.cleanup()

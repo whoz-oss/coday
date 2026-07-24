@@ -1,5 +1,6 @@
 <ds-entity-list
   title="Users"
+  [hideTitle]="hideTitle()"
   [items]="userItems()"
   [showCreate]="true"
   emptyMessage="No users found."
@@ -7,7 +8,17 @@
   [itemTemplate]="userItemTpl"
   (createRequested)="navigateToCreate()"
 >
-  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
+  @if (namespaces(); as namespaceOptions) {
+    <agentos-namespace-select
+      toolbar-start
+      [namespaces]="namespaceOptions"
+      [value]="selectedNamespaceId()"
+      [includeAllOption]="true"
+      (valueChange)="onNamespaceChange($event)"
+    />
+  } @else if (showBackButton()) {
+    <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
+  }
 </ds-entity-list>
 
 <!-- Item template: renders UserItemComponent for each entity-list card slot -->

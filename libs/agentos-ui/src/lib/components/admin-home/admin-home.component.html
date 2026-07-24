@@ -1,0 +1,19 @@
+<div class="admin-home">
+  <header class="admin-home__header">
+    <h1 class="admin-home__title">Administration</h1>
+    <p class="admin-home__subtitle">Platform-level settings, visible to super-admins only.</p>
+  </header>
+
+  <nav class="admin-home__sections">
+    @for (section of sections; track section.key) {
+      <agentos-action-card
+        [name]="section.name"
+        [mark]="section.mark"
+        [markIsEmoji]="true"
+        [description]="section.description"
+        [clickable]="true"
+        (nameClicked)="navigateTo(section.path)"
+      />
+    }
+  </nav>
+</div>

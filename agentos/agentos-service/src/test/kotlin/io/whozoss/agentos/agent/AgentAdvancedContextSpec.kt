@@ -10,11 +10,17 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.mockk
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.caseEvent.*
+import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
-import java.util.*
+import java.util.UUID
 
 class AgentAdvancedContextSpec :
     StringSpec({
@@ -392,6 +398,7 @@ class AgentAdvancedContextSpec :
             // AgentInterrupt), the message conversion must still produce a
             // ToolResponseMessage — OpenAI returns 400 if an AssistantMessage with
             // tool_calls is not followed by a ToolResponseMessage for each call.
+            // The response data is JSON-wrapped (Gemini compatibility).
             val events =
                 listOf(
                     userMessage("go"),
@@ -568,5 +575,140 @@ class AgentAdvancedContextSpec :
 
             messages shouldHaveSize 1
             messages[0].shouldBeInstanceOf<UserMessage>()
+        }
+
+        // -------------------------------------------------------------------------
+        // Tool response images (readAsImage)
+        // -------------------------------------------------------------------------
+
+        fun image(width: Int = 1024, height: Int = 745) =
+            MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = width, height = height)
+
+        fun toolResponseWithImages(
+            reqId: String,
+            toolName: String,
+            output: String,
+            images: List<MessageContent.Image>,
+        ) = ToolResponseEvent(
+            namespaceId = ns,
+            caseId = case,
+            toolRequestId = reqId,
+            toolName = toolName,
+            output = MessageContent.Text(output),
+            success = true,
+            images = images,
+        )
+
+        "tool response images are attached as a follow-up UserMessage with Media" {
+            val events =
+                listOf(
+                    toolRequest("r1", "FILES__readAsImage"),
+                    toolResponseWithImages("r1", "FILES__readAsImage", "Rendered PDF cv.pdf", List(3) { image() }),
+                )
+            val messages = context.convertEventsToMessages(events)
+
+            messages shouldHaveSize 3
+            messages[0].shouldBeInstanceOf<AssistantMessage>()
+            val toolRespMsg = messages[1].shouldBeInstanceOf<ToolResponseMessage>()
+            toolRespMsg.responses[0].responseData() shouldBe "Rendered PDF cv.pdf"
+            val mediaMsg = messages[2].shouldBeInstanceOf<UserMessage>()
+            mediaMsg.media shouldHaveSize 3
+            mediaMsg.text shouldContain "3 image(s)"
+            mediaMsg.text shouldContain "FILES__readAsImage"
+        }
+
+        "tool response without images does not add a media message" {
+            val events =
+                listOf(
+                    toolRequest("r1", "FILES__read"),
+                    toolResponse("r1", "FILES__read", "content"),
+                )
+            val messages = context.convertEventsToMessages(events)
+
+            messages shouldHaveSize 2
+        }
+
+        "image tool responses beyond maxAttachedImages lose their media, newest kept" {
+            // 3 reads of 10 images each: only the 2 most recent fit the 20-image cap
+            val events =
+                (1..3).flatMap { i ->
+                    listOf(
+                        toolRequest("r$i", "FILES__readAsImage"),
+                        toolResponseWithImages("r$i", "FILES__readAsImage", "read $i", List(10) { image() }),
+                    )
+                }
+            val messages = context.convertEventsToMessages(events)
+
+            // 3 x (assistant + tool response) + 2 media messages
+            messages shouldHaveSize 8
+            val mediaMessages = messages.filterIsInstance<UserMessage>()
+            mediaMessages shouldHaveSize 2
+            val evictedResponse = messages[1].shouldBeInstanceOf<ToolResponseMessage>()
+            evictedResponse.responses[0].responseData() shouldContain "no longer attached"
+        }
+
+        "image cost counts against the detailed-tool budget" {
+            // Image response costs imageCharCost each: with a tiny budget the older
+            // pair is summarized while the newest stays detailed.
+            val events =
+                listOf(
+                    toolRequest("r1", "FILES__readAsImage"),
+                    toolResponseWithImages("r1", "FILES__readAsImage", "read 1", List(2) { image() }),
+                    toolRequest("r2", "FILES__readAsImage"),
+                    toolResponseWithImages("r2", "FILES__readAsImage", "read 2", List(2) { image() }),
+                )
+            val messages =
+                context.convertEventsToMessages(events, maxDetailedChars = 2 * context.imageCharCost + 100)
+
+            val summaries = messages.filterIsInstance<AssistantMessage>().filter { it.text?.contains("[Step summary]") == true }
+            summaries shouldHaveSize 1
+            summaries[0].text shouldContain "2 image(s) (not shown)"
+            val mediaMessages = messages.filterIsInstance<UserMessage>()
+            mediaMessages shouldHaveSize 1
+        }
+
+        "responses with evicted media pay no image cost against the budget" {
+            // 3 responses of 10 images each: the 20-image cap attaches media for the 2
+            // newest only. The oldest must NOT be charged imageCharCost for images it
+            // does not attach, so it stays detailed (with the marker) instead of being
+            // evicted from the budget by phantom cost.
+            val events =
+                (1..3).flatMap { i ->
+                    listOf(
+                        toolRequest("r$i", "FILES__readAsImage"),
+                        toolResponseWithImages("r$i", "FILES__readAsImage", "read $i", List(10) { image() }),
+                    )
+                }
+            val budget = 20 * context.imageCharCost + 500
+
+            val messages = context.convertEventsToMessages(events, maxDetailedChars = budget)
+
+            // No pair summarized: the oldest costs only its text since its media are evicted
+            val summaries = messages.filterIsInstance<AssistantMessage>().filter { it.text?.contains("[Step summary]") == true }
+            summaries shouldHaveSize 0
+            val mediaMessages = messages.filterIsInstance<UserMessage>()
+            mediaMessages shouldHaveSize 2
+            val evictedResponse = messages[1].shouldBeInstanceOf<ToolResponseMessage>()
+            evictedResponse.responses[0].responseData() shouldContain "no longer attached"
+        }
+
+        "extractText never dumps base64 for image output" {
+            val events =
+                listOf(
+                    toolRequest("r1", "FILES__readAsImage"),
+                    ToolResponseEvent(
+                        namespaceId = ns,
+                        caseId = case,
+                        toolRequestId = "r1",
+                        toolName = "FILES__readAsImage",
+                        output = image(width = 100, height = 80),
+                        success = true,
+                    ),
+                )
+            val messages = context.convertEventsToMessages(events)
+
+            val toolRespMsg = messages[1].shouldBeInstanceOf<ToolResponseMessage>()
+            toolRespMsg.responses[0].responseData() shouldBe "[image image/jpeg 100x80]"
+            toolRespMsg.responses[0].responseData() shouldNotContain "aGVsbG8="
         }
     })

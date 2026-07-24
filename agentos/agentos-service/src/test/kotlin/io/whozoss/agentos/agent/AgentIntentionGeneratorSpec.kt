@@ -6,13 +6,13 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.caseEvent.MessageContent
-import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.*
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
-import java.util.UUID
+import java.util.*
 
 class AgentIntentionGeneratorSpec :
     StringSpec({
@@ -29,6 +29,8 @@ class AgentIntentionGeneratorSpec :
                 confirmationManager = mockk(relaxed = true),
             )
 
+        val userActor = Actor("user1", "User One", ActorRole.USER)
+
         fun makeInitialEvents(
             namespaceId: UUID,
             caseId: UUID,
@@ -36,10 +38,117 @@ class AgentIntentionGeneratorSpec :
             MessageEvent(
                 namespaceId = namespaceId,
                 caseId = caseId,
-                actor = Actor("user1", "User One", ActorRole.USER),
+                actor = userActor,
                 content = listOf(MessageContent.Text("Hello, can you help me?")),
             ),
         )
+
+        // Tool call succeeded, then user sends a new message
+        fun makeEventsWithUserMessageAfterToolCall(
+            namespaceId: UUID,
+            caseId: UUID,
+        ): List<CaseEvent> {
+            val toolRequestId = "req-1"
+            return listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = listOf(MessageContent.Text("Please help me.")),
+                ),
+                ToolRequestEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    toolName = "FILES__ReadFile",
+                    args = "{}",
+                ),
+                ToolResponseEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    toolName = "FILES__ReadFile",
+                    output = MessageContent.Text("file content"),
+                    success = true,
+                ),
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = listOf(MessageContent.Text("Actually, do something else.")),
+                ),
+            )
+        }
+
+        // Tool call (question tool) issued, then user answers — no ToolResponseEvent
+        fun makeEventsWithAnswerAfterToolCall(
+            namespaceId: UUID,
+            caseId: UUID,
+        ): List<CaseEvent> {
+            val agentId = UUID.randomUUID()
+            val questionEvent = QuestionEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                agentName = "TestAgent",
+                question = "Which file should I read?",
+                options = null,
+            )
+            return listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = listOf(MessageContent.Text("Please help me.")),
+                ),
+                ToolRequestEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = "req-1",
+                    toolName = "AskQuestion",
+                    args = "{}",
+                ),
+                questionEvent,
+                questionEvent.createAnswer(userActor, "readme.txt"),
+            )
+        }
+
+        // User message appears before the last tool call — must NOT trigger the user-interaction branch
+        fun makeEventsWithUserMessageBeforeToolCall(
+            namespaceId: UUID,
+            caseId: UUID,
+        ): List<CaseEvent> {
+            val toolRequestId = "req-1"
+            return listOf(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = listOf(MessageContent.Text("Please help me.")),
+                ),
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = listOf(MessageContent.Text("Actually ignore that.")),
+                ),
+                ToolRequestEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    toolName = "FILES__ReadFile",
+                    args = "{}",
+                ),
+                ToolResponseEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    toolName = "FILES__ReadFile",
+                    output = MessageContent.Text("file content"),
+                    success = true,
+                ),
+            )
+        }
 
         val validTools = listOf("FILES__ReadFile", "JIRA__GetIssue", "Answer")
 
@@ -209,6 +318,73 @@ class AgentIntentionGeneratorSpec :
         }
 
         // -------------------------------------------------------------------------
+        // executionState — user interaction branches
+        // -------------------------------------------------------------------------
+
+        "generate — executionState reflects user MessageEvent posted after last tool call" {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val promptSlot = slot<Prompt>()
+            every {
+                mockChatClient.prompt(capture(promptSlot)).call().content()
+            } returns "<intention>Handling user follow-up.</intention><toolName>Answer</toolName>"
+
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+
+            makeGenerator().generate(
+                "agent",
+                makeContext(mockChatClient),
+                makeEventsWithUserMessageAfterToolCall(namespaceId, caseId),
+                namespaceId,
+                caseId,
+            )
+
+            promptSlot.captured.contents shouldContain "The user has just sent a new message"
+        }
+
+        "generate — executionState reflects AnswerEvent posted after last tool call" {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val promptSlot = slot<Prompt>()
+            every {
+                mockChatClient.prompt(capture(promptSlot)).call().content()
+            } returns "<intention>Processing user answer.</intention><toolName>Answer</toolName>"
+
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+
+            makeGenerator().generate(
+                "agent",
+                makeContext(mockChatClient),
+                makeEventsWithAnswerAfterToolCall(namespaceId, caseId),
+                namespaceId,
+                caseId,
+            )
+
+            promptSlot.captured.contents shouldContain "The user has just answered a question"
+        }
+
+        "generate — user message before last tool call does not trigger user-interaction branch" {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val promptSlot = slot<Prompt>()
+            every {
+                mockChatClient.prompt(capture(promptSlot)).call().content()
+            } returns "<intention>Continuing after successful tool call.</intention><toolName>Answer</toolName>"
+
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+
+            makeGenerator().generate(
+                "agent",
+                makeContext(mockChatClient),
+                makeEventsWithUserMessageBeforeToolCall(namespaceId, caseId),
+                namespaceId,
+                caseId,
+            )
+
+            promptSlot.captured.contents shouldContain "Last tool 'FILES__ReadFile' executed without technical issue"
+        }
+
+        // -------------------------------------------------------------------------
         // generate retry and fallback tests
         // -------------------------------------------------------------------------
 
@@ -227,7 +403,13 @@ class AgentIntentionGeneratorSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
 
-            val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+            val result = generator.generate(
+                "agent",
+                context,
+                makeInitialEvents(namespaceId, caseId),
+                namespaceId,
+                caseId
+            )
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "All good on retry"
@@ -248,7 +430,7 @@ class AgentIntentionGeneratorSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
 
-            val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+            val result = generator.generate("agent", context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "Recovered on retry"
@@ -266,7 +448,7 @@ class AgentIntentionGeneratorSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
 
-            val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+            val result = generator.generate("agent", context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "Failed to plan next step after"

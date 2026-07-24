@@ -9,7 +9,7 @@ java = "25"
 # Kotlin 2.3.x supports JVM target 25 natively.
 kotlinJvmTarget = "25"
 kotlin = "2.3.20"
-springBoot = "3.5.7"
+springBoot = "3.5.9"
 springDependencyManagement = "1.1.7"
 springAi = "1.1.2"
 pf4j = "3.13.0"
@@ -19,7 +19,7 @@ mockk = "1.13.5"
 mockk-spring = "3.1.2"
 kotest = "5.9.1"
 kotest-spring = "1.3.0"
-jackson = "2.17.0"
+jackson = "2.19.4"
 klogger = "2.0.4"
 springdoc = "2.8.9"
 springdocPlugin = "1.9.0"
@@ -49,11 +49,30 @@ logstashLogbackEncoder = "8.1"
 # and the transitive version pulled by com.google.genai:google-genai (Spring AI Gemini).
 okhttp = "4.12.0"
 
+# MCP Java SDK 2.0 — uses mcp-core + mcp-json-jackson2 for Jackson 2.x compatibility.
+# The parent artifact 'mcp' pulls mcp-json-jackson3 by default — use mcp-core + mcp-json-jackson2 instead.
+mcpSdk = "2.0.0"
+
+# Apache PDFBox — PDF page rendering for the file plugin's readAsImage tool.
+# Bundled fat-jar style in agentos-file-plugin (not on the service classpath).
+pdfbox = "3.0.8"
+
+# Apache POI — PPTX slide rendering for the file plugin's readAsImage tool.
+# Bundled fat-jar style in agentos-file-plugin (not on the service classpath).
+poi = "5.5.1"
+
 # AgentOS modules versions
-agentosSdk = "0.189.0"
-agentosService = "0.189.0"
+agentosSdk = "0.225.0"
+agentosService = "0.225.0"
 
 [libraries]
+# Jakarta Validation API — annotation-only, for compileOnly use in agentos-sdk
+jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api", version = "3.0.2" }
+# Swagger / OpenAPI annotations — annotation-only, for compileOnly use in agentos-sdk.
+# swagger-annotations 2.x is the transitive dependency of springdoc-openapi-starter 2.x.
+# Must stay in sync with the springdoc version used in agentos-service.
+swagger-annotations = { module = "io.swagger.core.v3:swagger-annotations", version = "2.2.28" }
+
 # Kotlin
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
@@ -129,6 +148,16 @@ neo4j-harness = { module = "org.neo4j.test:neo4j-harness", version.ref = "neo4jE
 testcontainers-neo4j = { module = "org.testcontainers:neo4j", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 
+# MCP Java SDK
+mcp-core = { module = "io.modelcontextprotocol.sdk:mcp-core", version.ref = "mcpSdk" }
+mcp-json-jackson2 = { module = "io.modelcontextprotocol.sdk:mcp-json-jackson2", version.ref = "mcpSdk" }
+
+# Apache PDFBox — PDF page rendering (agentos-file-plugin readAsImage)
+pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
+
+# Apache POI — PPTX slide rendering (agentos-file-plugin readAsImage)
+poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
+
 # Testing
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 mockk-spring = { module = "com.ninja-squad:springmockk", version.ref = "mockk-spring" }
@@ -150,7 +179,9 @@ spring-dependency-management = { id = "io.spring.dependency-management", version
 jackson = ["jackson-annotations", "jackson-core", "jackson-databind", "jackson-dataformat-yaml", "jackson-module-kotlin"]
 kotlin-common = ["kotlin-stdlib", "kotlin-reflect"]
 kotlin-coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-reactive", "kotlinx-coroutines-reactor"]
-spring-ai = ["spring-ai-anthropic", "spring-ai-gemini", "spring-ai-ollama", "spring-ai-openai", "spring-ai-mcp-client"]
+# spring-ai-mcp-client intentionally excluded: MCP is handled by agentos-mcp-plugin (PF4J),
+# and the Spring AI starter pulls MCP SDK 0.17.x which conflicts with the plugin's SDK 2.0.
+spring-ai = ["spring-ai-anthropic", "spring-ai-gemini", "spring-ai-ollama", "spring-ai-openai"]
 okhttp = ["okhttp", "okhttp-logging-interceptor"]
 testing-common = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-property", "mockk"]
 testing-spring = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-extensions-spring", "mockk"]

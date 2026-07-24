@@ -1,0 +1,41 @@
+<div class="exchange-shell">
+  @if (actionError()) {
+    <p class="exchange-shell__upload-error" role="alert">{{ actionError() }}</p>
+  }
+
+  <agentos-exchange-drawer
+    class="exchange-shell__drawer"
+    [caseFiles]="state.caseFiles()"
+    [caseStatus]="state.caseStatus()"
+    [caseSectionVisible]="state.caseSectionVisible()"
+    [canWriteCase]="state.canWriteCase()"
+    [caseUploading]="state.caseUploading()"
+    [namespaceFiles]="state.namespaceFiles()"
+    [namespaceStatus]="state.namespaceStatus()"
+    [namespaceSectionVisible]="state.namespaceSectionVisible()"
+    [canWriteNamespace]="state.canWriteNamespace()"
+    [namespaceUploading]="state.namespaceUploading()"
+    [activeFile]="selectedFile()"
+    [selectedContent]="selectedContent()"
+    [contentStatus]="contentStatus()"
+    [canViewSelected]="canViewSelected()"
+    (fileSelected)="onFileSelected($event)"
+    (uploadRequested)="onUpload($event)"
+    (downloadRequested)="onDownload($event)"
+    (downloadAllRequested)="onDownloadAll($event)"
+    (deleteRequested)="onDeleteRequest($event)"
+    (retryRequested)="onRetry()"
+    (viewerClosed)="onViewerClosed()"
+    (closeRequested)="onClose()"
+  />
+</div>
+
+<ds-confirm-dialog
+  [open]="confirmOpen()"
+  title="Delete file"
+  [message]="deleteMessage()"
+  confirmLabel="Delete"
+  cancelLabel="Cancel"
+  (confirmed)="onConfirmDelete()"
+  (cancelled)="onCancelDelete()"
+/>

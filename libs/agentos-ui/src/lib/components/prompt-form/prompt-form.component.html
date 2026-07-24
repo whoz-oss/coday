@@ -1,0 +1,215 @@
+<div class="prompt-form">
+  <header class="prompt-form__header">
+    <button class="prompt-form__back" type="button" (click)="cancel()" title="Back to prompts">
+      <span class="prompt-form__back-icon">&#8592;</span>
+      {{ isPlatformMode ? 'Platform prompts' : 'Prompts' }}
+    </button>
+    <h1 class="prompt-form__title">{{ isEditMode() ? 'Edit prompt' : 'New prompt' }}</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="prompt-form__loading">Loading&hellip;</p>
+  } @else {
+    <form class="prompt-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <!-- Name -->
+      <div class="prompt-form__field">
+        <label class="prompt-form__label" for="prompt-name">Name <span aria-hidden="true">*</span></label>
+        <input
+          id="prompt-name"
+          class="prompt-form__input"
+          [class.prompt-form__input--invalid]="nameControl.invalid && nameControl.touched"
+          type="text"
+          placeholder="e.g. Summarise meeting notes"
+          [formControl]="nameControl"
+          autocomplete="off"
+        />
+        @if (nameControl.invalid && nameControl.touched) {
+          <span class="prompt-form__field-error">Name is required.</span>
+        }
+      </div>
+
+      <!-- Description -->
+      <div class="prompt-form__field">
+        <label class="prompt-form__label" for="prompt-description">Description</label>
+        <input
+          id="prompt-description"
+          class="prompt-form__input"
+          type="text"
+          placeholder="Optional — short description of this prompt"
+          [formControl]="descriptionControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <!-- Agent Config (optional, immutable post-creation) -->
+      @if (availableAgentConfigs().length > 0) {
+        <div class="prompt-form__field">
+          <label class="prompt-form__label" for="prompt-agent-config">Agent Config</label>
+          @if (isEditMode() && agentConfigIdControl.value) {
+            <p class="prompt-form__readonly-value">{{ resolveAgentConfigName(agentConfigIdControl.value) }}</p>
+            <span class="prompt-form__field-hint">Agent Config cannot be changed after creation.</span>
+          } @else if (!isEditMode()) {
+            <select id="prompt-agent-config" class="prompt-form__select" [formControl]="agentConfigIdControl">
+              <option [ngValue]="null">&mdash; None &mdash;</option>
+              @for (agent of availableAgentConfigs(); track agent.id) {
+                <option [ngValue]="agent.id">{{ agent.name }}</option>
+              }
+            </select>
+            <span class="prompt-form__field-hint"
+              >Optional. Links this prompt to an agent as a starter. Immutable after creation.</span
+            >
+          }
+        </div>
+      }
+
+      <!-- Parameters -->
+      <fieldset class="prompt-form__section" [formArrayName]="'parameters'">
+        <legend class="prompt-form__label">
+          Parameters
+          <span class="prompt-form__label-hint">Named placeholders used in content</span>
+        </legend>
+        <p class="prompt-form__section-hint">
+          Each parameter must have a name and a default value. Use <code>{{ paramPlaceholderSyntax }}</code> in content
+          entries to reference them.
+        </p>
+
+        @if (parametersArray.length === 0) {
+          <p class="prompt-form__empty-hint">No parameters defined.</p>
+        }
+
+        @for (group of parametersArray.controls; track $index) {
+          <div class="prompt-form__param-row" [formGroupName]="$index">
+            <div class="prompt-form__param-fields">
+              <div class="prompt-form__field prompt-form__field--inline">
+                <label class="prompt-form__label" [for]="'param-name-' + $index"
+                  >Name <span aria-hidden="true">*</span></label
+                >
+                <input
+                  [id]="'param-name-' + $index"
+                  class="prompt-form__input"
+                  [class.prompt-form__input--invalid]="group.controls['name'].invalid && group.controls['name'].touched"
+                  type="text"
+                  placeholder="e.g. language"
+                  formControlName="name"
+                  autocomplete="off"
+                />
+                @if (group.controls['name'].invalid && group.controls['name'].touched) {
+                  <span class="prompt-form__field-error">Parameter name is required.</span>
+                }
+              </div>
+              <div class="prompt-form__field prompt-form__field--inline">
+                <label class="prompt-form__label" [for]="'param-desc-' + $index">Description</label>
+                <input
+                  [id]="'param-desc-' + $index"
+                  class="prompt-form__input"
+                  type="text"
+                  placeholder="Optional"
+                  formControlName="description"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="prompt-form__field prompt-form__field--inline">
+                <label class="prompt-form__label" [for]="'param-default-' + $index">Default value</label>
+                <input
+                  [id]="'param-default-' + $index"
+                  class="prompt-form__input"
+                  type="text"
+                  placeholder="e.g. English"
+                  formControlName="defaultValue"
+                  autocomplete="off"
+                />
+              </div>
+            </div>
+            <button
+              class="prompt-form__remove-btn"
+              type="button"
+              title="Remove this parameter"
+              (click)="removeParameter($index)"
+            >
+              &#215;
+            </button>
+          </div>
+        }
+
+        <button class="prompt-form__add-btn" type="button" (click)="addParameter()">+ Add parameter</button>
+      </fieldset>
+
+      <!-- Content -->
+      <fieldset class="prompt-form__section" [formArrayName]="'content'">
+        <legend class="prompt-form__label">
+          Content <span aria-hidden="true">*</span>
+          <span class="prompt-form__label-hint">Ordered list of text commands</span>
+        </legend>
+        <p class="prompt-form__section-hint">
+          Each content entry is a command. Use <code>&#64;AgentName</code> to target an agent,
+          <code>/promptName param1 param2</code> to call another prompt, and
+          <code>{{ paramPlaceholderSyntax }}</code> for parameter placeholders.
+        </p>
+
+        @for (ctrl of contentArray.controls; track $index) {
+          <div class="prompt-form__content-row">
+            <span class="prompt-form__content-index">{{ $index + 1 }}</span>
+            <div class="prompt-form__content-field">
+              <textarea
+                class="prompt-form__textarea"
+                [class.prompt-form__textarea--invalid]="ctrl.invalid && ctrl.touched"
+                rows="4"
+                placeholder="Enter a command…"
+                [formControlName]="$index"
+              ></textarea>
+              @if (ctrl.invalid && ctrl.touched) {
+                <span class="prompt-form__field-error">Content entry must not be blank.</span>
+              }
+            </div>
+            <button
+              class="prompt-form__remove-btn"
+              type="button"
+              title="Remove this entry"
+              [disabled]="contentArray.length === 1"
+              (click)="removeContentEntry($index)"
+            >
+              &#215;
+            </button>
+          </div>
+        }
+
+        <button class="prompt-form__add-btn" type="button" (click)="addContentEntry()">+ Add content entry</button>
+      </fieldset>
+
+      <!-- Error message -->
+      @if (errorMessage()) {
+        <p class="prompt-form__error">{{ errorMessage() }}</p>
+      }
+
+      <!-- External Metadata (optional JSON, editable in create and edit modes) -->
+      <div class="prompt-form__field">
+        <label class="prompt-form__label" for="prompt-external-metadata">External Metadata</label>
+        <textarea
+          id="prompt-external-metadata"
+          class="prompt-form__textarea prompt-form__textarea--code"
+          rows="6"
+          placeholder='{ "key": "value" }'
+          [formControl]="externalMetadataJsonControl"
+          spellcheck="false"
+          autocomplete="off"
+        ></textarea>
+        @if (externalMetadataJsonControl.invalid && externalMetadataJsonControl.touched) {
+          <span class="prompt-form__field-error">Invalid JSON.</span>
+        }
+        <span class="prompt-form__field-hint">Optional. Opaque JSON object stored as-is. Leave empty to clear.</span>
+      </div>
+
+      <!-- Actions -->
+      <div class="prompt-form__actions">
+        <button
+          class="prompt-form__btn prompt-form__btn--primary"
+          type="submit"
+          [disabled]="form.invalid || isSubmitting()"
+        >
+          {{ isEditMode() ? 'Save changes' : 'Create' }}
+        </button>
+        <button class="prompt-form__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+</div>

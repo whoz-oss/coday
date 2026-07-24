@@ -37,7 +37,7 @@ export class IntegrationConfigControllerService extends BaseService {
 
   /**
    * Create an IntegrationConfig
-   * Scope is inferred implicitly from the body\&#39;s &#x60;(namespaceId, userId)&#x60; pair :  | body.namespaceId | body.userId        | scope         | required permission                  | |------------------|--------------------|---------------|--------------------------------------| | null             | null               | —             | 400 Bad Request                      | | present          | null               | NS-shared     | WRITE on the namespace               | | null             | &lt;currentUser.id&gt;   | user-global   | authenticated only                   | | present          | &lt;currentUser.id&gt;   | user×namespace| READ on the namespace                |  &#x60;body.userId&#x60; (when supplied) MUST equal the authenticated user\&#39;s id — sending a different user-id is rejected with 400 (mass-assignment guard, Decision 15). A &#x60;namespaceId&#x60; that does not exist returns 404.
+   * Scope is inferred implicitly from the body\&#39;s &#x60;(namespaceId, userId)&#x60; pair :  | body.namespaceId | body.userId        | scope         | required permission                  | |------------------|--------------------|---------------|--------------------------------------| | null             | null               | platform      | Super Admin only                     | | present          | null               | NS-shared     | WRITE on the namespace               | | null             | &lt;currentUser.id&gt;   | user-global   | authenticated only                   | | present          | &lt;currentUser.id&gt;   | user×namespace| READ on the namespace                |  &#x60;body.userId&#x60; (when supplied) MUST equal the authenticated user\&#39;s id. A &#x60;namespaceId&#x60; that does not exist returns 404.
    * @param integrationConfig
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
@@ -175,6 +175,93 @@ export class IntegrationConfigControllerService extends BaseService {
     let localVarPath = `/api/integration-configs/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<any>('delete', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Export an IntegrationConfig as a YAML file
+   * Returns the integration config as a downloadable YAML file, ready to be placed in the namespace &#x60;integrations/&#x60; directory under &#x60;configPath&#x60;. Only the fields meaningful in a filesystem config are included: &#x60;name&#x60;, &#x60;integrationType&#x60;, &#x60;description&#x60;, &#x60;parameters&#x60;. Scope metadata (&#x60;id&#x60;, &#x60;namespaceId&#x60;, &#x60;userId&#x60;) is intentionally omitted. **parameters are exported in clear text** — requires WRITE permission on the entity.
+   * @param id
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public exportIntegrationConfig(
+    id: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<string>
+  public exportIntegrationConfig(
+    id: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<HttpResponse<string>>
+  public exportIntegrationConfig(
+    id: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<HttpEvent<string>>
+  public exportIntegrationConfig(
+    id: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling exportIntegrationConfig.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json', 'application/yaml'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/integration-configs/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/export`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<string>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
@@ -335,7 +422,7 @@ export class IntegrationConfigControllerService extends BaseService {
 
   /**
    * List IntegrationConfigs by scope
-   * Scope is inferred from the query params :  | query                                              | mode             | required permission                            | |----------------------------------------------------|------------------|------------------------------------------------| | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&#x60;                              | NS-shared        | READ on the namespace (empty list if missing)  | | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&amp;userId&#x3D;me&#x60;                    | user × namespace | authenticated                                  | | &#x60;?namespaceId&#x3D;none&amp;userId&#x3D;me&#x60;                      | user-global      | authenticated                                  | | &#x60;?userId&#x3D;me&#x60; (no namespace)                        | all caller\&#39;s     | authenticated                                  |  &#x60;userId&#x60; accepts ONLY the literal sentinel &#x60;me&#x60; — a UUID returns 400 (cross-user listing is not exposed). &#x60;namespaceId&#x3D;none&#x60; is the sentinel for &#x60;namespaceId IS NULL&#x60;.
+   * Scope is inferred from the query params :  | query                            | mode             | required permission                            | |----------------------------------|------------------|------------------------------------------------| | (no params)                      | platform         | authenticated                                  | | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&#x60;            | NS-shared        | READ on the namespace (empty list if missing)  | | &#x60;?namespaceId&#x3D;&lt;uuid&gt;&amp;userId&#x3D;me&#x60;  | user × namespace | authenticated                                  | | &#x60;?namespaceId&#x3D;none&amp;userId&#x3D;me&#x60;    | user-global      | authenticated                                  | | &#x60;?userId&#x3D;me&#x60; (no namespace)      | all caller\&#39;s     | authenticated                                  |  &#x60;userId&#x60; accepts ONLY the literal sentinel &#x60;me&#x60; — a UUID returns 400. &#x60;namespaceId&#x3D;none&#x60; is the sentinel for &#x60;namespaceId IS NULL&#x60;.  When called with no params, returns platform-level configs.
    * @param namespaceId
    * @param userId
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.

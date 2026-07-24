@@ -38,7 +38,10 @@ import java.util.UUID
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class AgentConfig(
     override val metadata: EntityMetadata = EntityMetadata(),
-    val namespaceId: UUID,
+    /**
+     * The namespace this agent belongs to, or `null` for platform-level agents.
+     */
+    val namespaceId: UUID?,
     val name: String,
     val description: String? = null,
     val instructions: String? = null,
@@ -48,6 +51,11 @@ data class AgentConfig(
      * Map key = integration name (matches [IntegrationConfig.name] or
      * [ToolPlugin.integrationType] for config-less plugins).
      * Map value = allowed tool names, or null for all tools of that integration.
+     *
+     * Reserved keys `CASE_FILE_EXCHANGE` / `NAMESPACE_FILE_EXCHANGE`
+     * (see [io.whozoss.agentos.exchange.ExchangeIntegrationTypes]) enable the built-in
+     * file-exchange integrations: they have no [IntegrationConfig] instance and are resolved by
+     * `AgentServiceImpl.buildExchangeTools` rather than the normal plugin path.
      */
     val integrations: Map<String, List<String>?>? = null,
     /**
@@ -72,4 +80,28 @@ data class AgentConfig(
      * at startup by [io.whozoss.agentos.config.Neo4jSchemaInitializer].
      */
     val enabled: Boolean = false,
+    /**
+     * Glob patterns controlling which agents this agent is permitted to delegate to.
+     *
+     * When null or empty, no delegation tool is provided to the agent.
+     * When non-empty, a [io.whozoss.agentos.delegation.DelegationTool] is instantiated
+     * and added to the agent's tool set at build time, with the allowlist resolved by
+     * matching these patterns against agents accessible to the current user in the namespace.
+     *
+     * `*` matches any sequence of characters (anchored, case-insensitive).
+     * Examples: `["*"]` allows all agents, `["*Fixer"]` allows `BugFixer`, `StoryFixer`, etc.
+     */
+    val subAgents: List<String>? = null,
+    /**
+     * Paths to documents whose full content is injected into the agent's instructions.
+     *
+     * Three path patterns are supported (resolved relative to the namespace configPath):
+     * - explicit file path: single file, content injected verbatim
+     * - path ending with slash: directory listing (first-level only, no content)
+     * - path ending with slash-star: all readable files in the directory, content injected
+     *
+     * Only applicable for filesystem-backed agents (namespace with a configPath).
+     * Silently ignored when configPath is absent.
+     */
+    val docs: List<String>? = null,
 ) : Entity

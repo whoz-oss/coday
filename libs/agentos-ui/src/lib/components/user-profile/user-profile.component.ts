@@ -2,10 +2,13 @@ import { Location } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
+import { IconButtonComponent } from '@whoz-oss/design-system'
 import { Router } from '@angular/router'
 import { combineLatest, map } from 'rxjs'
 import { AiProviderConfigStateService } from '../../services/ai-provider-config-state.service'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
+import { THEME_PORT, ThemeMode } from '../../services/theme.service'
+import { EnterKeyBehavior, USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { UserStateService } from '../../services/user-state.service'
 
 interface UserGlobalEntry {
@@ -28,7 +31,7 @@ interface UserGlobalRecap {
  *   - Read mode: displays all user fields (email, externalId read-only + firstname, lastname, bio)
  *   - Edit mode: reactive form for firstname, lastname, bio
  *
- * Story 6.6 also adds a "Mes configurations utilisateur" section that recaps the user's
+ * Story 6.6 also adds a "My global user configurations" section that recaps the user's
  * user-global overrides (`namespaceId IS NULL`) for Integrations and AI Providers.
  * The section is collapsable and discreet, and each entry exposes a
  * delete action — edit navigation requires a namespace context which `/me` doesn't have, so
@@ -36,8 +39,7 @@ interface UserGlobalRecap {
  */
 @Component({
   selector: 'agentos-user-profile',
-  standalone: true,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, IconButtonComponent],
   templateUrl: './user-profile.component.html',
   styleUrl: './user-profile.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -49,12 +51,29 @@ export class UserProfileComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly integrationState = inject(IntegrationConfigStateService)
   private readonly providerState = inject(AiProviderConfigStateService)
+  private readonly themePort = inject(THEME_PORT)
+  private readonly preferencesPort = inject(USER_PREFERENCES_PORT)
   protected readonly isEditing = signal(false)
   protected readonly isLoading = signal(false)
   protected readonly isSaving = signal(false)
   protected readonly isOverridesExpanded = signal(false)
 
   protected readonly currentUser = this.userState.currentUser
+
+  /** Current theme mode (light / dark / system), reflected in the Appearance section. */
+  protected readonly theme = this.themePort.theme
+  protected readonly themeOptions: ReadonlyArray<{ value: ThemeMode; label: string }> = [
+    { value: 'light', label: 'Light' },
+    { value: 'dark', label: 'Dark' },
+    { value: 'system', label: 'System' },
+  ]
+
+  /** Current ENTER-key behavior in the chat composer, reflected in the Composer section. */
+  protected readonly enterKeyBehavior = this.preferencesPort.enterKeyBehavior
+  protected readonly enterKeyOptions: ReadonlyArray<{ value: EnterKeyBehavior; label: string }> = [
+    { value: 'send', label: 'Send' },
+    { value: 'newline', label: 'New line' },
+  ]
 
   protected readonly form = new FormGroup({
     firstname: new FormControl<string>('', { nonNullable: true }),
@@ -127,6 +146,14 @@ export class UserProfileComponent implements OnInit {
 
   protected cancelEditing(): void {
     this.isEditing.set(false)
+  }
+
+  protected setTheme(mode: ThemeMode): void {
+    this.themePort.setTheme(mode)
+  }
+
+  protected setEnterKeyBehavior(behavior: EnterKeyBehavior): void {
+    this.preferencesPort.setEnterKeyBehavior(behavior)
   }
 
   protected save(): void {

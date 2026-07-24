@@ -1,28 +1,90 @@
 <div class="case-shell">
-  <agentos-header class="case-shell__header" />
+  <!-- ═══ MOBILE TOP BAR ═══ -->
+  <agentos-shell-topbar-mobile
+    [selectedNamespace]="selectedNamespace()"
+    [namespaces]="namespaces()"
+    [nsMenuOpen]="nsMenuOpen()"
+    [userInitials]="userInitials()"
+    [menuOpen]="menuOpen()"
+    [isAdmin]="isAdmin()"
+    [isDark]="isDark()"
+    [showTechnical]="showTechnical()"
+    (homeClicked)="navigateHome()"
+    (namespaceSelected)="onNamespaceSelected($event)"
+    (nsMenuToggled)="toggleNsMenu($event)"
+    (nsMenuClosed)="closeNsMenu($event)"
+    (menuToggled)="toggleMenu($event)"
+    (menuClosed)="closeMenu($event)"
+    (navigateTo)="onMenuNavigate($event)"
+    (themeToggled)="onMenuToggleTheme()"
+    (logsToggled)="onMenuToggleLogs()"
+  />
 
-  <div class="case-shell__body">
-    <ds-drawer [(open)]="drawerOpen" drawerWidth="400px">
-      <!-- Sidenav: case list with close button injected into ds-entity-list toolbar -->
-      <div dsDrawerSide class="case-shell__sidenav">
-        <agentos-case-drawer
-          [cases]="cases()"
-          [activeCaseId]="activeCaseId()"
-          (caseSelected)="onCaseSelected($event)"
-          (createRequested)="onCreateRequested()"
-          (closeRequested)="toggleDrawer()"
-        />
-      </div>
+  <!-- ═══ MOBILE CASE SWITCHER ═══ -->
+  <agentos-shell-case-switcher-mobile
+    [cases]="cases()"
+    [activeCaseId]="activeCaseId()"
+    [open]="mobileSwitcherOpen()"
+    (caseSelected)="onMobileCaseSelect($event)"
+    (createRequested)="onMobileCreateCase()"
+    (toggled)="toggleMobileSwitcher()"
+  />
 
-      <!-- Main content: routed child (CaseHomeComponent or CaseChatComponent) -->
-      <div dsDrawerContent class="case-shell__content">
-        @if (!drawerOpen()) {
-          <div class="case-shell__toggle">
-            <ds-icon-button icon="menu" variant="default" title="Open drawer" (action)="toggleDrawer()" />
-          </div>
-        }
-        <router-outlet />
-      </div>
-    </ds-drawer>
-  </div>
+  <!-- ═══ DESKTOP SIDEBAR ═══ -->
+  <agentos-shell-sidebar
+    [sidebarWidth]="sidebarWidth()"
+    [sidebarOpen]="sidebarOpen()"
+    [selectedNamespace]="selectedNamespace()"
+    [namespaces]="namespaces()"
+    [showNsPicker]="showNsPicker()"
+    [nsMenuOpen]="nsMenuOpen()"
+    [cases]="cases()"
+    [activeCaseId]="activeCaseId()"
+    [userInitials]="userInitials()"
+    [menuOpen]="menuOpen()"
+    [isAdmin]="isAdmin()"
+    [isDark]="isDark()"
+    [showTechnical]="showTechnical()"
+    (collapseRequested)="collapseSidebar()"
+    (homeClicked)="navigateHome()"
+    (namespaceSelected)="onNamespaceSelected($event)"
+    (nsMenuToggled)="toggleNsMenu()"
+    (nsMenuClosed)="closeNsMenu($event)"
+    (caseSelected)="onCaseSelected($event)"
+    (createRequested)="onCreateRequested()"
+    (deleteRequested)="onDeleteRequested($event)"
+    (starToggled)="onStarToggled($event)"
+    (menuToggled)="toggleMenu($event)"
+    (menuClosed)="closeMenu($event)"
+    (navigateTo)="onMenuNavigate($event)"
+    (themeToggled)="onMenuToggleTheme()"
+    (logsToggled)="onMenuToggleLogs()"
+  />
+
+  <!-- Resize handle (hidden when sidebar is collapsed) -->
+  @if (sidebarOpen()) {
+    <div
+      class="case-shell__resize-handle"
+      role="separator"
+      tabindex="-1"
+      aria-label="Resize sidebar"
+      (mousedown)="onResizeStart($event)"
+    ></div>
+  }
+
+  <!-- Expand button — floats top-left when sidebar is collapsed -->
+  @if (!sidebarOpen()) {
+    <button class="case-shell__expand-btn" type="button" title="Open sidebar" (click)="expandSidebar()">
+      <span class="material-icons">menu</span>
+    </button>
+  }
+
+  <!-- ═══ MAIN ═══ -->
+  <main class="case-shell__main">
+    @if (activeCaseId()) {
+      <agentos-case-chat [showTechnicalOverride]="showTechnical()" />
+    } @else {
+      <agentos-case-home />
+    }
+  </main>
 </div>

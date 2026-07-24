@@ -15,6 +15,11 @@ import { IntegrationsAllScopesComponent } from './integrations-all-scopes.compon
 describe('IntegrationsAllScopesComponent', () => {
   const NS_ID = '11111111-1111-1111-1111-111111111111'
 
+  const platformConfig: IntegrationConfig = {
+    id: 'p-1',
+    name: 'Slack Platform',
+    integrationType: 'slack',
+  }
   const nsConfig: IntegrationConfig = {
     id: 'ns-1',
     namespaceId: NS_ID,
@@ -36,6 +41,7 @@ describe('IntegrationsAllScopesComponent', () => {
   }
 
   const fullVm: IntegrationConfigViewModel = {
+    platform: [platformConfig],
     namespace: [nsConfig],
     userOnNs: [userOnNsConfig],
     userGlobal: [userGlobalConfig],
@@ -82,29 +88,34 @@ describe('IntegrationsAllScopesComponent', () => {
   })
 
   describe('list mapping', () => {
-    it('emits a flat list with the 3 sections grouped by scope and the configured French labels', async () => {
+    it('emits a flat list with the 4 sections grouped by scope and the configured French labels', async () => {
       const items = await new Promise<EntityListItem[]>((resolve) =>
         component['listItems$'].subscribe((v) => resolve(v))
       )
       const byGroup = (key: string) => items.filter((i) => i.groupKey === key)
 
+      expect(byGroup('platform').map((i) => i.name)).toEqual(['Slack Platform'])
       expect(byGroup('namespace').map((i) => i.name)).toEqual(['Slack NS'])
       expect(byGroup('userOnNs').map((i) => i.name)).toEqual(['Slack mine on NS'])
       expect(byGroup('userGlobal').map((i) => i.name)).toEqual(['Slack mine global'])
 
+      expect(byGroup('platform')[0].groupLabel).toBe('Configurations plateforme')
       expect(byGroup('namespace')[0].groupLabel).toBe('Configurations du namespace')
       expect(byGroup('userOnNs')[0].groupLabel).toBe('Mes overrides sur ce namespace')
       expect(byGroup('userGlobal')[0].groupLabel).toBe('Mes overrides globaux')
     })
 
-    it('emits a placeholder row in each empty section so all 3 sections remain visible', async () => {
-      vm$.next({ namespace: [], userOnNs: [userOnNsConfig], userGlobal: [] })
+    it('emits a placeholder row in each empty section so all 4 sections remain visible', async () => {
+      vm$.next({ platform: [], namespace: [], userOnNs: [userOnNsConfig], userGlobal: [] })
       const items = await new Promise<EntityListItem[]>((resolve) =>
         component['listItems$'].subscribe((v) => resolve(v))
       )
+      const platformPlaceholder = items.find((i) => i.groupKey === 'platform')
       const namespacePlaceholder = items.find((i) => i.groupKey === 'namespace')
       const userGlobalPlaceholder = items.find((i) => i.groupKey === 'userGlobal')
 
+      expect(platformPlaceholder?.id).toMatch(/^__empty__platform$/)
+      expect(platformPlaceholder?.name).toBe('Aucune configuration')
       expect(namespacePlaceholder?.id).toMatch(/^__empty__namespace$/)
       expect(namespacePlaceholder?.name).toBe('Aucune configuration')
       expect(userGlobalPlaceholder?.id).toMatch(/^__empty__userGlobal$/)
@@ -122,6 +133,7 @@ describe('IntegrationsAllScopesComponent', () => {
 
     it('builds the resolved index so the item template can route events to the right scope', () => {
       component.ngOnInit()
+      expect(component['resolve']('platform:p-1')?.scope).toBe('platform')
       expect(component['resolve']('namespace:ns-1')?.scope).toBe('namespace')
       expect(component['resolve']('userOnNs:u-ns-1')?.scope).toBe('userOnNs')
       expect(component['resolve']('userGlobal:u-g-1')?.scope).toBe('userGlobal')
@@ -130,6 +142,21 @@ describe('IntegrationsAllScopesComponent', () => {
   })
 
   describe('navigation events', () => {
+    it('duplicates a platform card AS ADMIN → form opens with scope=platform (clone strict)', () => {
+      component['isAdmin'].set(true)
+      component['onDuplicate']({ config: platformConfig, scope: 'platform' })
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
+        queryParams: { scope: 'platform', template: 'p-1', templateScope: 'platform' },
+      })
+    })
+
+    it('duplicates a platform card AS NON-ADMIN → form opens with scope=userOnNs (smart-redirect, avoids silent 403)', () => {
+      component['onDuplicate']({ config: platformConfig, scope: 'platform' })
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos', NS_ID, 'integrations', 'new'], {
+        queryParams: { scope: 'userOnNs', template: 'p-1', templateScope: 'platform' },
+      })
+    })
+
     it('duplicates a namespace card AS ADMIN → form opens with scope=namespace (clone strict)', () => {
       component['isAdmin'].set(true)
       component['onDuplicate']({ config: nsConfig, scope: 'namespace' })
@@ -193,6 +220,11 @@ describe('IntegrationsAllScopesComponent', () => {
     it('forwards the delete to the state service with the matching scope (namespace)', () => {
       component['onDelete']({ config: nsConfig, scope: 'namespace' })
       expect(stateMock.delete).toHaveBeenCalledWith('ns-1', 'namespace')
+    })
+
+    it('forwards the delete to the state service with the matching scope (platform)', () => {
+      component['onDelete']({ config: platformConfig, scope: 'platform' })
+      expect(stateMock.delete).toHaveBeenCalledWith('p-1', 'platform')
     })
   })
 })

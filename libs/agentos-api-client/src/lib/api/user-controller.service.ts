@@ -16,6 +16,8 @@ import { Observable } from 'rxjs'
 // @ts-ignore
 import { GetByIdsRequest } from '../model/get-by-ids-request'
 // @ts-ignore
+import { GroupsByExternalIdsRequest } from '../model/groups-by-external-ids-request'
+// @ts-ignore
 import { User } from '../model/user'
 // @ts-ignore
 import { UserGroupSummary } from '../model/user-group-summary'
@@ -330,36 +332,38 @@ export class UserControllerService extends BaseService {
   }
 
   /**
-   * @param requestBody
+   * @param groupsByExternalIdsRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public getGroupsByExternalIdsUser(
-    requestBody: Array<string>,
+    groupsByExternalIdsRequest: GroupsByExternalIdsRequest,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<{ [key: string]: Array<UserGroupSummary> }>
   public getGroupsByExternalIdsUser(
-    requestBody: Array<string>,
+    groupsByExternalIdsRequest: GroupsByExternalIdsRequest,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<{ [key: string]: Array<UserGroupSummary> }>>
   public getGroupsByExternalIdsUser(
-    requestBody: Array<string>,
+    groupsByExternalIdsRequest: GroupsByExternalIdsRequest,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<{ [key: string]: Array<UserGroupSummary> }>>
   public getGroupsByExternalIdsUser(
-    requestBody: Array<string>,
+    groupsByExternalIdsRequest: GroupsByExternalIdsRequest,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (requestBody === null || requestBody === undefined) {
-      throw new Error('Required parameter requestBody was null or undefined when calling getGroupsByExternalIdsUser.')
+    if (groupsByExternalIdsRequest === null || groupsByExternalIdsRequest === undefined) {
+      throw new Error(
+        'Required parameter groupsByExternalIdsRequest was null or undefined when calling getGroupsByExternalIdsUser.'
+      )
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -396,7 +400,7 @@ export class UserControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<{ [key: string]: Array<UserGroupSummary> }>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: requestBody,
+      body: groupsByExternalIdsRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -595,75 +599,6 @@ export class UserControllerService extends BaseService {
     return this.httpClient.request<Array<User>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       body: requestBody,
-      responseType: <any>responseType_,
-      ...(withCredentials ? { withCredentials } : {}),
-      headers: localVarHeaders,
-      observe: observe,
-      transferCache: localVarTransferCache,
-      reportProgress: reportProgress,
-    })
-  }
-
-  /**
-   * @param parentId Parent entity ID
-   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-   * @param reportProgress flag to report request and response progress.
-   */
-  public listByParentUser(
-    parentId: string,
-    observe?: 'body',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<User>>
-  public listByParentUser(
-    parentId: string,
-    observe?: 'response',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<User>>>
-  public listByParentUser(
-    parentId: string,
-    observe?: 'events',
-    reportProgress?: boolean,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<User>>>
-  public listByParentUser(
-    parentId: string,
-    observe: any = 'body',
-    reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any> {
-    if (parentId === null || parentId === undefined) {
-      throw new Error('Required parameter parentId was null or undefined when calling listByParentUser.')
-    }
-
-    let localVarHeaders = this.defaultHeaders
-
-    const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
-    if (localVarHttpHeaderAcceptSelected !== undefined) {
-      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
-    }
-
-    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
-
-    const localVarTransferCache: boolean = options?.transferCache ?? true
-
-    let responseType_: 'text' | 'json' | 'blob' = 'json'
-    if (localVarHttpHeaderAcceptSelected) {
-      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-        responseType_ = 'text'
-      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-        responseType_ = 'json'
-      } else {
-        responseType_ = 'blob'
-      }
-    }
-
-    let localVarPath = `/api/users/by-parentId/${this.configuration.encodeParam({ name: 'parentId', value: parentId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
-    const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<User>>('get', `${basePath}${localVarPath}`, {
-      context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

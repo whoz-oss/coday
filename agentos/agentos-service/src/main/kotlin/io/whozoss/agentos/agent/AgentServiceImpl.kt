@@ -3,13 +3,23 @@ package io.whozoss.agentos.agent
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.chat.CompressingChatClient
+import io.whozoss.agentos.delegation.DelegationTool
+import io.whozoss.agentos.delegation.SubCaseManager
+import io.whozoss.agentos.exchange.ExchangeCapabilityService
+import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
+import io.whozoss.agentos.exchange.ExchangeStorageService
+import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
-import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.metrics.ToolMetricsService
-import io.whozoss.agentos.reconciliation.ConfigMergeService
+import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -20,10 +30,13 @@ import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.util.IdCompressorService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
 import org.springframework.stereotype.Service
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.UUID
 
 /**
@@ -40,25 +53,59 @@ class AgentServiceImpl(
     private val namespaceService: NamespaceService,
     private val integrationConfigService: IntegrationConfigService,
     private val userService: UserService,
-    private val aiProviderReconciliationService: ConfigMergeService<AiProvider>,
     private val agentConfigService: AgentConfigService,
     private val intentionGenerator: AgentIntentionGenerator,
     private val confirmationManager: ConfirmationManager,
     private val objectMapper: ObjectMapper,
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
+    private val caseEventService: CaseEventService,
+    private val idCompressorService: IdCompressorService,
+    private val exchangeStorageService: ExchangeStorageService,
+    private val exchangeCapabilityService: ExchangeCapabilityService,
+    private val agentDocumentResolver: AgentDocumentResolver,
+    private val agentConfigProperties: AgentConfigProperties,
 ) : AgentService {
+    /**
+     * Resolves an agent by name for a given [context].
+     *
+     * **Matching semantics differ by path:**
+     * - `userId != null` path: loads all accessible agents (platform + deployed) and filters
+     *   client-side with an exact case-insensitive match (`equals(ignoreCase = true)`).
+     * - `userId == null` path: delegates to [AgentConfigServiceImpl.findByName] which performs
+     *   a case-insensitive exact match, then falls back to platform agents.
+     * - [resolveAgentName] with `userId != null` uses a Cypher `STARTS WITH` prefix match
+     *   (autocomplete — a different call site from this method).
+     *
+     * **Scoping / shadowing rule (both paths):**
+     * Platform agents (namespaceId = null) are shadowed by namespace-scoped agents with the
+     * same name. Uniqueness is enforced *per level*: two configs at the same level (both
+     * namespace-scoped, or both platform) with the same name is an error; one config at each
+     * level is resolved by preferring the namespace-scoped one.
+     */
     override suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
+        subCaseManager: SubCaseManager?,
     ): Agent {
+        require(namePart.isNotBlank()) { "Blank agent name, cannot resolve agent" }
         val agentConfig =
-            agentConfigService.findByName(context.namespaceId, namePart)
-                ?: throw IllegalArgumentException(
-                    "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
-                )
+            if (context.userId != null) {
+                val agentConfigs =
+                    agentConfigService
+                        .findDeployedByNamespaceIdAndUserIdAndName(
+                            namespaceId = context.namespaceId,
+                            userId = context.userId,
+                            agentName = namePart.lowercase(),
+                        ).filter { it.name.equals(namePart, ignoreCase = true) }
+                resolveWithShadowing(agentConfigs, namePart, context.namespaceId)
+            } else {
+                agentConfigService.findByName(context.namespaceId, namePart)
+            } ?: throw IllegalArgumentException(
+                "No AgentConfig found for name '$namePart' in namespace ${context.namespaceId}.",
+            )
         val resolvedUser = context.userId?.let { runCatching { userService.findById(it) }.getOrNull() }
-        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser)
+        val definition = resolveAgentDefinition(agentConfig, context, resolvedUser, subCaseManager)
         return instantiateAgent(definition, context, resolvedUser)
     }
 
@@ -83,12 +130,12 @@ class AgentServiceImpl(
 
     override fun resolveAgentName(
         namePart: String,
-        namespaceId: UUID,
+        namespaceId: UUID?,
         userId: UUID?,
     ): String? =
         if (userId != null) {
             agentConfigService
-                .findAvailableByNamespaceIdAndUserId(
+                .findDeployedByNamespaceIdAndUserIdAndName(
                     namespaceId = namespaceId,
                     userId = userId,
                     agentName = namePart,
@@ -97,6 +144,40 @@ class AgentServiceImpl(
         } else {
             agentConfigService.findByName(namespaceId, namePart)?.name
         }
+
+    // -------------------------------------------------------------------------
+    // Shadowing / uniqueness helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Resolves a single [AgentConfig] from [candidates] applying the platform-vs-namespace
+     * shadowing rule:
+     * - Namespace-scoped configs shadow platform configs with the same name.
+     * - Uniqueness is enforced *per level*: duplicate names at the same level are an error.
+     * - Returns null when [candidates] is empty.
+     *
+     * The precedence order is: namespace > platform.
+     */
+    private fun resolveWithShadowing(
+        candidates: List<AgentConfig>,
+        namePart: String,
+        namespaceId: UUID,
+    ): AgentConfig? {
+        val (namespaceCandidates, platformCandidates) = candidates.partition { it.namespaceId != null }
+
+        val duplicatesAtSameLevel = namespaceCandidates.size > 1 || platformCandidates.size > 1
+        if (duplicatesAtSameLevel) {
+            val culprit = if (namespaceCandidates.size > 1) "namespace" else "platform"
+            throw IllegalArgumentException(
+                "No unique AgentConfig found for name '$namePart': " +
+                    "${if (namespaceCandidates.size > 1) namespaceCandidates.size else platformCandidates.size} " +
+                    "$culprit-level configs match in namespace $namespaceId.",
+            )
+        }
+
+        // Namespace-scoped agent shadows the platform agent when both exist.
+        return namespaceCandidates.firstOrNull() ?: platformCandidates.firstOrNull()
+    }
 
     // -------------------------------------------------------------------------
     // Resolution helpers
@@ -111,16 +192,17 @@ class AgentServiceImpl(
      * Throws [IllegalArgumentException] if no model can be resolved.
      */
     private suspend fun resolveAgentDefinition(
-        config: AgentConfig,
+        agentConfig: AgentConfig,
         context: AgentExecutionContext,
         resolvedUser: User?,
+        subCaseManager: SubCaseManager? = null,
     ): ResolvedAgentDefinition {
         val baseModel =
-            config.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
+            agentConfig.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
                 ?: findDefaultModelConfig(context.namespaceId)
                 ?: throw IllegalArgumentException(
-                    "AgentConfig '${config.name}' could not resolve an AiModel " +
-                        "(modelName=${config.modelName}, namespace=${context.namespaceId}).",
+                    "AgentConfig '${agentConfig.name}' could not resolve an AiModel " +
+                        "(modelName=${agentConfig.modelName}, namespace=${context.namespaceId}).",
                 )
         val (modelConfig, providerConfig) =
             applyOverlaysToModel(
@@ -128,35 +210,55 @@ class AgentServiceImpl(
                 namespaceId = context.namespaceId,
                 userId = context.userId,
             )
+        val effectiveIntegrationConfigs = integrationConfigService.findEffective(context.namespaceId, context.userId)
+        val namespace = namespaceService.findById(context.namespaceId)
         val namespaceSystemPrompt =
-            buildNamespaceSystemPrompt(namespaceId = context.namespaceId, context = context, resolvedUser = resolvedUser)
-        val instructions =
-            buildInstructions(
-                baseInstructions = config.instructions,
-                agentIntegrations = config.integrations,
+            buildNamespaceSystemPrompt(
+                namespace = namespace,
                 context = context,
                 resolvedUser = resolvedUser,
+                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
+            )
+        val instructions =
+            buildInstructions(
+                baseInstructions = agentConfig.instructions,
+                agentIntegrations = agentConfig.integrations,
+                resolvedUser = resolvedUser,
+                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
+                docs = agentConfig.docs,
             )
         val toolContext =
             context.toToolContext(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
-                agentName = config.name,
+                agentName = agentConfig.name,
             )
+        val baseTools =
+            toolResolverService.resolveToolsForRun(
+                agentIntegrations = agentConfig.integrations,
+                context = toolContext,
+                allIntegrationConfigs = effectiveIntegrationConfigs,
+            )
+        // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
+        // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name
+        // collision (e.g. a user FILE_ACCESS integration named "case-exchange") crashing downstream.
         val tools =
-            if (context.userId != null) {
-                toolResolverService.resolveToolsForRun(
-                    agentIntegrations = config.integrations,
-                    context = toolContext,
-                )
-            } else {
-                toolResolverService.resolveToolsForNamespace(
-                    agentIntegrations = config.integrations,
-                    context = toolContext,
-                )
-            }
+            toolResolverService.dedupToolsByName(
+                baseTools +
+                    listOfNotNull(
+                        subCaseManager?.let {
+                            buildDelegationTools(
+                                config = agentConfig,
+                                context = context,
+                                subCaseManager = it,
+                            )
+                        },
+                    ) +
+                    buildExchangeTools(agentConfig, context, toolContext),
+            )
+
         return ResolvedAgentDefinition(
-            agentConfigId = config.metadata.id,
-            name = config.name,
+            agentConfigId = agentConfig.metadata.id,
+            name = agentConfig.name,
             systemPrompt = namespaceSystemPrompt.takeUnless { it.isBlank() },
             instructions = instructions.takeUnless { it.isBlank() },
             resolvedModelApiName = modelConfig.apiModelName,
@@ -166,7 +268,7 @@ class AgentServiceImpl(
             resolvedModel = modelConfig,
             resolvedProvider = providerConfig,
             tools = tools,
-            advancedExecution = config.advancedExecution,
+            advancedExecution = agentConfig.advancedExecution,
             namespaceId = context.namespaceId,
             userId = context.userId,
         )
@@ -189,6 +291,7 @@ class AgentServiceImpl(
 
         return createAgentInstance(
             agentName = definition.name,
+            agentId = definition.agentConfigId,
             resolvedInstructions = definition.instructions,
             resolvedSystemPrompt = definition.systemPrompt,
             advancedExecution = definition.advancedExecution,
@@ -201,9 +304,11 @@ class AgentServiceImpl(
     }
 
     /**
-     * Resolve the [AiProvider] for a pre-resolved [baseModel]. When [userId] is non-null,
-     * applies 3-tier reconciliation on the provider. When null, falls back to direct
-     * repository lookup — preserves Epic 4 behaviour exactly.
+     * Resolve the [AiProvider] for a pre-resolved [baseModel].
+     *
+     * When [userId] is non-null, delegates to [AiProviderService.resolveProvider] which
+     * fetches all four overlay layers in a single query and folds them by precedence.
+     * When null, falls back to a direct lookup by id — preserves Epic 4 behaviour.
      */
     private fun applyOverlaysToModel(
         baseModel: AiModel,
@@ -213,7 +318,7 @@ class AgentServiceImpl(
         val baseProvider = aiProviderService.getById(baseModel.aiProviderId)
         val providerConfig =
             if (userId != null) {
-                aiProviderReconciliationService.resolve(namespaceId, userId, baseProvider.name)
+                aiProviderService.resolveProvider(namespaceId, userId, baseProvider.name)
             } else {
                 baseProvider
             }
@@ -243,6 +348,7 @@ class AgentServiceImpl(
      */
     private fun createAgentInstance(
         agentName: String,
+        agentId: UUID,
         resolvedInstructions: String?,
         resolvedSystemPrompt: String?,
         advancedExecution: Boolean,
@@ -258,18 +364,20 @@ class AgentServiceImpl(
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
-        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig)
+        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
 
         return if (advancedExecution) {
-            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
             val advancedContext =
                 AgentAdvancedContext(
-                    chatClient = chatClient,
+                    chatClient = compressingChatClient,
                     tools = resolvedTools.toList(),
                     instructions = resolvedInstructions,
                     agentId = agentId,
                     confirmationManager = confirmationManager,
                     systemPrompt = resolvedSystemPrompt,
+                    imageCharCost = agentConfigProperties.imageCharCost,
+                    maxAttachedImages = agentConfigProperties.maxAttachedImages,
                 )
             AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),
@@ -286,7 +394,7 @@ class AgentServiceImpl(
             )
         } else {
             AgentSimple(
-                metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray())),
+                metadata = EntityMetadata(id = agentId),
                 name = agentName,
                 chatClient = chatClient,
                 tools = resolvedTools,
@@ -312,22 +420,16 @@ class AgentServiceImpl(
      * plugins returning null or throwing are silently skipped.
      */
     private suspend fun buildNamespaceSystemPrompt(
-        namespaceId: UUID,
+        namespace: io.whozoss.agentos.namespace.Namespace?,
         context: AgentExecutionContext,
         resolvedUser: User?,
+        effectiveIntegrationConfigs: List<IntegrationConfig>,
     ): String {
-        val namespace = namespaceService.findById(namespaceId)
-        val toolContext =
-            ToolContext(
-                namespaceId = namespaceId,
-                userId = resolvedUser?.id,
-                userExternalId = resolvedUser?.externalId,
-                caseEvents = emptyList(),
-            )
+        val namespaceId = context.namespaceId
+        val toolContext = context.toToolContext(resolvedUser?.externalId, null)
         val integrationDescriptions =
             coroutineScope {
-                integrationConfigService
-                    .findByParent(namespaceId)
+                effectiveIntegrationConfigs
                     .mapNotNull { config -> toolRegistryService.findPlugin(config.integrationType)?.let { config to it } }
                     .map { (config, plugin) ->
                         async {
@@ -365,11 +467,12 @@ class AgentServiceImpl(
      * The user context block is included when [context.userId] resolves to a known [User]
      * with at least one human-readable field.
      */
-    private fun buildInstructions(
+    private suspend fun buildInstructions(
         baseInstructions: String?,
         agentIntegrations: Map<String, List<String>?>?,
-        context: AgentExecutionContext,
         resolvedUser: User?,
+        effectiveIntegrationConfigs: List<IntegrationConfig>,
+        docs: List<String>? = null,
     ): String {
         val integrationsBlock =
             when {
@@ -379,8 +482,7 @@ class AgentServiceImpl(
 
                 else -> {
                     val listed =
-                        integrationConfigService
-                            .findByParent(context.namespaceId)
+                        effectiveIntegrationConfigs
                             .filter { it.name in agentIntegrations && !it.description.isNullOrBlank() }
                     when {
                         listed.isEmpty() -> {
@@ -421,8 +523,166 @@ class AgentServiceImpl(
                 }
             }
 
-        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock)
+        val docsBlock = agentDocumentResolver.buildDocsBlock(docs)
+
+        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock)
             .joinToString("\n")
+    }
+
+    /**
+     * Resolves the [DelegationTool] for [config] if delegation is configured.
+     *
+     * Resolution steps:
+     * 1. Skip entirely when [subCaseManager] is null (no delegation support in this call
+     *    path) or [config.subAgents] is null/empty.
+     * 2. Fetch the agents accessible to the current user in the namespace.
+     * 3. Filter them by matching each accessible agent name against the [config.subAgents]
+     *    glob patterns via [globToRegex] (anchored, case-insensitive, `*` = any sequence).
+     *    Examples: `"*Fixer"` matches `BugFixer` and `StoryFixer`; `"*"` matches all agents.
+     * 4. Build a [DelegationTool] only when the resolved allowlist is non-empty and a
+     *    [context.caseId] is available (no delegation outside a live case).
+     */
+    private fun buildDelegationTools(
+        config: AgentConfig,
+        context: AgentExecutionContext,
+        subCaseManager: SubCaseManager,
+    ): DelegationTool? {
+        val patterns = config.subAgents?.filter { it.isNotBlank() }
+        if (patterns.isNullOrEmpty() || context.caseId == null) return null
+
+        val accessibleNames =
+            if (context.userId != null) {
+                agentConfigService
+                    .findDeployedByNamespaceIdAndUserIdAndName(
+                        namespaceId = context.namespaceId,
+                        userId = context.userId,
+                        agentName = null,
+                    ).map { it.name }
+            } else {
+                agentConfigService
+                    .findByNamespace(context.namespaceId, withDisabled = false)
+                    .map { it.name }
+            }
+
+        val regexes = patterns.map { globToRegex(it) }
+        val allowedAgents = accessibleNames.filter { name -> regexes.any { it.matches(name) } }
+
+        if (allowedAgents.isEmpty()) {
+            logger.warn { "DelegationTool: no accessible agents matched patterns $patterns for agent '${config.name}'" }
+            return null
+        }
+
+        logger.info { "Adding DelegationTool for agent '${config.name}' with allowedAgents=$allowedAgents" }
+        return DelegationTool(
+            subCaseManager = subCaseManager,
+            parentCaseId = context.caseId,
+            namespaceId = context.namespaceId,
+            allowedAgents = allowedAgents,
+            loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
+        )
+    }
+
+    /**
+     * Builds the file-exchange tools enabled on [config], scoped to the current run.
+     *
+     * The case/namespace exchange is exposed to the agent as a **built-in integration of the
+     * file-plugin** (integration type [ExchangeIntegrationTypes.FILE_ACCESS]): we point the plugin's own tools
+     * (list/read/search/edit/move/remove) at the exchange directory for the scope. The per-case
+     * root is computed here, where [context.caseId] is available, and passed to the plugin as
+     * `rootPath` — so the SDK [ToolContext] never has to carry a case id.
+     *
+     * Note on confirmation: the plugin's edit/move/remove confirmation gate only applies to
+     * advanced-execution agents. A non-advanced agent granted write access (`readOnly=false`)
+     * executes these without a prompt — the same behaviour as any other writable FILE_ACCESS
+     * integration, not a guarantee specific to the exchange.
+     *
+     * Note on sensitive files: the file-plugin tools apply their own sensitive-file deny-list
+     * (SensitiveFilePatterns.DEFAULT_PATTERNS), so an agent cannot list/read files such as keys or
+     * `.env` even when they sit in the exchange. This is intentionally stricter than the user-facing
+     * [io.whozoss.agentos.exchange.ExchangeController] path, which applies no deny-list (users manage
+     * their own files); the two views of the same directory can therefore differ for such files.
+     *
+     * Gating is fail-closed (enablement lives in [AgentConfig.integrations], not a dedicated flag):
+     * - if the file-plugin is not loaded ([ExchangeIntegrationTypes.FILE_ACCESS] absent) → no tools;
+     * - case exchange (read/write) requires the [ExchangeIntegrationTypes.CASE] key AND a live
+     *   [context.caseId];
+     * - namespace exchange requires the [ExchangeIntegrationTypes.NAMESPACE] key; the agent inherits
+     *   the invoking user's namespace right — read/write when the user holds Namespace WRITE
+     *   (admin/super-admin), read-only otherwise.
+     */
+    private fun buildExchangeTools(
+        config: AgentConfig,
+        context: AgentExecutionContext,
+        toolContext: ToolContext,
+    ): List<StandardTool<*>> {
+        val filePlugin = toolRegistryService.findPlugin(ExchangeIntegrationTypes.FILE_ACCESS) ?: return emptyList()
+
+        // Point the file-plugin's own tools at the exchange directory for the scope, honouring
+        // the per-tool allowlist carried as the integrations-map value (null = all tools).
+        fun grant(
+            root: Path,
+            readOnly: Boolean,
+            configName: String,
+            allowedTools: List<String>?,
+        ): List<StandardTool<*>> {
+            // Materialise the root before building the plugin tools even for a read-only grant: the
+            // file-plugin's BoundaryPathResolver canonicalises rootPath (toRealPath) at construction,
+            // which throws if the directory does not exist. This is why a read-only resolution (e.g.
+            // the debug getDefinition endpoint) still creates an empty scope dir.
+            Files.createDirectories(root)
+            val cfg =
+                objectMapper
+                    .createObjectNode()
+                    .put("rootPath", root.toAbsolutePath().toString())
+                    .put("readOnly", readOnly)
+                    // Align the agent read tool's size cap with the exchange's own read limit, so an
+                    // agent can read back a file the controller read/download path serves (the plugin
+                    // otherwise falls back to its smaller built-in default). The plugin key is megabytes.
+                    .put("readMaxSizeMb", (exchangeStorageService.readMaxSizeBytes / (1024 * 1024)).coerceAtLeast(1))
+            logger.info { "Granting $configName (FILE_ACCESS, readOnly=$readOnly) to agent '${config.name}' at $root" }
+            // Honour the per-tool allowlist via the same matcher every other integration uses
+            // (accepts both bare and `configName__tool` forms); null = all tools.
+            return filePlugin
+                .provideTools(cfg, configName, toolContext)
+                .filter { toolResolverService.isToolAllowed(it.name, configName, allowedTools) }
+        }
+
+        val integrations = config.integrations ?: emptyMap()
+        val tools = mutableListOf<StandardTool<*>>()
+        val caseId = context.caseId
+        val caseCreatedAt = context.caseCreatedAt
+        if (integrations.containsKey(ExchangeIntegrationTypes.CASE) && caseId != null && caseCreatedAt != null) {
+            // The agent gets read/write on the case exchange by design (it produces files during a run).
+            // User-facing write is separately gated: the exchange upload/delete endpoints require Case
+            // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
+            tools +=
+                grant(
+                    exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
+                    readOnly = false,
+                    configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                    allowedTools = integrations[ExchangeIntegrationTypes.CASE],
+                )
+        }
+        if (integrations.containsKey(ExchangeIntegrationTypes.NAMESPACE)) {
+            // The agent inherits the invoking user's namespace right: read/write for a namespace
+            // admin (Namespace WRITE, super-admin included), read-only for a plain member.
+            val userCanWriteNamespace =
+                context.userId?.let {
+                    exchangeCapabilityService.canWrite(
+                        it.toString(),
+                        EntityType.NAMESPACE,
+                        context.namespaceId.toString(),
+                    )
+                } ?: false
+            tools +=
+                grant(
+                    exchangeStorageService.namespaceRoot(context.namespaceId),
+                    readOnly = !userCanWriteNamespace,
+                    configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                    allowedTools = integrations[ExchangeIntegrationTypes.NAMESPACE],
+                )
+        }
+        return tools
     }
 
     companion object : KLogging()

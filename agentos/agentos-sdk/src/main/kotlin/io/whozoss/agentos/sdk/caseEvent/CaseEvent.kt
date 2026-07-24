@@ -39,6 +39,7 @@ enum class CaseEventType(
     TEXT_CHUNK("TextChunkEvent"),
     PENDING_CONFIRMATION("PendingConfirmationEvent"),
     CONFIRMATION_RESOLVED("ConfirmationResolvedEvent"),
+    CASE_UPDATED("CaseUpdatedEvent"),
     ;
 
     fun isFirstLevel(): Boolean = this in listOf(MESSAGE, QUESTION, ANSWER)
@@ -81,6 +82,7 @@ enum class CaseEventType(
     JsonSubTypes.Type(value = TextChunkEvent::class, name = "TextChunkEvent"),
     JsonSubTypes.Type(value = PendingConfirmationEvent::class, name = "PendingConfirmationEvent"),
     JsonSubTypes.Type(value = ConfirmationResolvedEvent::class, name = "ConfirmationResolvedEvent"),
+    JsonSubTypes.Type(value = CaseUpdatedEvent::class, name = "CaseUpdatedEvent"),
 )
 sealed interface CaseEvent : Entity {
     val namespaceId: UUID
@@ -232,6 +234,11 @@ data class ToolRequestEvent(
  * [io.whozoss.agentos.sdk.tool.ToolContext.caseEvents] to perform coherence checks
  * (e.g. verifying that a referenced entity was fetched before being mutated).
  * The map is empty when the tool returned no metadata.
+ *
+ * [images] carries the visual attachments produced by the tool (see
+ * [io.whozoss.agentos.sdk.tool.ToolExecutionResult.images]). [output] stays the textual
+ * summary of the execution; provider tool responses are text-only, so images are delivered
+ * to the LLM separately at prompt-build time.
  */
 data class ToolResponseEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -246,6 +253,8 @@ data class ToolResponseEvent(
     val durationMs: Long? = null,
     /** Opaque metadata returned by the tool. Empty map when the tool produced no metadata. */
     val toolMetadata: Map<String, Any?> = emptyMap(),
+    /** Images produced by the tool. Empty list when the tool produced no image. */
+    val images: List<MessageContent.Image> = emptyList(),
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_RESPONSE
 }
@@ -267,6 +276,11 @@ data class ThinkingEvent(
 /**
  * Emitted when an agent asks a question to the user via a tool.
  * The user can respond asynchronously via an AnswerEvent.
+ *
+ * @param userId When non-null, identifies the specific user this question is directed at.
+ *   Null means the question is addressed to any user of the case.
+ * @param questionType Controls how the UI should render the response input.
+ *   [QuestionType.OPEN_CHOICE] requires [options] to be non-null and non-empty.
  */
 data class QuestionEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -277,6 +291,9 @@ data class QuestionEvent(
     val agentName: String,
     val question: String,
     val options: List<String>? = null,
+    val questionType: QuestionType = QuestionType.FREE_TEXT,
+    /** Identifies the specific user this question is directed at. Null = any user. */
+    val userId: UUID? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.QUESTION
 
@@ -432,4 +449,25 @@ data class ConfirmationResolvedEvent(
     val resultText: String = "",
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.CONFIRMATION_RESOLVED
+}
+
+/**
+ * Emitted when a [io.whozoss.agentos.sdk.caseFlow.Case] is updated outside of the normal
+ * agent execution flow (e.g. automatic title generation).
+ *
+ * Transient: streamed to SSE clients for real-time UI refresh but never persisted —
+ * the durable state is already written directly on the Case entity before this event
+ * is emitted.
+ *
+ * @param title New case title when it was updated, null when unchanged.
+ */
+data class CaseUpdatedEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val title: String? = null,
+) : CaseEvent,
+    TransientCaseEvent {
+    override val type: CaseEventType = CaseEventType.CASE_UPDATED
 }

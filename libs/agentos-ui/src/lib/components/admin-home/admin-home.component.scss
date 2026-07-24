@@ -1,0 +1,40 @@
+@use '../../../../../design-system/src/styles' as ds;
+
+.admin-home {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+
+  &__header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
+    font-family: ds.$font-ui;
+  }
+
+  &__subtitle {
+    margin: 0;
+    @include ds.text-secondary;
+  }
+
+  &__sections {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+
+    agentos-action-card {
+      --ac-height: 120px;
+    }
+  }
+}

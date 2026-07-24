@@ -5,23 +5,24 @@
   emptyMessage="No namespaces yet. Create one to get started."
   cardMinWidth="400px"
   [itemTemplate]="namespaceItemTpl"
-  (itemSelected)="navigateToCases($event)"
+  (itemSelected)="navigateToHome($event)"
   (createRequested)="navigateToCreate()"
 />
 
 <!-- Item template: renders NamespaceItemComponent for each entity-list card slot -->
 <ng-template #namespaceItemTpl let-item>
-  @if (resolveNamespace(item.id); as ns) {
+  @if (namespacesById().get(item.id); as ns) {
     <agentos-namespace-item
       [namespace]="ns"
-      (selected)="navigateToCases($event.id ?? '')"
+      (selected)="navigateToHome($event.id ?? '')"
       (editRequested)="navigateToEdit($event)"
       (deleteRequested)="deleteNamespace($event)"
       (integrationsRequested)="openIntegrations($event)"
       (aiProvidersRequested)="openAiProviders($event)"
       (aiModelsRequested)="openAiModels($event)"
       (agentConfigsRequested)="openAgentConfigs($event)"
-      (caseDefinitionsRequested)="openCaseDefinitions($event)"
+      (promptsRequested)="openPrompts($event)"
+      (userGroupsRequested)="openUserGroups($event)"
     />
   }
 </ng-template>

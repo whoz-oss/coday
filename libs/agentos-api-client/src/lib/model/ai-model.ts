@@ -9,14 +9,14 @@
  */
 
 export interface AiModel {
-  id?: string
   aiProviderId: string
-  namespaceId?: string
-  userId?: string
+  alias?: string
   apiModelName: string
   description?: string
-  alias?: string
+  id?: string
+  maxTokens?: number
+  namespaceId?: string
   priority: number
   temperature?: number
-  maxTokens?: number
+  userId?: string
 }

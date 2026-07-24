@@ -17,6 +17,7 @@ interface ScopeBadge {
  * Same convention as story 6.5 IntegrationConfigItemComponent.
  */
 const SCOPE_BADGES: Readonly<Record<AiProviderScope, ScopeBadge>> = Object.freeze({
+  platform: { label: 'PLATFORM', ariaLabel: 'Configuration de niveau plateforme (lecture seule)', variant: 'neutral' },
   namespace: { label: 'NS', ariaLabel: 'Configuration partagée du namespace', variant: 'neutral' },
   userOnNs: { label: 'USER × NS', ariaLabel: 'Configuration utilisateur sur ce namespace', variant: 'info' },
   userGlobal: { label: 'USER GLOBAL', ariaLabel: 'Configuration utilisateur globale', variant: 'warning' },
@@ -35,14 +36,14 @@ const SCOPE_BADGES: Readonly<Record<AiProviderScope, ScopeBadge>> = Object.freez
  * any destination via the radio in the form. The apiKey is intentionally NOT carried into
  * the duplicate (NFR-SEC-1: credentials never migrate across resources).
  *
- * Read-only mode hides edit/delete (used for users without write permission on the NS).
+ * Read-only mode hides edit/delete (used for users without write permission on the NS,
+ * and for platform-level providers shown in a namespace context).
  *
  * The `apiKey` is never displayed on this row — credentials are only visible in the form
  * (and even there, masked unless the user types a new value). NFR-SEC-1.
  */
 @Component({
   selector: 'agentos-ai-provider-item',
-  standalone: true,
   imports: [KebabMenuComponent, IconButtonComponent],
   templateUrl: './ai-provider-item.component.html',
   styleUrl: './ai-provider-item.component.scss',
@@ -52,6 +53,9 @@ export class AiProviderItemComponent {
   readonly config = input.required<AiProvider>()
   readonly scope = input.required<AiProviderScope>()
   readonly readOnly = input<boolean>(false)
+  /** Whether to display the scope badge. Set to false when the scope is already
+   * conveyed by the surrounding section (e.g. platform-level admin page). */
+  readonly showBadge = input<boolean>(true)
 
   readonly editRequested = output<AiProvider>()
   readonly deleteRequested = output<AiProvider>()

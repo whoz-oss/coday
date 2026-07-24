@@ -1,8 +1,11 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.util.AttemptFailure
@@ -16,6 +19,7 @@ import java.util.UUID
 @Service
 class AgentIntentionGenerator {
     fun generate(
+        agentName: String,
         context: AgentAdvancedContext,
         events: List<CaseEvent>,
         namespaceId: UUID,
@@ -27,18 +31,27 @@ class AgentIntentionGenerator {
 
         val isFirstIteration = events.none { it is ToolRequestEvent }
         val lastToolResponse = events.filterIsInstance<ToolResponseEvent>().lastOrNull()
+        val lastToolRequestIndex = events.indexOfLast { it is ToolRequestEvent }
+        val lastUserInteractionAfterLastToolCall = events
+            .drop(lastToolRequestIndex + 1)
+            .lastOrNull { event -> event is AnswerEvent || (event is MessageEvent && event.actor.role == ActorRole.USER) }
         val executionState =
             when {
                 isFirstIteration -> "No tools have been called yet. This is the first iteration."
+                lastUserInteractionAfterLastToolCall is AnswerEvent -> "The user has just answered a question from the agent. Determine the next action based on their answer."
+                lastUserInteractionAfterLastToolCall is MessageEvent -> "The user has just sent a new message. Determine the next action based on their message."
                 lastToolResponse?.success == true -> "Last tool '${lastToolResponse.toolName}' executed without technical issue."
                 lastToolResponse?.success == false -> "Last tool '${lastToolResponse.toolName}' FAILED: ${(lastToolResponse.output as? MessageContent.Text)?.content}"
                 else -> ""
             }
         val prompt =
             """
-Available tools:
+Available agents and tools:
+<${agentName}_tools>
 $toolsDescription
 - $ANSWER_TOOL: produce the final answer to the user (use this when no more tool calls are needed)
+<\${agentName}_Tools>
+
 
 $executionState
 
@@ -55,6 +68,7 @@ Before generating the output, analyze the situation using the following logic:
     *   **No/Missing Info:** If the tool failed and required more data, the next step is `${ANSWER_TOOL}` to ask for clarification.
     *   **Goal Met:** If the `userGoal` is fully satisfied, use `${ANSWER_TOOL}` to confirm completion.
     *   **Warning:** If there a warning, should it be passed on to the user 
+*   Verify you have the capabilities or the available agents (<AvailableAgents></AvailableAgents>) have the capabilities to execute the tool if not say so to the user.
 
 **2. Validate Agent Constraints:**
 *   Review the **Current Active Agent's** workflow and instructions for guidance on next step.
@@ -67,8 +81,8 @@ Before generating the output, analyze the situation using the following logic:
 
 **4. Check Data Prerequisites:**
 *   Does the intended tool require specific IDs or context ?
-*   Have these entities been referenced previously?
-    *   **NO:** The next action is `FindXXX` to reference the entity (`FindXXX` establishes a reference to an entity by identifying the corresponding id).
+*   Do you have the ids of those entities?
+    *   **NO:** The next action is `FindXXX` (`FindXXX` establishes a reference to an entity by identifying the corresponding id).
     *   **YES:** You are ready to call the execution tool.
 
 **Non-discrimination safeguard:**
@@ -130,10 +144,8 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
 
             try {
                 val messages = context.buildMessages(events, fullPrompt)
-                val response = context.chatClient
-                    .prompt(Prompt(messages))
-                    .call()
-                    .content() ?: throw AgentIntentionGenerationException.InvalidFormat("Null LLM response")
+                val response = context.chatClient.prompt(Prompt(messages)).call().content()
+                    ?: throw AgentIntentionGenerationException.InvalidFormat("Null LLM response")
 
                 logger.trace { "Intention generation response:\n$response" }
 

@@ -15,6 +15,7 @@ import { defaultCreateScope } from '../_shared/default-create-scope'
 import { IntegrationConfigItemComponent } from '../integration-config-item/integration-config-item.component'
 
 const SECTION_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
+  platform: 'Configurations plateforme',
   namespace: 'Configurations du namespace',
   userOnNs: 'Mes overrides sur ce namespace',
   userGlobal: 'Mes overrides globaux',
@@ -45,7 +46,6 @@ interface ResolvedItem {
  */
 @Component({
   selector: 'agentos-integrations-all-scopes',
-  standalone: true,
   imports: [AsyncPipe, EntityListComponent, IntegrationConfigItemComponent, IconButtonComponent],
   templateUrl: './integrations-all-scopes.component.html',
   styleUrl: './integrations-all-scopes.component.scss',
@@ -95,6 +95,9 @@ export class IntegrationsAllScopesComponent implements OnInit {
 
     this.state.vm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((vm) => {
       const next = new Map<string, ResolvedItem>()
+      vm.platform.forEach((c) => {
+        if (c.id) next.set(this.itemKey('platform', c.id), { config: c, scope: 'platform' })
+      })
       vm.namespace.forEach((c) => {
         if (c.id) next.set(this.itemKey('namespace', c.id), { config: c, scope: 'namespace' })
       })
@@ -155,11 +158,11 @@ export class IntegrationsAllScopesComponent implements OnInit {
     // user pick any other destination. `templateScope` tells the form which controller to
     // use to load the source config for hydration.
     //
-    // Smart-redirect for non-admins: cloning a NS item into NS scope would 403 at submit
-    // for a non-admin (the form's radio also disables that option). Steer directly to
-    // `userOnNs` so the user lands on a usable scope without manual re-pick.
+    // Smart-redirect for non-admins: cloning a NS or platform item into those scopes would
+    // 403 at submit. Steer directly to `userOnNs` so the user lands on a usable scope.
     if (!item.config.id) return
-    const destinationScope = item.scope === 'namespace' && !this.isAdmin() ? 'userOnNs' : item.scope
+    const isPrivilegedScope = item.scope === 'namespace' || item.scope === 'platform'
+    const destinationScope = isPrivilegedScope && !this.isAdmin() ? 'userOnNs' : item.scope
     this.router.navigate(['/agentos', this.namespaceId, 'integrations', 'new'], {
       queryParams: { scope: destinationScope, template: item.config.id, templateScope: item.scope },
     })
@@ -167,6 +170,7 @@ export class IntegrationsAllScopesComponent implements OnInit {
 
   private toListItems(vm: IntegrationConfigViewModel): EntityListItem[] {
     const items: EntityListItem[] = []
+    items.push(...this.sectionItems('platform', vm.platform))
     items.push(...this.sectionItems('namespace', vm.namespace))
     items.push(...this.sectionItems('userOnNs', vm.userOnNs))
     items.push(...this.sectionItems('userGlobal', vm.userGlobal))

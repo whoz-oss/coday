@@ -92,19 +92,20 @@ class ConfirmationManager(
                 ${historyToString(firstLevelHistory)}
                 </conversationHistory>
 
-                Return "$CHOICE_NO" if ANY of the following are true:
+                Return "$SHOULD_CONFIRM_CONFIRMATION_NEEDED" if ANY of the following are true:
                       - The assistant proposed a general suggestion without details and the user just agreed to the general suggestion but hasn't seen the specific details yet
                       - There is any ambiguity about whether the user wants to proceed
                       - The data content includes changes beyond what the user explicitly and specifically requested or beyond what the assistant has proposed to the user
-                Else return "$CHOICE_YES"
+                      - The action was built through multiple exchanges where the assistant asked clarification questions, AND the action involves creating or significantly modifying a complex object with multiple parameters that the user has not yet seen as a complete recap. However, if the user's original request was a simple, targeted action (e.g. adding a single item, toggling a setting) and the clarification only resolved which exact value to use for that single action, then the user's answer to the clarification DOES count as implicit confirmation — do NOT require additional confirmation in that case
+                Else return "$SHOULD_CONFIRM_ALREADY_CONFIRMED"
 
                 First give me the reasoning behind yor decision. put it between <$TAG_REASONING></$TAG_REASONING>:
                 
-                Then answer the question: has the user *already* explicitly agreed to or requested this specific action/update? put it between <$TAG_DECISION></$TAG_DECISION>
+                Then answer the question: has the user *already* explicitly agreed to or requested this specific action/update? Answer "$SHOULD_CONFIRM_ALREADY_CONFIRMED" or "$SHOULD_CONFIRM_CONFIRMATION_NEEDED" and put it between <$TAG_DECISION></$TAG_DECISION>
                 """.trimIndent()
 
             val hasAlreadyConfirmed =
-                callDecision(chatClient = chatClient, prompt = prompt).startsWith(CHOICE_YES)
+                callDecision(chatClient = chatClient, prompt = prompt).startsWith(SHOULD_CONFIRM_ALREADY_CONFIRMED)
             if (hasAlreadyConfirmed) {
                 logger.info { "[ConfirmationManager] LLM says user already confirmed — skipping prompt" }
             } else {
@@ -163,11 +164,11 @@ class ConfirmationManager(
             ${historyToString(firstLevelHistory)}
             </conversationHistory>
 
-            Put exactly one of "$CHOICE_YES", "$CHOICE_NO", "$CHOICE_UNCLEAR" between
+            Put exactly one of "$ANALYZE_CONFIRMED", "$ANALYZE_REJECTED", "$ANALYZE_AMBIGUOUS" between
             <$TAG_DECISION></$TAG_DECISION> tags:
-            - "$CHOICE_YES" — clear, explicit affirmation (e.g. "yes", "go ahead", "confirmed").
-            - "$CHOICE_NO" — clear refusal, cancellation, OR topic shift to something unrelated.
-            - "$CHOICE_UNCLEAR" — hesitant, non-committal (e.g. "why not", "I guess", "as you wish"),
+            - "$ANALYZE_CONFIRMED" — clear, explicit affirmation (e.g. "yes", "go ahead", "confirmed").
+            - "$ANALYZE_REJECTED" — clear refusal, cancellation, OR topic shift to something unrelated.
+            - "$ANALYZE_AMBIGUOUS" — hesitant, non-committal (e.g. "why not", "I guess", "as you wish"),
               or a clarification question about the pending action.
 
             First give your reasoning between <$TAG_REASONING></$TAG_REASONING>, then the decision.
@@ -186,9 +187,9 @@ class ConfirmationManager(
         // `unclear` lands the user reply in AMBIGUOUS (re-ask via formulateQuestion). The
         // `else` catch-all also maps to AMBIGUOUS for gibberish / no-tag responses.
         return when {
-            decision.startsWith(CHOICE_YES) -> ConfirmationDecision.CONFIRMED
-            decision.startsWith(CHOICE_NO) -> ConfirmationDecision.REJECTED
-            decision.startsWith(CHOICE_UNCLEAR) -> ConfirmationDecision.AMBIGUOUS
+            decision.startsWith(ANALYZE_CONFIRMED) -> ConfirmationDecision.CONFIRMED
+            decision.startsWith(ANALYZE_REJECTED) -> ConfirmationDecision.REJECTED
+            decision.startsWith(ANALYZE_AMBIGUOUS) -> ConfirmationDecision.AMBIGUOUS
             else -> ConfirmationDecision.AMBIGUOUS
         }
     }
@@ -333,9 +334,11 @@ class ConfirmationManager(
         private const val TAG_DECISION = "decision"
         private const val TAG_QUESTION = "question"
         private const val TAG_REASONING = "reasoning"
-        private const val CHOICE_YES = "yes"
-        private const val CHOICE_NO = "no"
-        private const val CHOICE_UNCLEAR = "unclear"
+        private const val SHOULD_CONFIRM_ALREADY_CONFIRMED = "already_confirmed"
+        private const val SHOULD_CONFIRM_CONFIRMATION_NEEDED = "confirmation_needed"
+        private const val ANALYZE_CONFIRMED = "confirmed"
+        private const val ANALYZE_REJECTED = "rejected"
+        private const val ANALYZE_AMBIGUOUS = "ambiguous"
         private val DECISION_TAG_REGEX = Regex("<decision>(.*?)</decision>", RegexOption.DOT_MATCHES_ALL)
         private val QUESTION_TAG_REGEX = Regex("<question>(.*?)</question>", RegexOption.DOT_MATCHES_ALL)
     }

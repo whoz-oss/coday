@@ -9,8 +9,12 @@
  */
 
 export interface UserGroupCreateRequest {
-  namespaceId: string
-  name: string
-  userExternalIdsToAdd: Set<string>
+  /**
+   * Subset of userExternalIdsToAdd who should receive the ADMIN role; each must also be a member.
+   */
+  adminExternalIds: Set<string>
   agentIds: Set<string>
+  name: string
+  namespaceId: string
+  userExternalIdsToAdd: Set<string>
 }

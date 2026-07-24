@@ -22,7 +22,10 @@ interface CaseRepository : EntityRepository<Case, UUID> {
      *
      * Implementations must exclude soft-deleted cases.
      */
-    fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
+    fun findAccessibleByUserInNamespace(
+        userId: UUID,
+        namespaceId: UUID,
+    ): List<Case>
 
     /**
      * Find all cases concerning [userId] across every namespace.
@@ -41,5 +44,41 @@ interface CaseRepository : EntityRepository<Case, UUID> {
      * but restricted to the given namespace.
      * Implementations must exclude soft-deleted cases.
      */
-    fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
+    fun findConcerningUserInNamespace(
+        userId: UUID,
+        namespaceId: UUID,
+    ): List<Case>
+
+    /**
+     * Find all active (non-removed), non-terminal sub-cases whose [Case.parentCaseId] matches [parentCaseId].
+     *
+     */
+    fun findActiveByParentCaseId(parentCaseId: UUID): List<Case>
+
+    /**
+     * Count the number of ancestor hops from [caseId] up through the parentCaseId chain.
+     *
+     * Returns 0 when [caseId] has no parent, 1 when it has one parent, etc.
+     * Used to enforce a maximum delegation depth before creating a new sub-case.
+     */
+    fun countAncestorDepth(caseId: UUID): Int
+
+    /**
+     * Find all active, non-terminal descendants of [caseId] via the [:PARENT_OF] chain,
+     * up to 10 levels deep, ordered leaves-first.
+     *
+     * Used by [io.whozoss.agentos.caseFlow.CaseService.killCase] to collect the full
+     * subtree in one query instead of recursing through [findActiveByParentCaseId].
+     */
+    fun findActiveDescendants(caseId: UUID): List<Case>
+
+    /**
+     * Create the [:PARENT_OF] graph relationship from [parentCaseId] to [childCaseId].
+     *
+     * Called after persisting a sub-case so the ancestor-depth query can traverse the chain.
+     */
+    fun linkParentToChild(
+        parentCaseId: UUID,
+        childCaseId: UUID,
+    )
 }

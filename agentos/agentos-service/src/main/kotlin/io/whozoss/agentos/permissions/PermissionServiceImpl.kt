@@ -195,6 +195,56 @@ class PermissionServiceImpl(
         }
     }
 
+    override fun promoteMemberToAdmin(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean {
+        return try {
+            val promoted = permissionRepository.promoteMemberToAdmin(userId, entityType, entityId)
+            permissionCache.clear()
+            logger.info { "Promoted MEMBER to ADMIN for user=$userId on $entityType:$entityId (hadMember=$promoted)" }
+            promoted
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to promote MEMBER to ADMIN: user=$userId, entity=$entityType:$entityId" }
+            throw e
+        }
+    }
+
+    override fun demoteAdminToMember(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean {
+        return try {
+            val demoted = permissionRepository.demoteAdminToMember(userId, entityType, entityId)
+            permissionCache.clear()
+            logger.info { "Demoted ADMIN to MEMBER for user=$userId on $entityType:$entityId (hadAdmin=$demoted)" }
+            demoted
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to demote ADMIN to MEMBER: user=$userId, entity=$entityType:$entityId" }
+            throw e
+        }
+    }
+
+    override fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String> {
+        if (entries.isEmpty()) return emptyList()
+        return try {
+            val result = permissionRepository.applyShareBatch(entityType, entityId, entries)
+            // Sharing affects multiple users — invalidate the whole cache.
+            permissionCache.clear()
+            logger.info { "applyShareBatch on $entityType:$entityId — ${result.size} user(s) affected" }
+            result
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to apply share batch on $entityType:$entityId" }
+            throw e
+        }
+    }
+
     override fun clearUserCache(userId: String) {
         try {
             permissionCache.invalidateUser(userId)

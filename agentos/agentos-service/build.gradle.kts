@@ -233,7 +233,7 @@ dependencyManagement {
 
 kotlin {
     compilerOptions {
-        freeCompilerArgs.addAll("-Xjsr305=strict")
+        freeCompilerArgs.addAll("-Xjsr305=strict", "-Xemit-jvm-type-annotations")
         jvmTarget.set(
             org.jetbrains.kotlin.gradle.dsl.JvmTarget
                 .fromTarget(libs.versions.kotlinJvmTarget.get()),
@@ -304,6 +304,15 @@ configurations.all {
             useVersion(libs.versions.netty.get())
             because("neo4j-embedded 2026.x requires Netty 4.2.x; Spring Boot BOM pins 4.1.x")
         }
+        // The file plugin's ReadAsImageTool compiles against kotlinx-coroutines from the version
+        // catalog, whose CoroutineDispatcher.limitedParallelism(parallelism, name) overload only
+        // exists since 1.9. Spring Boot's BOM downgrades coroutines to 1.8.x at runtime, so the
+        // compiled call resolves to a method missing at runtime -> NoSuchMethodError when the
+        // plugin is loaded under PF4J. Pin coroutines to the compiled-against version.
+        if (requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-coroutines")) {
+            useVersion(libs.versions.kotlinCoroutines.get())
+            because("code compiles against coroutines ${libs.versions.kotlinCoroutines.get()}; Spring Boot BOM downgrades it to 1.8.x at runtime")
+        }
     }
 }
 
@@ -347,9 +356,19 @@ openApi {
     apiDocsUrl.set("http://localhost:$agentosPort/v3/api-docs.yaml")
     // Wait up to 60s for the app to be ready
     waitTimeInSeconds.set(60)
-    // Activate the openapi profile so the app starts without real AI API keys
+    // Activate the openapi profile so the app starts without real AI API keys.
+    // embedded-bolt-port=0 (random OS-assigned port) as a command-line arg because it must
+    // beat application-embedded-neo4j.yml (last active profile wins over the openapi one):
+    // spec generation must not fail when a locally running dev stack already binds the
+    // default embedded port 7688. The driver resolves the actual port at runtime.
     customBootRun {
-        args.set(listOf("--spring.profiles.active=openapi,embedded-neo4j", "--server.port=$agentosPort"))
+        args.set(
+            listOf(
+                "--spring.profiles.active=openapi,embedded-neo4j",
+                "--server.port=$agentosPort",
+                "--agentos.persistence.embedded-bolt-port=0",
+            ),
+        )
     }
 }
 

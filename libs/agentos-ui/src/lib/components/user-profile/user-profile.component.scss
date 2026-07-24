@@ -111,7 +111,8 @@
 
   &__header {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
     gap: 0.5rem;
   }
 
@@ -207,6 +208,60 @@
       color: var(--color-text-secondary, #6e6e73);
       font-size: 0.875rem;
     }
+  }
+
+  // --- Segmented control (shared by theme + composer) ---
+
+  &__segmented {
+    display: inline-flex;
+    justify-self: start; // do not stretch to fill the grid cell (1fr) — shrink to its buttons
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  &__segmented-option {
+    padding: 0.4rem 0.85rem;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    color: var(--color-text-secondary, #6e6e73);
+    font-size: 0.875rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease;
+
+    &:last-child {
+      border-right: none;
+    }
+
+    &:hover {
+      background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
+    }
+
+    &--active {
+      background: var(--color-primary, #007aff);
+      color: #fff;
+
+      &:hover {
+        background: var(--color-primary-hover, #0051d5);
+      }
+    }
+  }
+
+  &__field-control {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  &__hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6e6e73);
   }
 
   // --- Form inputs ---

@@ -9,12 +9,23 @@
  */
 
 export interface Case {
+  created?: string
+  favorite: boolean
   id?: string
+  modified?: string
   namespaceId: string
+  parentCaseId?: string
+  removed: boolean
+  /**
+   * The caller\'s direct relation on this case
+   */
+  role?: CaseRoleEnum
   status: CaseStatusEnum
   title?: string
-  created?: string
-  removed: boolean
+}
+export enum CaseRoleEnum {
+  ADMIN = 'ADMIN',
+  MEMBER = 'MEMBER',
 }
 export enum CaseStatusEnum {
   PENDING = 'PENDING',

@@ -1,0 +1,39 @@
+@use '../../../../../../design-system/src/styles' as ds;
+
+.shell-user-menu {
+  &__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+  }
+
+  &__overlay {
+    @include ds.surface-dropdown;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 180px;
+    z-index: 200;
+
+    &--mobile {
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 16px;
+      left: auto;
+      z-index: 300;
+    }
+  }
+
+  &__item {
+    @include ds.menu-item;
+
+    &--active {
+      background: color-mix(in srgb, var(--color-primary, #016b71) 12%, transparent);
+      color: var(--color-primary, #016b71);
+    }
+  }
+
+  &__separator {
+    @include ds.menu-separator;
+  }
+}

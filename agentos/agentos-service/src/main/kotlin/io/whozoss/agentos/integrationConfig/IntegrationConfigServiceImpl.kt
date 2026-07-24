@@ -12,10 +12,10 @@ import java.util.UUID
  *
  * Delegates persistence to [IntegrationConfigRepository].
  *
- * Triple-mode invariant — `(namespaceId != null) OR (userId != null)` — is enforced on both
- * [create] and [update] (defence-in-depth, even if the controller already validates). A
- * violation surfaces as HTTP 400 to align with the [io.whozoss.agentos.aiProvider.AiProviderServiceImpl]
- * pattern referenced by story 6.1.
+ * Four scope modes are supported: platform `(null, null)`, namespace-shared `(ns, null)`,
+ * user-global `(null, user)`, and user×namespace `(ns, user)`. The service accepts all four;
+ * authorization (only Super Admins may write platform-level configs) is enforced in the
+ * controller where the security context is available.
  *
  * Uniqueness on the (namespaceId, userId, name) triple is enforced on [create] (409 on
  * conflict) and on [update] when a rename would collide with another row in the same scope.
@@ -28,9 +28,9 @@ import java.util.UUID
 @Service
 class IntegrationConfigServiceImpl(
     private val repository: IntegrationConfigRepository,
+    private val mergeStrategy: IntegrationConfigMergeStrategy,
 ) : IntegrationConfigService {
     override fun create(entity: IntegrationConfig): IntegrationConfig {
-        requireScope(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
@@ -42,7 +42,6 @@ class IntegrationConfigServiceImpl(
     }
 
     override fun update(entity: IntegrationConfig): IntegrationConfig {
-        requireScope(entity)
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
@@ -55,7 +54,10 @@ class IntegrationConfigServiceImpl(
         return saveOrConflict(entity)
     }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<IntegrationConfig> = repository.findByIds(ids, withRemoved)
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<IntegrationConfig> = repository.findByIds(ids, withRemoved)
 
     override fun findByParent(parentId: UUID): List<IntegrationConfig> = repository.findByParent(parentId)
 
@@ -76,7 +78,36 @@ class IntegrationConfigServiceImpl(
 
     override fun findByUserId(userId: UUID): List<IntegrationConfig> = repository.findByUserId(userId)
 
+    override fun findPlatform(): List<IntegrationConfig> = repository.findPlatform()
+
     override fun findByNamespaceShared(namespaceId: UUID): List<IntegrationConfig> = repository.findByParent(namespaceId)
+
+    override fun findEffective(
+        namespaceId: UUID?,
+        userId: UUID?,
+    ): List<IntegrationConfig> =
+        repository
+            .findAllForNamespaceIdAndUserId(
+                namespaceId = namespaceId,
+                userId = userId,
+            ).groupBy { it.name }
+            .mapNotNull { (_, configs) ->
+                if (configs.size == 1) {
+                    configs.first()
+                } else {
+                    val sorted = configs.sortedWith(LAYER_COMPARATOR)
+                    sorted.drop(1).fold(
+                        initial = sorted.first(),
+                    ) { base, override ->
+                        if (LAYER_COMPARATOR.compare(base, override) == 0) {
+                            logger.warn {
+                                "[IntegrationConfigService] Inconsistency detected as same level between configs ${base.id} and ${override.id}"
+                            }
+                        }
+                        mergeStrategy.merge(base, override)
+                    }
+                }
+            }
 
     override fun findFiltered(
         namespaceId: UUID?,
@@ -84,35 +115,33 @@ class IntegrationConfigServiceImpl(
         callerId: UUID,
         userRequested: Boolean,
         canReadNamespace: (UUID) -> Boolean,
-    ): List<IntegrationConfig> = when {
-        // NS-shared layer of a specific namespace (no userId param) : check READ permission
-        namespaceId != null && !userRequested -> {
-            if (!canReadNamespace(namespaceId)) emptyList()
-            else findByNamespaceShared(namespaceId)
-        }
-
-        // User-scoped (userId=me requested) : start from user's configs and narrow by namespace
-        userRequested -> {
-            val nsFilter: (UUID?) -> Boolean = when {
-                namespaceIsNone -> { nsId -> nsId == null }
-                namespaceId != null -> { nsId -> nsId == namespaceId }
-                else -> { _ -> true }
+    ): List<IntegrationConfig> =
+        when {
+            // NS-shared layer of a specific namespace (no userId param) : check READ permission
+            namespaceId != null && !userRequested -> {
+                if (!canReadNamespace(namespaceId)) {
+                    emptyList()
+                } else {
+                    findByNamespaceShared(namespaceId)
+                }
             }
-            findByUserId(callerId).filter { nsFilter(it.namespaceId) }
-        }
 
-        // No filter at all : surface the caller's own overlays
-        else -> findByUserId(callerId)
-    }
+            // User-scoped (userId=me requested) : start from user's configs and narrow by namespace
+            userRequested -> {
+                val nsFilter: (UUID?) -> Boolean =
+                    when {
+                        namespaceIsNone -> { nsId -> nsId == null }
+                        namespaceId != null -> { nsId -> nsId == namespaceId }
+                        else -> { _ -> true }
+                    }
+                findByUserId(callerId).filter { nsFilter(it.namespaceId) }
+            }
 
-    private fun requireScope(entity: IntegrationConfig) {
-        if (entity.namespaceId == null && entity.userId == null) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "IntegrationConfig must be scoped to at least a namespace or a user",
-            )
+            // No filter at all : surface the caller's own overlays
+            else -> {
+                findByUserId(callerId)
+            }
         }
-    }
 
     /**
      * Reject create/update when another layer that would merge with this entity at reconciliation
@@ -149,18 +178,27 @@ class IntegrationConfigServiceImpl(
                     "a different name or align the integrationType.",
             )
 
+        // Platform layer: always checked — any entity with the same name at platform scope
+        // participates in the reconciliation chain for every namespace and user.
+        repository
+            .findByTriple(null, null, name)
+            ?.takeIf { it.id != entityId && it.integrationType != type }
+            ?.let(::reject)
+
         // NS layer (always checked for entities that target a namespace, even pure NS-shared ones —
         // catches the case of an admin renaming a NS config to a name already used by a user-overlay
         // with a different type, which would also break the merge for that user).
         if (namespaceId != null) {
-            repository.findByTriple(namespaceId, null, name)
+            repository
+                .findByTriple(namespaceId, null, name)
                 ?.takeIf { it.id != entityId && it.integrationType != type }
                 ?.let(::reject)
         }
 
         if (userId != null) {
             // user-global of the same user
-            repository.findByTriple(null, userId, name)
+            repository
+                .findByTriple(null, userId, name)
                 ?.takeIf { it.id != entityId && it.integrationType != type }
                 ?.let(::reject)
 
@@ -176,8 +214,7 @@ class IntegrationConfigServiceImpl(
                             it.namespaceId != null &&
                             it.name == name &&
                             it.integrationType != type
-                    }
-                    ?.let(::reject)
+                    }?.let(::reject)
             }
         }
     }
@@ -228,5 +265,33 @@ class IntegrationConfigServiceImpl(
     companion object : KLogging() {
         private const val TRIPLE_KEY_CONSTRAINT_NAME = "integration_config_triple_key_unique"
         private const val TRIPLE_KEY_PROPERTY = "tripleKey"
+
+        /**
+         * Comparator defining the 3-tier overlay precedence (lowest → highest priority).
+         *
+         * | Scope            | namespaceId | userId   | rank |
+         * |------------------|-------------|----------|------|
+         * | Platform         | null        | null     | 0    |
+         * | User-global      | null        | non-null | 1    |
+         * | Namespace-shared | non-null    | null     | 2    |
+         * | User × namespace | non-null    | non-null | 3    |
+         *
+         * Namespace-shared (rank 2) intentionally overrides user-global (rank 1):
+         * namespace admins can enforce a config that supersedes user preferences.
+         * User × namespace (rank 3) lets the user restore a personal override
+         * scoped to that specific namespace.
+         */
+        val LAYER_COMPARATOR: Comparator<IntegrationConfig> =
+            Comparator { a, b ->
+                val rankA = layerRank(a)
+                val rankB = layerRank(b)
+                rankA.compareTo(rankB)
+            }
+
+        private fun layerRank(config: IntegrationConfig): Int {
+            val nsRank = if (config.namespaceId == null) 0 else 2
+            val userRank = if (config.userId == null) 0 else 1
+            return nsRank + userRank
+        }
     }
 }

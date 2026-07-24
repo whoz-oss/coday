@@ -1,18 +1,24 @@
 import { inject, Injectable } from '@angular/core'
-import { IntegrationConfig, IntegrationConfigControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  IntegrationConfig,
+  IntegrationConfigControllerService,
+  IntegrationConfigExportService,
+} from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, catchError, combineLatest, map, Observable, of, shareReplay, switchMap, tap } from 'rxjs'
 import { multicastRefreshable } from './rxjs-state.utils'
 import { UserStateService } from './user-state.service'
 
 /**
- * Scope of an integration config row in the unified 3-section view.
+ * Scope of an integration config row in the unified 4-section view.
+ * - `platform`  : config shared at the platform level (super-admin only, no namespaceId, no userId)
  * - `namespace` : config shared at the namespace level
  * - `userOnNs`  : the caller's personal override scoped to the current namespace
  * - `userGlobal`: the caller's personal override that applies cross-namespace
  */
-export type IntegrationScope = 'namespace' | 'userOnNs' | 'userGlobal'
+export type IntegrationScope = 'platform' | 'namespace' | 'userOnNs' | 'userGlobal'
 
 export interface IntegrationConfigViewModel {
+  platform: IntegrationConfig[]
   namespace: IntegrationConfig[]
   userOnNs: IntegrationConfig[]
   userGlobal: IntegrationConfig[]
@@ -40,10 +46,11 @@ const NAMESPACE_NONE_SENTINEL = 'none'
 const USER_ME_SENTINEL = 'me'
 
 /**
- * IntegrationConfigStateService — orchestrates the 3 sources of truth for the unified
- * Integrations page. Post-PR-#838 (`unify-ns-user-crud-controllers`) all 3 calls land on
+ * IntegrationConfigStateService — orchestrates the 4 sources of truth for the unified
+ * Integrations page. All calls land on
  * `IntegrationConfigControllerService.listIntegrationConfig(namespaceId, userId, …)` :
  *
+ *   0. platform         → `listIntegrationConfig()` (no params — super-admin only)
  *   1. NS-shared        → `listIntegrationConfig(namespaceId=<uuid>)` (no `userId`)
  *   2. user × namespace → `listIntegrationConfig(namespaceId=<uuid>, userId='me')`
  *   3. user-global      → `listIntegrationConfig(namespaceId='none', userId='me')`
@@ -55,6 +62,7 @@ const USER_ME_SENTINEL = 'me'
 @Injectable({ providedIn: 'root' })
 export class IntegrationConfigStateService {
   private readonly nsController = inject(IntegrationConfigControllerService)
+  private readonly exportService = inject(IntegrationConfigExportService)
   private readonly userState = inject(UserStateService)
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
@@ -66,23 +74,32 @@ export class IntegrationConfigStateService {
    *  - any mutation calls `refresh()` (also done implicitly by create/update/delete)
    *
    * Multicast via `shareReplay` so concurrent subscribers (template async pipe + ngOnInit
-   * derivations) share a single fan-out of HTTP calls instead of redoing all 3 GETs each.
-   * Per-source `catchError` keeps the page rendering when one of the 3 layers fails — a
-   * 5xx on user-global must not blank the namespace section.
+   * derivations) share a single fan-out of HTTP calls instead of redoing all 4 GETs each.
+   * Per-source `catchError` keeps the page rendering when one of the layers fails — a
+   * 5xx on user-global must not blank the namespace section. The platform section returns
+   * an empty array for non-admins (backend returns 403, caught here).
    */
   readonly vm$: Observable<IntegrationConfigViewModel> = combineLatest([this.namespaceId$, this.refresh$]).pipe(
     switchMap(([namespaceId]) => {
+      const platform$ = this.loadPlatformConfigs().pipe(catchError(() => of([] as IntegrationConfig[])))
+      const userGlobal$ = this.loadUserConfigs('global').pipe(catchError(() => of([] as IntegrationConfig[])))
+
       if (!namespaceId) {
-        return combineLatest([
-          this.loadNamespaceConfigs('').pipe(catchError(() => of([] as IntegrationConfig[]))),
-          this.loadUserConfigs('global').pipe(catchError(() => of([] as IntegrationConfig[]))),
-        ]).pipe(map(([namespace, userGlobal]) => ({ namespace, userOnNs: [] as IntegrationConfig[], userGlobal })))
+        return combineLatest([platform$, userGlobal$]).pipe(
+          map(([platform, userGlobal]) => ({
+            platform,
+            namespace: [] as IntegrationConfig[],
+            userOnNs: [] as IntegrationConfig[],
+            userGlobal,
+          }))
+        )
       }
       return combineLatest([
+        platform$,
         this.loadNamespaceConfigs(namespaceId).pipe(catchError(() => of([] as IntegrationConfig[]))),
         this.loadUserConfigs(namespaceId).pipe(catchError(() => of([] as IntegrationConfig[]))),
-        this.loadUserConfigs('global').pipe(catchError(() => of([] as IntegrationConfig[]))),
-      ]).pipe(map(([namespace, userOnNs, userGlobal]) => ({ namespace, userOnNs, userGlobal })))
+        userGlobal$,
+      ]).pipe(map(([platform, namespace, userOnNs, userGlobal]) => ({ platform, namespace, userOnNs, userGlobal })))
     }),
     shareReplay({ bufferSize: 1, refCount: true })
   )
@@ -95,6 +112,15 @@ export class IntegrationConfigStateService {
 
   refresh(): void {
     this.refresh$.next()
+  }
+
+  /**
+   * Platform-level slice — no namespaceId, no userId. Super-admin only on the backend;
+   * a non-admin will receive a 403 which is caught by `vm$`'s per-source `catchError`
+   * (empty array fallback), so the page still renders for regular users.
+   */
+  loadPlatformConfigs(): Observable<IntegrationConfig[]> {
+    return this.nsController.listIntegrationConfig()
   }
 
   /**
@@ -140,6 +166,17 @@ export class IntegrationConfigStateService {
       throw new Error(
         `Cannot create ${scope} config before UserStateService.loadMe() resolves — call loadMe() at app init`
       )
+    }
+
+    if (scope === 'platform') {
+      // Platform scope: no namespaceId, no userId — super-admin only, backend enforces it.
+      const payload: IntegrationConfig = {
+        name: draft.name,
+        integrationType: draft.integrationType,
+        description: draft.description as string | undefined,
+        parameters: draft.parameters,
+      }
+      return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
     }
 
     if (scope === 'namespace') {
@@ -195,5 +232,18 @@ export class IntegrationConfigStateService {
   delete(id: string, scope: IntegrationScope): Observable<unknown> {
     void scope
     return this.nsController.deleteIntegrationConfig(id).pipe(tap(() => this.refresh()))
+  }
+
+  /**
+   * Export a config as a YAML string. The caller is responsible for triggering the
+   * browser download — this method only fetches the raw YAML content from the backend.
+   *
+   * Delegates to `IntegrationConfigExportService` (hand-written) rather than the
+   * generated controller, because the generator's `selectHeaderAccept` logic prefers
+   * JSON when both MIME types are listed (406), and maps `application/yaml` to
+   * `responseType: 'blob'` instead of `'text'`.
+   */
+  exportAsYaml(id: string): Observable<string> {
+    return this.exportService.exportAsYaml(id)
   }
 }

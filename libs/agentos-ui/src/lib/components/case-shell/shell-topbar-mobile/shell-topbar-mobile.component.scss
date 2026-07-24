@@ -1,0 +1,155 @@
+@use '../../../../../../design-system/src/styles' as ds;
+
+:host {
+  display: none; // hidden on desktop, shown via media query
+}
+
+.shell-topbar-mobile {
+  &__brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  &__logo-btn {
+    @include ds.button-reset;
+
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+  }
+
+  &__logo-img {
+    height: 28px;
+    width: auto;
+    border-radius: 6px;
+    object-fit: contain;
+  }
+
+  &__logo-text {
+    @include ds.text-label;
+  }
+
+  &__sep {
+    color: var(--color-text-tertiary);
+    font: inherit;
+    font-size: 0.75rem;
+    flex: none;
+  }
+
+  // Namespace switcher
+  &__ns-wrap {
+    position: static;
+    min-width: 0;
+  }
+
+  &__ns-btn {
+    @include ds.button-reset;
+    @include ds.text-menu-item;
+
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: all 150ms;
+    max-width: 160px;
+
+    &:hover {
+      background: var(--color-bg-hover);
+      border-color: var(--color-border);
+    }
+
+    // Open state: primary border — aligns with desktop trigger style
+    &--open {
+      border-color: var(--color-primary);
+      background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+    }
+  }
+
+  &__chevron {
+    color: var(--color-text-secondary);
+    font-size: 9px;
+    flex: none;
+  }
+
+  &__ns-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 299;
+  }
+
+  &__ns-menu {
+    @include ds.surface-dropdown;
+
+    position: fixed;
+    top: 44px;
+    left: 16px;
+    min-width: 200px;
+    z-index: 300;
+  }
+
+  &__ns-item {
+    @include ds.menu-item;
+
+    &--active {
+      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+      color: var(--color-primary);
+    }
+  }
+
+  &__ns-item-name {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  // Avatar
+  &__avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  &__avatar {
+    @include ds.text-mark;
+
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: var(--color-primary, #016b71);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    user-select: none;
+    transition: background 140ms ease;
+
+    &:hover {
+      background: var(--color-primary-hover, #015a5f);
+    }
+  }
+}
+
+@media (max-width: 900px) {
+  :host {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 16px;
+    min-height: 44px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg);
+    flex-shrink: 0;
+    position: relative;
+  }
+}

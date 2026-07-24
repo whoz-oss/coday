@@ -6,42 +6,91 @@
 
 .case-shell {
   display: flex;
-  flex-direction: column;
   height: 100%;
 
-  &__header {
+  // ── Resize handle ──
+  &__resize-handle {
+    width: 4px;
     flex-shrink: 0;
+    cursor: col-resize;
+    background: var(--color-border, rgba(0, 0, 0, 0.09));
+    transition: background 150ms;
+    position: relative;
+    z-index: 10;
+
+    &:hover,
+    &:active {
+      background: var(--color-primary, #016b71);
+    }
   }
 
-  &__body {
+  // ── Main ──
+  &__main {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-  }
 
-  &__sidenav {
-    display: flex;
+    > * {
+      flex: 1;
+      min-height: 0;
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// RESPONSIVE — Mobile layout (< 900px)
+// ══════════════════════════════════════════════════════════
+@media (max-width: 900px) {
+  .case-shell {
     flex-direction: column;
-    height: 100%;
     overflow: hidden;
   }
 
-  &__content {
-    position: relative;
+  .case-shell__resize-handle {
+    display: none !important;
+  }
+
+  .case-shell__main {
     flex: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
+    min-height: 0;
     overflow: hidden;
   }
+}
 
-  // Floating container for the open-drawer icon-button, visible when drawer is closed
-  &__toggle {
-    position: absolute;
-    top: 0.375rem;
-    left: 0.5rem;
-    z-index: 10;
+// La sidebar gère sa propre visibilité via :host dans son propre scss
+
+// ── Sidebar expand button (visible only when sidebar is collapsed) ──
+.case-shell__expand-btn {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 200;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-text-secondary, #968f85);
+  transition: background 140ms;
+
+  .material-icons {
+    font-size: 22px;
+  }
+
+  &:hover {
+    background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+    color: var(--color-text, #1b1916);
+  }
+
+  // Hidden on mobile — the mobile topbar handles navigation there
+  @media (max-width: 900px) {
+    display: none;
   }
 }

@@ -190,6 +190,231 @@ export class AgentConfigControllerService extends BaseService {
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
+  public disableAgentConfig(
+    id: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<AgentConfig>
+  public disableAgentConfig(
+    id: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<AgentConfig>>
+  public disableAgentConfig(
+    id: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<AgentConfig>>
+  public disableAgentConfig(
+    id: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling disableAgentConfig.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/agent-configs/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/disable`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<AgentConfig>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param id
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public enableAgentConfig(
+    id: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<AgentConfig>
+  public enableAgentConfig(
+    id: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<AgentConfig>>
+  public enableAgentConfig(
+    id: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<AgentConfig>>
+  public enableAgentConfig(
+    id: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling enableAgentConfig.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/agent-configs/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/enable`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<AgentConfig>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Export an AgentConfig as a YAML file
+   * Returns the agent config as a downloadable YAML file, ready to be placed in the namespace &#x60;agents/&#x60; directory under &#x60;configPath&#x60;. Only the fields meaningful in a filesystem config are included. Scope metadata (&#x60;id&#x60;, &#x60;namespaceId&#x60;, &#x60;enabled&#x60;, &#x60;advancedExecution&#x60;, &#x60;externalMetadata&#x60;) is intentionally omitted.
+   * @param id
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public exportAgentConfig(
+    id: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<string>
+  public exportAgentConfig(
+    id: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<HttpResponse<string>>
+  public exportAgentConfig(
+    id: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<HttpEvent<string>>
+  public exportAgentConfig(
+    id: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: {
+      httpHeaderAccept?: 'application/json' | 'application/yaml'
+      context?: HttpContext
+      transferCache?: boolean
+    }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling exportAgentConfig.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json', 'application/yaml'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/agent-configs/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/export`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<string>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param id
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
   public getByIdAgentConfig(
     id: string,
     observe?: 'body',
@@ -334,12 +559,14 @@ export class AgentConfigControllerService extends BaseService {
   /**
    * @param id
    * @param withUserOverlay
+   * @param namespaceId
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public getDefinitionAgentConfig(
     id: string,
     withUserOverlay?: boolean,
+    namespaceId?: string,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -347,6 +574,7 @@ export class AgentConfigControllerService extends BaseService {
   public getDefinitionAgentConfig(
     id: string,
     withUserOverlay?: boolean,
+    namespaceId?: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -354,6 +582,7 @@ export class AgentConfigControllerService extends BaseService {
   public getDefinitionAgentConfig(
     id: string,
     withUserOverlay?: boolean,
+    namespaceId?: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -361,6 +590,7 @@ export class AgentConfigControllerService extends BaseService {
   public getDefinitionAgentConfig(
     id: string,
     withUserOverlay?: boolean,
+    namespaceId?: string,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -371,6 +601,7 @@ export class AgentConfigControllerService extends BaseService {
 
     let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
     localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>withUserOverlay, 'withUserOverlay')
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
 
     let localVarHeaders = this.defaultHeaders
 
@@ -410,30 +641,35 @@ export class AgentConfigControllerService extends BaseService {
   }
 
   /**
-   * @param parentId Parent entity ID
+   * @param parentId
+   * @param withDisabled
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public listByParentAgentConfig(
     parentId: string,
+    withDisabled?: boolean,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<AgentConfig>>
   public listByParentAgentConfig(
     parentId: string,
+    withDisabled?: boolean,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<AgentConfig>>>
   public listByParentAgentConfig(
     parentId: string,
+    withDisabled?: boolean,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<AgentConfig>>>
   public listByParentAgentConfig(
     parentId: string,
+    withDisabled?: boolean,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -441,6 +677,9 @@ export class AgentConfigControllerService extends BaseService {
     if (parentId === null || parentId === undefined) {
       throw new Error('Required parameter parentId was null or undefined when calling listByParentAgentConfig.')
     }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>withDisabled, 'withDisabled')
 
     let localVarHeaders = this.defaultHeaders
 
@@ -469,6 +708,76 @@ export class AgentConfigControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<AgentConfig>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      params: localVarQueryParameters,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param withDisabled
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public listPlatformAgentsAgentConfig(
+    withDisabled?: boolean,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<Array<AgentConfig>>
+  public listPlatformAgentsAgentConfig(
+    withDisabled?: boolean,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<Array<AgentConfig>>>
+  public listPlatformAgentsAgentConfig(
+    withDisabled?: boolean,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<Array<AgentConfig>>>
+  public listPlatformAgentsAgentConfig(
+    withDisabled?: boolean,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>withDisabled, 'withDisabled')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/agent-configs/platform`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<Array<AgentConfig>>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
