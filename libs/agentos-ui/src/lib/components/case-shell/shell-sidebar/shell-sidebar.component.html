@@ -274,7 +274,7 @@
           [value]="caseFilter()"
           (input)="onCompactSearchInput($any($event.target).value)"
           (keyup.escape)="closeCompactSearch()"
-          autofocus
+          #compactSearchInput
         />
         @if (caseFilter()) {
           <button

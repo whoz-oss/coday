@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  ElementRef,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core'
 import { Case, NamespaceListItem } from '@whoz-oss/agentos-api-client'
 import { CaseDrawerComponent } from '../../case-drawer/case-drawer.component'
 import { ShellUserMenuComponent } from '../shell-user-menu/shell-user-menu.component'
@@ -51,11 +60,15 @@ export class ShellSidebarComponent {
   protected readonly compactNsMenuTop = signal(0)
   protected readonly compactNsMenuLeft = signal(0)
 
+  private readonly compactSearchInputRef = viewChild<ElementRef<HTMLInputElement>>('compactSearchInput')
+
   protected onCompactSearchBtnClick(event: MouseEvent): void {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
     this.compactSearchTop.set(rect.top)
     this.compactSearchLeft.set(rect.right + 8)
     this.compactSearchOpen.update((v) => !v)
+    if (!this.compactSearchOpen()) return
+    setTimeout(() => this.compactSearchInputRef()?.nativeElement.focus(), 0)
   }
 
   protected onCompactSearchInput(value: string): void {

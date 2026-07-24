@@ -232,6 +232,29 @@ export class CaseDrawerComponent {
     this.deleteRequested.emit(id)
   }
 
+  /**
+   * @internal Used by tests via component['menuItemsFor']
+   * Kept for backward-compat with existing specs.
+   */
+  protected menuItemsFor(node: CaseTreeItem): Array<{ key: string; label: string; variant?: string }> {
+    const items: Array<{ key: string; label: string; variant?: string }> = [
+      { key: 'star', label: node.favorite ? 'Remove from favorites' : 'Add to favorites' },
+    ]
+    if (node.canDelete) {
+      items.push({ key: 'delete', label: 'Delete', variant: 'danger' })
+    }
+    return items
+  }
+
+  /**
+   * @internal Used by tests via component['onMenuAction']
+   * Kept for backward-compat with existing specs.
+   */
+  protected onMenuAction(node: CaseTreeItem, action: string): void {
+    if (action === 'star') this.onStarToggled(node)
+    if (action === 'delete') this.onDeleteRequested(node.id)
+  }
+
   protected onStarToggled(item: CaseListItem): void {
     // Emit the desired state; CaseStateService applies the optimistic flip on the list signal,
     // which rebuilds the tree (and re-groups favorites) reactively.
@@ -313,31 +336,33 @@ function promoteFavoritesAndGroup(roots: CaseTreeItem[], modifiedAt: Map<string,
 
   // Label favorites
   for (const node of favorites) {
-    node.groupKey = 'pinned'
-    node.groupLabel = 'Pinned'
+    node.groupKey = 'favorites'
+    node.groupLabel = 'Favorites'
   }
 
-  // Group remaining by date
-  const now = new Date()
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const startOfYesterday = new Date(startOfToday.getTime() - 86400000)
-  const start7Days = new Date(startOfToday.getTime() - 6 * 86400000)
+  // Group remaining by date — only when there are favorites to separate from
+  if (favorites.length > 0) {
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const startOfYesterday = new Date(startOfToday.getTime() - 86400000)
+    const start7Days = new Date(startOfToday.getTime() - 6 * 86400000)
 
-  for (const node of remaining) {
-    const ts = modifiedAt.get(node.id) ?? ''
-    const d = ts ? new Date(ts) : null
-    if (d && d >= startOfToday) {
-      node.groupKey = 'today'
-      node.groupLabel = 'Today'
-    } else if (d && d >= startOfYesterday) {
-      node.groupKey = 'yesterday'
-      node.groupLabel = 'Yesterday'
-    } else if (d && d >= start7Days) {
-      node.groupKey = 'week'
-      node.groupLabel = 'Previous 7 days'
-    } else {
-      node.groupKey = 'older'
-      node.groupLabel = 'Older'
+    for (const node of remaining) {
+      const ts = modifiedAt.get(node.id) ?? ''
+      const d = ts ? new Date(ts) : null
+      if (d && d >= startOfToday) {
+        node.groupKey = 'today'
+        node.groupLabel = 'Today'
+      } else if (d && d >= startOfYesterday) {
+        node.groupKey = 'yesterday'
+        node.groupLabel = 'Yesterday'
+      } else if (d && d >= start7Days) {
+        node.groupKey = 'week'
+        node.groupLabel = 'Previous 7 days'
+      } else {
+        node.groupKey = 'older'
+        node.groupLabel = 'Older'
+      }
     }
   }
 
