@@ -323,8 +323,8 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
 }
 
 /**
- * Promote favorited cases to a "Pinned" group at the top, then group remaining
- * cases by recency: Today / Yesterday / Previous 7 days / Older.
+ * Promote favorited cases to a "Favorites" group at the top, then group remaining
+ * cases by recency (only when favorites exist): Today / Yesterday / Previous 7 days / Older.
  */
 function promoteFavoritesAndGroup(roots: CaseTreeItem[], modifiedAt: Map<string, string>): CaseTreeItem[] {
   const favorites: CaseTreeItem[] = []
