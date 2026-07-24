@@ -71,6 +71,16 @@ dependencies {
     // Kotlin coroutines for async file operations
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 
+    // PDFBox for PDF page rendering (readAsImage tool) — bundled into the plugin jar,
+    // the service classpath does not provide it
+    implementation(libs.pdfbox)
+
+    // POI for PPTX slide rendering (readAsImage tool) — bundled like PDFBox. Transitives
+    // (xmlbeans, poi-ooxml-lite, commons-*, curvesapi, log4j-api) are all Apache-2.0/BSD.
+    // log4j-api is also on the service classpath (log4j-to-slf4j) at the same version, so
+    // the APD parent-first copy wins harmlessly and POI logs route to Logback.
+    implementation(libs.poi.ooxml)
+
     // AgentOS SDK - Contains plugin interfaces
     compileOnly("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
 
@@ -101,6 +111,21 @@ kotlin {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict")
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(libs.versions.kotlinJvmTarget.get()))
+    }
+}
+
+tasks.jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    // Bundle PDFBox and POI with their transitive deps (fontbox, pdfbox-io, commons-logging,
+    // xmlbeans, poi-ooxml-lite, commons-compress/io/codec/collections4/math3, curvesapi) into
+    // the plugin JAR so the plugin classloader can resolve them independently of the service
+    // classpath (PF4J APD strategy). Jackson and the SDK are declared compileOnly and
+    // therefore NOT in runtimeClasspath -- they are provided by the service classloader
+    // at runtime. Same pattern as agentos-mcp-plugin; the descriptor stays in
+    // src/main/resources/plugin.properties (no manifest attributes here).
+    from(configurations.runtimeClasspath.map { fc -> fc.filter { it.name.endsWith(".jar") }.map { zipTree(it) } }) {
+        exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
+        exclude("kotlin/**", "kotlinx/**")
     }
 }
 

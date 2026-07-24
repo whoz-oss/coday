@@ -6,6 +6,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -353,6 +354,103 @@ class AgentSimpleToolCallbackUnitSpec :
 
             events shouldHaveAtLeastSize 3
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
+        }
+
+        "image-producing tool: images are kept on the event and the LLM sees the not-supported note" {
+            // AgentSimple cannot deliver image attachments to the LLM. The images must
+            // still be preserved on the ToolResponseEvent (persistence, SSE), and the
+            // text handed back to the LLM must say the images are NOT viewable here,
+            // instead of letting the tool summary claim they are attached.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val images = listOf(
+                MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 791, height = 1024),
+            )
+
+            val fakeTool =
+                object : StandardTool<Nothing> {
+                    override val name = "FILES__readAsImage"
+                    override val description = "Render a file visually"
+                    override val inputSchema = """{"type":"object","properties":{}}"""
+                    override val version = "1.0.0"
+                    override val paramType: Class<Nothing>? = null
+
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.successWithImages("Rendered PDF cv.pdf: page(s) 1 of 1", images)
+                }
+
+            var callbackReturn: String? = null
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "FILES__readAsImage" }
+                callbackReturn = cb.call("{}")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.just("done")
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(fakeTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "read my cv"))).toList()
+
+            val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
+            toolResponse.images shouldBe images
+            (toolResponse.output as MessageContent.Text).content shouldBe "Rendered PDF cv.pdf: page(s) 1 of 1"
+
+            callbackReturn shouldNotBe null
+            callbackReturn!! shouldContain "does not support image attachments"
+            callbackReturn!! shouldContain "Rendered PDF cv.pdf"
+        }
+
+        "history replay renders image tool responses as text with the note, never base64" {
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val promptSlot = slot<Prompt>()
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(capture(promptSlot)).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("response")
+
+            val agent = makeAgent(agentId, mockChatClient, emptyList())
+
+            val history =
+                listOf(
+                    userMessage(namespaceId, caseId, "read my cv"),
+                    ToolRequestEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-img-1",
+                        toolName = "FILES__readAsImage",
+                        args = """{"filePath":"cv.pdf"}""",
+                    ),
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-img-1",
+                        toolName = "FILES__readAsImage",
+                        output = MessageContent.Text("Rendered PDF cv.pdf: page(s) 1 of 1"),
+                        images = listOf(
+                            MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 10, height = 10),
+                        ),
+                    ),
+                    userMessage(namespaceId, caseId, "so what does it say?"),
+                )
+
+            agent.run(history).toList()
+
+            val toolResponseMessage =
+                promptSlot.captured.instructions
+                    .filterIsInstance<org.springframework.ai.chat.messages.ToolResponseMessage>()
+                    .single()
+            val responseData = toolResponseMessage.responses.single().responseData()
+            responseData shouldContain "Rendered PDF cv.pdf"
+            responseData shouldContain "does not support image attachments"
+            responseData shouldNotContain "aGVsbG8="
         }
 
         "NonTransientAiException from LLM provider surfaces as ErrorEvent + AgentFinishedEvent, no generic error" {

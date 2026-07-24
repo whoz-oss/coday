@@ -3,6 +3,7 @@ package io.whozoss.agentos.exchange
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.exchange.ExchangeCapability
 import org.springframework.stereotype.Service
 
 /**

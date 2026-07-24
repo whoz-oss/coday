@@ -52,9 +52,6 @@ interface CaseRepository : EntityRepository<Case, UUID> {
     /**
      * Find all active (non-removed), non-terminal sub-cases whose [Case.parentCaseId] matches [parentCaseId].
      *
-     * Used by [io.whozoss.agentos.caseFlow.CaseService.killSingleCase] to propagate kill signals
-     * to sub-cases created by delegation. Excludes sub-cases already in a terminal status
-     * (KILLED or ERROR) so that killing a parent does not overwrite their diagnostic status.
      */
     fun findActiveByParentCaseId(parentCaseId: UUID): List<Case>
 
@@ -70,7 +67,7 @@ interface CaseRepository : EntityRepository<Case, UUID> {
      * Find all active, non-terminal descendants of [caseId] via the [:PARENT_OF] chain,
      * up to 10 levels deep, ordered leaves-first.
      *
-     * Used by [io.whozoss.agentos.caseFlow.CaseService.killSingleCase] to collect the full
+     * Used by [io.whozoss.agentos.caseFlow.CaseService.killCase] to collect the full
      * subtree in one query instead of recursing through [findActiveByParentCaseId].
      */
     fun findActiveDescendants(caseId: UUID): List<Case>

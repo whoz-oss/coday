@@ -24,6 +24,13 @@ data class AgentAdvancedContext(
     val confirmationManager: ConfirmationManager,
     /** Namespace context block sent as a privileged system message, prepended before event history. */
     val systemPrompt: String? = null,
+    /**
+     * Char-equivalent cost of one attached image against the detailed-tool budget.
+     * Default mirrors [AgentConfigProperties.imageCharCost].
+     */
+    val imageCharCost: Int = 6_000,
+    /** Maximum images attached as Media across the whole prompt, newest first. Default mirrors [AgentConfigProperties.maxAttachedImages]. */
+    val maxAttachedImages: Int = 20,
 ) {
     /**
      * Build the complete message list for a single LLM call.
@@ -63,8 +70,12 @@ data class AgentAdvancedContext(
         maxDetailedChars: Int = 300_000,
     ): List<Message> {
         val responsesByRequestId = indexToolResponses(events)
-        val detailedRequestIds =
-            selectDetailedToolRequestIds(events, responsesByRequestId, maxDetailedChars)
+        val (detailedRequestIds, mediaRequestIds) =
+            selectDetailedToolRequestIds(
+                events = events,
+                responsesByRequestId = responsesByRequestId,
+                maxDetailedChars = maxDetailedChars,
+            )
 
         val lastUserMsgIndex =
             events.indexOfLast {
@@ -84,7 +95,12 @@ data class AgentAdvancedContext(
                 }
 
                 is ToolRequestEvent -> {
-                    toToolMessages(event, detailedRequestIds, responsesByRequestId)
+                    toToolMessages(
+                        event = event,
+                        detailedRequestIds = detailedRequestIds,
+                        mediaRequestIds = mediaRequestIds,
+                        responsesByRequestId = responsesByRequestId,
+                    )
                 }
 
                 is IntentionGeneratedEvent -> {
@@ -101,50 +117,84 @@ data class AgentAdvancedContext(
     private fun indexToolResponses(events: List<CaseEvent>): Map<String, ToolResponseEvent> =
         events.filterIsInstance<ToolResponseEvent>().associateBy { it.toolRequestId }
 
+    /**
+     * Selection of the tool requests replayed in detail, and among them the ones whose
+     * response images are actually attached as [Media].
+     */
+    private data class ToolReplaySelection(
+        val detailedRequestIds: Set<String>,
+        val mediaRequestIds: Set<String>,
+    )
+
+    /**
+     * Single newest-first walk deciding both selections coherently:
+     * - a request is detailed while its cumulated char cost fits [maxDetailedChars];
+     * - its images are attached while they fit [maxAttachedImages], and only attached
+     *   images are charged [imageCharCost] against the budget. Responses whose images
+     *   are not attached keep their text summary plus a marker (see
+     *   [toDetailedToolMessages]) and cost only that text.
+     */
     private fun selectDetailedToolRequestIds(
         events: List<CaseEvent>,
         responsesByRequestId: Map<String, ToolResponseEvent>,
         maxDetailedChars: Int,
-    ): Set<String> {
-        val result = mutableSetOf<String>()
+    ): ToolReplaySelection {
+        val detailed = mutableSetOf<String>()
+        val withMedia = mutableSetOf<String>()
         var charsCollected = 0
+        var imagesAttached = 0
 
         for (event in events.reversed()) {
             if (event !is ToolRequestEvent) continue
 
             val response = responsesByRequestId[event.toolRequestId]
-            val cost = estimateDetailedCharCost(event, response)
+            val images = response?.images ?: emptyList()
+            val attachMedia = images.isNotEmpty() && imagesAttached + images.size <= maxAttachedImages
 
+            val cost = detailedCharCost(event, response, attachMedia)
             if (charsCollected + cost > maxDetailedChars) break
 
-            result.add(event.toolRequestId)
+            detailed.add(event.toolRequestId)
             charsCollected += cost
+            if (attachMedia) {
+                withMedia.add(event.toolRequestId)
+                imagesAttached += images.size
+            }
         }
-        return result
+        return ToolReplaySelection(detailed, withMedia)
     }
 
-    private fun estimateDetailedCharCost(
-        request: ToolRequestEvent,
+    /**
+     * Char-equivalent cost charged against the detailed-tool budget for one request/response:
+     * the request args, the response text, and — only when [attachMedia] is true — the attached
+     * images at [imageCharCost] each.
+     */
+    private fun detailedCharCost(
+        event: ToolRequestEvent,
         response: ToolResponseEvent?,
+        attachMedia: Boolean,
     ): Int {
-        val argsCost = request.args?.length ?: 0
+        val argsCost = event.args?.length ?: 0
         val responseCost = response?.let { extractText(it.output).length } ?: 0
-        return argsCost + responseCost
+        val imagesCost = if (attachMedia) (response?.images?.size ?: 0) * imageCharCost else 0
+        return argsCost + responseCost + imagesCost
     }
 
     private fun toToolMessages(
         event: ToolRequestEvent,
         detailedRequestIds: Set<String>,
+        mediaRequestIds: Set<String>,
         responsesByRequestId: Map<String, ToolResponseEvent>,
     ): List<Message> =
         if (event.toolRequestId in detailedRequestIds) {
-            toDetailedToolMessages(event, responsesByRequestId)
+            toDetailedToolMessages(event, mediaRequestIds, responsesByRequestId)
         } else {
             listOf(toToolSummaryMessage(event, responsesByRequestId))
         }
 
     private fun toDetailedToolMessages(
         event: ToolRequestEvent,
+        mediaRequestIds: Set<String>,
         responsesByRequestId: Map<String, ToolResponseEvent>,
     ): List<Message> {
         val args = normalizeArgs(event.args)
@@ -155,9 +205,12 @@ data class AgentAdvancedContext(
         // Every AssistantMessage with tool_calls MUST be followed by a ToolResponseMessage
         // for each tool_call_id — OpenAI returns 400 otherwise. Use the real response if
         // available, or synthesize a placeholder so the message list stays well-formed.
-        val responseText =
-            responsesByRequestId[event.toolRequestId]?.let { extractText(it.output) }
-                ?: "[No response recorded]"
+        val response = responsesByRequestId[event.toolRequestId]
+        val attachMedia = response != null && response.images.isNotEmpty() && event.toolRequestId in mediaRequestIds
+        var responseText = response?.let { extractText(it.output) } ?: "[No response recorded]"
+        if (response != null && response.images.isNotEmpty() && !attachMedia) {
+            responseText += "\n[${response.images.size} image(s) no longer attached, call the tool again if needed]"
+        }
 
         messages.add(
             ToolResponseMessage
@@ -172,6 +225,11 @@ data class AgentAdvancedContext(
                     ),
                 ).build(),
         )
+        // Provider tool responses are text-only: the images ride in a follow-up user
+        // message with Media attachments right after the tool response.
+        if (attachMedia) {
+            messages.add(toolImagesUserMessage(event.toolName, response!!.images))
+        }
         return messages
     }
 
@@ -185,7 +243,9 @@ data class AgentAdvancedContext(
                 response == null || response.success -> "Success"
                 else -> "Failed: ${extractText(response.output)}"
             }
-        return AssistantMessage("[Step summary] Tool: ${event.toolName} | $status")
+        val imagesSuffix =
+            response?.images?.size?.takeIf { it > 0 }?.let { " | $it image(s) (not shown)" } ?: ""
+        return AssistantMessage("[Step summary] Tool: ${event.toolName} | $status$imagesSuffix")
     }
 
     private fun toIntentionMessage(event: IntentionGeneratedEvent): List<Message> =
@@ -198,6 +258,6 @@ data class AgentAdvancedContext(
     private fun extractText(content: MessageContent): String =
         when (content) {
             is MessageContent.Text -> content.content
-            else -> content.toString()
+            is MessageContent.Image -> "[image ${content.mimeType} ${content.width}x${content.height}]"
         }
 }

@@ -22,6 +22,8 @@ import java.util.UUID
  * @property title Optional human-readable title.
  * @property created Server-set creation timestamp. Present in responses only.
  * @property modified Server-set last-modification timestamp. Present in responses only.
+ * @property lastMessageAt Timestamp of the most recent message in this case. Present in responses only.
+ *   Null for cases that have never received a message. Used as the primary sort key in conversation lists.
  * @property removed Soft-delete flag. False by default.
  * @property favorite Per-user favorite flag. Populated by list endpoints; defaults to false on single-case fetches.
  * @property role The caller's direct relation on this case (`ADMIN` or `MEMBER`), or null when the
@@ -39,6 +41,11 @@ data class CaseDto(
     val parentCaseId: UUID? = null,
     val created: Instant? = null,
     val modified: Instant? = null,
+    /**
+     * Timestamp of the most recent message in this case, or null when no message has been sent yet.
+     * List endpoints sort by this field descending (most recently active first).
+     */
+    val lastMessageAt: Instant? = null,
     val removed: Boolean = false,
     /**
      * Per-user favorite flag. Populated by the case-list endpoints;

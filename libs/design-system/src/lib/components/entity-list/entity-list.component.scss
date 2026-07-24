@@ -30,6 +30,10 @@
   border-bottom: 1px solid var(--color-divider);
   height: 56px;
   width: 100%;
+  // Defaults to full width; a host can set --entity-list-toolbar-max-width to align the toolbar
+  // with the content column (e.g. when the list sits between other max-width sections).
+  max-width: var(--entity-list-toolbar-max-width, none);
+  margin: 0 auto;
   box-sizing: border-box;
 
   &--centered {

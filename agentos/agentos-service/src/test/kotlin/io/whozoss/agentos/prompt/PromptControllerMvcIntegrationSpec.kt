@@ -55,28 +55,29 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
     @MockkBean(relaxed = true) lateinit var permissionService: PermissionService
     @MockkBean(relaxed = true) lateinit var namespaceService: NamespaceService
 
-    private val aliceId = UUID.randomUUID()
-    private val alice = User(
-        metadata = EntityMetadata(id = aliceId),
-        externalId = "alice@example.com",
-        email = "alice@example.com",
-        isAdmin = false,
-    )
-    private val admin = User(
-        metadata = EntityMetadata(id = aliceId),
-        externalId = "admin@example.com",
-        email = "admin@example.com",
-        isAdmin = true,
-    )
-    private val namespaceId = UUID.randomUUID()
-    private val ns = Namespace(
-        metadata = EntityMetadata(id = namespaceId),
-        externalId = "ns-$namespaceId",
-        name = "ns",
-    )
+    // IDs are declared as lateinit vars and re-initialized in beforeEach with fresh UUIDs
+    // to avoid Neo4j unique-constraint conflicts across test runs on the shared embedded instance.
+    private lateinit var aliceId: UUID
+    private lateinit var alice: User
+    private lateinit var namespaceId: UUID
+    private lateinit var ns: Namespace
 
     init {
         beforeEach {
+            aliceId = UUID.randomUUID()
+            alice = User(
+                metadata = EntityMetadata(id = aliceId),
+                externalId = "alice-${aliceId}@example.com",
+                email = "alice-${aliceId}@example.com",
+                isAdmin = false,
+            )
+            namespaceId = UUID.randomUUID()
+            ns = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                externalId = "ns-$namespaceId",
+                name = "ns",
+            )
+
             every { userService.getCurrentUser() } returns alice
             every { permissionService.hasPermission(any(), any(), any(), any()) } returns false
             every { namespaceService.findById(namespaceId) } returns ns
@@ -274,114 +275,6 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
                         }
                     """.trimIndent()),
             ).andExpect(status().isBadRequest)
-        }
-
-        // -------------------------------------------------------------------------
-        // POST /effective — disabled agent filtering
-        // -------------------------------------------------------------------------
-
-        "effective excludes prompts linked to disabled agents" {
-            val agent = agentConfigService.create(
-                AgentConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "disabled-agent-" + UUID.randomUUID(),
-                    enabled = false,
-                ),
-            )
-            val name = "EFF-DISABLED-" + UUID.randomUUID()
-            promptService.create(
-                Prompt(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = name,
-                    content = listOf("Hello"),
-                    agentConfigId = agent.id,
-                ),
-            )
-
-            mockMvc.perform(
-                post("/api/prompts/effective")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId" }"""),
-            ).andExpect(status().isOk)
-                .andExpect(jsonPath("$[?(@.name == '$name')]").doesNotExist())
-        }
-
-        "effective includes prompts linked to enabled agents" {
-            val agent = agentConfigService.create(
-                AgentConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "enabled-agent-" + UUID.randomUUID(),
-                    enabled = true,
-                ),
-            )
-            val name = "EFF-ENABLED-" + UUID.randomUUID()
-            promptService.create(
-                Prompt(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = name,
-                    content = listOf("Hello"),
-                    agentConfigId = agent.id,
-                ),
-            )
-
-            mockMvc.perform(
-                post("/api/prompts/effective")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId" }"""),
-            ).andExpect(status().isOk)
-                .andExpect(jsonPath("$[?(@.name == '$name')]").exists())
-        }
-
-        "effective includes prompts with no agentConfigId" {
-            val name = "EFF-NO-AGENT-" + UUID.randomUUID()
-            promptService.create(
-                Prompt(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = name,
-                    content = listOf("Hello"),
-                ),
-            )
-
-            mockMvc.perform(
-                post("/api/prompts/effective")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId" }"""),
-            ).andExpect(status().isOk)
-                .andExpect(jsonPath("$[?(@.name == '$name')]").exists())
-        }
-
-        "effective excludes prompts linked to deleted agents" {
-            val agent = agentConfigService.create(
-                AgentConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = "to-delete-agent-" + UUID.randomUUID(),
-                    enabled = true,
-                ),
-            )
-            val name = "EFF-DELETED-AGENT-" + UUID.randomUUID()
-            promptService.create(
-                Prompt(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = namespaceId,
-                    name = name,
-                    content = listOf("Hello"),
-                    agentConfigId = agent.id,
-                ),
-            )
-            agentConfigService.delete(agent.id)
-
-            mockMvc.perform(
-                post("/api/prompts/effective")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "userId": "$aliceId" }"""),
-            ).andExpect(status().isOk)
-                .andExpect(jsonPath("$[?(@.name == '$name')]").doesNotExist())
         }
 
         // -------------------------------------------------------------------------

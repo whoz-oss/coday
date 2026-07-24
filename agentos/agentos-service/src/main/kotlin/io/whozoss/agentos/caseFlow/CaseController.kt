@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -58,28 +59,29 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 )
 class CaseController(
     private val caseService: CaseService,
+    private val caseEventService: CaseEventService,
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
     private val starredService: StarredService,
 ) : CaseApi {
-
-    private val crud = EntityCrudDelegate(
-        service = caseService,
-        userService = userService,
-        permissions = permissionService,
-        entityType = EntityType.CASE,
-        toResource = { toDto(it as Case) },
-        toDomain = { resource ->
-            val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
-            Case(
-                metadata = metadata,
-                namespaceId = resource.namespaceId,
-                status = resource.status,
-                title = resource.title ?: "Case ${metadata.id}",
-            )
-        },
-    )
+    private val crud =
+        EntityCrudDelegate(
+            service = caseService,
+            userService = userService,
+            permissions = permissionService,
+            entityType = EntityType.CASE,
+            toResource = { toDto(it as Case) },
+            toDomain = { resource ->
+                val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
+                Case(
+                    metadata = metadata,
+                    namespaceId = resource.namespaceId,
+                    status = resource.status,
+                    title = resource.title ?: "Case ${metadata.id}",
+                )
+            },
+        )
 
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
@@ -152,18 +154,29 @@ class CaseController(
 
     /**
      * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
-     * relation (`role`) and favorite flag. A single companion query resolves the whole
-     * set (no per-case round-trip). Cases the user has no direct edge on get `role = null`
-     * and `favorite = false` (e.g. the namespace-admin fast path in [listByParent]).
+     * relation (`role`), favorite flag, and [CaseDto.lastMessageAt].
+     *
+     * Two batch queries resolve the whole set (no per-case round-trips):
+     * - [StarredService.listDirectRelations] for role/favorite metadata
+     * - [CaseEventService.findLastMessageTimestamps] for the last-message timestamp
+     *   used by the frontend to sort and group conversations.
+     *
+     * Cases the user has no direct edge on get `role = null` and `favorite = false`
+     * (e.g. the namespace-admin fast path in [listByParent]).
      */
     private fun withCallerMeta(
         cases: List<Case>,
         userId: String,
     ): List<CaseDto> {
         val starred = starredService.listDirectRelations(userId, EntityType.CASE)
+        val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(cases.map { it.id })
         return cases.map {
             val meta = starred[it.metadata.id.toString()]
-            toDto(it).copy(favorite = meta?.starred ?: false, role = meta?.relation?.name)
+            toDto(it).copy(
+                favorite = meta?.starred ?: false,
+                role = meta?.relation?.name,
+                lastMessageAt = lastMessageTimestamps[it.id],
+            )
         }
     }
 
@@ -209,8 +222,9 @@ class CaseController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
-        val existing = caseService.findById(id)
-            ?: throw ResourceNotFoundException("Case not found: $id")
+        val existing =
+            caseService.findById(id)
+                ?: throw ResourceNotFoundException("Case not found: $id")
         return toDto(
             caseService.update(
                 existing.copy(
@@ -235,31 +249,34 @@ class CaseController(
         @PathVariable userId: UUID,
     ): List<CaseDto> {
         logger.debug { "Listing cases for user $userId" }
-        // No caller-meta enrichment: these list a *target* user's cases, so role/favorite
-        // (defined as the caller's) would be misleading; they stay at their defaults.
-        return caseService.findConcerningUser(userId).map(::toDto)
+        // role/favorite are caller-relative and would be misleading here, so they stay
+        // at their defaults. lastMessageAt is objective data and is always populated.
+        return caseService.findConcerningUser(userId).withLastMessageAt()
     }
 
     @GetMapping("/by-user/external/{externalId}")
     override fun listByUserExternalId(
         @PathVariable externalId: String,
     ): List<CaseDto> {
-        val user = userService.findByExternalId(externalId)
-            ?: throw ResourceNotFoundException("User not found: $externalId")
+        val user =
+            userService.findByExternalId(externalId)
+                ?: throw ResourceNotFoundException("User not found: $externalId")
         logger.debug { "Listing cases for user ${user.id} (externalId=$externalId)" }
-        return caseService.findConcerningUser(user.id).map(::toDto)
+        return caseService.findConcerningUser(user.id).withLastMessageAt()
     }
 
     @PostMapping("/by-user/in-namespace", consumes = [MediaType.APPLICATION_JSON_VALUE])
     override fun listByUserInNamespace(
         @RequestBody request: ListByUserInNamespaceRequest,
     ): List<CaseDto> {
-        val user = userService.findByExternalId(request.userExternalId)
-            ?: throw ResourceNotFoundException("User not found: ${request.userExternalId}")
-        val namespace = namespaceService.findByExternalId(request.namespaceExternalId)
-            ?: throw ResourceNotFoundException("Namespace not found: ${request.namespaceExternalId}")
+        val user =
+            userService.findByExternalId(request.userExternalId)
+                ?: throw ResourceNotFoundException("User not found: ${request.userExternalId}")
+        val namespace =
+            namespaceService.findByExternalId(request.namespaceExternalId)
+                ?: throw ResourceNotFoundException("Namespace not found: ${request.namespaceExternalId}")
         logger.debug { "Listing cases for user ${user.id} in namespace ${namespace.id}" }
-        return caseService.findConcerningUserInNamespace(user.id, namespace.id).map(::toDto)
+        return caseService.findConcerningUserInNamespace(user.id, namespace.id).withLastMessageAt()
     }
 
     @PostMapping("/{caseId}/messages")
@@ -270,9 +287,10 @@ class CaseController(
     ) {
         val user = userService.getCurrentUser()
         logger.info { "Adding message to case: $caseId" }
-        val displayName = listOfNotNull(user.firstname, user.lastname)
-            .joinToString(" ")
-            .ifBlank { user.metadata.id.toString() }
+        val displayName =
+            listOfNotNull(user.firstname, user.lastname)
+                .joinToString(" ")
+                .ifBlank { user.metadata.id.toString() }
         val userActor = Actor(id = user.metadata.id.toString(), displayName = displayName, role = ActorRole.USER)
         caseService.addMessage(
             caseId = caseId,
@@ -340,6 +358,17 @@ class CaseController(
         logger.info { "User $userId unstarred case $id" }
     }
 
+    /**
+     * Enrich a list of [Case]s with [CaseDto.lastMessageAt] only — no role/favorite.
+     *
+     * Used by the "list by target user" endpoints where role and favorite are caller-relative
+     * and would be misleading, but [CaseDto.lastMessageAt] is objective and always useful.
+     */
+    private fun List<Case>.withLastMessageAt(): List<CaseDto> {
+        val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(map { it.id })
+        return map { toDto(it).copy(lastMessageAt = lastMessageTimestamps[it.id]) }
+    }
+
     companion object : KLogging()
 }
 
@@ -352,5 +381,8 @@ internal fun toDto(entity: Case) =
         parentCaseId = entity.parentCaseId,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
+        // lastMessageAt is not stored on Case — it is resolved at list time by
+        // withCallerMeta via CaseEventService.findLastMessageTimestamps and injected
+        // via .copy() after this mapping. Single-case endpoints leave it null.
         removed = entity.metadata.removed,
     )

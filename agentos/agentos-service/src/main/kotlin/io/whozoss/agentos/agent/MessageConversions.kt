@@ -7,6 +7,10 @@ import org.springframework.web.util.HtmlUtils
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.content.Media
+import org.springframework.core.io.ByteArrayResource
+import org.springframework.util.MimeType
+import java.util.Base64
 
 /**
  * Regex patterns for the XML conversation tags injected by [MessageEvent.toSpringAiMessage].
@@ -61,6 +65,34 @@ private fun escapeXml(value: String): String = HtmlUtils.htmlEscape(value)
  * The XML tagging convention (`<agent=Name>`, `<user name="...">`) is deliberately kept
  * consistent with the Coday `AiClient.convertAgentMessages` implementation.
  */
+/**
+ * Convert a [MessageContent.Image] (base64 payload) to a Spring AI [Media],
+ * mapped by every supported ChatModel to its native image block format.
+ */
+internal fun MessageContent.Image.toSpringAiMedia(): Media =
+    Media
+        .builder()
+        .mimeType(MimeType.valueOf(mimeType))
+        .data(ByteArrayResource(Base64.getDecoder().decode(content)))
+        .build()
+
+/**
+ * Build the follow-up [UserMessage] carrying the [images] produced by a tool.
+ *
+ * Provider tool responses are text-only (Spring AI [org.springframework.ai.chat.messages.ToolResponseMessage]
+ * carries a String), so images are delivered right after the tool response as a user
+ * message with [Media] attachments, which all supported ChatModels map natively.
+ */
+internal fun toolImagesUserMessage(
+    toolName: String,
+    images: List<MessageContent.Image>,
+): UserMessage =
+    UserMessage
+        .builder()
+        .text("[Attached: ${images.size} image(s) produced by tool $toolName, see tool result above]")
+        .media(images.map { it.toSpringAiMedia() })
+        .build()
+
 internal fun MessageEvent.toSpringAiMessage(currentAgentId: String): Message {
     val textContent =
         content

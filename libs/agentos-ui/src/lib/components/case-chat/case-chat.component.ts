@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http'
 import { JsonPipe } from '@angular/common'
-import { catchError, debounceTime, map, of, Subject, switchMap } from 'rxjs'
+import { catchError, debounceTime, firstValueFrom, map, of, Subject, switchMap } from 'rxjs'
 import {
   afterNextRender,
   Component,
@@ -50,6 +50,8 @@ import { UserStateService } from '../../services/user-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
+import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
+import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 
 export interface ToolCall {
   requestId: string
@@ -84,6 +86,12 @@ export type TimelineItem =
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
 
+/** True when the user has an active text selection (e.g. preparing to copy). */
+function hasActiveSelection(): boolean {
+  const selection = window.getSelection()
+  return !!selection && selection.toString().length > 0
+}
+
 /**
  * CaseChatComponent — real-time chat view for an active case.
  *
@@ -109,6 +117,7 @@ const SCROLL_BOTTOM_THRESHOLD = 64
     BlueprintDirective,
     CaseStatusGlyphComponent,
   ],
+  providers: [ComposerAttachmentsService],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -129,6 +138,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
   protected readonly exchangeFileCount = this.exchangeState.fileCount
+
+  /** Files staged on the next message (component-scoped instance, see providers). */
+  protected readonly attachments = inject(ComposerAttachmentsService)
+  /** Attaching goes through the case exchange: same write gate as the drawer's upload button. */
+  protected readonly canAttach = this.exchangeState.canWriteCase
+  /**
+   * Files can be staged (picker + drop) only when the composer itself is usable: staging on
+   * a terminal case would be a dead end, and staging during an upload batch would be
+   * silently skipped by the in-flight loop.
+   */
+  protected readonly canStageFiles = computed(
+    () => this.canAttach() && !this.isRunning() && !this.isTerminal() && !this.attachments.isUploading()
+  )
 
   protected toggleExchange(): void {
     this.exchangeOpen.update((v) => !v)
@@ -233,6 +255,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.renderMarkdown(text)
   })
 
+  /** True when the message text targets the namespace exchange (previewed on the chips). */
+  protected readonly namespaceTargeted = computed(() =>
+    isNamespaceTargeted(this.inputValue(), this.exchangeState.canWriteNamespace())
+  )
+
   /** Collapsed state per toolRequestId */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
 
@@ -269,22 +296,28 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         this.slashSuggestions.set(prompts.filter((p) => p.name.toLowerCase().startsWith(prefix.toLowerCase())))
       })
 
-    // Restore focus to the composer whenever we return to an interactive state.
+    // Restore focus to the composer whenever we return to an interactive state,
+    // but only when the user has no active text selection (avoid clearing copy intent).
     effect(() => {
       if (this.isRunning() || this.isTerminal()) return
-      queueMicrotask(() => this.composerInput?.nativeElement.focus())
+      queueMicrotask(() => {
+        if (hasActiveSelection()) return
+        this.composerInput?.nativeElement.focus()
+      })
     })
 
     // Auto-scroll to bottom whenever the timeline or streaming text changes,
     // but only when the user is already at the bottom (magnetic behaviour).
+    // Skip when the user has an active text selection to avoid disrupting copy intent.
     effect(() => {
-      // Depend on timeline and streamingText so the effect re-runs on content changes.
       this.timeline()
       this.streamingText()
 
       if (this.isAtBottom()) {
-        // Defer to next microtask so the DOM has updated before we measure.
-        queueMicrotask(() => this.scrollToBottom())
+        queueMicrotask(() => {
+          if (hasActiveSelection()) return
+          this.scrollToBottom()
+        })
       }
     })
 
@@ -394,7 +427,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected get canSend(): boolean {
-    return !!this.inputValue().trim() && !this.isRunning() && !this.isTerminal()
+    return (
+      (!!this.inputValue().trim() || this.attachments.hasAttachments()) &&
+      !this.isRunning() &&
+      !this.isTerminal() &&
+      !this.attachments.isUploading()
+    )
   }
 
   ngOnInit(): void {
@@ -732,31 +770,67 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.slashSuggestions.set([])
     this.effectivePrompts = []
     this.promptsLoaded = false
+    this.attachments.reset()
     this.connectSse()
   }
 
-  protected submit(): void {
-    if (!this.canSend) return
+  /**
+   * Re-entrancy guard for the async attachment path. canSend alone is not enough: it goes
+   * false during the upload (isUploading), but that flag is cleared by the service before
+   * postMessage sets isRunning, leaving a window where a second submit() could pass the
+   * guard and post the same message twice. Set synchronously, cleared in a finally.
+   */
+  private submitting = false
+
+  protected async submit(): Promise<void> {
+    if (this.submitting || !this.canSend) return
     const content = this.inputValue().trim()
+    if (this.attachments.hasAttachments()) {
+      this.submitting = true
+      try {
+        const caseIdAtSubmit = this.caseId
+        const scope = resolveUploadScope(content, this.exchangeState.canWriteNamespace())
+        const mention = await this.attachments.uploadAllAndBuildMention(scope)
+        // An upload failure or a mid-flight case switch blocks the send: failed chips carry
+        // the mapped errors (or the switch reset the batch), the input stays intact.
+        if (mention === null || this.caseId !== caseIdAtSubmit) return
+        const sent = await this.postMessage(content ? `${content}\n\n${mention}` : mention)
+        // Only a confirmed send clears the composer: on failure the text and the uploaded
+        // chips stay, and a retry rebuilds the mention without re-uploading anything.
+        if (sent && this.caseId === caseIdAtSubmit) {
+          this.inputValue.set('')
+          this.attachments.reset()
+        }
+      } finally {
+        this.submitting = false
+      }
+      return
+    }
     this.inputValue.set('')
     this.sendMessage(content)
   }
 
   private sendMessage(content: string): void {
+    void this.postMessage(content)
+  }
+
+  private postMessage(content: string): Promise<boolean> {
     this.isRunning.set(true)
     this.streamingText.set('')
 
-    this.http
-      .post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
+    return firstValueFrom(
+      this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
         content,
         userId: 'default-user',
       })
-      .subscribe({
-        error: (err) => {
-          console.error('[CaseChat] Failed to send message', err)
-          this.isRunning.set(false)
-        },
-      })
+    ).then(
+      () => true,
+      (err) => {
+        console.error('[CaseChat] Failed to send message', err)
+        this.isRunning.set(false)
+        return false
+      }
+    )
   }
 
   protected interrupt(): void {
@@ -808,6 +882,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected toggleShowTechnical(): void {
     this.logsToggled.emit()
+  }
+
+  /** Extract plain text from a message item for clipboard copy. */
+  protected messageText(item: TimelineItem & { kind: 'message' }): string {
+    return this.extractText(item.event)
   }
 
   // ---------------------------------------------------------------------------

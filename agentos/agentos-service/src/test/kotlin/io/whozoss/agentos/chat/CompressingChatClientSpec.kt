@@ -1,6 +1,7 @@
 package io.whozoss.agentos.chat
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -12,12 +13,16 @@ import io.mockk.verify
 import io.whozoss.agentos.util.IdCompressorService
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.content.Media
+import org.springframework.core.io.ByteArrayResource
+import org.springframework.util.MimeTypeUtils
 import reactor.core.publisher.Flux
 
 // ---------------------------------------------------------------------------
@@ -311,6 +316,83 @@ class CompressingChatClientSpec :
         }
 
         // -----------------------------------------------------------------------
+        // Null-result chunks (regression, #1115 / wz-33039)
+        //
+        // A streaming provider emits metadata-only chunks whose ChatResponse has no
+        // generations, so getResult() is null — e.g. the Anthropic MESSAGE_START event
+        // with an empty content list. These must be tolerated, not throw an NPE.
+        // -----------------------------------------------------------------------
+
+        "prompt(Prompt) stream: a chunk whose result is null is skipped, not fatal" {
+            val service = IdCompressorService()
+            val delegate = mockk<ChatClient>(relaxed = true)
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val streamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { delegate.prompt(any<Prompt>()) } returns reqSpec
+            every { reqSpec.stream() } returns streamSpec
+            // First chunk carries no generations (getResult() == null), then a real text chunk.
+            every { streamSpec.chatResponse() } returns Flux.just(
+                ChatResponse(emptyList<Generation>()),
+                ChatResponse(
+                    listOf(
+                        Generation(
+                            AssistantMessage("hello"),
+                            ChatGenerationMetadata.builder().finishReason("stop").build(),
+                        ),
+                    ),
+                ),
+            )
+
+            val responses = CompressingChatClient(delegate, service)
+                .prompt(Prompt(listOf(UserMessage("hi"))))
+                .stream().chatResponse().collectList().block()!!
+
+            responses.joinToString("") { it.result?.output?.text ?: "" } shouldContain "hello"
+        }
+
+        "prompt(Prompt) stream content(): a chunk whose result is null is skipped, not fatal" {
+            val service = IdCompressorService()
+            val delegate = mockk<ChatClient>(relaxed = true)
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val streamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { delegate.prompt(any<Prompt>()) } returns reqSpec
+            every { reqSpec.stream() } returns streamSpec
+            every { streamSpec.chatResponse() } returns Flux.just(
+                ChatResponse(emptyList<Generation>()),
+                ChatResponse(
+                    listOf(
+                        Generation(
+                            AssistantMessage("world"),
+                            ChatGenerationMetadata.builder().finishReason("stop").build(),
+                        ),
+                    ),
+                ),
+            )
+
+            val strings = CompressingChatClient(delegate, service)
+                .prompt(Prompt(listOf(UserMessage("hi"))))
+                .stream().content().collectList().block()!!
+
+            strings.joinToString("") shouldContain "world"
+        }
+
+        "prompt(Prompt) call: a chatResponse whose result is null is returned untouched (no NPE)" {
+            val service = IdCompressorService()
+            val delegate = mockk<ChatClient>(relaxed = true)
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val callSpec = mockk<ChatClient.CallResponseSpec>(relaxed = true)
+            every { delegate.prompt(any<Prompt>()) } returns reqSpec
+            every { reqSpec.call() } returns callSpec
+            every { callSpec.chatResponse() } returns ChatResponse(emptyList<Generation>())
+
+            val response = CompressingChatClient(delegate, service)
+                .prompt(Prompt(listOf(UserMessage("hi")))).call().chatResponse()
+
+            response shouldNotBe null
+            response!!.result shouldBe null
+        }
+
+        // -----------------------------------------------------------------------
         // prompt(String) — string shorthand
         // -----------------------------------------------------------------------
 
@@ -565,5 +647,33 @@ class CompressingChatClientSpec :
 
             val sentText = captured.captured.instructions.joinToString("") { it.text ?: "" }
             sentText shouldBe "hello world"
+        }
+
+        "UserMessage media survives compression while its text is compressed" {
+            val service = IdCompressorService()
+            val captured = slot<Prompt>()
+            val delegate = mockk<ChatClient>(relaxed = true)
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val callSpec = mockk<ChatClient.CallResponseSpec>(relaxed = true)
+            every { delegate.prompt(capture(captured)) } returns reqSpec
+            every { reqSpec.call() } returns callSpec
+            every { callSpec.content() } returns "ok"
+
+            val media =
+                Media
+                    .builder()
+                    .mimeType(MimeTypeUtils.IMAGE_JPEG)
+                    .data(ByteArrayResource(byteArrayOf(1, 2, 3)))
+                    .build()
+            val message = UserMessage.builder().text("image for id=$REAL_UUID").media(media).build()
+
+            val client = CompressingChatClient(delegate, service)
+            client.prompt(Prompt(listOf<Message>(message))).call().content()
+
+            val sent = captured.captured.instructions.single() as UserMessage
+            sent.text shouldNotContain REAL_UUID
+            sent.text shouldContain IdCompressorService.UUID_COMPRESSED_VALUE_PREFIX
+            sent.media shouldHaveSize 1
+            sent.media[0].dataAsByteArray shouldBe byteArrayOf(1, 2, 3)
         }
     })
