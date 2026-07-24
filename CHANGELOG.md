@@ -1,3 +1,14 @@
+## 0.225.0 (2026-07-24)
+
+### 🚀 Features
+
+- wz-33597 improve confirmation detection ([96de772d](https://github.com/whoz-oss/coday/commit/96de772d))
+- wz-33597 improve confirmation detection ([#1164](https://github.com/whoz-oss/coday/pull/1164))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
 ## 0.224.3 (2026-07-23)
 
 ### 🩹 Fixes
