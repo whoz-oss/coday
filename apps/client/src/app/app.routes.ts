@@ -97,5 +97,5 @@ export const appRoutes: Route[] = [
       ]
     },
   },
-  { path: '**', redirectTo: 'agentos' },
+  { path: '**', redirectTo: '' },
 ]
