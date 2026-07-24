@@ -1,4 +1,4 @@
-import { signal } from '@angular/core'
+import { ElementRef, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Case, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
@@ -62,6 +62,7 @@ describe('CaseShellComponent', () => {
         { provide: UserStateService, useValue: userStateMock },
         { provide: NamespaceControllerService, useValue: namespaceControllerMock },
         { provide: THEME_PORT, useValue: themeMock },
+        { provide: ElementRef, useValue: { nativeElement: document.createElement('div') } },
       ],
     })
 
