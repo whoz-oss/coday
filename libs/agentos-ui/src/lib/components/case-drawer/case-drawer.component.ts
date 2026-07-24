@@ -340,29 +340,26 @@ function promoteFavoritesAndGroup(roots: CaseTreeItem[], modifiedAt: Map<string,
     node.groupLabel = 'Favorites'
   }
 
-  // Group remaining by date — only when there are favorites to separate from
-  if (favorites.length > 0) {
-    const now = new Date()
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const startOfYesterday = new Date(startOfToday.getTime() - 86400000)
-    const start7Days = new Date(startOfToday.getTime() - 6 * 86400000)
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfYesterday = new Date(startOfToday.getTime() - 86400000)
+  const start7Days = new Date(startOfToday.getTime() - 6 * 86400000)
 
-    for (const node of remaining) {
-      const ts = modifiedAt.get(node.id) ?? ''
-      const d = ts ? new Date(ts) : null
-      if (d && d >= startOfToday) {
-        node.groupKey = 'today'
-        node.groupLabel = 'Today'
-      } else if (d && d >= startOfYesterday) {
-        node.groupKey = 'yesterday'
-        node.groupLabel = 'Yesterday'
-      } else if (d && d >= start7Days) {
-        node.groupKey = 'week'
-        node.groupLabel = 'Previous 7 days'
-      } else {
-        node.groupKey = 'older'
-        node.groupLabel = 'Older'
-      }
+  for (const node of remaining) {
+    const ts = modifiedAt.get(node.id) ?? ''
+    const d = ts ? new Date(ts) : null
+    if (d && d >= startOfToday) {
+      node.groupKey = 'today'
+      node.groupLabel = 'Today'
+    } else if (d && d >= startOfYesterday) {
+      node.groupKey = 'yesterday'
+      node.groupLabel = 'Yesterday'
+    } else if (d && d >= start7Days) {
+      node.groupKey = 'week'
+      node.groupLabel = 'Previous 7 days'
+    } else {
+      node.groupKey = 'older'
+      node.groupLabel = 'Older'
     }
   }
 
