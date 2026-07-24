@@ -38,7 +38,7 @@ import {
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { Prompt } from '@whoz-oss/agentos-api-client'
-import { BlueprintDirective, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
+import { BlueprintDirective, CopyButtonComponent, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { CaseStateService } from '../../services/case-state.service'
 import DOMPurify from 'dompurify'
@@ -51,6 +51,7 @@ import { ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
+import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 
 export interface ToolCall {
@@ -116,6 +117,8 @@ function hasActiveSelection(): boolean {
     PromptAutocompleteComponent,
     BlueprintDirective,
     CaseStatusGlyphComponent,
+    CopyButtonComponent,
+    ComposerAttachmentsComponent,
   ],
   providers: [ComposerAttachmentsService],
   templateUrl: './case-chat.component.html',

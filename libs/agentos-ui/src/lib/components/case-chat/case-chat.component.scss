@@ -19,7 +19,7 @@
   overflow: hidden;
 }
 
-// ── Case header ──────────────────────────────────────────────────────────────
+// ── Case header ──────────────────────────────────────────────
 
 .case-chat__header {
   display: flex;
@@ -102,7 +102,7 @@
 // Glyph rendu par <agentos-case-status-glyph> — styles dans case-status-glyph.component.scss
 
 .case-chat__header-title {
-  flex: none; // titre ne s'étire pas — le spacer après le badge gère l'espace
+  flex: none;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -111,7 +111,7 @@
   font-weight: 600;
   font-size: 17px;
   color: var(--color-text);
-  max-width: 55ch; // évite que le titre très long dépasse
+  max-width: 55ch;
 }
 
 .case-chat__header-badge {
@@ -119,7 +119,6 @@
 
   flex: none;
   padding: 2px 8px;
-  // Default (IDLE): override status-tag default to neutral
   border-color: var(--color-neutral-500);
   color: var(--color-neutral-600);
 }
@@ -162,13 +161,13 @@
     padding: 1.5rem;
   }
 
-  // ── Messages scroll area ──────────────────────────────────────────────────────────
+  // ── Messages scroll area ──────────────────────────────────────────────
 
   &__messages {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    overflow-x: hidden; // évite le scrollbar horizontal causé par les coins blueprint (-1px)
+    overflow-x: hidden;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
@@ -191,18 +190,16 @@
     }
   }
 
-  // ── Conversation turns ───────────────────────────────────────────────────────────
+  // ── Conversation turns ────────────────────────────────────────────────
 
   &__turn {
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    // maquette agent: max-width 88%
     max-width: 88%;
 
     &--user {
-      // maquette user: max-width 78%, align right
       align-self: flex-end;
       align-items: flex-end;
       max-width: 78%;
@@ -218,7 +215,7 @@
     }
   }
 
-  // Role label: maquette — 10px, heading font, uppercase, letter-spacing .12em
+  // Role label
   &__role-label {
     font-family: var(--font-heading);
     font-size: 10px;
@@ -227,21 +224,34 @@
     letter-spacing: 0.12em;
     line-height: 1;
 
-    // Agent label: accent-700
     .case-chat__turn--agent & {
       color: var(--color-accent-700);
     }
-
-    // User label: neutral-500
     .case-chat__turn--user & {
       color: var(--color-neutral-500);
     }
   }
 
-  // ── Bubbles ──────────────────────────────────────────────────────────────────────
+  // ── Bubbles ────────────────────────────────────────────────────
+
+  &__bubble-wrapper {
+    position: relative;
+
+    &:hover .case-chat__bubble-copy {
+      opacity: 1;
+    }
+  }
+
+  &__bubble-copy {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 1;
+  }
 
   &__bubble {
-    // Agent bubble: maquette — neutral-100 bg, accent-300 left border, no radius
     padding: 16px 18px;
     font-size: 16px;
     line-height: 1.6;
@@ -250,20 +260,18 @@
     border-left: 2px solid var(--color-accent-300);
     color: var(--color-text);
 
-    // User bubble: maquette — accent-200 bg, accent-800 text + blueprint corners
     .case-chat__turn--user & {
       background: var(--color-accent-200);
       color: var(--color-accent-800);
       border-left: none;
       padding: 11px 15px;
-      overflow: visible; // nécessaire pour que les coins blueprint ne soient pas clipés
+      overflow: visible;
     }
   }
 
-  // ── Tool calls ───────────────────────────────────────────────────────────────────
+  // ── Tool calls ─────────────────────────────────────────────────────
 
   &__tool-call {
-    // maquette: inline tag — border, mono font, accent-700, no radius
     flex-shrink: 0;
     align-self: flex-start;
     max-width: 90%;
@@ -274,16 +282,14 @@
     transition: border-color 0.15s ease;
 
     &--pending {
-      border-color: var(--color-warning, #ff9500);
+      border-color: var(--color-warning);
       opacity: 0.8;
     }
-
     &--success {
-      border-color: var(--color-success, #34c759);
+      border-color: var(--color-success);
     }
-
     &--error {
-      border-color: var(--color-error, #ff3b30);
+      border-color: var(--color-error);
     }
   }
 
@@ -292,14 +298,13 @@
     align-items: center;
     gap: 7px;
     width: 100%;
-    // maquette: padding 5px 11px
     padding: 5px 11px;
     background: transparent;
     border: none;
     cursor: pointer;
     text-align: left;
     color: var(--color-accent-700);
-    font-family: var(--font-heading); // IBM Plex Mono via design system token
+    font-family: var(--font-heading);
     font-size: 12px;
 
     &:hover {
@@ -311,14 +316,12 @@
     flex-shrink: 0;
     font-size: 0.75rem;
   }
-
   &__tool-call-name {
     font-family: var(--font-heading);
     color: var(--color-accent-700);
     flex-shrink: 0;
     font-weight: 500;
   }
-
   &__tool-call-args {
     color: var(--color-neutral-500);
     font-family: var(--font-heading);
@@ -328,7 +331,6 @@
     flex: 1;
     min-width: 0;
   }
-
   &__tool-call-chevron {
     flex-shrink: 0;
     font-size: 0.6rem;
@@ -370,7 +372,7 @@
     color: var(--color-neutral-500);
   }
 
-  // ── Enrichment phase traces ─────────────────────────────────────────────────────
+  // ── Enrichment phase traces ──────────────────────────────────────────────
 
   &__enrichment-section {
     background: var(--color-neutral-100);
@@ -383,8 +385,8 @@
     overflow: hidden;
 
     &--failed {
-      border-color: var(--color-error, #ff3b30);
-      background: rgba(239, 68, 68, 0.04);
+      border-color: var(--color-error);
+      background: color-mix(in srgb, var(--color-error) 4%, transparent);
     }
   }
 
@@ -404,7 +406,6 @@
     letter-spacing: 0.04em;
     color: var(--color-neutral-500);
   }
-
   &__enrichment-phase-status {
     font-size: 0.7rem;
   }
@@ -446,90 +447,6 @@
     font-size: 0.75rem;
   }
 
-  // ── System log ─────────────────────────────────────────────────────────────────────
-  // ── Conversation turns ───────────────────────────────────────────────────────
-
-  &__turn {
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-width: 90%;
-
-    &--user {
-      align-self: flex-end;
-      align-items: flex-end;
-      max-width: 82%;
-    }
-
-    &--agent {
-      align-self: flex-start;
-      align-items: flex-start;
-    }
-
-    &--streaming {
-      opacity: 0.95;
-    }
-  }
-
-  &__role-label {
-    font-family: 'Inter', sans-serif;
-    font-size: 9.5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-text-secondary, rgba(0, 0, 0, 0.35));
-    line-height: 1;
-  }
-
-  &__bubble-wrapper {
-    position: relative;
-
-    &:hover .case-chat__bubble-copy {
-      opacity: 1;
-    }
-  }
-
-  &__bubble-copy {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-    z-index: 1;
-
-    // On user bubbles (dark background), override the icon color so
-    // the default-variant icon-button is visible against the accent bg.
-    .case-chat__turn--user & {
-      --color-text-secondary: rgba(255, 255, 255, 0.7);
-      --color-primary: rgba(255, 255, 255, 0.9);
-    }
-  }
-
-  &__bubble {
-    @include ds.surface-bubble-agent;
-
-    padding: 10px 14px;
-    font-family: 'Inter', sans-serif;
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 1.5;
-    word-break: break-word;
-
-    @media (min-width: 900px) {
-      font-size: 16px;
-    }
-
-    // User bubble
-    .case-chat__turn--user & {
-      @include ds.surface-bubble-user;
-
-      a {
-        color: rgba(255, 255, 255, 0.85);
-      }
-    }
-  }
-
   // ── System log ───────────────────────────────────────────────────────────────
 
   &__log {
@@ -568,11 +485,11 @@
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
-    background: var(--color-bubble-system-bg);
-    color: var(--color-bubble-system-text);
+    background: var(--color-neutral-200);
+    color: var(--color-text);
   }
 
-  // ── Session context ──────────────────────────────────────────────────────────────
+  // ── Session context ─────────────────────────────────────────────────────────
 
   &__session-context {
     margin-bottom: 6px;
@@ -599,7 +516,7 @@
     overflow-y: auto;
   }
 
-  // ── Thinking indicator ───────────────────────────────────────────────────────────
+  // ── Thinking indicator ──────────────────────────────────────────────────
 
   &__thinking {
     flex-shrink: 0;
@@ -609,12 +526,11 @@
     align-self: flex-start;
   }
 
-  // ── Markdown content ───────────────────────────────────────────────────────────
+  // ── Markdown content ───────────────────────────────────────────────
 
   &__message-text--markdown {
     p {
       margin: 0 0 0.5em;
-
       &:last-child {
         margin-bottom: 0;
       }
@@ -679,10 +595,9 @@
     }
   }
 
-  // ── Composer — blueprint pattern ─────────────────────────────────────────────
+  // ── Composer ──────────────────────────────────────────────────────────────
 
   &__composer {
-    // flex-shrink: 0 ensures the composer is never compressed
     flex-shrink: 0;
     position: relative;
     background: var(--color-bg);
@@ -708,57 +623,31 @@
     animation: autocomplete-in 0.12s ease;
   }
 
-  &__composer {
-    // flex-shrink: 0 ensures the composer is never compressed — it always
-    // stays fully visible at the bottom while the messages area shrinks.
-    flex-shrink: 0;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    background: var(--glass-bg, rgba(255, 255, 255, 0.72));
-    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.18));
-    backdrop-filter: var(--glass-backdrop-blur, blur(20px));
-    -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
-    border-radius: 16px;
-    padding: 0.5rem 0.5rem 0.5rem 1rem;
-  }
-
-  &__composer-row {
-    display: flex;
-    align-items: flex-end;
-    gap: 0.5rem;
-    width: 100%;
-  }
-
   &__drop-overlay {
     position: absolute;
     inset: 0;
     z-index: 30;
-    // pointer-events: none so the drop lands on the container and dragging over the
-    // overlay itself never triggers a flickering dragleave.
     pointer-events: none;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    border: 2px dashed var(--color-primary, #0071e3);
-    border-radius: 16px;
-    background: color-mix(in srgb, var(--color-primary, #0071e3) 8%, transparent);
-    color: var(--color-primary, #0071e3);
+    border: 2px dashed var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+    color: var(--color-accent);
     font-weight: 600;
   }
 
   &__input {
     flex: 1;
     resize: none;
-    // maquette: padding 13px 16px 4px
     padding: 13px 16px 4px;
     border: none;
     background: transparent;
     color: var(--color-text);
     font-size: 14px;
+    font-family: var(--font-body);
     line-height: 1.55;
     outline: none;
     min-height: 52px;
@@ -766,20 +655,28 @@
     &::placeholder {
       color: var(--color-neutral-500);
     }
-
     &:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
   }
 
-  // Composer footer: attach + hint + send
   &__actions {
     display: flex;
     align-items: center;
     gap: 10px;
-    justify-content: flex-end;
     padding: 6px 10px 10px;
+  }
+
+  &__actions-hint {
+    flex: 1;
+    font-size: 11px;
+    color: var(--color-neutral-500);
+    font-family: var(--font-body);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 6px;
   }
 
   // ── Floating scroll-to-bottom button ───────────────────────────────────────────
@@ -795,9 +692,16 @@
     box-shadow: var(--shadow-sm);
     animation: scroll-anchor-in 0.15s ease;
   }
+
+  // ── Attachments ───────────────────────────────────────────────────────────────
+
+  &__attachments {
+    display: block;
+    padding: 0.75rem 0.75rem 0;
+  }
 }
 
-// ── Thinking dots animation ─────────────────────────────────────────────────────────
+// ── Thinking dots animation ────────────────────────────────────────────────────────
 
 .thinking-dot {
   width: 8px;
@@ -837,4 +741,13 @@
   }
 }
 
-// @keyframes autocomplete-in défini dans styles.scss (global) — partagé avec case-home
+@keyframes autocomplete-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
