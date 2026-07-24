@@ -4,18 +4,34 @@ import { Observable } from 'rxjs'
 import { Configuration } from '../lib/configuration'
 import { CaseDefinition } from './case-definition.model'
 
+/** Request body for POST /api/case-definitions/search */
+export interface CaseDefinitionSearchRequest {
+  namespaceId?: string | null
+  userId?: string | null
+  agentConfigIds?: string[]
+}
+
+/** Request body for POST /api/case-definitions/effective */
+export interface CaseDefinitionEffectiveRequest {
+  namespaceId: string
+  userId: string
+  agentConfigId?: string
+}
+
 /**
  * CaseDefinitionApiService — hand-written HTTP client for the Agentic Scheduler endpoints.
  *
  * Lives in src/custom/ to survive OpenAPI client regeneration.
  *
- * Endpoints:
- *   GET    /api/case-definitions?namespaceId=
- *   POST   /api/case-definitions?namespaceId=
- *   GET    /api/case-definitions/{id}?namespaceId=
- *   PUT    /api/case-definitions/{id}?namespaceId=
- *   PATCH  /api/case-definitions/{id}/toggle?namespaceId=
- *   DELETE /api/case-definitions/{id}?namespaceId=
+ * Backend endpoints (all at /api/case-definitions):
+ *   GET    /{id}          → getById
+ *   POST   /by-ids        → getByIds
+ *   POST   /search        → search
+ *   POST   /effective     → effective
+ *   POST   /              → create
+ *   PUT    /{id}          → update
+ *   PATCH  /{id}/toggle   → toggle
+ *   DELETE /{id}          → delete
  */
 @Injectable({ providedIn: 'root' })
 export class CaseDefinitionApiService {
@@ -30,44 +46,69 @@ export class CaseDefinitionApiService {
     return new HttpHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' })
   }
 
-  list(namespaceId: string): Observable<CaseDefinition[]> {
-    return this.http.get<CaseDefinition[]>(`${this.basePath}/api/case-definitions`, {
-      headers: new HttpHeaders({ Accept: 'application/json' }),
-      params: { namespaceId },
-    })
+  private get acceptHeaders(): HttpHeaders {
+    return new HttpHeaders({ Accept: 'application/json' })
   }
 
-  create(namespaceId: string, task: CaseDefinition): Observable<CaseDefinition> {
-    return this.http.post<CaseDefinition>(`${this.basePath}/api/case-definitions`, task, {
-      headers: this.jsonHeaders,
-      params: { namespaceId },
-    })
-  }
-
-  getById(namespaceId: string, id: string): Observable<CaseDefinition> {
+  getById(id: string): Observable<CaseDefinition> {
     return this.http.get<CaseDefinition>(`${this.basePath}/api/case-definitions/${id}`, {
-      headers: new HttpHeaders({ Accept: 'application/json' }),
-      params: { namespaceId },
+      headers: this.acceptHeaders,
     })
   }
 
-  update(namespaceId: string, id: string, task: CaseDefinition): Observable<CaseDefinition> {
-    return this.http.put<CaseDefinition>(`${this.basePath}/api/case-definitions/${id}`, task, {
+  getByIds(ids: string[], withRemoved = false): Observable<CaseDefinition[]> {
+    return this.http.post<CaseDefinition[]>(
+      `${this.basePath}/api/case-definitions/by-ids`,
+      { ids, withRemoved },
+      { headers: this.jsonHeaders }
+    )
+  }
+
+  /**
+   * POST /api/case-definitions/search
+   * Returns case definitions at an exact scope level (no merge, no inheritance).
+   *
+   * scope = (namespaceId?, userId?) combination:
+   *   (null, null) → platform
+   *   (ns,   null) → namespace-shared
+   *   (null, user) → user-global
+   *   (ns,   user) → user × namespace
+   */
+  search(request: CaseDefinitionSearchRequest): Observable<CaseDefinition[]> {
+    return this.http.post<CaseDefinition[]>(`${this.basePath}/api/case-definitions/search`, request, {
       headers: this.jsonHeaders,
-      params: { namespaceId },
     })
   }
 
-  toggle(namespaceId: string, id: string): Observable<CaseDefinition> {
+  /**
+   * POST /api/case-definitions/effective
+   * Returns the merged (effective) set for a user in a namespace context.
+   */
+  effective(request: CaseDefinitionEffectiveRequest): Observable<CaseDefinition[]> {
+    return this.http.post<CaseDefinition[]>(`${this.basePath}/api/case-definitions/effective`, request, {
+      headers: this.jsonHeaders,
+    })
+  }
+
+  create(payload: CaseDefinition): Observable<CaseDefinition> {
+    return this.http.post<CaseDefinition>(`${this.basePath}/api/case-definitions`, payload, {
+      headers: this.jsonHeaders,
+    })
+  }
+
+  update(id: string, payload: CaseDefinition): Observable<CaseDefinition> {
+    return this.http.put<CaseDefinition>(`${this.basePath}/api/case-definitions/${id}`, payload, {
+      headers: this.jsonHeaders,
+    })
+  }
+
+  toggle(id: string): Observable<CaseDefinition> {
     return this.http.patch<CaseDefinition>(`${this.basePath}/api/case-definitions/${id}/toggle`, null, {
-      headers: new HttpHeaders({ Accept: 'application/json' }),
-      params: { namespaceId },
+      headers: this.acceptHeaders,
     })
   }
 
-  delete(namespaceId: string, id: string): Observable<void> {
-    return this.http.delete<void>(`${this.basePath}/api/case-definitions/${id}`, {
-      params: { namespaceId },
-    })
+  delete(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.basePath}/api/case-definitions/${id}`)
   }
 }

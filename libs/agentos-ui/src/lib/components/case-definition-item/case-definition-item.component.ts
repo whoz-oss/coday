@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
 import { Router } from '@angular/router'
 import { CaseDefinition } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
@@ -16,12 +16,15 @@ const DAY_LABELS: Record<string, string> = {
 /**
  * CaseDefinitionItemComponent — presentational component for a single case definition card.
  *
- * Displays definition name, frequency, time UTC, and enabled status.
+ * Displays definition name, schedule, and enabled status.
  * Actions: edit (navigates), toggle enable/disable, delete (two-step inline confirm).
+ *
+ * When platformMode is true, the edit route navigates to /admin/case-definitions instead
+ * of /:namespaceId/case-definitions.
+ * When readOnly is true, mutation actions (edit, toggle, delete) are hidden.
  */
 @Component({
   selector: 'agentos-case-definition-item',
-  standalone: true,
   imports: [KebabMenuComponent, IconButtonComponent],
   templateUrl: './case-definition-item.component.html',
   styleUrl: './case-definition-item.component.scss',
@@ -30,42 +33,56 @@ const DAY_LABELS: Record<string, string> = {
 export class CaseDefinitionItemComponent {
   private readonly router = inject(Router)
 
-  @Input({ required: true }) definition!: CaseDefinition
-  @Input({ required: true }) namespaceId!: string
+  readonly definition = input.required<CaseDefinition>()
+  readonly namespaceId = input<string | undefined>(undefined)
+  /** When true, edit navigates to the admin platform route instead of the namespace route. */
+  readonly platformMode = input(false)
+  /**
+   * When true, edit, toggle and delete actions are hidden.
+   * Used for platform-level definitions displayed in a namespace context (read-only visibility).
+   */
+  readonly readOnly = input(false)
 
-  @Output() toggleRequested = new EventEmitter<CaseDefinition>()
-  @Output() deleteRequested = new EventEmitter<CaseDefinition>()
+  readonly toggleRequested = output<CaseDefinition>()
+  readonly deleteRequested = output<CaseDefinition>()
 
   protected readonly pendingDelete = signal(false)
 
   /** Human-readable schedule label, e.g. "Weekly on Monday at 09:00 UTC" or "Daily at 09:00 UTC". */
   protected get scheduleLabel(): string {
-    if (this.definition.frequency === 'WEEKLY') {
-      const day = this.definition.dayOfWeek ? (DAY_LABELS[this.definition.dayOfWeek] ?? this.definition.dayOfWeek) : ''
-      return `Weekly${day ? ` on ${day}` : ''} at ${this.definition.timeUtc} UTC`
+    const def = this.definition()
+    if (def.frequency === 'WEEKLY') {
+      const day = def.dayOfWeek ? (DAY_LABELS[def.dayOfWeek] ?? def.dayOfWeek) : ''
+      return `Weekly${day ? ` on ${day}` : ''} at ${def.timeUtc} UTC`
     }
-    return `Daily at ${this.definition.timeUtc} UTC`
+    return `Daily at ${def.timeUtc} UTC`
   }
 
   protected get menuItems(): KebabMenuItem[] {
+    const def = this.definition()
     return [
       { key: 'edit', label: 'Edit definition', icon: 'edit' },
       {
         key: 'toggle',
-        label: this.definition.enabled ? 'Disable' : 'Enable',
-        icon: this.definition.enabled ? 'toggle_on' : 'toggle_off',
+        label: def.enabled ? 'Disable' : 'Enable',
+        icon: def.enabled ? 'toggle_on' : 'toggle_off',
       },
       { key: 'delete', label: 'Delete definition', icon: 'delete', variant: 'danger' },
     ]
   }
 
   protected onMenuAction(key: string): void {
+    const def = this.definition()
     switch (key) {
       case 'edit':
-        this.router.navigate(['/agentos', this.namespaceId, 'case-definitions', this.definition.id, 'edit'])
+        if (this.platformMode()) {
+          this.router.navigate(['/agentos', 'admin', 'case-definitions', def.id, 'edit'])
+        } else {
+          this.router.navigate(['/agentos', this.namespaceId(), 'case-definitions', def.id, 'edit'])
+        }
         break
       case 'toggle':
-        this.toggleRequested.emit(this.definition)
+        this.toggleRequested.emit(def)
         break
       case 'delete':
         this.pendingDelete.set(true)
@@ -75,7 +92,7 @@ export class CaseDefinitionItemComponent {
 
   protected onDeleteConfirmed(): void {
     this.pendingDelete.set(false)
-    this.deleteRequested.emit(this.definition)
+    this.deleteRequested.emit(this.definition())
   }
 
   protected onDeleteCancelled(): void {

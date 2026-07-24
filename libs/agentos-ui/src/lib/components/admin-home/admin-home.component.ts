@@ -55,6 +55,13 @@ export class AdminHomeComponent {
       description: 'Manage prompts shared across all namespaces.',
       path: '/agentos/admin/prompts',
     },
+    {
+      key: 'case-definitions',
+      mark: '\u23F0',
+      name: 'Platform case definitions',
+      description: 'Manage scheduled case definitions shared across all namespaces.',
+      path: '/agentos/admin/case-definitions',
+    },
   ] as const
 
   protected navigateTo(path: string): void {

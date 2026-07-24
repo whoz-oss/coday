@@ -92,6 +92,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'prompts'])
   }
 
+  protected openCaseDefinitions(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'case-definitions'])
+  }
+
   protected openUserGroups(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'user-groups'])
   }

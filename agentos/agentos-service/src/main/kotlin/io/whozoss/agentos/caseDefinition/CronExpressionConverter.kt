@@ -3,6 +3,12 @@ package io.whozoss.agentos.caseDefinition
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
 
+/** Recurrence frequency used internally and in [CronExpressionConverter]. Only [DAILY] and [WEEKLY] are supported. */
+enum class ScheduleFrequency {
+    DAILY,
+    WEEKLY,
+}
+
 /**
  * Converts between the API's `(frequency, dayOfWeek, timeUtc)` representation and
  * a standard 5-field cron expression (`minute hour dom month dow`).

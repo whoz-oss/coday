@@ -1,8 +1,8 @@
 <ds-entity-list
-  title="Case Definitions"
+  title="Platform Case Definitions"
   [items]="(definitionItems$ | async) ?? []"
   [showCreate]="true"
-  emptyMessage="No case definitions yet. Create one to get started."
+  emptyMessage="No platform case definitions defined yet. Add one above."
   cardMinWidth="420px"
   [itemTemplate]="caseDefinitionItemTpl"
   (createRequested)="openCreateForm()"
@@ -15,8 +15,7 @@
   @if (resolveDefinition(item.id); as definition) {
     <agentos-case-definition-item
       [definition]="definition"
-      [namespaceId]="namespaceId"
-      [readOnly]="isPlatformDefinition(item.id)"
+      [platformMode]="true"
       (toggleRequested)="toggleDefinition($event)"
       (deleteRequested)="deleteDefinition($event)"
     />

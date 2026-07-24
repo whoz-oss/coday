@@ -2,7 +2,7 @@
   <header class="case-definition-form__header">
     <button class="case-definition-form__back" type="button" (click)="cancel()" title="Back to case definitions">
       <span class="case-definition-form__back-icon">&#8592;</span>
-      Case Definitions
+      {{ isPlatformMode ? 'Platform Case Definitions' : 'Case Definitions' }}
     </button>
     <h1 class="case-definition-form__title">
       {{ isEditMode() ? 'Edit case definition' : 'New case definition' }}
@@ -13,72 +13,89 @@
     <p class="case-definition-form__loading">Loading&hellip;</p>
   } @else {
     <form class="case-definition-form__form" [formGroup]="form" (ngSubmit)="submit()">
-      <!-- Name -->
+      <!-- Name (slug) -->
       <div class="case-definition-form__field">
         <label class="case-definition-form__label" for="case-def-name"> Name <span aria-hidden="true">*</span> </label>
         <input
           id="case-def-name"
           class="case-definition-form__input"
+          [class.case-definition-form__input--invalid]="nameControl.invalid && nameControl.touched"
           type="text"
-          placeholder="e.g. Daily standup summary"
+          placeholder="e.g. daily-standup"
           [formControl]="nameControl"
           autocomplete="off"
         />
         @if (nameControl.invalid && nameControl.touched) {
-          <span class="case-definition-form__error">Name is required.</span>
+          <span class="case-definition-form__field-error">
+            Name is required and must be a lowercase slug (e.g. daily-standup).
+          </span>
         }
+        <span class="case-definition-form__field-hint"
+          >Lowercase slug: letters, digits, hyphens. Cannot be changed after creation.</span
+        >
       </div>
 
       <!-- Description -->
       <div class="case-definition-form__field">
         <label class="case-definition-form__label" for="case-def-description">Description</label>
-        <textarea
+        <input
           id="case-def-description"
-          class="case-definition-form__textarea case-definition-form__textarea--short"
-          rows="2"
+          class="case-definition-form__input"
+          type="text"
           placeholder="Optional — short description of this case definition"
           [formControl]="descriptionControl"
-        ></textarea>
+          autocomplete="off"
+        />
       </div>
 
-      <!-- Agent -->
+      <!-- Agent Config (required, immutable post-creation) -->
       <div class="case-definition-form__field">
-        <label class="case-definition-form__label" for="case-def-agent">
-          Agent <span aria-hidden="true">*</span>
+        <label class="case-definition-form__label" for="case-def-agent-config">
+          Agent Config <span aria-hidden="true">*</span>
         </label>
-        @if (availableAgents().length === 0) {
-          <p class="case-definition-form__hint">
-            No agents configured in this namespace yet.
-            <a [href]="'/agentos/' + namespaceId + '/agent-configs/new'">Add an agent config</a> first.
+        @if (isEditMode()) {
+          <p class="case-definition-form__readonly-value">{{ resolveAgentConfigName(agentConfigIdControl.value) }}</p>
+          <span class="case-definition-form__field-hint">Agent Config cannot be changed after creation.</span>
+        } @else if (availableAgentConfigs().length === 0) {
+          <p class="case-definition-form__field-hint">
+            No agent configs available in this scope yet.
+            @if (!isPlatformMode) {
+              <a [href]="'/agentos/' + namespaceId + '/agent-configs/new'">Add an agent config</a> first.
+            }
           </p>
         } @else {
-          <select id="case-def-agent" class="case-definition-form__select" [formControl]="agentIdControl">
-            <option value="" disabled>Select an agent&hellip;</option>
-            @for (agent of availableAgents(); track agent.id) {
+          <select id="case-def-agent-config" class="case-definition-form__select" [formControl]="agentConfigIdControl">
+            <option value="" disabled>Select an agent config&hellip;</option>
+            @for (agent of availableAgentConfigs(); track agent.id) {
               <option [value]="agent.id">{{ agent.name }}</option>
             }
           </select>
-        }
-        @if (agentIdControl.invalid && agentIdControl.touched) {
-          <span class="case-definition-form__error">Agent is required.</span>
+          @if (agentConfigIdControl.invalid && agentConfigIdControl.touched) {
+            <span class="case-definition-form__field-error">Agent Config is required.</span>
+          }
+          <span class="case-definition-form__field-hint">Immutable after creation.</span>
         }
       </div>
 
-      <!-- Prompt / Instructions -->
+      <!-- Opening message (promptContent — inline textarea) -->
       <div class="case-definition-form__field">
-        <label class="case-definition-form__label" for="case-def-prompt">
-          Opening prompt <span aria-hidden="true">*</span>
+        <label class="case-definition-form__label" for="case-def-prompt-content">
+          Opening message <span aria-hidden="true">*</span>
         </label>
         <textarea
-          id="case-def-prompt"
+          id="case-def-prompt-content"
           class="case-definition-form__textarea"
-          rows="5"
-          placeholder="Message sent to the agent when the case runs"
-          [formControl]="promptControl"
+          [class.case-definition-form__textarea--invalid]="promptContentControl.invalid && promptContentControl.touched"
+          rows="6"
+          placeholder="Enter the message sent to the agent when the scheduled case fires…"
+          [formControl]="promptContentControl"
         ></textarea>
-        @if (promptControl.invalid && promptControl.touched) {
-          <span class="case-definition-form__error">Prompt is required.</span>
+        @if (promptContentControl.invalid && promptContentControl.touched) {
+          <span class="case-definition-form__field-error">Opening message is required.</span>
         }
+        <span class="case-definition-form__field-hint">
+          The message sent to the agent when the scheduled case fires.
+        </span>
       </div>
 
       <!-- Frequency + Time UTC -->
@@ -108,7 +125,7 @@
             <span class="case-definition-form__utc-badge">UTC</span>
           </div>
           @if (timeUtcControl.invalid && timeUtcControl.touched) {
-            <span class="case-definition-form__error">Valid time is required (HH:mm).</span>
+            <span class="case-definition-form__field-error">Valid time is required (HH:mm).</span>
           }
         </div>
       </div>
@@ -126,7 +143,7 @@
             }
           </select>
           @if (dayOfWeekControl.invalid && dayOfWeekControl.touched) {
-            <span class="case-definition-form__error">Day of week is required for weekly tasks.</span>
+            <span class="case-definition-form__field-error">Day of week is required for weekly schedules.</span>
           }
         </div>
       }
@@ -141,6 +158,11 @@
           When disabled, the case definition is saved but will not run on schedule.
         </p>
       </div>
+
+      <!-- Error message -->
+      @if (errorMessage()) {
+        <p class="case-definition-form__error">{{ errorMessage() }}</p>
+      }
 
       <!-- Actions -->
       <div class="case-definition-form__actions">

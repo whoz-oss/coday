@@ -80,14 +80,6 @@
     text-overflow: ellipsis;
   }
 
-  &__agent {
-    font-size: 0.75rem;
-    color: var(--color-text-secondary, #6e6e73);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
   &__actions {
     flex-shrink: 0;
     display: flex;

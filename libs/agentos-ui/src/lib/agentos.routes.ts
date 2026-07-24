@@ -92,6 +92,31 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformIntegrationConfigsComponent
               ),
           },
+          // --- Admin: Platform Case Definitions ---
+          {
+            path: 'admin/case-definitions/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/case-definition-form/case-definition-form.component').then(
+                (m) => m.CaseDefinitionFormComponent
+              ),
+          },
+          {
+            path: 'admin/case-definitions/:caseDefinitionId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/case-definition-form/case-definition-form.component').then(
+                (m) => m.CaseDefinitionFormComponent
+              ),
+          },
+          {
+            path: 'admin/case-definitions',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-case-definitions/platform-case-definitions.component').then(
+                (m) => m.PlatformCaseDefinitionsComponent
+              ),
+          },
           // --- Admin: Platform Prompts ---
           {
             path: 'admin/prompts/new',
@@ -266,6 +291,31 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/namespace-ai-models/namespace-ai-models.component').then(
                 (m) => m.NamespaceAiModelsComponent
+              ),
+          },
+          // --- Case Definitions ---
+          {
+            path: ':namespaceId/case-definitions/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/case-definition-form/case-definition-form.component').then(
+                (m) => m.CaseDefinitionFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/case-definitions/:caseDefinitionId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/case-definition-form/case-definition-form.component').then(
+                (m) => m.CaseDefinitionFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/case-definitions',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/case-definition-list/case-definition-list.component').then(
+                (m) => m.CaseDefinitionListComponent
               ),
           },
           // --- Prompts ---

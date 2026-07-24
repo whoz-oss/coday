@@ -7,4 +7,5 @@ export { IntegrationConfigExportService } from './custom/integration-config-expo
 export { AgentConfigExportService } from './custom/agent-config-export.service'
 export type { EnrichmentPhaseTrace } from './custom/enrichment-phase-trace'
 export { CaseDefinitionApiService } from './custom/case-definition-api.service'
+export type { CaseDefinitionSearchRequest, CaseDefinitionEffectiveRequest } from './custom/case-definition-api.service'
 export type { CaseDefinition, CaseDefinitionFrequency } from './custom/case-definition.model'
