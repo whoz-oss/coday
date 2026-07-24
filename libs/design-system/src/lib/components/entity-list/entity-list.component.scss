@@ -1,3 +1,5 @@
+@use 'libs/design-system/src/styles/typography' as typo;
+
 :host {
   display: flex;
   flex-direction: column;
@@ -18,14 +20,14 @@
   box-sizing: border-box;
 }
 
-// ── Toolbar (full width) ───────────────────────────────────────────────────
+// ── Toolbar (full width) ───────────────────────────────────────────────
 
 .entity-list__toolbar {
   display: flex;
   align-items: center;
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  border-bottom: 1px solid var(--color-divider);
   height: 56px;
   width: 100%;
   box-sizing: border-box;
@@ -39,13 +41,13 @@
 }
 
 .entity-list__title {
-  // Intrinsic width — never shrinks, never truncates
   flex: 0 0 auto;
   margin: 0;
   font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text, #1d1d1f);
+  font-weight: 700;
+  color: var(--color-text);
   white-space: nowrap;
+  letter-spacing: -0.02em;
 }
 
 .entity-list__search-wrap {
@@ -55,22 +57,22 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
+  height: 30px;
   padding: 0 10px;
-  background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
-  border-radius: 8px;
-  border: 1px solid transparent;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
   transition: border-color 150ms;
 
   &:focus-within {
-    border-color: var(--color-primary, #016b71);
-    background: var(--color-bg, #fff);
+    border-color: var(--color-accent);
+    background: var(--color-bg);
   }
 }
 
 .entity-list__search-icon {
   font-size: 0.8rem;
-  color: var(--color-text-tertiary, #5a5449);
+  color: var(--color-neutral-500);
   flex-shrink: 0;
   line-height: 1;
 }
@@ -81,12 +83,12 @@
   border: none;
   background: transparent;
   outline: none;
-  font: inherit;
+  font-family: typo.$font-ui; // <input> n'hérite pas sans déclaration explicite
   font-size: 0.875rem;
-  color: var(--color-text, #1b1916);
+  color: var(--color-text);
 
   &::placeholder {
-    color: var(--color-text-tertiary, #5a5449);
+    color: var(--color-neutral-500);
   }
 
   &::-webkit-search-cancel-button {
@@ -100,12 +102,12 @@
   background: transparent;
   cursor: pointer;
   font-size: 0.75rem;
-  color: var(--color-text-tertiary, #5a5449);
+  color: var(--color-neutral-500);
   padding: 0;
   line-height: 1;
 
   &:hover {
-    color: var(--color-text, #1b1916);
+    color: var(--color-text);
   }
 }
 
@@ -113,9 +115,9 @@
   flex-shrink: 0;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: 0;
   border: none;
-  background: var(--color-primary, #016b71);
+  background: var(--color-accent);
   color: #fff;
   font-size: 1.25rem;
   font-weight: 300;
@@ -126,11 +128,11 @@
   transition: background 150ms;
 
   &:hover {
-    background: var(--color-primary-hover, #015a5f);
+    background: var(--color-accent-700);
   }
 }
 
-// ── Content (max-width constrained) ─────────────────────────────────────
+// ── Content (max-width constrained) ────────────────────────────────────────────
 
 .entity-list__content {
   flex: 1;
@@ -147,33 +149,33 @@
   margin: 0;
   padding: 2rem 0;
   text-align: center;
-  color: var(--color-text-secondary, #6e6e73);
+  color: var(--color-text-secondary);
   font-size: 0.9375rem;
 }
 
-// ── Expansion panels ────────────────────────────────────────────────────
+// ── Expansion panels ─────────────────────────────────────────────────────
 
 .entity-list__panel {
   background: transparent;
   box-shadow: none !important;
 
-  // Small divider between consecutive groups (e.g. "Favorites" and the rest).
   & + .entity-list__panel {
     margin-top: 0.5rem;
     padding-top: 0.5rem;
-    border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.12));
+    border-top: 1px solid var(--color-divider);
   }
 }
 
 .entity-list__panel-title {
-  font-size: 0.8125rem;
+  font-family: var(--font-heading);
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-secondary, #6e6e73);
+  letter-spacing: 0.12em;
+  color: var(--color-neutral-500);
 }
 
-// ── Grid ─────────────────────────────────────────────────────────────────────
+// ── Grid ───────────────────────────────────────────────────────────────────
 
 .entity-list__grid {
   display: grid;

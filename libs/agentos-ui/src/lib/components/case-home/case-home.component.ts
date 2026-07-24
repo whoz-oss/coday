@@ -1,10 +1,20 @@
 import { HttpClient } from '@angular/common/http'
-import { afterNextRender, Component, DestroyRef, ElementRef, inject, OnInit, signal, ViewChild } from '@angular/core'
+import {
+  afterNextRender,
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+  input,
+  OnInit,
+  signal,
+  ViewChild,
+} from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Case, Configuration, Prompt } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
-import { IconButtonComponent } from '@whoz-oss/design-system'
+import { BlueprintDirective, IconButtonComponent } from '@whoz-oss/design-system'
 import { catchError, debounceTime, map, of, Subject, switchMap } from 'rxjs'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
@@ -24,7 +34,7 @@ import { UserStateService } from '../../services/user-state.service'
  */
 @Component({
   selector: 'agentos-case-home',
-  imports: [IconButtonComponent, PromptAutocompleteComponent],
+  imports: [BlueprintDirective, IconButtonComponent, PromptAutocompleteComponent],
   templateUrl: './case-home.component.html',
   styleUrl: './case-home.component.scss',
 })
@@ -38,6 +48,8 @@ export class CaseHomeComponent implements OnInit {
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly promptState = inject(PromptStateService)
   private readonly userState = inject(UserStateService)
+  /** Nom du namespace actif — passé par CaseShellComponent */
+  readonly namespaceName = input<string | null>(null)
 
   @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
   @ViewChild(PromptAutocompleteComponent) private autocompleteRef?: PromptAutocompleteComponent

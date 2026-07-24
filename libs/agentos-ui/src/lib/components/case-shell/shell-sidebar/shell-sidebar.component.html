@@ -1,29 +1,25 @@
 <div
   class="shell-sidebar"
+  [class.shell-sidebar--compact]="isCompact()"
   [style.width.px]="effectiveWidth()"
   [style.overflow]="effectiveWidth() === 0 ? 'hidden' : 'visible'"
 >
-  <!-- Top: logo + namespace picker + user menu -->
-  <div class="shell-sidebar__top">
-    <button
-      class="shell-sidebar__brand"
-      type="button"
-      [title]="brandHovered ? 'Close sidebar' : 'Home'"
-      (mouseenter)="brandHovered = true"
-      (mouseleave)="brandHovered = false"
-      (click)="brandHovered ? collapseRequested.emit() : homeClicked.emit()"
-    >
-      @if (brandHovered) {
-        <span class="shell-sidebar__logo-chevron material-icons">chevron_left</span>
-      } @else {
-        <img src="CODAY-Logo.png" alt="Coday" class="shell-sidebar__logo-img" />
-      }
-    </button>
+  @if (!isCompact()) {
+    <!-- ===== EXPANDED SIDEBAR (250px) ===== -->
 
-    <!-- Namespace picker — hidden in compact mode -->
-    @if (!isCompact()) {
-      <div class="shell-sidebar__ns-wrap">
-        @if (showNsPicker()) {
+    <!-- Top bar: logo / namespace / new case / search -->
+    <div class="shell-sidebar__top" [class.shell-sidebar__top--wide]="effectiveWidth() >= 400">
+      <!-- Row 1: Logo -->
+      <div class="shell-sidebar__top-row">
+        <button type="button" class="shell-sidebar__logo" title="Home" (click)="homeClicked.emit()">
+          <img src="CODAY-Logo.png" alt="" class="shell-sidebar__logo-img" />
+          <span class="shell-sidebar__logo-name">Coday</span>
+        </button>
+      </div>
+
+      <!-- Row 2: Namespace picker -->
+      @if (showNsPicker()) {
+        <div class="shell-sidebar__ns-wrap">
           <div class="shell-sidebar__ns-picker">
             <button
               class="shell-sidebar__ns-trigger"
@@ -32,7 +28,22 @@
             >
               <span class="shell-sidebar__ns-mark">{{ nsInitial(selectedNamespace()?.name) }}</span>
               <span class="shell-sidebar__ns-name">{{ selectedNamespace()?.name ?? 'Select namespace' }}</span>
-              <span class="shell-sidebar__ns-chevron">&#9662;</span>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+                class="shell-sidebar__ns-chevron-icon"
+              >
+                <path
+                  d="M6 9l6 6 6-6"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
 
             @if (nsMenuOpen()) {
@@ -46,32 +57,84 @@
                     <span class="shell-sidebar__ns-item-mark">{{ nsInitial(ns.name) }}</span>
                     <span class="shell-sidebar__ns-item-name">{{ ns.name }}</span>
                     @if (ns.id === selectedNamespace()?.id) {
-                      <span class="shell-sidebar__ns-item-check">&#10003;</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path
+                          d="M20 6L9 17l-5-5"
+                          stroke="var(--color-accent)"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
                     }
                   </button>
                 }
               </div>
             }
           </div>
-        } @else {
-          <!-- Single namespace: non-clickable display -->
-          <div class="shell-sidebar__ns-trigger shell-sidebar__ns-trigger--readonly">
-            <span class="shell-sidebar__ns-mark">{{ nsInitial(selectedNamespace()?.name) }}</span>
-            <span class="shell-sidebar__ns-name">{{ selectedNamespace()?.name }}</span>
-          </div>
-        }
-      </div>
-    }
+        </div>
+      }
 
-    <!-- User context menu — hidden in compact mode -->
-    @if (!isCompact()) {
+      <!-- Row 3: New case button (pleine largeur) -->
+      <button
+        type="button"
+        class="btn btn-primary shell-sidebar__new-case-btn"
+        title="New case"
+        dsBlueprint
+        (click)="createRequested.emit()"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M5 12h14M12 5v14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+        New case
+      </button>
+
+      <!-- Row 4: Search filter -->
+      <input
+        class="input shell-sidebar__search"
+        placeholder="Filter cases…"
+        type="search"
+        aria-label="Filter cases"
+        [value]="caseFilter()"
+        (input)="caseFilter.set($any($event.target).value)"
+      />
+    </div>
+
+    <!-- Case list -->
+    <div class="shell-sidebar__cases-scroll">
+      <agentos-case-drawer
+        [cases]="cases()"
+        [activeCaseId]="activeCaseId()"
+        [compact]="false"
+        [filterQuery]="caseFilter()"
+        (caseSelected)="caseSelected.emit($event)"
+        (createRequested)="createRequested.emit()"
+        (deleteRequested)="deleteRequested.emit($event)"
+        (starToggled)="starToggled.emit($event)"
+      />
+    </div>
+
+    <!-- Bottom bar: user button + collapse -->
+    <div class="shell-sidebar__bottom">
+      <!-- User button -->
       <div class="shell-sidebar__user-menu">
-        <button class="shell-sidebar__user-btn" type="button" title="Menu" (click)="menuToggled.emit($event)">
-          @if (userInitials()) {
-            {{ userInitials() }}
-          } @else {
-            &bull;&bull;&bull;
-          }
+        <button class="shell-sidebar__user-btn" type="button" title="User menu" (click)="menuToggled.emit($event)">
+          <!-- Initials square -->
+          <span class="shell-sidebar__user-avatar">{{ userInitials() || '??' }}</span>
+          <!-- Full name -->
+          <span class="shell-sidebar__user-info">
+            <span class="shell-sidebar__user-name">{{ userName() }}</span>
+          </span>
+          <!-- Chevron -->
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M7 9l5-5 5 5M7 15l5 5 5-5"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
         </button>
 
         <agentos-shell-user-menu
@@ -86,30 +149,201 @@
           (closed)="menuClosed.emit($event)"
         />
       </div>
+
+      <!-- Collapse button -->
+      <button type="button" class="shell-sidebar__collapse-btn" title="Collapse" (click)="toggleCompact()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M15 18l-6-6 6-6"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+    </div>
+  } @else {
+    <!-- ===== COLLAPSED RAIL (64px) ===== -->
+
+    <!-- Logo (compact: small square crop) -->
+    <button
+      type="button"
+      class="shell-sidebar__logo shell-sidebar__logo--compact"
+      title="Home"
+      (click)="homeClicked.emit()"
+    >
+      <img src="CODAY-Logo.png" alt="Coday" class="shell-sidebar__logo-img shell-sidebar__logo-img--compact" />
+    </button>
+
+    <!-- Namespace button (compact) -->
+    @if (showNsPicker()) {
+      <button
+        type="button"
+        class="shell-sidebar__compact-ns-btn"
+        [title]="selectedNamespace()?.name ?? 'Select namespace'"
+        [class.shell-sidebar__compact-ns-btn--open]="compactNsMenuOpen()"
+        (click)="onCompactNsBtnClick($event)"
+      >
+        {{ nsInitial(selectedNamespace()?.name) }}
+      </button>
+
+      <!-- Namespace menu en position fixed -->
+      @if (compactNsMenuOpen()) {
+        <div
+          class="shell-sidebar__compact-backdrop"
+          (click)="closeCompactNsMenu()"
+          (keyup.escape)="closeCompactNsMenu()"
+          role="presentation"
+        ></div>
+        <div
+          class="shell-sidebar__compact-ns-menu"
+          [style.top.px]="compactNsMenuTop()"
+          [style.left.px]="compactNsMenuLeft()"
+        >
+          @for (ns of namespaces(); track ns.id) {
+            <button
+              class="shell-sidebar__ns-item"
+              [class.shell-sidebar__ns-item--active]="ns.id === selectedNamespace()?.id"
+              (click)="onCompactNsSelected(ns)"
+            >
+              <span class="shell-sidebar__ns-item-mark">{{ nsInitial(ns.name) }}</span>
+              <span class="shell-sidebar__ns-item-name">{{ ns.name }}</span>
+              @if (ns.id === selectedNamespace()?.id) {
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M20 6L9 17l-5-5"
+                    stroke="var(--color-accent)"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              }
+            </button>
+          }
+        </div>
+      }
     }
-  </div>
 
-  <!-- Case list -->
-  <div class="shell-sidebar__cases-scroll">
-    <agentos-case-drawer
-      [cases]="cases()"
-      [activeCaseId]="activeCaseId()"
-      [compact]="isCompact()"
-      (caseSelected)="caseSelected.emit($event)"
-      (createRequested)="createRequested.emit()"
-      (deleteRequested)="deleteRequested.emit($event)"
-      (starToggled)="starToggled.emit($event)"
+    <!-- New case button -->
+    <button
+      type="button"
+      class="btn btn-primary btn-icon"
+      title="New case"
+      dsBlueprint
+      (click)="createRequested.emit()"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M5 12h14M12 5v14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+      </svg>
+    </button>
+
+    <!-- Search button (compact) — actif si panel ouvert OU filtre non vide -->
+    <button
+      type="button"
+      class="shell-sidebar__compact-search-btn"
+      title="Filter cases"
+      [class.shell-sidebar__compact-search-btn--active]="compactSearchOpen() || caseFilter()"
+      (click)="onCompactSearchBtnClick($event)"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        <path d="m21 21-4.3-4.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      </svg>
+    </button>
+
+    <!-- Search overlay en position fixed -->
+    @if (compactSearchOpen()) {
+      <div
+        class="shell-sidebar__compact-backdrop"
+        (click)="closeCompactSearch()"
+        (keyup.escape)="closeCompactSearch()"
+        role="presentation"
+      ></div>
+      <div
+        class="shell-sidebar__compact-search-panel"
+        [style.top.px]="compactSearchTop()"
+        [style.left.px]="compactSearchLeft()"
+      >
+        <input
+          class="input shell-sidebar__compact-search-input"
+          type="search"
+          placeholder="Filter cases…"
+          aria-label="Filter cases"
+          [value]="caseFilter()"
+          (input)="onCompactSearchInput($any($event.target).value)"
+          (keyup.escape)="closeCompactSearch()"
+          autofocus
+        />
+        @if (caseFilter()) {
+          <button
+            type="button"
+            class="shell-sidebar__compact-search-clear"
+            title="Clear filter"
+            (click)="clearCompactSearch()"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
+        }
+      </div>
+    }
+
+    <!-- Divider -->
+    <div class="shell-sidebar__rail-divider"></div>
+
+    <!-- Case glyphs -->
+    <div class="shell-sidebar__cases-scroll">
+      <agentos-case-drawer
+        [cases]="cases()"
+        [activeCaseId]="activeCaseId()"
+        [compact]="true"
+        [filterQuery]="caseFilter()"
+        (caseSelected)="caseSelected.emit($event)"
+        (createRequested)="createRequested.emit()"
+        (deleteRequested)="deleteRequested.emit($event)"
+        (starToggled)="starToggled.emit($event)"
+      />
+    </div>
+
+    <!-- User initials button -->
+    <button
+      type="button"
+      class="shell-sidebar__user-avatar-btn"
+      title="User menu"
+      (click)="onCompactUserBtnClick($event)"
+    >
+      {{ userInitials() || '?' }}
+    </button>
+
+    <!-- Menu en position fixed pour échapper à overflow:hidden -->
+    <agentos-shell-user-menu
+      [open]="menuOpen()"
+      [isAdmin]="isAdmin()"
+      [isDark]="isDark()"
+      [showTechnical]="showTechnical()"
+      variant="compact"
+      [fixedTop]="compactMenuTop()"
+      [fixedLeft]="compactMenuLeft()"
+      (navigateTo)="navigateTo.emit($event)"
+      (themeToggled)="themeToggled.emit()"
+      (logsToggled)="logsToggled.emit()"
+      (closed)="menuClosed.emit($event)"
     />
-  </div>
 
-  <!-- Compact toggle: chevron pill on the right border, vertically centered -->
-  <button
-    type="button"
-    class="shell-sidebar__compact-toggle"
-    [class.shell-sidebar__compact-toggle--compact]="isCompact()"
-    [title]="isCompact() ? 'Expand drawer' : 'Collapse to icons'"
-    (click)="toggleCompact()"
-  >
-    <span class="material-icons shell-sidebar__compact-toggle-icon">chevron_left</span>
-  </button>
+    <!-- Expand button -->
+    <button type="button" class="shell-sidebar__collapse-btn" title="Expand" (click)="toggleCompact()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M9 18l6-6-6-6"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </button>
+  }
 </div>

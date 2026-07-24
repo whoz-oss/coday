@@ -1,3 +1,4 @@
+export * from './lib/components/blueprint/blueprint.directive'
 export * from './lib/components/confirm-dialog/confirm-dialog.component'
 export * from './lib/components/drawer/drawer.component'
 export * from './lib/components/empty-state/empty-state.component'

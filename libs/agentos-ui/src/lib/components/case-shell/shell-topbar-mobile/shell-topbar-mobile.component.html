@@ -1,10 +1,29 @@
-<div class="shell-topbar-mobile__brand">
-  <!-- Logo + home -->
-  <button class="shell-topbar-mobile__logo-btn" type="button" title="Home" (click)="homeClicked.emit()">
-    <img src="CODAY-Logo.png" alt="Coday" class="shell-topbar-mobile__logo-img" />
+<!-- ═══ MOBILE TOPBAR ═══
+     Maquette: hamburger | {C} logo | NS picker | spacer | + New case
+-->
+<div class="shell-topbar-mobile__inner">
+  <!-- Hamburger — opens the case drawer -->
+  <button class="shell-topbar-mobile__hamburger" type="button" title="Cases" (click)="drawerToggled.emit()">
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      aria-hidden="true"
+    >
+      <line x1="4" x2="20" y1="6" y2="6" />
+      <line x1="4" x2="20" y1="12" y2="12" />
+      <line x1="4" x2="20" y1="18" y2="18" />
+    </svg>
   </button>
 
-  <!-- Namespace switcher -->
+  <!-- Logo image -->
+  <img class="shell-topbar-mobile__logo-img" src="CODAY-Logo.png" alt="Coday" />
+
+  <!-- Namespace picker -->
   <div class="shell-topbar-mobile__ns-wrap">
     <button
       class="shell-topbar-mobile__ns-btn"
@@ -12,8 +31,22 @@
       [class.shell-topbar-mobile__ns-btn--open]="nsMenuOpen()"
       (click)="nsMenuToggled.emit($event)"
     >
-      {{ selectedNamespace()?.name ?? '' }}
-      <span class="shell-topbar-mobile__chevron">&#9662;</span>
+      <span class="shell-topbar-mobile__ns-mark">{{ (selectedNamespace()?.name ?? 'N').charAt(0).toUpperCase() }}</span>
+      <span class="shell-topbar-mobile__ns-name">{{ selectedNamespace()?.name ?? '' }}</span>
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="shell-topbar-mobile__ns-chevron"
+        aria-hidden="true"
+      >
+        <path d="m6 9 6 6 6-6" />
+      </svg>
     </button>
 
     @if (nsMenuOpen()) {
@@ -28,42 +61,55 @@
         @for (ns of namespaces(); track ns.id) {
           <button
             class="shell-topbar-mobile__ns-item"
+            type="button"
             [class.shell-topbar-mobile__ns-item--active]="ns.id === selectedNamespace()?.id"
             (click)="namespaceSelected.emit(ns)"
           >
+            <span class="shell-topbar-mobile__ns-item-mark">{{ ns.name.charAt(0).toUpperCase() }}</span>
             <span class="shell-topbar-mobile__ns-item-name">{{ ns.name }}</span>
             @if (ns.id === selectedNamespace()?.id) {
-              <span>&#10003;</span>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--color-accent)"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
             }
           </button>
         }
       </div>
     }
   </div>
-</div>
 
-<!-- Avatar + user menu -->
-<div class="shell-topbar-mobile__avatar-wrap">
-  <div
-    class="shell-topbar-mobile__avatar"
-    tabindex="0"
-    role="button"
-    aria-label="User menu"
-    (click)="menuToggled.emit($event)"
-    (keyup.enter)="menuToggled.emit(undefined)"
+  <!-- Spacer -->
+  <span class="shell-topbar-mobile__spacer"></span>
+
+  <!-- New case button -->
+  <button
+    class="btn btn-primary btn-icon shell-topbar-mobile__new-btn"
+    type="button"
+    title="New case"
+    (click)="createRequested.emit()"
   >
-    {{ userInitials() || '\u00b7\u00b7\u00b7' }}
-  </div>
-
-  <agentos-shell-user-menu
-    [open]="menuOpen()"
-    [isAdmin]="isAdmin()"
-    [isDark]="isDark()"
-    [showTechnical]="showTechnical()"
-    variant="mobile"
-    (navigateTo)="navigateTo.emit($event)"
-    (themeToggled)="themeToggled.emit()"
-    (logsToggled)="logsToggled.emit()"
-    (closed)="menuClosed.emit($event)"
-  />
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      aria-hidden="true"
+    >
+      <path d="M5 12h14" />
+      <path d="M12 5v14" />
+    </svg>
+  </button>
 </div>

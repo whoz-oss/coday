@@ -1,8 +1,14 @@
 <div class="case-home">
   <div class="case-home__hero">
-    <h1 class="case-home__headline">What can I help you with?</h1>
+    <!-- Namespace label above headline -->
+    <div class="case-home__ns-block">
+      @if (namespaceId) {
+        <div class="case-home__ns-label">Namespace · {{ namespaceName() ?? namespaceId }}</div>
+      }
+      <h1 class="case-home__headline">What can I help you with?</h1>
+    </div>
 
-    <div class="case-home__composer">
+    <div class="case-home__composer" dsBlueprint>
       @if (slashSuggestions().length > 0) {
         <div class="case-home__autocomplete">
           <agentos-prompt-autocomplete
@@ -23,7 +29,19 @@
         (keydown)="onKeydown($event)"
       ></textarea>
       <div class="case-home__composer-footer">
+        <button type="button" class="case-home__attach-btn" title="Attach file" disabled>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
         <span class="case-home__hint">{{ preferences.composerHint() }}</span>
+        <span class="case-home__spacer"></span>
         <ds-icon-button icon="send" variant="primary" title="Start case" [disabled]="!canSend" (action)="submit()" />
       </div>
     </div>

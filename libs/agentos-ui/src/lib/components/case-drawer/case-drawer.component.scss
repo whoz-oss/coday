@@ -3,118 +3,263 @@
 :host {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-divider);
+  }
 }
 
-// ── Compact / icons mode ───────────────────────────────────────────────
+// ── Expanded list container ─────────────────────────────────────────────
+
+.case-drawer-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 12px;
+
+  &__group-label {
+    padding: 12px 22px 4px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-neutral-500);
+    font-family: var(--font-heading);
+    font-weight: 600;
+  }
+
+  &__empty {
+    padding: 24px 20px;
+    font-size: 15px;
+    color: var(--color-neutral-500);
+    text-align: center;
+    margin: 0;
+  }
+}
+
+// ── Compact / icons mode ─────────────────────────────────────────────
 
 .case-drawer-compact {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px 0;
+  gap: 7px;
+  padding: 2px 0;
   overflow-y: auto;
 
-  &__badge {
-    @include ds.surface-mark;
-    @include ds.text-mark;
+  // Wrapper positionnel — contexte pour le tooltip
+  &__item {
+    position: relative;
+    display: flex;
+    align-items: center;
 
-    width: 36px;
-    height: 36px;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
+    // Affiche le tooltip au hover du wrapper (badge OU tooltip lui-même)
+    &:hover .case-drawer-compact__tooltip,
+    &:focus-within .case-drawer-compact__tooltip {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+  }
+
+  &__badge {
+    @include ds.button-reset;
+
+    width: 32px;
+    height: 32px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid var(--color-divider);
+    background: transparent;
+    color: var(--color-neutral-600);
     cursor: pointer;
-    background: var(--color-bg-secondary, #fff);
-    color: var(--color-text, #1b1916);
-    border: 1px solid var(--color-border);
     transition:
-      background 120ms ease,
-      border-color 120ms ease,
-      box-shadow 120ms ease;
+      background 120ms,
+      border-color 120ms,
+      color 120ms;
 
     &:hover {
-      background: var(--color-bg-hover);
-      border-color: var(--color-border);
+      background: color-mix(in srgb, var(--color-text) 6%, transparent);
+      border-color: var(--color-accent-300);
+      color: var(--color-accent-700);
     }
 
     &--active {
-      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-      border-color: var(--color-primary);
-      color: var(--color-primary);
+      background: var(--color-accent-100);
+      border-color: var(--color-accent-300);
+      color: var(--color-accent-700);
 
       &:hover {
-        background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+        background: var(--color-accent-200);
       }
     }
   }
+
+  &__group-sep {
+    width: 20px;
+    height: 1px;
+    background: var(--color-divider);
+    flex-shrink: 0;
+    margin: 2px 0;
+  }
 }
 
-// ── Tree node (rendered inside ds-entity-list itemTemplate) ──────────────
+.case-drawer-compact__tooltip-fixed {
+  position: fixed;
+  z-index: 500;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px 5px 18px;
+  margin-left: -10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  box-shadow: var(--shadow-lg);
+  white-space: nowrap;
+  pointer-events: auto;
+  animation: tooltip-in 80ms ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+  }
+}
+
+.case-drawer-compact__tooltip-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.case-drawer-compact__tooltip-status {
+  font-size: 9px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-neutral-500);
+  border: 1px solid currentColor;
+  padding: 1px 5px;
+
+  &--running {
+    color: var(--color-accent-700);
+  }
+  &--error {
+    color: var(--red-deep);
+  }
+  &--pending {
+    color: var(--status-pending-text);
+  }
+  &--killed {
+    color: var(--status-killed-text);
+  }
+}
+
+.case-drawer-compact__tooltip-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 2px;
+  padding-left: 6px;
+  border-left: 1px solid var(--color-divider);
+}
+
+.case-drawer-compact__tooltip-btn {
+  @include ds.action-btn(26px);
+}
+
+.case-drawer-compact__tooltip-confirm-yes {
+  @include ds.confirm-btn-danger(26px);
+}
+
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+// ── Tree node ────────────────────────────────────────────────────────────────
 
 .case-tree-node {
   width: 100%;
 
-  // The row is a flex container: expand slot + selectable label + overflow menu.
-  // In flat-search mode the row is itself the clickable button; in tree mode the
-  // inner `__select` button handles selection so the menu stays independently clickable.
   &__row {
+    position: relative; // positioning context for absolute __actions
     display: flex;
     align-items: center;
-    width: 100%;
-    text-align: left;
-    padding: 0.375rem 0.5rem;
-    padding-left: calc(0.5rem + var(--depth, 0) * 1.25rem);
+    margin: 1px 8px;
+    width: calc(100% - 16px);
+    padding: 8px 9px;
+    padding-left: calc(9px + var(--depth, 0) * 1.25rem);
+    gap: 9px;
     color: var(--color-text);
-    border: none;
+    border: 1px solid transparent;
     background: transparent;
     cursor: pointer;
-    border-radius: 6px;
-    gap: 0.375rem;
-    transition: background 0.12s ease;
+    border-radius: 0;
+    transition:
+      background 100ms,
+      border-color 100ms,
+      color 100ms;
     box-sizing: border-box;
 
     &:hover {
-      background: var(--color-bg-hover);
+      background: color-mix(in srgb, var(--color-text) 6%, transparent);
     }
 
     &--active {
-      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-      color: var(--color-primary);
+      background: var(--color-accent-100);
+      border-color: var(--color-accent-200);
+      color: var(--color-accent-900);
 
       &:hover {
-        background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+        background: var(--color-accent-200);
+      }
+
+      .case-tree-node__name {
+        color: var(--color-accent-900);
       }
     }
   }
 
-  &__expand-slot {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1rem;
-    flex-shrink: 0;
-  }
-
+  // Toggle button for parent cases with children
   &__toggle {
-    @include ds.icon-button(1rem, 3px);
+    @include ds.button-reset;
 
-    color: inherit;
-  }
+    flex: none;
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    color: var(--color-neutral-500);
 
-  &__toggle-icon {
-    display: inline-block;
-    font-size: 1.1rem;
-    line-height: 1;
-    transition: transform 0.15s ease;
-    transform: rotate(0deg);
-
-    &--open {
-      transform: rotate(90deg);
+    &:hover {
+      color: var(--color-text);
     }
   }
 
-  // Clickable area that selects the case (fills the row, leaving room for actions).
+  // Glyph rendu par <agentos-case-status-glyph>
+
+  // Clickable title button
   &__select {
     @include ds.button-reset;
 
@@ -125,32 +270,56 @@
     color: inherit;
   }
 
+  // Case title text
   &__name {
-    @include ds.text-label; // 500 11.5px Inter — compact label
-
     flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: var(--font-mono, #{ds.$font-code}); // case IDs in mono
-    font-size: 0.8rem;
+    font-size: 15px;
+    font-weight: 400;
   }
 
-  // Overflow menu ("⋯") stays hidden to keep the list light; it is revealed on row
-  // hover, on keyboard focus, while its menu is open, or on the active row.
-  &__menu {
+  // Status tag — bordé, visible par défaut, masqué au hover pour laisser place aux actions
+  &__status-label {
+    @include ds.status-tag;
+
     flex: none;
+    transition: opacity 0.12s;
+  }
+
+  // Hide label on hover / focus / active — actions take over
+  &__row:hover &__status-label,
+  &__row:focus-within &__status-label,
+  &__row--active &__status-label {
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.12s ease;
   }
 
-  &__row:hover &__menu,
-  &__row:focus-within &__menu,
-  &__row--active &__menu,
-  &__menu:has([aria-expanded='true']) {
+  // Inline actions: star + delete — revealed on hover / active
+  &__actions {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s;
+    // Positioned to overlap the status label slot
+    position: absolute;
+    right: 9px;
+  }
+
+  &__row:hover &__actions,
+  &__row:focus-within &__actions,
+  &__row--active &__actions {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  // Action buttons (star, delete)
+  &__action-btn {
+    @include ds.action-btn(28px);
   }
 }

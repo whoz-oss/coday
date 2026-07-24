@@ -10,10 +10,8 @@ import { ThemeService } from './core/services/theme.service'
 export const appRoutes: Route[] = [
   {
     path: '',
-    loadComponent: () =>
-      import('./components/global-task-control/global-task-control.component').then(
-        (m) => m.GlobalTaskControlComponent
-      ),
+    redirectTo: 'agentos',
+    pathMatch: 'full',
   },
   {
     path: 'projects',
@@ -97,5 +95,5 @@ export const appRoutes: Route[] = [
       ]
     },
   },
-  { path: '**', redirectTo: '' },
+  { path: '**', redirectTo: 'agentos' },
 ]

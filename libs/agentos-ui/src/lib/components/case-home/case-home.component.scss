@@ -10,21 +10,50 @@
   &__hero {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 2rem;
-    padding: 2rem 1.5rem 4rem;
-    max-width: 680px;
+    gap: 24px;
+    padding: 0 24px;
+    max-width: 720px;
     width: 100%;
+  }
+
+  // ── Namespace label + headline block ───────────────────────────────────────
+
+  &__ns-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  &__ns-label {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-accent-700);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    margin-bottom: 8px;
   }
 
   &__headline {
     margin: 0;
-    font-size: clamp(1.5rem, 4vw, 2.25rem);
+    font-size: 42px;
     font-weight: 700;
-    letter-spacing: -0.03em;
     color: var(--color-text);
-    text-align: center;
-    font-family: ds.$font-ui;
+    // No font-family override — inherits from body (var(--font-body))
+    line-height: 1.1;
+  }
+
+  // ── Composer — blueprint pattern ─────────────────────────────────────────────
+
+  &__composer {
+    position: relative;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--color-divider);
+    // overflow: hidden intentionally omitted — autocomplete dropdown is absolute
   }
 
   &__autocomplete {
@@ -32,54 +61,29 @@
     bottom: calc(100% + 0.5rem);
     left: 0;
     right: 0;
-    background: var(--glass-bg, rgba(255, 255, 255, 0.96));
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-    // No overflow: hidden — the inner list handles its own scroll
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    box-shadow: var(--shadow-lg);
     z-index: 20;
     animation: autocomplete-in 0.12s ease;
-  }
-
-  &__composer {
-    position: relative;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    backdrop-filter: var(--glass-backdrop-blur);
-    -webkit-backdrop-filter: var(--glass-backdrop-blur);
-    border-radius: 16px;
-    box-shadow: 0 4px 24px var(--color-shadow);
-    // overflow: hidden removed — would clip the absolute-positioned autocomplete dropdown
-    transition:
-      box-shadow 0.2s ease,
-      border-color 0.2s ease;
-
-    &:focus-within {
-      box-shadow: 0 4px 32px color-mix(in srgb, var(--color-primary) 20%, transparent);
-      border-color: var(--color-primary);
-    }
   }
 
   &__input {
     width: 100%;
     resize: none;
-    padding: 1rem 1.25rem 0.5rem;
+    // maquette: padding 13px 16px 4px
+    padding: 13px 16px 4px;
     border: none;
     background: transparent;
     color: var(--color-text);
-    font-size: 1rem;
-    font-family: ds.$font-ui;
-    line-height: 1.6;
+    // maquette: font-size 14px
+    font-size: 14px;
+    line-height: 1.55;
     outline: none;
     box-sizing: border-box;
 
     &::placeholder {
-      color: var(--color-text-secondary);
+      color: var(--color-neutral-500);
     }
 
     &:disabled {
@@ -88,27 +92,39 @@
     }
   }
 
+  // ── Composer footer ───────────────────────────────────────────────────────────
+
   &__composer-footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0.5rem 0.5rem 0.5rem 1.25rem;
+    gap: 10px;
+    // maquette: padding 6px 10px 10px
+    padding: 6px 10px 10px;
+  }
+
+  // Attach button: 30x30, border:1px solid var(--color-divider)
+  &__attach-btn {
+    @include ds.button-reset;
+
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-divider);
+    background: transparent;
+    color: var(--color-neutral-600);
+    cursor: not-allowed;
+    opacity: 0.5;
+    flex-shrink: 0;
   }
 
   &__hint {
-    @include ds.text-secondary;
-    font-size: 0.75rem;
-    opacity: 0.7;
+    font-size: 12px;
+    color: var(--color-neutral-500);
   }
-}
 
-@keyframes autocomplete-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  &__spacer {
+    flex: 1;
   }
 }

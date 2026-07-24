@@ -9,25 +9,59 @@
 ///   .my-card { @include ds.surface-card; }
 ///
 
-// ── Card surfaces ─────────────────────────────────────────────────────────────
+// ── Blueprint surface (flat design, angular corners) ─────────────────────────
 
-/// Standard card container.
-/// Source: .ac in action-card.component.scss, .entity-card in entity-card.component.scss
-/// → bg-secondary, 1px border, radius 12px, subtle shadow, hover lift
-@mixin surface-card {
-  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.7));
-  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-  border-radius: 12px;
-  box-shadow: 0 1px 3px var(--color-shadow, rgba(0, 0, 0, 0.05));
-  overflow: hidden;
+/// Blueprint container — flat card with sharp corners and decorative corner accents.
+/// This is the primary card pattern for agentos-ui (replaces glass morphism).
+///
+/// The host element must be position: relative.
+/// Corner accents are injected via a companion directive or component (ds-blueprint).
+/// The 4 `.blueprint-corner` child elements are positioned by the global styles in
+/// apps/client/src/styles.scss.
+///
+/// Usage:
+///   @use 'libs/design-system/src/styles' as ds;
+///   .my-card { @include ds.surface-blueprint; }
+@mixin surface-blueprint {
+  position: relative;
+  background: var(--color-bg, #f9fafb);
+  border: 1px solid var(--color-divider, rgba(0, 0, 0, 0.08));
+  border-radius: 0; // intentional — sharp corners are the design language
   transition:
-    background 0.15s ease,
     border-color 0.15s ease,
     box-shadow 0.15s ease;
 
   &:hover {
-    box-shadow: 0 2px 8px var(--color-shadow, rgba(0, 0, 0, 0.08));
-    border-color: var(--color-border, rgba(0, 0, 0, 0.15));
+    border-color: var(--color-accent, #2563eb);
+  }
+}
+
+/// Blueprint surface on a secondary/surface background (panels, modals).
+@mixin surface-blueprint-raised {
+  @include surface-blueprint;
+
+  background: var(--color-surface, #ffffff);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.1));
+}
+
+// ── Card surfaces ─────────────────────────────────────────────────────────────
+
+/// Standard card container.
+/// Source: .ac in action-card.component.scss, .entity-card in entity-card.component.scss
+/// → carré, divider border, shadow-sm, hover accent border
+@mixin surface-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  border-radius: 0; // carré — design system Industry
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    border-color: var(--color-accent);
+    box-shadow: var(--shadow-sm);
   }
 }
 
@@ -39,25 +73,22 @@
 
   cursor: pointer;
   transition:
-    background 0.15s ease,
     border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    transform 0.12s ease;
+    box-shadow 0.15s ease;
 
   &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
-    border-color: var(--color-primary, #007aff);
-    box-shadow: 0 2px 12px var(--color-shadow, rgba(0, 0, 0, 0.08));
-    transform: translateY(-1px);
+    border-color: var(--color-accent);
+    box-shadow: var(--shadow-sm);
+    // pas de transform — design plat Industry
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-primary, #007aff);
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 
   &:active {
-    transform: translateY(0);
+    background: var(--color-bg-hover);
   }
 }
 
@@ -67,18 +98,17 @@
 /// Source: .ac__menu in action-card.component.scss
 /// → modal-bg, radius 10px, 1px border, modal-shadow
 @mixin surface-dropdown {
-  background: var(--color-modal-bg, #ffffff);
-  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-  border-radius: 10px;
-  box-shadow: var(--color-modal-shadow, 0 6px 20px rgba(0, 0, 0, 0.08));
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: 0; // carré — design system Industry
+  box-shadow: var(--shadow-lg);
   padding: 5px;
 }
 
-// ── Glass surface ─────────────────────────────────────────────────────────────
+// ── Glass surface (legacy — apps/client only, not used in agentos-ui) ────────
 
-/// Apple Glass / glassmorphism surface.
-/// Source: .ds-drawer__sidenav in drawer.component.scss
-/// → glass-bg, glass-border, glass-shadow, backdrop-filter
+/// @deprecated Use surface-blueprint for new agentos-ui components.
+/// Apple Glass / glassmorphism surface — kept for apps/client legacy components.
 @mixin surface-glass {
   background: var(--glass-bg, rgba(255, 255, 255, 0.72));
   border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.18));
@@ -101,7 +131,7 @@
 @mixin surface-mark {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: 0; // carré — design system Industry
   background: #161616;
   color: #fff;
   border: none;

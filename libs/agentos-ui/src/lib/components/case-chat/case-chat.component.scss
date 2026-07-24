@@ -1,8 +1,6 @@
 @use 'libs/design-system/src/styles' as ds;
 
 :host {
-  // Ensure the component fills the router-outlet container and participates
-  // in the flex column chain that constrains height to the viewport.
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -10,7 +8,7 @@
   overflow: hidden;
 }
 
-// Main content slot of the right-side exchange drawer — holds the centered chat.
+// Main content slot of the right-side exchange drawer
 .case-chat__host {
   position: relative;
   flex: 1;
@@ -21,7 +19,112 @@
   overflow: hidden;
 }
 
-// Floating entry point for the exchange panel (mirror of the legacy FAB + matBadge).
+// ── Case header ──────────────────────────────────────────────────────────────
+
+.case-chat__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 54px;
+  flex: none;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--color-divider);
+  background: var(--color-bg);
+  min-width: 0;
+}
+
+.case-chat__header-spacer {
+  flex: 1;
+}
+
+// Action buttons (star, delete)
+.case-chat__header-action {
+  @include ds.action-btn(30px);
+
+  flex: none;
+
+  &--active {
+    color: var(--color-accent);
+  }
+
+  &--danger-idle:hover {
+    background: color-mix(in srgb, var(--red) 12%, transparent);
+    color: var(--red);
+  }
+}
+
+// Inline delete confirmation
+.case-chat__header-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.case-chat__header-confirm-label {
+  font-size: 11px;
+  color: var(--red-deep);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.case-chat__header-confirm-yes {
+  @include ds.confirm-btn-danger(30px);
+
+  gap: 6px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.case-chat__header-confirm-no {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--color-divider);
+  background: var(--color-bg);
+  cursor: pointer;
+  color: var(--color-neutral-600);
+  transition:
+    color 140ms,
+    border-color 140ms;
+
+  &:hover {
+    color: var(--color-text);
+    border-color: var(--color-neutral-500);
+  }
+}
+
+// Glyph rendu par <agentos-case-status-glyph> — styles dans case-status-glyph.component.scss
+
+.case-chat__header-title {
+  flex: none; // titre ne s'étire pas — le spacer après le badge gère l'espace
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--color-text);
+  max-width: 55ch; // évite que le titre très long dépasse
+}
+
+.case-chat__header-badge {
+  @include ds.status-tag;
+
+  flex: none;
+  padding: 2px 8px;
+  // Default (IDLE): override status-tag default to neutral
+  border-color: var(--color-neutral-500);
+  color: var(--color-neutral-600);
+}
+
+// Floating entry point for the exchange panel
 .case-chat__exchange-toggle {
   position: absolute;
   top: 0.5rem;
@@ -36,9 +139,8 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  border-radius: 999px;
-  background: var(--color-primary, #007aff);
-  color: var(--color-text-inverse, #ffffff);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
   font-size: 0.625rem;
   font-weight: 700;
   line-height: 16px;
@@ -49,34 +151,31 @@
 .case-chat {
   display: flex;
   flex-direction: column;
-  // Fill the :host — which is already sized by the parent flex container.
   flex: 1;
   min-height: 0;
   width: 100%;
   padding: 1rem;
   gap: 1rem;
-  // Needed so the floating scroll button is positioned relative to this container.
   position: relative;
 
   @media (min-width: 900px) {
     padding: 1.5rem;
   }
 
+  // ── Messages scroll area ──────────────────────────────────────────────────────────
+
   &__messages {
-    // Flex-grow to fill available height, flex-shrink + min-height so it
-    // actually shrinks when the composer is present (avoids overflow on :host).
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden; // évite le scrollbar horizontal causé par les coins blueprint (-1px)
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
     padding-bottom: 0.5rem;
-    // Smooth momentum scrolling on iOS.
     -webkit-overflow-scrolling: touch;
-    // Thin scrollbar on supporting browsers.
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border, rgba(0, 0, 0, 0.15)) transparent;
+    scrollbar-color: var(--color-divider) transparent;
   }
 
   &__empty {
@@ -86,35 +185,96 @@
     flex: 1;
 
     p {
-      color: var(--color-text-secondary, #6e6e73);
+      color: var(--color-neutral-500);
       font-size: 0.9rem;
       margin: 0;
     }
   }
 
-  // Tool calls section
-  &__tool-calls {
+  // ── Conversation turns ───────────────────────────────────────────────────────────
+
+  &__turn {
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    margin-top: 0.25rem;
+    gap: 6px;
+    // maquette agent: max-width 88%
+    max-width: 88%;
+
+    &--user {
+      // maquette user: max-width 78%, align right
+      align-self: flex-end;
+      align-items: flex-end;
+      max-width: 78%;
+    }
+
+    &--agent {
+      align-self: flex-start;
+      align-items: flex-start;
+    }
+
+    &--streaming {
+      opacity: 0.95;
+    }
   }
 
+  // Role label: maquette — 10px, heading font, uppercase, letter-spacing .12em
+  &__role-label {
+    font-family: var(--font-heading);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    line-height: 1;
+
+    // Agent label: accent-700
+    .case-chat__turn--agent & {
+      color: var(--color-accent-700);
+    }
+
+    // User label: neutral-500
+    .case-chat__turn--user & {
+      color: var(--color-neutral-500);
+    }
+  }
+
+  // ── Bubbles ──────────────────────────────────────────────────────────────────────
+
+  &__bubble {
+    // Agent bubble: maquette — neutral-100 bg, accent-300 left border, no radius
+    padding: 16px 18px;
+    font-size: 16px;
+    line-height: 1.6;
+    word-break: break-word;
+    background: var(--color-neutral-100);
+    border-left: 2px solid var(--color-accent-300);
+    color: var(--color-text);
+
+    // User bubble: maquette — accent-200 bg, accent-800 text + blueprint corners
+    .case-chat__turn--user & {
+      background: var(--color-accent-200);
+      color: var(--color-accent-800);
+      border-left: none;
+      padding: 11px 15px;
+      overflow: visible; // nécessaire pour que les coins blueprint ne soient pas clipés
+    }
+  }
+
+  // ── Tool calls ───────────────────────────────────────────────────────────────────
+
   &__tool-call {
-    // flex-shrink: 0 prevents the flex container from compressing tool call cards
-    // to zero height when the messages area has min-height: 0.
+    // maquette: inline tag — border, mono font, accent-700, no radius
     flex-shrink: 0;
     align-self: flex-start;
     max-width: 90%;
-    border-radius: 8px;
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-    background: var(--glass-bg, rgba(255, 255, 255, 0.72));
-    font-size: 0.8rem;
+    border: 1px solid var(--color-divider);
+    background: transparent;
+    font-size: 12px;
     overflow: hidden;
-    transition: border-color 0.2s ease;
+    transition: border-color 0.15s ease;
 
     &--pending {
-      border-color: var(--color-warning, #f5a623);
+      border-color: var(--color-warning, #ff9500);
       opacity: 0.8;
     }
 
@@ -128,21 +288,22 @@
   }
 
   &__tool-call-header {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 7px;
     width: 100%;
-    padding: 0.4rem 0.6rem;
+    // maquette: padding 5px 11px
+    padding: 5px 11px;
     background: transparent;
     border: none;
     cursor: pointer;
     text-align: left;
-    color: var(--color-text, #1d1d1f);
-    font-family: inherit;
-    font-size: 0.8rem;
+    color: var(--color-accent-700);
+    font-family: var(--font-heading); // IBM Plex Mono via design system token
+    font-size: 12px;
 
     &:hover {
-      background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+      background: color-mix(in srgb, var(--color-text) 4%, transparent);
     }
   }
 
@@ -152,15 +313,15 @@
   }
 
   &__tool-call-name {
-    font-weight: 600;
-    font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
-    color: var(--color-primary, #0071e3);
+    font-family: var(--font-heading);
+    color: var(--color-accent-700);
     flex-shrink: 0;
+    font-weight: 500;
   }
 
   &__tool-call-args {
-    color: var(--color-text-secondary, #6e6e73);
-    font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
+    color: var(--color-neutral-500);
+    font-family: var(--font-heading);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -171,12 +332,12 @@
   &__tool-call-chevron {
     flex-shrink: 0;
     font-size: 0.6rem;
-    color: var(--color-text-secondary, #6e6e73);
+    color: var(--color-neutral-500);
     margin-left: auto;
   }
 
   &__tool-call-output {
-    border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+    border-top: 1px solid var(--color-divider);
     display: flex;
     flex-direction: column;
   }
@@ -185,16 +346,16 @@
     padding: 0.4rem 0.6rem 0.5rem;
 
     & + & {
-      border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.06));
+      border-top: 1px solid var(--color-divider);
     }
 
     pre {
       margin: 0.25rem 0 0;
       white-space: pre-wrap;
       word-break: break-all;
-      font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
+      font-family: var(--font-heading);
       font-size: 0.75rem;
-      color: var(--color-text, #1d1d1f);
+      color: var(--color-text);
       max-height: 200px;
       overflow-y: auto;
     }
@@ -206,24 +367,24 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--color-text-secondary, #6e6e73);
+    color: var(--color-neutral-500);
   }
 
-  // Enrichment phase traces (debug-only, gated behind showTechnical)
+  // ── Enrichment phase traces ─────────────────────────────────────────────────────
+
   &__enrichment-section {
-    background: var(--color-surface-secondary, rgba(0, 0, 0, 0.02));
+    background: var(--color-neutral-100);
   }
 
   &__enrichment-phase {
     margin-top: 0.35rem;
-    border-radius: 4px;
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
-    background: var(--glass-bg, rgba(255, 255, 255, 0.6));
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface);
     overflow: hidden;
 
     &--failed {
       border-color: var(--color-error, #ff3b30);
-      background: rgba(255, 59, 48, 0.04);
+      background: rgba(239, 68, 68, 0.04);
     }
   }
 
@@ -232,8 +393,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.2rem 0.5rem;
-    background: var(--color-surface-secondary, rgba(0, 0, 0, 0.03));
-    border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.06));
+    background: var(--color-neutral-100);
+    border-bottom: 1px solid var(--color-divider);
   }
 
   &__enrichment-phase-index {
@@ -241,7 +402,7 @@
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--color-text-secondary, #6e6e73);
+    color: var(--color-neutral-500);
   }
 
   &__enrichment-phase-status {
@@ -252,16 +413,16 @@
     padding: 0.25rem 0.5rem;
 
     & + & {
-      border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.04));
+      border-top: 1px solid var(--color-divider);
     }
 
     pre {
       margin: 0.15rem 0 0;
       white-space: pre-wrap;
       word-break: break-all;
-      font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
+      font-family: var(--font-heading);
       font-size: 0.7rem;
-      color: var(--color-text, #1d1d1f);
+      color: var(--color-text);
       max-height: 150px;
       overflow-y: auto;
     }
@@ -273,78 +434,19 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--color-text-secondary, #6e6e73);
+    color: var(--color-neutral-500);
   }
 
   &__tool-call-pending,
   &__tool-call-empty {
     display: block;
     margin-top: 0.25rem;
-    color: var(--color-text-secondary, #6e6e73);
+    color: var(--color-neutral-500);
     font-style: italic;
     font-size: 0.75rem;
   }
 
-  // ── Conversation turns ───────────────────────────────────────────────────────
-
-  &__turn {
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-width: 90%;
-
-    &--user {
-      align-self: flex-end;
-      align-items: flex-end;
-      max-width: 82%;
-    }
-
-    &--agent {
-      align-self: flex-start;
-      align-items: flex-start;
-    }
-
-    &--streaming {
-      opacity: 0.95;
-    }
-  }
-
-  &__role-label {
-    font-family: 'Inter', sans-serif;
-    font-size: 9.5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-text-secondary, rgba(0, 0, 0, 0.35));
-    line-height: 1;
-  }
-
-  &__bubble {
-    @include ds.surface-bubble-agent;
-
-    padding: 10px 14px;
-    font-family: 'Inter', sans-serif;
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 1.5;
-    word-break: break-word;
-
-    @media (min-width: 900px) {
-      font-size: 16px;
-    }
-
-    // User bubble
-    .case-chat__turn--user & {
-      @include ds.surface-bubble-user;
-
-      a {
-        color: rgba(255, 255, 255, 0.85);
-      }
-    }
-  }
-
-  // ── System log ───────────────────────────────────────────────────────────────
+  // ── System log ─────────────────────────────────────────────────────────────────────
 
   &__log {
     flex-shrink: 0;
@@ -357,10 +459,10 @@
     display: flex;
     align-items: center;
     gap: 5px;
-    font-family: ui-monospace, Menlo, monospace;
+    font-family: var(--font-heading);
     font-size: 10px;
     font-weight: 600;
-    color: var(--color-text-secondary, rgba(0, 0, 0, 0.4));
+    color: var(--color-neutral-500);
     letter-spacing: 0.02em;
     cursor: pointer;
     outline: none;
@@ -375,19 +477,46 @@
   }
 
   &__log-body {
-    @include ds.surface-system-log;
-
     margin-top: 4px;
     padding: 10px 12px;
-    font-family: ui-monospace, Menlo, monospace;
+    font-family: var(--font-heading);
     font-size: 11px;
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
+    background: var(--color-bubble-system-bg);
+    color: var(--color-bubble-system-text);
   }
 
-  // Thinking indicator (three bouncing dots)
-  // flex-shrink: 0 prevents it from being crushed in the scroll container.
+  // ── Session context ──────────────────────────────────────────────────────────────
+
+  &__session-context {
+    margin-bottom: 6px;
+  }
+
+  &__session-context-label {
+    display: block;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-neutral-500);
+    margin-bottom: 3px;
+  }
+
+  &__session-context-body {
+    font-family: var(--font-heading);
+    font-size: 10px;
+    color: var(--color-neutral-600);
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 0;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+
+  // ── Thinking indicator ───────────────────────────────────────────────────────────
+
   &__thinking {
     flex-shrink: 0;
     display: flex;
@@ -396,9 +525,9 @@
     align-self: flex-start;
   }
 
-  // Markdown-rendered message body
+  // ── Markdown content ───────────────────────────────────────────────────────────
+
   &__message-text--markdown {
-    // Reset prose styles so markdown renders cleanly inside the bubble.
     p {
       margin: 0 0 0.5em;
 
@@ -418,16 +547,14 @@
     }
 
     code {
-      font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
+      font-family: var(--font-heading);
       font-size: 0.85em;
-      background: var(--color-code-bg, rgba(0, 0, 0, 0.06));
-      border-radius: 3px;
+      background: var(--color-neutral-200);
       padding: 0.1em 0.35em;
     }
 
     pre {
-      background: var(--color-code-bg, rgba(0, 0, 0, 0.06));
-      border-radius: 6px;
+      background: var(--color-neutral-100);
       padding: 0.6em 0.8em;
       overflow-x: auto;
       margin: 0.4em 0;
@@ -435,6 +562,7 @@
       code {
         background: none;
         padding: 0;
+        font-family: var(--font-heading);
         font-size: 0.8rem;
       }
     }
@@ -442,12 +570,12 @@
     blockquote {
       margin: 0.4em 0;
       padding-left: 0.8em;
-      border-left: 3px solid var(--color-border, rgba(0, 0, 0, 0.15));
-      color: var(--color-text-secondary, #6e6e73);
+      border-left: 2px solid var(--color-accent-300);
+      color: var(--color-neutral-600);
     }
 
     a {
-      color: var(--color-primary, #0071e3);
+      color: var(--color-accent);
       text-decoration: underline;
     }
 
@@ -467,23 +595,21 @@
     }
   }
 
-  // Floating "scroll to bottom" button — sits just above the composer.
-  &__scroll-anchor {
-    position: absolute;
-    // Sit just above the composer. The composer has ~80px height + 1rem gap.
-    // We use bottom so it stays anchored regardless of composer size.
-    bottom: calc(1.5rem + 80px + 0.5rem);
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 10;
-    background: var(--glass-bg, rgba(255, 255, 255, 0.88));
-    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.3));
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-radius: 50%;
-    box-shadow: 0 2px 12px var(--color-shadow, rgba(0, 0, 0, 0.12));
-    // Fade in/out animation handled by @if in the template.
-    animation: scroll-anchor-in 0.15s ease;
+  // ── Composer — blueprint pattern ─────────────────────────────────────────────
+
+  &__composer {
+    // flex-shrink: 0 ensures the composer is never compressed
+    flex-shrink: 0;
+    position: relative;
+    background: var(--color-bg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--color-divider);
+    display: flex;
+    flex-direction: column;
+
+    &:focus-within {
+      border-color: var(--color-accent);
+    }
   }
 
   &__autocomplete {
@@ -491,48 +617,28 @@
     bottom: calc(100% + 0.5rem);
     left: 0;
     right: 0;
-    background: var(--glass-bg, rgba(255, 255, 255, 0.96));
-    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-    // No overflow: hidden — the inner list handles its own scroll
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    box-shadow: var(--shadow-lg);
     z-index: 20;
     animation: autocomplete-in 0.12s ease;
-  }
-
-  &__composer {
-    // flex-shrink: 0 ensures the composer is never compressed — it always
-    // stays fully visible at the bottom while the messages area shrinks.
-    flex-shrink: 0;
-    position: relative;
-    display: flex;
-    align-items: flex-end;
-    gap: 0.5rem;
-    background: var(--glass-bg, rgba(255, 255, 255, 0.72));
-    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.18));
-    backdrop-filter: var(--glass-backdrop-blur, blur(20px));
-    -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
-    border-radius: 16px;
-    padding: 0.5rem 0.5rem 0.5rem 1rem;
   }
 
   &__input {
     flex: 1;
     resize: none;
-    padding: 0.5rem 0;
+    // maquette: padding 13px 16px 4px
+    padding: 13px 16px 4px;
     border: none;
     background: transparent;
-    color: var(--color-text, #1d1d1f);
-    font-size: 0.95rem;
-    font-family: inherit;
-    line-height: 1.5;
+    color: var(--color-text);
+    font-size: 14px;
+    line-height: 1.55;
     outline: none;
-    min-height: 40px;
+    min-height: 52px;
 
     &::placeholder {
-      color: var(--color-text-secondary, #6e6e73);
+      color: var(--color-neutral-500);
     }
 
     &:disabled {
@@ -541,19 +647,36 @@
     }
   }
 
+  // Composer footer: attach + hint + send
   &__actions {
     display: flex;
     align-items: center;
-    flex-shrink: 0;
+    gap: 10px;
+    justify-content: flex-end;
+    padding: 6px 10px 10px;
+  }
+
+  // ── Floating scroll-to-bottom button ───────────────────────────────────────────
+
+  &__scroll-anchor {
+    position: absolute;
+    bottom: calc(1.5rem + 80px + 0.5rem);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    box-shadow: var(--shadow-sm);
+    animation: scroll-anchor-in 0.15s ease;
   }
 }
 
-// Thinking dots animation
+// ── Thinking dots animation ─────────────────────────────────────────────────────────
+
 .thinking-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
-  background: var(--color-text-secondary, #6e6e73);
+  background: var(--color-neutral-500);
   animation: thinking-bounce 1.2s ease-in-out infinite;
 
   &:nth-child(2) {
@@ -588,13 +711,4 @@
   }
 }
 
-@keyframes autocomplete-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+// @keyframes autocomplete-in défini dans styles.scss (global) — partagé avec case-home

@@ -1,88 +1,323 @@
-<ds-entity-list
-  title="Cases"
-  [items]="displayItems()"
-  [itemTemplate]="compact() ? undefined : caseItemTpl"
-  [showCreate]="true"
-  [toolbarOnly]="compact()"
-  [disableInternalFilter]="true"
-  [keepGroupsWhileSearching]="true"
-  emptyMessage="No cases yet. Start one below."
-  searchPlaceholder="Filter cases…"
-  cardMinWidth="100%"
-  contentMaxWidth="100%"
-  (createRequested)="onCreateRequested()"
-  (searchChanged)="onSearchChanged($event)"
-/>
+<!--
+  CaseDrawerComponent — two rendering modes:
+  - Compact (icons rail): vertical list of status glyphs only
+  - Expanded: grouped list with inline star/delete actions
+
+  The toolbar (search input + new case button) lives in ShellSidebarComponent's top bar.
+  This component renders the list body only.
+-->
 
 @if (compact()) {
+  <!-- ===== COMPACT RAIL ===== -->
   <div class="case-drawer-compact">
     @for (item of compactItems(); track item.id) {
+      <!-- Séparateur de groupe entre deux tranches différentes -->
+      @if (item.isFirstInCompactGroup && item.groupKey) {
+        <div class="case-drawer-compact__group-sep" [attr.title]="item.groupLabel ?? ''" aria-hidden="true"></div>
+      }
       <button
         type="button"
         class="case-drawer-compact__badge"
         [class.case-drawer-compact__badge--active]="item.id === activeCaseId()"
-        [title]="item.name"
+        [class.case-drawer-compact__badge--running]="item.status === Status.RUNNING"
+        [class.case-drawer-compact__badge--error]="item.status === Status.ERROR"
+        [class.case-drawer-compact__badge--pending]="item.status === Status.PENDING"
+        [class.case-drawer-compact__badge--killed]="item.status === Status.KILLED"
+        [attr.aria-label]="item.name + ' — ' + item.status"
         (click)="onItemSelected(item.id)"
+        (mouseenter)="onCompactBadgeEnter($event, item)"
+        (mouseleave)="onCompactBadgeLeave($event)"
       >
-        {{ item.initials }}
+        <agentos-case-status-glyph [status]="item.status" [size]="16" />
       </button>
+    }
+  </div>
+
+  <!-- Tooltip fixed — hors du flux, échappe à overflow:hidden -->
+  @if (hoveredCompactItem(); as hovered) {
+    <div
+      class="case-drawer-compact__tooltip-fixed"
+      role="tooltip"
+      [style.top.px]="tooltipPos().top"
+      [style.left.px]="tooltipPos().left"
+      (mouseleave)="onTooltipLeave($event)"
+      (mouseenter)="onTooltipEnter()"
+    >
+      <span class="case-drawer-compact__tooltip-name">{{ hovered.name }}</span>
+      <span
+        class="case-drawer-compact__tooltip-status"
+        [class.case-drawer-compact__tooltip-status--running]="hovered.status === Status.RUNNING"
+        [class.case-drawer-compact__tooltip-status--error]="hovered.status === Status.ERROR"
+        [class.case-drawer-compact__tooltip-status--pending]="hovered.status === Status.PENDING"
+        [class.case-drawer-compact__tooltip-status--killed]="hovered.status === Status.KILLED"
+        >{{ hovered.status.toLowerCase() }}</span
+      >
+      <span class="case-drawer-compact__tooltip-actions">
+        @if (compactConfirmingDeleteId() !== hovered.id) {
+          <!-- Actions normales : star + delete -->
+          <button
+            type="button"
+            class="case-drawer-compact__tooltip-btn"
+            [class.case-drawer-compact__tooltip-btn--active]="hovered.favorite"
+            [title]="hovered.favorite ? 'Remove from favorites' : 'Add to favorites'"
+            (click)="onStarToggled(hovered)"
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              [attr.fill]="hovered.favorite ? 'currentColor' : 'none'"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"
+              />
+            </svg>
+          </button>
+          @if (hovered.canDelete) {
+            <button
+              type="button"
+              class="case-drawer-compact__tooltip-btn case-drawer-compact__tooltip-btn--danger"
+              title="Delete case"
+              (click)="compactConfirmingDeleteId.set(hovered.id)"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="10" x2="10" y1="11" y2="17" />
+                <line x1="14" x2="14" y1="11" y2="17" />
+              </svg>
+            </button>
+          }
+        } @else {
+          <!-- Confirmation inline -->
+          <button
+            type="button"
+            class="case-drawer-compact__tooltip-confirm-yes"
+            title="Confirm delete"
+            (click)="onDeleteRequested(hovered.id); compactConfirmingDeleteId.set(null); hoveredCompactItem.set(null)"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+            Delete
+          </button>
+          <button
+            type="button"
+            class="case-drawer-compact__tooltip-btn"
+            title="Cancel"
+            (click)="compactConfirmingDeleteId.set(null)"
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        }
+      </span>
+    </div>
+  }
+} @else {
+  <!-- ===== EXPANDED LIST ===== -->
+  <div class="case-drawer-list">
+    @if (displayItems().length === 0) {
+      <p class="case-drawer-list__empty">No cases yet. Start one with the + button above.</p>
+    } @else {
+      @for (item of displayItems(); track item.id) {
+        <!-- Group label -->
+        @if (isFirstInGroup(item, displayItems())) {
+          <div class="case-drawer-list__group-label">{{ item.groupLabel }}</div>
+        }
+        <!-- Row -->
+        <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: item, depth: 0 }" />
+      }
     }
   </div>
 }
 
-<!--
-  Item template: renders one case row + its sub-cases recursively.
-  Two display modes:
-  - Flat mode (search active): each match rendered directly, no tree expand/collapse.
-  - Tree mode (no search): hierarchical rendering with expandable sub-cases.
--->
-<ng-template #caseItemTpl let-item>
-  @if (isSearchActive()) {
-    <!-- Flat mode: render each match directly, no tree expand/collapse -->
-    <button
-      type="button"
-      class="case-tree-node__row"
-      [class.case-tree-node__row--active]="item.id === activeCaseId()"
-      (click)="onItemSelected(item.id)"
-    >
-      <span class="case-tree-node__expand-slot"></span>
-      <span class="case-tree-node__name">{{ item.name }}</span>
-    </button>
-  } @else {
-    <!-- Tree mode: hierarchical rendering -->
-    <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: item, depth: 0 }" />
-  }
-</ng-template>
-
-<!-- Recursive row template: select + star + (ADMIN-gated) delete, then children -->
+<!-- ===== ROW TEMPLATE (recursive) ===== -->
 <ng-template #caseRowTpl let-node="node" let-depth="depth">
   <div class="case-tree-node" [style.--depth]="depth">
     <div class="case-tree-node__row" [class.case-tree-node__row--active]="node.id === activeCaseId()">
-      <span class="case-tree-node__expand-slot">
-        @if (node.children.length) {
-          <button
-            type="button"
-            class="case-tree-node__toggle"
-            [title]="isExpanded(node.id) ? 'Collapse' : 'Expand'"
-            (click)="toggleExpand($event, node.id)"
+      <!-- Expand toggle (only when children exist) -->
+      @if (node.children?.length) {
+        <button
+          type="button"
+          class="case-tree-node__toggle"
+          [title]="isExpanded(node.id) ? 'Collapse' : 'Expand'"
+          (click)="toggleExpand($event, node.id)"
+        >
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            aria-hidden="true"
+            [style.transform]="isExpanded(node.id) ? 'rotate(90deg)' : 'rotate(0)'"
+            style="transition: transform 0.15s ease"
           >
-            <span class="case-tree-node__toggle-icon" [class.case-tree-node__toggle-icon--open]="isExpanded(node.id)"
-              >&rsaquo;</span
-            >
-          </button>
-        }
-      </span>
+            <path
+              d="M3 1.5l4 3.5-4 3.5"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+      } @else {
+        <!-- Status glyph -->
+        <agentos-case-status-glyph [status]="node.status" [size]="15" />
+      }
+
+      <!-- Case title (clickable) -->
       <button type="button" class="case-tree-node__select" (click)="onItemSelected(node.id)">
         <span class="case-tree-node__name">{{ node.name }}</span>
       </button>
-      <ds-kebab-menu
-        class="case-tree-node__menu"
-        [items]="menuItemsFor(node)"
-        (itemSelected)="onMenuAction(node, $event)"
-      />
+
+      <!-- Status label — hidden on hover to reveal action buttons -->
+      <span
+        class="case-tree-node__status-label"
+        [class.case-tree-node__status-label--running]="node.status === Status.RUNNING"
+        [class.case-tree-node__status-label--error]="node.status === Status.ERROR"
+        [class.case-tree-node__status-label--pending]="node.status === Status.PENDING"
+        [class.case-tree-node__status-label--killed]="node.status === Status.KILLED"
+        aria-hidden="true"
+        >{{ node.status.toLowerCase() }}</span
+      >
+
+      <!-- Inline actions: star + delete (ou confirmation), visibles au hover -->
+      <span class="case-tree-node__actions">
+        @if (expandedConfirmingDeleteId() !== node.id) {
+          <!-- Actions normales -->
+          <button
+            type="button"
+            class="case-tree-node__action-btn"
+            [class.case-tree-node__action-btn--active]="node.favorite"
+            [title]="node.favorite ? 'Remove from favorites' : 'Add to favorites'"
+            (click)="onStarToggled(node); $event.stopPropagation()"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              [attr.fill]="node.favorite ? 'currentColor' : 'none'"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"
+              />
+            </svg>
+          </button>
+          @if (node.canDelete) {
+            <button
+              type="button"
+              class="case-tree-node__action-btn case-tree-node__action-btn--danger"
+              title="Delete case"
+              (click)="expandedConfirmingDeleteId.set(node.id); $event.stopPropagation()"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="10" x2="10" y1="11" y2="17" />
+                <line x1="14" x2="14" y1="11" y2="17" />
+              </svg>
+            </button>
+          }
+        } @else {
+          <!-- Confirmation inline -->
+          <button
+            type="button"
+            class="case-tree-node__action-btn case-tree-node__action-btn--confirm-yes"
+            title="Confirm delete"
+            (click)="onDeleteRequested(node.id); expandedConfirmingDeleteId.set(null); $event.stopPropagation()"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+            Delete
+          </button>
+          <button
+            type="button"
+            class="case-tree-node__action-btn"
+            title="Cancel"
+            (click)="expandedConfirmingDeleteId.set(null); $event.stopPropagation()"
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        }
+      </span>
     </div>
 
-    @if (isExpanded(node.id) && node.children.length) {
+    <!-- Children -->
+    @if (isExpanded(node.id) && node.children?.length) {
       @for (child of node.children; track child.id) {
         <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: child, depth: depth + 1 }" />
       }
