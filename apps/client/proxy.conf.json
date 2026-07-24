@@ -6,6 +6,6 @@
       "^/api/agentos": ""
     },
     "secure": false,
-    "target": "http://localhost:8124"
+    "target": "http://localhost:8123"
   }
 }

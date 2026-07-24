@@ -20,9 +20,8 @@ import { OAuthService } from './core/services/oauth.service'
 /**
  * Initialize default project selection at app startup
  */
-function initializeDefaultProject(_projectState: ProjectStateService) {
-  // No-op: app runs in AgentOS-only mode, Express backend not required
-  return () => Promise.resolve()
+function initializeDefaultProject(projectState: ProjectStateService) {
+  return () => projectState.initializeDefaultProject()
 }
 
 /**
