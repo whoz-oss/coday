@@ -1,0 +1,22 @@
+<ds-entity-list
+  title="Platform Scheduled Prompts"
+  [items]="(promptItems$ | async) ?? []"
+  [showCreate]="true"
+  emptyMessage="No platform scheduled prompts defined yet. Add one above."
+  cardMinWidth="420px"
+  [itemTemplate]="scheduledPromptItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
+</ds-entity-list>
+
+<ng-template #scheduledPromptItemTpl let-item>
+  @if (resolvePrompt(item.id); as definition) {
+    <agentos-scheduled-prompt-item
+      [definition]="definition"
+      [platformMode]="true"
+      (toggleRequested)="togglePrompt($event)"
+      (deleteRequested)="deletePrompt($event)"
+    />
+  }
+</ng-template>

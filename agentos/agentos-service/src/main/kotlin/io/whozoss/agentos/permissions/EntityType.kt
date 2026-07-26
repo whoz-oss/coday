@@ -35,7 +35,7 @@ enum class EntityType(
     INTEGRATION_CONFIG("IntegrationConfig"),
     NAMESPACE("Namespace"),
     PROMPT("Prompt"),
-    CASE_DEFINITION("CaseDefinition"),
+    SCHEDULED_PROMPT("ScheduledPrompt"),
     USER("User"),
     USER_GROUP("UserGroup"),
     ;

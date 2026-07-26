@@ -92,29 +92,29 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformIntegrationConfigsComponent
               ),
           },
-          // --- Admin: Platform Case Definitions ---
+          // --- Admin: Platform Scheduled Prompts ---
           {
-            path: 'admin/case-definitions/new',
+            path: 'admin/scheduled-prompts/new',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/case-definition-form/case-definition-form.component').then(
-                (m) => m.CaseDefinitionFormComponent
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
               ),
           },
           {
-            path: 'admin/case-definitions/:caseDefinitionId/edit',
+            path: 'admin/scheduled-prompts/:scheduledPromptId/edit',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/case-definition-form/case-definition-form.component').then(
-                (m) => m.CaseDefinitionFormComponent
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
               ),
           },
           {
-            path: 'admin/case-definitions',
+            path: 'admin/scheduled-prompts',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/platform-case-definitions/platform-case-definitions.component').then(
-                (m) => m.PlatformCaseDefinitionsComponent
+              import('./components/platform-scheduled-prompts/platform-scheduled-prompts.component').then(
+                (m) => m.PlatformScheduledPromptsComponent
               ),
           },
           // --- Admin: Platform Prompts ---
@@ -293,29 +293,29 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceAiModelsComponent
               ),
           },
-          // --- Case Definitions ---
+          // --- Scheduled Prompts ---
           {
-            path: ':namespaceId/case-definitions/new',
+            path: ':namespaceId/scheduled-prompts/new',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/case-definition-form/case-definition-form.component').then(
-                (m) => m.CaseDefinitionFormComponent
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
               ),
           },
           {
-            path: ':namespaceId/case-definitions/:caseDefinitionId/edit',
+            path: ':namespaceId/scheduled-prompts/:scheduledPromptId/edit',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/case-definition-form/case-definition-form.component').then(
-                (m) => m.CaseDefinitionFormComponent
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
               ),
           },
           {
-            path: ':namespaceId/case-definitions',
+            path: ':namespaceId/scheduled-prompts',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
-              import('./components/case-definition-list/case-definition-list.component').then(
-                (m) => m.CaseDefinitionListComponent
+              import('./components/scheduled-prompt-list/scheduled-prompt-list.component').then(
+                (m) => m.ScheduledPromptListComponent
               ),
           },
           // --- Prompts ---

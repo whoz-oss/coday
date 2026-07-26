@@ -11,9 +11,9 @@ import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
 import io.whozoss.agentos.aiProvider.AiProviderNodeNeo4jRepository
 import io.whozoss.agentos.aiProvider.AiProviderRepository
 import io.whozoss.agentos.aiProvider.Neo4jAiProviderRepository
-import io.whozoss.agentos.caseDefinition.CaseDefinitionNodeNeo4jRepository
-import io.whozoss.agentos.caseDefinition.CaseDefinitionRepository
-import io.whozoss.agentos.caseDefinition.Neo4jCaseDefinitionRepository
+import io.whozoss.agentos.scheduledPrompt.Neo4jScheduledPromptRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptNodeNeo4jRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
 import io.whozoss.agentos.caseEvent.CaseEventNodeMapper
 import io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
@@ -93,7 +93,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.prompt",
         "io.whozoss.agentos.userGroup",
-        "io.whozoss.agentos.caseDefinition",
+        "io.whozoss.agentos.scheduledPrompt",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -224,12 +224,12 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
-    fun neo4jCaseDefinitionRepository(
-        caseDefinitionNodeNeo4jRepository: CaseDefinitionNodeNeo4jRepository,
+    fun neo4jScheduledPromptRepository(
+        scheduledPromptNodeNeo4jRepository: ScheduledPromptNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
-    ): CaseDefinitionRepository {
-        logger.info { "[Persistence] Neo4jCaseDefinitionRepository active" }
-        return Neo4jCaseDefinitionRepository(caseDefinitionNodeNeo4jRepository, childLinkService)
+    ): ScheduledPromptRepository {
+        logger.info { "[Persistence] Neo4jScheduledPromptRepository active" }
+        return Neo4jScheduledPromptRepository(scheduledPromptNodeNeo4jRepository, childLinkService)
     }
 
     @Bean
