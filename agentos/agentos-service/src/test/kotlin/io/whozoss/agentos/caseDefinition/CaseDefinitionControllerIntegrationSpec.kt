@@ -29,132 +29,207 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
     private val namespaceId = UUID.randomUUID()
     private val agentConfigId = UUID.randomUUID()
 
-    private val dailyPayload
+    /**
+     * A fully valid POST payload with nested [recurrence] and [planning] objects.
+     */
+    private val validPayload
         get() = """
             {
                 "namespaceId": "$namespaceId",
                 "agentConfigId": "$agentConfigId",
                 "promptContent": "Hello from the scheduled case",
                 "name": "daily-standup",
-                "frequency": "DAILY",
-                "timeUtc": "08:00",
+                "recurrence": {
+                    "every": 1,
+                    "unit": "DAY",
+                    "days": [],
+                    "timeUtc": "08:00"
+                },
+                "planning": {
+                    "startDate": "2026-01-01",
+                    "endType": "NEVER"
+                },
                 "enabled": true
             }
         """.trimIndent()
 
-    private fun postDef(body: String = dailyPayload) =
+    private fun postDef(body: String = validPayload) =
         post("/api/case-definitions")
             .contentType(MediaType.APPLICATION_JSON)
             .content(body)
 
     init {
         // -------------------------------------------------------------------------
-        // Validation tests (no auth in test profile)
+        // Bean Validation — top-level required fields
         // -------------------------------------------------------------------------
 
         "POST with blank name returns 400" {
-            mockMvc.perform(
-                postDef(
-                    body = """
-                        {
-                            "namespaceId": "$namespaceId",
-                            "agentConfigId": "$agentConfigId",
-                            "promptContent": "Hello",
-                            "name": "",
-                            "frequency": "DAILY",
-                            "timeUtc": "08:00"
-                        }
-                    """.trimIndent(),
-                ),
-            ).andExpect(status().isBadRequest)
-        }
-
-        "POST with missing frequency returns 400" {
-            mockMvc.perform(
-                postDef(
-                    body = """
-                        {
-                            "namespaceId": "$namespaceId",
-                            "agentConfigId": "$agentConfigId",
-                            "promptContent": "Hello",
-                            "name": "my-def",
-                            "timeUtc": "08:00"
-                        }
-                    """.trimIndent(),
-                ),
-            ).andExpect(status().isBadRequest)
-        }
-
-        "POST WEEKLY without dayOfWeek returns 400" {
-            mockMvc.perform(
-                postDef(
-                    body = """
-                        {
-                            "namespaceId": "$namespaceId",
-                            "agentConfigId": "$agentConfigId",
-                            "promptContent": "Hello",
-                            "name": "weekly-no-day",
-                            "frequency": "WEEKLY",
-                            "timeUtc": "09:00"
-                        }
-                    """.trimIndent(),
-                ),
-            ).andExpect(status().isBadRequest)
+            mockMvc.perform(postDef(body = """
+                {
+                    "namespaceId": "$namespaceId",
+                    "agentConfigId": "$agentConfigId",
+                    "promptContent": "Hello",
+                    "name": "",
+                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                    "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
+                }
+            """.trimIndent()))
+                .andExpect(status().isBadRequest)
         }
 
         "POST with missing agentConfigId returns 400" {
-            mockMvc.perform(
-                postDef(
-                    body = """
-                        {
-                            "namespaceId": "$namespaceId",
-                            "promptContent": "Hello",
-                            "name": "my-def",
-                            "frequency": "DAILY",
-                            "timeUtc": "08:00"
-                        }
-                    """.trimIndent(),
-                ),
-            ).andExpect(status().isBadRequest)
+            mockMvc.perform(postDef(body = """
+                {
+                    "namespaceId": "$namespaceId",
+                    "promptContent": "Hello",
+                    "name": "my-def",
+                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                    "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
+                }
+            """.trimIndent()))
+                .andExpect(status().isBadRequest)
         }
 
         "POST with blank promptContent returns 400" {
-            mockMvc.perform(
-                postDef(
-                    body = """
-                        {
-                            "namespaceId": "$namespaceId",
-                            "agentConfigId": "$agentConfigId",
-                            "promptContent": "",
-                            "name": "my-def",
-                            "frequency": "DAILY",
-                            "timeUtc": "08:00"
-                        }
-                    """.trimIndent(),
-                ),
-            ).andExpect(status().isBadRequest)
+            mockMvc.perform(postDef(body = """
+                {
+                    "namespaceId": "$namespaceId",
+                    "agentConfigId": "$agentConfigId",
+                    "promptContent": "",
+                    "name": "my-def",
+                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                    "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
+                }
+            """.trimIndent()))
+                .andExpect(status().isBadRequest)
         }
+
+        "POST with missing recurrence returns 400" {
+            mockMvc.perform(postDef(body = """
+                {
+                    "namespaceId": "$namespaceId",
+                    "agentConfigId": "$agentConfigId",
+                    "promptContent": "Hello",
+                    "name": "my-def",
+                    "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
+                }
+            """.trimIndent()))
+                .andExpect(status().isBadRequest)
+        }
+
+        "POST with missing planning returns 400" {
+            mockMvc.perform(postDef(body = """
+                {
+                    "namespaceId": "$namespaceId",
+                    "agentConfigId": "$agentConfigId",
+                    "promptContent": "Hello",
+                    "name": "my-def",
+                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"}
+                }
+            """.trimIndent()))
+                .andExpect(status().isBadRequest)
+        }
+
+        // -------------------------------------------------------------------------
+        // Bean Validation — recurrence nested fields
+        // -------------------------------------------------------------------------
+
+        "POST with every = 0 in recurrence returns 400" {
+            mockMvc.perform(postDef(body = """
+                {
+                    "namespaceId": "$namespaceId",
+                    "agentConfigId": "$agentConfigId",
+                    "promptContent": "Hello",
+                    "name": "my-def",
+                    "recurrence": {"every": 0, "unit": "DAY", "timeUtc": "08:00"},
+                    "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
+                }
+            """.trimIndent()))
+                .andExpect(status().isBadRequest)
+        }
+
+        "POST with missing unit in recurrence returns 400" {
+            mockMvc.perform(postDef(body = """
+                {
+                    "namespaceId": "$namespaceId",
+                    "agentConfigId": "$agentConfigId",
+                    "promptContent": "Hello",
+                    "name": "my-def",
+                    "recurrence": {"every": 1, "timeUtc": "08:00"},
+                    "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
+                }
+            """.trimIndent()))
+                .andExpect(status().isBadRequest)
+        }
+
+        "POST with invalid timeUtc format returns 400" {
+            mockMvc.perform(postDef(body = """
+                {
+                    "namespaceId": "$namespaceId",
+                    "agentConfigId": "$agentConfigId",
+                    "promptContent": "Hello",
+                    "name": "my-def",
+                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "9:00"},
+                    "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
+                }
+            """.trimIndent()))
+                .andExpect(status().isBadRequest)
+        }
+
+        // -------------------------------------------------------------------------
+        // Bean Validation — planning nested fields
+        // -------------------------------------------------------------------------
+
+        "POST with missing startDate in planning returns 400" {
+            mockMvc.perform(postDef(body = """
+                {
+                    "namespaceId": "$namespaceId",
+                    "agentConfigId": "$agentConfigId",
+                    "promptContent": "Hello",
+                    "name": "my-def",
+                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                    "planning": {"endType": "NEVER"}
+                }
+            """.trimIndent()))
+                .andExpect(status().isBadRequest)
+        }
+
+        "POST with missing endType in planning returns 400" {
+            mockMvc.perform(postDef(body = """
+                {
+                    "namespaceId": "$namespaceId",
+                    "agentConfigId": "$agentConfigId",
+                    "promptContent": "Hello",
+                    "name": "my-def",
+                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                    "planning": {"startDate": "2026-01-01"}
+                }
+            """.trimIndent()))
+                .andExpect(status().isBadRequest)
+        }
+
+        // -------------------------------------------------------------------------
+        // PUT — validation
+        // -------------------------------------------------------------------------
 
         "PUT with blank name returns 400" {
             mockMvc.perform(
                 put("/api/case-definitions/${UUID.randomUUID()}")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """
+                    .content("""
                         {
                             "agentConfigId": "$agentConfigId",
                             "promptContent": "Hello",
                             "name": "",
-                            "frequency": "DAILY",
-                            "timeUtc": "08:00"
+                            "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                            "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
                         }
-                        """.trimIndent(),
-                    ),
+                    """.trimIndent()),
             ).andExpect(status().isBadRequest)
         }
 
         // -------------------------------------------------------------------------
-        // search endpoint — validation
+        // search endpoint
         // -------------------------------------------------------------------------
 
         "POST /search with valid body returns 200" {
@@ -174,7 +249,7 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // effective endpoint — validation
+        // effective endpoint
         // -------------------------------------------------------------------------
 
         "POST /effective without namespaceId or namespaceExternalId returns 400" {
@@ -194,27 +269,21 @@ class CaseDefinitionControllerIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // toggle — validation
+        // toggle and delete — 404 on unknown id
         // -------------------------------------------------------------------------
 
         "PATCH /toggle on non-existent id returns 404" {
-            mockMvc.perform(
-                patch("/api/case-definitions/${UUID.randomUUID()}/toggle"),
-            ).andExpect(status().isNotFound)
+            mockMvc.perform(patch("/api/case-definitions/${UUID.randomUUID()}/toggle"))
+                .andExpect(status().isNotFound)
         }
-
-        // -------------------------------------------------------------------------
-        // delete — validation
-        // -------------------------------------------------------------------------
 
         "DELETE on non-existent id returns 404" {
-            mockMvc.perform(
-                delete("/api/case-definitions/${UUID.randomUUID()}"),
-            ).andExpect(status().isNotFound)
+            mockMvc.perform(delete("/api/case-definitions/${UUID.randomUUID()}"))
+                .andExpect(status().isNotFound)
         }
 
         // -------------------------------------------------------------------------
-        // by-ids — validation
+        // by-ids
         // -------------------------------------------------------------------------
 
         "POST /by-ids with valid body returns 200" {

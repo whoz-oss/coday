@@ -1,6 +1,8 @@
 package io.whozoss.agentos.caseDefinition
 
 import io.whozoss.agentos.persistence.OverlayKeyEncoding
+import io.whozoss.agentos.sdk.api.caseDefinition.SchedulerEndType
+import io.whozoss.agentos.sdk.api.caseDefinition.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.annotation.CreatedBy
 import org.springframework.data.annotation.CreatedDate
@@ -9,54 +11,33 @@ import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.annotation.Version
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
+import java.time.DayOfWeek
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
 import java.util.UUID
 
 /**
  * Spring Data Neo4j projection for [CaseDefinition].
  *
- * ### Scope model
+ * SDN does not support nested data-class properties, so [Recurrence] and [Planning]
+ * are **flattened** into scalar / list fields on this node class.
+ * [toDomain] reconstructs the nested objects; [fromDomain] flattens them back.
  *
- * [namespaceId] is null for platform-level definitions; [userId] is null for shared definitions.
- * The combination `(namespaceId, userId)` encodes the four overlay layers:
- * - `(null, null)`   → platform
- * - `(null, user)`   → user-global
- * - `(ns, null)`     → namespace-shared
- * - `(ns, user)`     → user×namespace
+ * ### Stored as strings
  *
- * ### Edges (managed via Neo4jChildLinkService, no @Relationship fields)
+ * [unit] and [endType] are stored as the enum name (e.g. "DAY", "NEVER").
+ * [days] is stored as a list of [DayOfWeek] names (e.g. ["MONDAY", "FRIDAY"]).
+ * [startDate] and [endDate] are stored as [LocalDate] (SDN converts to ISO-8601).
  *
- * - `(:CaseDefinition)-[:BELONGS_TO]->(:Namespace)` when namespace-scoped
- * - `(:CaseDefinition)-[:BELONGS_TO]->(:AgentConfig)` always (agentConfigId is mandatory)
+ * ### Soft-delete
  *
- * ### Prompt reference
- *
- * [promptId] stores the ID of the generic Prompt created and managed automatically by the
- * backend. The linked Prompt MUST NOT have an agentConfigId (only generic prompts allowed).
- * This is an internal implementation detail — not exposed in the public API.
- *
- * Note: there is no `@Relationship` field. Edges are managed explicitly by
- * [Neo4jChildLinkService] via raw Cypher MERGE to avoid SDN eager hydration.
- *
- * ### Soft-delete convention
- *
- * [removed] is `null` for active records and `true` for soft-deleted ones.
+ * [removed] is null for active, true for soft-deleted.
  * Always filter with `WHERE NOT COALESCE(removed, false)`.
  *
- * ### tripleKey discriminator
+ * ### tripleKey
  *
- * [tripleKey] is a denormalised discriminator for the unique business triple
- * `(namespaceId, userId, name)`, backed by a UNIQUE CONSTRAINT. Computed via
- * [OverlayKeyEncoding.activeKey]; rewritten to a tombstone on soft-delete so the
- * unique slot is freed immediately for re-creation.
- *
- * ### TODO: Cascade delete
- *
- * TODO: Cascade delete — When an AgentConfig is soft-deleted, its linked CaseDefinitions
- * should also be soft-deleted. This is straightforward for this case but the problem is
- * broader as other scheduler types with convergent structure will be added in the future.
- * Defer to a dedicated cleanup/lifecycle story.
- * See also: PromptNodeNeo4jRepository.softDeleteByAgentConfigId() as a pattern.
+ * Denormalised discriminator for the (namespaceId, userId, name) UNIQUE constraint.
  */
 @Node("CaseDefinition")
 data class CaseDefinitionNode(
@@ -67,8 +48,17 @@ data class CaseDefinitionNode(
     val promptId: String,
     val name: String,
     val description: String? = null,
-    /** Standard 5-field cron expression, e.g. `"0 9 * * *"` or `"0 9 * * MON"`. */
-    val cronExpression: String,
+    // --- Recurrence fields (flattened) ---
+    val every: Int,
+    val unit: String,
+    val days: List<String> = emptyList(),
+    val timeUtc: LocalTime,
+    // --- Planning fields (flattened) ---
+    val startDate: LocalDate,
+    val endType: String,
+    val endDate: LocalDate? = null,
+    val occurrenceCount: Int? = null,
+    // --- Common ---
     val enabled: Boolean = true,
     val tripleKey: String,
     @Version val version: Long? = null,
@@ -95,7 +85,18 @@ data class CaseDefinitionNode(
             promptId = UUID.fromString(promptId),
             name = name,
             description = description,
-            cronExpression = cronExpression,
+            recurrence = Recurrence(
+                every = every,
+                unit = SchedulerUnit.valueOf(unit),
+                days = days.map { DayOfWeek.valueOf(it) },
+                timeUtc = timeUtc,  // LocalTime stored natively by SDN
+            ),
+            planning = Planning(
+                startDate = startDate,
+                endType = SchedulerEndType.valueOf(endType),
+                endDate = endDate,
+                occurrenceCount = occurrenceCount,
+            ),
             enabled = enabled,
         )
 
@@ -105,17 +106,25 @@ data class CaseDefinitionNode(
 
         fun tombstoneTripleKey(id: String): String = OverlayKeyEncoding.tombstoneKey(id)
 
-        fun fromDomain(def: CaseDefinition): CaseDefinitionNode {
-            val idString = def.id.toString()
-            return CaseDefinitionNode(
-                id = idString,
+        fun fromDomain(def: CaseDefinition): CaseDefinitionNode =
+            CaseDefinitionNode(
+                id = def.id.toString(),
                 namespaceId = def.namespaceId?.toString(),
                 userId = def.userId?.toString(),
                 agentConfigId = def.agentConfigId.toString(),
                 promptId = def.promptId.toString(),
                 name = def.name,
                 description = def.description,
-                cronExpression = def.cronExpression,
+                // Recurrence flattened
+                every = def.recurrence.every,
+                unit = def.recurrence.unit.name,
+                days = def.recurrence.days.map { it.name },
+                timeUtc = def.recurrence.timeUtc,  // LocalTime stored natively by SDN
+                // Planning flattened
+                startDate = def.planning.startDate,
+                endType = def.planning.endType.name,
+                endDate = def.planning.endDate,
+                occurrenceCount = def.planning.occurrenceCount,
                 enabled = def.enabled,
                 tripleKey = computeTripleKey(def.namespaceId, def.userId, def.name),
                 version = def.metadata.version,
@@ -125,6 +134,5 @@ data class CaseDefinitionNode(
                 modifiedBy = def.metadata.modifiedBy,
                 removed = def.metadata.removed.takeIf { it },
             )
-        }
     }
 }

@@ -77,7 +77,7 @@
         }
       </div>
 
-      <!-- Opening message (promptContent — inline textarea) -->
+      <!-- Opening message -->
       <div class="case-definition-form__field">
         <label class="case-definition-form__label" for="case-def-prompt-content">
           Opening message <span aria-hidden="true">*</span>
@@ -87,7 +87,7 @@
           class="case-definition-form__textarea"
           [class.case-definition-form__textarea--invalid]="promptContentControl.invalid && promptContentControl.touched"
           rows="6"
-          placeholder="Enter the message sent to the agent when the scheduled case fires…"
+          placeholder="Enter the message sent to the agent when the scheduled case fires&hellip;"
           [formControl]="promptContentControl"
         ></textarea>
         @if (promptContentControl.invalid && promptContentControl.touched) {
@@ -98,19 +98,63 @@
         </span>
       </div>
 
-      <!-- Frequency + Time UTC -->
-      <div class="case-definition-form__row">
-        <div class="case-definition-form__field">
-          <label class="case-definition-form__label" for="case-def-frequency">
-            Frequency <span aria-hidden="true">*</span>
-          </label>
-          <select id="case-def-frequency" class="case-definition-form__select" [formControl]="frequencyControl">
-            @for (freq of frequencies; track freq) {
-              <option [value]="freq">{{ freq }}</option>
+      <!-- ═══════════════════════ RECURRENCE ═══════════════════════ -->
+      <fieldset class="case-definition-form__fieldset">
+        <legend class="case-definition-form__legend">Recurrence</legend>
+
+        <!-- Every N unit -->
+        <div class="case-definition-form__row">
+          <div class="case-definition-form__field">
+            <label class="case-definition-form__label" for="case-def-every">
+              Every <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="case-def-every"
+              class="case-definition-form__input case-definition-form__input--number"
+              [class.case-definition-form__input--invalid]="everyControl.invalid && everyControl.touched"
+              type="number"
+              min="1"
+              [formControl]="everyControl"
+            />
+            @if (everyControl.invalid && everyControl.touched) {
+              <span class="case-definition-form__field-error">Must be at least 1.</span>
             }
-          </select>
+          </div>
+
+          <div class="case-definition-form__field">
+            <label class="case-definition-form__label" for="case-def-unit">
+              Unit <span aria-hidden="true">*</span>
+            </label>
+            <select id="case-def-unit" class="case-definition-form__select" [formControl]="unitControl">
+              @for (u of schedulerUnits; track u.value) {
+                <option [value]="u.value">{{ u.label }}</option>
+              }
+            </select>
+          </div>
         </div>
 
+        <!-- Day-of-week filter (WEEK only) -->
+        @if (showDayFilter()) {
+          <div class="case-definition-form__field">
+            <span class="case-definition-form__label">Days of week</span>
+            <div class="case-definition-form__day-grid">
+              @for (day of dayOptions; track day.value) {
+                <label class="case-definition-form__day-label">
+                  <input
+                    class="case-definition-form__day-checkbox"
+                    type="checkbox"
+                    [checked]="isDaySelected(day.value)"
+                    (change)="toggleDay(day.value)"
+                  />
+                  <span class="case-definition-form__day-text">{{ day.label }}</span>
+                </label>
+              }
+            </div>
+            <span class="case-definition-form__field-hint">Leave empty to run every day of the week.</span>
+          </div>
+        }
+
+        <!-- Time UTC -->
         <div class="case-definition-form__field">
           <label class="case-definition-form__label" for="case-def-time">
             Time (UTC) <span aria-hidden="true">*</span>
@@ -128,25 +172,82 @@
             <span class="case-definition-form__field-error">Valid time is required (HH:mm).</span>
           }
         </div>
-      </div>
+      </fieldset>
 
-      <!-- Day of week (WEEKLY only) -->
-      @if (isWeekly()) {
+      <!-- ═══════════════════════ PLANNING ═══════════════════════ -->
+      <fieldset class="case-definition-form__fieldset">
+        <legend class="case-definition-form__legend">Planning</legend>
+
+        <!-- Start date -->
         <div class="case-definition-form__field">
-          <label class="case-definition-form__label" for="case-def-day-of-week">
-            Day of week <span aria-hidden="true">*</span>
+          <label class="case-definition-form__label" for="case-def-start-date">
+            Start date <span aria-hidden="true">*</span>
           </label>
-          <select id="case-def-day-of-week" class="case-definition-form__select" [formControl]="dayOfWeekControl">
-            <option value="" disabled>Select a day&hellip;</option>
-            @for (day of daysOfWeek; track day.value) {
-              <option [value]="day.value">{{ day.label }}</option>
-            }
-          </select>
-          @if (dayOfWeekControl.invalid && dayOfWeekControl.touched) {
-            <span class="case-definition-form__field-error">Day of week is required for weekly schedules.</span>
+          <input
+            id="case-def-start-date"
+            class="case-definition-form__input"
+            [class.case-definition-form__input--invalid]="startDateControl.invalid && startDateControl.touched"
+            type="date"
+            [formControl]="startDateControl"
+          />
+          @if (startDateControl.invalid && startDateControl.touched) {
+            <span class="case-definition-form__field-error">Start date is required.</span>
           }
         </div>
-      }
+
+        <!-- End type -->
+        <div class="case-definition-form__field">
+          <label class="case-definition-form__label" for="case-def-end-type">
+            Ends <span aria-hidden="true">*</span>
+          </label>
+          <select id="case-def-end-type" class="case-definition-form__select" [formControl]="endTypeControl">
+            @for (et of endTypes; track et.value) {
+              <option [value]="et.value">{{ et.label }}</option>
+            }
+          </select>
+        </div>
+
+        <!-- End date (ON_DATE only) -->
+        @if (showEndDate()) {
+          <div class="case-definition-form__field">
+            <label class="case-definition-form__label" for="case-def-end-date">
+              End date <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="case-def-end-date"
+              class="case-definition-form__input"
+              [class.case-definition-form__input--invalid]="form.hasError('endDateRequired') && endDateControl.touched"
+              type="date"
+              [formControl]="endDateControl"
+            />
+            @if (form.hasError('endDateRequired') && endDateControl.touched) {
+              <span class="case-definition-form__field-error">End date is required.</span>
+            }
+          </div>
+        }
+
+        <!-- Occurrence count (OCCURRENCES only) -->
+        @if (showOccurrenceCount()) {
+          <div class="case-definition-form__field">
+            <label class="case-definition-form__label" for="case-def-occurrence-count">
+              Number of occurrences <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="case-def-occurrence-count"
+              class="case-definition-form__input case-definition-form__input--number"
+              [class.case-definition-form__input--invalid]="
+                form.hasError('occurrenceCountRequired') && occurrenceCountControl.touched
+              "
+              type="number"
+              min="1"
+              [formControl]="occurrenceCountControl"
+            />
+            @if (form.hasError('occurrenceCountRequired') && occurrenceCountControl.touched) {
+              <span class="case-definition-form__field-error">Must be at least 1.</span>
+            }
+          </div>
+        }
+      </fieldset>
 
       <!-- Enabled toggle -->
       <div class="case-definition-form__field">

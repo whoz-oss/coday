@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
 import { Router } from '@angular/router'
-import { CaseDefinition } from '@whoz-oss/agentos-api-client'
+import { CaseDefinition, DayOfWeek, SchedulerUnit } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
-const DAY_LABELS: Record<string, string> = {
+const DAY_LABELS: Record<DayOfWeek, string> = {
   MON: 'Monday',
   TUE: 'Tuesday',
   WED: 'Wednesday',
@@ -48,14 +48,36 @@ export class CaseDefinitionItemComponent {
 
   protected readonly pendingDelete = signal(false)
 
-  /** Human-readable schedule label, e.g. "Weekly on Monday at 09:00 UTC" or "Daily at 09:00 UTC". */
+  /**
+   * Human-readable schedule label.
+   * Examples:
+   *   "Every day at 09:00 UTC"
+   *   "Every 2 weeks (Mon, Wed) at 09:00 UTC"
+   *   "Every 3 months at 09:00 UTC"
+   */
   protected get scheduleLabel(): string {
-    const def = this.definition()
-    if (def.frequency === 'WEEKLY') {
-      const day = def.dayOfWeek ? (DAY_LABELS[def.dayOfWeek] ?? def.dayOfWeek) : ''
-      return `Weekly${day ? ` on ${day}` : ''} at ${def.timeUtc} UTC`
-    }
-    return `Daily at ${def.timeUtc} UTC`
+    const { recurrence } = this.definition()
+    const every = recurrence.every ?? 1
+    const unit = recurrence.unit ?? SchedulerUnit.DAY
+    const time = recurrence.timeUtc
+
+    const unitLabel = (() => {
+      switch (unit) {
+        case SchedulerUnit.DAY:
+          return every === 1 ? 'day' : 'days'
+        case SchedulerUnit.WEEK:
+          return every === 1 ? 'week' : 'weeks'
+        case SchedulerUnit.MONTH:
+          return every === 1 ? 'month' : 'months'
+      }
+    })()
+
+    const dayFilter =
+      unit === SchedulerUnit.WEEK && recurrence.days?.length
+        ? ` (${recurrence.days.map((d) => DAY_LABELS[d] ?? d).join(', ')})`
+        : ''
+
+    return `Every ${every} ${unitLabel}${dayFilter} at ${time} UTC`
   }
 
   protected get menuItems(): KebabMenuItem[] {

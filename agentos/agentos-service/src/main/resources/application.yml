@@ -4,6 +4,8 @@ spring:
   jackson:
     mapper:
       sort-properties-alphabetically: true
+    serialization:
+      write-dates-as-timestamps: false
   servlet:
     multipart:
       # Global upload limits (file-exchange uploads + plugin jars), raised from Spring's 1MB
