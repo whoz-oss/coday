@@ -11,6 +11,7 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import java.time.Clock
 import java.util.UUID
 
 /**
@@ -32,6 +33,7 @@ class ScheduledPromptServiceImpl(
     private val repository: ScheduledPromptRepository,
     private val agentConfigService: AgentConfigService,
     private val promptService: PromptService,
+    private val clock: Clock = Clock.systemUTC(),
 ) : ScheduledPromptService {
 
     override fun create(entity: ScheduledPrompt): ScheduledPrompt {
@@ -66,7 +68,8 @@ class ScheduledPromptServiceImpl(
             throw ConflictException(conflictMessage(entity))
         }
 
-        return saveOrConflict(entity)
+        val withNextRun = entity.copy(nextRunAt = NextRunCalculator.compute(entity, clock))
+        return saveOrConflict(withNextRun)
     }
 
     override fun update(entity: ScheduledPrompt): ScheduledPrompt {
@@ -77,7 +80,9 @@ class ScheduledPromptServiceImpl(
             ?.takeIf { it.id != entity.id }
             ?.let { throw ConflictException(conflictMessage(entity)) }
 
-        return saveOrConflict(entity)
+        // Recalculate nextRunAt whenever recurrence or planning may have changed.
+        val withNextRun = entity.copy(nextRunAt = NextRunCalculator.compute(entity, clock))
+        return saveOrConflict(withNextRun)
     }
 
     override fun findById(id: UUID, withRemoved: Boolean): ScheduledPrompt? =
@@ -104,7 +109,14 @@ class ScheduledPromptServiceImpl(
     override fun toggle(id: UUID): ScheduledPrompt {
         val existing = repository.findById(id)
             ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
-        return repository.save(existing.copy(enabled = !existing.enabled))
+        val toggled = existing.copy(enabled = !existing.enabled)
+        // Recalculate nextRunAt when re-enabling so the scheduler doesn't fire a stale instant.
+        val withNextRun = if (toggled.enabled) {
+            toggled.copy(nextRunAt = NextRunCalculator.compute(toggled, clock))
+        } else {
+            toggled
+        }
+        return repository.save(withNextRun)
             .also { logger.info { "[ScheduledPrompt] Toggled enabled=${it.enabled} on $id" } }
     }
 

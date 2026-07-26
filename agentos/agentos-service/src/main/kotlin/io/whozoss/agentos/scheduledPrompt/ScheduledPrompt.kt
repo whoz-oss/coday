@@ -5,6 +5,7 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.util.UUID
@@ -93,4 +94,8 @@ data class ScheduledPrompt(
     val recurrence: Recurrence,
     val planning: Planning,
     val enabled: Boolean = true,
+    /** Next scheduled run time (UTC). Calculated on create/update, recalculated on re-enable. */
+    val nextRunAt: Instant,
+    /** Last time this scheduled prompt was triggered. Null until first run. */
+    val lastRunAt: Instant? = null,
 ) : Entity

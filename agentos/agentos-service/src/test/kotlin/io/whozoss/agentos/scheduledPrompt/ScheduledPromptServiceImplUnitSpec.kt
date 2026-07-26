@@ -22,17 +22,24 @@ import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import java.time.Clock
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneOffset
 import java.util.UUID
 
 class ScheduledPromptServiceImplUnitSpec : StringSpec() {
     private val agentConfigService = mockk<AgentConfigService>(relaxed = true)
     private val promptService = mockk<PromptService>(relaxed = true)
 
+    // Fixed clock: 2026-01-01 07:00 UTC — before the default timeUtc of 08:00
+    private val fixedNow = Instant.parse("2026-01-01T07:00:00Z")
+    private val fixedClock = Clock.fixed(fixedNow, ZoneOffset.UTC)
+
     private fun newService(repo: ScheduledPromptRepository = InMemoryScheduledPromptRepository()): ScheduledPromptServiceImpl =
-        ScheduledPromptServiceImpl(repo, agentConfigService, promptService)
+        ScheduledPromptServiceImpl(repo, agentConfigService, promptService, fixedClock)
 
     private val namespaceId: UUID = UUID.randomUUID()
     private val agentConfigId: UUID = UUID.randomUUID()
@@ -88,6 +95,8 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         recurrence = recurrence,
         planning = planning,
         enabled = enabled,
+        // nextRunAt sentinel — overwritten by the service on create/update
+        nextRunAt = Instant.EPOCH,
     )
 
     init {
@@ -289,6 +298,32 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             saved.recurrence.every shouldBe 2
             saved.recurrence.unit shouldBe SchedulerUnit.WEEK
             saved.enabled.shouldBeTrue()
+        }
+
+        "create calculates nextRunAt (not EPOCH sentinel)" {
+            val saved = newService().create(sp())
+            saved.nextRunAt shouldBe Instant.parse("2026-01-01T08:00:00Z") // fixedNow=07:00, timeUtc=08:00 → today
+        }
+
+        "create sets lastRunAt to null" {
+            newService().create(sp()).lastRunAt shouldBe null
+        }
+
+        "update recalculates nextRunAt" {
+            val svc = newService()
+            val saved = svc.create(sp())
+            val updated = svc.update(saved.copy(recurrence = recurrence(every = 1, unit = SchedulerUnit.DAY, timeUtc = LocalTime.of(9, 0))))
+            updated.nextRunAt shouldBe Instant.parse("2026-01-01T09:00:00Z")
+        }
+
+        "toggle re-enables and recalculates nextRunAt" {
+            val svc = newService()
+            val saved = svc.create(sp(enabled = true))
+            val disabled = svc.toggle(saved.id)
+            disabled.enabled.shouldBeFalse()
+            val reEnabled = svc.toggle(disabled.id)
+            reEnabled.enabled.shouldBeTrue()
+            reEnabled.nextRunAt shouldBe Instant.parse("2026-01-01T08:00:00Z")
         }
 
         "findById returns the entity when it exists" {

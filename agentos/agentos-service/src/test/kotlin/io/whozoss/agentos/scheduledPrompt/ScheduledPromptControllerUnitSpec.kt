@@ -25,6 +25,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.util.UUID
@@ -65,6 +66,8 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         occurrenceCount: Int? = null,
     ) = PlanningDto(startDate = startDate, endType = endType, endDate = endDate, occurrenceCount = occurrenceCount)
 
+    val fixedNextRun: Instant = Instant.parse("2026-01-01T08:00:00Z")
+
     fun sp(
         id: UUID = UUID.randomUUID(),
         name: String = "my-prompt",
@@ -73,6 +76,8 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         enabled: Boolean = true,
         recurrence: Recurrence = Recurrence(every = 1, unit = SchedulerUnit.DAY, timeUtc = LocalTime.of(8, 0)),
         planning: Planning = Planning(startDate = today),
+        nextRunAt: Instant = fixedNextRun,
+        lastRunAt: Instant? = null,
     ) = ScheduledPrompt(
         metadata = EntityMetadata(id = id),
         namespaceId = nsId,
@@ -83,6 +88,8 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         recurrence = recurrence,
         planning = planning,
         enabled = enabled,
+        nextRunAt = nextRunAt,
+        lastRunAt = lastRunAt,
     )
 
     fun dto(
@@ -441,5 +448,24 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         val result = controller.getById(id)
         result.agentConfigId shouldBe agentConfigId
         result.promptContent shouldBe promptContent
+    }
+
+    "toDto maps nextRunAt" {
+        val id = UUID.randomUUID()
+        every { service.findById(id, withRemoved = true) } returns sp(id = id, nextRunAt = fixedNextRun)
+        controller.getById(id).nextRunAt shouldBe fixedNextRun
+    }
+
+    "toDto maps lastRunAt when set" {
+        val id = UUID.randomUUID()
+        val lastRun = Instant.parse("2025-12-31T08:00:00Z")
+        every { service.findById(id, withRemoved = true) } returns sp(id = id, lastRunAt = lastRun)
+        controller.getById(id).lastRunAt shouldBe lastRun
+    }
+
+    "toDto maps lastRunAt as null when not yet run" {
+        val id = UUID.randomUUID()
+        every { service.findById(id, withRemoved = true) } returns sp(id = id, lastRunAt = null)
+        controller.getById(id).lastRunAt shouldBe null
     }
 })

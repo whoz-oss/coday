@@ -61,6 +61,8 @@ data class ScheduledPromptNode(
     val occurrenceCount: Int? = null,
     // --- Common ---
     val enabled: Boolean = true,
+    val nextRunAt: Instant,
+    val lastRunAt: Instant? = null,
     val tripleKey: String,
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
@@ -99,6 +101,8 @@ data class ScheduledPromptNode(
                 occurrenceCount = occurrenceCount,
             ),
             enabled = enabled,
+            nextRunAt = nextRunAt,
+            lastRunAt = lastRunAt,
         )
 
     companion object {
@@ -125,6 +129,8 @@ data class ScheduledPromptNode(
                 endDate = sp.planning.endDate,
                 occurrenceCount = sp.planning.occurrenceCount,
                 enabled = sp.enabled,
+                nextRunAt = sp.nextRunAt,
+                lastRunAt = sp.lastRunAt,
                 tripleKey = computeTripleKey(sp.namespaceId, sp.userId, sp.name),
                 version = sp.metadata.version,
                 created = sp.metadata.created,

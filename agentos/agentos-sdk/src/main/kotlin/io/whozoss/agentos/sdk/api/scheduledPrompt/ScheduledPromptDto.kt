@@ -121,6 +121,10 @@ data class ScheduledPromptDto(
     @field:Valid
     val planning: PlanningDto,
     val enabled: Boolean = true,
+    /** Next scheduled run time (UTC). Read-only: calculated by the backend, ignored on POST/PUT. */
+    val nextRunAt: Instant? = null,
+    /** Last time this scheduled prompt was triggered. Read-only. Null until first run. */
+    val lastRunAt: Instant? = null,
     val createdBy: String? = null,
     val createdOn: Instant? = null,
     val updatedBy: String? = null,

@@ -25,6 +25,7 @@ import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
+import java.time.Instant
 import org.springframework.http.MediaType
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
@@ -208,6 +209,7 @@ class ScheduledPromptController(
             recurrence = resource.recurrence.toDomain(),
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
+            nextRunAt = Instant.EPOCH,
         )
         return toDto(scheduledPromptService.create(target), resource.promptContent)
     }
@@ -366,6 +368,8 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
             occurrenceCount = entity.planning.occurrenceCount,
         ),
         enabled = entity.enabled,
+        nextRunAt = entity.nextRunAt,
+        lastRunAt = entity.lastRunAt,
         createdBy = entity.metadata.createdBy,
         createdOn = entity.metadata.created,
         updatedBy = entity.metadata.modifiedBy,
