@@ -10,6 +10,13 @@ import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.sdk.api.exchange.ExchangeApi
+import io.whozoss.agentos.sdk.api.exchange.ExchangeCapability
+import io.whozoss.agentos.sdk.api.exchange.ExchangeDeleteResponse
+import io.whozoss.agentos.sdk.api.exchange.ExchangeFileContent
+import io.whozoss.agentos.sdk.api.exchange.ExchangeFileEntry
+import io.whozoss.agentos.sdk.api.exchange.ExchangeManifest
+import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
@@ -39,8 +46,11 @@ import java.util.UUID
  * A standalone `@RestController` (no class-level `@RequestMapping`) so the case and
  * namespace resources keep their own URL trees (`/api/cases/...`, `/api/namespaces/...`).
  *
- * Authorization is declared per method via `@PreAuthorize`, mirroring [io.whozoss.agentos.caseFlow.CaseController]
- * and [io.whozoss.agentos.namespace.NamespacePermissionEndpoints]:
+ * Implements [ExchangeApi] so external consumers can declare a Feign client against the SDK
+ * interface. Spring MVC annotations (`@GetMapping`, `@PreAuthorize`, etc.) live here and are
+ * intentionally absent from the interface.
+ *
+ * Authorization is declared per method via `@PreAuthorize`:
  * - case reads gate on Case READ, case writes on Case WRITE
  * - namespace reads gate on Namespace READ, namespace writes on Namespace WRITE (= namespace admin)
  *
@@ -58,7 +68,7 @@ class ExchangeController(
     private val caseService: CaseService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val userService: UserService,
-) {
+) : ExchangeApi {
     // ========================================
     // Case scope
     // ========================================
@@ -66,14 +76,14 @@ class ExchangeController(
     @GetMapping("/api/cases/{caseId}/files/manifest", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     @HideOnAccessDenied
-    fun getCaseFilesManifest(
+    override fun getCaseFilesManifest(
         @PathVariable caseId: UUID,
     ): ExchangeManifest = manifestFor(caseRootFor(caseId), ExchangeScope.CASE, EntityType.CASE, caseId)
 
     @GetMapping("/api/cases/{caseId}/files/content", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     @HideOnAccessDenied
-    fun getCaseFileContent(
+    override fun getCaseFileContent(
         @PathVariable caseId: UUID,
         @RequestParam path: String,
     ): ExchangeFileContent = contentFor(caseRootFor(caseId), path)
@@ -108,7 +118,7 @@ class ExchangeController(
 
     @DeleteMapping("/api/cases/{caseId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
-    fun deleteCaseFile(
+    override fun deleteCaseFile(
         @PathVariable caseId: UUID,
         @RequestParam path: String,
     ): ExchangeDeleteResponse = deleteFrom(caseRootFor(caseId), path, "case $caseId")
@@ -120,7 +130,7 @@ class ExchangeController(
     @GetMapping("/api/namespaces/{namespaceId}/files/manifest", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
     @HideOnAccessDenied
-    fun getNamespaceFilesManifest(
+    override fun getNamespaceFilesManifest(
         @PathVariable namespaceId: UUID,
     ): ExchangeManifest =
         manifestFor(
@@ -133,7 +143,7 @@ class ExchangeController(
     @GetMapping("/api/namespaces/{namespaceId}/files/content", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
     @HideOnAccessDenied
-    fun getNamespaceFileContent(
+    override fun getNamespaceFileContent(
         @PathVariable namespaceId: UUID,
         @RequestParam path: String,
     ): ExchangeFileContent = contentFor(exchangeStorageService.namespaceRoot(namespaceId), path)
@@ -174,7 +184,7 @@ class ExchangeController(
 
     @DeleteMapping("/api/namespaces/{namespaceId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
-    fun deleteNamespaceFile(
+    override fun deleteNamespaceFile(
         @PathVariable namespaceId: UUID,
         @RequestParam path: String,
     ): ExchangeDeleteResponse =
@@ -257,15 +267,14 @@ class ExchangeController(
 
     /**
      * Translate storage-layer failures into the project's `@ResponseStatus` exceptions:
-     * - [FileExistsException] / [FileAlreadyExistsException] (create-only collision: the target already
-     *   exists, or a path segment collides with an existing file) -> 409 [ConflictException]
+     * - [FileExistsException] / [FileAlreadyExistsException] (create-only collision) -> 409 [ConflictException]
      * - a missing target -> 404 [ResourceNotFoundException] ([NoSuchFileException]).
      * - a non-UTF-8 file read -> 400 [BadRequestException] ([CharacterCodingException]).
      * - a file above the read limit -> 422 [UnprocessableEntityException] ([ExchangeFileTooLargeException]).
      * - an invalid path (traversal, over-long segment, blank, illegal chars) -> 400 [BadRequestException]
      *   ([InvalidExchangePathException]).
-     * - any other I/O failure (e.g. reading a directory, deleting a non-empty one) -> 400
-     *   [BadRequestException] ([IOException]; generic message, since the raw one carries the absolute path).
+     * - any other I/O failure -> 400 [BadRequestException] ([IOException]; generic message, since the
+     *   raw one carries the absolute path).
      */
     private fun <T> mapStorageErrors(block: () -> T): T =
         try {
@@ -273,22 +282,18 @@ class ExchangeController(
         } catch (e: FileExistsException) {
             throw ConflictException(e.message ?: "File already exists", e)
         } catch (e: FileAlreadyExistsException) {
-            // Generic message on purpose: a raw FileAlreadyExistsException (e.g. from createDirectories
-            // on a parent segment that already exists as a file) carries the absolute server path and
-            // must not leak in the 409 body — mirror the 404 branch below.
+            // Generic message on purpose: a raw FileAlreadyExistsException carries the absolute server
+            // path and must not leak in the 409 body.
             throw ConflictException("File already exists", e)
         } catch (e: NoSuchFileException) {
-            // Generic message on purpose: NoSuchFileException.message is the absolute server path
-            // (e.g. from root.toRealPath() on a never-written scope) and must not leak in the 404 body.
+            // Generic message on purpose: NoSuchFileException.message is the absolute server path.
             throw ResourceNotFoundException("File not found")
         } catch (e: CharacterCodingException) {
             throw BadRequestException("File is not valid UTF-8 text and cannot be displayed")
         } catch (e: ExchangeFileTooLargeException) {
             throw UnprocessableEntityException(e.message ?: "File is too large to read")
         } catch (e: IOException) {
-            // Generic message on purpose: a raw FileSystemException (e.g. DirectoryNotEmptyException when
-            // deleting a non-empty directory, or "Is a directory" when reading a folder) carries the
-            // absolute server path and must not leak in the 400 body — mirror the 404/409 branches above.
+            // Generic message on purpose: a raw FileSystemException carries the absolute server path.
             throw BadRequestException("Invalid file operation")
         } catch (e: InvalidExchangePathException) {
             throw BadRequestException(e.message ?: "Invalid path")
@@ -304,8 +309,7 @@ class ExchangeController(
             mimeType?.let { runCatching { MediaType.parseMediaType(it) }.getOrNull() }
                 ?: MediaType.APPLICATION_OCTET_STREAM
         // Keep a clean `filename="report.txt"` for ASCII names (interoperable everywhere); only
-        // switch to RFC 5987 `filename*=UTF-8''…` for names with non-ASCII chars (accents, CJK,
-        // emoji) that the ISO-8859-1 header encoding would otherwise mangle.
+        // switch to RFC 5987 `filename*=UTF-8''...` for names with non-ASCII chars.
         val filename = dispositionFilename(path)
         val isAscii = filename.all { it.code in 0x20..0x7E }
         val disposition =
@@ -334,12 +338,3 @@ class ExchangeController(
 
     companion object : KLogging()
 }
-
-/** Response body for a successful exchange file deletion. */
-@Schema(name = "ExchangeDeleteResponse", description = "Result of an exchange file deletion.")
-data class ExchangeDeleteResponse(
-    @field:Schema(description = "Whether the deletion succeeded.")
-    val success: Boolean,
-    @field:Schema(description = "Human-readable outcome message.")
-    val message: String,
-)

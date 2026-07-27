@@ -86,6 +86,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             exchangeCapabilityService = exchangeCapabilityService,
             agentDocumentResolver = agentDocumentResolver,
             idCompressorService = IdCompressorService(),
+            agentConfigProperties = AgentConfigProperties(),
             conversationRecorder = conversationRecorder,
         )
 
@@ -545,6 +546,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     exchangeCapabilityService = exchangeCapabilityService,
                     agentDocumentResolver = agentDocumentResolver,
                     idCompressorService = IdCompressorService(),
+                    agentConfigProperties = AgentConfigProperties(),
                     conversationRecorder = conversationRecorder,
                 )
             val configs =

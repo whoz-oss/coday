@@ -22,6 +22,7 @@ class AgentIntentionGenerator(
     private val conversationRecorder: ConversationRecorder,
 ) {
     fun generate(
+        agentName: String,
         context: AgentAdvancedContext,
         events: List<CaseEvent>,
         namespaceId: UUID,
@@ -49,8 +50,11 @@ class AgentIntentionGenerator(
         val prompt =
             """
 Available agents and tools:
+<${agentName}_tools>
 $toolsDescription
 - $ANSWER_TOOL: produce the final answer to the user (use this when no more tool calls are needed)
+<\${agentName}_Tools>
+
 
 $executionState
 
@@ -80,8 +84,8 @@ Before generating the output, analyze the situation using the following logic:
 
 **4. Check Data Prerequisites:**
 *   Does the intended tool require specific IDs or context ?
-*   Have these entities been referenced previously?
-    *   **NO:** The next action is `FindXXX` to reference the entity (`FindXXX` establishes a reference to an entity by identifying the corresponding id).
+*   Do you have the ids of those entities?
+    *   **NO:** The next action is `FindXXX` (`FindXXX` establishes a reference to an entity by identifying the corresponding id).
     *   **YES:** You are ready to call the execution tool.
 
 **Non-discrimination safeguard:**

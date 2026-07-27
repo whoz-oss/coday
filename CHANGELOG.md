@@ -1,3 +1,155 @@
+## 0.225.0 (2026-07-24)
+
+### 🚀 Features
+
+- wz-33597 improve confirmation detection ([96de772d](https://github.com/whoz-oss/coday/commit/96de772d))
+- wz-33597 improve confirmation detection ([#1164](https://github.com/whoz-oss/coday/pull/1164))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
+## 0.224.3 (2026-07-23)
+
+### 🩹 Fixes
+
+- #1160 Prevent corrupted thread YAML round-trips ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 repair scripts ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 doc scripts ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 Prevent corrupted thread YAML round-trips ([#1161](https://github.com/whoz-oss/coday/pull/1161), [#1160](https://github.com/whoz-oss/coday/issues/1160))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.224.2 (2026-07-23)
+
+### 🩹 Fixes
+
+- wz-33213 prompt findEffective does not enforce user-group access control ([#1162](https://github.com/whoz-oss/coday/pull/1162))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.224.1 (2026-07-23)
+
+### 🩹 Fixes
+
+- wz-33587: fix last message mapping on ([#1163](https://github.com/whoz-oss/coday/pull/1163))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.224.0 (2026-07-23)
+
+### 🚀 Features
+
+- wz-33579: update README of sdk to mention API endpoints ([#1159](https://github.com/whoz-oss/coday/pull/1159))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.223.1 (2026-07-23)
+
+### 🚀 Features
+
+- **wz-33656:** improve intention generation ([bcedf6fe](https://github.com/whoz-oss/coday/commit/bcedf6fe))
+- **wz-33656:** improve intention generation ([#1158](https://github.com/whoz-oss/coday/pull/1158))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 0.223.0 (2026-07-22)
+
+### 🚀 Features
+
+- wz-33579: exchange API definition into SDK ([#1157](https://github.com/whoz-oss/coday/pull/1157))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.222.1 (2026-07-22)
+
+### 🩹 Fixes
+
+- wz-32890 add copy button on chat messages and preserve text sele… ([#1156](https://github.com/whoz-oss/coday/pull/1156))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.222.0 (2026-07-22)
+
+### 🚀 Features
+
+- readDocument tool reading .docx as Markdown with embedded images ([#1153](https://github.com/whoz-oss/coday/pull/1153), [#1148](https://github.com/whoz-oss/coday/issues/1148), [#1151](https://github.com/whoz-oss/coday/issues/1151))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.221.0 (2026-07-21)
+
+### 🚀 Features
+
+- #1019 Agentos UserGroup UI + admin Users & Groups console ([#1107](https://github.com/whoz-oss/coday/pull/1107), [#1019](https://github.com/whoz-oss/coday/issues/1019))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.220.0 (2026-07-21)
+
+### 🚀 Features
+
+- readSpreadsheet file tool reading xlsx sheets as CSV text ([#1151](https://github.com/whoz-oss/coday/pull/1151), [#1148](https://github.com/whoz-oss/coday/issues/1148))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.219.1 (2026-07-21)
+
+### 🩹 Fixes
+
+- tolerate a null ChatResponse.getResult() in CompressingChatClient ([#1154](https://github.com/whoz-oss/coday/pull/1154), [#1115](https://github.com/whoz-oss/coday/issues/1115))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.219.0 (2026-07-21)
+
+### 🚀 Features
+
+- readAsImage tool to let agents read images, PDFs and PPTX visually ([#1148](https://github.com/whoz-oss/coday/pull/1148))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.218.0 (2026-07-20)
+
+### 🚀 Features
+
+- chat composer file attachments (drag & drop, + button, exchange upload) ([#1152](https://github.com/whoz-oss/coday/pull/1152))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 0.217.1 (2026-07-17)
 
 ### 🩹 Fixes

@@ -84,7 +84,8 @@ object CaseTranscriptFormatter {
                 } else {
                     raw
                 }
-                "TOOL_RESPONSE: [$status, $duration] $text"
+                val imagesSuffix = event.images.size.takeIf { it > 0 }?.let { " [+$it image(s)]" } ?: ""
+                "TOOL_RESPONSE: [$status, $duration] $text$imagesSuffix"
             }
             is IntentionGeneratedEvent -> {
                 if (includesTechnicalEvents) "INTENTION (${event.agentId}): ${event.intention} → ${event.toolName}" else null

@@ -69,7 +69,6 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
     @Autowired lateinit var promptService: PromptService
     @Autowired lateinit var namespaceService: NamespaceService
     @Autowired lateinit var permissionService: PermissionService
-
     /**
      * UserRepository (real Neo4j-backed bean) used to persist `(:User)` nodes so that
      * Cypher permission queries can MATCH them. The mock UserService does not write to Neo4j.
@@ -1065,6 +1064,10 @@ class PromptControllerPermissionIntegrationSpec : StringSpec() {
             mockMvc.perform(delete("/api/prompts/${userPrompt.id}"))
                 .andExpect(status().isNotFound)
         }
+
+        // -------------------------------------------------------------------------
+        // Cross-user isolation: bob cannot access alice's namespace resources
+        // -------------------------------------------------------------------------
 
         "granting bob MEMBER on the namespace allows him to read the prompt" {
             permissionService.grantPermission(

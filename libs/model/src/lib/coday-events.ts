@@ -334,7 +334,19 @@ export class MessageEvent extends CodayEvent {
     super(event, MessageEvent.type)
     this.role = event.role!
     this.name = event.name!
-    this.content = event.content!
+    // Defensive: YAML round-trip can produce a string or single object instead of array
+    const rawContent = event.content
+    if (Array.isArray(rawContent)) {
+      this.content = rawContent.map((item) =>
+        typeof item === 'string' ? { type: 'text' as const, content: item } : item
+      )
+    } else if (typeof rawContent === 'string') {
+      this.content = [{ type: 'text', content: rawContent }]
+    } else if (rawContent && typeof rawContent === 'object' && 'type' in rawContent) {
+      this.content = [rawContent as MessageContent]
+    } else {
+      this.content = []
+    }
 
     this.length = this.content
       .map((content) => {

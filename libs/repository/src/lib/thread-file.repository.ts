@@ -169,7 +169,10 @@ export class ThreadFileRepository implements ThreadRepository {
       }
 
       const serialized = { ...thread.serialize(), version: aiThreadMigrations.length + 1 }
-      const contentToSave = yaml.stringify(serialized)
+      // lineWidth: 0 prevents line wrapping that breaks round-trip
+      // blockQuote: false prevents | and > block scalars that cause parse failures
+      // when content contains code/minified JS with YAML-significant characters (: # etc.)
+      const contentToSave = yaml.stringify(serialized, { lineWidth: 0, blockQuote: false })
 
       // Write the new file
       await fs.writeFile(newThreadPath, contentToSave, 'utf-8')

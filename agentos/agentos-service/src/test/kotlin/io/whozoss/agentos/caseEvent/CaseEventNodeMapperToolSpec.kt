@@ -243,6 +243,51 @@ class CaseEventNodeMapperToolSpec :
             roundTripped.durationMs shouldBe null
         }
 
+        "ToolResponseEvent with images survives the round-trip" {
+            val images = listOf(
+                MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 1024, height = 745),
+                MessageContent.Image(content = "d29ybGQ=", mimeType = "image/png", width = 100, height = 80),
+            )
+            val original =
+                ToolResponseEvent(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = UUID.randomUUID(),
+                    caseId = UUID.randomUUID(),
+                    timestamp = Instant.parse("2026-05-19T15:11:00Z"),
+                    toolRequestId = "req-10",
+                    toolName = "FILES__readAsImage",
+                    output = MessageContent.Text("Rendered PDF cv.pdf: page(s) 1-2 of 2"),
+                    success = true,
+                    images = images,
+                )
+
+            val node = nodeMapper.fromDomain(original)
+            val roundTripped = nodeMapper.toDomain(node) as ToolResponseEvent
+
+            roundTripped.images shouldBe images
+            roundTripped.output shouldBe original.output
+        }
+
+        "ToolResponseEvent without images round-trips to an empty list (legacy nodes)" {
+            val original =
+                ToolResponseEvent(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = UUID.randomUUID(),
+                    caseId = UUID.randomUUID(),
+                    timestamp = Instant.parse("2026-05-19T15:12:00Z"),
+                    toolRequestId = "req-11",
+                    toolName = "FILES__readFile",
+                    output = MessageContent.Text("text"),
+                    success = true,
+                )
+
+            val node = nodeMapper.fromDomain(original)
+            (node as ToolResponseEventNode).imagesJson shouldBe null
+
+            val roundTripped = nodeMapper.toDomain(node) as ToolResponseEvent
+            roundTripped.images shouldBe emptyList()
+        }
+
         // ─── ToolSelectedEvent ───────────────────────────────────────────────────────
 
         "ToolSelectedEvent survives the fromDomain/toDomain round-trip" {

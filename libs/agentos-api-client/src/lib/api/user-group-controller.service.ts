@@ -16,6 +16,8 @@ import { Observable } from 'rxjs'
 // @ts-ignore
 import { UserGroupCreateRequest } from '../model/user-group-create-request'
 // @ts-ignore
+import { UserGroupMember } from '../model/user-group-member'
+// @ts-ignore
 import { UserGroupSearchResult } from '../model/user-group-search-result'
 // @ts-ignore
 import { UserGroupUpdateRequest } from '../model/user-group-update-request'
@@ -315,6 +317,75 @@ export class UserGroupControllerService extends BaseService {
     let localVarPath = `/api/user-groups/${this.configuration.encodeParam({ name: 'userGroupId', value: userGroupId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<UserGroupSearchResult>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param userGroupId
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public getMembersUserGroup(
+    userGroupId: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<Array<UserGroupMember>>
+  public getMembersUserGroup(
+    userGroupId: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<Array<UserGroupMember>>>
+  public getMembersUserGroup(
+    userGroupId: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<Array<UserGroupMember>>>
+  public getMembersUserGroup(
+    userGroupId: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (userGroupId === null || userGroupId === undefined) {
+      throw new Error('Required parameter userGroupId was null or undefined when calling getMembersUserGroup.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/user-groups/${this.configuration.encodeParam({ name: 'userGroupId', value: userGroupId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/members`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<Array<UserGroupMember>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),

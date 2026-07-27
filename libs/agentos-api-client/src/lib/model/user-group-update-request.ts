@@ -9,6 +9,10 @@
  */
 
 export interface UserGroupUpdateRequest {
+  /**
+   * Complete desired set of member external IDs holding the ADMIN role (replace semantics): members not listed are demoted to MEMBER, and an omitted or empty set demotes every current admin. Every listed id must be a member after the update.
+   */
+  adminExternalIds: Set<string>
   agentIds: Set<string>
   name: string
   userExternalIdsToAdd: Set<string>

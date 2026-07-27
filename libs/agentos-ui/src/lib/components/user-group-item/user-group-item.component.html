@@ -1,0 +1,20 @@
+<div class="user-group-item" role="listitem" [class.user-group-item--pending-delete]="pendingDelete()">
+  <div class="user-group-item__body">
+    <span class="user-group-item__name">{{ userGroup().name }}</span>
+    <span class="user-group-item__meta">
+      {{ agentCount }} {{ agentCount === 1 ? 'agent' : 'agents' }}
+      &middot;
+      {{ userGroup().userCount }} {{ userGroup().userCount === 1 ? 'member' : 'members' }}
+    </span>
+  </div>
+
+  <div class="user-group-item__actions">
+    @if (pendingDelete()) {
+      <span class="user-group-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else {
+      <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+    }
+  </div>
+</div>

@@ -53,6 +53,8 @@ export class EntityListComponent implements AfterViewInit {
   readonly cardMinWidth = input<string>('260px')
   readonly contentMaxWidth = input<string>('900px')
   readonly showCreate = input<boolean>(false)
+  /** Hide the visible title (e.g. when a tab already labels the section); search/content stay. */
+  readonly hideTitle = input<boolean>(false)
   readonly itemTemplate = input<TemplateRef<{ $implicit: EntityListItem }> | undefined>(undefined)
   /**
    * When true, the internal search filter is disabled — items are displayed as-is.

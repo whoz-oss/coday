@@ -53,9 +53,17 @@ okhttp = "4.12.0"
 # The parent artifact 'mcp' pulls mcp-json-jackson3 by default — use mcp-core + mcp-json-jackson2 instead.
 mcpSdk = "2.0.0"
 
+# Apache PDFBox — PDF page rendering for the file plugin's readAsImage tool.
+# Bundled fat-jar style in agentos-file-plugin (not on the service classpath).
+pdfbox = "3.0.8"
+
+# Apache POI — PPTX slide rendering for the file plugin's readAsImage tool.
+# Bundled fat-jar style in agentos-file-plugin (not on the service classpath).
+poi = "5.5.1"
+
 # AgentOS modules versions
-agentosSdk = "0.217.1"
-agentosService = "0.217.1"
+agentosSdk = "0.225.0"
+agentosService = "0.225.0"
 
 [libraries]
 # Jakarta Validation API — annotation-only, for compileOnly use in agentos-sdk
@@ -143,6 +151,12 @@ testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.re
 # MCP Java SDK
 mcp-core = { module = "io.modelcontextprotocol.sdk:mcp-core", version.ref = "mcpSdk" }
 mcp-json-jackson2 = { module = "io.modelcontextprotocol.sdk:mcp-json-jackson2", version.ref = "mcpSdk" }
+
+# Apache PDFBox — PDF page rendering (agentos-file-plugin readAsImage)
+pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
+
+# Apache POI — PPTX slide rendering (agentos-file-plugin readAsImage)
+poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
 
 # Testing
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }

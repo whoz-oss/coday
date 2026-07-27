@@ -68,6 +68,7 @@ class AgentServiceImpl(
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val agentDocumentResolver: AgentDocumentResolver,
+    private val agentConfigProperties: AgentConfigProperties,
     // ANNOTATION MODE — not committed, local only.
     private val conversationRecorder: ConversationRecorder,
 ) : AgentService {
@@ -394,6 +395,8 @@ class AgentServiceImpl(
                     agentId = agentId,
                     confirmationManager = confirmationManager,
                     systemPrompt = resolvedSystemPrompt,
+                    imageCharCost = agentConfigProperties.imageCharCost,
+                    maxAttachedImages = agentConfigProperties.maxAttachedImages,
                 )
             AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),
