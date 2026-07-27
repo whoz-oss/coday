@@ -105,12 +105,18 @@
   color: var(--color-neutral-600);
 }
 
-// Floating entry point for the exchange panel
-.case-chat__exchange-toggle {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  z-index: 10;
+// Exchange toggle — inline dans le header
+.case-chat__header-exchange {
+  position: relative;
+  flex: none;
+}
+
+// Séparateur vertical entre exchange et actions case
+.case-chat__header-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--color-divider);
+  flex: none;
 }
 
 .case-chat__exchange-badge {

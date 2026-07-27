@@ -20,6 +20,22 @@
       <!-- Spacer pushes actions to the right, after the badge -->
       <span class="case-chat__header-spacer"></span>
 
+      <!-- Exchange toggle -->
+      <div class="case-chat__header-exchange">
+        <ds-icon-button
+          [icon]="exchangeOpen() ? 'chevron_right' : 'folder'"
+          variant="default"
+          [title]="'Files (' + exchangeFileCount() + ')'"
+          (action)="toggleExchange()"
+        />
+        @if (exchangeFileCount() > 0 && !exchangeOpen()) {
+          <span class="case-chat__exchange-badge" aria-hidden="true">{{ exchangeFileCount() }}</span>
+        }
+      </div>
+
+      <!-- Separator -->
+      <span class="case-chat__header-sep"></span>
+
       <!-- Header actions: attach + star + delete (or confirmation) -->
       @if (!confirmingDelete()) {
         <!-- Attach files -->
@@ -80,17 +96,7 @@
           <span>Drop files to attach</span>
         </div>
       }
-      <div class="case-chat__exchange-toggle">
-        <ds-icon-button
-          [icon]="exchangeOpen() ? 'chevron_right' : 'folder'"
-          variant="default"
-          [title]="'Files (' + exchangeFileCount() + ')'"
-          (action)="toggleExchange()"
-        />
-        @if (exchangeFileCount() > 0 && !exchangeOpen()) {
-          <span class="case-chat__exchange-badge" aria-hidden="true">{{ exchangeFileCount() }}</span>
-        }
-      </div>
+
       <div #messagesContainer class="case-chat__messages">
         @if (timeline().length === 0) {
           <div class="case-chat__empty">
