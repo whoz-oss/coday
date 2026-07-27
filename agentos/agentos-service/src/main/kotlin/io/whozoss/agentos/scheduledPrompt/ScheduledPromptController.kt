@@ -136,9 +136,8 @@ class ScheduledPromptController(
         )
         if (!granted) throw AccessDeniedException("Cannot read scheduled prompts in namespace $nsId")
         return scheduledPromptService.findEffective(nsId, currentUser.id)
-            .let { sps ->
-                if (request.agentConfigId != null) sps.filter { it.agentConfigId == request.agentConfigId } else sps
-            }.map { sp ->
+            .filter { request.agentConfigId == null || it.agentConfigId == request.agentConfigId }
+            .map { sp ->
                 val promptContent = promptService.findById(sp.promptTemplateId)?.content?.firstOrNull() ?: ""
                 toDto(sp, promptContent)
             }

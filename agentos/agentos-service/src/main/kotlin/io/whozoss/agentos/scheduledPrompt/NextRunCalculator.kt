@@ -53,9 +53,9 @@ object NextRunCalculator {
         val candidate = if (startDateTime.isAfter(now)) startDateTime else now
 
         return when (sp.recurrence.unit) {
-            SchedulerUnit.DAY -> computeDay(candidate, sp)
-            SchedulerUnit.WEEK -> computeWeek(candidate, sp)
-            SchedulerUnit.MONTH -> computeMonth(candidate, sp)
+            SchedulerUnit.DAY -> computeDay(candidate, sp.recurrence, sp.planning)
+            SchedulerUnit.WEEK -> computeWeek(candidate, sp.recurrence, sp.planning)
+            SchedulerUnit.MONTH -> computeMonth(candidate, sp.recurrence, sp.planning)
         }.toInstant(ZoneOffset.UTC)
     }
 
@@ -63,11 +63,11 @@ object NextRunCalculator {
     // DAY
     // -------------------------------------------------------------------------
 
-    private fun computeDay(candidate: LocalDateTime, sp: ScheduledPrompt): LocalDateTime {
-        val timeUtc = sp.recurrence.timeUtc
-        val startDate = sp.planning.startDate
-        val every = sp.recurrence.every
-        val days = sp.recurrence.days
+    private fun computeDay(candidate: LocalDateTime, recurrence: Recurrence, planning: Planning): LocalDateTime {
+        val timeUtc = recurrence.timeUtc
+        val startDate = planning.startDate
+        val every = recurrence.every
+        val days = recurrence.days
 
         return when {
             days.isEmpty() -> computeDayEveryN(candidate, startDate, every, timeUtc)
@@ -135,10 +135,10 @@ object NextRunCalculator {
     /**
      * WEEK: fires every [every] weeks, always on the same day-of-week as [startDate].
      */
-    private fun computeWeek(candidate: LocalDateTime, sp: ScheduledPrompt): LocalDateTime {
-        val timeUtc = sp.recurrence.timeUtc
-        val startDate = sp.planning.startDate
-        val every = sp.recurrence.every
+    private fun computeWeek(candidate: LocalDateTime, recurrence: Recurrence, planning: Planning): LocalDateTime {
+        val timeUtc = recurrence.timeUtc
+        val startDate = planning.startDate
+        val every = recurrence.every
         val targetDow = startDate.dayOfWeek
 
         // First occurrence >= startDate on the target day-of-week
@@ -162,10 +162,10 @@ object NextRunCalculator {
      * MONTH: fires every [every] months, on the same day-of-month as [startDate].
      * If the target month is shorter, clamps to the last day of that month.
      */
-    private fun computeMonth(candidate: LocalDateTime, sp: ScheduledPrompt): LocalDateTime {
-        val timeUtc = sp.recurrence.timeUtc
-        val startDate = sp.planning.startDate
-        val every = sp.recurrence.every
+    private fun computeMonth(candidate: LocalDateTime, recurrence: Recurrence, planning: Planning): LocalDateTime {
+        val timeUtc = recurrence.timeUtc
+        val startDate = planning.startDate
+        val every = recurrence.every
         val dayOfMonth = startDate.dayOfMonth
 
         // Build the first slot on startDate's month
@@ -210,30 +210,16 @@ object NextRunCalculator {
      * @return UTC instant of the next slot strictly after [after]
      */
     fun nextAfter(recurrence: Recurrence, planning: Planning, after: Instant, clock: Clock = Clock.systemUTC()): Instant {
-        // We want the first slot > after.  Build a synthetic candidate that is 1 second past
-        // `after` (so the slot must be strictly after it), then delegate to the per-unit logic.
+        // We want the first slot > after.  Build a candidate that is 1 second past `after`
+        // (so the resulting slot must be strictly after it), then delegate to the per-unit logic.
         val candidateLdt = LocalDateTime.ofInstant(after, ZoneOffset.UTC).plusSeconds(1)
         val startDateTime = planning.startDate.atTime(recurrence.timeUtc)
         val candidate = if (startDateTime.isAfter(candidateLdt)) startDateTime else candidateLdt
 
-        val syntheticSp = object {
-            val recurrenceVal = recurrence
-            val planningVal = planning
-        }
-        // Delegate to the private per-unit functions via a minimal ScheduledPrompt-like parameter.
-        // We reuse the private helpers by routing through a temporary ScheduledPrompt.
-        val tempSp = ScheduledPrompt(
-            agentConfigId = java.util.UUID.randomUUID(),
-            promptTemplateId = java.util.UUID.randomUUID(),
-            name = "__nextAfter",
-            recurrence = recurrence,
-            planning = planning,
-            nextRunAt = Instant.EPOCH,
-        )
         return when (recurrence.unit) {
-            SchedulerUnit.DAY -> computeDay(candidate, tempSp)
-            SchedulerUnit.WEEK -> computeWeek(candidate, tempSp)
-            SchedulerUnit.MONTH -> computeMonth(candidate, tempSp)
+            SchedulerUnit.DAY -> computeDay(candidate, recurrence, planning)
+            SchedulerUnit.WEEK -> computeWeek(candidate, recurrence, planning)
+            SchedulerUnit.MONTH -> computeMonth(candidate, recurrence, planning)
         }.toInstant(ZoneOffset.UTC)
     }
 

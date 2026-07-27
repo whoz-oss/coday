@@ -41,13 +41,12 @@ class SchedulerScanner(
     @Scheduled(fixedDelayString = "\${scheduler.tick-interval-ms:60000}")
     fun tick() {
         val now = Instant.now(clock)
-        val due = scheduledPromptRepository.findDue(now)
-        if (due.isEmpty()) {
-            logger.debug { "[SchedulerScanner] tick: no due prompts" }
-            return
-        }
-        logger.info { "[SchedulerScanner] tick: ${due.size} due prompt(s)" }
-        due.forEach { sp -> claim(sp) }
+        scheduledPromptRepository.findDue(now)
+            .also { due ->
+                if (due.isEmpty()) logger.debug { "[SchedulerScanner] tick: no due prompts" }
+                else logger.info { "[SchedulerScanner] tick: ${due.size} due prompt(s)" }
+            }
+            .forEach { sp -> claim(sp) }
     }
 
     private fun claim(sp: ScheduledPrompt) {
