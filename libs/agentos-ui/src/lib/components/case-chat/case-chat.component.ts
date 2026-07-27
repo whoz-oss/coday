@@ -36,7 +36,7 @@ import {
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { Prompt } from '@whoz-oss/agentos-api-client'
-import { DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
+import { DrawerComponent, IconButtonComponent, CopyButtonComponent } from '@whoz-oss/design-system'
 import { CaseStateService } from '../../services/case-state.service'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
@@ -84,6 +84,12 @@ export type TimelineItem =
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
 
+/** True when the user has an active text selection (e.g. preparing to copy). */
+function hasActiveSelection(): boolean {
+  const selection = window.getSelection()
+  return !!selection && selection.toString().length > 0
+}
+
 /**
  * CaseChatComponent — real-time chat view for an active case.
  *
@@ -102,6 +108,7 @@ const SCROLL_BOTTOM_THRESHOLD = 64
   selector: 'agentos-case-chat',
   imports: [
     IconButtonComponent,
+    CopyButtonComponent,
     JsonPipe,
     DrawerComponent,
     ExchangeShellComponent,
@@ -274,22 +281,28 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       this.showTechnical.set(this.showTechnicalOverride())
     })
 
-    // Restore focus to the composer whenever we return to an interactive state.
+    // Restore focus to the composer whenever we return to an interactive state,
+    // but only when the user has no active text selection (avoid clearing copy intent).
     effect(() => {
       if (this.isRunning() || this.isTerminal()) return
-      queueMicrotask(() => this.composerInput?.nativeElement.focus())
+      queueMicrotask(() => {
+        if (hasActiveSelection()) return
+        this.composerInput?.nativeElement.focus()
+      })
     })
 
     // Auto-scroll to bottom whenever the timeline or streaming text changes,
     // but only when the user is already at the bottom (magnetic behaviour).
+    // Skip when the user has an active text selection to avoid disrupting copy intent.
     effect(() => {
-      // Depend on timeline and streamingText so the effect re-runs on content changes.
       this.timeline()
       this.streamingText()
 
       if (this.isAtBottom()) {
-        // Defer to next microtask so the DOM has updated before we measure.
-        queueMicrotask(() => this.scrollToBottom())
+        queueMicrotask(() => {
+          if (hasActiveSelection()) return
+          this.scrollToBottom()
+        })
       }
     })
 
@@ -853,6 +866,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       localStorage.setItem(CaseChatComponent.SHOW_TECHNICAL_KEY, String(next))
       return next
     })
+  }
+
+  /** Extract plain text from a message item for clipboard copy. */
+  protected messageText(item: TimelineItem & { kind: 'message' }): string {
+    return this.extractText(item.event)
   }
 
   // ---------------------------------------------------------------------------

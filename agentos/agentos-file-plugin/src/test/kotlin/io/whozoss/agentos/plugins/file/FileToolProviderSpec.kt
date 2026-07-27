@@ -30,15 +30,16 @@ class FileToolProviderSpec : StringSpec() {
             provider.provideTools(null) shouldBe emptyList()
         }
 
-        "read-write config produces 8 tools" {
+        "read-write config produces 9 tools" {
             val config = jacksonObjectMapper().readTree("""{"rootPath": "${tempDir.pathString}"}"""
             .trimIndent())
             val tools = FileToolProvider().provideTools(config, "TEST")
-            tools.size shouldBe 8
+            tools.size shouldBe 9
             tools.map { it.name } shouldContainAll listOf(
                 "TEST__listFiles",
                 "TEST__readFile",
                 "TEST__readAsImage",
+                "TEST__readDocument",
                 "TEST__readSpreadsheet",
                 "TEST__searchFiles",
                 "TEST__editFiles",
@@ -47,16 +48,17 @@ class FileToolProviderSpec : StringSpec() {
             )
         }
 
-        "read-only config produces 5 tools" {
+        "read-only config produces 6 tools" {
             val config = jacksonObjectMapper().readTree(
                 """{"rootPath": "${tempDir.pathString}", "readOnly": true}""",
             )
             val tools = FileToolProvider().provideTools(config, "TEST")
-            tools.size shouldBe 5
+            tools.size shouldBe 6
             tools.map { it.name } shouldContainAll listOf(
                 "TEST__listFiles",
                 "TEST__readFile",
                 "TEST__readAsImage",
+                "TEST__readDocument",
                 "TEST__readSpreadsheet",
                 "TEST__searchFiles",
             )
@@ -95,7 +97,7 @@ class FileToolProviderSpec : StringSpec() {
                 """{"rootPath": "${tempDir.pathString}", "extraDenyPatterns": null}""",
             )
             val tools = FileToolProvider().provideTools(config, "TEST")
-            tools.size shouldBe 8
+            tools.size shouldBe 9
         }
 
         "readMaxSizeMb propagation to ReadAsImageTool" {

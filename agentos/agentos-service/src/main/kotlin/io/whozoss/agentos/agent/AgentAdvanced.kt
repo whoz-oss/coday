@@ -138,6 +138,7 @@ class AgentAdvanced(
 
                     val intention =
                         intentionGenerator.generate(
+                            agentName = name,
                             context = context,
                             events = accumulatedEvents,
                             namespaceId = namespaceId,

@@ -320,6 +320,30 @@
     line-height: 1;
   }
 
+  &__bubble-wrapper {
+    position: relative;
+
+    &:hover .case-chat__bubble-copy {
+      opacity: 1;
+    }
+  }
+
+  &__bubble-copy {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 1;
+
+    // On user bubbles (dark background), override the icon color so
+    // the default-variant icon-button is visible against the accent bg.
+    .case-chat__turn--user & {
+      --color-text-secondary: rgba(255, 255, 255, 0.7);
+      --color-primary: rgba(255, 255, 255, 0.9);
+    }
+  }
+
   &__bubble {
     @include ds.surface-bubble-agent;
 

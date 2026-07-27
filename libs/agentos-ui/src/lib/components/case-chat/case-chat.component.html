@@ -50,7 +50,10 @@
                     <pre class="case-chat__session-context-body">{{ item.event.sessionContext | json }}</pre>
                   </div>
                 }
-                <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+                <div class="case-chat__bubble-wrapper">
+                  <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+                  <ds-copy-button class="case-chat__bubble-copy" [text]="messageText(item)" title="Copy message" />
+                </div>
               </div>
             } @else if (item.kind === 'streaming') {
               <div class="case-chat__turn case-chat__turn--agent case-chat__turn--streaming">
