@@ -1,8 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.caseEvent.CaseEventService
-import io.whozoss.agentos.entity.EntityCrudDelegate
-import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
@@ -65,36 +63,18 @@ class CaseController(
     private val permissionService: PermissionService,
     private val starredService: StarredService,
 ) : CaseApi {
-    private val crud =
-        EntityCrudDelegate(
-            service = caseService,
-            userService = userService,
-            permissions = permissionService,
-            entityType = EntityType.CASE,
-            toResource = { toDto(it as Case) },
-            toDomain = { resource ->
-                val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
-                Case(
-                    metadata = metadata,
-                    namespaceId = resource.namespaceId,
-                    status = resource.status,
-                    title = resource.title ?: "Case ${metadata.id}",
-                )
-            },
-        )
-
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
     @HideOnAccessDenied
     override fun getById(
         @PathVariable id: UUID,
-    ): CaseDto = crud.getById(id)
+    ): CaseDto = caseService.getById(id).withLastMessageAt()
 
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(
         @RequestBody request: SdkGetByIdsRequest,
-    ): List<CaseDto> = crud.getByIds(GetByIdsRequest(request.ids, request.withRemoved))
+    ): List<CaseDto> = caseService.findByIds(request.ids, request.withRemoved).withLastMessageAt()
 
     /**
      * GET /api/cases/by-parentId/{parentId} — list cases in a namespace.
@@ -191,29 +171,39 @@ class CaseController(
     override fun create(
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
-        val created = crud.create(resource)
-        val caseId = created.id ?: error("Created case must have an id")
+        val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
+        val domain =
+            Case(
+                metadata = metadata,
+                namespaceId = resource.namespaceId,
+                status = resource.status,
+                title = resource.title ?: "Case ${metadata.id}",
+            )
+        val saved = caseService.create(domain)
         val userId = userService.getCurrentUser().id.toString()
         val granted =
             runCatching {
                 permissionService.grantPermission(
                     userId,
                     EntityType.CASE,
-                    caseId.toString(),
+                    saved.id.toString(),
                     PermissionRelation.ADMIN,
                 )
             }.onFailure { e ->
                 logger.warn(e) {
-                    "Auto-ADMIN grant failed for case $caseId (user $userId) — case persisted. " +
+                    "Auto-ADMIN grant failed for case ${saved.id} (user $userId) — case persisted. " +
                         "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
                 }
             }.isSuccess
         if (granted) {
-            logger.info { "User $userId created case $caseId with auto-ADMIN grant" }
+            logger.info { "User $userId created case ${saved.id} with auto-ADMIN grant" }
         }
         // Surface the creator's fresh direct relation so the UI enables ADMIN-only actions
         // (delete) on the new case immediately, without waiting for a list refresh to enrich it.
-        return if (granted) created.copy(role = PermissionRelation.ADMIN.name) else created
+        // lastMessageAt is intentionally omitted: a newly created case has no messages yet,
+        // so the field is always null and the query would be a wasted round-trip.
+        val dto = toDto(saved)
+        return if (granted) dto.copy(role = PermissionRelation.ADMIN.name) else dto
     }
 
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -225,16 +215,15 @@ class CaseController(
         val existing =
             caseService.findById(id)
                 ?: throw ResourceNotFoundException("Case not found: $id")
-        return toDto(
-            caseService.update(
+        return caseService
+            .update(
                 existing.copy(
                     // namespaceId and status are mass-assignment-guarded:
                     // namespaceId is the transitivity key for permissions;
                     // status is driven by the runtime lifecycle, not PUT.
                     title = resource.title ?: existing.title,
                 ),
-            ),
-        )
+            ).withLastMessageAt()
     }
 
     @DeleteMapping("/{id}")
@@ -242,7 +231,9 @@ class CaseController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     override fun delete(
         @PathVariable id: UUID,
-    ) = crud.delete(id)
+    ) {
+        if (!caseService.delete(id)) throw ResourceNotFoundException("Case not found: $id")
+    }
 
     @GetMapping("/by-user/{userId}")
     override fun listByUser(
@@ -357,6 +348,11 @@ class CaseController(
         }
         logger.info { "User $userId unstarred case $id" }
     }
+
+    /**
+     * Enrich a single [Case] with [CaseDto.lastMessageAt].
+     */
+    private fun Case.withLastMessageAt(): CaseDto = listOf(this).withLastMessageAt().first()
 
     /**
      * Enrich a list of [Case]s with [CaseDto.lastMessageAt] only — no role/favorite.
