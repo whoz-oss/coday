@@ -38,16 +38,6 @@
 
       <!-- Header actions: attach + star + delete (or confirmation) -->
       @if (!confirmingDelete()) {
-        <!-- Attach files -->
-        @if (canAttach()) {
-          <ds-icon-button
-            icon="attach_file"
-            variant="default"
-            title="Attach files"
-            [disabled]="!canStageFiles()"
-            (action)="attachmentsUi.openPicker()"
-          />
-        }
         <!-- Star -->
         <ds-icon-button
           [icon]="activeCase()?.favorite ? 'star' : 'star_border'"
