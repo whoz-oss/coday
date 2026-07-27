@@ -111,8 +111,10 @@
   --glass-backdrop-blur: blur(20px);
 }
 
-/* ── Dark Theme ────────────────────────────────────────────────────────────────────── */
-[data-theme='dark'] {
+/* ── Industry Dark ─────────────────────────────────────────────────────────────────── */
+/* Alias : data-theme="dark" conservé pour compatibilité legacy + industry-dark         */
+[data-theme='dark'],
+[data-theme='industry-dark'] {
   /* ── Accent acier (Industry) — dark ─────────────────────────────────────────────── */
   --color-accent: #749dc4;
   --color-accent-100: #1d2d3d;
@@ -208,5 +210,213 @@
   --glass-bg: rgba(35, 37, 39, 0.9);
   --glass-border: rgba(255, 255, 255, 0.1);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --glass-backdrop-blur: blur(20px);
+}
+
+/* ── Terminal Light ─────────────────────────────────────────────────────────────────── */
+[data-theme='terminal-light'] {
+  /* ── Typographie ── */
+  --font-body: 'JetBrains Mono', ui-monospace, monospace;
+  --font-heading: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* ── Accent ambre foncé ── */
+  --color-accent: #a35a00;
+  --color-accent-100: #f4f1e8;
+  --color-accent-200: #ece0c8;
+  --color-accent-300: #dcc79a;
+  --color-accent-600: #b37a29;
+  --color-accent-700: #7a4400;
+  --color-accent-800: #5c3300;
+  --color-accent-900: #3d2200;
+
+  /* ── Neutral scale ── */
+  --color-neutral-100: #f4f1e8;
+  --color-neutral-200: #ece7d8;
+  --color-neutral-500: #8f8567;
+  --color-neutral-600: #6b6555;
+  --color-neutral-700: #4a4433;
+  --color-neutral-900: #1c1a12;
+
+  /* ── Rouge sémantique (inchangé) ── */
+  --red: #ec3013;
+  --red-deep: #ae1800;
+  --red-bg: #ffe0d9;
+
+  /* ── Surface / fond ── */
+  --color-bg: #f4f1e8;
+  --color-bg-solid: #f4f1e8;
+  --color-surface: #ece7d8;
+  --color-surface-secondary: #ece7d8;
+  --color-bg-secondary: rgba(244, 241, 232, 0.7);
+  --color-bg-secondary-rgb: 244 241 232;
+  --color-text: #1c1a12;
+  --color-text-secondary: #4a4433;
+  --color-text-tertiary: #8f8567;
+  --color-text-inverse: #f4f1e8;
+  --color-text-on-accent: #f4f1e8;
+
+  /* ── Interactive ── */
+  --color-primary: #a35a00;
+  --color-primary-hover: #7a4400;
+  --color-link: #7a4400;
+  --color-bg-hover: rgba(28, 26, 18, 0.06);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-muted: rgba(28, 26, 18, 0.04);
+  --color-input-bg: #ece7d8;
+
+  /* ── Borders / Dividers ── */
+  --color-divider: #1c1a12;
+  --color-border: var(--color-divider);
+  --color-border-light: rgba(28, 26, 18, 0.3);
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 3px rgba(28, 26, 18, 0.15), 0 1px 2px rgba(28, 26, 18, 0.1);
+  --shadow-lg: 0 10px 25px rgba(28, 26, 18, 0.2), 0 4px 10px rgba(28, 26, 18, 0.12);
+  --color-shadow: rgba(28, 26, 18, 0.12);
+
+  /* ── Status ── */
+  --color-success: #34c759;
+  --color-success-bg: #e3f5e1;
+  --color-error: #ec3013;
+  --color-warning: #b37a29;
+  --color-info: #5ac8fa;
+
+  /* ── Case status ── */
+  --status-pending-color: #b37a29;
+  --status-pending-text: #7a4400;
+  --status-pending-bg: rgba(163, 90, 0, 0.1);
+  --status-idle-color: #8f8567;
+  --status-idle-text: var(--color-neutral-600);
+  --status-idle-bg: rgba(143, 133, 103, 0.08);
+  --status-killed-color: #6b6555;
+  --status-killed-text: var(--color-neutral-700);
+  --status-killed-bg: rgba(107, 101, 85, 0.08);
+
+  /* ── Modal / Dialog ── */
+  --color-modal-bg: #f4f1e8;
+  --color-modal-border: #1c1a12;
+  --color-modal-shadow: 0 8px 40px rgba(28, 26, 18, 0.25), 0 2px 8px rgba(28, 26, 18, 0.15);
+  --color-overlay: rgba(28, 26, 18, 0.5);
+
+  /* ── Code ── */
+  --color-code-bg: rgba(28, 26, 18, 0.06);
+  --color-code-text: #a35a00;
+
+  /* ── Chat bubbles ── */
+  --color-message-user: rgba(163, 90, 0, 0.1);
+  --color-message-ai: rgba(244, 241, 232, 0.8);
+  --color-bubble-agent-bg: #ece7d8;
+  --color-bubble-user-bg: #ece0c8;
+  --color-bubble-system-bg: #1c1a12;
+  --color-bubble-system-text: #f4f1e8;
+
+  /* ── Glass morphism — legacy ── */
+  --glass-bg: rgba(244, 241, 232, 0.72);
+  --glass-border: rgba(28, 26, 18, 0.15);
+  --glass-shadow: 0 8px 32px 0 rgba(28, 26, 18, 0.15);
+  --glass-backdrop-blur: blur(20px);
+}
+
+/* ── Terminal Dark (CRT) ────────────────────────────────────────────────────────────── */
+[data-theme='terminal-dark'] {
+  /* ── Typographie ── */
+  --font-body: 'JetBrains Mono', ui-monospace, monospace;
+  --font-heading: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* ── Accent ambre CRT ── */
+  --color-accent: #ffb000;
+  --color-accent-100: #2a1f00;
+  --color-accent-200: #3d2d00;
+  --color-accent-300: #5c4300;
+  --color-accent-600: #c78e00;
+  --color-accent-700: #ffc84d;
+  --color-accent-800: #ffdb85;
+  --color-accent-900: #ffedbd;
+
+  /* ── Neutral scale ── */
+  --color-neutral-100: #14170f;
+  --color-neutral-200: #1c2016;
+  --color-neutral-500: #7a8272; /* renforcé vs palette (#5a5f4e) pour lisibilité icônes sur fond #0b0d0a */
+  --color-neutral-600: #a3ab96;
+  --color-neutral-700: #c4cab8;
+  --color-neutral-900: #d8dcd0;
+
+  /* ── Rouge sémantique ── */
+  --red: #ff563c;
+  --red-deep: #ff9783;
+  --red-bg: #4d170e;
+
+  /* ── Surface / fond ── */
+  --color-bg: #0b0d0a;
+  --color-bg-solid: #0b0d0a;
+  --color-surface: #14170f;
+  --color-surface-secondary: #14170f;
+  --color-bg-secondary: rgba(20, 23, 15, 0.72);
+  --color-bg-secondary-rgb: 20 23 15;
+  --color-text: #d8dcd0;
+  --color-text-secondary: #a3ab96;
+  --color-text-tertiary: #7a8272;
+  --color-text-inverse: #0b0d0a;
+  --color-text-on-accent: #0b0d0a;
+
+  /* ── Interactive ── */
+  --color-primary: #ffb000;
+  --color-primary-hover: #ffc84d;
+  --color-link: #ffc84d;
+  --color-bg-hover: rgba(216, 220, 208, 0.08);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-muted: rgba(216, 220, 208, 0.05);
+  --color-input-bg: #14170f;
+
+  /* ── Borders / Dividers ── */
+  --color-divider: #3a3f30;
+  --color-border: var(--color-divider);
+  --color-border-light: rgba(58, 63, 48, 0.6);
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.7), 0 4px 10px rgba(0, 0, 0, 0.5);
+  --color-shadow: rgba(0, 0, 0, 0.6);
+
+  /* ── Status ── */
+  --color-success: #32d74b;
+  --color-success-bg: rgba(50, 215, 75, 0.15);
+  --color-error: #ff563c;
+  --color-warning: #ffb000;
+  --color-info: #64d2ff;
+
+  /* ── Case status ── */
+  --status-pending-color: #ffb000;
+  --status-pending-text: #ffc84d;
+  --status-pending-bg: rgba(255, 176, 0, 0.12);
+  --status-idle-color: #5a5f4e;
+  --status-idle-text: var(--color-neutral-600);
+  --status-idle-bg: rgba(90, 95, 78, 0.1);
+  --status-killed-color: #3a3f30;
+  --status-killed-text: var(--color-neutral-700);
+  --status-killed-bg: rgba(58, 63, 48, 0.12);
+
+  /* ── Modal / Dialog ── */
+  --color-modal-bg: #14170f;
+  --color-modal-border: #3a3f30;
+  --color-modal-shadow: 0 8px 48px rgba(0, 0, 0, 0.8), 0 2px 12px rgba(0, 0, 0, 0.6);
+  --color-overlay: rgba(0, 0, 0, 0.85);
+
+  /* ── Code ── */
+  --color-code-bg: rgba(216, 220, 208, 0.08);
+  --color-code-text: #ffb000;
+
+  /* ── Chat bubbles ── */
+  --color-message-user: rgba(255, 176, 0, 0.1);
+  --color-message-ai: rgba(20, 23, 15, 0.72);
+  --color-bubble-agent-bg: #14170f;
+  --color-bubble-user-bg: #3d2d00;
+  --color-bubble-system-bg: #0b0d0a;
+  --color-bubble-system-text: #d8dcd0;
+
+  /* ── Glass morphism — legacy ── */
+  --glass-bg: rgba(20, 23, 15, 0.92);
+  --glass-border: rgba(216, 220, 208, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
   --glass-backdrop-blur: blur(20px);
 }
