@@ -2156,6 +2156,163 @@ paths:
           description: OK
       tags:
       - prompt-controller
+  /api/scheduled-prompts:
+    post:
+      operationId: createScheduledPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledPrompt"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledPrompt"
+          description: Created
+      tags:
+      - scheduled-prompt-controller
+  /api/scheduled-prompts/by-ids:
+    post:
+      operationId: getByIdsScheduledPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduledPrompt"
+          description: OK
+      tags:
+      - scheduled-prompt-controller
+  /api/scheduled-prompts/effective:
+    post:
+      operationId: effectiveScheduledPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledPromptEffectiveRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduledPrompt"
+          description: OK
+      summary: Effective scheduled prompts for a user in a namespace
+      tags:
+      - scheduled-prompt-controller
+  /api/scheduled-prompts/search:
+    post:
+      operationId: searchScheduledPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledPromptSearchRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduledPrompt"
+          description: OK
+      summary: List ScheduledPrompts at an exact scope level
+      tags:
+      - scheduled-prompt-controller
+  /api/scheduled-prompts/{id}:
+    delete:
+      operationId: deleteScheduledPrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - scheduled-prompt-controller
+    get:
+      operationId: getByIdScheduledPrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledPrompt"
+          description: OK
+      tags:
+      - scheduled-prompt-controller
+    put:
+      operationId: updateScheduledPrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledPrompt"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledPrompt"
+          description: OK
+      tags:
+      - scheduled-prompt-controller
+  /api/scheduled-prompts/{id}/toggle:
+    patch:
+      operationId: toggleScheduledPrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledPrompt"
+          description: OK
+      summary: Toggle a scheduled prompt enabled/disabled
+      tags:
+      - scheduled-prompt-controller
   /api/user-groups:
     get:
       operationId: findByNamespaceIdUserGroup
@@ -3395,6 +3552,27 @@ components:
       - toolName
       - toolRequestId
       - type
+    Planning:
+      type: object
+      properties:
+        endDate:
+          type: string
+          format: date
+        endType:
+          type: string
+          enum:
+          - NEVER
+          - ON_DATE
+          - OCCURRENCES
+        occurrenceCount:
+          type: integer
+          format: int32
+        startDate:
+          type: string
+          format: date
+      required:
+      - endType
+      - startDate
     PluginActionResponse:
       type: object
       properties:
@@ -3599,6 +3777,141 @@ components:
       - questionType
       - timestamp
       - type
+    Recurrence:
+      type: object
+      properties:
+        days:
+          type: array
+          items:
+            type: string
+            enum:
+            - MONDAY
+            - TUESDAY
+            - WEDNESDAY
+            - THURSDAY
+            - FRIDAY
+            - SATURDAY
+            - SUNDAY
+        every:
+          type: integer
+          format: int32
+        timeUtc:
+          type: string
+        unit:
+          type: string
+          enum:
+          - DAY
+          - WEEK
+          - MONTH
+      required:
+      - days
+      - every
+      - timeUtc
+      - unit
+    ScheduledPrompt:
+      type: object
+      properties:
+        agentConfigId:
+          type: string
+          format: uuid
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        description:
+          type: string
+        enabled:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        lastRunAt:
+          type: string
+          format: date-time
+        name:
+          type: string
+          minLength: 1
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        nextRunAt:
+          type: string
+          format: date-time
+        planning:
+          $ref: "#/components/schemas/Planning"
+        promptContent:
+          type: string
+          minLength: 1
+        recurrence:
+          $ref: "#/components/schemas/Recurrence"
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
+      required:
+      - agentConfigId
+      - enabled
+      - name
+      - planning
+      - promptContent
+      - recurrence
+    ScheduledPromptEffectiveRequest:
+      type: object
+      properties:
+        agentConfigId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        namespaceExternalId:
+          type:
+          - string
+          - "null"
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        userExternalId:
+          type:
+          - string
+          - "null"
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
+    ScheduledPromptSearchRequest:
+      type: object
+      properties:
+        agentConfigIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        namespaceExternalId:
+          type:
+          - string
+          - "null"
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
     SyncUserRolesRequest:
       type: object
       properties:
