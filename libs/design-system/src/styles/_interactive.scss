@@ -207,8 +207,9 @@
 /// Standalone destructive confirm button — solid red, heading font.
 /// Used in delete confirmation flows (tooltip compact, header inline, tree node).
 ///
-/// @param {Length} $height [26px] — button height
-@mixin confirm-btn-danger($height: 26px) {
+/// @param {Length} $height [26px]    — button height
+/// @param {Length} $icon-size [16px] — size of any .material-icons child
+@mixin confirm-btn-danger($height: 26px, $icon-size: 16px) {
   @include button-reset;
 
   display: inline-flex;
@@ -226,6 +227,11 @@
   transition:
     background 140ms,
     border-color 140ms;
+
+  .material-icons {
+    font-size: $icon-size;
+    line-height: 1;
+  }
 
   &:hover {
     background: var(--red-deep);

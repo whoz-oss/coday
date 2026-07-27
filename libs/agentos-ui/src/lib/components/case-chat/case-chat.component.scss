@@ -37,20 +37,10 @@
   flex: 1;
 }
 
-// Action buttons (star, delete)
-.case-chat__header-action {
-  @include ds.action-btn(30px);
-
-  flex: none;
-
-  &--active {
-    color: var(--color-accent);
-  }
-
-  &--danger-idle:hover {
-    background: color-mix(in srgb, var(--red) 12%, transparent);
-    color: var(--red);
-  }
+// Star active state — ds-icon-button doesn't have a built-in active variant.
+// We override the color token consumed by variant-default directly on the host tag.
+.case-chat__header-star--active {
+  --color-text-secondary: var(--color-accent);
 }
 
 // Inline delete confirmation
@@ -79,23 +69,15 @@
 }
 
 .case-chat__header-confirm-no {
-  width: 30px;
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
+  @include ds.icon-button(30px);
+
   border: 1px solid var(--color-divider);
-  background: var(--color-bg);
-  cursor: pointer;
   color: var(--color-neutral-600);
-  transition:
-    color 140ms,
-    border-color 140ms;
 
   &:hover {
     color: var(--color-text);
     border-color: var(--color-neutral-500);
+    background: var(--color-bg-hover);
   }
 }
 
