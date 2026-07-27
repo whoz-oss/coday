@@ -76,7 +76,7 @@ class ScheduledPromptController(
             entityType = EntityType.SCHEDULED_PROMPT,
             toResource = { entity ->
                 val sp = entity as ScheduledPrompt
-                val promptContent = promptService.findById(sp.promptId)?.content?.firstOrNull() ?: ""
+                val promptContent = promptService.findById(sp.promptTemplateId)?.content?.firstOrNull() ?: ""
                 toDto(sp, promptContent)
             },
         )
@@ -115,7 +115,7 @@ class ScheduledPromptController(
         }
         return scheduledPromptService.findByScope(resolvedNs, request.userId, request.agentConfigIds)
             .map { sp ->
-                val promptContent = promptService.findById(sp.promptId)?.content?.firstOrNull() ?: ""
+                val promptContent = promptService.findById(sp.promptTemplateId)?.content?.firstOrNull() ?: ""
                 toDto(sp, promptContent)
             }
     }
@@ -139,7 +139,7 @@ class ScheduledPromptController(
             .let { sps ->
                 if (request.agentConfigId != null) sps.filter { it.agentConfigId == request.agentConfigId } else sps
             }.map { sp ->
-                val promptContent = promptService.findById(sp.promptId)?.content?.firstOrNull() ?: ""
+                val promptContent = promptService.findById(sp.promptTemplateId)?.content?.firstOrNull() ?: ""
                 toDto(sp, promptContent)
             }
     }
@@ -203,7 +203,7 @@ class ScheduledPromptController(
             namespaceId = resolvedNs,
             userId = resolvedUser,
             agentConfigId = resource.agentConfigId,
-            promptId = prompt.id,
+            promptTemplateId = prompt.id,
             name = resource.name,
             description = resource.description,
             recurrence = resource.recurrence.toDomain(),
@@ -222,8 +222,8 @@ class ScheduledPromptController(
         val existing = scheduledPromptService.findById(id)
             ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
 
-        val existingPrompt = promptService.findById(existing.promptId)
-            ?: throw ResourceNotFoundException("Prompt not found: ${existing.promptId}")
+        val existingPrompt = promptService.findById(existing.promptTemplateId)
+            ?: throw ResourceNotFoundException("Prompt not found: ${existing.promptTemplateId}")
         val agentConfig = agentConfigService.findById(existing.agentConfigId)
             ?: throw ResourceNotFoundException("AgentConfig not found: ${existing.agentConfigId}")
         promptService.update(
@@ -247,7 +247,7 @@ class ScheduledPromptController(
         val existing = scheduledPromptService.findById(id)
             ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
         crud.delete(id)
-        promptService.delete(existing.promptId)
+        promptService.delete(existing.promptTemplateId)
     }
 
     @PatchMapping("/{id}/toggle")
@@ -258,7 +258,7 @@ class ScheduledPromptController(
         scheduledPromptService.findById(id)
             ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
         val toggled = scheduledPromptService.toggle(id)
-        val promptContent = promptService.findById(toggled.promptId)?.content?.firstOrNull() ?: ""
+        val promptContent = promptService.findById(toggled.promptTemplateId)?.content?.firstOrNull() ?: ""
         return toDto(toggled, promptContent)
     }
 

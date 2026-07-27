@@ -53,11 +53,11 @@ class ScheduledPromptServiceImpl(
         }
         validateAgentConfigScope(entity, agentConfig)
 
-        val prompt = promptService.findById(entity.promptId)
-            ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptId}")
+        val prompt = promptService.findById(entity.promptTemplateId)
+            ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptTemplateId}")
         if (prompt.agentConfigId != null) {
             throw BadRequestException(
-                "Prompt ${entity.promptId} is linked to agent ${prompt.agentConfigId}. " +
+                "Prompt ${entity.promptTemplateId} is linked to agent ${prompt.agentConfigId}. " +
                     "Only generic prompts (agentConfigId = null) may be associated with a ScheduledPrompt.",
             )
         }
@@ -73,8 +73,8 @@ class ScheduledPromptServiceImpl(
     }
 
     override fun update(entity: ScheduledPrompt): ScheduledPrompt {
-        promptService.findById(entity.promptId)
-            ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptId}")
+        promptService.findById(entity.promptTemplateId)
+            ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptTemplateId}")
 
         repository.findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }

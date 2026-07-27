@@ -46,7 +46,7 @@ data class ScheduledPromptNode(
     val namespaceId: String? = null,
     val userId: String? = null,
     val agentConfigId: String,
-    val promptId: String,
+    val promptTemplateId: String,
     val name: String,
     val description: String? = null,
     // --- Recurrence fields (flattened) ---
@@ -85,7 +85,7 @@ data class ScheduledPromptNode(
             namespaceId = namespaceId?.let { UUID.fromString(it) },
             userId = userId?.let { UUID.fromString(it) },
             agentConfigId = UUID.fromString(agentConfigId),
-            promptId = UUID.fromString(promptId),
+            promptTemplateId = UUID.fromString(promptTemplateId),
             name = name,
             description = description,
             recurrence = Recurrence(
@@ -117,7 +117,7 @@ data class ScheduledPromptNode(
                 namespaceId = sp.namespaceId?.toString(),
                 userId = sp.userId?.toString(),
                 agentConfigId = sp.agentConfigId.toString(),
-                promptId = sp.promptId.toString(),
+                promptTemplateId = sp.promptTemplateId.toString(),
                 name = sp.name,
                 description = sp.description,
                 every = sp.recurrence.every,

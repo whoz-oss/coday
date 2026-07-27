@@ -89,7 +89,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         namespaceId = nsId,
         userId = userId,
         agentConfigId = agentId,
-        promptId = pId,
+        promptTemplateId = pId,
         name = name,
         description = description,
         recurrence = recurrence,
@@ -204,7 +204,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
         "create succeeds when prompt has no agentConfigId" {
             every { promptService.findById(promptId) } returns defaultPrompt(linkedAgentId = null)
-            newService().create(sp()).promptId shouldBe promptId
+            newService().create(sp()).promptTemplateId shouldBe promptId
         }
 
         "create throws BadRequestException when prompt has agentConfigId" {
@@ -349,7 +349,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             val saved = svc.create(sp())
             val unknownPId = UUID.randomUUID()
             every { promptService.findById(unknownPId) } returns null
-            shouldThrow<ResourceNotFoundException> { svc.update(saved.copy(promptId = unknownPId)) }
+            shouldThrow<ResourceNotFoundException> { svc.update(saved.copy(promptTemplateId = unknownPId)) }
         }
 
         "delete returns true and soft-deletes" {
@@ -521,8 +521,8 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             newService().create(sp(description = "Daily standup")).description shouldBe "Daily standup"
         }
 
-        "promptId round-trips" {
-            newService().create(sp()).promptId shouldBe promptId
+        "promptTemplateId round-trips" {
+            newService().create(sp()).promptTemplateId shouldBe promptId
         }
     }
 }

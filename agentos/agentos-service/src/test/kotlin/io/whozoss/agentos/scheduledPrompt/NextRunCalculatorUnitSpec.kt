@@ -43,7 +43,7 @@ class NextRunCalculatorUnitSpec : StringSpec({
         metadata = EntityMetadata(id = UUID.randomUUID()),
         namespaceId = null,
         agentConfigId = agentId,
-        promptId = promptId,
+        promptTemplateId = promptId,
         name = "test",
         recurrence = Recurrence(every = every, unit = unit, days = days, timeUtc = timeUtc),
         planning = Planning(

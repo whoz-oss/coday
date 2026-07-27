@@ -83,7 +83,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         namespaceId = nsId,
         userId = uid,
         agentConfigId = agentConfigId,
-        promptId = promptId,
+        promptTemplateId = promptId,
         name = name,
         recurrence = recurrence,
         planning = planning,
@@ -270,7 +270,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         every { promptService.create(any()) } returns defaultPrompt().copy(metadata = EntityMetadata(id = newPromptId))
         every { service.create(any()) } returns sp()
         controller.create(dto())
-        verify { service.create(match { it.promptId == newPromptId }) }
+        verify { service.create(match { it.promptTemplateId == newPromptId }) }
     }
 
     "create throws 404 when agentConfig not found" {
@@ -386,6 +386,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         every { service.findById(id) } returns sp(id = id)
         every { service.delete(id) } returns true
         controller.delete(id)
+        // promptId here is the local test variable (UUID), used as the promptTemplateId in sp()
         verify { promptService.delete(promptId) }
     }
 

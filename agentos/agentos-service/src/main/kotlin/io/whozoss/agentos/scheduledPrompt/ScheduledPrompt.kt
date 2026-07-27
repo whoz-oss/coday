@@ -88,7 +88,7 @@ data class ScheduledPrompt(
      * Reference to a generic Prompt (agentConfigId = null).
      * Managed by the backend; not exposed in the public API.
      */
-    val promptId: UUID,
+    val promptTemplateId: UUID,
     val name: String,
     val description: String? = null,
     val recurrence: Recurrence,
