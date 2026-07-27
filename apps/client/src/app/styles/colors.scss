@@ -22,11 +22,11 @@
   --color-accent-900: #1d2d3d;
 
   /* ── Neutral scale (Industry) — light ─────────────────────────────────────────────── */
-  --color-neutral-100: #f5f5f8;
+  --color-neutral-100: #ebebed;
   --color-neutral-200: #e9e9ea;
   --color-neutral-500: #98989b;
   --color-neutral-600: #7a7a7d;
-  --color-neutral-700: #374151;
+  --color-neutral-700: #5c5c5f;
   --color-neutral-900: #111827;
 
   /* ── Sémantique — rouge (Modernist) — light ─────────────────────────────────────────────── */
@@ -37,12 +37,12 @@
   /* ── Light mode — Surface / fond ─────────────────────────────────────────────── */
   --color-bg: #f2f2f3;
   --color-bg-solid: #f2f2f3;
-  --color-surface: #e9e9ea;
-  --color-surface-secondary: #e9e9ea;
+  --color-surface: #dcdcde;
+  --color-surface-secondary: #dcdcde;
   --color-bg-secondary: rgba(255, 255, 255, 0.7); /* legacy alias */
   --color-bg-secondary-rgb: 255 255 255;
   --color-text: #1d1f20;
-  --color-text-secondary: #7a7a7d;
+  --color-text-secondary: #5c5c5f;
   --color-text-tertiary: #98989b;
   --color-text-inverse: #ffffff;
   --color-text-on-accent: #ffffff;
@@ -54,7 +54,7 @@
   --color-bg-hover: rgba(29, 31, 32, 0.06);
   --color-surface-hover: var(--color-bg-hover);
   --color-surface-muted: rgba(29, 31, 32, 0.04);
-  --color-input-bg: #e9e9ea;
+  --color-input-bg: #dcdcde;
 
   /* ── Light mode — Borders / Dividers ─────────────────────────────────────────────── */
   --color-divider: rgba(29, 31, 32, 0.16);
@@ -99,7 +99,7 @@
   /* ── Light mode — Chat bubbles ─────────────────────────────────────────────── */
   --color-message-user: rgba(89, 128, 166, 0.12);
   --color-message-ai: rgba(255, 255, 255, 0.8);
-  --color-bubble-agent-bg: #f5f5f8;
+  --color-bubble-agent-bg: #ebebed;
   --color-bubble-user-bg: #d6ebff;
   --color-bubble-system-bg: #1d1f20;
   --color-bubble-system-text: #f2f2f3;
@@ -128,7 +128,7 @@
   --color-neutral-200: #232527;
   --color-neutral-500: #98989b;
   --color-neutral-600: #b7b7ba;
-  --color-neutral-700: #d1d5db;
+  --color-neutral-700: #c4c4c7;
   --color-neutral-900: #f2f2f3;
 
   /* ── Sémantique — rouge (Modernist) — dark ─────────────────────────────────────────────── */

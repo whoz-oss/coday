@@ -216,7 +216,7 @@
       color: var(--color-accent-700);
     }
     .case-chat__turn--user & {
-      color: var(--color-neutral-500);
+      color: var(--color-neutral-700);
     }
   }
 
@@ -641,7 +641,7 @@
     min-height: 52px;
 
     &::placeholder {
-      color: var(--color-neutral-500);
+      color: var(--color-neutral-700);
     }
     &:disabled {
       opacity: 0.5;
@@ -659,7 +659,7 @@
   &__actions-hint {
     flex: 1;
     font-size: 11px;
-    color: var(--color-neutral-500);
+    color: var(--color-neutral-700);
     font-family: var(--font-body);
     white-space: nowrap;
     overflow: hidden;
