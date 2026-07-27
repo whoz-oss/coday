@@ -113,11 +113,7 @@ class ScheduledPromptController(
             )
             if (!granted) throw AccessDeniedException("Cannot read scheduled prompts in namespace $resolvedNs")
         }
-        return scheduledPromptService.findByScope(resolvedNs, request.userId, request.agentConfigIds)
-            .map { sp ->
-                val promptContent = promptService.findById(sp.promptTemplateId)?.content?.firstOrNull() ?: ""
-                toDto(sp, promptContent)
-            }
+        return spsToDto(scheduledPromptService.findByScope(resolvedNs, request.userId, request.agentConfigIds))
     }
 
     @Operation(summary = "Effective scheduled prompts for a user in a namespace")
@@ -137,10 +133,7 @@ class ScheduledPromptController(
         if (!granted) throw AccessDeniedException("Cannot read scheduled prompts in namespace $nsId")
         return scheduledPromptService.findEffective(nsId, currentUser.id)
             .filter { request.agentConfigId == null || it.agentConfigId == request.agentConfigId }
-            .map { sp ->
-                val promptContent = promptService.findById(sp.promptTemplateId)?.content?.firstOrNull() ?: ""
-                toDto(sp, promptContent)
-            }
+            .let { spsToDto(it) }
     }
 
     // -------------------------------------------------------------------------
@@ -259,6 +252,23 @@ class ScheduledPromptController(
         val toggled = scheduledPromptService.toggle(id)
         val promptContent = promptService.findById(toggled.promptTemplateId)?.content?.firstOrNull() ?: ""
         return toDto(toggled, promptContent)
+    }
+
+    // -------------------------------------------------------------------------
+    // Batch mapping helper
+    // -------------------------------------------------------------------------
+
+    /**
+     * Converts a list of [ScheduledPrompt]s to DTOs with a single [PromptService.findByIds] call.
+     * Avoids the N+1 query pattern present when calling [PromptService.findById] per prompt.
+     */
+    private fun spsToDto(sps: List<ScheduledPrompt>): List<ScheduledPromptDto> {
+        val promptsById = promptService
+            .findByIds(sps.map { it.promptTemplateId })
+            .associateBy { it.metadata.id }
+        return sps.map { sp ->
+            toDto(sp, promptsById[sp.promptTemplateId]?.content?.firstOrNull() ?: "")
+        }
     }
 
     // -------------------------------------------------------------------------
