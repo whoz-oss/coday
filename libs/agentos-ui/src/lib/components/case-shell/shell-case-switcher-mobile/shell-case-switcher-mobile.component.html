@@ -87,7 +87,7 @@
                   <div class="mobile-drawer__case-actions">
                     <button
                       class="mobile-drawer__case-btn"
-                      [class.mobile-drawer__case-btn--active]="c.starred"
+                      [class.mobile-drawer__case-btn--active]="!!$any(c).favorite || !!c.starred"
                       type="button"
                       title="Pin case"
                       (click)="onStarToggle($event, c)"
@@ -96,7 +96,7 @@
                         width="15"
                         height="15"
                         viewBox="0 0 24 24"
-                        [attr.fill]="c.starred ? 'currentColor' : 'none'"
+                        [attr.fill]="!!$any(c).favorite || !!c.starred ? 'currentColor' : 'none'"
                         stroke="currentColor"
                         stroke-width="1.5"
                         stroke-linecap="round"

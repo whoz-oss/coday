@@ -46,6 +46,7 @@
     [menuOpen]="menuOpen()"
     [isAdmin]="isAdmin()"
     [isDark]="isDark()"
+    [themeVariant]="themeVariant()"
     [showTechnical]="showTechnical()"
     (collapseRequested)="collapseSidebar()"
     (homeClicked)="navigateHome()"
@@ -60,6 +61,7 @@
     (menuClosed)="closeMenu($event)"
     (navigateTo)="onMenuNavigate($event)"
     (themeToggled)="onMenuToggleTheme()"
+    (themeVariantChanged)="onMenuThemeVariantChanged($event)"
     (logsToggled)="onMenuToggleLogs()"
   />
 

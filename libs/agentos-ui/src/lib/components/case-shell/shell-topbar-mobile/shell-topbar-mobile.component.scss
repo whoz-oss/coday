@@ -51,7 +51,6 @@
   position: relative;
   min-width: 0;
   flex: 1;
-  max-width: 200px;
 }
 
 .shell-topbar-mobile__ns-btn {
@@ -97,7 +96,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
-  max-width: 110px;
 }
 
 .shell-topbar-mobile__ns-chevron {
@@ -169,7 +167,7 @@
 // ── Spacer ────────────────────────────────────────────────────────────────────
 
 .shell-topbar-mobile__spacer {
-  flex: 1;
+  display: none;
 }
 
 // ── New case button ───────────────────────────────────────────────────────────

@@ -135,6 +135,9 @@
   cursor: pointer;
   background: transparent;
   border: 1px solid transparent;
+  width: calc(100% - 16px);
+  box-sizing: border-box;
+  overflow: hidden;
   transition:
     background 100ms,
     border-color 100ms;
@@ -170,6 +173,7 @@
   white-space: nowrap;
   font-size: 13.5px;
   color: var(--color-text);
+  text-align: left;
 }
 
 // ── Case action buttons (star + delete) ──────────────────────────────────
@@ -180,7 +184,7 @@
   align-items: center;
   gap: 1px;
   flex-shrink: 0;
-  opacity: 0.75;
+  margin-left: auto;
 }
 
 .mobile-drawer__case-btn {

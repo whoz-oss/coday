@@ -19,10 +19,12 @@
       [open]="menuOpen()"
       [isAdmin]="isAdmin()"
       [isDark]="isDark()"
+      [themeVariant]="themeVariant()"
       [showTechnical]="showTechnical()"
       variant="topbar"
       (navigateTo)="onNavigate($event)"
       (themeToggled)="onThemeToggle()"
+      (themeVariantChanged)="onThemeVariantChanged($event)"
       (logsToggled)="onLogsToggle()"
       (closed)="closeMenu($event)"
     />

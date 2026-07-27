@@ -2,13 +2,19 @@ import { Injectable, inject, OnDestroy } from '@angular/core'
 import { BehaviorSubject, Subscription } from 'rxjs'
 import { PreferencesService } from '../../services/preferences.service'
 
+export type ThemeVariant = 'industry' | 'terminal'
 export type ThemeMode = 'light' | 'dark' | 'system'
+
+export interface ThemeState {
+  variant: ThemeVariant
+  mode: ThemeMode
+}
 
 @Injectable({
   providedIn: 'root',
 })
 export class ThemeService implements OnDestroy {
-  private currentThemeSubject = new BehaviorSubject<ThemeMode>('light')
+  private currentThemeSubject = new BehaviorSubject<ThemeState>({ variant: 'industry', mode: 'light' })
   currentTheme$ = this.currentThemeSubject.asObservable()
 
   private preferences = inject(PreferencesService)
@@ -25,60 +31,57 @@ export class ThemeService implements OnDestroy {
   }
 
   private initializeTheme(): void {
-    // Subscribe to theme preference reactively.
-    // On desktop, loadPreferencesAsync() will emit the saved value from Electron storage
-    // once the IPC call completes, automatically applying the correct theme without polling.
-    this.subscription = this.preferences.theme$.subscribe((theme) => {
-      console.log('[THEME] Theme preference changed to:', theme)
-      this.applyTheme(theme as ThemeMode)
+    this.subscription = this.preferences.theme$.subscribe((mode) => {
+      const variant = (this.preferences.getPreference<string>('themeVariant') ?? 'industry') as ThemeVariant
+      const state: ThemeState = {
+        variant: ['industry', 'terminal'].includes(variant) ? variant : 'industry',
+        mode: (['light', 'dark', 'system'] as string[]).includes(mode) ? (mode as ThemeMode) : 'system',
+      }
+      console.log('[THEME] Theme preference changed to:', state)
+      this.applyTheme(state)
     })
   }
 
-  setTheme(theme: ThemeMode): void {
-    this.preferences.setPreference('theme', theme)
-    this.applyTheme(theme)
+  setTheme(state: ThemeState): void {
+    this.preferences.setPreference('themeVariant', state.variant)
+    this.preferences.setPreference('theme', state.mode)
+    this.applyTheme(state)
   }
 
-  getCurrentTheme(): ThemeMode {
+  getCurrentTheme(): ThemeState {
     return this.currentThemeSubject.value
   }
 
-  private applyTheme(theme: ThemeMode): void {
-    console.log('[THEME] Applying theme:', theme)
-    this.currentThemeSubject.next(theme)
+  private applyTheme(state: ThemeState): void {
+    console.log('[THEME] Applying theme:', state)
+    this.currentThemeSubject.next(state)
 
-    if (theme === 'system') {
-      if (typeof window !== 'undefined' && window.matchMedia) {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-        const resolvedTheme = prefersDark ? 'dark' : 'light'
-        console.log('[THEME] System theme resolved to:', resolvedTheme)
-        this.setDocumentTheme(resolvedTheme)
-      } else {
-        console.log('[THEME] matchMedia not available, defaulting to light theme')
-        this.setDocumentTheme('light')
-      }
-    } else {
-      this.setDocumentTheme(theme)
-    }
+    const resolvedMode: 'light' | 'dark' =
+      state.mode === 'system'
+        ? typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light'
+        : state.mode
+
+    this.setDocumentTheme(state.variant, resolvedMode)
   }
 
-  private setDocumentTheme(theme: 'light' | 'dark'): void {
-    console.log('[THEME] Setting document theme to:', theme)
-    if (typeof document !== 'undefined' && document.documentElement) {
-      if (theme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark')
-      } else {
-        document.documentElement.removeAttribute('data-theme')
-      }
+  private setDocumentTheme(variant: ThemeVariant, mode: 'light' | 'dark'): void {
+    if (typeof document === 'undefined' || !document.documentElement) return
+    const attr = variant === 'industry' && mode === 'light' ? null : `${variant}-${mode}`
+    if (attr) {
+      document.documentElement.setAttribute('data-theme', attr)
+    } else {
+      document.documentElement.removeAttribute('data-theme')
     }
   }
 
   private setupSystemThemeListener(): void {
     if (typeof window !== 'undefined' && window.matchMedia) {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-        const currentTheme = this.getCurrentTheme()
-        if (currentTheme === 'system') {
-          this.setDocumentTheme(e.matches ? 'dark' : 'light')
+        const current = this.getCurrentTheme()
+        if (current.mode === 'system') {
+          this.setDocumentTheme(current.variant, e.matches ? 'dark' : 'light')
         }
       })
     }

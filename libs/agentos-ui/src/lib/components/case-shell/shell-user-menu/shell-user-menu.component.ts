@@ -23,6 +23,9 @@ export class ShellUserMenuComponent {
   /** Whether dark mode is active */
   readonly isDark = input.required<boolean>()
 
+  /** Active theme variant ('industry' | 'terminal') */
+  readonly themeVariant = input.required<string>()
+
   /** Whether technical logs are currently shown — drives the active state of the menu item */
   readonly showTechnical = input.required<boolean>()
 
@@ -40,8 +43,11 @@ export class ShellUserMenuComponent {
   /** Emits the route path to navigate to */
   readonly navigateTo = output<string>()
 
-  /** Emits when the user toggles the theme */
+  /** Emits when the user toggles light/dark mode */
   readonly themeToggled = output<void>()
+
+  /** Emits when the user switches theme variant */
+  readonly themeVariantChanged = output<string>()
 
   /** Emits when the user toggles technical logs */
   readonly logsToggled = output<void>()
@@ -55,6 +61,10 @@ export class ShellUserMenuComponent {
 
   protected onThemeToggle(): void {
     this.themeToggled.emit()
+  }
+
+  protected onThemeVariantChange(variant: string): void {
+    this.themeVariantChanged.emit(variant)
   }
 
   protected onLogsToggle(): void {

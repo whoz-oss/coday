@@ -4,21 +4,19 @@
   <div dsDrawerContent class="case-chat__host">
     <!-- ── Case header: glyph + title + status badge ─────────────────────── -->
     <header class="case-chat__header">
-      <agentos-case-status-glyph [status]="caseStatus()" [size]="16" />
-      <!-- Case title -->
-      <span class="case-chat__header-title">{{ activeCase()?.title ?? '' }}</span>
-      <!-- Status badge -->
-      <span
-        class="case-chat__header-badge"
-        [class.case-chat__header-badge--running]="caseStatus() === CaseStatusEnum.RUNNING"
-        [class.case-chat__header-badge--error]="caseStatus() === CaseStatusEnum.ERROR"
-        [class.case-chat__header-badge--pending]="caseStatus() === CaseStatusEnum.PENDING"
-        [class.case-chat__header-badge--killed]="caseStatus() === CaseStatusEnum.KILLED"
-        >{{ caseStatus().toLowerCase() }}</span
-      >
-
-      <!-- Spacer pushes actions to the right, after the badge -->
-      <span class="case-chat__header-spacer"></span>
+      <!-- Groupe titre + statut — flex:1 pour pousser les actions à droite -->
+      <div class="case-chat__header-title-group">
+        <agentos-case-status-glyph [status]="caseStatus()" [size]="16" />
+        <span class="case-chat__header-title">{{ activeCase()?.title ?? '' }}</span>
+        <span
+          class="case-chat__header-badge"
+          [class.case-chat__header-badge--running]="caseStatus() === CaseStatusEnum.RUNNING"
+          [class.case-chat__header-badge--error]="caseStatus() === CaseStatusEnum.ERROR"
+          [class.case-chat__header-badge--pending]="caseStatus() === CaseStatusEnum.PENDING"
+          [class.case-chat__header-badge--killed]="caseStatus() === CaseStatusEnum.KILLED"
+          >{{ caseStatus().toLowerCase() }}</span
+        >
+      </div>
 
       <!-- Exchange toggle -->
       <div class="case-chat__header-exchange">

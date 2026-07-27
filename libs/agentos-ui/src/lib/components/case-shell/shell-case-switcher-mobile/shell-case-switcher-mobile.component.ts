@@ -44,11 +44,15 @@ export class ShellCaseSwitcherMobileComponent {
     const q = this.filterQuery().toLowerCase()
     const all = this.cases().filter((c) => !q || (c.title ?? c.id ?? '').toLowerCase().includes(q))
 
-    const pinned = all.filter((c) => c.starred)
-    const today = all.filter((c) => !c.starred && this.isToday(c))
-    const yest = all.filter((c) => !c.starred && this.isYesterday(c))
-    const prev7 = all.filter((c) => !c.starred && this.isPrev7(c))
-    const older = all.filter((c) => !c.starred && !this.isToday(c) && !this.isYesterday(c) && !this.isPrev7(c))
+    // Support both `favorite` (API field) and `starred` (legacy alias)
+    const isFav = (c: Case & { starred?: boolean }): boolean =>
+      !!(c as unknown as Record<string, unknown>)['favorite'] || !!c.starred
+
+    const pinned = all.filter((c) => isFav(c))
+    const today = all.filter((c) => !isFav(c) && this.isToday(c))
+    const yest = all.filter((c) => !isFav(c) && this.isYesterday(c))
+    const prev7 = all.filter((c) => !isFav(c) && this.isPrev7(c))
+    const older = all.filter((c) => !isFav(c) && !this.isToday(c) && !this.isYesterday(c) && !this.isPrev7(c))
 
     const groups: CaseGroup[] = []
     if (pinned.length) groups.push({ label: 'Pinned', cases: pinned })
@@ -76,7 +80,8 @@ export class ShellCaseSwitcherMobileComponent {
 
   protected onStarToggle(event: Event, c: Case & { starred?: boolean }): void {
     event.stopPropagation()
-    this.starToggled.emit({ id: c.id ?? '', starred: !c.starred })
+    const isFav = !!(c as unknown as Record<string, unknown>)['favorite'] || !!c.starred
+    this.starToggled.emit({ id: c.id ?? '', starred: !isFav })
   }
 
   protected onDeleteRequest(event: Event, id: string): void {

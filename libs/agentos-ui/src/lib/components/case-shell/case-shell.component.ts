@@ -14,7 +14,7 @@ import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos
 import { debounceTime, map, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
-import { THEME_PORT, ThemeMode } from '../../services/theme.service'
+import { THEME_PORT, ThemeMode, ThemeVariant } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { CaseStateService } from '../../services/case-state.service'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
@@ -86,11 +86,15 @@ export class CaseShellComponent {
   // ---------------------------------------------------------------------------
 
   protected readonly isDark = computed(() => {
-    const t = this.themePort.theme()
-    if (t === 'dark') return true
-    if (t === 'light') return false
-    return typeof document !== 'undefined' && document.documentElement.hasAttribute('data-theme')
+    const { mode } = this.themePort.theme()
+    if (mode === 'dark') return true
+    if (mode === 'light') return false
+    return (
+      typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')?.includes('dark') === true
+    )
   })
+
+  protected readonly themeVariant = computed(() => this.themePort.theme().variant)
 
   // ---------------------------------------------------------------------------
   // UI state
@@ -293,7 +297,13 @@ export class CaseShellComponent {
   protected onMenuToggleTheme(): void {
     this.menuOpen.set(false)
     const next: ThemeMode = this.isDark() ? 'light' : 'dark'
-    this.themePort.setTheme(next)
+    this.themePort.setTheme({ variant: this.themeVariant(), mode: next })
+  }
+
+  protected onMenuThemeVariantChanged(variant: string): void {
+    this.menuOpen.set(false)
+    const current = this.themePort.theme()
+    this.themePort.setTheme({ variant: variant as ThemeVariant, mode: current.mode })
   }
 
   protected onMenuToggleLogs(): void {
