@@ -195,5 +195,47 @@ object NextRunCalculator {
         return LocalDate.of(year, month, minOf(day, maxDay))
     }
 
+    /**
+     * Compute the next slot that is strictly after [after].
+     *
+     * Unlike [compute] (which uses `max(now, startDate@timeUtc)` as its candidate),
+     * [nextAfter] treats [after] as the lower bound directly — useful for advancing
+     * [ScheduledPrompt.nextRunAt] after a run has been claimed.
+     *
+     * @param recurrence recurrence configuration
+     * @param planning planning configuration (startDate, endType, ...)
+     * @param after the instant after which the next slot must fall
+     * @param clock source of "now" (used only to satisfy [compute]'s signature; the candidate
+     *   is derived from [after], not from the clock)
+     * @return UTC instant of the next slot strictly after [after]
+     */
+    fun nextAfter(recurrence: Recurrence, planning: Planning, after: Instant, clock: Clock = Clock.systemUTC()): Instant {
+        // We want the first slot > after.  Build a synthetic candidate that is 1 second past
+        // `after` (so the slot must be strictly after it), then delegate to the per-unit logic.
+        val candidateLdt = LocalDateTime.ofInstant(after, ZoneOffset.UTC).plusSeconds(1)
+        val startDateTime = planning.startDate.atTime(recurrence.timeUtc)
+        val candidate = if (startDateTime.isAfter(candidateLdt)) startDateTime else candidateLdt
+
+        val syntheticSp = object {
+            val recurrenceVal = recurrence
+            val planningVal = planning
+        }
+        // Delegate to the private per-unit functions via a minimal ScheduledPrompt-like parameter.
+        // We reuse the private helpers by routing through a temporary ScheduledPrompt.
+        val tempSp = ScheduledPrompt(
+            agentConfigId = java.util.UUID.randomUUID(),
+            promptTemplateId = java.util.UUID.randomUUID(),
+            name = "__nextAfter",
+            recurrence = recurrence,
+            planning = planning,
+            nextRunAt = Instant.EPOCH,
+        )
+        return when (recurrence.unit) {
+            SchedulerUnit.DAY -> computeDay(candidate, tempSp)
+            SchedulerUnit.WEEK -> computeWeek(candidate, tempSp)
+            SchedulerUnit.MONTH -> computeMonth(candidate, tempSp)
+        }.toInstant(ZoneOffset.UTC)
+    }
+
     private const val MAX_SEARCH_DAYS = 8
 }

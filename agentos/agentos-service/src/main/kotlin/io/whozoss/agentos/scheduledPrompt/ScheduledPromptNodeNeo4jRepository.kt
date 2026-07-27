@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
+import java.time.Instant
 
 /**
  * Spring Data Neo4j repository for [ScheduledPromptNode].
@@ -103,4 +104,30 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
         userId: String?,
         agentConfigIds: List<String>?,
     ): List<ScheduledPromptNode>
+
+    /**
+     * Find all enabled scheduled prompts due for execution: nextRunAt <= now, ordered ASC.
+     */
+    @Query(
+        "MATCH (sp:ScheduledPrompt) " +
+            "WHERE NOT COALESCE(sp.removed, false) " +
+            "AND sp.enabled = true " +
+            "AND sp.nextRunAt <= :now " +
+            "RETURN sp ORDER BY sp.nextRunAt ASC",
+    )
+    fun findDue(now: Instant): List<ScheduledPromptNode>
+
+    /**
+     * Optimistic-CAS update of nextRunAt.
+     * Sets nextRunAt = :nextSlot only when the current stored value equals :currentSlot.
+     *
+     * Returns true if the update was applied (exactly one node matched the CAS condition).
+     */
+    @Query(
+        "MATCH (sp:ScheduledPrompt) " +
+            "WHERE sp.id = :id AND sp.nextRunAt = :currentSlot " +
+            "SET sp.nextRunAt = :nextSlot " +
+            "RETURN count(sp) > 0",
+    )
+    fun advanceNextRunAt(id: String, currentSlot: Instant, nextSlot: Instant): Boolean
 }

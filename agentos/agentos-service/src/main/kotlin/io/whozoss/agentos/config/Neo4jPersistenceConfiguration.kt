@@ -12,8 +12,11 @@ import io.whozoss.agentos.aiProvider.AiProviderNodeNeo4jRepository
 import io.whozoss.agentos.aiProvider.AiProviderRepository
 import io.whozoss.agentos.aiProvider.Neo4jAiProviderRepository
 import io.whozoss.agentos.scheduledPrompt.Neo4jScheduledPromptRepository
+import io.whozoss.agentos.scheduledPrompt.Neo4jScheduledPromptRunRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptNodeNeo4jRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunNodeNeo4jRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunRepository
 import io.whozoss.agentos.caseEvent.CaseEventNodeMapper
 import io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
@@ -239,6 +242,14 @@ class Neo4jPersistenceConfiguration {
     ): AiModelRepository {
         logger.info { "[Persistence] Neo4jAiModelRepository active" }
         return Neo4JAiModelRepository(aiModelNodeNeo4JRepository, childLinkService)
+    }
+
+    @Bean
+    fun neo4jScheduledPromptRunRepository(
+        scheduledPromptRunNodeNeo4jRepository: ScheduledPromptRunNodeNeo4jRepository,
+    ): ScheduledPromptRunRepository {
+        logger.info { "[Persistence] Neo4jScheduledPromptRunRepository active" }
+        return Neo4jScheduledPromptRunRepository(scheduledPromptRunNodeNeo4jRepository)
     }
 
     companion object : KLogging()

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import io.whozoss.agentos.entity.InMemoryEntityRepository
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -56,6 +57,24 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
 
     override fun deleteByParent(parentId: UUID): Int =
         findByParent(parentId).count { delegate.delete(it.metadata.id) }
+
+    /**
+     * Returns all enabled scheduled prompts with nextRunAt <= now, ordered ASC.
+     */
+    override fun findDue(now: Instant): List<ScheduledPrompt> =
+        delegate.findAll()
+            .filter { !it.metadata.removed && it.enabled && !it.nextRunAt.isAfter(now) }
+            .sortedBy { it.nextRunAt }
+
+    /**
+     * CAS update: sets nextRunAt = nextSlot only when current stored value equals currentSlot.
+     */
+    override fun advance(id: UUID, currentSlot: Instant, nextSlot: Instant): Boolean {
+        val existing = delegate.findAll().firstOrNull { it.metadata.id == id } ?: return false
+        if (existing.nextRunAt != currentSlot) return false
+        delegate.save(existing.copy(nextRunAt = nextSlot))
+        return true
+    }
 
     companion object {
         private const val ALL_KEY = "all"

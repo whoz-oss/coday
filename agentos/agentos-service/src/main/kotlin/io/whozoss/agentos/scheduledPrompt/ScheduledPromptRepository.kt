@@ -1,6 +1,7 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import io.whozoss.agentos.entity.EntityRepository
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -33,4 +34,25 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
      * [agentConfigIds] is an optional filter; null or empty means no filter.
      */
     fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<ScheduledPrompt>
+
+    /**
+     * Find all enabled scheduled prompts whose [ScheduledPrompt.nextRunAt] is at or before [now],
+     * ordered by [ScheduledPrompt.nextRunAt] ascending.
+     *
+     * Used by the scheduler tick to discover work that is ready to be executed.
+     */
+    fun findDue(now: Instant): List<ScheduledPrompt>
+
+    /**
+     * Optimistic-CAS advance of [ScheduledPrompt.nextRunAt].
+     *
+     * Sets `nextRunAt = nextSlot` only if the current stored value equals [currentSlot].
+     * This prevents a race between two concurrent scanner ticks overwriting each other's advance.
+     *
+     * @param id the scheduled prompt to advance
+     * @param currentSlot the expected current value of nextRunAt (CAS guard)
+     * @param nextSlot the new value to write
+     * @return true if the update was applied (the CAS matched), false if another tick beat us
+     */
+    fun advance(id: UUID, currentSlot: Instant, nextSlot: Instant): Boolean
 }

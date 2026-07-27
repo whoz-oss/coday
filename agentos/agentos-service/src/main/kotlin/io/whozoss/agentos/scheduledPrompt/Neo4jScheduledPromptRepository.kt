@@ -5,6 +5,7 @@ import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -89,6 +90,12 @@ open class Neo4jScheduledPromptRepository(
                 logger.debug { "[Neo4jScheduledPromptRepository] Soft-deleted $id" }
                 true
             } ?: false
+
+    override fun findDue(now: Instant): List<ScheduledPrompt> =
+        neo4jRepository.findDue(now).map { it.toDomain() }
+
+    override fun advance(id: UUID, currentSlot: Instant, nextSlot: Instant): Boolean =
+        neo4jRepository.advanceNextRunAt(id.toString(), currentSlot, nextSlot)
 
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
