@@ -76,7 +76,6 @@ class CaseController(
         @RequestBody request: SdkGetByIdsRequest,
     ): List<CaseDto> = caseService.findByIds(request.ids, request.withRemoved).withLastMessageAt()
 
-
     /**
      * GET /api/cases/by-parentId/{parentId} — list cases in a namespace.
      *
@@ -173,12 +172,13 @@ class CaseController(
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
         val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
-        val domain = Case(
-            metadata = metadata,
-            namespaceId = resource.namespaceId,
-            status = resource.status,
-            title = resource.title ?: "Case ${metadata.id}",
-        )
+        val domain =
+            Case(
+                metadata = metadata,
+                namespaceId = resource.namespaceId,
+                status = resource.status,
+                title = resource.title ?: "Case ${metadata.id}",
+            )
         val saved = caseService.create(domain)
         val userId = userService.getCurrentUser().id.toString()
         val granted =
@@ -215,14 +215,15 @@ class CaseController(
         val existing =
             caseService.findById(id)
                 ?: throw ResourceNotFoundException("Case not found: $id")
-        return caseService.update(
-            existing.copy(
-                // namespaceId and status are mass-assignment-guarded:
-                // namespaceId is the transitivity key for permissions;
-                // status is driven by the runtime lifecycle, not PUT.
-                title = resource.title ?: existing.title,
-            ),
-        ).withLastMessageAt()
+        return caseService
+            .update(
+                existing.copy(
+                    // namespaceId and status are mass-assignment-guarded:
+                    // namespaceId is the transitivity key for permissions;
+                    // status is driven by the runtime lifecycle, not PUT.
+                    title = resource.title ?: existing.title,
+                ),
+            ).withLastMessageAt()
     }
 
     @DeleteMapping("/{id}")
@@ -351,10 +352,7 @@ class CaseController(
     /**
      * Enrich a single [Case] with [CaseDto.lastMessageAt].
      */
-    private fun Case.withLastMessageAt(): CaseDto {
-        val timestamp = caseEventService.findLastMessageTimestamps(listOf(id))[id]
-        return toDto(this).copy(lastMessageAt = timestamp)
-    }
+    private fun Case.withLastMessageAt(): CaseDto = listOf(this).withLastMessageAt().first()
 
     /**
      * Enrich a list of [Case]s with [CaseDto.lastMessageAt] only — no role/favorite.
