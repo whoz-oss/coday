@@ -14,6 +14,12 @@
       <span class="scheduled-prompt-item__description">{{ definition().description }}</span>
     }
     <span class="scheduled-prompt-item__schedule">{{ scheduleLabel }}</span>
+    @if (nextRunLabel) {
+      <span class="scheduled-prompt-item__next-run">Next: {{ nextRunLabel }}</span>
+    }
+    @if (lastRunLabel) {
+      <span class="scheduled-prompt-item__last-run">Last run: {{ lastRunLabel }}</span>
+    }
   </div>
 
   @if (!readOnly()) {

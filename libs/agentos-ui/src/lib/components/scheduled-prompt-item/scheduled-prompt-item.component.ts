@@ -80,6 +80,29 @@ export class ScheduledPromptItemComponent {
     return `Every ${every} ${unitLabel}${dayFilter} at ${time} UTC`
   }
 
+  /**
+   * Formats an ISO instant to "25 Jul 2026 at 09:00 UTC".
+   * Returns null if the value is absent.
+   */
+  private formatInstant(iso: string | null | undefined): string | null {
+    if (!iso) return null
+    const d = new Date(iso)
+    const day = d.getUTCDate()
+    const month = d.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' })
+    const year = d.getUTCFullYear()
+    const hh = String(d.getUTCHours()).padStart(2, '0')
+    const mm = String(d.getUTCMinutes()).padStart(2, '0')
+    return `${day} ${month} ${year} at ${hh}:${mm} UTC`
+  }
+
+  protected get nextRunLabel(): string | null {
+    return this.formatInstant(this.definition().nextRunAt)
+  }
+
+  protected get lastRunLabel(): string | null {
+    return this.formatInstant(this.definition().lastRunAt)
+  }
+
   protected get menuItems(): KebabMenuItem[] {
     const def = this.definition()
     return [

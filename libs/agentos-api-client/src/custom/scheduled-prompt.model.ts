@@ -93,4 +93,8 @@ export interface ScheduledPrompt {
    */
   readonly createdAt?: string
   readonly updatedAt?: string
+  /** ISO instant of the next scheduled execution. Always present once the entity is persisted. */
+  readonly nextRunAt?: string
+  /** ISO instant of the last execution. Null/absent if the prompt has never run. */
+  readonly lastRunAt?: string | null
 }
