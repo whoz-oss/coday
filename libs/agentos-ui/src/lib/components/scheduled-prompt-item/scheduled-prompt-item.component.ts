@@ -1,17 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
 import { Router } from '@angular/router'
-import { DayOfWeek, ScheduledPrompt, SchedulerUnit } from '@whoz-oss/agentos-api-client'
+import { DAY_OF_WEEK_FULL_LABELS, ScheduledPrompt, SchedulerUnit } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
-
-const DAY_LABELS: Record<DayOfWeek, string> = {
-  MON: 'Monday',
-  TUE: 'Tuesday',
-  WED: 'Wednesday',
-  THU: 'Thursday',
-  FRI: 'Friday',
-  SAT: 'Saturday',
-  SUN: 'Sunday',
-}
 
 /**
  * ScheduledPromptItemComponent — presentational component for a single scheduled prompt card.
@@ -74,7 +64,7 @@ export class ScheduledPromptItemComponent {
 
     const dayFilter =
       unit === SchedulerUnit.WEEK && recurrence.days?.length
-        ? ` (${recurrence.days.map((d) => DAY_LABELS[d] ?? d).join(', ')})`
+        ? ` (${recurrence.days.map((d) => DAY_OF_WEEK_FULL_LABELS[d] ?? d).join(', ')})`
         : ''
 
     return `Every ${every} ${unitLabel}${dayFilter} at ${time} UTC`

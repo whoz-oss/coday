@@ -14,6 +14,7 @@ import { ActivatedRoute, Router } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
+  DAY_OF_WEEK_LABELS,
   DayOfWeek,
   ScheduledPrompt,
   SchedulerEndType,
@@ -170,15 +171,9 @@ export class ScheduledPromptFormComponent implements OnInit {
     { value: SchedulerEndType.OCCURRENCES, label: 'After N occurrences' },
   ]
 
-  protected readonly dayOptions: { value: DayOfWeek; label: string }[] = [
-    { value: DayOfWeek.MON, label: 'Mon' },
-    { value: DayOfWeek.TUE, label: 'Tue' },
-    { value: DayOfWeek.WED, label: 'Wed' },
-    { value: DayOfWeek.THU, label: 'Thu' },
-    { value: DayOfWeek.FRI, label: 'Fri' },
-    { value: DayOfWeek.SAT, label: 'Sat' },
-    { value: DayOfWeek.SUN, label: 'Sun' },
-  ]
+  protected readonly dayOptions: { value: DayOfWeek; label: string }[] = (
+    Object.entries(DAY_OF_WEEK_LABELS) as [DayOfWeek, string][]
+  ).map(([value, label]) => ({ value, label }))
 
   private readonly unitSignal = toSignal(this.unitControl.valueChanges.pipe(startWith(this.unitControl.value)))
   private readonly endTypeSignal = toSignal(this.endTypeControl.valueChanges.pipe(startWith(this.endTypeControl.value)))
@@ -304,9 +299,9 @@ export class ScheduledPromptFormComponent implements OnInit {
       planning: {
         startDate: this.startDateControl.value,
         endType,
-        endDate: endType === SchedulerEndType.ON_DATE ? (this.endDateControl.value ?? undefined) : null,
+        endDate: endType === SchedulerEndType.ON_DATE ? (this.endDateControl.value ?? undefined) : undefined,
         occurrenceCount:
-          endType === SchedulerEndType.OCCURRENCES ? (this.occurrenceCountControl.value ?? undefined) : null,
+          endType === SchedulerEndType.OCCURRENCES ? (this.occurrenceCountControl.value ?? undefined) : undefined,
       },
       enabled: this.enabledControl.value,
     }
