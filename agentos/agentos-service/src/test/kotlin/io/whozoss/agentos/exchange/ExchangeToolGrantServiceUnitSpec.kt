@@ -313,15 +313,19 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
         }
 
         "the plugin tools are filtered through the shared allowlist matcher" {
+            // The allowlist is stubbed by value, not with any(): any() is a ConstantMatcher that also
+            // matches null, so it would keep this test green even if grantTools stopped forwarding
+            // the agent's list, which silently hands every write tool back to a restricted agent.
+            val allowlist = listOf("readFile")
             val root = unmaterialisedRoot("grant-filter")
             val filePlugin = mockk<ToolPlugin>()
             every { toolRegistryService.findPlugin("FILE_ACCESS") } returns filePlugin
             every { filePlugin.provideTools(any(), any(), any()) } returns listOf(tool("readFile"), tool("editFiles"))
             every {
-                toolResolverService.isToolAllowed("readFile", ExchangeIntegrationTypes.CASE_CONFIG_NAME, any())
+                toolResolverService.isToolAllowed("readFile", ExchangeIntegrationTypes.CASE_CONFIG_NAME, allowlist)
             } returns true
             every {
-                toolResolverService.isToolAllowed("editFiles", ExchangeIntegrationTypes.CASE_CONFIG_NAME, any())
+                toolResolverService.isToolAllowed("editFiles", ExchangeIntegrationTypes.CASE_CONFIG_NAME, allowlist)
             } returns false
 
             val tools =
@@ -329,11 +333,16 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
                     root = root,
                     readOnly = false,
                     configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
-                    allowedTools = listOf("readFile"),
+                    allowedTools = allowlist,
                     toolContext = toolContext,
                 )
 
             tools.map { it.name } shouldBe listOf("readFile")
+            // Pins the forwarding itself: a strict mock would already throw on a null allowlist, and
+            // this makes the intent explicit for the next reader.
+            verify {
+                toolResolverService.isToolAllowed("readFile", ExchangeIntegrationTypes.CASE_CONFIG_NAME, allowlist)
+            }
         }
     }
 }

@@ -366,7 +366,8 @@ export class AgentConfigFormComponent implements OnInit {
    * Disabled rows → excluded from the map.
    * Built-in rows are tri-state: `on` → null (or the persisted allowlist, preserved verbatim),
    * `off` → [] (explicit opt-out), `default` → key omitted so the platform default keeps deciding.
-   * If nothing at all is selected → undefined (no filter, agent sees all namespace tools).
+   * If nothing at all is selected → undefined, which binds no integration: the backend resolver
+   * grants no plugin tools, and only the platform exchange defaults can still add the file tools.
    */
   protected buildIntegrationsPayload(): AgentConfig['integrations'] {
     // null per integration means "all tools allowed" (backend contract). The generated TS type

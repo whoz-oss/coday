@@ -15,13 +15,14 @@ import java.util.UUID
  * by an AiProvider — resolution is deferred to the runtime layer.
  *
  * [integrations] is an optional map from integration name to an optional list of
- * allowed tool names. A null map binds no integration at all: the tool resolver
- * grants no tools, and only the platform-level exchange defaults (see the property
- * KDoc below) can still add the built-in file tools. When set, only tools whose
- * integration key matches an entry in this map are given to the agent. A null list
- * for a given key means all tools from that integration are allowed; a non-null
- * list restricts to exactly those tool names (or suffixes for multi-instance tools
- * named `CONFIG__tool`).
+ * allowed tool names. The map is what the agent declares, key by key: a plugin
+ * integration contributes tools only when its name appears as an entry, so a null
+ * map binds none of them at all. The two built-in exchange keys are the exception,
+ * and they are decided per key rather than per map: an absent key defers to the
+ * platform default (see the property KDoc below), whether the rest of the map is
+ * set or not. A null list for a given key means all tools from that integration are
+ * allowed; a non-null list restricts to exactly those tool names (or suffixes for
+ * multi-instance tools named `CONFIG__tool`).
  *
  * Examples (from a Coday-style agent YAML):
  * ```yaml

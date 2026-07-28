@@ -261,7 +261,7 @@ class AgentConfigController(
          * YAML mapper configured for clean, human-readable output:
          * - No `---` document start marker
          * - No Jackson type tags
-         * - Null and empty top-level values omitted by [toExportModel] itself
+         * - Null, blank and empty top-level values omitted by [toExportModel] itself
          *
          * Deliberately no mapper-level inclusion policy: `setSerializationInclusion` also sets the
          * CONTENT inclusion, which prunes entries inside the `integrations` map. There a null value
@@ -324,17 +324,18 @@ internal fun toDto(entity: AgentConfig) =
  * Only the fields that [FilesystemAgentConfigRepository] reads are included, so the exported
  * file can be dropped directly into the namespace `agents/` directory.
  *
- * The map is built explicitly rather than via a data class so that null/empty top-level values
- * can be omitted without a per-field `@JsonInclude` annotation. Entries inside a non-empty
- * `integrations` map are kept verbatim: a null value (all tools of the integration) and an
- * empty list (explicit opt-out) are distinct states the re-import must see unchanged.
+ * The map is built explicitly rather than via a data class so that null, blank and empty top-level
+ * values can be omitted without a per-field `@JsonInclude` annotation. Doing it here rather than
+ * with a mapper-level inclusion policy is what keeps the filtering out of the `integrations` map,
+ * whose entries are kept verbatim: a null value (all tools of the integration) and an empty list
+ * (explicit opt-out) are distinct states the re-import must see unchanged.
  */
 private fun toExportModel(entity: AgentConfig): Map<String, Any?> =
     buildMap {
         put("name", entity.name)
-        entity.description?.let { put("description", it) }
-        entity.instructions?.let { put("instructions", it) }
-        entity.modelName?.let { put("modelName", it) }
+        entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
+        entity.instructions?.takeIf { it.isNotBlank() }?.let { put("instructions", it) }
+        entity.modelName?.takeIf { it.isNotBlank() }?.let { put("modelName", it) }
         entity.integrations?.takeIf { it.isNotEmpty() }?.let { put("integrations", it) }
         entity.subAgents?.takeIf { it.isNotEmpty() }?.let { put("subAgents", it) }
         entity.docs?.takeIf { it.isNotEmpty() }?.let { put("docs", it) }

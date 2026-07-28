@@ -231,6 +231,24 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       expect(controller.createAgentConfig.mock.calls[0][0].integrations).toBeUndefined()
     })
 
+    it('deletes the key when a hydrated built-in is switched back to the platform default', () => {
+      // The only path that exercises the key-deletion branch of the preservation loop: the create-mode
+      // test above has an empty existingConfig, so it would stay green even if the branch were keyed on
+      // the payload rather than on what the form can render, and a user handing an agent back to the
+      // platform default would silently keep its previous choice.
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [CASE]: null } })))
+      component.ngOnInit()
+      internals()
+        .builtInRows()
+        .find((r) => r.type === CASE)!
+        .state.set('default')
+
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].integrations).toBeUndefined()
+    })
+
     it('carries a hydrated built-in through an update payload', () => {
       routeAgentConfigId = 'a-1'
       controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [NAMESPACE]: null } })))
@@ -331,6 +349,17 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
     it('offers exactly the three tri-state values as options', () => {
       fixture.detectChanges()
       expect(Array.from(selectFor(CASE).options).map((o) => o.value)).toEqual(['default', 'on', 'off'])
+    })
+
+    it('renders the hydrated state on the control', () => {
+      // Covers the state to DOM direction, carried solely by [value]="row.state()". Without it an
+      // opt-out would display as "Platform default", which on a default-on instance reads as the
+      // exact opposite of what the agent is configured to do.
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [CASE]: [] } })))
+      fixture.detectChanges()
+
+      expect(selectFor(CASE).value).toBe('off')
     })
 
     it('routes a change event on the select to the row state', () => {

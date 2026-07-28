@@ -112,7 +112,7 @@ boolean flags), with a platform-level fallback for an agent that says nothing:
 |---|---|
 | key absent | the platform default (`agentos.exchange.tools.*-enabled-by-default`, off by default) decides; when on, every tool is granted |
 | `CASE_FILE_EXCHANGE:` (null) | granted, every tool |
-| `CASE_FILE_EXCHANGE: [readFile, ls]` | granted, restricted to those names (bare or `case-exchange__readFile`) |
+| `CASE_FILE_EXCHANGE: [readFile, listFiles]` | granted, restricted to those names (bare or `case-exchange__readFile`) |
 | `CASE_FILE_EXCHANGE: []` | **opt-out** — nothing granted, and no scope directory is created |
 
 The empty list is a genuine opt-out rather than an empty allow-list. `ToolResolverService.isToolAllowed`
