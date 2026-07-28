@@ -51,7 +51,6 @@ data class ScheduledPromptNode(
     val name: String,
     val description: String? = null,
     // --- Recurrence fields (flattened) ---
-    val every: Int,
     val unit: String,
     val days: List<String> = emptyList(),
     val timeUtc: LocalTime,
@@ -90,7 +89,6 @@ data class ScheduledPromptNode(
             name = name,
             description = description,
             recurrence = Recurrence(
-                every = every,
                 unit = SchedulerUnit.valueOf(unit),
                 days = days.map { DayOfWeek.valueOf(it) },
                 timeUtc = timeUtc,
@@ -121,7 +119,6 @@ data class ScheduledPromptNode(
                 promptTemplateId = sp.promptTemplateId.toString(),
                 name = sp.name,
                 description = sp.description,
-                every = sp.recurrence.every,
                 unit = sp.recurrence.unit.name,
                 days = sp.recurrence.days.map { it.name },
                 timeUtc = sp.recurrence.timeUtc,

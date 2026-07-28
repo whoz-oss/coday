@@ -74,11 +74,7 @@ export class ScheduledPromptFormComponent implements OnInit {
       }),
 
       // Recurrence
-      every: new FormControl<number>(1, {
-        nonNullable: true,
-        validators: [Validators.required, Validators.min(1)],
-      }),
-      unit: new FormControl<SchedulerUnit>(SchedulerUnit.DAY, {
+      unit: new FormControl<SchedulerUnit>(SchedulerUnit.WEEK, {
         nonNullable: true,
         validators: [Validators.required],
       }),
@@ -117,9 +113,6 @@ export class ScheduledPromptFormComponent implements OnInit {
   }
   protected get promptContentControl() {
     return this.form.controls.promptContent
-  }
-  protected get everyControl() {
-    return this.form.controls.every
   }
   protected get unitControl() {
     return this.form.controls.unit
@@ -160,7 +153,6 @@ export class ScheduledPromptFormComponent implements OnInit {
   protected readonly SchedulerEndType = SchedulerEndType
 
   protected readonly schedulerUnits: { value: SchedulerUnit; label: string }[] = [
-    { value: SchedulerUnit.DAY, label: 'Day(s)' },
     { value: SchedulerUnit.WEEK, label: 'Week(s)' },
     { value: SchedulerUnit.MONTH, label: 'Month(s)' },
   ]
@@ -242,7 +234,6 @@ export class ScheduledPromptFormComponent implements OnInit {
     this.descriptionControl.setValue(def.description ?? null)
     this.agentConfigIdControl.setValue(def.agentConfigId)
     this.promptContentControl.setValue(def.promptContent)
-    this.everyControl.setValue(def.recurrence.every)
     this.unitControl.setValue(def.recurrence.unit)
     this.daysControl.setValue(def.recurrence.days ?? [])
     this.timeUtcControl.setValue(def.recurrence.timeUtc)
@@ -291,7 +282,6 @@ export class ScheduledPromptFormComponent implements OnInit {
       agentConfigId: isEdit ? this.existingPrompt!.agentConfigId : this.agentConfigIdControl.value,
       promptContent: this.promptContentControl.value.trim(),
       recurrence: {
-        every: this.everyControl.value,
         unit: this.unitControl.value,
         days: this.daysControl.value,
         timeUtc: this.timeUtcControl.value,

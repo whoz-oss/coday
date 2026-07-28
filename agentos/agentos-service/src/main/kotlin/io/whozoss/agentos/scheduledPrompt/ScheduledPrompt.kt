@@ -17,12 +17,12 @@ import java.util.UUID
 /**
  * Describes how often and at what time a [ScheduledPrompt] fires.
  *
- * [every] + [unit] define the interval (e.g. every 2 weeks).
- * [days] is an optional filter on days of the week; empty list = no filter.
+ * [unit] is either WEEK or MONTH.
+ * [days] is an optional filter on days of the week; only meaningful for WEEK
+ * (ignored for MONTH). Empty list = fires on the same day-of-week as startDate.
  * [timeUtc] is the execution time in UTC.
  */
 data class Recurrence(
-    val every: Int,
     val unit: SchedulerUnit,
     val days: List<DayOfWeek> = emptyList(),
     val timeUtc: LocalTime,

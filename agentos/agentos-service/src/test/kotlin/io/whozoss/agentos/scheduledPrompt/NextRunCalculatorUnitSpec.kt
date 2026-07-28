@@ -32,8 +32,7 @@ class NextRunCalculatorUnitSpec : StringSpec({
 
     fun sp(
         startDate: LocalDate = nowDate,
-        every: Int = 1,
-        unit: SchedulerUnit = SchedulerUnit.DAY,
+        unit: SchedulerUnit = SchedulerUnit.WEEK,
         days: List<DayOfWeek> = emptyList(),
         timeUtc: LocalTime = defaultTime,
         endType: SchedulerEndType = SchedulerEndType.NEVER,
@@ -45,7 +44,7 @@ class NextRunCalculatorUnitSpec : StringSpec({
         agentConfigId = agentId,
         promptTemplateId = promptId,
         name = "test",
-        recurrence = Recurrence(every = every, unit = unit, days = days, timeUtc = timeUtc),
+        recurrence = Recurrence(unit = unit, days = days, timeUtc = timeUtc),
         planning = Planning(
             startDate = startDate,
             endType = endType,
@@ -56,112 +55,74 @@ class NextRunCalculatorUnitSpec : StringSpec({
     )
 
     // =========================================================================
-    // DAY — no day filter
-    // =========================================================================
-
-    "DAY every=1 no filter: time not yet passed today → today" {
-        // now=07:00, timeUtc=08:00 → slot is 08:00 today, still in the future
-        NextRunCalculator.compute(sp(), clock) shouldBe Instant.parse("2026-01-01T08:00:00Z")
-    }
-
-    "DAY every=1 no filter: time already passed today → tomorrow" {
-        // now=09:00, timeUtc=08:00 → slot has passed, next is tomorrow
-        val laterClock = Clock.fixed(Instant.parse("2026-01-01T09:00:00Z"), ZoneOffset.UTC)
-        NextRunCalculator.compute(sp(), laterClock) shouldBe Instant.parse("2026-01-02T08:00:00Z")
-    }
-
-    "DAY every=2 no filter: next slot in 2-day stride" {
-        // startDate=2026-01-01, now=07:00, every=2 → slot on 2026-01-01 at 08:00 is still valid
-        NextRunCalculator.compute(sp(every = 2), clock) shouldBe Instant.parse("2026-01-01T08:00:00Z")
-    }
-
-    "DAY every=2 no filter: time passed, next stride" {
-        val laterClock = Clock.fixed(Instant.parse("2026-01-01T09:00:00Z"), ZoneOffset.UTC)
-        // startDate=2026-01-01, every=2 → next valid date = 2026-01-03
-        NextRunCalculator.compute(sp(every = 2), laterClock) shouldBe Instant.parse("2026-01-03T08:00:00Z")
-    }
-
-    "DAY every=1 startDate in the future: nextRunAt not before startDate" {
-        val futureStart = nowDate.plusDays(5) // 2026-01-06
-        NextRunCalculator.compute(sp(startDate = futureStart), clock) shouldBe
-            Instant.parse("2026-01-06T08:00:00Z")
-    }
-
-    // =========================================================================
-    // DAY — with day-of-week filter
-    // =========================================================================
-
-    // nowDate = 2026-01-01 = Thursday
-
-    "DAY days=[THURSDAY]: today is in filter and time not passed → today" {
-        NextRunCalculator.compute(sp(days = listOf(DayOfWeek.THURSDAY)), clock) shouldBe
-            Instant.parse("2026-01-01T08:00:00Z")
-    }
-
-    "DAY days=[THURSDAY]: today is in filter but time passed → next Thursday" {
-        val laterClock = Clock.fixed(Instant.parse("2026-01-01T09:00:00Z"), ZoneOffset.UTC)
-        NextRunCalculator.compute(sp(days = listOf(DayOfWeek.THURSDAY)), laterClock) shouldBe
-            Instant.parse("2026-01-08T08:00:00Z")
-    }
-
-    "DAY days=[MONDAY, WEDNESDAY, FRIDAY]: next is Friday 2026-01-02" {
-        // Thursday 07:00 → next valid day in [MON, WED, FRI] is Friday 2026-01-02
-        NextRunCalculator.compute(sp(days = listOf(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY, DayOfWeek.FRIDAY)), clock) shouldBe
-            Instant.parse("2026-01-02T08:00:00Z")
-    }
-
-    "DAY days=[MONDAY]: next Monday from Thursday" {
-        // Thursday → next Monday = 2026-01-05
-        NextRunCalculator.compute(sp(days = listOf(DayOfWeek.MONDAY)), clock) shouldBe
-            Instant.parse("2026-01-05T08:00:00Z")
-    }
-
-    "DAY days=[TUESDAY] every=2: only TUESDAY matters (every ignored), next Tuesday = 2026-01-06" {
-        // Thursday 2026-01-01 → next Tuesday = 2026-01-06
-        NextRunCalculator.compute(sp(every = 2, days = listOf(DayOfWeek.TUESDAY)), clock) shouldBe
-            Instant.parse("2026-01-06T08:00:00Z")
-    }
-
-    "DAY days=[MONDAY] startDate in future (2026-01-12 = Monday): nextRunAt = startDate" {
-        // startDate=2026-01-12 (Monday), now=2026-01-01 → candidate = startDate at 08:00
-        val futureMonday = LocalDate.of(2026, 1, 12)
-        NextRunCalculator.compute(sp(startDate = futureMonday, days = listOf(DayOfWeek.MONDAY)), clock) shouldBe
-            Instant.parse("2026-01-12T08:00:00Z")
-    }
-
-    // =========================================================================
-    // WEEK
+    // WEEK — no day filter (fires on same day-of-week as startDate)
     // =========================================================================
 
     // nowDate = Thursday 2026-01-01
 
-    "WEEK every=1 startDate=Thursday: same day each week, today still valid" {
+    "WEEK no filter startDate=Thursday: today still valid" {
         // startDate=Thursday, now=07:00, timeUtc=08:00 → today is valid
         NextRunCalculator.compute(sp(unit = SchedulerUnit.WEEK), clock) shouldBe
             Instant.parse("2026-01-01T08:00:00Z")
     }
 
-    "WEEK every=1 startDate=Thursday: time passed → next Thursday" {
+    "WEEK no filter startDate=Thursday: time passed → next Thursday" {
         val laterClock = Clock.fixed(Instant.parse("2026-01-01T09:00:00Z"), ZoneOffset.UTC)
         NextRunCalculator.compute(sp(unit = SchedulerUnit.WEEK), laterClock) shouldBe
             Instant.parse("2026-01-08T08:00:00Z")
     }
 
-    "WEEK every=2 startDate=Thursday: next slot = 2026-01-15 (2 weeks out) when today passed" {
-        val laterClock = Clock.fixed(Instant.parse("2026-01-01T09:00:00Z"), ZoneOffset.UTC)
-        NextRunCalculator.compute(sp(unit = SchedulerUnit.WEEK, every = 2), laterClock) shouldBe
-            Instant.parse("2026-01-15T08:00:00Z")
-    }
-
-    "WEEK every=1 startDate=Monday: now=Thursday → next Monday = 2026-01-05" {
-        val monday = LocalDate.of(2025, 12, 29) // Monday before our 'now'
+    "WEEK no filter startDate=Monday: now=Thursday → next Monday = 2026-01-05" {
+        val monday = LocalDate.of(2025, 12, 29) // Monday before 'now'
         NextRunCalculator.compute(sp(startDate = monday, unit = SchedulerUnit.WEEK), clock) shouldBe
             Instant.parse("2026-01-05T08:00:00Z")
     }
 
-    "WEEK every=1 startDate in future: nextRunAt = startDate" {
+    "WEEK no filter startDate in future: nextRunAt = startDate" {
         val futureMonday = LocalDate.of(2026, 1, 12) // Monday
         NextRunCalculator.compute(sp(startDate = futureMonday, unit = SchedulerUnit.WEEK), clock) shouldBe
+            Instant.parse("2026-01-12T08:00:00Z")
+    }
+
+    // =========================================================================
+    // WEEK — with day-of-week filter
+    // =========================================================================
+
+    "WEEK days=[THURSDAY]: today is in filter and time not passed → today" {
+        NextRunCalculator.compute(sp(unit = SchedulerUnit.WEEK, days = listOf(DayOfWeek.THURSDAY)), clock) shouldBe
+            Instant.parse("2026-01-01T08:00:00Z")
+    }
+
+    "WEEK days=[THURSDAY]: today is in filter but time passed → next Thursday" {
+        val laterClock = Clock.fixed(Instant.parse("2026-01-01T09:00:00Z"), ZoneOffset.UTC)
+        NextRunCalculator.compute(sp(unit = SchedulerUnit.WEEK, days = listOf(DayOfWeek.THURSDAY)), laterClock) shouldBe
+            Instant.parse("2026-01-08T08:00:00Z")
+    }
+
+    "WEEK days=[TUESDAY, THURSDAY]: now=Thursday 07:00 → today at 08:00" {
+        NextRunCalculator.compute(sp(unit = SchedulerUnit.WEEK, days = listOf(DayOfWeek.TUESDAY, DayOfWeek.THURSDAY)), clock) shouldBe
+            Instant.parse("2026-01-01T08:00:00Z")
+    }
+
+    "WEEK days=[TUESDAY, THURSDAY]: now=Thursday 09:00 (passed) → next Tuesday 2026-01-06" {
+        val laterClock = Clock.fixed(Instant.parse("2026-01-01T09:00:00Z"), ZoneOffset.UTC)
+        NextRunCalculator.compute(sp(unit = SchedulerUnit.WEEK, days = listOf(DayOfWeek.TUESDAY, DayOfWeek.THURSDAY)), laterClock) shouldBe
+            Instant.parse("2026-01-06T08:00:00Z")
+    }
+
+    "WEEK days=[MONDAY]: now=Thursday → next Monday = 2026-01-05" {
+        NextRunCalculator.compute(sp(unit = SchedulerUnit.WEEK, days = listOf(DayOfWeek.MONDAY)), clock) shouldBe
+            Instant.parse("2026-01-05T08:00:00Z")
+    }
+
+    "WEEK days=[MONDAY, WEDNESDAY, FRIDAY]: now=Thursday → next Friday 2026-01-02" {
+        NextRunCalculator.compute(sp(unit = SchedulerUnit.WEEK, days = listOf(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY, DayOfWeek.FRIDAY)), clock) shouldBe
+            Instant.parse("2026-01-02T08:00:00Z")
+    }
+
+    "WEEK days=[MONDAY] startDate in future (2026-01-12 = Monday): nextRunAt = startDate" {
+        val futureMonday = LocalDate.of(2026, 1, 12)
+        NextRunCalculator.compute(sp(startDate = futureMonday, unit = SchedulerUnit.WEEK, days = listOf(DayOfWeek.MONDAY)), clock) shouldBe
             Instant.parse("2026-01-12T08:00:00Z")
     }
 
@@ -169,21 +130,15 @@ class NextRunCalculatorUnitSpec : StringSpec({
     // MONTH
     // =========================================================================
 
-    "MONTH every=1 startDate=2026-01-01: today still valid" {
+    "MONTH startDate=2026-01-01: today still valid" {
         NextRunCalculator.compute(sp(unit = SchedulerUnit.MONTH), clock) shouldBe
             Instant.parse("2026-01-01T08:00:00Z")
     }
 
-    "MONTH every=1 startDate=2026-01-01: time passed → 2026-02-01" {
+    "MONTH startDate=2026-01-01: time passed → 2026-02-01" {
         val laterClock = Clock.fixed(Instant.parse("2026-01-01T09:00:00Z"), ZoneOffset.UTC)
         NextRunCalculator.compute(sp(unit = SchedulerUnit.MONTH), laterClock) shouldBe
             Instant.parse("2026-02-01T08:00:00Z")
-    }
-
-    "MONTH every=3 startDate=2026-01-01: time passed → 2026-04-01" {
-        val laterClock = Clock.fixed(Instant.parse("2026-01-01T09:00:00Z"), ZoneOffset.UTC)
-        NextRunCalculator.compute(sp(unit = SchedulerUnit.MONTH, every = 3), laterClock) shouldBe
-            Instant.parse("2026-04-01T08:00:00Z")
     }
 
     "MONTH startDate=2026-01-31: next month clamps to 2026-02-28" {
@@ -193,11 +148,11 @@ class NextRunCalculatorUnitSpec : StringSpec({
             Instant.parse("2026-02-28T08:00:00Z")
     }
 
-    "MONTH startDate=2026-01-31 every=3: clamps in short months" {
-        // 2026-01-31 + 3 months = 2026-04-30 (April has 30 days, no clamp needed)
+    "MONTH startDate=2026-01-31: clamps across multiple months" {
+        // 2026-01-31 → 2026-02-28 → 2026-03-31 → 2026-04-30
         val jan31 = LocalDate.of(2026, 1, 31)
-        val laterClock = Clock.fixed(Instant.parse("2026-01-31T09:00:00Z"), ZoneOffset.UTC)
-        NextRunCalculator.compute(sp(startDate = jan31, unit = SchedulerUnit.MONTH, every = 3), laterClock) shouldBe
+        val laterClock = Clock.fixed(Instant.parse("2026-04-01T09:00:00Z"), ZoneOffset.UTC)
+        NextRunCalculator.compute(sp(startDate = jan31, unit = SchedulerUnit.MONTH), laterClock) shouldBe
             Instant.parse("2026-04-30T08:00:00Z")
     }
 
@@ -212,10 +167,11 @@ class NextRunCalculatorUnitSpec : StringSpec({
     // =========================================================================
 
     "startDate in the past: nextRunAt is based on now, not startDate" {
-        // startDate=2025-12-01 (past), now=2026-01-01 07:00, timeUtc=08:00 → today is valid
+        // startDate=2025-12-01 (Monday), now=2026-01-01 07:00 (Thursday), timeUtc=08:00
+        // WEEK no filter → fires every Monday; next Monday after now = 2026-01-05
         val pastStart = LocalDate.of(2025, 12, 1)
         NextRunCalculator.compute(sp(startDate = pastStart), clock) shouldBe
-            Instant.parse("2026-01-01T08:00:00Z")
+            Instant.parse("2026-01-05T08:00:00Z")
     }
 
     "startDate=today and time not yet passed: nextRunAt = today at timeUtc" {
@@ -223,10 +179,12 @@ class NextRunCalculatorUnitSpec : StringSpec({
             Instant.parse("2026-01-01T08:00:00Z")
     }
 
-    "startDate=today and time already passed: nextRunAt = tomorrow" {
+    "startDate=today and time already passed: nextRunAt = next Thursday" {
+        // startDate=2026-01-01 (Thursday), now=09:00 (time passed), WEEK no filter
+        // → fires every Thursday; next Thursday = 2026-01-08
         val laterClock = Clock.fixed(Instant.parse("2026-01-01T09:00:00Z"), ZoneOffset.UTC)
         NextRunCalculator.compute(sp(startDate = nowDate, timeUtc = LocalTime.of(8, 0)), laterClock) shouldBe
-            Instant.parse("2026-01-02T08:00:00Z")
+            Instant.parse("2026-01-08T08:00:00Z")
     }
 
     "startDate in future: nextRunAt = startDate at timeUtc regardless of now" {
@@ -240,9 +198,10 @@ class NextRunCalculatorUnitSpec : StringSpec({
     // =========================================================================
 
     "timeUtc=00:00: slot at midnight" {
-        // now=07:00, slot at 00:00 has passed → next day
+        // startDate=2026-01-01 (Thursday), now=07:00, slot at 00:00 has passed
+        // WEEK no filter → fires every Thursday; next Thursday = 2026-01-08
         NextRunCalculator.compute(sp(timeUtc = LocalTime.MIDNIGHT), clock) shouldBe
-            Instant.parse("2026-01-02T00:00:00Z")
+            Instant.parse("2026-01-08T00:00:00Z")
     }
 
     "timeUtc=23:59: slot later today" {

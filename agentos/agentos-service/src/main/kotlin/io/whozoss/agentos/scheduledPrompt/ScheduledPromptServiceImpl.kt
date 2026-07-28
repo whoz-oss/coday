@@ -23,7 +23,6 @@ import java.util.UUID
  *
  * ### Validation on [create] / [createWithPrompt]
  *
- * - [recurrence.every][Recurrence.every] must be > 0.
  * - [agentConfigId] must reference an existing, non-filesystem AgentConfig.
  * - [promptId] must reference an existing generic Prompt (agentConfigId = null).
  * - The AgentConfig's namespace must be compatible with the ScheduledPrompt's namespace.
@@ -52,10 +51,6 @@ class ScheduledPromptServiceImpl(
     // -------------------------------------------------------------------------
 
     override fun create(entity: ScheduledPrompt): ScheduledPrompt {
-        require(entity.recurrence.every > 0) {
-            "ScheduledPrompt 'every' must be > 0. Got: ${entity.recurrence.every}"
-        }
-
         val agentConfig = agentConfigService.findById(entity.agentConfigId)
             ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
         if (agentConfig.metadata.version == null) {

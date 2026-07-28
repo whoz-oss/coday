@@ -71,7 +71,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             agentConfigId = agentId,
             promptTemplateId = promptId,
             name = "sp-${UUID.randomUUID().toString().take(6)}",
-            recurrence = Recurrence(every = 1, unit = SchedulerUnit.DAY, timeUtc = timeUtc),
+            recurrence = Recurrence(unit = SchedulerUnit.WEEK, timeUtc = timeUtc),
             planning = Planning(startDate = startDate, endType = SchedulerEndType.NEVER),
             enabled = enabled,
             nextRunAt = nextRunAt,
@@ -119,10 +119,11 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val spRepo = makeSpRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T09:00:00Z")
+            // startDate=2026-01-01 (Thursday), WEEK no filter → next slot = next Thursday 2026-01-08
             val sp = spRepo.insertSp(nextRunAt = slot, timeUtc = LocalTime.of(9, 0))
             scanner(spRepo, runRepo).tick()
             val updated = spRepo.findById(sp.id)!!
-            updated.nextRunAt shouldBe Instant.parse("2026-01-02T09:00:00Z")
+            updated.nextRunAt shouldBe Instant.parse("2026-01-08T09:00:00Z")
         }
 
         "tick with 1 due prompt: run scheduled for the claimed slot" {
@@ -201,6 +202,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val spRepo = makeSpRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
+            // startDate=2026-01-01 (Thursday), WEEK no filter → next slot = next Thursday 2026-01-08
             val sp = spRepo.insertSp(nextRunAt = slot)
             runRepo.insert(
                 ScheduledPromptRun(
@@ -212,7 +214,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             )
             scanner(spRepo, runRepo).tick()
             val updated = spRepo.findById(sp.id)!!
-            updated.nextRunAt shouldBe Instant.parse("2026-01-02T08:00:00Z")
+            updated.nextRunAt shouldBe Instant.parse("2026-01-08T08:00:00Z")
         }
 
         "tick with DuplicateRunException: no extra run inserted" {

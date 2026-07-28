@@ -47,11 +47,10 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     fun regularUser() = User(metadata = EntityMetadata(id = userId), externalId = "u", isAdmin = false)
 
     fun recurrenceDto(
-        every: Int = 1,
-        unit: SchedulerUnit = SchedulerUnit.DAY,
+        unit: SchedulerUnit = SchedulerUnit.WEEK,
         days: List<DayOfWeek> = emptyList(),
         timeUtc: LocalTime = LocalTime.of(8, 0),
-    ) = RecurrenceDto(every = every, unit = unit, days = days, timeUtc = timeUtc)
+    ) = RecurrenceDto(unit = unit, days = days, timeUtc = timeUtc)
 
     fun planningDto(
         startDate: LocalDate = today,
@@ -68,7 +67,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         nsId: UUID? = namespaceId,
         uid: UUID? = null,
         enabled: Boolean = true,
-        recurrence: Recurrence = Recurrence(every = 1, unit = SchedulerUnit.DAY, timeUtc = LocalTime.of(8, 0)),
+        recurrence: Recurrence = Recurrence(unit = SchedulerUnit.WEEK, timeUtc = LocalTime.of(8, 0)),
         planning: Planning = Planning(startDate = today),
         nextRunAt: Instant = fixedNextRun,
         lastRunAt: Instant? = null,
@@ -195,13 +194,12 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
 
     "create round-trips recurrence fields" {
         val time = LocalTime.of(14, 30)
-        val r = recurrenceDto(every = 2, unit = SchedulerUnit.WEEK, days = listOf(DayOfWeek.MONDAY), timeUtc = time)
+        val r = recurrenceDto(unit = SchedulerUnit.WEEK, days = listOf(DayOfWeek.MONDAY), timeUtc = time)
         every { service.createWithPrompt(any(), any()) } answers {
             val entity = firstArg<ScheduledPrompt>()
             Pair(entity.copy(promptTemplateId = promptId), secondArg())
         }
         val result = controller.create(dto(recurrence = r))
-        result.recurrence.every shouldBe 2
         result.recurrence.unit shouldBe SchedulerUnit.WEEK
         result.recurrence.days shouldBe listOf(DayOfWeek.MONDAY)
         result.recurrence.timeUtc shouldBe time
@@ -383,13 +381,12 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     "toDto maps all recurrence and planning fields" {
         val id = UUID.randomUUID()
         val time = LocalTime.of(9, 0)
-        val r = Recurrence(every = 3, unit = SchedulerUnit.MONTH, days = listOf(DayOfWeek.FRIDAY), timeUtc = time)
+        val r = Recurrence(unit = SchedulerUnit.MONTH, days = listOf(DayOfWeek.FRIDAY), timeUtc = time)
         val p = Planning(startDate = today, endType = SchedulerEndType.NEVER)
         val entity = sp(id = id, recurrence = r, planning = p)
         every { service.findById(id, withRemoved = true) } returns entity
         every { service.findByIdWithContent(id, withRemoved = true) } returns Pair(entity, promptContent)
         val result = controller.getById(id)
-        result.recurrence.every shouldBe 3
         result.recurrence.unit shouldBe SchedulerUnit.MONTH
         result.recurrence.days shouldBe listOf(DayOfWeek.FRIDAY)
         result.recurrence.timeUtc shouldBe time

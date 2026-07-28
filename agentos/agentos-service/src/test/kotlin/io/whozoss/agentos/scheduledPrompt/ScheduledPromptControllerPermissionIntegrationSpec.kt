@@ -415,8 +415,7 @@ class ScheduledPromptControllerPermissionIntegrationSpec : StringSpec() {
             "promptContent": "Hello, run the daily report",
             "name": "$name",
             "recurrence": {
-                "every": 1,
-                "unit": "DAY",
+                "unit": "WEEK",
                 "days": [],
                 "timeUtc": "08:00"
             },
@@ -436,8 +435,7 @@ class ScheduledPromptControllerPermissionIntegrationSpec : StringSpec() {
             "promptContent": "Updated prompt content",
             "name": "$name",
             "recurrence": {
-                "every": 1,
-                "unit": "DAY",
+                "unit": "WEEK",
                 "days": [],
                 "timeUtc": "09:00"
             },
@@ -468,8 +466,7 @@ class ScheduledPromptControllerPermissionIntegrationSpec : StringSpec() {
                 promptTemplateId = UUID.randomUUID(), // placeholder, overwritten by service
                 name = name,
                 recurrence = Recurrence(
-                    every = 1,
-                    unit = io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit.DAY,
+                    unit = io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit.WEEK,
                     timeUtc = java.time.LocalTime.of(8, 0),
                 ),
                 planning = Planning(

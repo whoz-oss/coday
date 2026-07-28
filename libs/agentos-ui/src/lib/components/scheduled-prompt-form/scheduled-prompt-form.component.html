@@ -102,30 +102,13 @@
       <fieldset class="scheduled-prompt-form__fieldset">
         <legend class="scheduled-prompt-form__legend">Recurrence</legend>
 
-        <div class="scheduled-prompt-form__row">
-          <div class="scheduled-prompt-form__field">
-            <label class="scheduled-prompt-form__label" for="sp-every"> Every <span aria-hidden="true">*</span> </label>
-            <input
-              id="sp-every"
-              class="scheduled-prompt-form__input scheduled-prompt-form__input--number"
-              [class.scheduled-prompt-form__input--invalid]="everyControl.invalid && everyControl.touched"
-              type="number"
-              min="1"
-              [formControl]="everyControl"
-            />
-            @if (everyControl.invalid && everyControl.touched) {
-              <span class="scheduled-prompt-form__field-error">Must be at least 1.</span>
+        <div class="scheduled-prompt-form__field">
+          <label class="scheduled-prompt-form__label" for="sp-unit"> Unit <span aria-hidden="true">*</span> </label>
+          <select id="sp-unit" class="scheduled-prompt-form__select" [formControl]="unitControl">
+            @for (u of schedulerUnits; track u.value) {
+              <option [value]="u.value">{{ u.label }}</option>
             }
-          </div>
-
-          <div class="scheduled-prompt-form__field">
-            <label class="scheduled-prompt-form__label" for="sp-unit"> Unit <span aria-hidden="true">*</span> </label>
-            <select id="sp-unit" class="scheduled-prompt-form__select" [formControl]="unitControl">
-              @for (u of schedulerUnits; track u.value) {
-                <option [value]="u.value">{{ u.label }}</option>
-              }
-            </select>
-          </div>
+          </select>
         </div>
 
         @if (showDayFilter()) {

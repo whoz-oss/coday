@@ -3792,20 +3792,15 @@ components:
             - FRIDAY
             - SATURDAY
             - SUNDAY
-        every:
-          type: integer
-          format: int32
         timeUtc:
           type: string
         unit:
           type: string
           enum:
-          - DAY
           - WEEK
           - MONTH
       required:
       - days
-      - every
       - timeUtc
       - unit
     ScheduledPrompt:

@@ -10,7 +10,6 @@
 
 export interface Recurrence {
   days: Array<RecurrenceDaysEnum>
-  every: number
   timeUtc: string
   unit: RecurrenceUnitEnum
 }
@@ -24,7 +23,6 @@ export enum RecurrenceDaysEnum {
   SUNDAY = 'SUNDAY',
 }
 export enum RecurrenceUnitEnum {
-  DAY = 'DAY',
   WEEK = 'WEEK',
   MONTH = 'MONTH',
 }

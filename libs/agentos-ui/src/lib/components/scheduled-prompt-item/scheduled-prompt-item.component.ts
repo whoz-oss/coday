@@ -41,33 +41,23 @@ export class ScheduledPromptItemComponent {
   /**
    * Human-readable schedule label.
    * Examples:
-   *   "Every day at 09:00 UTC"
-   *   "Every 2 weeks (Mon, Wed) at 09:00 UTC"
-   *   "Every 3 months at 09:00 UTC"
+   *   "Every week at 09:00 UTC"
+   *   "Every week (Monday, Wednesday) at 09:00 UTC"
+   *   "Every month at 09:00 UTC"
    */
   protected get scheduleLabel(): string {
     const { recurrence } = this.definition()
-    const every = recurrence.every ?? 1
-    const unit = recurrence.unit ?? SchedulerUnit.DAY
+    const unit = recurrence.unit
     const time = recurrence.timeUtc
 
-    const unitLabel = (() => {
-      switch (unit) {
-        case SchedulerUnit.DAY:
-          return every === 1 ? 'day' : 'days'
-        case SchedulerUnit.WEEK:
-          return every === 1 ? 'week' : 'weeks'
-        case SchedulerUnit.MONTH:
-          return every === 1 ? 'month' : 'months'
-      }
-    })()
+    const unitLabel = unit === SchedulerUnit.WEEK ? 'week' : 'month'
 
     const dayFilter =
       unit === SchedulerUnit.WEEK && recurrence.days?.length
         ? ` (${recurrence.days.map((d) => DAY_OF_WEEK_FULL_LABELS[d] ?? d).join(', ')})`
         : ''
 
-    return `Every ${every} ${unitLabel}${dayFilter} at ${time} UTC`
+    return `Every ${unitLabel}${dayFilter} at ${time} UTC`
   }
 
   /**

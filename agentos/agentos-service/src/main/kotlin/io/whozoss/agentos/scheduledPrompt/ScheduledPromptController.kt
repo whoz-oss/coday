@@ -266,7 +266,6 @@ class ScheduledPromptController(
 // ---------------------------------------------------------------------------
 
 internal fun RecurrenceDto.toDomain(): Recurrence = Recurrence(
-    every = every,
     unit = unit,
     days = days,
     timeUtc = timeUtc,
@@ -289,7 +288,6 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
         name = entity.name,
         description = entity.description,
         recurrence = RecurrenceDto(
-            every = entity.recurrence.every,
             unit = entity.recurrence.unit,
             days = entity.recurrence.days,
             timeUtc = entity.recurrence.timeUtc,

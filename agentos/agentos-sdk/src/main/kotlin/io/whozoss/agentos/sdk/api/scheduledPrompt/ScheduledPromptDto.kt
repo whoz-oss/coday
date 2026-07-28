@@ -18,7 +18,7 @@ import java.util.UUID
 // ---------------------------------------------------------------------------
 
 /** Recurrence unit. */
-enum class SchedulerUnit { DAY, WEEK, MONTH }
+enum class SchedulerUnit { WEEK, MONTH }
 
 /** Controls when a scheduled prompt stops executing. */
 enum class SchedulerEndType {
@@ -37,16 +37,14 @@ enum class SchedulerEndType {
 /**
  * Recurrence schedule: how often and at what time the scheduled prompt fires.
  *
- * [every] + [unit] define the interval (e.g. every 2 weeks).
- * [days] is an optional filter on days of the week (Java [DayOfWeek]);
- * an empty list means no day filter.
+ * [unit] is either WEEK or MONTH.
+ * [days] is an optional filter on days of the week (Java [DayOfWeek]); only meaningful
+ * for WEEK — ignored for MONTH. An empty list means no day filter (fires on the same
+ * day-of-week as startDate every week).
  * [timeUtc] is the execution time in UTC, serialised as "HH:mm" by Jackson.
  */
 @Schema(name = "Recurrence")
 data class RecurrenceDto(
-    @field:NotNull(message = "every must not be null")
-    @field:Positive(message = "every must be > 0")
-    val every: Int,
     @field:NotNull(message = "unit must not be null")
     val unit: SchedulerUnit,
     val days: List<DayOfWeek> = emptyList(),

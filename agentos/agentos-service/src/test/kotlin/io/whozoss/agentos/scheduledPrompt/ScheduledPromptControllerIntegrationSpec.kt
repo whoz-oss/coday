@@ -37,8 +37,7 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
                 "promptContent": "Hello from the scheduled prompt",
                 "name": "daily-digest",
                 "recurrence": {
-                    "every": 1,
-                    "unit": "DAY",
+                    "unit": "WEEK",
                     "days": [],
                     "timeUtc": "08:00"
                 },
@@ -67,7 +66,7 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
                     "agentConfigId": "$agentConfigId",
                     "promptContent": "Hello",
                     "name": "",
-                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                    "recurrence": {"unit": "WEEK", "timeUtc": "08:00"},
                     "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
                 }
             """.trimIndent()))
@@ -80,7 +79,7 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
                     "namespaceId": "$namespaceId",
                     "promptContent": "Hello",
                     "name": "my-prompt",
-                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                    "recurrence": {"unit": "WEEK", "timeUtc": "08:00"},
                     "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
                 }
             """.trimIndent()))
@@ -94,7 +93,7 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
                     "agentConfigId": "$agentConfigId",
                     "promptContent": "",
                     "name": "my-prompt",
-                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                    "recurrence": {"unit": "WEEK", "timeUtc": "08:00"},
                     "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
                 }
             """.trimIndent()))
@@ -121,7 +120,7 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
                     "agentConfigId": "$agentConfigId",
                     "promptContent": "Hello",
                     "name": "my-prompt",
-                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"}
+                    "recurrence": {"unit": "WEEK", "timeUtc": "08:00"}
                 }
             """.trimIndent()))
                 .andExpect(status().isBadRequest)
@@ -131,20 +130,6 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
         // Bean Validation — recurrence nested fields
         // -------------------------------------------------------------------------
 
-        "POST with every = 0 in recurrence returns 400" {
-            mockMvc.perform(postSp(body = """
-                {
-                    "namespaceId": "$namespaceId",
-                    "agentConfigId": "$agentConfigId",
-                    "promptContent": "Hello",
-                    "name": "my-prompt",
-                    "recurrence": {"every": 0, "unit": "DAY", "timeUtc": "08:00"},
-                    "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
-                }
-            """.trimIndent()))
-                .andExpect(status().isBadRequest)
-        }
-
         "POST with missing unit in recurrence returns 400" {
             mockMvc.perform(postSp(body = """
                 {
@@ -152,7 +137,21 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
                     "agentConfigId": "$agentConfigId",
                     "promptContent": "Hello",
                     "name": "my-prompt",
-                    "recurrence": {"every": 1, "timeUtc": "08:00"},
+                    "recurrence": {"timeUtc": "08:00"},
+                    "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
+                }
+            """.trimIndent()))
+                .andExpect(status().isBadRequest)
+        }
+
+        "POST with invalid unit in recurrence returns 400" {
+            mockMvc.perform(postSp(body = """
+                {
+                    "namespaceId": "$namespaceId",
+                    "agentConfigId": "$agentConfigId",
+                    "promptContent": "Hello",
+                    "name": "my-prompt",
+                    "recurrence": {"unit": "DAY", "timeUtc": "08:00"},
                     "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
                 }
             """.trimIndent()))
@@ -166,7 +165,7 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
                     "agentConfigId": "$agentConfigId",
                     "promptContent": "Hello",
                     "name": "my-prompt",
-                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "9:00"},
+                    "recurrence": {"unit": "WEEK", "timeUtc": "9:00"},
                     "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
                 }
             """.trimIndent()))
@@ -184,7 +183,7 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
                     "agentConfigId": "$agentConfigId",
                     "promptContent": "Hello",
                     "name": "my-prompt",
-                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                    "recurrence": {"unit": "WEEK", "timeUtc": "08:00"},
                     "planning": {"endType": "NEVER"}
                 }
             """.trimIndent()))
@@ -198,7 +197,7 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
                     "agentConfigId": "$agentConfigId",
                     "promptContent": "Hello",
                     "name": "my-prompt",
-                    "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                    "recurrence": {"unit": "WEEK", "timeUtc": "08:00"},
                     "planning": {"startDate": "2026-01-01"}
                 }
             """.trimIndent()))
@@ -218,7 +217,7 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
                             "agentConfigId": "$agentConfigId",
                             "promptContent": "Hello",
                             "name": "",
-                            "recurrence": {"every": 1, "unit": "DAY", "timeUtc": "08:00"},
+                            "recurrence": {"unit": "WEEK", "timeUtc": "08:00"},
                             "planning": {"startDate": "2026-01-01", "endType": "NEVER"}
                         }
                     """.trimIndent()),

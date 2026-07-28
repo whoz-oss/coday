@@ -65,11 +65,10 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
     )
 
     private fun recurrence(
-        every: Int = 1,
-        unit: SchedulerUnit = SchedulerUnit.DAY,
+        unit: SchedulerUnit = SchedulerUnit.WEEK,
         days: List<DayOfWeek> = emptyList(),
         timeUtc: LocalTime = LocalTime.of(8, 0),
-    ) = Recurrence(every = every, unit = unit, days = days, timeUtc = timeUtc)
+    ) = Recurrence(unit = unit, days = days, timeUtc = timeUtc)
 
     private fun planning(
         startDate: LocalDate = today,
@@ -121,26 +120,6 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
                 it.invocation.args[0] as Prompt
             }
             every { promptService.delete(any()) } returns true
-        }
-
-        // -------------------------------------------------------------------------
-        // recurrence.every validation
-        // -------------------------------------------------------------------------
-
-        "create rejects every == 0" {
-            shouldThrow<IllegalArgumentException> { newService().create(sp(recurrence = recurrence(every = 0))) }
-        }
-
-        "create rejects every < 0" {
-            shouldThrow<IllegalArgumentException> { newService().create(sp(recurrence = recurrence(every = -1))) }
-        }
-
-        "create accepts every == 1" {
-            newService().create(sp(recurrence = recurrence(every = 1))).recurrence.every shouldBe 1
-        }
-
-        "create accepts every == 3" {
-            newService().create(sp(recurrence = recurrence(every = 3))).recurrence.every shouldBe 3
         }
 
         // -------------------------------------------------------------------------
@@ -310,10 +289,9 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
         "create persists and returns the entity" {
             val svc = newService()
-            val saved = svc.create(sp("daily-digest", recurrence = recurrence(every = 2, unit = SchedulerUnit.WEEK)))
+            val saved = svc.create(sp("daily-digest", recurrence = recurrence(unit = SchedulerUnit.WEEK)))
             saved.name shouldBe "daily-digest"
             saved.namespaceId shouldBe namespaceId
-            saved.recurrence.every shouldBe 2
             saved.recurrence.unit shouldBe SchedulerUnit.WEEK
             saved.enabled.shouldBeTrue()
         }
@@ -330,7 +308,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         "update recalculates nextRunAt" {
             val svc = newService()
             val saved = svc.create(sp())
-            val updated = svc.update(saved.copy(recurrence = recurrence(every = 1, unit = SchedulerUnit.DAY, timeUtc = LocalTime.of(9, 0))))
+            val updated = svc.update(saved.copy(recurrence = recurrence(unit = SchedulerUnit.WEEK, timeUtc = LocalTime.of(9, 0))))
             updated.nextRunAt shouldBe Instant.parse("2026-01-01T09:00:00Z")
         }
 
@@ -477,7 +455,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             val svc = newService()
             val user = UUID.randomUUID()
             svc.create(sp("deploy", nsId = null, userId = null))
-            val nsLayer = svc.create(sp("deploy", nsId = namespaceId, userId = null, recurrence = recurrence(every = 2)))
+            val nsLayer = svc.create(sp("deploy", nsId = namespaceId, userId = null, recurrence = recurrence(days = listOf(DayOfWeek.MONDAY))))
             val effective = svc.findEffective(namespaceId, user)
             effective shouldHaveSize 1
             effective.first().id shouldBe nsLayer.id
@@ -490,7 +468,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             svc.create(sp("deploy", nsId = null, userId = null))
             svc.create(sp("deploy", nsId = null, userId = user))
             svc.create(sp("deploy", nsId = namespaceId, userId = null))
-            val winner = svc.create(sp("deploy", nsId = namespaceId, userId = user, recurrence = recurrence(every = 3)))
+            val winner = svc.create(sp("deploy", nsId = namespaceId, userId = user, recurrence = recurrence(days = listOf(DayOfWeek.FRIDAY))))
             svc.findEffective(namespaceId, user).let {
                 it shouldHaveSize 1
                 it.first().id shouldBe winner.id
@@ -516,7 +494,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "recurrence round-trips" {
-            val r = recurrence(every = 2, unit = SchedulerUnit.MONTH, days = listOf(DayOfWeek.MONDAY), timeUtc = LocalTime.of(14, 30))
+            val r = recurrence(unit = SchedulerUnit.MONTH, days = listOf(DayOfWeek.MONDAY), timeUtc = LocalTime.of(14, 30))
             newService().create(sp(recurrence = r)).recurrence shouldBe r
         }
 
