@@ -36,22 +36,36 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   const NAMESPACE = 'NAMESPACE_FILE_EXCHANGE'
 
   const builtInTypes = [
-    { type: CASE, displayName: 'Case file exchange', description: 'Case files.', configSchema: null, builtIn: true },
+    {
+      type: CASE,
+      displayName: 'Case file exchange',
+      description: 'Case files.',
+      configSchema: null,
+      builtIn: true,
+      enabledByDefault: false,
+    },
     {
       type: NAMESPACE,
       displayName: 'Namespace file exchange',
       description: 'NS files.',
       configSchema: null,
       builtIn: true,
+      enabledByDefault: false,
     },
     // a regular (non-built-in) type must be excluded from the built-in section
-    { type: 'JIRA', displayName: 'Jira', description: '', configSchema: {}, builtIn: false },
+    { type: 'JIRA', displayName: 'Jira', description: '', configSchema: {}, builtIn: false, enabledByDefault: false },
   ]
+
+  type BuiltInState = 'default' | 'on' | 'off'
 
   const internals = () =>
     component as unknown as {
       nameControl: { setValue: (v: string) => void }
-      builtInRows: () => Array<{ type: string; enabled: { (): boolean; set: (v: boolean) => void } }>
+      builtInRows: () => Array<{
+        type: string
+        enabledByDefault: boolean
+        state: { (): BuiltInState; set: (v: BuiltInState) => void }
+      }>
       submit: () => void
     }
 
@@ -115,15 +129,45 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       ).toEqual([CASE, NAMESPACE])
     })
 
-    it('hydrates the enabled state from the config integrations map (edit mode)', () => {
+    it('hydrates the tri-state from the config integrations map (edit mode)', () => {
       routeAgentConfigId = 'a-1'
       controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [CASE]: null } })))
 
       component.ngOnInit()
 
       const rows = internals().builtInRows()
-      expect(rows.find((r) => r.type === CASE)?.enabled()).toBe(true)
-      expect(rows.find((r) => r.type === NAMESPACE)?.enabled()).toBe(false)
+      expect(rows.find((r) => r.type === CASE)?.state()).toBe('on')
+      // No key at all → the agent expressed no choice; the platform default decides, not the form.
+      expect(rows.find((r) => r.type === NAMESPACE)?.state()).toBe('default')
+    })
+
+    it('reads an empty array as an explicit opt-out, not as an enabled row', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [CASE]: [] } })))
+
+      component.ngOnInit()
+
+      expect(
+        internals()
+          .builtInRows()
+          .find((r) => r.type === CASE)
+          ?.state()
+      ).toBe('off')
+    })
+
+    it('carries the platform default of each type onto its row', () => {
+      integrationType.listTypesIntegrationType.mockReturnValue(
+        of([
+          { ...builtInTypes[0], enabledByDefault: true },
+          { ...builtInTypes[1], enabledByDefault: false },
+        ])
+      )
+
+      component.ngOnInit()
+
+      const rows = internals().builtInRows()
+      expect(rows.find((r) => r.type === CASE)?.enabledByDefault).toBe(true)
+      expect(rows.find((r) => r.type === NAMESPACE)?.enabledByDefault).toBe(false)
     })
   })
 
@@ -134,7 +178,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       internals()
         .builtInRows()
         .find((r) => r.type === CASE)!
-        .enabled.set(true)
+        .state.set('on')
 
       internals().submit()
 
@@ -143,6 +187,34 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       expect(payload.caseExchange).toBeUndefined()
       expect(payload.namespaceExchange).toBeUndefined()
       expect(router.navigate).toHaveBeenCalled()
+    })
+
+    it('writes an empty array for a built-in the user explicitly disabled', () => {
+      // The opt-out has to be persisted, otherwise a platform default of on would grant it back.
+      component.ngOnInit()
+      internals().nameControl.setValue('My Agent')
+      internals()
+        .builtInRows()
+        .find((r) => r.type === CASE)!
+        .state.set('off')
+
+      internals().submit()
+
+      expect(controller.createAgentConfig.mock.calls[0][0].integrations).toEqual({ [CASE]: [] })
+    })
+
+    it('writes no key for a built-in left on the platform default', () => {
+      // The regression this guards: saving an unrelated change must not turn "never chosen" into
+      // "chosen off" and silently strip the exchange from an agent on a default-on instance.
+      integrationType.listTypesIntegrationType.mockReturnValue(
+        of([{ ...builtInTypes[0], enabledByDefault: true }, builtInTypes[1]])
+      )
+      component.ngOnInit()
+      internals().nameControl.setValue('My Agent')
+
+      internals().submit()
+
+      expect(controller.createAgentConfig.mock.calls[0][0].integrations).toBeUndefined()
     })
 
     it('carries a hydrated built-in through an update payload', () => {
@@ -154,6 +226,16 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
 
       const payload = controller.updateAgentConfig.mock.calls[0][1]
       expect(payload.integrations).toEqual({ [NAMESPACE]: null })
+    })
+
+    it('carries a hydrated opt-out through an update payload', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [NAMESPACE]: [] } })))
+      component.ngOnInit()
+
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].integrations).toEqual({ [NAMESPACE]: [] })
     })
 
     it('preserves an already-enabled built-in when the integration-types endpoint is unavailable', () => {

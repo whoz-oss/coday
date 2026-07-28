@@ -55,7 +55,11 @@ data class AgentConfig(
      * Reserved keys `CASE_FILE_EXCHANGE` / `NAMESPACE_FILE_EXCHANGE`
      * (see [io.whozoss.agentos.exchange.ExchangeIntegrationTypes]) enable the built-in
      * file-exchange integrations: they have no [IntegrationConfig] instance and are resolved by
-     * `AgentServiceImpl.buildExchangeTools` rather than the normal plugin path.
+     * `AgentServiceImpl.buildExchangeTools` rather than the normal plugin path. For those two keys
+     * only, an **empty list is an explicit opt-out** rather than an empty allow-list, and an
+     * **absent key does not mean "never granted"**: the platform defaults
+     * `agentos.exchange.tools.case-enabled-by-default` /
+     * `...namespace-enabled-by-default` (off by default) decide for an agent that stays silent.
      */
     val integrations: Map<String, List<String>?>? = null,
     /**

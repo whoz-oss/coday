@@ -30,15 +30,27 @@ interface IntegrationRow {
 }
 
 /**
+ * What an agent says about a built-in integration.
+ *
+ * `default` is a real, persisted state — the absence of the key in AgentConfig.integrations — and
+ * not a synonym for "off": the platform decides for an agent that stays silent. Keeping it as its
+ * own state is what stops an agent that was never configured from being silently switched off the
+ * first time someone saves an unrelated change on the form.
+ */
+type BuiltInState = 'default' | 'on' | 'off'
+
+/**
  * A built-in integration (e.g. file exchange) surfaced by the backend in /api/integration-types
- * with `builtIn = true`. Enabled by adding its `type` to AgentConfig.integrations — no instance,
- * no per-tool allowlist (toggle only).
+ * with `builtIn = true`. Carried in AgentConfig.integrations under its `type` key — no instance,
+ * no per-tool allowlist, so the key's value only ever encodes on (null) or off (empty array).
  */
 interface BuiltInIntegrationRow {
   type: string
   displayName: string
   description: string
-  enabled: WritableSignal<boolean>
+  /** What this instance grants when the agent says nothing; labels the `default` state. */
+  enabledByDefault: boolean
+  state: WritableSignal<BuiltInState>
 }
 
 /**
@@ -272,19 +284,27 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   /**
-   * Build a toggle row per built-in integration type, pre-checked when the agent's integrations
-   * map already contains its `type` key.
+   * Build a tri-state row per built-in integration type, hydrated from the agent's integrations map:
+   * - key absent      → `default`, the agent expressed no choice and the platform decides;
+   * - key with `[]`   → `off`, an explicit opt-out that beats a platform default of on;
+   * - key otherwise   → `on` (the backend stores null for "all tools").
    */
   private buildBuiltInRows(
     types: IntegrationTypeDescriptor[],
     existingIntegrations: AgentConfig['integrations']
   ): BuiltInIntegrationRow[] {
-    return types.map((t) => ({
-      type: t.type,
-      displayName: t.displayName,
-      description: t.description,
-      enabled: signal(existingIntegrations != null && t.type in existingIntegrations),
-    }))
+    return types.map((t) => {
+      const declared = existingIntegrations != null && t.type in existingIntegrations
+      const entry = existingIntegrations?.[t.type]
+      const state: BuiltInState = !declared ? 'default' : Array.isArray(entry) && entry.length === 0 ? 'off' : 'on'
+      return {
+        type: t.type,
+        displayName: t.displayName,
+        description: t.description,
+        enabledByDefault: t.enabledByDefault === true,
+        state: signal(state),
+      }
+    })
   }
 
   /** Toggle the enabled signal for a given row. */
@@ -292,9 +312,14 @@ export class AgentConfigFormComponent implements OnInit {
     row.enabled.update((v) => !v)
   }
 
-  /** Toggle a built-in integration row. */
-  protected toggleBuiltIn(row: BuiltInIntegrationRow): void {
-    row.enabled.update((v) => !v)
+  /** Set the tri-state of a built-in integration row from the select. */
+  protected setBuiltInState(row: BuiltInIntegrationRow, value: string): void {
+    row.state.set(value as BuiltInState)
+  }
+
+  /** Label for the `default` option, so the user can see which way it currently resolves. */
+  protected builtInDefaultLabel(row: BuiltInIntegrationRow): string {
+    return row.enabledByDefault ? 'Platform default (enabled)' : 'Platform default (disabled)'
   }
 
   /** Add the current newSubAgentControl value as a new row, then reset the input. */
@@ -327,7 +352,9 @@ export class AgentConfigFormComponent implements OnInit {
    * Enabled rows with no tool names → null (all tools allowed).
    * Enabled rows with tool names → trimmed, non-empty string array.
    * Disabled rows → excluded from the map.
-   * If no rows are enabled → undefined (no filter, agent sees all namespace tools).
+   * Built-in rows are tri-state: `on` → null, `off` → [] (explicit opt-out), `default` → key omitted
+   * so the platform default keeps deciding.
+   * If nothing at all is selected → undefined (no filter, agent sees all namespace tools).
    */
 
   protected buildIntegrationsPayload(): AgentConfig['integrations'] {
@@ -348,9 +375,14 @@ export class AgentConfigFormComponent implements OnInit {
               .filter((t) => t.length > 0)
     }
 
-    // Built-in integrations are toggle-only: their type key with a null value (= all tools).
-    for (const row of this.builtInRows().filter((r) => r.enabled())) {
-      result[row.type] = null as any
+    // Built-in integrations carry no per-tool list, so the key's value encodes the choice itself:
+    // null = enabled (all tools), [] = explicitly disabled. A row left on `default` writes no key at
+    // all — that absence is what lets the platform default decide, and overwriting it with [] would
+    // turn "never chosen" into "chosen off" behind the user's back.
+    for (const row of this.builtInRows()) {
+      const state = row.state()
+      if (state === 'on') result[row.type] = null as any
+      else if (state === 'off') result[row.type] = []
     }
 
     // Preserve any existing integration key the form could not represent this session — e.g. a

@@ -14,6 +14,7 @@ import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeStorageService
+import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
@@ -35,8 +36,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
 import org.springframework.stereotype.Service
-import java.nio.file.Files
-import java.nio.file.Path
 import java.util.UUID
 
 /**
@@ -63,6 +62,7 @@ class AgentServiceImpl(
     private val idCompressorService: IdCompressorService,
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
+    private val exchangeToolGrantService: ExchangeToolGrantService,
     private val agentDocumentResolver: AgentDocumentResolver,
     private val agentConfigProperties: AgentConfigProperties,
 ) : AgentService {
@@ -602,70 +602,56 @@ class AgentServiceImpl(
      * [io.whozoss.agentos.exchange.ExchangeController] path, which applies no deny-list (users manage
      * their own files); the two views of the same directory can therefore differ for such files.
      *
-     * Gating is fail-closed (enablement lives in [AgentConfig.integrations], not a dedicated flag):
+     * Gating: the agent's own [AgentConfig.integrations] map decides, with a platform-level fallback
+     * for agents that say nothing at all
+     * ([io.whozoss.agentos.exchange.ExchangeToolsConfigProperties.caseEnabledByDefault] /
+     * [io.whozoss.agentos.exchange.ExchangeToolsConfigProperties.namespaceEnabledByDefault], both off
+     * by default, so an upgrade changes no agent's tool set):
      * - if the file-plugin is not loaded ([ExchangeIntegrationTypes.FILE_ACCESS] absent) → no tools;
-     * - case exchange (read/write) requires the [ExchangeIntegrationTypes.CASE] key AND a live
-     *   [context.caseId];
-     * - namespace exchange requires the [ExchangeIntegrationTypes.NAMESPACE] key; the agent inherits
-     *   the invoking user's namespace right — read/write when the user holds Namespace WRITE
+     * - key absent → the platform default decides, and no per-tool filter applies;
+     * - key present, null → granted, all tools;
+     * - key present, non-empty → granted, filtered to the listed tools;
+     * - key present, empty → explicit opt-out: nothing is granted and no scope directory is created
+     *   (the empty list would otherwise filter every tool out *after* the grant had materialised the
+     *   root);
+     * - the case scope additionally requires a live [context.caseId];
+     * - the namespace scope grants read/write only when the invoking user holds Namespace WRITE
      *   (admin/super-admin), read-only otherwise.
+     *
+     * The default is a decision local to [ExchangeToolGrantService] and never a mutation of
+     * [AgentConfig.integrations]: materialising it in the map would leak into the persisted config,
+     * the YAML export, and the peer descriptions the redirect tool puts in every agent's prompt.
      */
     private fun buildExchangeTools(
         config: AgentConfig,
         context: AgentExecutionContext,
         toolContext: ToolContext,
     ): List<StandardTool<*>> {
-        val filePlugin = toolRegistryService.findPlugin(ExchangeIntegrationTypes.FILE_ACCESS) ?: return emptyList()
-
-        // Point the file-plugin's own tools at the exchange directory for the scope, honouring
-        // the per-tool allowlist carried as the integrations-map value (null = all tools).
-        fun grant(
-            root: Path,
-            readOnly: Boolean,
-            configName: String,
-            allowedTools: List<String>?,
-        ): List<StandardTool<*>> {
-            // Materialise the root before building the plugin tools even for a read-only grant: the
-            // file-plugin's BoundaryPathResolver canonicalises rootPath (toRealPath) at construction,
-            // which throws if the directory does not exist. This is why a read-only resolution (e.g.
-            // the debug getDefinition endpoint) still creates an empty scope dir.
-            Files.createDirectories(root)
-            val cfg =
-                objectMapper
-                    .createObjectNode()
-                    .put("rootPath", root.toAbsolutePath().toString())
-                    .put("readOnly", readOnly)
-                    // Align the agent read tool's size cap with the exchange's own read limit, so an
-                    // agent can read back a file the controller read/download path serves (the plugin
-                    // otherwise falls back to its smaller built-in default). The plugin key is megabytes.
-                    .put("readMaxSizeMb", (exchangeStorageService.readMaxSizeBytes / (1024 * 1024)).coerceAtLeast(1))
-            logger.info { "Granting $configName (FILE_ACCESS, readOnly=$readOnly) to agent '${config.name}' at $root" }
-            // Honour the per-tool allowlist via the same matcher every other integration uses
-            // (accepts both bare and `configName__tool` forms); null = all tools.
-            return filePlugin
-                .provideTools(cfg, configName, toolContext)
-                .filter { toolResolverService.isToolAllowed(it.name, configName, allowedTools) }
-        }
-
-        val integrations = config.integrations ?: emptyMap()
+        val integrations = config.integrations
         val tools = mutableListOf<StandardTool<*>>()
         val caseId = context.caseId
         val caseCreatedAt = context.caseCreatedAt
-        if (integrations.containsKey(ExchangeIntegrationTypes.CASE) && caseId != null && caseCreatedAt != null) {
+
+        val caseGrant = exchangeToolGrantService.resolveCaseGrant(integrations)
+        if (caseGrant != null && caseId != null && caseCreatedAt != null) {
             // The agent gets read/write on the case exchange by design (it produces files during a run).
             // User-facing write is separately gated: the exchange upload/delete endpoints require Case
             // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
             tools +=
-                grant(
-                    exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
+                exchangeToolGrantService.grantTools(
+                    root = exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
                     readOnly = false,
                     configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
-                    allowedTools = integrations[ExchangeIntegrationTypes.CASE],
+                    allowedTools = caseGrant.allowedTools,
+                    toolContext = toolContext,
                 )
         }
-        if (integrations.containsKey(ExchangeIntegrationTypes.NAMESPACE)) {
+
+        val namespaceGrant = exchangeToolGrantService.resolveNamespaceGrant(integrations)
+        if (namespaceGrant != null) {
             // The agent inherits the invoking user's namespace right: read/write for a namespace
-            // admin (Namespace WRITE, super-admin included), read-only for a plain member.
+            // admin (Namespace WRITE, super-admin included), read-only for a plain member. Resolved
+            // only once the grant stands, so a scope nobody was granted costs no permission query.
             val userCanWriteNamespace =
                 context.userId?.let {
                     exchangeCapabilityService.canWrite(
@@ -675,11 +661,12 @@ class AgentServiceImpl(
                     )
                 } ?: false
             tools +=
-                grant(
-                    exchangeStorageService.namespaceRoot(context.namespaceId),
+                exchangeToolGrantService.grantTools(
+                    root = exchangeStorageService.namespaceRoot(context.namespaceId),
                     readOnly = !userCanWriteNamespace,
                     configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
-                    allowedTools = integrations[ExchangeIntegrationTypes.NAMESPACE],
+                    allowedTools = namespaceGrant.allowedTools,
+                    toolContext = toolContext,
                 )
         }
         return tools

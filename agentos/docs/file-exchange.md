@@ -18,12 +18,13 @@ so the REST path and the agent tool path always resolve to the same directory.
 
 ## Configuration
 
-Mount root, bound from the `agentos.exchange` prefix (Spring relaxed binding):
+Storage and user-facing limits, bound from the `agentos.exchange` prefix (Spring relaxed binding):
 
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
 | `agentos.exchange.mount-root` | `AGENTOS_EXCHANGE_MOUNT_ROOT` | `data/exchange/` | Root directory for all exchange files. Relative paths resolve against the JVM working directory. |
 | `agentos.exchange.allowed-upload-extensions` | `AGENTOS_EXCHANGE_ALLOWED_UPLOAD_EXTENSIONS` | text / doc / data / image / code set | Extensions allowed for user uploads (lowercase, no dot; empty = allow any). A disallowed type is rejected with 400. |
+| `agentos.exchange.read-max-size-bytes` | `AGENTOS_EXCHANGE_READ_MAX_SIZE_BYTES` | `104857600` (100 MB) | Max size the read/download endpoints load into memory (larger is rejected with 422). Also caps the agent read tools on the same directories, in whole megabytes with a floor of 1. |
 
 Upload size limits are global Spring multipart settings (they also bound plugin-jar uploads),
 raised from Spring's 1 MB default:
@@ -33,8 +34,35 @@ raised from Spring's 1 MB default:
 | `spring.servlet.multipart.max-file-size` | `AGENTOS_MULTIPART_MAX_FILE_SIZE` | `25MB` | Max size of a single uploaded file. |
 | `spring.servlet.multipart.max-request-size` | `AGENTOS_MULTIPART_MAX_REQUEST_SIZE` | `30MB` | Max size of the whole multipart request. |
 
-All three follow the repo convention: `${ENV_VAR:default}` placeholders, the `AGENTOS_*` prefix,
-and Spring relaxed binding.
+The multipart pair uses explicit `${ENV_VAR:default}` placeholders because it lives under the
+`spring.*` namespace; the `agentos.*` keys rely on Spring relaxed binding alone. Both follow the
+`AGENTOS_*` prefix convention.
+
+Agent-facing tool policy, bound from the `agentos.exchange.tools` prefix. **One set of values is
+shared by both scopes**: an agent sees the same limits whether a file sits in the case or the
+namespace exchange. The plugin's three other keys are absent by design — `rootPath` and `readOnly`
+are computed per run, and `readMaxSizeMb` derives from `agentos.exchange.read-max-size-bytes` so the
+agent read cap can never drift from the one the REST path enforces.
+
+| Property | Env var | Default | Purpose |
+|---|---|---|---|
+| `agentos.exchange.tools.case-enabled-by-default` | `AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT` | `false` | Grants `CASE_FILE_EXCHANGE` to every agent that does not mention it. |
+| `agentos.exchange.tools.namespace-enabled-by-default` | `AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT` | `false` | Same for `NAMESPACE_FILE_EXCHANGE`; write access still follows Namespace `WRITE`. |
+| `agentos.exchange.tools.extra-deny-patterns` | `AGENTOS_EXCHANGE_TOOLS_EXTRA_DENY_PATTERNS` | empty | Extra globs blocked on top of the built-in sensitive-file list (additive only). |
+| `agentos.exchange.tools.image-max-dimension` | `AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_DIMENSION` | `1024` | Longest edge (px) of images `readAsImage` / `readDocument` send to the LLM. |
+| `agentos.exchange.tools.image-jpeg-quality` | `AGENTOS_EXCHANGE_TOOLS_IMAGE_JPEG_QUALITY` | `0.80` | JPEG re-encoding quality, clamped to `[0, 1]`. |
+| `agentos.exchange.tools.image-max-source-pixels` | `AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_SOURCE_PIXELS` | `50000000` | Decode-bomb guard. |
+| `agentos.exchange.tools.image-pass-through-max-bytes` | `AGENTOS_EXCHANGE_TOOLS_IMAGE_PASS_THROUGH_MAX_BYTES` | `1048576` | Small originals already fitting the max dimension are sent untouched. |
+| `agentos.exchange.tools.document-max-output-chars` | `AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_OUTPUT_CHARS` | `100000` | Markdown budget per `readDocument` call. |
+| `agentos.exchange.tools.document-max-attached-images` | `AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_ATTACHED_IMAGES` | `10` | Max embedded pictures attached per call. |
+| `agentos.exchange.tools.document-max-table-columns` | `AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_TABLE_COLUMNS` | `64` | Columns dropped beyond this when rendering a `.docx` table. |
+| `agentos.exchange.tools.document-max-cell-chars` | `AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_CELL_CHARS` | `5000` | A longer table cell is truncated. |
+
+These reach the file plugin as the `provideTools` configuration node: the SDK and the plugins carry
+no Spring dependency, so `ExchangeToolGrantService` is what turns the bound properties into that
+node. The defaults duplicate the plugin's own constants — a plugin jar predating one of these keys
+simply ignores it and falls back to its compiled default, so tuning a value without redeploying the
+plugin has no visible effect.
 
 ## REST API
 
@@ -69,11 +97,34 @@ Case and namespace exchange are exposed as **built-in integration types** (`Exch
 | `NAMESPACE_FILE_EXCHANGE` | namespace shared | read; read / write when the invoking user is a namespace admin |
 
 They appear in `GET /api/integration-types` with `builtIn = true`, but only when the `FILE_ACCESS`
-plugin is loaded. Enable them per agent through the agent's `integrations` map (no persisted boolean
-flags). Per-run tools are built in `AgentServiceImpl.buildExchangeTools`, which points the file plugin
-at the computed scope root and filters the tool set through the shared
-`ToolResolverService.isToolAllowed` allowlist. Granted tool names follow `<configName>__<tool>`
-(for example `case-exchange__editFiles`).
+plugin is loaded. Enablement is per agent, through the agent's `integrations` map (no persisted
+boolean flags), with a platform-level fallback for an agent that says nothing:
+
+| `integrations` entry | Result |
+|---|---|
+| key absent | the platform default (`agentos.exchange.tools.*-enabled-by-default`, off by default) decides; when on, every tool is granted |
+| `CASE_FILE_EXCHANGE:` (null) | granted, every tool |
+| `CASE_FILE_EXCHANGE: [readFile, ls]` | granted, restricted to those names (bare or `case-exchange__readFile`) |
+| `CASE_FILE_EXCHANGE: []` | **opt-out** — nothing granted, and no scope directory is created |
+
+The empty list is a genuine opt-out rather than an empty allow-list. `ToolResolverService.isToolAllowed`
+would already reject every tool, but the grant creates the scope directory *before* that filter runs,
+so the decision short-circuits earlier in `ExchangeToolGrantService.resolveCaseGrant` /
+`resolveNamespaceGrant`.
+
+The three states are what the agent form in `agentos-ui` renders, per built-in type: *Platform
+default*, *Enabled*, *Disabled*. "Platform default" is a state the user can see and keep, not a
+synonym for off — that is what stops an agent nobody ever configured from being silently switched off
+the first time someone saves an unrelated change on a default-on instance. To label which way it
+resolves, `GET /api/integration-types` publishes `enabledByDefault` on each descriptor.
+
+Per-run tools are built by `AgentServiceImpl.buildExchangeTools`, which keeps what only it knows (the
+run's `caseId`, the invoking user's Namespace `WRITE` right) and delegates the decision, the plugin
+configuration and the `ToolResolverService.isToolAllowed` filtering to `ExchangeToolGrantService`. The
+platform default is a decision local to that service and never a mutation of `AgentConfig.integrations`,
+which would otherwise leak into the persisted config, the YAML export and the peer descriptions the
+redirect tool puts in every agent's prompt. Granted tool names follow `<configName>__<tool>` (for
+example `case-exchange__editFiles`).
 
 ## Safety
 
@@ -82,7 +133,10 @@ at the computed scope root and filters the tool set through the shared
 - **Path containment**: the resolved path must stay within the scope root. Traversal (`../`) and
   symlink escapes are rejected.
 - **No phantom directories**: reads and deletes on a never-written scope return 404 without
-  materializing empty shard directories.
+  materializing empty shard directories. The agent grant is the one exception — the file plugin
+  canonicalizes `rootPath` at construction, so granting a scope creates its directory. Turning
+  `case-enabled-by-default` on therefore materializes a case exchange directory for every case a
+  granted agent runs in; an agent that opts out with `[]` creates nothing.
 - **Upload allow-list**: user uploads are restricted to a configurable set of file extensions
   (`agentos.exchange.allowed-upload-extensions`); a disallowed type is rejected with 400.
 

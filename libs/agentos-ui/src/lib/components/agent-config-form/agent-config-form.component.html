@@ -101,16 +101,20 @@
             <p class="agent-config-form__integrations-separator">Built-in integrations</p>
             @for (row of builtInRows(); track row.type) {
               <div class="agent-config-form__integration-row">
-                <label class="agent-config-form__integration-toggle">
-                  <input
-                    class="agent-config-form__integration-checkbox"
-                    type="checkbox"
-                    [checked]="row.enabled()"
-                    (change)="toggleBuiltIn(row)"
-                  />
+                <label class="agent-config-form__integration-toggle" [attr.for]="'built-in-' + row.type">
                   <span class="agent-config-form__integration-name">{{ row.displayName }}</span>
                   <span class="agent-config-form__integration-type">built-in</span>
                 </label>
+                <select
+                  class="agent-config-form__integration-state"
+                  [id]="'built-in-' + row.type"
+                  [value]="row.state()"
+                  (change)="setBuiltInState(row, $any($event.target).value)"
+                >
+                  <option value="default">{{ builtInDefaultLabel(row) }}</option>
+                  <option value="on">Enabled</option>
+                  <option value="off">Disabled</option>
+                </select>
                 <p class="agent-config-form__integration-builtin-desc">{{ row.description }}</p>
               </div>
             }
