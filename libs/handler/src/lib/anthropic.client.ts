@@ -34,7 +34,6 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
     name: 'claude-fable-5',
     alias: 'FRONTIER',
     contextWindow: 200000,
-    temperature: 0.8,
     maxOutputTokens: 64000,
     price: {
       inputMTokens: 10,
@@ -47,7 +46,6 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
     name: 'claude-sonnet-5',
     alias: 'BIG',
     contextWindow: 200000,
-    temperature: 0.8,
     maxOutputTokens: 64000,
     price: {
       inputMTokens: 2,
@@ -60,7 +58,6 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
     name: 'claude-opus-5',
     alias: 'BIGGEST',
     contextWindow: 200000,
-    temperature: 0.8,
     maxOutputTokens: 64000,
     price: {
       inputMTokens: 5,
@@ -619,7 +616,9 @@ export class AnthropicClient extends AiClient {
         },
       ] as unknown as Array<Anthropic.TextBlockParam>,
       tools: this.getClaudeTools(agent.tools),
-      temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
+      ...((agent.definition.temperature ?? model.temperature) !== undefined && {
+        temperature: agent.definition.temperature ?? model.temperature,
+      }),
       max_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? 8192,
     })
 
@@ -786,7 +785,7 @@ export class AnthropicClient extends AiClient {
           model: modelName,
           messages: [{ role: 'user', content: prompt }],
           max_tokens: actualMaxTokens,
-          temperature: options?.temperature ?? 0.5,
+          ...(options?.temperature !== undefined && { temperature: options.temperature }),
           stop_sequences: options?.stopSequences,
         })
         response = await stream.finalMessage()
@@ -795,7 +794,7 @@ export class AnthropicClient extends AiClient {
           model: modelName,
           messages: [{ role: 'user', content: prompt }],
           max_tokens: actualMaxTokens,
-          temperature: options?.temperature ?? 0.5,
+          ...(options?.temperature !== undefined && { temperature: options.temperature }),
           stop_sequences: options?.stopSequences,
         })
       }

@@ -15,7 +15,7 @@ catalog:
   '@angular/platform-browser': '21.2.6'
   '@angular/platform-browser-dynamic': '21.2.6'
   '@angular/router': '21.2.6'
-  '@anthropic-ai/sdk': '0.65.0'
+  '@anthropic-ai/sdk': '0.115.0'
   '@esbuild-plugins/node-modules-polyfill': '0.2.2'
   '@google/generative-ai': '0.24.1'
   '@inquirer/prompts': '7.9.0'
