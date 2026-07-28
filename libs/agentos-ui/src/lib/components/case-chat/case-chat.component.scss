@@ -215,8 +215,8 @@
 
       @media (max-width: 600px) {
         max-width: 95%;
-        align-self: stretch;
-        align-items: stretch;
+        align-self: flex-end;
+        align-items: flex-end;
       }
     }
 
