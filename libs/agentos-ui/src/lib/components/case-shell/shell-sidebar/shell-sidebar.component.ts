@@ -46,16 +46,16 @@ export class ShellSidebarComponent {
   /** Filter text for the case list — driven by the search input in the top bar. */
   protected readonly caseFilter = signal('')
 
-  // Position fixe du menu user en mode compact
+  // Fixed position for the user menu in compact mode
   protected readonly compactMenuTop = signal(0)
   protected readonly compactMenuLeft = signal(0)
 
-  // Mode compact — search overlay (position: fixed, ancré à droite du rail)
+  // Compact mode — search overlay (position: fixed, anchored to the right of the rail)
   protected readonly compactSearchOpen = signal(false)
   protected readonly compactSearchTop = signal(0)
   protected readonly compactSearchLeft = signal(0)
 
-  // Mode compact — namespace menu (position: fixed)
+  // Compact mode — namespace menu (position: fixed)
   protected readonly compactNsMenuOpen = signal(false)
   protected readonly compactNsMenuTop = signal(0)
   protected readonly compactNsMenuLeft = signal(0)
@@ -77,8 +77,7 @@ export class ShellSidebarComponent {
 
   protected closeCompactSearch(): void {
     this.compactSearchOpen.set(false)
-    // Ne pas réinitialiser caseFilter ici — le filtre reste actif
-    // tant que l'utilisateur ne le vide pas explicitement.
+    // Do not reset caseFilter here — the filter stays active until the user clears it.
   }
 
   protected clearCompactSearch(): void {
@@ -104,7 +103,7 @@ export class ShellSidebarComponent {
 
   protected onCompactUserBtnClick(event: MouseEvent): void {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    // Le menu s'ouvre vers le haut — on ancre sur le bas du bouton
+    // Menu opens upward — anchor to the bottom of the avatar button
     this.compactMenuTop.set(rect.bottom)
     this.compactMenuLeft.set(rect.right + 8)
     this.menuToggled.emit(event)

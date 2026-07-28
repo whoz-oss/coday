@@ -81,21 +81,15 @@ export class CaseDrawerComponent {
   })
 
   /**
-   * Root items enriched with initials and status, used in compact/icons mode.
-   * Initials = first letter of the first two words of the title, uppercased.
-   */
-  /**
-   * Items affichés dans le rail compact :
-   * - Si une recherche est active : liste plate des résultats filtrés (tous les niveaux)
-   * - Sinon : racines groupées par date/favoris
-   * Chaque item est enrichi des initiales et d'un flag de premier groupe.
+   * Root items enriched with initials for the compact rail.
+   * When search is active: flat filtered results. Otherwise: date/favorites groups.
    */
   protected readonly compactItems = computed(() => {
     const source = this.isSearchActive() ? this.flatFilteredItems() : this.rootItems()
     return source.map((item, i, arr) => ({
       ...item,
       initials: getInitials(item.name),
-      /** Vrai si cet item est le premier de son groupe dans le rail compact. */
+      /** True if this item is the first of its group in the compact rail. */
       isFirstInCompactGroup: i === 0 || item.groupKey !== arr[i - 1]?.groupKey,
     }))
   })
@@ -139,38 +133,38 @@ export class CaseDrawerComponent {
    * (which [autoExpandedIds] would otherwise force open).
    */
   // ---------------------------------------------------------------------------
-  // Compact tooltip (position: fixed — échappe au overflow:hidden du rail)
+  // Compact tooltip (position: fixed — escapes the rail's overflow:hidden)
   // ---------------------------------------------------------------------------
 
-  /** Item survolé en mode compact — null = tooltip masqué. */
+  /** Currently hovered item in compact mode — null when tooltip is hidden. */
   protected readonly hoveredCompactItem = signal<
     (typeof this.compactItems extends () => (infer T)[] ? T : never) | null
   >(null)
 
-  /** Position fixe du tooltip calculée depuis le badge survolé. */
+  /** Fixed tooltip position, computed from the hovered badge's bounding rect. */
   protected readonly tooltipPos = signal<{ top: number; left: number }>({ top: 0, left: 0 })
 
-  /** Id du case en attente de confirmation de suppression dans le tooltip compact. */
+  /** Case id pending delete confirmation in the compact tooltip. */
   protected readonly compactConfirmingDeleteId = signal<string | null>(null)
 
-  /** Id du case en attente de confirmation de suppression en mode expanded. */
+  /** Case id pending delete confirmation in expanded mode. */
   protected readonly expandedConfirmingDeleteId = signal<string | null>(null)
 
   protected onCompactBadgeEnter(event: MouseEvent, item: ReturnType<typeof this.compactItems>[number]): void {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
     this.tooltipPos.set({ top: rect.top + rect.height / 2, left: rect.right + 8 })
     this.hoveredCompactItem.set(item)
-    // Réinitialise la confirmation si on survole un autre case
+    // Reset confirmation when hovering a different case
     if (this.compactConfirmingDeleteId() !== item.id) {
       this.compactConfirmingDeleteId.set(null)
     }
   }
 
   protected onCompactBadgeLeave(event: MouseEvent): void {
-    // Le pont CSS (::before) couvre le gap — mais on vérifie aussi via relatedTarget
+    // The CSS bridge (::before) covers the gap — also check via relatedTarget
     const related = event.relatedTarget as HTMLElement | null
     if (related?.closest('.case-drawer-compact__tooltip-fixed')) return
-    // Petit délai pour laisser le temps à la souris de traverser le gap
+    // Small delay to let the mouse cross the gap between badge and tooltip
     setTimeout(() => {
       if (!this._mouseOnTooltip) this.hoveredCompactItem.set(null)
     }, 80)

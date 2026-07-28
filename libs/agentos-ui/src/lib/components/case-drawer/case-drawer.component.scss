@@ -51,13 +51,13 @@
   padding: 2px 0;
   overflow-y: auto;
 
-  // Wrapper positionnel — contexte pour le tooltip
+  // Positioning context for the tooltip
   &__item {
     position: relative;
     display: flex;
     align-items: center;
 
-    // Affiche le tooltip au hover du wrapper (badge OU tooltip lui-même)
+    // Show tooltip on hover of the wrapper (badge OR tooltip itself)
     &:hover .case-drawer-compact__tooltip,
     &:focus-within .case-drawer-compact__tooltip {
       opacity: 1;
@@ -257,7 +257,7 @@
     }
   }
 
-  // Glyph rendu par <agentos-case-status-glyph>
+  // Glyph rendered by <agentos-case-status-glyph>
 
   // Clickable title button
   &__select {
@@ -281,7 +281,7 @@
     font-weight: 400;
   }
 
-  // Status tag — bordé, visible par défaut, masqué au hover pour laisser place aux actions
+  // Status tag — bordered, visible by default, hidden on hover to give room to actions
   &__status-label {
     @include ds.status-tag;
 

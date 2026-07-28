@@ -80,8 +80,8 @@ export class AgentosThemeService implements ThemePort, OnDestroy {
     const resolvedMode = state.mode === 'system' ? this.resolveSystem() : state.mode
     const attr =
       state.variant === 'industry' && resolvedMode === 'light'
-        ? null // :root = industry-light (défaut)
-        : `${state.variant}-${resolvedMode}` // ex: "industry-dark", "terminal-light"
+        ? null // :root default = industry-light (no attribute)
+        : `${state.variant}-${resolvedMode}` // e.g. "industry-dark", "terminal-light"
     if (attr) {
       document.documentElement.setAttribute('data-theme', attr)
     } else {

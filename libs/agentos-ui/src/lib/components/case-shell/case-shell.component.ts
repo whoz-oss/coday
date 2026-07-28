@@ -117,7 +117,7 @@ export class CaseShellComponent {
 
   private static readonly SHOW_TECHNICAL_KEY = 'agentos.case-chat.showTechnical'
 
-  /** Source de vérité globale pour les technical logs — persisté en localStorage. */
+  /** Global toggle for technical log events — persisted in localStorage. */
   protected readonly showTechnical = signal(localStorage.getItem(CaseShellComponent.SHOW_TECHNICAL_KEY) === 'true')
 
   /** Whether to show the namespace picker (admin or multiple namespaces) */

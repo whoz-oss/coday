@@ -96,9 +96,8 @@ function hasActiveSelection(): boolean {
 /**
  * CaseChatComponent — real-time chat view for an active case.
  *
- * Connexion SSE directe sur /api/agentos/api/cases/:caseId/events.
- * Accumule tous les CaseEvent reçus, affiche les MessageEvent
- * et les ToolRequestEvent/ToolResponseEvent intercalés chronologiquement.
+ * Direct SSE connection to /api/cases/:caseId/events.
+ * Accumulates all CaseEvents, renders MessageEvents and ToolRequest/Response items in order.
  *
  * Scroll behaviour:
  * - The messages area fills available height and scrolls independently.

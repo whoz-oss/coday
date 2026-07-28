@@ -8,14 +8,8 @@ interface CaseGroup {
 }
 
 /**
- * ShellCaseSwitcherMobileComponent — mobile case drawer.
- *
- * Remplace l'ancien sub-header case-switcher par un drawer overlay
- * slide-in depuis la gauche (maquette mobile).
- *
- * Structure:
- *   - Backdrop semi-transparent (ferme au clic)
- *   - Panneau 318px: header "Cases" + close | search | liste groupée | user menu
+ * ShellCaseSwitcherMobileComponent — full-screen overlay drawer for mobile.
+ * Slides in from the left. Contains search, grouped case list, and user menu.
  */
 @Component({
   selector: 'agentos-shell-case-switcher-mobile',

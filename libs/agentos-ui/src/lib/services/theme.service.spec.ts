@@ -57,7 +57,7 @@ describe('AgentosThemeService', () => {
 
     service.setTheme({ variant: 'industry', mode: 'light' })
     expect(localStorage.getItem(STORAGE_KEY_MODE)).toBe('light')
-    // industry-light = pas d'attribut (défaut)
+    // industry-light = no attribute (default)
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
   })
 
@@ -79,7 +79,7 @@ describe('AgentosThemeService', () => {
     mockMatchMedia(false)
     const service = new AgentosThemeService()
     service.setTheme({ variant: 'industry', mode: 'system' })
-    // industry-light = pas d'attribut
+    // industry-light = no attribute
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
   })
 
@@ -96,7 +96,7 @@ describe('AgentosThemeService', () => {
     const service = new AgentosThemeService()
     expect(service.theme().variant).toBe('industry')
     expect(service.theme().mode).toBe('dark')
-    // Clé legacy supprimée, nouvelles clés créées
+    // Legacy key removed, new keys created
     expect(localStorage.getItem(STORAGE_KEY_LEGACY)).toBeNull()
     expect(localStorage.getItem(STORAGE_KEY_MODE)).toBe('dark')
     expect(localStorage.getItem(STORAGE_KEY_VARIANT)).toBe('industry')
