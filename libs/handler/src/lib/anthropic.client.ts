@@ -31,20 +31,33 @@ interface RateLimitInfo {
 
 const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   {
-    name: 'claude-sonnet-4-6',
+    name: 'claude-fable-5',
+    alias: 'FRONTIER',
+    contextWindow: 200000,
+    temperature: 0.8,
+    maxOutputTokens: 64000,
+    price: {
+      inputMTokens: 10,
+      cacheWrite: 12.5,
+      cacheRead: 1.0,
+      outputMTokens: 50,
+    },
+  },
+  {
+    name: 'claude-sonnet-5',
     alias: 'BIG',
     contextWindow: 200000,
     temperature: 0.8,
     maxOutputTokens: 64000,
     price: {
-      inputMTokens: 3,
-      cacheWrite: 3.75,
-      cacheRead: 0.3,
-      outputMTokens: 15,
+      inputMTokens: 2,
+      cacheWrite: 2.5,
+      cacheRead: 0.2,
+      outputMTokens: 10,
     },
   },
   {
-    name: 'claude-opus-4-6',
+    name: 'claude-opus-5',
     alias: 'BIGGEST',
     contextWindow: 200000,
     temperature: 0.8,
@@ -563,6 +576,7 @@ export class AnthropicClient extends AiClient {
 
     // Add cache_control to the last tool (covers all tools)
     if (tools.length > 0) {
+      // eslint-disable-next-line no-extra-semi
       ;(tools[tools.length - 1] as any).cache_control = { type: 'ephemeral' }
     }
 
