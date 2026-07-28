@@ -318,8 +318,68 @@
     pointer-events: auto;
   }
 
-  // Action buttons (star, delete)
+  // Action buttons (star, rename, delete)
   &__action-btn {
     @include ds.action-btn(28px);
+  }
+
+  // ── Inline rename editor ──────────────────────────────────────────────
+  //
+  // The actions and the status label are absolutely positioned over the right end of the row,
+  // so they must be hidden while the editor is open or they would sit on top of the input.
+  // The reveal rules above carry a :hover / :focus-within pseudo-class, so these selectors need
+  // one of their own to win on specificity: source order alone would not be enough, and the
+  // focused input trips :focus-within for the whole duration of the edit.
+  &__row--editing:hover &__actions,
+  &__row--editing:focus-within &__actions,
+  &__row--editing:hover &__status-label,
+  &__row--editing:focus-within &__status-label {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  // Takes the place, and the flex share, of __select so the row keeps its layout.
+  // Relative so the validation message can anchor to it.
+  &__edit {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  &__name-input {
+    // Same metrics as __name so the row height does not change when the editor opens.
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 1px 6px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--color-text);
+    background: var(--color-bg-secondary, #fff);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+
+    &:focus-visible {
+      @include ds.focus-ring;
+    }
+  }
+
+  // Out of flow: rows are laid out in a scrolling list, so an in-flow message would grow the
+  // row and shift every row below it while the user is still clicking.
+  &__rename-error {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 2;
+    margin: 2px 0 0;
+    padding: 2px 6px;
+    font-size: 11px;
+    color: var(--color-error, #ff3b30);
+    background: var(--color-bg-secondary, #fff);
+    border-radius: 4px;
+    white-space: nowrap;
   }
 }

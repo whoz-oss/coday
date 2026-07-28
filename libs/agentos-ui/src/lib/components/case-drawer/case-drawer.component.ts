@@ -1,11 +1,14 @@
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
+  ElementRef,
   input,
   output,
   signal,
   TemplateRef,
+  viewChild,
   ViewChild,
 } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
@@ -16,8 +19,8 @@ import { CaseItemComponent, CaseListItem } from '../case-item/case-item.componen
 /**
  * A case list item extended with a recursive children list (parent/child cases).
  * Only root nodes are passed to ds-entity-list; children are rendered inline by the
- * itemTemplate. Inherits `favorite` + `canDelete` from [CaseListItem] so each row can
- * render the star toggle and the (ADMIN-gated) delete action.
+ * itemTemplate. Inherits `favorite`, `canDelete` and `canRename` from [CaseListItem] so each
+ * row can render the star toggle and the (ADMIN-gated) rename and delete actions.
  */
 export interface CaseTreeItem extends CaseListItem {
   children: CaseTreeItem[]
@@ -58,6 +61,7 @@ export class CaseDrawerComponent {
   readonly createRequested = output<void>()
   readonly deleteRequested = output<string>()
   readonly starToggled = output<{ id: string; starred: boolean }>()
+  readonly renameRequested = output<{ id: string; title: string }>()
 
   @ViewChild('caseRowTpl', { static: true }) caseRowTpl!: TemplateRef<{ node: CaseTreeItem; depth: number }>
 
@@ -185,6 +189,64 @@ export class CaseDrawerComponent {
 
   protected readonly expandOverrides = signal(new Map<string, boolean>())
 
+  // ---------------------------------------------------------------------------
+  // Inline rename
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Case currently renamed inline, keyed by ID rather than by node: [rootItems] rebuilds every
+   * tree node whenever cases() changes (which the optimistic title patch does), so a node
+   * reference would go stale mid-edit.
+   */
+  protected readonly editingCaseId = signal<string | null>(null)
+
+  /** Draft title being typed. */
+  protected readonly editingTitle = signal('')
+
+  /** Validation message shown under the input, null while the draft is valid. */
+  protected readonly renameError = signal<string | null>(null)
+
+  /** Title the editor was seeded with, used to skip a no-op rename. */
+  private renameOriginal = ''
+
+  /** Only one row can be in edit mode, so a singular query is enough. */
+  private readonly renameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput')
+
+  /** Case whose draft has already been pre-selected, so a re-render does not re-select it. */
+  private selectedForId: string | null = null
+
+  constructor() {
+    afterRenderEffect((onCleanup) => {
+      const id = this.editingCaseId()
+      if (!id) return
+
+      const input = this.renameInput()?.nativeElement
+      if (!input) {
+        // The edited row is no longer rendered: the search filter hid it, compact mode replaced
+        // the tree by the badge rail, the case was deleted, or an ancestor collapsed because the
+        // active case changed. Angular destroys the view without firing (blur), so the draft
+        // would otherwise survive and the editor would re-open on stale state later.
+        this.cancelRename()
+        return
+      }
+
+      // setTimeout rather than a microtask: the rename button lives in the row's hover actions,
+      // and with zone.js the tick runs synchronously between the listeners of a single click
+      // dispatch. Only a macrotask is guaranteed to land after the whole dispatch has settled.
+      const timer = setTimeout(() => {
+        input.focus()
+        // Pre-select on a genuine open only. The row's view is recreated whenever the tree
+        // regroups (starring another case moves rows between groups), and re-selecting there
+        // would make the next keystroke wipe a half-typed draft.
+        if (this.selectedForId !== id) {
+          input.select()
+          this.selectedForId = id
+        }
+      })
+      onCleanup(() => clearTimeout(timer))
+    })
+  }
+
   protected isExpanded(id: string): boolean {
     return this.expandOverrides().get(id) ?? this.autoExpandedIds().has(id)
   }
@@ -226,6 +288,75 @@ export class CaseDrawerComponent {
     this.deleteRequested.emit(id)
   }
 
+  /** Open the inline editor on a row, seeded with its current label. */
+  protected startRename(node: CaseTreeItem): void {
+    this.renameOriginal = node.name
+    this.editingTitle.set(node.name)
+    this.renameError.set(null)
+    this.selectedForId = null
+    this.editingCaseId.set(node.id)
+  }
+
+  protected onRenameInput(value: string): void {
+    this.editingTitle.set(value)
+    if (this.renameError()) this.renameError.set(null)
+  }
+
+  protected onRenameKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      event.stopPropagation()
+      this.commitRename()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      this.cancelRename()
+    }
+  }
+
+  /**
+   * Blur commits a valid draft and discards an invalid one: leaving the row stuck in edit mode,
+   * showing an error under an unfocused input, would be worse. Enter is the path that surfaces
+   * the error and keeps the focus so the user can fix the draft.
+   *
+   * Bails out when the blur came from the whole window being deactivated (alt-tab, browser
+   * chrome), which would otherwise persist a half-typed name. That case is told apart by the
+   * input still being document.activeElement: a real focus move updates it, a window
+   * deactivation does not. The browser refocuses the input on return, so the edit carries on.
+   */
+  protected onRenameBlur(): void {
+    if (!this.editingCaseId()) return
+    if (this.renameInput()?.nativeElement === document.activeElement) return
+    if (caseTitleError(this.editingTitle().trim())) this.cancelRename()
+    else this.commitRename()
+  }
+
+  /**
+   * Validate the draft and emit the rename. Idempotent by construction: the first call clears
+   * [editingCaseId], so the blur that follows an Enter (or a second Enter) is a no-op.
+   */
+  protected commitRename(): void {
+    const id = this.editingCaseId()
+    if (!id) return
+    const title = this.editingTitle().trim()
+    const error = caseTitleError(title)
+    if (error) {
+      this.renameError.set(error)
+      return
+    }
+    this.editingCaseId.set(null)
+    this.renameError.set(null)
+    // Unchanged title: nothing to persist, so no request.
+    if (title === this.renameOriginal) return
+    this.renameRequested.emit({ id, title })
+  }
+
+  protected cancelRename(): void {
+    this.editingCaseId.set(null)
+    this.editingTitle.set('')
+    this.renameError.set(null)
+  }
+
   /**
    * @internal Used by tests via component['menuItemsFor']
    * Kept for backward-compat with existing specs.
@@ -257,6 +388,22 @@ export class CaseDrawerComponent {
 
   // Exposed to the template for use in @switch / [class] bindings
   protected readonly Status = CaseStatusEventStatusEnum
+}
+
+/** Longest title a user may set, matching the legacy thread rename input. */
+const MAX_CASE_TITLE_LENGTH = 200
+
+/**
+ * Validation message for an already-trimmed case title, or null when it is valid.
+ *
+ * Empty is rejected outright: the server accepts it (PUT /api/cases/{id} does
+ * `resource.title ?: existing.title`, a null-guard only) and a blank title makes it re-trigger
+ * LLM auto-naming on every subsequent message.
+ */
+function caseTitleError(title: string): string | null {
+  if (!title) return 'Name cannot be empty'
+  if (title.length > MAX_CASE_TITLE_LENGTH) return `Name is too long (max ${MAX_CASE_TITLE_LENGTH} characters)`
+  return null
 }
 
 /**

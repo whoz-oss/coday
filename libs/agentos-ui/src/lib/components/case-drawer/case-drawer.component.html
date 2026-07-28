@@ -170,7 +170,11 @@
 <!-- ===== ROW TEMPLATE (recursive) ===== -->
 <ng-template #caseRowTpl let-node="node" let-depth="depth">
   <div class="case-tree-node" [style.--depth]="depth">
-    <div class="case-tree-node__row" [class.case-tree-node__row--active]="node.id === activeCaseId()">
+    <div
+      class="case-tree-node__row"
+      [class.case-tree-node__row--active]="node.id === activeCaseId()"
+      [class.case-tree-node__row--editing]="editingCaseId() === node.id"
+    >
       <!-- Expand toggle (only when children exist) -->
       @if (node.children?.length) {
         <button
@@ -202,10 +206,37 @@
         <agentos-case-status-glyph [status]="node.status" [size]="15" />
       }
 
-      <!-- Case title (clickable) -->
-      <button type="button" class="case-tree-node__select" (click)="onItemSelected(node.id)">
-        <span class="case-tree-node__name">{{ node.name }}</span>
-      </button>
+      <!--
+        Case title: clickable button, swapped whole for the inline editor while renaming.
+        Nesting the input inside the button would be invalid HTML, and clicking into it would
+        trigger onItemSelected and navigate away from the row being edited.
+      -->
+      @if (editingCaseId() === node.id) {
+        <div class="case-tree-node__edit">
+          <input
+            #renameInput
+            type="text"
+            class="case-tree-node__name-input"
+            [value]="editingTitle()"
+            aria-label="Case title"
+            [attr.aria-invalid]="renameError() ? 'true' : null"
+            [attr.aria-describedby]="renameError() ? 'rename-error-' + node.id : null"
+            autocomplete="off"
+            spellcheck="false"
+            (click)="$event.stopPropagation()"
+            (input)="onRenameInput($any($event.target).value)"
+            (keydown)="onRenameKeydown($event)"
+            (blur)="onRenameBlur()"
+          />
+          @if (renameError(); as error) {
+            <p class="case-tree-node__rename-error" role="alert" [id]="'rename-error-' + node.id">{{ error }}</p>
+          }
+        </div>
+      } @else {
+        <button type="button" class="case-tree-node__select" (click)="onItemSelected(node.id)">
+          <span class="case-tree-node__name">{{ node.name }}</span>
+        </button>
+      }
 
       <!-- Status label — hidden on hover to reveal action buttons -->
       <span
@@ -245,6 +276,29 @@
               />
             </svg>
           </button>
+          @if (node.canRename) {
+            <button
+              type="button"
+              class="case-tree-node__action-btn"
+              title="Rename case"
+              (click)="startRename(node); $event.stopPropagation()"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z" />
+              </svg>
+            </button>
+          }
           @if (node.canDelete) {
             <button
               type="button"

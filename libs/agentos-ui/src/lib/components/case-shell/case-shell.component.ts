@@ -255,6 +255,23 @@ export class CaseShellComponent {
       })
   }
 
+  /**
+   * Persist a rename requested from the drawer. The drawer has already validated the title and
+   * closed its editor; the new title is applied optimistically by the service and reverted here
+   * on failure, so there is nothing to confirm and nowhere to navigate.
+   */
+  protected onRenameRequested(event: { id: string; title: string }): void {
+    this.caseState
+      .renameCase(event.id, event.title)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => {
+          console.error(`[CaseShell] Failed to rename case ${event.id}:`, err)
+          alert('Could not rename the case. Please try again.')
+        },
+      })
+  }
+
   // ---------------------------------------------------------------------------
   // Navigation
   // ---------------------------------------------------------------------------
