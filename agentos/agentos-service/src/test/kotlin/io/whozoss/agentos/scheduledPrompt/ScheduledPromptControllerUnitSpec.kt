@@ -441,4 +441,47 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         every { service.findByIdWithContent(id, withRemoved = true) } returns Pair(entity, promptContent)
         controller.getById(id).lastRunAt shouldBe null
     }
+
+    // -------------------------------------------------------------------------
+    // Authorization — namespace ADMIN (non-super-admin) can update/toggle/delete
+    //
+    // Note: @PreAuthorize is not evaluated in unit tests (no Spring Security context).
+    // These cases verify that the controller's own authorization logic (scope dispatch,
+    // permissionService.hasPermission calls) works correctly for non-admin users.
+    // The transitive permission path (Namespace.ADMIN → ScheduledPrompt.WRITE) is
+    // exercised by the integration test suite.
+    // -------------------------------------------------------------------------
+
+    "update succeeds for non-admin user — controller delegates to service" {
+        every { userService.getCurrentUser() } returns regularUser()
+        every { permissionService.hasPermission(any(), any(), any(), any()) } returns true
+        val id = UUID.randomUUID()
+        val existing = sp(id = id, name = "old")
+        every { service.findById(id) } returns existing
+        every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
+        val result = controller.update(id, dto(id = id, name = "new"))
+        result.name shouldBe "new"
+    }
+
+    "toggle succeeds for non-admin user — controller delegates to service" {
+        every { userService.getCurrentUser() } returns regularUser()
+        every { permissionService.hasPermission(any(), any(), any(), any()) } returns true
+        val id = UUID.randomUUID()
+        val existing = sp(id = id, enabled = true)
+        val toggled = existing.copy(enabled = false)
+        every { service.findById(id) } returns existing
+        every { service.toggle(id) } returns toggled
+        every { service.findByIdWithContent(toggled.id) } returns Pair(toggled, promptContent)
+        controller.toggle(id).enabled shouldBe false
+    }
+
+    "delete succeeds for non-admin user — controller delegates to service" {
+        every { userService.getCurrentUser() } returns regularUser()
+        every { permissionService.hasPermission(any(), any(), any(), any()) } returns true
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns sp(id = id)
+        every { service.deleteWithPrompt(id) } returns true
+        controller.delete(id)
+        verify { service.deleteWithPrompt(id) }
+    }
 })
