@@ -13,11 +13,13 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
      * (CLAIMED or RUNNING).
      */
     @Query(
-        "MATCH (r:ScheduledPromptRun) " +
-            "WHERE r.scheduledPromptId = :scheduledPromptId " +
-            "AND r.status IN ['CLAIMED', 'RUNNING'] " +
-            "AND NOT COALESCE(r.removed, false) " +
-            "RETURN count(r) > 0",
+        $$"""
+        MATCH (r:ScheduledPromptRun)
+        WHERE r.scheduledPromptId = $scheduledPromptId
+        AND r.status IN ['CLAIMED', 'RUNNING']
+        AND NOT COALESCE(r.removed, false)
+        RETURN count(r) > 0
+        """,
     )
     fun existsActiveByScheduledPromptId(scheduledPromptId: String): Boolean
 }
