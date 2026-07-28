@@ -82,13 +82,8 @@
 
   // ── Top bar (expanded only) ───────────────────────────────────────────────────────
   &__top {
-    display: grid;
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      'logo'
-      'ns'
-      'new'
-      'search';
+    display: flex;
+    flex-direction: column;
     gap: 8px;
     padding: 10px 12px;
     border-bottom: 1px solid var(--color-divider);
@@ -96,34 +91,44 @@
     overflow: visible;
     width: 100%;
     box-sizing: border-box;
-
-    &--wide {
-      grid-template-columns: 1fr 1fr;
-      grid-template-areas:
-        'logo  ns'
-        'new   search';
-    }
   }
 
-  &__top-row {
-    grid-area: logo;
-  }
-  &__ns-wrap {
-    grid-area: ns;
-  }
-  &__new-case-btn {
-    grid-area: new;
-  }
-  &__search {
-    grid-area: search;
-  }
-
-  // Row 1 inside top bar: logo + new case button
+  // Row 1: logo + namespace picker always side by side
   &__top-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
+    min-width: 0;
+  }
+
+  &__ns-wrap {
+    flex: 1;
+    min-width: 0;
+  }
+
+  // Row 2: new case + search — stacked by default, side by side above 400px
+  &__bottom-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    &--wide {
+      flex-direction: row;
+
+      .shell-sidebar__new-case-btn,
+      .shell-sidebar__search {
+        flex: 1;
+        min-width: 0;
+      }
+    }
+  }
+
+  &__new-case-btn {
+    width: 100%;
+  }
+
+  &__search {
+    width: 100%;
   }
 
   // New case button with text label

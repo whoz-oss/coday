@@ -9,16 +9,11 @@
 
     <!-- Top bar: logo / namespace / new case / search -->
     <div class="shell-sidebar__top" [class.shell-sidebar__top--wide]="effectiveWidth() >= 400">
-      <!-- Row 1: Logo -->
+      <!-- Row 1: Logo + Namespace picker -->
       <div class="shell-sidebar__top-row">
         <button type="button" class="shell-sidebar__logo" title="Home" (click)="homeClicked.emit()">
-          <img src="CODAY-Logo.png" alt="" class="shell-sidebar__logo-img" />
-          <span class="shell-sidebar__logo-name">Coday</span>
+          <img src="CODAY-Logo.png" alt="Coday" class="shell-sidebar__logo-img" />
         </button>
-      </div>
-
-      <!-- Row 2: Namespace picker -->
-      @if (showNsPicker()) {
         <div class="shell-sidebar__ns-wrap">
           <div class="shell-sidebar__ns-picker">
             <button
@@ -73,31 +68,32 @@
             }
           </div>
         </div>
-      }
+      </div>
 
-      <!-- Row 3: New case button (pleine largeur) -->
-      <button
-        type="button"
-        class="btn btn-primary shell-sidebar__new-case-btn"
-        title="New case"
-        dsBlueprint
-        (click)="createRequested.emit()"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M5 12h14M12 5v14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-        </svg>
-        New case
-      </button>
+      <!-- Row 2: New case + Search -->
+      <div class="shell-sidebar__bottom-row" [class.shell-sidebar__bottom-row--wide]="effectiveWidth() >= 400">
+        <button
+          type="button"
+          class="btn btn-primary shell-sidebar__new-case-btn"
+          title="New case"
+          dsBlueprint
+          (click)="createRequested.emit()"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M5 12h14M12 5v14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+          New case
+        </button>
 
-      <!-- Row 4: Search filter -->
-      <input
-        class="input shell-sidebar__search"
-        placeholder="Filter cases…"
-        type="search"
-        aria-label="Filter cases"
-        [value]="caseFilter()"
-        (input)="caseFilter.set($any($event.target).value)"
-      />
+        <input
+          class="input shell-sidebar__search"
+          placeholder="Filter cases…"
+          type="search"
+          aria-label="Filter cases"
+          [value]="caseFilter()"
+          (input)="caseFilter.set($any($event.target).value)"
+        />
+      </div>
     </div>
 
     <!-- Case list -->
