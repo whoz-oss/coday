@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
 import { Router } from '@angular/router'
 import { AgentConfig } from '@whoz-oss/agentos-api-client'
-import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
+import { BlueprintDirective, IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
  * AgentConfigItemComponent — presentational component for a single agent config card.
@@ -14,7 +14,7 @@ import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-os
  */
 @Component({
   selector: 'agentos-agent-config-item',
-  imports: [KebabMenuComponent, IconButtonComponent],
+  imports: [BlueprintDirective, KebabMenuComponent, IconButtonComponent],
   templateUrl: './agent-config-item.component.html',
   styleUrl: './agent-config-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,0 +1,53 @@
+:host {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  pointer-events: none;
+
+  color: var(--status-idle-color);
+
+  &.is-running {
+    color: var(--color-accent);
+
+    .arc {
+      transform-origin: center;
+      animation: glyph-spin 0.9s linear infinite;
+    }
+  }
+
+  &.is-pending {
+    color: var(--status-pending-color);
+
+    .dot {
+      animation: glyph-pulse 1.5s ease infinite;
+    }
+  }
+
+  &.is-error {
+    color: var(--red);
+  }
+  &.is-killed {
+    color: var(--status-killed-color);
+  }
+}
+
+@keyframes glyph-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes glyph-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.6);
+  }
+}

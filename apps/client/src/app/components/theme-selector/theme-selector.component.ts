@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, inject } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
-import { ThemeService, ThemeMode } from '../../core/services/theme.service'
+import { ThemeService, ThemeMode, ThemeState } from '../../core/services/theme.service'
 
 @Component({
   selector: 'app-theme-selector',
@@ -103,9 +103,8 @@ export class ThemeSelectorComponent implements OnInit, OnDestroy {
   private themeService = inject(ThemeService)
 
   ngOnInit(): void {
-    // Subscribe to current theme
-    this.themeService.currentTheme$.pipe(takeUntil(this.destroy$)).subscribe((theme) => {
-      this.selectedTheme = theme
+    this.themeService.currentTheme$.pipe(takeUntil(this.destroy$)).subscribe((state: ThemeState) => {
+      this.selectedTheme = state.mode
     })
   }
 
@@ -115,7 +114,8 @@ export class ThemeSelectorComponent implements OnInit, OnDestroy {
   }
 
   onThemeChange(): void {
-    this.themeService.setTheme(this.selectedTheme)
+    const current = this.themeService.getCurrentTheme()
+    this.themeService.setTheme({ variant: current.variant, mode: this.selectedTheme })
     console.log('[THEME] Changed to:', this.selectedTheme)
   }
 }

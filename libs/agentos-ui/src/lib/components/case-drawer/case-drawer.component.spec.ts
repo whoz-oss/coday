@@ -103,9 +103,9 @@ describe('CaseDrawerComponent', () => {
     expect(roots[0].id).toBe('fav')
     expect(roots[0].groupKey).toBe('favorites')
     expect(roots[0].groupLabel).toBe('Favorites')
-    // Non-favorites render ungrouped below (no time-bucket grouping).
+    // Non-favorites are grouped by date below (no date = 'older').
     expect(roots[1].id).toBe('plain')
-    expect(roots[1].groupKey).toBeUndefined()
+    expect(roots[1].groupKey).toBe('older')
   })
 
   it('keeps a favorited sub-case nested under its favorited parent (not flattened)', () => {
@@ -136,12 +136,12 @@ describe('CaseDrawerComponent', () => {
     expect(roots[0].children.map((i) => i.id).sort()).toEqual(['child-fav', 'child-plain'])
   })
 
-  it('leaves roots ungrouped when nothing is favorited', () => {
+  it('groups by date when nothing is favorited', () => {
     const cases: Case[] = [{ id: 'a', namespaceId: 'ns', favorite: false } as unknown as Case]
     const component = makeComponent(cases)
 
-    // No favorites: the list is returned unchanged, no section header.
-    expect(component['rootItems']()[0].groupKey).toBeUndefined()
+    // No favorites: cases are grouped by recency (no date = falls into "older").
+    expect(component['rootItems']()[0].groupKey).toBe('older')
   })
 
   it('builds overflow-menu items: star toggle, and delete only when the caller may delete', () => {
