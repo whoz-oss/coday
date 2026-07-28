@@ -1,3 +1,20 @@
+## 0.226.0 (2026-07-28)
+
+### 🚀 Features
+
+- wz-33587: improve readability of code ([#1169](https://github.com/whoz-oss/coday/pull/1169))
+
+### 🩹 Fixes
+
+- #1160 improve scripts ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 improve scripts ([#1165](https://github.com/whoz-oss/coday/pull/1165), [#1160](https://github.com/whoz-oss/coday/issues/1160))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.225.0 (2026-07-24)
 
 ### 🚀 Features
