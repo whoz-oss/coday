@@ -1,3 +1,13 @@
+## 0.228.0 (2026-07-28)
+
+### 🚀 Features
+
+- wz-33579: add logs when file manipulation fail ([#1173](https://github.com/whoz-oss/coday/pull/1173))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.227.1 (2026-07-28)
 
 ### 🩹 Fixes
