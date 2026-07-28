@@ -280,22 +280,29 @@ class ExchangeController(
         try {
             block()
         } catch (e: FileExistsException) {
+            logger.info(e) { "Exchange conflict (FileExistsException): ${e.message}" }
             throw ConflictException(e.message ?: "File already exists", e)
         } catch (e: FileAlreadyExistsException) {
             // Generic message on purpose: a raw FileAlreadyExistsException carries the absolute server
             // path and must not leak in the 409 body.
+            logger.info(e) { "Exchange conflict (FileAlreadyExistsException): ${e.message}" }
             throw ConflictException("File already exists", e)
         } catch (e: NoSuchFileException) {
             // Generic message on purpose: NoSuchFileException.message is the absolute server path.
+            logger.warn(e) { "Exchange file not found (NoSuchFileException): ${e.message}" }
             throw ResourceNotFoundException("File not found")
         } catch (e: CharacterCodingException) {
+            logger.warn(e) { "Exchange file encoding error (CharacterCodingException)" }
             throw BadRequestException("File is not valid UTF-8 text and cannot be displayed")
         } catch (e: ExchangeFileTooLargeException) {
+            logger.warn(e) { "Exchange file too large: ${e.message}" }
             throw UnprocessableEntityException(e.message ?: "File is too large to read")
         } catch (e: IOException) {
             // Generic message on purpose: a raw FileSystemException carries the absolute server path.
+            logger.warn(e) { "Exchange I/O error (${e::class.simpleName}): ${e.message}" }
             throw BadRequestException("Invalid file operation")
         } catch (e: InvalidExchangePathException) {
+            logger.warn(e) { "Exchange invalid path: ${e.message}" }
             throw BadRequestException(e.message ?: "Invalid path")
         }
 
