@@ -11,12 +11,15 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
@@ -33,13 +36,14 @@ import java.util.UUID
 class ScheduledPromptServiceImplUnitSpec : StringSpec() {
     private val agentConfigService = mockk<AgentConfigService>(relaxed = true)
     private val promptService = mockk<PromptService>(relaxed = true)
+    private val namespaceService = mockk<NamespaceService>(relaxed = true)
 
     // Fixed clock: 2026-01-01 07:00 UTC — before the default timeUtc of 08:00
     private val fixedNow = Instant.parse("2026-01-01T07:00:00Z")
     private val fixedClock = Clock.fixed(fixedNow, ZoneOffset.UTC)
 
     private fun newService(repo: ScheduledPromptRepository = InMemoryScheduledPromptRepository()): ScheduledPromptServiceImpl =
-        ScheduledPromptServiceImpl(repo, agentConfigService, promptService, fixedClock)
+        ScheduledPromptServiceImpl(repo, agentConfigService, promptService, namespaceService, fixedClock)
 
     private val namespaceId: UUID = UUID.randomUUID()
     private val agentConfigId: UUID = UUID.randomUUID()
@@ -103,6 +107,20 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         beforeTest {
             every { agentConfigService.findById(agentConfigId) } returns defaultAgent()
             every { promptService.findById(promptId) } returns defaultPrompt()
+            every { namespaceService.findById(namespaceId) } returns Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+            )
+            every { promptService.create(any<Prompt>()) } answers {
+                val p = it.invocation.args[0] as Prompt
+                // Return a prompt with the known promptId so that the subsequent
+                // promptService.findById(promptId) mock resolves correctly in create().
+                p.copy(metadata = EntityMetadata(id = promptId, version = 0L))
+            }
+            every { promptService.update(any<Prompt>()) } answers {
+                it.invocation.args[0] as Prompt
+            }
+            every { promptService.delete(any()) } returns true
         }
 
         // -------------------------------------------------------------------------
@@ -523,6 +541,79 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
         "promptTemplateId round-trips" {
             newService().create(sp()).promptTemplateId shouldBe promptId
+        }
+
+        // -------------------------------------------------------------------------
+        // createWithPrompt
+        // -------------------------------------------------------------------------
+
+        "createWithPrompt creates a linked prompt with scheduled--{nameSlug} pattern" {
+            val svc = newService()
+            svc.createWithPrompt(sp(name = "Daily Standup"), "Hello")
+            verify { promptService.create(match { it.name == "scheduled--daily-standup" && it.agentConfigId == null }) }
+        }
+
+        "createWithPrompt passes promptContent to the prompt" {
+            val svc = newService()
+            svc.createWithPrompt(sp(), "My content")
+            verify { promptService.create(match { it.content == listOf("My content") }) }
+        }
+
+        "createWithPrompt returns saved entity and promptContent" {
+            val svc = newService()
+            val (saved, content) = svc.createWithPrompt(sp(name = "standup"), "Hello")
+            saved.name shouldBe "standup"
+            content shouldBe "Hello"
+        }
+
+        "createWithPrompt throws ResourceNotFoundException when namespace not found" {
+            every { namespaceService.findById(namespaceId) } returns null
+            shouldThrow<ResourceNotFoundException> { newService().createWithPrompt(sp(), "Hello") }
+        }
+
+        "createWithPrompt throws BadRequestException when endType is ON_DATE and endDate is null" {
+            shouldThrow<BadRequestException> {
+                newService().createWithPrompt(
+                    sp(planning = planning(endType = SchedulerEndType.ON_DATE, endDate = null)),
+                    "Hello",
+                )
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // updateWithPrompt
+        // -------------------------------------------------------------------------
+
+        "updateWithPrompt updates prompt name and content" {
+            val svc = newService()
+            val saved = svc.create(sp(name = "original"))
+            svc.updateWithPrompt(saved.copy(name = "New Name"), "Updated content")
+            verify { promptService.update(match { it.name == "scheduled--new-name" && it.content == listOf("Updated content") }) }
+        }
+
+        "updateWithPrompt throws ResourceNotFoundException when linked prompt not found" {
+            val svc = newService()
+            val saved = svc.create(sp())
+            val unknownPId = UUID.randomUUID()
+            every { promptService.findById(unknownPId) } returns null
+            shouldThrow<ResourceNotFoundException> {
+                svc.updateWithPrompt(saved.copy(promptTemplateId = unknownPId), "Hello")
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // deleteWithPrompt
+        // -------------------------------------------------------------------------
+
+        "deleteWithPrompt deletes entity and linked prompt" {
+            val svc = newService()
+            val saved = svc.create(sp())
+            svc.deleteWithPrompt(saved.id).shouldBeTrue()
+            verify { promptService.delete(saved.promptTemplateId) }
+        }
+
+        "deleteWithPrompt returns false when entity does not exist" {
+            newService().deleteWithPrompt(UUID.randomUUID()).shouldBeFalse()
         }
     }
 }

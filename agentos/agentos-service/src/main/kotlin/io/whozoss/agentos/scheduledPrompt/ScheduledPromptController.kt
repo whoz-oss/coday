@@ -1,7 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import io.swagger.v3.oas.annotations.Operation
-import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.BadRequestException
@@ -10,23 +9,18 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.prompt.Prompt
-import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptApi
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptEffectiveRequest
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptSearchRequest
-import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.util.toSlug
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
-import java.time.Instant
 import org.springframework.http.MediaType
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
@@ -46,15 +40,11 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 /**
  * REST API for [ScheduledPrompt] entities at /api/scheduled-prompts.
  *
- * **Prompt lifecycle** — the controller owns prompt creation/update/deletion:
- * - POST: creates a generic Prompt following the naming pattern `scheduled--{nameSlug}` (max 100 chars),
- *   then creates the ScheduledPrompt.
- * - PUT: updates the linked Prompt's content (and name if renamed), then updates the ScheduledPrompt.
- * - DELETE: deletes the ScheduledPrompt, then deletes the linked Prompt.
+ * **Responsibilities**: HTTP routing, authentication/authorisation (scope dispatch,
+ * permission checks), external-id resolution, and DTO ↔ domain mapping.
  *
- * **Cross-field validations** (applied on POST and PUT before service delegation):
- * - [planning.endDate] required when endType == ON_DATE, must be strictly after [planning.startDate].
- * - [planning.occurrenceCount] required and > 0 when endType == OCCURRENCES.
+ * **Business logic** (prompt lifecycle, planning validation, namespace/agent existence
+ * checks, prompt content resolution) is fully delegated to [ScheduledPromptService].
  */
 @RestController
 @RequestMapping(
@@ -63,8 +53,6 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 )
 class ScheduledPromptController(
     private val scheduledPromptService: ScheduledPromptService,
-    private val agentConfigService: AgentConfigService,
-    private val promptService: PromptService,
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
@@ -78,7 +66,8 @@ class ScheduledPromptController(
             entityType = EntityType.SCHEDULED_PROMPT,
             toResource = { entity ->
                 val sp = entity as ScheduledPrompt
-                val promptContent = promptService.findById(sp.promptTemplateId)?.content?.firstOrNull() ?: ""
+                val (_, promptContent) = scheduledPromptService.findByIdWithContent(sp.id, withRemoved = true)
+                    ?: (sp to "")
                 toDto(sp, promptContent)
             },
         )
@@ -115,7 +104,10 @@ class ScheduledPromptController(
             )
             if (!granted) throw AccessDeniedException("Cannot read scheduled prompts in namespace $resolvedNs")
         }
-        return spsToDto(scheduledPromptService.findByScope(resolvedNs, request.userId, request.agentConfigIds))
+        return scheduledPromptService
+            .findByScope(resolvedNs, request.userId, request.agentConfigIds)
+            .let { scheduledPromptService.withContent(it) }
+            .map { (sp, content) -> toDto(sp, content) }
     }
 
     @Operation(summary = "Effective scheduled prompts for a user in a namespace")
@@ -133,9 +125,11 @@ class ScheduledPromptController(
             action = Action.READ,
         )
         if (!granted) throw AccessDeniedException("Cannot read scheduled prompts in namespace $nsId")
-        return scheduledPromptService.findEffective(nsId, currentUser.id)
+        return scheduledPromptService
+            .findEffective(nsId, currentUser.id)
             .filter { request.agentConfigId == null || it.agentConfigId == request.agentConfigId }
-            .let { spsToDto(it) }
+            .let { scheduledPromptService.withContent(it) }
+            .map { (sp, content) -> toDto(sp, content) }
     }
 
     // -------------------------------------------------------------------------
@@ -146,8 +140,6 @@ class ScheduledPromptController(
     @PreAuthorize("isAuthenticated()")
     @ResponseStatus(HttpStatus.CREATED)
     override fun create(@Valid @RequestBody resource: ScheduledPromptDto): ScheduledPromptDto {
-        validatePlanning(resource.planning)
-
         val currentUser = userService.getCurrentUser()
         val me = currentUser.id
         if (resource.userId != null && resource.userId != me) {
@@ -174,67 +166,33 @@ class ScheduledPromptController(
             }
         }
 
-        if (resolvedNs != null && namespaceService.findById(resolvedNs) == null) {
-            throw ResourceNotFoundException("Namespace not found: $resolvedNs")
-        }
-
-        val agentConfig = agentConfigService.findById(resource.agentConfigId)
-            ?: throw ResourceNotFoundException("AgentConfig not found: ${resource.agentConfigId}")
-
-        // Prompt name pattern: scheduled--{nameSlug}, truncated to 100 chars.
-        // The agent name is intentionally excluded: if the AgentConfig is renamed, the Prompt.name
-        // would become stale and update unpredictably on the next PUT.
-        val prompt = promptService.create(
-            Prompt(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                namespaceId = resolvedNs,
-                userId = resolvedUser,
-                agentConfigId = null,
-                name = "scheduled--${resource.name.toSlug()}".take(100),
-                content = listOf(resource.promptContent),
-            ),
-        )
-
-        val target = ScheduledPrompt(
+        val entity = ScheduledPrompt(
             metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
             namespaceId = resolvedNs,
             userId = resolvedUser,
             agentConfigId = resource.agentConfigId,
-            promptTemplateId = prompt.id,
+            promptTemplateId = UUID.randomUUID(), // placeholder — overwritten by createWithPrompt
             name = resource.name,
             description = resource.description,
             recurrence = resource.recurrence.toDomain(),
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
-            nextRunAt = Instant.EPOCH,
+            nextRunAt = java.time.Instant.EPOCH,
         )
-        return toDto(scheduledPromptService.create(target), resource.promptContent)
+        val (saved, promptContent) = scheduledPromptService.createWithPrompt(entity, resource.promptContent)
+        return toDto(saved, promptContent)
     }
 
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#id, 'ScheduledPrompt', 'WRITE')")
     @HideOnAccessDenied
     override fun update(@PathVariable id: UUID, @Valid @RequestBody resource: ScheduledPromptDto): ScheduledPromptDto {
-        validatePlanning(resource.planning)
         val existing = scheduledPromptService.findById(id)
             ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
 
-        val existingPrompt = promptService.findById(existing.promptTemplateId)
-            ?: throw ResourceNotFoundException("Prompt not found: ${existing.promptTemplateId}")
-        // Prompt name pattern: scheduled--{nameSlug}, truncated to 100 chars.
-        // The agent name is intentionally excluded: if the AgentConfig is renamed, the Prompt.name
-        // would become stale and update unpredictably on the next PUT.
-        promptService.update(
-            existingPrompt.copy(
-                name = "scheduled--${resource.name.toSlug()}".take(100),
-                content = listOf(resource.promptContent),
-            ),
-        )
-
-        return toDto(
-            scheduledPromptService.update(toDomainForUpdate(resource, existing)),
-            resource.promptContent,
-        )
+        val updated = toDomainForUpdate(resource, existing)
+        val (saved, promptContent) = scheduledPromptService.updateWithPrompt(updated, resource.promptContent)
+        return toDto(saved, promptContent)
     }
 
     @DeleteMapping("/{id}")
@@ -242,10 +200,9 @@ class ScheduledPromptController(
     @HideOnAccessDenied
     @ResponseStatus(HttpStatus.NO_CONTENT)
     override fun delete(@PathVariable id: UUID) {
-        val existing = scheduledPromptService.findById(id)
+        scheduledPromptService.findById(id)
             ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
-        crud.delete(id)
-        promptService.delete(existing.promptTemplateId)
+        scheduledPromptService.deleteWithPrompt(id)
     }
 
     @PatchMapping("/{id}/toggle")
@@ -256,47 +213,8 @@ class ScheduledPromptController(
         scheduledPromptService.findById(id)
             ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
         val toggled = scheduledPromptService.toggle(id)
-        val promptContent = promptService.findById(toggled.promptTemplateId)?.content?.firstOrNull() ?: ""
-        return toDto(toggled, promptContent)
-    }
-
-    // -------------------------------------------------------------------------
-    // Batch mapping helper
-    // -------------------------------------------------------------------------
-
-    /**
-     * Converts a list of [ScheduledPrompt]s to DTOs with a single [PromptService.findByIds] call.
-     * Avoids the N+1 query pattern present when calling [PromptService.findById] per prompt.
-     */
-    private fun spsToDto(sps: List<ScheduledPrompt>): List<ScheduledPromptDto> {
-        val promptsById = promptService
-            .findByIds(sps.map { it.promptTemplateId })
-            .associateBy { it.metadata.id }
-        return sps.map { sp ->
-            toDto(sp, promptsById[sp.promptTemplateId]?.content?.firstOrNull() ?: "")
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Validation
-    // -------------------------------------------------------------------------
-
-    private fun validatePlanning(planning: PlanningDto) {
-        when (planning.endType) {
-            SchedulerEndType.ON_DATE -> {
-                val endDate = planning.endDate
-                    ?: throw BadRequestException("endDate is required when endType is ON_DATE")
-                if (!endDate.isAfter(planning.startDate)) {
-                    throw BadRequestException("endDate must be after startDate")
-                }
-            }
-            SchedulerEndType.OCCURRENCES -> {
-                val count = planning.occurrenceCount
-                    ?: throw BadRequestException("occurrenceCount is required when endType is OCCURRENCES")
-                if (count <= 0) throw BadRequestException("occurrenceCount must be > 0")
-            }
-            SchedulerEndType.NEVER -> Unit
-        }
+        val (sp, content) = scheduledPromptService.findByIdWithContent(toggled.id) ?: (toggled to "")
+        return toDto(sp, content)
     }
 
     // -------------------------------------------------------------------------

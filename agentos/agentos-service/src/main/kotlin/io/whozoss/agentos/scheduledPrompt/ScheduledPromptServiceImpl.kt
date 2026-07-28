@@ -6,8 +6,12 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
+import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.util.toSlug
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -17,7 +21,7 @@ import java.util.UUID
 /**
  * Default implementation of [ScheduledPromptService].
  *
- * ### Validation on [create]
+ * ### Validation on [create] / [createWithPrompt]
  *
  * - [recurrence.every][Recurrence.every] must be > 0.
  * - [agentConfigId] must reference an existing, non-filesystem AgentConfig.
@@ -26,14 +30,26 @@ import java.util.UUID
  * - [planning.endDate][Planning.endDate] required when endType == ON_DATE, must be after startDate.
  * - [planning.occurrenceCount][Planning.occurrenceCount] required and > 0 when endType == OCCURRENCES.
  * - Name uniqueness per scope enforced by the `scheduled_prompt_triple_key_unique` UNIQUE constraint.
+ *
+ * ### Prompt lifecycle
+ *
+ * [createWithPrompt] creates a linked generic Prompt (agentConfigId = null) with name
+ * `scheduled--{nameSlug}` (max 100 chars), then delegates to [create].
+ * [updateWithPrompt] updates the linked Prompt then delegates to [update].
+ * [deleteWithPrompt] calls [delete] then removes the linked Prompt.
  */
 @Service
 class ScheduledPromptServiceImpl(
     private val repository: ScheduledPromptRepository,
     private val agentConfigService: AgentConfigService,
     private val promptService: PromptService,
+    private val namespaceService: NamespaceService,
     private val clock: Clock = Clock.systemUTC(),
 ) : ScheduledPromptService {
+
+    // -------------------------------------------------------------------------
+    // Core CRUD
+    // -------------------------------------------------------------------------
 
     override fun create(entity: ScheduledPrompt): ScheduledPrompt {
         require(entity.recurrence.every > 0) {
@@ -121,6 +137,76 @@ class ScheduledPromptServiceImpl(
             .also { if (it) logger.info { "[ScheduledPrompt] Soft-deleted $id" } }
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
+
+    // -------------------------------------------------------------------------
+    // Prompt lifecycle
+    // -------------------------------------------------------------------------
+
+    override fun createWithPrompt(entity: ScheduledPrompt, promptContent: String): Pair<ScheduledPrompt, String> {
+        validateEndCondition(entity)
+
+        if (entity.namespaceId != null && namespaceService.findById(entity.namespaceId) == null) {
+            throw ResourceNotFoundException("Namespace not found: ${entity.namespaceId}")
+        }
+
+        val prompt = promptService.create(
+            Prompt(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = entity.namespaceId,
+                userId = entity.userId,
+                agentConfigId = null,
+                name = promptName(entity.name),
+                content = listOf(promptContent),
+            ),
+        )
+        val saved = create(entity.copy(promptTemplateId = prompt.id))
+        return Pair(saved, promptContent)
+    }
+
+    override fun updateWithPrompt(entity: ScheduledPrompt, promptContent: String): Pair<ScheduledPrompt, String> {
+        validateEndCondition(entity)
+
+        val existingPrompt = promptService.findById(entity.promptTemplateId)
+            ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptTemplateId}")
+        promptService.update(
+            existingPrompt.copy(
+                name = promptName(entity.name),
+                content = listOf(promptContent),
+            ),
+        )
+        val saved = update(entity)
+        return Pair(saved, promptContent)
+    }
+
+    override fun deleteWithPrompt(id: UUID): Boolean {
+        val existing = findById(id) ?: return false
+        val deleted = delete(id)
+        if (deleted) promptService.delete(existing.promptTemplateId)
+        return deleted
+    }
+
+    override fun findByIdWithContent(id: UUID, withRemoved: Boolean): Pair<ScheduledPrompt, String>? {
+        val sp = findById(id, withRemoved) ?: return null
+        val content = promptService.findById(sp.promptTemplateId)?.content?.firstOrNull() ?: ""
+        return Pair(sp, content)
+    }
+
+    override fun withContent(sps: List<ScheduledPrompt>): List<Pair<ScheduledPrompt, String>> {
+        if (sps.isEmpty()) return emptyList()
+        val promptsById = promptService
+            .findByIds(sps.map { it.promptTemplateId })
+            .associateBy { it.metadata.id }
+        return sps.map { sp ->
+            Pair(sp, promptsById[sp.promptTemplateId]?.content?.firstOrNull() ?: "")
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /** Prompt name pattern: scheduled--{nameSlug}, truncated to 100 chars. */
+    private fun promptName(name: String): String = "scheduled--${name.toSlug()}".take(100)
 
     private fun layerPriority(sp: ScheduledPrompt): Int =
         when {
