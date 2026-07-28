@@ -45,7 +45,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     tools:
  *       case-enabled-by-default: true
  *       image-max-dimension: 1568
- *       extra-deny-patterns: "*.bak,internal-*"
+ *       extra-deny-patterns: "*.bak,*confidential*"
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.exchange.tools")
@@ -61,15 +61,24 @@ data class ExchangeToolsConfigProperties(
      */
     val caseEnabledByDefault: Boolean = false,
     /**
-     * Same platform default for [ExchangeIntegrationTypes.NAMESPACE]. Write access still follows the
-     * invoking user's Namespace WRITE right, so turning this on widens what an agent can read, never
-     * what it can write.
+     * Same platform default for [ExchangeIntegrationTypes.NAMESPACE]. Every namespace grant, this
+     * default included, additionally requires the invoking user to hold Namespace READ; a run
+     * without an identified user is denied (fail-closed). Write access follows the user's
+     * Namespace WRITE right.
      */
     val namespaceEnabledByDefault: Boolean = false,
     /**
-     * Glob patterns blocked on top of the plugin's built-in sensitive-file list (`.env`, `*.key`,
+     * Patterns blocked on top of the plugin's built-in sensitive-file list (`.env`, `*.key`,
      * `*.pem`, ...). Additive only: an instance can harden the deny-list for its own naming
      * conventions, it can never weaken the built-in one.
+     *
+     * A pattern matches the final path segment only (the file or directory name), never the full
+     * relative path, with the plugin's simple matcher (`matchesPattern`): `*suffix`, `prefix*`,
+     * `*contains*` or an exact name. A pattern containing a slash therefore matches nothing, and a
+     * directory-scoped intent does not carry: `internal-*` denies the directory entry
+     * `internal-reports` while a read of the file `summary.md` inside it still passes, because only
+     * that leaf name is tested. To fence off content, use name patterns that hold at every depth,
+     * like `*.bak` or `*confidential*`.
      */
     val extraDenyPatterns: List<String> = emptyList(),
     /**

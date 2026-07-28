@@ -123,14 +123,18 @@ agentos:
       # integrations map. An agent that lists the key decides for itself; an empty list opts out.
       # Override with env var: AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT
       # case-enabled-by-default: false
-      # Same platform default for NAMESPACE_FILE_EXCHANGE. Write access still follows the invoking
-      # user's Namespace WRITE right, so this hands write access to nobody new.
+      # Same platform default for NAMESPACE_FILE_EXCHANGE. Every namespace grant, default or
+      # declared, also requires the invoking user to hold Namespace READ; a run without an
+      # identified user is denied. Write access follows the user's Namespace WRITE right.
       # Override with env var: AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT
       # namespace-enabled-by-default: false
-      # Comma-separated extra glob patterns blocked for the agent file tools, on top of the plugin's
-      # built-in sensitive-file list (.env, *.key, *.pem). Additive only — built-ins always apply.
+      # Comma-separated extra patterns blocked for the agent file tools, on top of the plugin's
+      # built-in sensitive-file list (.env, *.key, *.pem). Additive only, built-ins always apply.
+      # A pattern matches the file or directory NAME only, never the path: *suffix, prefix*,
+      # *contains* or an exact name. A path-shaped pattern like "secrets/*" matches nothing, and a
+      # prefix pattern denies a matching directory entry without denying the files inside it.
       # Override with env var: AGENTOS_EXCHANGE_TOOLS_EXTRA_DENY_PATTERNS
-      # extra-deny-patterns: "*.bak,internal-*"
+      # extra-deny-patterns: "*.bak,*confidential*"
       # Longest edge (px) of the images readAsImage/readDocument hand to the LLM; larger ones are
       # downscaled. Track the vision model in use.
       # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_DIMENSION

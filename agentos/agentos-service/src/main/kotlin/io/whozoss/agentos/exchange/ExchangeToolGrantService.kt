@@ -33,12 +33,14 @@ data class ExchangeGrant(
  * Split out of [io.whozoss.agentos.agent.AgentServiceImpl] so that the Spring-bound tuning
  * ([ExchangeToolsConfigProperties]) and the JSON node it produces live next to the rest of the
  * exchange and can be exercised without standing up an agent. `AgentServiceImpl` keeps what only it
- * knows — the run's case id and the invoking user's Namespace WRITE right — and calls
+ * knows — the run's case id and the invoking user's Namespace READ/WRITE rights — and calls
  * [resolveCaseGrant] / [resolveNamespaceGrant], then [grantTools].
  *
- * Deciding and granting are two calls on purpose: resolving is free, whereas [grantTools] creates
- * the scope directory and its namespace caller needs a permission query to compute `readOnly`. A
- * scope nobody was granted must cost neither.
+ * Deciding and granting are two calls on purpose: resolving costs only an in-memory plugin-registry
+ * lookup, whereas [grantTools] creates the scope directory and the namespace caller needs
+ * permission queries before it can call [grantTools]. A scope nobody was granted must cost neither.
+ * That is also why resolution already denies when the file-plugin is absent: on a plugin-less
+ * instance no grant could ever produce a tool, so no caller should pay a permission query for one.
  */
 @Service
 class ExchangeToolGrantService(
@@ -70,6 +72,8 @@ class ExchangeToolGrantService(
      * [resolveGrant], upstream of this call, rather than by the tool-name filter.
      *
      * Fail-closed and side-effect free when the file-plugin is not loaded: no tools, no directory.
+     * [resolveGrant] already denies in that case, so this check is defence in depth for a caller
+     * that reaches [grantTools] without a resolution.
      */
     fun grantTools(
         root: Path,
@@ -98,6 +102,9 @@ class ExchangeToolGrantService(
 
     /**
      * Resolves the enablement cases for one built-in exchange integration key:
+     * - file-plugin absent   → no grant, whatever the declaration: no grant could produce a tool,
+     *                          and resolving one anyway would make the namespace caller pay its
+     *                          permission queries for nothing;
      * - key absent           → [enabledByDefault] decides; a default grant exposes every tool;
      * - key present, null    → the agent enables the scope with every tool;
      * - key present, `[]`    → the agent opts out: no grant, hence no scope directory;
@@ -119,6 +126,7 @@ class ExchangeToolGrantService(
         val declared = integrations?.containsKey(integrationKey) == true
         val declaration = integrations?.get(integrationKey)
         return when {
+            toolRegistryService.findPlugin(ExchangeIntegrationTypes.FILE_ACCESS) == null -> null
             !declared && enabledByDefault -> ExchangeGrant(allowedTools = null)
             !declared -> null
             declaration == null -> ExchangeGrant(allowedTools = null)
@@ -135,6 +143,11 @@ class ExchangeToolGrantService(
      * derives from the exchange read cap so the agent's read tools honour the same limit as the REST
      * read/download path rather than the plugin's smaller built-in default — the plugin key is
      * megabytes, floored at 1.
+     *
+     * Nothing validates the bound properties themselves, so the values whose out-of-range settings
+     * would break the plugin's tools deep inside a tool call, far from the misconfiguration that
+     * caused them, are clamped here. Only those: a value the tools degrade gracefully on (e.g. a
+     * zero `documentMaxAttachedImages` or `imageMaxSourcePixels`) is passed through as configured.
      */
     private fun buildFileToolConfig(
         root: Path,
@@ -147,16 +160,20 @@ class ExchangeToolGrantService(
                 .put("readOnly", readOnly)
                 .put("readMaxSizeMb", (storageProperties.readMaxSizeBytes / (1024 * 1024)).coerceAtLeast(1))
                 .put("imageMaxDimension", properties.imageMaxDimension)
-                // Clamped: the JPEG writer rejects a quality outside [0, 1] with an
-                // IllegalArgumentException raised deep inside a tool call, long after the bad value
-                // was set. Nothing validates the bound properties themselves.
+                // Clamped: the JPEG writer rejects a quality outside [0, 1].
                 .put("imageJpegQuality", properties.imageJpegQuality.coerceIn(0f, 1f))
                 .put("imageMaxSourcePixels", properties.imageMaxSourcePixels)
                 .put("imagePassThroughMaxBytes", properties.imagePassThroughMaxBytes)
-                .put("documentMaxOutputChars", properties.documentMaxOutputChars)
+                // Floored at 1: with a non-positive budget readDocument's paging never advances;
+                // the [truncated] notice keeps pointing the model at the same startElement.
+                .put("documentMaxOutputChars", properties.documentMaxOutputChars.coerceAtLeast(1))
                 .put("documentMaxAttachedImages", properties.documentMaxAttachedImages)
-                .put("documentMaxTableColumns", properties.documentMaxTableColumns)
-                .put("documentMaxCellChars", properties.documentMaxCellChars)
+                // Floored at 1: readDocument's column cap is a coerceIn(1, max) whose range is
+                // empty below 1, throwing on every table-bearing document.
+                .put("documentMaxTableColumns", properties.documentMaxTableColumns.coerceAtLeast(1))
+                // Floored at 0: a negative cell cap makes readDocument call String.take with a
+                // negative count, which throws; zero is a legal (if drastic) truncation.
+                .put("documentMaxCellChars", properties.documentMaxCellChars.coerceAtLeast(0))
         // The plugin reads this key with `takeIf { it.isArray }`, so it must be a real ArrayNode —
         // an empty one when nothing is configured, never a missing key or a scalar. putArray returns
         // the ArrayNode, hence the separate statement.

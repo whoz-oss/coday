@@ -15,11 +15,13 @@ import java.util.UUID
  * by an AiProvider — resolution is deferred to the runtime layer.
  *
  * [integrations] is an optional map from integration name to an optional list of
- * allowed tool names. When null, the agent receives all tools available in the
- * namespace (no filtering). When set, only tools whose integration key matches an
- * entry in this map are given to the agent. A null list for a given key means all
- * tools from that integration are allowed; a non-null list restricts to exactly
- * those tool names (or suffixes for multi-instance tools named `CONFIG__tool`).
+ * allowed tool names. A null map binds no integration at all: the tool resolver
+ * grants no tools, and only the platform-level exchange defaults (see the property
+ * KDoc below) can still add the built-in file tools. When set, only tools whose
+ * integration key matches an entry in this map are given to the agent. A null list
+ * for a given key means all tools from that integration are allowed; a non-null
+ * list restricts to exactly those tool names (or suffixes for multi-instance tools
+ * named `CONFIG__tool`).
  *
  * Examples (from a Coday-style agent YAML):
  * ```yaml
@@ -47,7 +49,10 @@ data class AgentConfig(
     val instructions: String? = null,
     val modelName: String? = null,
     /**
-     * Optional tool-access filter. null = no restriction (all namespace tools).
+     * Integration bindings with an optional per-tool allowlist. null = no bindings:
+     * [io.whozoss.agentos.tool.ToolResolverService] then resolves no tools for this agent
+     * (only the platform exchange defaults described below can still grant the built-in
+     * file tools).
      * Map key = integration name (matches [IntegrationConfig.name] or
      * [ToolPlugin.integrationType] for config-less plugins).
      * Map value = allowed tool names, or null for all tools of that integration.
@@ -60,6 +65,8 @@ data class AgentConfig(
      * **absent key does not mean "never granted"**: the platform defaults
      * `agentos.exchange.tools.case-enabled-by-default` /
      * `...namespace-enabled-by-default` (off by default) decide for an agent that stays silent.
+     * The namespace key is further gated at run time: whatever this map says, the scope is only
+     * granted when the invoking user holds Namespace READ.
      */
     val integrations: Map<String, List<String>?>? = null,
     /**

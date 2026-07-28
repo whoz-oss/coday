@@ -3,6 +3,7 @@ package io.whozoss.agentos.agent
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -21,8 +22,10 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeGrant
+import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
+import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
@@ -33,6 +36,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
@@ -40,6 +44,7 @@ import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.IdCompressorService
 import org.springframework.ai.chat.client.ChatClient
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
@@ -181,8 +186,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
         // -------------------------------------------------------------------------
         // File-exchange tool gating — what only AgentServiceImpl knows: the run's case id and the
-        // invoking user's Namespace WRITE right. The enablement rules and the plugin config node
-        // belong to ExchangeToolGrantService and are covered by its own spec.
+        // invoking user's Namespace READ/WRITE rights. The enablement rules and the plugin config
+        // node belong to ExchangeToolGrantService and are covered by its own spec.
         // -------------------------------------------------------------------------
 
         "case exchange is granted at the case root with read/write when a live case is present" {
@@ -198,6 +203,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.findAgentByName("case-agent", context)
 
+            // The agent's own integrations map must reach the grant service verbatim: a regression
+            // passing e.g. null instead would let a default-on instance re-grant tools to an agent
+            // that opted out.
+            verify(exactly = 1) { exchangeToolGrantService.resolveCaseGrant(mapOf("CASE_FILE_EXCHANGE" to null)) }
             verify(exactly = 1) {
                 exchangeToolGrantService.grantTools(
                     root = caseRootPath,
@@ -225,6 +234,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentService.findAgentByName("case-agent-filtered", context)
 
             verify(exactly = 1) {
+                exchangeToolGrantService.resolveCaseGrant(mapOf("CASE_FILE_EXCHANGE" to listOf("readFile")))
+            }
+            verify(exactly = 1) {
                 exchangeToolGrantService.grantTools(
                     root = caseRootPath,
                     readOnly = false,
@@ -235,11 +247,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
             }
         }
 
-        "namespace exchange is granted read-only, and case is fail-closed without a live case id" {
-            val nsRootPath = Path.of("/tmp/ns-exchange-test")
+        "namespace exchange is denied without an identified user, and case is fail-closed without a live case id" {
             every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(allowedTools = null)
             every { exchangeToolGrantService.resolveNamespaceGrant(any()) } returns ExchangeGrant(allowedTools = null)
-            every { exchangeStorageService.namespaceRoot(namespaceId) } returns nsRootPath
 
             val config =
                 agentConfig(name = "ns-agent", modelName = "sonnet").copy(
@@ -255,6 +265,41 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
 
+            // The grant service still receives the agent's exact integrations map...
+            verify(exactly = 1) {
+                exchangeToolGrantService.resolveNamespaceGrant(
+                    mapOf("CASE_FILE_EXCHANGE" to null, "NAMESPACE_FILE_EXCHANGE" to null),
+                )
+            }
+            // ...but Namespace READ cannot be established without an identified user, so the
+            // namespace grant is denied fail-closed before any permission query; and with no live
+            // case id the case scope is not granted either. Nothing may be built.
+            verify(exactly = 0) { exchangeCapabilityService.canRead(any(), any(), any()) }
+            verify(exactly = 0) { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any()) }
+        }
+
+        "namespace exchange is granted read-only when the user holds Namespace READ but not WRITE" {
+            val nsRootPath = Path.of("/tmp/ns-exchange-ro-test")
+            val readerId = UUID.randomUUID()
+            every { exchangeToolGrantService.resolveNamespaceGrant(any()) } returns ExchangeGrant(allowedTools = null)
+            every { exchangeStorageService.namespaceRoot(namespaceId) } returns nsRootPath
+            every {
+                exchangeCapabilityService.canRead(readerId.toString(), EntityType.NAMESPACE, namespaceId.toString())
+            } returns true
+            every {
+                exchangeCapabilityService.canWrite(readerId.toString(), EntityType.NAMESPACE, namespaceId.toString())
+            } returns false
+
+            val config =
+                agentConfig(name = "ns-reader", modelName = "sonnet")
+                    .copy(integrations = mapOf("NAMESPACE_FILE_EXCHANGE" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { aiProviderService.resolveProvider(any(), any(), any()) } returns providerConfig()
+
+            agentService.resolveDefinition(config.metadata.id, namespaceId, userId = readerId)
+
             verify(exactly = 1) {
                 exchangeToolGrantService.grantTools(
                     root = nsRootPath,
@@ -264,16 +309,29 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolContext = any(),
                 )
             }
-            // resolveDefinition carries no live case id → case exchange must NOT be granted
-            verify(exactly = 0) {
-                exchangeToolGrantService.grantTools(
-                    root = any(),
-                    readOnly = any(),
-                    configName = "case-exchange",
-                    allowedTools = any(),
-                    toolContext = any(),
-                )
-            }
+        }
+
+        "namespace exchange is denied when the user lacks Namespace READ, before any write check" {
+            // The hole this closes: a user holding a direct Case edge without namespace membership
+            // must not read the whole namespace exchange through an agent.
+            val strangerId = UUID.randomUUID()
+            every { exchangeToolGrantService.resolveNamespaceGrant(any()) } returns ExchangeGrant(allowedTools = null)
+            every {
+                exchangeCapabilityService.canRead(strangerId.toString(), EntityType.NAMESPACE, namespaceId.toString())
+            } returns false
+
+            val config =
+                agentConfig(name = "ns-stranger", modelName = "sonnet")
+                    .copy(integrations = mapOf("NAMESPACE_FILE_EXCHANGE" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { aiProviderService.resolveProvider(any(), any(), any()) } returns providerConfig()
+
+            agentService.resolveDefinition(config.metadata.id, namespaceId, userId = strangerId)
+
+            verify(exactly = 0) { exchangeCapabilityService.canWrite(any(), any(), any()) }
+            verify(exactly = 0) { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any()) }
         }
 
         "namespace exchange is read/write when the invoking user holds Namespace WRITE" {
@@ -281,6 +339,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val writerId = UUID.randomUUID()
             every { exchangeToolGrantService.resolveNamespaceGrant(any()) } returns ExchangeGrant(allowedTools = null)
             every { exchangeStorageService.namespaceRoot(namespaceId) } returns nsRootPath
+            every {
+                exchangeCapabilityService.canRead(writerId.toString(), EntityType.NAMESPACE, namespaceId.toString())
+            } returns true
             every {
                 exchangeCapabilityService.canWrite(writerId.toString(), EntityType.NAMESPACE, namespaceId.toString())
             } returns true
@@ -297,6 +358,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentService.resolveDefinition(config.metadata.id, namespaceId, userId = writerId)
 
             verify(exactly = 1) {
+                exchangeToolGrantService.resolveNamespaceGrant(mapOf("NAMESPACE_FILE_EXCHANGE" to null))
+            }
+            verify(exactly = 1) {
                 exchangeToolGrantService.grantTools(
                     root = nsRootPath,
                     readOnly = false,
@@ -307,10 +371,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
             }
         }
 
-        "namespace write capability is not queried when the namespace grant is denied" {
-            // Locks the decision-before-permission order: canWrite is a Neo4j lookup, and a scope
-            // nobody was granted must not pay for it. Regressing to computing readOnly up front
-            // would make this fail.
+        "namespace permissions are not queried when the namespace grant is denied" {
+            // Locks the decision-before-permission order: canRead/canWrite are Neo4j lookups, and a
+            // scope nobody was granted must not pay for them. Regressing to computing the rights up
+            // front would make this fail.
             val config = agentConfig(name = "no-exchange-agent", modelName = "sonnet")
             every { agentConfigService.findById(config.metadata.id) } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
@@ -319,7 +383,82 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agentService.resolveDefinition(config.metadata.id, namespaceId, userId = UUID.randomUUID())
 
+            verify(exactly = 0) { exchangeCapabilityService.canRead(any(), any(), any()) }
             verify(exactly = 0) { exchangeCapabilityService.canWrite(any(), any(), any()) }
+        }
+
+        "with the real grant service, no integrations key gets case tools on a default-on instance and [] gets none" {
+            // Composes the REAL ExchangeToolGrantService so the AgentServiceImpl -> grant-service
+            // seam is exercised end to end: a regression passing anything but the agent's own
+            // integrations map would surface here as the opted-out agent regaining tools.
+            val realGrantService =
+                ExchangeToolGrantService(
+                    properties = ExchangeToolsConfigProperties(caseEnabledByDefault = true),
+                    storageProperties = ExchangeStorageConfigProperties(),
+                    toolRegistryService = toolRegistryService,
+                    toolResolverService = toolResolverService,
+                    objectMapper = testObjectMapper,
+                )
+            val composedService =
+                AgentServiceImpl(
+                    chatClientProvider = chatClientProvider,
+                    toolResolverService = toolResolverService,
+                    aiModelService = aiModelService,
+                    aiProviderService = aiProviderService,
+                    namespaceService = namespaceService,
+                    integrationConfigService = integrationConfigService,
+                    userService = userService,
+                    agentConfigService = agentConfigService,
+                    intentionGenerator = intentionGenerator,
+                    confirmationManager = confirmationManager,
+                    objectMapper = testObjectMapper,
+                    toolRegistryService = toolRegistryService,
+                    toolMetricsService = toolMetricsService,
+                    caseEventService = caseEventService,
+                    exchangeStorageService = exchangeStorageService,
+                    exchangeCapabilityService = exchangeCapabilityService,
+                    exchangeToolGrantService = realGrantService,
+                    agentDocumentResolver = agentDocumentResolver,
+                    idCompressorService = IdCompressorService(),
+                    agentConfigProperties = AgentConfigProperties(),
+                )
+            val caseTool = mockk<StandardTool<*>>()
+            every { caseTool.name } returns "case-exchange__readFile"
+            every { caseTool.description } returns "read a file from the case exchange"
+            val filePlugin = mockk<ToolPlugin>()
+            every { filePlugin.provideTools(any(), "case-exchange", any()) } returns listOf(caseTool)
+            every { toolRegistryService.findPlugin("FILE_ACCESS") } returns filePlugin
+            every { toolResolverService.isToolAllowed(any(), any(), any()) } returns true
+            // Capture what reaches the shared de-dup: the definitive combined tool set.
+            val combinedTools = mutableListOf<List<StandardTool<*>>>()
+            every { toolResolverService.dedupToolsByName(capture(combinedTools)) } answers { firstArg() }
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            // No integrations key at all: the platform default grants the case exchange.
+            val silentRoot = Files.createTempDirectory("agent-exchange-compose").resolve("case-root")
+            every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns silentRoot
+            val silentConfig = agentConfig(name = "silent-agent", modelName = "sonnet")
+            every { agentConfigService.findByName(namespaceId, "silent-agent") } returns silentConfig
+
+            composedService.findAgentByName("silent-agent", context)
+
+            combinedTools.last().map { it.name } shouldBe listOf("case-exchange__readFile")
+            Files.exists(silentRoot) shouldBe true
+
+            // An explicit [] opts out even on the default-on instance: no tools, no scope directory.
+            val optedOutRoot = Files.createTempDirectory("agent-exchange-optout").resolve("case-root")
+            every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns optedOutRoot
+            val optedOutConfig =
+                agentConfig(name = "opted-out-agent", modelName = "sonnet")
+                    .copy(integrations = mapOf("CASE_FILE_EXCHANGE" to emptyList()))
+            every { agentConfigService.findByName(namespaceId, "opted-out-agent") } returns optedOutConfig
+
+            composedService.findAgentByName("opted-out-agent", context)
+
+            combinedTools.last().shouldBeEmpty()
+            Files.exists(optedOutRoot) shouldBe false
         }
 
         // WZ-31596: when advancedExecution=true, AgentAdvancedContext must receive the

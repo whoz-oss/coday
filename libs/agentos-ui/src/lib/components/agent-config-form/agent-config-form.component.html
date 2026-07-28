@@ -115,6 +115,11 @@
                   <option value="on">Enabled</option>
                   <option value="off">Disabled</option>
                 </select>
+                @if (row.state() === 'on' && row.restrictedTools) {
+                  <p class="agent-config-form__integration-restriction">
+                    Restricted to: {{ row.restrictedTools.join(', ') }} (set outside this form, preserved on save)
+                  </p>
+                }
                 <p class="agent-config-form__integration-builtin-desc">{{ row.description }}</p>
               </div>
             }

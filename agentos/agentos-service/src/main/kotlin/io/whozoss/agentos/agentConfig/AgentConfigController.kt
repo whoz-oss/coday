@@ -1,6 +1,5 @@
 package io.whozoss.agentos.agentConfig
 
-import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
@@ -262,7 +261,13 @@ class AgentConfigController(
          * YAML mapper configured for clean, human-readable output:
          * - No `---` document start marker
          * - No Jackson type tags
-         * - Null and empty values omitted (via [toExportModel] filtering + NON_EMPTY inclusion)
+         * - Null and empty top-level values omitted by [toExportModel] itself
+         *
+         * Deliberately no mapper-level inclusion policy: `setSerializationInclusion` also sets the
+         * CONTENT inclusion, which prunes entries inside the `integrations` map. There a null value
+         * ("all tools of the integration") and an empty list (explicit opt-out) are distinct,
+         * meaningful states that must survive the export so the file re-imports identically through
+         * [FilesystemAgentConfigRepository].
          */
         private val YAML_MAPPER: ObjectMapper =
             ObjectMapper(
@@ -272,7 +277,6 @@ class AgentConfigController(
                     .build(),
             ).registerModule(KotlinModule.Builder().build())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-                .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
     }
 }
 
@@ -320,9 +324,10 @@ internal fun toDto(entity: AgentConfig) =
  * Only the fields that [FilesystemAgentConfigRepository] reads are included, so the exported
  * file can be dropped directly into the namespace `agents/` directory.
  *
- * The map is built explicitly rather than via a data class so that null/empty values can be
- * omitted without a per-field `@JsonInclude` annotation. The YAML_MAPPER's
- * `NON_EMPTY` inclusion policy then handles the rest.
+ * The map is built explicitly rather than via a data class so that null/empty top-level values
+ * can be omitted without a per-field `@JsonInclude` annotation. Entries inside a non-empty
+ * `integrations` map are kept verbatim: a null value (all tools of the integration) and an
+ * empty list (explicit opt-out) are distinct states the re-import must see unchanged.
  */
 private fun toExportModel(entity: AgentConfig): Map<String, Any?> =
     buildMap {

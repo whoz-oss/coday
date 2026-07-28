@@ -47,8 +47,8 @@ agent read cap can never drift from the one the REST path enforces.
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
 | `agentos.exchange.tools.case-enabled-by-default` | `AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT` | `false` | Grants `CASE_FILE_EXCHANGE` to every agent that does not mention it. |
-| `agentos.exchange.tools.namespace-enabled-by-default` | `AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT` | `false` | Same for `NAMESPACE_FILE_EXCHANGE`; write access still follows Namespace `WRITE`. |
-| `agentos.exchange.tools.extra-deny-patterns` | `AGENTOS_EXCHANGE_TOOLS_EXTRA_DENY_PATTERNS` | empty | Extra globs blocked on top of the built-in sensitive-file list (additive only). |
+| `agentos.exchange.tools.namespace-enabled-by-default` | `AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT` | `false` | Same for `NAMESPACE_FILE_EXCHANGE`; the invoking user must also hold Namespace `READ`, and write follows Namespace `WRITE`. |
+| `agentos.exchange.tools.extra-deny-patterns` | `AGENTOS_EXCHANGE_TOOLS_EXTRA_DENY_PATTERNS` | empty | Extra patterns blocked on top of the built-in sensitive-file list (additive only). Matched against file names only, see below. |
 | `agentos.exchange.tools.image-max-dimension` | `AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_DIMENSION` | `1024` | Longest edge (px) of images `readAsImage` / `readDocument` send to the LLM. |
 | `agentos.exchange.tools.image-jpeg-quality` | `AGENTOS_EXCHANGE_TOOLS_IMAGE_JPEG_QUALITY` | `0.80` | JPEG re-encoding quality, clamped to `[0, 1]`. |
 | `agentos.exchange.tools.image-max-source-pixels` | `AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_SOURCE_PIXELS` | `50000000` | Decode-bomb guard. |
@@ -57,6 +57,14 @@ agent read cap can never drift from the one the REST path enforces.
 | `agentos.exchange.tools.document-max-attached-images` | `AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_ATTACHED_IMAGES` | `10` | Max embedded pictures attached per call. |
 | `agentos.exchange.tools.document-max-table-columns` | `AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_TABLE_COLUMNS` | `64` | Columns dropped beyond this when rendering a `.docx` table. |
 | `agentos.exchange.tools.document-max-cell-chars` | `AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_CELL_CHARS` | `5000` | A longer table cell is truncated. |
+
+`extra-deny-patterns` matches the **final path segment only** (the file or directory name), never
+the full relative path, and supports only `*suffix`, `prefix*`, `*contains*` and exact names (the
+file-plugin's `matchesPattern`, applied by `BoundaryPathResolver` to the resolved name). A
+path-shaped pattern such as `secrets/*` therefore matches nothing, and a prefix pattern such as
+`internal-*` denies the directory entry `internal-reports` while leaving
+`internal-reports/summary.md` readable through its direct path. To fence off content, use name
+patterns that hold at every depth, like `*.bak` or `*confidential*`.
 
 These reach the file plugin as the `provideTools` configuration node: the SDK and the plugins carry
 no Spring dependency, so `ExchangeToolGrantService` is what turns the bound properties into that
@@ -94,7 +102,7 @@ Case and namespace exchange are exposed as **built-in integration types** (`Exch
 | Type | Scope | Access |
 |---|---|---|
 | `CASE_FILE_EXCHANGE` | current case | read / write |
-| `NAMESPACE_FILE_EXCHANGE` | namespace shared | read; read / write when the invoking user is a namespace admin |
+| `NAMESPACE_FILE_EXCHANGE` | namespace shared | requires the invoking user to hold Namespace `READ`; read / write when they hold Namespace `WRITE` (admin) |
 
 They appear in `GET /api/integration-types` with `builtIn = true`, but only when the `FILE_ACCESS`
 plugin is loaded. Enablement is per agent, through the agent's `integrations` map (no persisted
@@ -110,7 +118,16 @@ boolean flags), with a platform-level fallback for an agent that says nothing:
 The empty list is a genuine opt-out rather than an empty allow-list. `ToolResolverService.isToolAllowed`
 would already reject every tool, but the grant creates the scope directory *before* that filter runs,
 so the decision short-circuits earlier in `ExchangeToolGrantService.resolveCaseGrant` /
-`resolveNamespaceGrant`.
+`resolveNamespaceGrant`. Resolution also short-circuits when the `FILE_ACCESS` plugin is not loaded:
+no grant, hence no permission query and no directory (`grantTools` re-checks the plugin as defence in
+depth).
+
+The namespace scope carries one more gate. However the grant arises (platform default or the agent's
+own declaration), it stands only when the invoking user holds Namespace `READ`, and a run without an
+identified user is denied outright (fail-closed): the agent reads the shared files on behalf of a
+user, so no user means no access. One visible consequence: the definition-preview endpoint
+(`getDefinition` with `withUserOverlay=false`) resolves no user and therefore does not report the
+namespace exchange tools.
 
 The three states are what the agent form in `agentos-ui` renders, per built-in type: *Platform
 default*, *Enabled*, *Disabled*. "Platform default" is a state the user can see and keep, not a
@@ -118,13 +135,21 @@ synonym for off — that is what stops an agent nobody ever configured from bein
 the first time someone saves an unrelated change on a default-on instance. To label which way it
 resolves, `GET /api/integration-types` publishes `enabledByDefault` on each descriptor.
 
+A persisted per-tool allowlist survives the form too: when the stored value is a non-empty tool list
+and the user leaves the row on *Enabled*, the original list is written back unchanged rather than
+silently widened to "all tools", and the restriction is surfaced as read-only text under the row (the
+form edits enablement, not the list).
+
 Per-run tools are built by `AgentServiceImpl.buildExchangeTools`, which keeps what only it knows (the
-run's `caseId`, the invoking user's Namespace `WRITE` right) and delegates the decision, the plugin
-configuration and the `ToolResolverService.isToolAllowed` filtering to `ExchangeToolGrantService`. The
-platform default is a decision local to that service and never a mutation of `AgentConfig.integrations`,
-which would otherwise leak into the persisted config, the YAML export and the peer descriptions the
-redirect tool puts in every agent's prompt. Granted tool names follow `<configName>__<tool>` (for
-example `case-exchange__editFiles`).
+run's `caseId`, the invoking user's Namespace `READ` and `WRITE` rights) and delegates the decision,
+the plugin configuration and the `ToolResolverService.isToolAllowed` filtering to
+`ExchangeToolGrantService`. The platform default is a decision local to that service and never a
+mutation of `AgentConfig.integrations`, which would otherwise leak into the persisted config, the
+YAML export and the peer descriptions the redirect tool puts in every agent's prompt. The YAML export
+in turn round-trips the agent's own choice in both directions: a built-in key mapped to null
+(enabled, all tools) and one mapped to `[]` (opt-out) are both preserved, so exporting and
+re-importing an agent keeps its exchange stance. Granted tool names follow `<configName>__<tool>`
+(for example `case-exchange__editFiles`).
 
 ## Safety
 

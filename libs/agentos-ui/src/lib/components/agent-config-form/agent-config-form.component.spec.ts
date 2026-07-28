@@ -17,7 +17,7 @@ import { AgentConfigFormComponent } from './agent-config-form.component'
  * there are no dedicated boolean fields any more.
  *
  * The component class is driven directly (ngOnInit / submit) without rendering the template,
- * except the listing tests which render via detectChanges.
+ * except the listing and tri-state select tests which render via detectChanges.
  */
 describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   let controller: {
@@ -65,6 +65,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
         type: string
         enabledByDefault: boolean
         state: { (): BuiltInState; set: (v: BuiltInState) => void }
+        restrictedTools: string[] | null
       }>
       submit: () => void
     }
@@ -155,6 +156,19 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       ).toBe('off')
     })
 
+    it('hydrates a non-empty allowlist as an enabled row carrying the restriction', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [CASE]: ['readFile'] } })))
+
+      component.ngOnInit()
+
+      const row = internals()
+        .builtInRows()
+        .find((r) => r.type === CASE)
+      expect(row?.state()).toBe('on')
+      expect(row?.restrictedTools).toEqual(['readFile'])
+    })
+
     it('carries the platform default of each type onto its row', () => {
       integrationType.listTypesIntegrationType.mockReturnValue(
         of([
@@ -238,8 +252,35 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       expect(controller.updateAgentConfig.mock.calls[0][1].integrations).toEqual({ [NAMESPACE]: [] })
     })
 
+    it('writes a hydrated per-tool allowlist back verbatim instead of widening it to all tools', () => {
+      // The form has no editor for a non-empty allowlist (set via API or YAML): a row left on `on`
+      // must not turn ['readFile'] into null and silently grant editFiles / remove / moveFile.
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [CASE]: ['readFile'] } })))
+      component.ngOnInit()
+
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].integrations).toEqual({ [CASE]: ['readFile'] })
+    })
+
+    it('lets an explicit opt-out override a hydrated allowlist', () => {
+      // Switching the row to `off` is the one edit the form does offer on a restricted grant.
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [CASE]: ['readFile'] } })))
+      component.ngOnInit()
+      internals()
+        .builtInRows()
+        .find((r) => r.type === CASE)!
+        .state.set('off')
+
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].integrations).toEqual({ [CASE]: [] })
+    })
+
     it('preserves an already-enabled built-in when the integration-types endpoint is unavailable', () => {
-      // The types call fails → builtInRows is empty (fail-safe, no toggle rendered), but the agent
+      // The types call fails → builtInRows is empty (fail-safe, no row rendered), but the agent
       // already had CASE enabled: saving unrelated changes must NOT silently strip it from the map.
       routeAgentConfigId = 'a-1'
       controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [CASE]: null } })))
@@ -277,6 +318,55 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       integrationType.listTypesIntegrationType.mockReturnValue(throwError(() => new Error('boom')))
       fixture.detectChanges()
       expect(internals().builtInRows()).toEqual([])
+    })
+  })
+
+  describe('tri-state select (template)', () => {
+    const selectFor = (type: string): HTMLSelectElement => {
+      const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(`#built-in-${type}`)
+      expect(select).not.toBeNull()
+      return select!
+    }
+
+    it('offers exactly the three tri-state values as options', () => {
+      fixture.detectChanges()
+      expect(Array.from(selectFor(CASE).options).map((o) => o.value)).toEqual(['default', 'on', 'off'])
+    })
+
+    it('routes a change event on the select to the row state', () => {
+      fixture.detectChanges()
+      const select = selectFor(CASE)
+      select.value = 'off'
+      select.dispatchEvent(new Event('change'))
+
+      expect(
+        internals()
+          .builtInRows()
+          .find((r) => r.type === CASE)
+          ?.state()
+      ).toBe('off')
+    })
+
+    it('labels the default option as disabled when the platform default is off', () => {
+      fixture.detectChanges()
+      expect(selectFor(CASE).options[0].textContent?.trim()).toBe('Platform default (disabled)')
+    })
+
+    it('labels the default option as enabled when the platform default is on', () => {
+      integrationType.listTypesIntegrationType.mockReturnValue(of([{ ...builtInTypes[0], enabledByDefault: true }]))
+      fixture.detectChanges()
+      expect(selectFor(CASE).options[0].textContent?.trim()).toBe('Platform default (enabled)')
+    })
+
+    it('surfaces a persisted allowlist as read-only text under the row', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ integrations: { [CASE]: ['readFile', 'ls'] } })))
+      fixture.detectChanges()
+
+      const restriction = (fixture.nativeElement as HTMLElement).querySelector(
+        '.agent-config-form__integration-restriction'
+      )
+      expect(restriction?.textContent).toContain('readFile, ls')
     })
   })
 })

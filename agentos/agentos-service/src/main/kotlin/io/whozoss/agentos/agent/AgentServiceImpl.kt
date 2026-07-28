@@ -614,9 +614,14 @@ class AgentServiceImpl(
      * - key present, empty → explicit opt-out: nothing is granted and no scope directory is created
      *   (the empty list would otherwise filter every tool out *after* the grant had materialised the
      *   root);
-     * - the case scope additionally requires a live [context.caseId];
-     * - the namespace scope grants read/write only when the invoking user holds Namespace WRITE
-     *   (admin/super-admin), read-only otherwise.
+     * - the case scope additionally requires a live [context.caseId]; it needs no permission gate of
+     *   its own because its root is the run's own case, which the invoking user already holds Case
+     *   WRITE on to have reached this point;
+     * - the namespace scope requires the invoking user to hold Namespace READ, the same floor every
+     *   REST namespace-file endpoint enforces via `@PreAuthorize`. A run without an identified user
+     *   is denied fail-closed, so a definition preview resolved without a user reports no namespace
+     *   exchange tools. Read/write when the user also holds Namespace WRITE (admin/super-admin),
+     *   read-only otherwise.
      *
      * The default is a decision local to [ExchangeToolGrantService] and never a mutation of
      * [AgentConfig.integrations]: materialising it in the map would leak into the persisted config,
@@ -648,26 +653,38 @@ class AgentServiceImpl(
         }
 
         val namespaceGrant = exchangeToolGrantService.resolveNamespaceGrant(integrations)
-        if (namespaceGrant != null) {
-            // The agent inherits the invoking user's namespace right: read/write for a namespace
-            // admin (Namespace WRITE, super-admin included), read-only for a plain member. Resolved
-            // only once the grant stands, so a scope nobody was granted costs no permission query.
-            val userCanWriteNamespace =
-                context.userId?.let {
-                    exchangeCapabilityService.canWrite(
-                        it.toString(),
-                        EntityType.NAMESPACE,
-                        context.namespaceId.toString(),
-                    )
-                } ?: false
-            tools +=
-                exchangeToolGrantService.grantTools(
-                    root = exchangeStorageService.namespaceRoot(context.namespaceId),
-                    readOnly = !userCanWriteNamespace,
-                    configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
-                    allowedTools = namespaceGrant.allowedTools,
-                    toolContext = toolContext,
+        // The agent inherits the invoking user's namespace rights. Namespace READ is the floor the
+        // REST namespace-file endpoints already enforce via @PreAuthorize, so the agent path must
+        // hold it too: a user with only a direct Case edge must not read the whole namespace
+        // exchange through an agent. A run without an identified user is denied fail-closed. The
+        // permission queries run only once the grant stands, so a scope nobody was granted costs
+        // no permission query.
+        val namespaceUserId = context.userId?.toString()
+        if (namespaceGrant != null && namespaceUserId != null) {
+            val userCanReadNamespace =
+                exchangeCapabilityService.canRead(
+                    userId = namespaceUserId,
+                    entityType = EntityType.NAMESPACE,
+                    entityId = context.namespaceId.toString(),
                 )
+            if (userCanReadNamespace) {
+                // Read/write for a namespace admin (Namespace WRITE, super-admin included),
+                // read-only for a plain member.
+                val userCanWriteNamespace =
+                    exchangeCapabilityService.canWrite(
+                        userId = namespaceUserId,
+                        entityType = EntityType.NAMESPACE,
+                        entityId = context.namespaceId.toString(),
+                    )
+                tools +=
+                    exchangeToolGrantService.grantTools(
+                        root = exchangeStorageService.namespaceRoot(context.namespaceId),
+                        readOnly = !userCanWriteNamespace,
+                        configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                        allowedTools = namespaceGrant.allowedTools,
+                        toolContext = toolContext,
+                    )
+            }
         }
         return tools
     }
