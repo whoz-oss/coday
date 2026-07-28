@@ -1,3 +1,24 @@
+## 0.227.0 (2026-07-28)
+
+### 🚀 Features
+
+- #1023 Add new theme ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Add new theme (color) ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### 🩹 Fixes
+
+- #1023 Replace case chat header buttons with design-system icon buttons ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Test theme service ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 remove french comments ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 remove french comments ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Align mobile case chat messages to the right ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Reorganize shell sidebar top bar layout ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Reorganize shell sidebar top bar layout ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
 ## 0.226.0 (2026-07-28)
 
 ### 🚀 Features
