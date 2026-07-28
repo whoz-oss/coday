@@ -4,7 +4,6 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
-import io.kotest.matchers.types.shouldNotBeInstanceOf
 
 /**
  * Unit tests for [FieldEncryptorConfiguration].
@@ -31,7 +30,7 @@ class FieldEncryptorConfigurationSpec : StringSpec({
             it.propertySalt = propSalt
         }
 
-    "both env vars present creates SpringFieldEncryptor" {
+    "both env vars present with real values creates SpringFieldEncryptor" {
         val config = configWith(envKey = "test-password-for-unit-tests", envSalt = "deadbeefcafe1234")
         config.fieldEncryptor().shouldBeInstanceOf<SpringFieldEncryptor>()
     }
@@ -52,9 +51,20 @@ class FieldEncryptorConfigurationSpec : StringSpec({
         config.fieldEncryptor().shouldBeInstanceOf<SpringFieldEncryptor>()
     }
 
-    "both vars absent returns NoOpFieldEncryptor" {
-        val config = configWith(envKey = null, envSalt = null)
+    "both set to NONE returns NoOpFieldEncryptor" {
+        val config = configWith(envKey = "NONE", envSalt = "NONE")
         config.fieldEncryptor().shouldBeInstanceOf<NoOpFieldEncryptor>()
+    }
+
+    "both set to NONE case-insensitive returns NoOpFieldEncryptor" {
+        val config = configWith(envKey = "none", envSalt = "none")
+        config.fieldEncryptor().shouldBeInstanceOf<NoOpFieldEncryptor>()
+    }
+
+    "both vars absent throws IllegalStateException" {
+        val config = configWith(envKey = null, envSalt = null)
+        val ex = shouldThrow<IllegalStateException> { config.fieldEncryptor() }
+        ex.message shouldContain FieldEncryptorConfiguration.NONE_SENTINEL
     }
 
     "only key present throws IllegalStateException" {
@@ -65,6 +75,18 @@ class FieldEncryptorConfigurationSpec : StringSpec({
     "only salt present throws IllegalStateException" {
         val config = configWith(envKey = null, envSalt = "deadbeefcafe1234")
         shouldThrow<IllegalStateException> { config.fieldEncryptor() }
+    }
+
+    "key=NONE salt=real value throws IllegalStateException" {
+        val config = configWith(envKey = "NONE", envSalt = "deadbeefcafe1234")
+        val ex = shouldThrow<IllegalStateException> { config.fieldEncryptor() }
+        ex.message shouldContain FieldEncryptorConfiguration.ENV_KEY
+    }
+
+    "key=real value salt=NONE throws IllegalStateException" {
+        val config = configWith(envKey = "some-real-key", envSalt = "NONE")
+        val ex = shouldThrow<IllegalStateException> { config.fieldEncryptor() }
+        ex.message shouldContain FieldEncryptorConfiguration.ENV_SALT
     }
 
     "IllegalStateException message names the missing variable" {
