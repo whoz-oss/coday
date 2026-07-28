@@ -35,7 +35,7 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
                 "namespaceId": "$namespaceId",
                 "agentConfigId": "$agentConfigId",
                 "promptContent": "Hello from the scheduled prompt",
-                "name": "daily-standup",
+                "name": "daily-digest",
                 "recurrence": {
                     "every": 1,
                     "unit": "DAY",

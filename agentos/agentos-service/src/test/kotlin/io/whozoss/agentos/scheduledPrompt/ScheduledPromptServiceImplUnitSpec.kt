@@ -148,15 +148,15 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "create accepts free-form name with spaces" {
-            newService().create(sp(name = "Daily Standup")).name shouldBe "Daily Standup"
+            newService().create(sp(name = "Daily Digest")).name shouldBe "Daily Digest"
         }
 
         "create accepts name starting with uppercase" {
-            newService().create(sp(name = "Daily-standup")).name shouldBe "Daily-standup"
+            newService().create(sp(name = "Daily-digest")).name shouldBe "Daily-digest"
         }
 
         "create accepts name starting with digit" {
-            newService().create(sp(name = "1standup")).name shouldBe "1standup"
+            newService().create(sp(name = "1digest")).name shouldBe "1digest"
         }
 
         "create accepts name with special characters" {
@@ -169,14 +169,14 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
         "create throws ConflictException when two names normalize to the same slug in the same scope" {
             val svc = newService()
-            svc.create(sp(name = "Daily Standup"))
-            shouldThrow<ConflictException> { svc.create(sp(name = "daily standup")) }
+            svc.create(sp(name = "Daily Digest"))
+            shouldThrow<ConflictException> { svc.create(sp(name = "daily digest")) }
         }
 
         "create succeeds when two names normalize to different slugs" {
             val svc = newService()
-            svc.create(sp(name = "Daily Standup"))
-            svc.create(sp(name = "Weekly Sync")).name shouldBe "Weekly Sync"
+            svc.create(sp(name = "Daily Digest"))
+            svc.create(sp(name = "Weekly Report")).name shouldBe "Weekly Report"
         }
 
         // -------------------------------------------------------------------------
@@ -310,8 +310,8 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
         "create persists and returns the entity" {
             val svc = newService()
-            val saved = svc.create(sp("daily-standup", recurrence = recurrence(every = 2, unit = SchedulerUnit.WEEK)))
-            saved.name shouldBe "daily-standup"
+            val saved = svc.create(sp("daily-digest", recurrence = recurrence(every = 2, unit = SchedulerUnit.WEEK)))
+            saved.name shouldBe "daily-digest"
             saved.namespaceId shouldBe namespaceId
             saved.recurrence.every shouldBe 2
             saved.recurrence.unit shouldBe SchedulerUnit.WEEK
@@ -536,7 +536,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         }
 
         "description round-trips" {
-            newService().create(sp(description = "Daily standup")).description shouldBe "Daily standup"
+            newService().create(sp(description = "Daily digest")).description shouldBe "Daily digest"
         }
 
         "promptTemplateId round-trips" {
@@ -549,8 +549,8 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
         "createWithPrompt creates a linked prompt with scheduled--{nameSlug} pattern" {
             val svc = newService()
-            svc.createWithPrompt(sp(name = "Daily Standup"), "Hello")
-            verify { promptService.create(match { it.name == "scheduled--daily-standup" && it.agentConfigId == null }) }
+            svc.createWithPrompt(sp(name = "Daily Digest"), "Hello")
+            verify { promptService.create(match { it.name == "scheduled--daily-digest" && it.agentConfigId == null }) }
         }
 
         "createWithPrompt passes promptContent to the prompt" {
@@ -561,8 +561,8 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
         "createWithPrompt returns saved entity and promptContent" {
             val svc = newService()
-            val (saved, content) = svc.createWithPrompt(sp(name = "standup"), "Hello")
-            saved.name shouldBe "standup"
+            val (saved, content) = svc.createWithPrompt(sp(name = "digest"), "Hello")
+            saved.name shouldBe "digest"
             content shouldBe "Hello"
         }
 

@@ -21,12 +21,12 @@ class ScheduledPromptNodeUnitSpec : StringSpec({
     // -------------------------------------------------------------------------
 
     "computeTripleKey with free-form name slugifies to lowercase-hyphenated key" {
-        ScheduledPromptNode.computeTripleKey(null, null, "Daily Standup") shouldBe "_:_:daily-standup"
+        ScheduledPromptNode.computeTripleKey(null, null, "Daily Digest") shouldBe "_:_:daily-digest"
     }
 
     "computeTripleKey with same name different casing produces identical key" {
-        val key1 = ScheduledPromptNode.computeTripleKey(null, null, "Daily Standup")
-        val key2 = ScheduledPromptNode.computeTripleKey(null, null, "daily standup")
+        val key1 = ScheduledPromptNode.computeTripleKey(null, null, "Daily Digest")
+        val key2 = ScheduledPromptNode.computeTripleKey(null, null, "daily digest")
         key1 shouldBe key2
     }
 
@@ -35,7 +35,7 @@ class ScheduledPromptNodeUnitSpec : StringSpec({
     }
 
     "computeTripleKey with already-valid slug is unchanged" {
-        ScheduledPromptNode.computeTripleKey(null, null, "daily-standup") shouldBe "_:_:daily-standup"
+        ScheduledPromptNode.computeTripleKey(null, null, "daily-digest") shouldBe "_:_:daily-digest"
     }
 
     // -------------------------------------------------------------------------
@@ -60,14 +60,14 @@ class ScheduledPromptNodeUnitSpec : StringSpec({
     // Collision detection
     // -------------------------------------------------------------------------
 
-    "computeTripleKey 'Daily Standup' and 'daily standup' collide in same scope" {
-        ScheduledPromptNode.computeTripleKey(nsId, null, "Daily Standup") shouldBe
-            ScheduledPromptNode.computeTripleKey(nsId, null, "daily standup")
+    "computeTripleKey 'Daily Digest' and 'daily digest' collide in same scope" {
+        ScheduledPromptNode.computeTripleKey(nsId, null, "Daily Digest") shouldBe
+            ScheduledPromptNode.computeTripleKey(nsId, null, "daily digest")
     }
 
-    "computeTripleKey 'Daily Standup' and 'Weekly Sync' do not collide" {
-        val k1 = ScheduledPromptNode.computeTripleKey(nsId, null, "Daily Standup")
-        val k2 = ScheduledPromptNode.computeTripleKey(nsId, null, "Weekly Sync")
+    "computeTripleKey 'Daily Digest' and 'Weekly Report' do not collide" {
+        val k1 = ScheduledPromptNode.computeTripleKey(nsId, null, "Daily Digest")
+        val k2 = ScheduledPromptNode.computeTripleKey(nsId, null, "Weekly Report")
         (k1 == k2) shouldBe false
     }
 })

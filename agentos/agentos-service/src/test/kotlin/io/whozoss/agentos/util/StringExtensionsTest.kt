@@ -6,7 +6,7 @@ import io.kotest.matchers.shouldBe
 class StringExtensionsTest : StringSpec({
 
     "toSlug converts space-separated words to hyphenated slug" {
-        "Daily Standup".toSlug() shouldBe "daily-standup"
+        "Daily Digest".toSlug() shouldBe "daily-digest"
     }
 
     "toSlug handles diacritics" {
@@ -26,7 +26,7 @@ class StringExtensionsTest : StringSpec({
     }
 
     "toSlug leaves an already-valid slug unchanged" {
-        "daily-standup".toSlug() shouldBe "daily-standup"
+        "daily-digest".toSlug() shouldBe "daily-digest"
     }
 
     "toSlug collapses consecutive non-alphanumeric chars to a single hyphen" {

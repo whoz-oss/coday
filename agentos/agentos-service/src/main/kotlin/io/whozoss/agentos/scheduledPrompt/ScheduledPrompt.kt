@@ -76,9 +76,9 @@ data class Planning(
  *
  * ### Name
  *
- * [name] is a free-form label (e.g. "Daily Standup", "Rapport hebdo").
+ * [name] is a free-form label (e.g. "Daily Digest", "Weekly Report").
  * It is normalized to a slug for the `tripleKey` uniqueness constraint via [ScheduledPromptNode.computeTripleKey],
- * so "Daily Standup" and "daily standup" would conflict in the same scope.
+ * so "Daily Digest" and "daily digest" would conflict in the same scope.
  */
 data class ScheduledPrompt(
     override val metadata: EntityMetadata = EntityMetadata(),
