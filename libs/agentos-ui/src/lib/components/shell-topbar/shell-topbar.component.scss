@@ -33,7 +33,6 @@
     flex: none;
   }
 
-  // Aligné sur shell-sidebar__logo-name
   &__logo-text {
     font-weight: 700;
     font-size: 18px;
@@ -63,7 +62,7 @@
     color: var(--color-accent-700);
     cursor: pointer;
     transition: border-color 140ms;
-    border-radius: 0; // carré — aligné maquette
+    border-radius: 0;
 
     &:hover {
       border-color: var(--color-accent);

@@ -82,7 +82,7 @@
   }
 }
 
-// Wrapper titre + badge — prend flex:1 pour pousser les actions à droite
+// Title + badge wrapper — flex:1 pushes actions to the right
 .case-chat__header-title-group {
   flex: 1;
   min-width: 0;
@@ -120,13 +120,13 @@
   }
 }
 
-// Exchange toggle — inline dans le header
+// Exchange toggle — inline in header
 .case-chat__header-exchange {
   position: relative;
   flex: none;
 }
 
-// Séparateur vertical entre exchange et actions case
+// Vertical separator between exchange toggle and case actions
 .case-chat__header-sep {
   width: 1px;
   height: 18px;

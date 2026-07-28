@@ -60,8 +60,6 @@
   }
 }
 
-// La sidebar gère sa propre visibilité via :host dans son propre scss
-
 // ── Sidebar expand button (visible only when sidebar is collapsed) ──
 .case-shell__expand-btn {
   position: fixed;

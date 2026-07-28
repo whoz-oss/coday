@@ -9,7 +9,7 @@
 
   &__overlay {
     position: absolute;
-    bottom: calc(100% + 6px); // défaut : vers le haut (sidebar)
+    bottom: calc(100% + 6px);
     right: 0;
     min-width: 226px;
     z-index: 200;
@@ -17,7 +17,6 @@
     border: 1px solid var(--color-divider);
     box-shadow: var(--shadow-lg);
 
-    // Topbar : s'ouvre vers le bas
     &--topbar {
       bottom: auto;
       top: calc(100% + 6px);
@@ -31,9 +30,6 @@
       z-index: 300;
     }
 
-    // Compact rail : position fixed pour échapper à overflow:hidden
-    // top/left injectés via [style] depuis le parent (getBoundingClientRect)
-    // Le menu s'ouvre vers le haut depuis le bas du bouton avatar
     &--compact {
       position: fixed;
       bottom: auto;
@@ -74,7 +70,6 @@
       }
     }
 
-    // Badge d'état inline (ex: "On" pour technical logs)
     &-badge {
       margin-left: auto;
       font-size: 10px;

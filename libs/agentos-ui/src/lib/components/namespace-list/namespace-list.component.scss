@@ -2,8 +2,6 @@
 // These deep overrides target the action-card inside namespace-item.
 
 :host ::ng-deep {
-  // Action card inner shell
-  // border-radius: 0 et tokens viennent du mixin ds.surface-card
   .ac,
   .ac--clickable {
     background: var(--color-bg);
@@ -16,12 +14,10 @@
     }
   }
 
-  // Mark / initials: blueprint style
   .ac__mark {
     width: 28px;
     height: 28px;
     border-radius: 0;
-    // maquette: bg accent-900, color accent-100, font-heading 600 13px
     background: var(--color-accent-900);
     color: var(--color-accent-100);
     font-family: var(--font-heading);
@@ -29,7 +25,6 @@
     font-size: 13px;
   }
 
-  // Namespace name: heading font, 16.5px
   .ac__name {
     font-family: var(--font-heading);
     font-weight: 600;
@@ -39,13 +34,11 @@
     color: var(--color-text);
   }
 
-  // Chips row: gap 6px (maquette)
   .ac__chips {
     gap: 6px;
     padding: 0 16px 16px;
   }
 
-  // Chips: tag-neutral style (border-radius: 0 vient du mixin ds.chip)
   .ac-chip {
     border: 1px solid var(--color-divider);
     color: var(--color-neutral-600);

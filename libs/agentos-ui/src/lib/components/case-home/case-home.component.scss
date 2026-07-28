@@ -41,7 +41,6 @@
     font-size: 42px;
     font-weight: 700;
     color: var(--color-text);
-    // No font-family override — inherits from body (var(--font-body))
     line-height: 1.1;
   }
 
@@ -55,7 +54,6 @@
     background: var(--color-bg);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--color-divider);
-    // overflow: hidden intentionally omitted — autocomplete dropdown is absolute
   }
 
   &__autocomplete {

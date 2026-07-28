@@ -11,7 +11,6 @@
   // Override: dropdown must not be clipped by the card
   overflow: visible;
 
-  // Mode card entière cliquable
   &--clickable {
     @include ds.button-reset;
     @include ds.surface-card;
@@ -117,7 +116,6 @@
   }
 }
 
-// ── Chip style — carré, via .ac-chip sur les boutons projetés ──
 :host ::ng-deep .ac-chip {
   @include ds.chip;
 

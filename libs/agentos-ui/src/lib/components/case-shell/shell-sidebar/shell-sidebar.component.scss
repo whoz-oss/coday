@@ -55,7 +55,6 @@
     }
   }
 
-  // Nom de l'app à côté du logo
   &__logo-name {
     font-weight: 700;
     font-size: 18px;
@@ -98,7 +97,6 @@
     width: 100%;
     box-sizing: border-box;
 
-    // Mode large : logo + ns sur la même ligne, new case + search en dessous
     &--wide {
       grid-template-columns: 1fr 1fr;
       grid-template-areas:
@@ -436,7 +434,6 @@
     }
   }
 
-  // Menu namespace compact — position: fixed, ancré à droite du rail
   &__compact-ns-menu {
     position: fixed;
     z-index: 500;
@@ -474,7 +471,6 @@
     }
   }
 
-  // Panel search compact — position: fixed, ancré à droite du rail
   &__compact-search-panel {
     position: fixed;
     z-index: 500;
@@ -511,7 +507,6 @@
     }
   }
 
-  // Backdrop invisible — ferme les menus/panels au clic en dehors
   &__compact-backdrop {
     position: fixed;
     inset: 0;

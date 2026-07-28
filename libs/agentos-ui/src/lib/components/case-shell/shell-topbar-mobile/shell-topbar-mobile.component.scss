@@ -1,7 +1,7 @@
 @use 'libs/design-system/src/styles' as ds;
 
 :host {
-  display: none; // hidden on desktop, shown via media query
+  display: none;
 }
 
 // ── Main topbar row ───────────────────────────────────────────────────────────

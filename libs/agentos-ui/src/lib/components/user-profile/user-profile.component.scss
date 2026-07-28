@@ -327,7 +327,6 @@
     margin: 0;
   }
 
-  // Aligné sur case-drawer-list__group-label
   &__overrides-subtitle {
     font-family: var(--font-heading);
     font-size: 10px;
@@ -385,7 +384,6 @@
     white-space: nowrap;
   }
 
-  // Aligné sur case-tree-node__action-btn--danger et --confirm-yes
   &__overrides-delete {
     background: transparent;
     border: 1px solid transparent;

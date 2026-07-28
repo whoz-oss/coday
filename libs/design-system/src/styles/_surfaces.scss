@@ -52,7 +52,7 @@
 @mixin surface-card {
   background: var(--color-bg);
   border: 1px solid var(--color-divider);
-  border-radius: 0; // carré — design system Industry
+  border-radius: 0;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
   transition:
@@ -79,7 +79,6 @@
   &:hover {
     border-color: var(--color-accent);
     box-shadow: var(--shadow-sm);
-    // pas de transform — design plat Industry
   }
 
   &:focus-visible {
@@ -100,7 +99,7 @@
 @mixin surface-dropdown {
   background: var(--color-surface);
   border: 1px solid var(--color-divider);
-  border-radius: 0; // carré — design system Industry
+  border-radius: 0;
   box-shadow: var(--shadow-lg);
   padding: 5px;
 }
@@ -131,7 +130,7 @@
 @mixin surface-mark {
   width: 32px;
   height: 32px;
-  border-radius: 0; // carré — design system Industry
+  border-radius: 0;
   background: #161616;
   color: #fff;
   border: none;
