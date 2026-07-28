@@ -107,4 +107,18 @@ export class CaseStateService {
   updateCaseTitle(caseId: string, title: string): void {
     this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, title } : c)))
   }
+
+  /**
+   * Patch the status of a single case in-place.
+   * Called when a CaseStatusEvent arrives via SSE so the drawer stays in sync
+   * without waiting for a full reload.
+   * No-op if the case is not in the current list.
+   */
+  updateCaseStatus(caseId: string, status: string): void {
+    this.cases.update((list) =>
+      list.map((c) =>
+        c.id === caseId ? { ...c, status: status as import('@whoz-oss/agentos-api-client').CaseStatusEnum } : c
+      )
+    )
+  }
 }

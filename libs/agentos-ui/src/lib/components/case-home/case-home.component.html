@@ -12,9 +12,15 @@
     </div>
   }
   <div class="case-home__hero">
-    <h1 class="case-home__headline">What can I help you with?</h1>
+    <!-- Namespace label above headline -->
+    <div class="case-home__ns-block">
+      @if (namespaceId) {
+        <div class="case-home__ns-label">Namespace · {{ namespaceName() ?? namespaceId }}</div>
+      }
+      <h1 class="case-home__headline">What can I help you with?</h1>
+    </div>
 
-    <div class="case-home__composer">
+    <div class="case-home__composer" dsBlueprint>
       @if (slashSuggestions().length > 0) {
         <div class="case-home__autocomplete">
           <agentos-prompt-autocomplete
