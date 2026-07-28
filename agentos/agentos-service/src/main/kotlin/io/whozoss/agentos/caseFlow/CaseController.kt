@@ -361,11 +361,6 @@ class CaseController(
     private fun Case.withLastMessageAt(): CaseDto = listOf(this).withLastMessageAt().first()
 
     /**
-     * Enrich a single [Case] with [CaseDto.lastMessageAt].
-     */
-    private fun Case.withLastMessageAt(): CaseDto = listOf(this).withLastMessageAt().first()
-
-    /**
      * Enrich a list of [Case]s with [CaseDto.lastMessageAt] only — no role/favorite.
      *
      * Used by the "list by target user" endpoints where role and favorite are caller-relative
