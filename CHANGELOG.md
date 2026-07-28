@@ -1,3 +1,14 @@
+## 0.229.0 (2026-07-28)
+
+### 🚀 Features
+
+- rename a case from the drawer row actions ([#1170](https://github.com/whoz-oss/coday/pull/1170), [#1166](https://github.com/whoz-oss/coday/issues/1166))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 0.228.0 (2026-07-28)
 
 ### 🚀 Features
