@@ -20,6 +20,7 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptEffectiveReques
 import io.whozoss.agentos.sdk.api.scheduledPrompt.ScheduledPromptSearchRequest
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.util.toSlug
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
@@ -46,7 +47,8 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * REST API for [ScheduledPrompt] entities at /api/scheduled-prompts.
  *
  * **Prompt lifecycle** — the controller owns prompt creation/update/deletion:
- * - POST: creates a generic Prompt named `{name}-{agentName}`, then creates the ScheduledPrompt.
+ * - POST: creates a generic Prompt following the naming pattern `scheduled--{nameSlug}` (max 100 chars),
+ *   then creates the ScheduledPrompt.
  * - PUT: updates the linked Prompt's content (and name if renamed), then updates the ScheduledPrompt.
  * - DELETE: deletes the ScheduledPrompt, then deletes the linked Prompt.
  *
@@ -179,13 +181,16 @@ class ScheduledPromptController(
         val agentConfig = agentConfigService.findById(resource.agentConfigId)
             ?: throw ResourceNotFoundException("AgentConfig not found: ${resource.agentConfigId}")
 
+        // Prompt name pattern: scheduled--{nameSlug}, truncated to 100 chars.
+        // The agent name is intentionally excluded: if the AgentConfig is renamed, the Prompt.name
+        // would become stale and update unpredictably on the next PUT.
         val prompt = promptService.create(
             Prompt(
                 metadata = EntityMetadata(id = UUID.randomUUID()),
                 namespaceId = resolvedNs,
                 userId = resolvedUser,
                 agentConfigId = null,
-                name = "${resource.name}-${agentConfig.name}",
+                name = "scheduled--${resource.name.toSlug()}".take(100),
                 content = listOf(resource.promptContent),
             ),
         )
@@ -216,11 +221,12 @@ class ScheduledPromptController(
 
         val existingPrompt = promptService.findById(existing.promptTemplateId)
             ?: throw ResourceNotFoundException("Prompt not found: ${existing.promptTemplateId}")
-        val agentConfig = agentConfigService.findById(existing.agentConfigId)
-            ?: throw ResourceNotFoundException("AgentConfig not found: ${existing.agentConfigId}")
+        // Prompt name pattern: scheduled--{nameSlug}, truncated to 100 chars.
+        // The agent name is intentionally excluded: if the AgentConfig is renamed, the Prompt.name
+        // would become stale and update unpredictably on the next PUT.
         promptService.update(
             existingPrompt.copy(
-                name = "${resource.name}-${agentConfig.name}",
+                name = "scheduled--${resource.name.toSlug()}".take(100),
                 content = listOf(resource.promptContent),
             ),
         )

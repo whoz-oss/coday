@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
+import io.whozoss.agentos.util.toSlug
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.annotation.CreatedBy
@@ -107,7 +108,7 @@ data class ScheduledPromptNode(
 
     companion object {
         fun computeTripleKey(namespaceId: UUID?, userId: UUID?, name: String): String =
-            OverlayKeyEncoding.activeKey(namespaceId, userId, name)
+            OverlayKeyEncoding.activeKey(namespaceId, userId, name.toSlug())
 
         fun tombstoneTripleKey(id: String): String = OverlayKeyEncoding.tombstoneKey(id)
 

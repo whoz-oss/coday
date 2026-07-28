@@ -20,7 +20,6 @@ import java.util.UUID
  * ### Validation on [create]
  *
  * - [recurrence.every][Recurrence.every] must be > 0.
- * - [name] must match `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` (new creations only).
  * - [agentConfigId] must reference an existing, non-filesystem AgentConfig.
  * - [promptId] must reference an existing generic Prompt (agentConfigId = null).
  * - The AgentConfig's namespace must be compatible with the ScheduledPrompt's namespace.
@@ -39,9 +38,6 @@ class ScheduledPromptServiceImpl(
     override fun create(entity: ScheduledPrompt): ScheduledPrompt {
         require(entity.recurrence.every > 0) {
             "ScheduledPrompt 'every' must be > 0. Got: ${entity.recurrence.every}"
-        }
-        require(entity.name.matches(SLUG_REGEX)) {
-            "ScheduledPrompt name must be in slug format (e.g. 'daily-standup'). Got: '${entity.name}'"
         }
 
         val agentConfig = agentConfigService.findById(entity.agentConfigId)
@@ -184,7 +180,6 @@ class ScheduledPromptServiceImpl(
             "(namespaceId=${entity.namespaceId ?: "platform"}, userId=${entity.userId})"
 
     companion object : KLogging() {
-        private val SLUG_REGEX = Regex("^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
         private const val TRIPLE_KEY_CONSTRAINT_NAME = "scheduled_prompt_triple_key_unique"
         private const val TRIPLE_KEY_PROPERTY = "tripleKey"
     }

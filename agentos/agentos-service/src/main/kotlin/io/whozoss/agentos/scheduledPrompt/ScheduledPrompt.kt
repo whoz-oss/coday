@@ -74,10 +74,11 @@ data class Planning(
  * [recurrence] describes the interval and time-of-day.
  * [planning] describes the date window and end condition.
  *
- * ### Name slug convention
+ * ### Name
  *
- * On creation, [name] must match `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`.
- * Validated in [ScheduledPromptServiceImpl.create]; NOT retroactively enforced.
+ * [name] is a free-form label (e.g. "Daily Standup", "Rapport hebdo").
+ * It is normalized to a slug for the `tripleKey` uniqueness constraint via [ScheduledPromptNode.computeTripleKey],
+ * so "Daily Standup" and "daily standup" would conflict in the same scope.
  */
 data class ScheduledPrompt(
     override val metadata: EntityMetadata = EntityMetadata(),

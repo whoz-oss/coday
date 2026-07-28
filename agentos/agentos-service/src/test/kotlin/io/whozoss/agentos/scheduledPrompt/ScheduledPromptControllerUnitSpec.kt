@@ -176,7 +176,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
 
     "create with namespace scope delegates to service" {
         every { service.create(any()) } returns sp()
-        val result = controller.create(dto())
+        val result = controller.create(dto(name = "my-prompt"))
         result.name shouldBe "my-prompt"
         result.agentConfigId shouldBe agentConfigId
         result.promptContent shouldBe promptContent
@@ -251,11 +251,13 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     // create — prompt lifecycle
     // -------------------------------------------------------------------------
 
-    "create creates a generic prompt with auto-generated name" {
+    "create creates a generic prompt with auto-generated name following scheduled--{nameSlug} pattern" {
         every { service.create(any()) } returns sp()
-        controller.create(dto(name = "my-prompt"))
+        controller.create(dto(name = "My Prompt"))
+        // resource.name = "My Prompt" -> slug = "my-prompt"
+        // expected: "scheduled--my-prompt"
         verify {
-            promptService.create(match { it.name == "my-prompt-agent" && it.agentConfigId == null && it.content == listOf(promptContent) })
+            promptService.create(match { it.name == "scheduled--my-prompt" && it.agentConfigId == null && it.content == listOf(promptContent) })
         }
     }
 
@@ -341,26 +343,21 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         verify { promptService.update(match { it.content == listOf("Updated prompt content") }) }
     }
 
-    "update renames the prompt when entity is renamed" {
+    "update renames the prompt following scheduled--{nameSlug} pattern" {
         val id = UUID.randomUUID()
-        val existing = sp(id = id, name = "old-name")
+        val existing = sp(id = id, name = "Old Name")
         every { service.findById(id) } returns existing
-        every { service.update(any()) } returns existing.copy(name = "new-name")
-        controller.update(id, dto(id = id, name = "new-name"))
-        verify { promptService.update(match { it.name == "new-name-agent" }) }
+        every { service.update(any()) } returns existing.copy(name = "New Name")
+        controller.update(id, dto(id = id, name = "New Name"))
+        // resource.name = "New Name" -> slug = "new-name"
+        // expected: "scheduled--new-name"
+        verify { promptService.update(match { it.name == "scheduled--new-name" }) }
     }
 
     "update throws 404 when linked prompt not found" {
         val id = UUID.randomUUID()
         every { service.findById(id) } returns sp(id = id)
         every { promptService.findById(promptId) } returns null
-        shouldThrow<ResourceNotFoundException> { controller.update(id, dto()) }
-    }
-
-    "update throws 404 when agentConfig not found" {
-        val id = UUID.randomUUID()
-        every { service.findById(id) } returns sp(id = id)
-        every { agentConfigService.findById(agentConfigId) } returns null
         shouldThrow<ResourceNotFoundException> { controller.update(id, dto()) }
     }
 

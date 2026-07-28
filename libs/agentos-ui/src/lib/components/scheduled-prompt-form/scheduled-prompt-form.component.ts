@@ -61,7 +61,7 @@ export class ScheduledPromptFormComponent implements OnInit {
       // Identity
       name: new FormControl<string>('', {
         nonNullable: true,
-        validators: [Validators.required, Validators.pattern(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/)],
+        validators: [Validators.required],
       }),
       description: new FormControl<string | null>(null),
       agentConfigId: new FormControl<string>('', {

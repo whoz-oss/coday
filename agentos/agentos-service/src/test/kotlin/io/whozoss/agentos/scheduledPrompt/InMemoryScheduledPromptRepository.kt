@@ -1,6 +1,7 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import io.whozoss.agentos.entity.InMemoryEntityRepository
+import io.whozoss.agentos.util.toSlug
 import java.time.Instant
 import java.util.UUID
 
@@ -31,7 +32,7 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
 
     override fun findByTriple(namespaceId: UUID?, userId: UUID?, name: String): ScheduledPrompt? =
         delegate.findAll().firstOrNull {
-            it.namespaceId == namespaceId && it.userId == userId && it.name == name
+            it.namespaceId == namespaceId && it.userId == userId && it.name.toSlug() == name.toSlug()
         }
 
     /**

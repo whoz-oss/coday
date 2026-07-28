@@ -21,17 +21,15 @@
           class="scheduled-prompt-form__input"
           [class.scheduled-prompt-form__input--invalid]="nameControl.invalid && nameControl.touched"
           type="text"
-          placeholder="e.g. daily-standup"
+          placeholder="e.g. Daily Standup"
           [formControl]="nameControl"
           autocomplete="off"
         />
         @if (nameControl.invalid && nameControl.touched) {
-          <span class="scheduled-prompt-form__field-error">
-            Name is required and must be a lowercase slug (e.g. daily-standup).
-          </span>
+          <span class="scheduled-prompt-form__field-error"> Name is required. </span>
         }
         <span class="scheduled-prompt-form__field-hint"
-          >Lowercase slug: letters, digits, hyphens. Cannot be changed after creation.</span
+          >Free-form name (e.g. "Daily Standup"). Cannot be changed after creation.</span
         >
       </div>
 

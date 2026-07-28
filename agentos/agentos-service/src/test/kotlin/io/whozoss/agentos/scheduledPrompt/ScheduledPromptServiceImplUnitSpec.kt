@@ -126,39 +126,39 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // Slug validation on create
+        // Name is now free-form (no slug constraint)
         // -------------------------------------------------------------------------
 
-        "create accepts valid slug names" {
-            newService().create(sp(name = "daily-standup")).name shouldBe "daily-standup"
+        "create accepts free-form name with spaces" {
+            newService().create(sp(name = "Daily Standup")).name shouldBe "Daily Standup"
         }
 
-        "create accepts single-word slug" {
-            newService().create(sp(name = "standup")).name shouldBe "standup"
+        "create accepts name starting with uppercase" {
+            newService().create(sp(name = "Daily-standup")).name shouldBe "Daily-standup"
         }
 
-        "create accepts slug with numbers" {
-            newService().create(sp(name = "weekly-sync-v2")).name shouldBe "weekly-sync-v2"
+        "create accepts name starting with digit" {
+            newService().create(sp(name = "1standup")).name shouldBe "1standup"
         }
 
-        "create rejects name starting with uppercase" {
-            shouldThrow<IllegalArgumentException> { newService().create(sp(name = "Daily-standup")) }
+        "create accepts name with special characters" {
+            newService().create(sp(name = "Rapport hébdo!")).name shouldBe "Rapport hébdo!"
         }
 
-        "create rejects name with spaces" {
-            shouldThrow<IllegalArgumentException> { newService().create(sp(name = "daily standup")) }
+        // -------------------------------------------------------------------------
+        // tripleKey collision: names that slugify to the same value conflict
+        // -------------------------------------------------------------------------
+
+        "create throws ConflictException when two names normalize to the same slug in the same scope" {
+            val svc = newService()
+            svc.create(sp(name = "Daily Standup"))
+            shouldThrow<ConflictException> { svc.create(sp(name = "daily standup")) }
         }
 
-        "create rejects name starting with digit" {
-            shouldThrow<IllegalArgumentException> { newService().create(sp(name = "1standup")) }
-        }
-
-        "create rejects name with trailing hyphen" {
-            shouldThrow<IllegalArgumentException> { newService().create(sp(name = "standup-")) }
-        }
-
-        "create rejects name with double hyphens" {
-            shouldThrow<IllegalArgumentException> { newService().create(sp(name = "daily--standup")) }
+        "create succeeds when two names normalize to different slugs" {
+            val svc = newService()
+            svc.create(sp(name = "Daily Standup"))
+            svc.create(sp(name = "Weekly Sync")).name shouldBe "Weekly Sync"
         }
 
         // -------------------------------------------------------------------------
@@ -336,7 +336,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             newService().findById(UUID.randomUUID()).shouldBeNull()
         }
 
-        "update persists changes (slug not validated on update)" {
+        "update persists changes including free-form name" {
             val svc = newService()
             val saved = svc.create(sp(name = "original"))
             val updated = svc.update(saved.copy(name = "Updated Name", enabled = false))
