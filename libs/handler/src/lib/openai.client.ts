@@ -280,6 +280,7 @@ export class OpenaiClient extends AiClient {
       tools: this.truncateToolsIfNeeded(agent.tools.getTools()),
       max_completion_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? undefined,
       temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
+      reasoning_effort: 'none' as any, // Disable reasoning when tools are present (gpt-5.6 models reject reasoning_effort with tools)
       stream: true, // Enable streaming
       stream_options: { include_usage: true }, // Include usage data in stream
     })
@@ -381,6 +382,7 @@ export class OpenaiClient extends AiClient {
       tools: this.truncateToolsIfNeeded(agent.tools.getTools()),
       max_completion_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? undefined,
       temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
+      reasoning_effort: 'none' as any, // Disable reasoning when tools are present (gpt-5.6 models reject reasoning_effort with tools)
       stream: false, // Explicitly disable streaming
     })
   }
