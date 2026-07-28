@@ -111,7 +111,7 @@ async function detectJava(): Promise<JavaDetectionResult> {
 // ---------------------------------------------------------------------------
 
 /**
- * Poll `http://localhost:<port>/actuator/health` until Spring Boot reports
+ * Poll `http://localhost:<port>/management/health` until Spring Boot reports
  * a 2xx status or the timeout is exceeded.
  *
  * Spring Boot can take a while to start (class-loading, plugin discovery, Neo4j
@@ -120,7 +120,7 @@ async function detectJava(): Promise<JavaDetectionResult> {
  * @returns `true` when healthy, `false` on timeout.
  */
 async function waitForHealthy(port: number): Promise<boolean> {
-  const url = `http://localhost:${port}/actuator/health`
+  const url = `http://localhost:${port}/management/health`
   const deadline = Date.now() + HEALTH_TIMEOUT_MS
 
   while (Date.now() < deadline) {
