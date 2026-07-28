@@ -94,10 +94,10 @@ class CaseController(
         val userId = user.id.toString()
         val isNamespaceAdmin =
             permissionService.hasPermission(
-                userId,
-                EntityType.NAMESPACE,
-                parentId.toString(),
-                Action.WRITE,
+                userId = userId,
+                entityType = EntityType.NAMESPACE,
+                entityId = parentId.toString(),
+                action = Action.WRITE,
             )
         val cases =
             if (isNamespaceAdmin) {
@@ -184,20 +184,19 @@ class CaseController(
         val granted =
             runCatching {
                 permissionService.grantPermission(
-                    userId,
-                    EntityType.CASE,
-                    saved.id.toString(),
-                    PermissionRelation.ADMIN,
+                    userId = userId,
+                    entityType = EntityType.CASE,
+                    entityId = saved.id.toString(),
+                    relation = PermissionRelation.ADMIN,
                 )
+                logger.info { "User $userId created case ${saved.id} with auto-ADMIN grant" }
             }.onFailure { e ->
                 logger.warn(e) {
                     "Auto-ADMIN grant failed for case ${saved.id} (user $userId) — case persisted. " +
                         "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
                 }
             }.isSuccess
-        if (granted) {
-            logger.info { "User $userId created case ${saved.id} with auto-ADMIN grant" }
-        }
+
         // Surface the creator's fresh direct relation so the UI enables ADMIN-only actions
         // (delete) on the new case immediately, without waiting for a list refresh to enrich it.
         // lastMessageAt is intentionally omitted: a newly created case has no messages yet,
@@ -321,14 +320,7 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        if (!starredService.setStarred(userId, EntityType.CASE, id.toString(), true)) {
-            // READ can be granted transitively (namespace-admin) but starring requires a
-            // direct user↔case edge — reject instead of reporting a success that did not persist.
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "Cannot star case $id: the caller has no direct relation on it",
-            )
-        }
+        callStarredService(userId = userId, id = id, starred = true)
         logger.info { "User $userId starred case $id" }
     }
 
@@ -340,13 +332,27 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        if (!starredService.setStarred(userId, EntityType.CASE, id.toString(), false)) {
+        callStarredService(userId = userId, id = id, starred = false)
+        logger.info { "User $userId unstarred case $id" }
+    }
+
+    private fun callStarredService(
+        userId: String,
+        id: UUID,
+        starred: Boolean,
+    ) {
+        if (!starredService.setStarred(
+                userId = userId,
+                entityType = EntityType.CASE,
+                entityId = id.toString(),
+                starred = starred,
+            )
+        ) {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
                 "Cannot unstar case $id: the caller has no direct relation on it",
             )
         }
-        logger.info { "User $userId unstarred case $id" }
     }
 
     /**
