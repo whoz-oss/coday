@@ -1,3 +1,13 @@
+## 0.227.1 (2026-07-28)
+
+### 🩹 Fixes
+
+- cover reasoning effort constraint for openai ([c1407b9e](https://github.com/whoz-oss/coday/commit/c1407b9e))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.227.0 (2026-07-28)
 
 ### 🚀 Features
