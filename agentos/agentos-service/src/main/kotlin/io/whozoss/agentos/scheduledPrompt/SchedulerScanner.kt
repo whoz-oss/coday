@@ -1,5 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
@@ -35,6 +36,7 @@ import java.time.Instant
 class SchedulerScanner(
     private val scheduledPromptRepository: ScheduledPromptRepository,
     private val runRepository: ScheduledPromptRunRepository,
+    private val agentConfigService: AgentConfigService,
     private val properties: SchedulerProperties,
     private val clock: Clock,
 ) {
@@ -52,6 +54,17 @@ class SchedulerScanner(
     private fun claim(sp: ScheduledPrompt) {
         val slot = sp.nextRunAt
         val correlationId = "sp-${sp.id.toString().take(8)}-${slot.epochSecond}"
+
+        // Guard: disable the ScheduledPrompt if its AgentConfig is gone or disabled.
+        val agentConfig = agentConfigService.findById(sp.agentConfigId)
+        if (agentConfig == null || !agentConfig.enabled) {
+            logger.warn {
+                "[SchedulerScanner] AgentConfig ${sp.agentConfigId} is ${if (agentConfig == null) "deleted" else "disabled"} " +
+                    "— disabling sp=${sp.id} to prevent further zombie ticks"
+            }
+            scheduledPromptRepository.save(sp.copy(enabled = false))
+            return
+        }
 
         val status = when {
             runRepository.hasActive(sp.id) -> {

@@ -6,6 +6,10 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -35,13 +39,26 @@ class SchedulerScannerUnitSpec : StringSpec() {
     private val agentId: UUID = UUID.randomUUID()
     private val promptId: UUID = UUID.randomUUID()
 
+    private val activeAgent = AgentConfig(
+        metadata = EntityMetadata(id = agentId, version = 0L),
+        namespaceId = null,
+        name = "test-agent",
+        enabled = true,
+    )
+
+    /** Default AgentConfigService mock: agent exists and is enabled. */
+    private fun defaultAgentConfigService(): AgentConfigService = mockk<AgentConfigService>().also {
+        every { it.findById(agentId) } returns activeAgent
+    }
+
     private fun makeSpRepo() = InMemoryScheduledPromptRepository()
     private fun makeRunRepo() = InMemoryScheduledPromptRunRepository()
 
     private fun scanner(
         spRepo: InMemoryScheduledPromptRepository,
         runRepo: InMemoryScheduledPromptRunRepository,
-    ) = SchedulerScanner(spRepo, runRepo, properties, clock)
+        agentConfigService: AgentConfigService = defaultAgentConfigService(),
+    ) = SchedulerScanner(spRepo, runRepo, agentConfigService, properties, clock)
 
     private fun InMemoryScheduledPromptRepository.insertSp(
         nextRunAt: Instant,
@@ -231,6 +248,46 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val slot = Instant.parse("2026-01-01T08:00:00Z")
             val sp = spRepo.insertSp(nextRunAt = slot)
             spRepo.advance(sp.id, slot.plusSeconds(1), slot.plusSeconds(86400)).shouldBeFalse()
+        }
+
+        // -------------------------------------------------------------------------
+        // AgentConfig guard
+        // -------------------------------------------------------------------------
+
+        "tick with deleted AgentConfig: ScheduledPrompt disabled, no run inserted" {
+            val spRepo = makeSpRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp = spRepo.insertSp(nextRunAt = slot)
+            val agentSvc = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns null
+            }
+            scanner(spRepo, runRepo, agentSvc).tick()
+            runRepo.all().shouldBeEmpty()
+            spRepo.findById(sp.id)!!.enabled shouldBe false
+        }
+
+        "tick with disabled AgentConfig: ScheduledPrompt disabled, no run inserted" {
+            val spRepo = makeSpRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp = spRepo.insertSp(nextRunAt = slot)
+            val agentSvc = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns activeAgent.copy(enabled = false)
+            }
+            scanner(spRepo, runRepo, agentSvc).tick()
+            runRepo.all().shouldBeEmpty()
+            spRepo.findById(sp.id)!!.enabled shouldBe false
+        }
+
+        "tick with valid AgentConfig: run CLAIMED inserted normally" {
+            val spRepo = makeSpRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            spRepo.insertSp(nextRunAt = slot)
+            scanner(spRepo, runRepo, defaultAgentConfigService()).tick()
+            runRepo.all() shouldHaveSize 1
+            runRepo.all().first().status shouldBe RunStatus.CLAIMED
         }
 
         // -------------------------------------------------------------------------
