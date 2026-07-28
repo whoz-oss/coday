@@ -349,10 +349,14 @@
   }
 
   &__name-input {
-    // Same metrics as __name so the row height does not change when the editor opens.
+    // __name is bare text; the input adds 1px of padding and 1px of border on each side, which
+    // box-sizing does not absorb with height:auto. The negative block margin lets that 4px grow
+    // outward into the row's own vertical padding, so the row keeps its height when the editor
+    // opens and the list below does not shift.
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
+    margin-block: -2px;
     padding: 1px 6px;
     font-family: inherit;
     font-size: 15px;

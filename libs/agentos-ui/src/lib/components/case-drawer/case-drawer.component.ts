@@ -209,7 +209,11 @@ export class CaseDrawerComponent {
   /** Title the editor was seeded with, used to skip a no-op rename. */
   private renameOriginal = ''
 
-  /** Only one row can be in edit mode, so a singular query is enough. */
+  /**
+   * A case appears on exactly one row, so one edited case means one input and a singular query
+   * is enough. That holds only because the row template does not recurse into children while a
+   * search is active, where the flattened list already contains every matching descendant.
+   */
   private readonly renameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput')
 
   /** Case whose draft has already been pre-selected, so a re-render does not re-select it. */

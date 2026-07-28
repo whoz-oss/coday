@@ -371,7 +371,13 @@
     </div>
 
     <!-- Children -->
-    @if (isExpanded(node.id) && node.children?.length) {
+    <!--
+      No recursion while a search is active: collectMatching already flattens every matching
+      descendant into the displayed list, so recursing here renders the same case twice. That
+      duplicate breaks the inline editor, which assumes one row per case: the singular
+      renameInput query focuses the wrong copy, and both copies emit the same error element id.
+    -->
+    @if (!isSearchActive() && isExpanded(node.id) && node.children?.length) {
       @for (child of node.children; track child.id) {
         <ng-container [ngTemplateOutlet]="caseRowTpl" [ngTemplateOutletContext]="{ node: child, depth: depth + 1 }" />
       }
