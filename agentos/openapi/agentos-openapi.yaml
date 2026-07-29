@@ -3564,7 +3564,7 @@ components:
           - NEVER
           - ON_DATE
           - OCCURRENCES
-        occurrenceCount:
+        maxOccurrenceCount:
           type: integer
           format: int32
         startDate:

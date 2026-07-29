@@ -56,8 +56,8 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         startDate: LocalDate = today,
         endType: SchedulerEndType = SchedulerEndType.NEVER,
         endDate: LocalDate? = null,
-        occurrenceCount: Int? = null,
-    ) = PlanningDto(startDate = startDate, endType = endType, endDate = endDate, occurrenceCount = occurrenceCount)
+        maxOccurrenceCount: Int? = null,
+    ) = PlanningDto(startDate = startDate, endType = endType, endDate = endDate, maxOccurrenceCount = maxOccurrenceCount)
 
     val fixedNextRun: Instant = Instant.parse("2026-01-01T08:00:00Z")
 
@@ -218,14 +218,14 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     }
 
     "create round-trips planning OCCURRENCES" {
-        val p = planningDto(endType = SchedulerEndType.OCCURRENCES, occurrenceCount = 5)
+        val p = planningDto(endType = SchedulerEndType.OCCURRENCES, maxOccurrenceCount = 5)
         every { service.createWithPrompt(any(), any()) } answers {
             val entity = firstArg<ScheduledPrompt>()
             Pair(entity.copy(promptTemplateId = promptId), secondArg())
         }
         val result = controller.create(dto(planning = p))
         result.planning.endType shouldBe SchedulerEndType.OCCURRENCES
-        result.planning.occurrenceCount shouldBe 5
+        result.planning.maxOccurrenceCount shouldBe 5
     }
 
     // -------------------------------------------------------------------------
@@ -240,9 +240,9 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     }
 
     "create propagates BadRequestException from service for OCCURRENCES without count" {
-        every { service.createWithPrompt(any(), any()) } throws BadRequestException("occurrenceCount is required when endType is OCCURRENCES")
+        every { service.createWithPrompt(any(), any()) } throws BadRequestException("maxOccurrenceCount is required when endType is OCCURRENCES")
         shouldThrow<BadRequestException> {
-            controller.create(dto(planning = planningDto(endType = SchedulerEndType.OCCURRENCES, occurrenceCount = null)))
+            controller.create(dto(planning = planningDto(endType = SchedulerEndType.OCCURRENCES, maxOccurrenceCount = null)))
         }
     }
 
@@ -307,9 +307,9 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     "update propagates BadRequestException from service for OCCURRENCES without count" {
         val id = UUID.randomUUID()
         every { service.findById(id) } returns sp(id = id)
-        every { service.updateWithPrompt(any(), any()) } throws BadRequestException("occurrenceCount is required when endType is OCCURRENCES")
+        every { service.updateWithPrompt(any(), any()) } throws BadRequestException("maxOccurrenceCount is required when endType is OCCURRENCES")
         shouldThrow<BadRequestException> {
-            controller.update(id, dto(planning = planningDto(endType = SchedulerEndType.OCCURRENCES, occurrenceCount = null)))
+            controller.update(id, dto(planning = planningDto(endType = SchedulerEndType.OCCURRENCES, maxOccurrenceCount = null)))
         }
     }
 

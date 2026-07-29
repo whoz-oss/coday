@@ -35,13 +35,13 @@ data class Recurrence(
  * [endType] controls termination:
  * - NEVER: runs indefinitely.
  * - ON_DATE: stops after [endDate] (required, strictly after [startDate]).
- * - OCCURRENCES: stops after [occurrenceCount] executions (required, > 0).
+ * - OCCURRENCES: stops after [maxOccurrenceCount] executions (required, > 0).
  */
 data class Planning(
     val startDate: LocalDate,
     val endType: SchedulerEndType = SchedulerEndType.NEVER,
     val endDate: LocalDate? = null,
-    val occurrenceCount: Int? = null,
+    val maxOccurrenceCount: Int? = null,
 )
 
 // ---------------------------------------------------------------------------

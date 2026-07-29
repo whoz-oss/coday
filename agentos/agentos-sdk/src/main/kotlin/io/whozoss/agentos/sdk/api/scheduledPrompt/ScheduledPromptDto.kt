@@ -26,7 +26,7 @@ enum class SchedulerEndType {
     NEVER,
     /** Stops on [PlanningDto.endDate] (inclusive). Must be after [PlanningDto.startDate]. */
     ON_DATE,
-    /** Stops after [PlanningDto.occurrenceCount] executions. */
+    /** Stops after [PlanningDto.maxOccurrenceCount] executions. */
     OCCURRENCES,
 }
 
@@ -60,7 +60,7 @@ data class RecurrenceDto(
  * [endType] controls termination:
  * - NEVER: runs indefinitely.
  * - ON_DATE: stops after [endDate] (required, must be strictly after [startDate]).
- * - OCCURRENCES: stops after [occurrenceCount] executions (required, > 0).
+ * - OCCURRENCES: stops after [maxOccurrenceCount] executions (required, > 0).
  */
 @Schema(name = "Planning")
 data class PlanningDto(
@@ -69,8 +69,8 @@ data class PlanningDto(
     @field:NotNull(message = "endType must not be null")
     val endType: SchedulerEndType,
     val endDate: LocalDate? = null,
-    @field:Positive(message = "occurrenceCount must be > 0")
-    val occurrenceCount: Int? = null,
+    @field:Positive(message = "maxOccurrenceCount must be > 0")
+    val maxOccurrenceCount: Int? = null,
 )
 
 // ---------------------------------------------------------------------------
@@ -94,7 +94,7 @@ data class PlanningDto(
  * [recurrence] describes how often and at what time the scheduled prompt fires.
  * [planning] describes the start date and end condition.
  *
- * Cross-field constraints (endDate after startDate, occurrenceCount > 0) are
+ * Cross-field constraints (endDate after startDate, maxOccurrenceCount > 0) are
  * validated in the controller before delegating to the service.
  */
 @Schema(name = "ScheduledPrompt")

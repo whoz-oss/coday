@@ -27,7 +27,7 @@ import java.util.UUID
  * - [promptId] must reference an existing generic Prompt (agentConfigId = null).
  * - The AgentConfig's namespace must be compatible with the ScheduledPrompt's namespace.
  * - [planning.endDate][Planning.endDate] required when endType == ON_DATE, must be after startDate.
- * - [planning.occurrenceCount][Planning.occurrenceCount] required and > 0 when endType == OCCURRENCES.
+ * - [planning.maxOccurrenceCount][Planning.maxOccurrenceCount] required and > 0 when endType == OCCURRENCES.
  * - Name uniqueness per scope enforced by the `scheduled_prompt_triple_key_unique` UNIQUE constraint.
  *
  * ### Prompt lifecycle
@@ -230,9 +230,9 @@ class ScheduledPromptServiceImpl(
                 }
             }
             SchedulerEndType.OCCURRENCES -> {
-                val count = entity.planning.occurrenceCount
-                    ?: throw BadRequestException("occurrenceCount is required when endType is OCCURRENCES")
-                if (count <= 0) throw BadRequestException("occurrenceCount must be > 0")
+                val count = entity.planning.maxOccurrenceCount
+                    ?: throw BadRequestException("maxOccurrenceCount is required when endType is OCCURRENCES")
+                if (count <= 0) throw BadRequestException("maxOccurrenceCount must be > 0")
             }
             SchedulerEndType.NEVER -> Unit
         }

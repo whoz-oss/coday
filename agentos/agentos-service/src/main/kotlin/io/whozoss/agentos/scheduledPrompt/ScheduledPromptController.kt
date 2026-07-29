@@ -275,7 +275,7 @@ internal fun PlanningDto.toDomain(): Planning = Planning(
     startDate = startDate,
     endType = endType,
     endDate = endDate,
-    occurrenceCount = occurrenceCount,
+    maxOccurrenceCount = maxOccurrenceCount,
 )
 
 internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPromptDto =
@@ -296,7 +296,7 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
             startDate = entity.planning.startDate,
             endType = entity.planning.endType,
             endDate = entity.planning.endDate,
-            occurrenceCount = entity.planning.occurrenceCount,
+            maxOccurrenceCount = entity.planning.maxOccurrenceCount,
         ),
         enabled = entity.enabled,
         nextRunAt = entity.nextRunAt,

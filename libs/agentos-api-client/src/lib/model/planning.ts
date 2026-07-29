@@ -11,7 +11,7 @@
 export interface Planning {
   endDate?: string
   endType: PlanningEndTypeEnum
-  occurrenceCount?: number
+  maxOccurrenceCount?: number
   startDate: string
 }
 export enum PlanningEndTypeEnum {

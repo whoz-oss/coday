@@ -37,7 +37,7 @@ class NextRunCalculatorUnitSpec : StringSpec({
         timeUtc: LocalTime = defaultTime,
         endType: SchedulerEndType = SchedulerEndType.NEVER,
         endDate: LocalDate? = null,
-        occurrenceCount: Int? = null,
+        maxOccurrenceCount: Int? = null,
     ) = ScheduledPrompt(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         namespaceId = null,
@@ -49,7 +49,7 @@ class NextRunCalculatorUnitSpec : StringSpec({
             startDate = startDate,
             endType = endType,
             endDate = endDate,
-            occurrenceCount = occurrenceCount,
+            maxOccurrenceCount = maxOccurrenceCount,
         ),
         nextRunAt = Instant.EPOCH, // overwritten by calculator
     )

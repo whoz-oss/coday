@@ -240,7 +240,7 @@ export class ScheduledPromptFormComponent implements OnInit {
     this.startDateControl.setValue(def.planning.startDate)
     this.endTypeControl.setValue(def.planning.endType)
     this.endDateControl.setValue(def.planning.endDate ?? null)
-    this.occurrenceCountControl.setValue(def.planning.occurrenceCount ?? null)
+    this.occurrenceCountControl.setValue(def.planning.maxOccurrenceCount ?? null)
     this.enabledControl.setValue(def.enabled)
   }
 
@@ -290,7 +290,7 @@ export class ScheduledPromptFormComponent implements OnInit {
         startDate: this.startDateControl.value,
         endType,
         endDate: endType === SchedulerEndType.ON_DATE ? (this.endDateControl.value ?? undefined) : undefined,
-        occurrenceCount:
+        maxOccurrenceCount:
           endType === SchedulerEndType.OCCURRENCES ? (this.occurrenceCountControl.value ?? undefined) : undefined,
       },
       enabled: this.enabledControl.value,

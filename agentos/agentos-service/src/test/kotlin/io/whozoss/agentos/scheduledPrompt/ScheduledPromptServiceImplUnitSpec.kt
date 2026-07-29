@@ -74,8 +74,8 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         startDate: LocalDate = today,
         endType: SchedulerEndType = SchedulerEndType.NEVER,
         endDate: LocalDate? = null,
-        occurrenceCount: Int? = null,
-    ) = Planning(startDate = startDate, endType = endType, endDate = endDate, occurrenceCount = occurrenceCount)
+        maxOccurrenceCount: Int? = null,
+    ) = Planning(startDate = startDate, endType = endType, endDate = endDate, maxOccurrenceCount = maxOccurrenceCount)
 
     private fun sp(
         name: String = "my-prompt",
@@ -234,31 +234,31 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             ).planning.endType shouldBe SchedulerEndType.ON_DATE
         }
 
-        "create throws BadRequestException when endType is OCCURRENCES and occurrenceCount is null" {
+        "create throws BadRequestException when endType is OCCURRENCES and maxOccurrenceCount is null" {
             val ex = shouldThrow<BadRequestException> {
-                newService().create(sp(planning = planning(endType = SchedulerEndType.OCCURRENCES, occurrenceCount = null)))
+                newService().create(sp(planning = planning(endType = SchedulerEndType.OCCURRENCES, maxOccurrenceCount = null)))
             }
-            ex.message shouldContain "occurrenceCount"
+            ex.message shouldContain "maxOccurrenceCount"
         }
 
-        "create throws BadRequestException when occurrenceCount is 0" {
+        "create throws BadRequestException when maxOccurrenceCount is 0" {
             val ex = shouldThrow<BadRequestException> {
-                newService().create(sp(planning = planning(endType = SchedulerEndType.OCCURRENCES, occurrenceCount = 0)))
+                newService().create(sp(planning = planning(endType = SchedulerEndType.OCCURRENCES, maxOccurrenceCount = 0)))
             }
-            ex.message shouldContain "occurrenceCount"
+            ex.message shouldContain "maxOccurrenceCount"
         }
 
-        "create throws BadRequestException when occurrenceCount is negative" {
+        "create throws BadRequestException when maxOccurrenceCount is negative" {
             val ex = shouldThrow<BadRequestException> {
-                newService().create(sp(planning = planning(endType = SchedulerEndType.OCCURRENCES, occurrenceCount = -1)))
+                newService().create(sp(planning = planning(endType = SchedulerEndType.OCCURRENCES, maxOccurrenceCount = -1)))
             }
-            ex.message shouldContain "occurrenceCount"
+            ex.message shouldContain "maxOccurrenceCount"
         }
 
-        "create succeeds when endType is OCCURRENCES and occurrenceCount is 1" {
+        "create succeeds when endType is OCCURRENCES and maxOccurrenceCount is 1" {
             newService().create(
-                sp(planning = planning(endType = SchedulerEndType.OCCURRENCES, occurrenceCount = 1)),
-            ).planning.occurrenceCount shouldBe 1
+                sp(planning = planning(endType = SchedulerEndType.OCCURRENCES, maxOccurrenceCount = 1)),
+            ).planning.maxOccurrenceCount shouldBe 1
         }
 
         "create succeeds when endType is NEVER" {
@@ -509,7 +509,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         }
 
         "planning OCCURRENCES round-trips" {
-            val p = planning(endType = SchedulerEndType.OCCURRENCES, occurrenceCount = 10)
+            val p = planning(endType = SchedulerEndType.OCCURRENCES, maxOccurrenceCount = 10)
             newService().create(sp(planning = p)).planning shouldBe p
         }
 
