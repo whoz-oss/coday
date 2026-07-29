@@ -227,11 +227,23 @@ class PermissionServiceImpl(
         }
     }
 
-    override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean =
-        permissionRepository.setStarred(userId, entityType, entityId, starred)
-
-    override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
-        permissionRepository.listDirectRelations(userId, entityType)
+    override fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String> {
+        if (entries.isEmpty()) return emptyList()
+        return try {
+            val result = permissionRepository.applyShareBatch(entityType, entityId, entries)
+            // Sharing affects multiple users — invalidate the whole cache.
+            permissionCache.clear()
+            logger.info { "applyShareBatch on $entityType:$entityId — ${result.size} user(s) affected" }
+            result
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to apply share batch on $entityType:$entityId" }
+            throw e
+        }
+    }
 
     override fun clearUserCache(userId: String) {
         try {

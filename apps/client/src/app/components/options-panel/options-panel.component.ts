@@ -4,7 +4,7 @@ import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { PreferencesService } from '../../services/preferences.service'
 import { VoiceSynthesisService, VoiceInfo } from '../../services/voice-synthesis.service'
-import { ThemeService, ThemeMode } from '../../core/services/theme.service'
+import { ThemeService, ThemeMode, ThemeState } from '../../core/services/theme.service'
 import { MatIcon } from '@angular/material/icon'
 import { MatSlideToggle } from '@angular/material/slide-toggle'
 
@@ -25,6 +25,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
 
   selectedTheme: ThemeMode = 'light'
+  selectedThemeVariant = 'industry'
   selectedVoiceLanguage = 'en-US'
   useEnterToSend = false
   printTechnicalMessages = false
@@ -69,7 +70,9 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   private themeService = inject(ThemeService)
 
   ngOnInit(): void {
-    this.selectedTheme = this.themeService.getCurrentTheme()
+    const state = this.themeService.getCurrentTheme()
+    this.selectedTheme = state.mode
+    this.selectedThemeVariant = state.variant
     this.selectedVoiceLanguage = this.preferencesService.getVoiceLanguage()
     this.useEnterToSend = this.preferencesService.getEnterToSend()
     this.printTechnicalMessages = this.preferencesService.getPrintTechnicalMessages()
@@ -89,8 +92,9 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
 
     this.loadAvailableVoices()
 
-    this.themeService.currentTheme$.pipe(takeUntil(this.destroy$)).subscribe((theme) => {
-      this.selectedTheme = theme
+    this.themeService.currentTheme$.pipe(takeUntil(this.destroy$)).subscribe((state: ThemeState) => {
+      this.selectedTheme = state.mode
+      this.selectedThemeVariant = state.variant
     })
 
     this.preferencesService.voiceLanguage$.pipe(takeUntil(this.destroy$)).subscribe((language) => {
@@ -173,7 +177,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
 
   onThemeChange(): void {
     console.log('[OPTIONS] Theme changed to:', this.selectedTheme)
-    this.themeService.setTheme(this.selectedTheme)
+    this.themeService.setTheme({ variant: this.selectedThemeVariant as any, mode: this.selectedTheme })
   }
 
   onVoiceLanguageChange(): void {

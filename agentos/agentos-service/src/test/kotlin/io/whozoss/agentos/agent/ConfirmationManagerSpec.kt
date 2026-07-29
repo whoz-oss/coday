@@ -9,6 +9,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import java.util.UUID
@@ -53,7 +54,7 @@ class ConfirmationManagerSpec :
         // ─── shouldConfirm ──────────────────────────────────────────────────────────────────
 
         "shouldConfirm returns false when the LLM says the user already authorised (yes)" {
-            val chatClient = stubChatClient("<decision>yes</decision>")
+            val chatClient = stubChatClient("<decision>already_confirmed</decision>")
             manager.shouldConfirm(
                 chatClient = chatClient,
                 firstLevelHistory = emptyList(),
@@ -63,7 +64,7 @@ class ConfirmationManagerSpec :
         }
 
         "shouldConfirm returns true when the LLM says explicit confirmation is needed (no)" {
-            val chatClient = stubChatClient("<decision>no</decision>")
+            val chatClient = stubChatClient("<decision>confirmation_needed</decision>")
             manager.shouldConfirm(
                 chatClient = chatClient,
                 firstLevelHistory = emptyList(),
@@ -84,7 +85,7 @@ class ConfirmationManagerSpec :
         }
 
         "shouldConfirm accepts an optional originalData for delta-aware Update tools (back Copilot parity)" {
-            val chatClient = stubChatClient("<decision>yes</decision>")
+            val chatClient = stubChatClient("<decision>already_confirmed</decision>")
             manager.shouldConfirm(
                 chatClient = chatClient,
                 firstLevelHistory = listOf(UserMessage("apply the rename")),
@@ -105,7 +106,7 @@ class ConfirmationManagerSpec :
             val callSpec = mockk<ChatClient.CallResponseSpec>()
             every { chatClient.prompt(capture(promptCaptured)) } returns reqSpec
             every { reqSpec.call() } returns callSpec
-            every { callSpec.content() } returns "<decision>no</decision>"
+            every { callSpec.content() } returns "<decision>confirmation_needed</decision>"
 
             manager.shouldConfirm(
                 chatClient = chatClient,
@@ -127,7 +128,7 @@ class ConfirmationManagerSpec :
             val callSpec = mockk<ChatClient.CallResponseSpec>()
             every { chatClient.prompt(capture(promptCaptured)) } returns reqSpec
             every { reqSpec.call() } returns callSpec
-            every { callSpec.content() } returns "<decision>yes</decision>"
+            every { callSpec.content() } returns "<decision>already_confirmed</decision>"
 
             manager.shouldConfirm(
                 chatClient = chatClient,
@@ -141,10 +142,38 @@ class ConfirmationManagerSpec :
             promptText shouldNotContain "Tool-specific confirmation guidance"
         }
 
+        "shouldConfirm returns true when user's last message only answers a clarification question, not the whole action" {
+            val chatClient = stubChatClient("<decision>confirmation_needed</decision>")
+            manager.shouldConfirm(
+                chatClient = chatClient,
+                firstLevelHistory = listOf(
+                    UserMessage("Crée un besoin dev react, full time, Lyon, début 01/08/2026, 15 jours. Pas de lien commercial ni de grade ou role"),
+                    AssistantMessage("Quelle compétence React souhaitez-vous ? 1) React.js 2) React Native"),
+                    UserMessage("1"),
+                ),
+                actionLabel = "Create need",
+                proposedData = mapOf("skill" to "React.js", "location" to "Lyon", "duration" to 15),
+            ) shouldBe true
+        }
+
+        "shouldConfirm returns false when clarification resolves the only missing piece of a simple targeted action" {
+            val chatClient = stubChatClient("<decision>already_confirmed</decision>")
+            manager.shouldConfirm(
+                chatClient = chatClient,
+                firstLevelHistory = listOf(
+                    UserMessage("Ajoute la compétence React à ce besoin"),
+                    AssistantMessage("Quelle compétence React souhaitez-vous ? 1) React.js 2) React Native"),
+                    UserMessage("1"),
+                ),
+                actionLabel = "Add skill",
+                proposedData = mapOf("skill" to "React.js"),
+            ) shouldBe false
+        }
+
         // ─── analyzeConfirmation ────────────────────────────────────────────────────────────
 
         "analyzeConfirmation returns CONFIRMED on explicit yes" {
-            val chatClient = stubChatClient("<decision>yes</decision>")
+            val chatClient = stubChatClient("<decision>confirmed</decision>")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
                 firstLevelHistory = listOf(UserMessage("oui supprime")),
@@ -154,7 +183,7 @@ class ConfirmationManagerSpec :
         }
 
         "analyzeConfirmation returns REJECTED on explicit no" {
-            val chatClient = stubChatClient("<decision>no</decision>")
+            val chatClient = stubChatClient("<decision>rejected</decision>")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
                 firstLevelHistory = listOf(UserMessage("annule")),
@@ -185,7 +214,7 @@ class ConfirmationManagerSpec :
         }
 
         "analyzeConfirmation accepts tool-supplied specific instructions" {
-            val chatClient = stubChatClient("<decision>yes</decision>")
+            val chatClient = stubChatClient("<decision>confirmed</decision>")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
                 firstLevelHistory = listOf(UserMessage("ok delete it")),
@@ -195,7 +224,7 @@ class ConfirmationManagerSpec :
         }
 
         "analyzeConfirmation returns AMBIGUOUS when the LLM explicitly says unclear" {
-            val chatClient = stubChatClient("<decision>unclear</decision>")
+            val chatClient = stubChatClient("<decision>ambiguous</decision>")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
                 firstLevelHistory = listOf(UserMessage("idiomatic ambiguous reply")),
@@ -207,7 +236,7 @@ class ConfirmationManagerSpec :
         // ─── decision tag tolerance ─────────────────────────────────────────────────────────
 
         "analyzeConfirmation tolerates whitespace around the decision tag content" {
-            val chatClient = stubChatClient("Looking at the history… <decision>  yes  </decision> done.")
+            val chatClient = stubChatClient("Looking at the history… <decision>  confirmed  </decision> done.")
             manager.analyzeConfirmation(
                 chatClient = chatClient,
                 firstLevelHistory = emptyList(),

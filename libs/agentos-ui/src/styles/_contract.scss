@@ -3,68 +3,100 @@
  *
  * This file documents the CSS custom properties that agentos-ui components
  * consume from the host application. It does NOT define them — that is the
- * host's responsibility.
+ * host's responsibility (apps/client/src/app/styles/colors.scss).
  *
  * All variables include a fallback value so the lib works even without a host
  * theme, but a proper host stylesheet will produce the best result.
  *
- * To use agentos-ui in your application, ensure these variables are defined
- * at :root (or on a wrapping element):
+ * ── Typography ─────────────────────────────────────────────────────────────
+ *   --font-body       Body font stack (Inter, system fallbacks)
+ *   --font-heading    Heading / mono font stack (Geist Mono, SF Mono fallbacks)
  *
- * ── Typography & Text ──────────────────────────────────────────────────────
+ * ── Text colors ──────────────────────────────────────────────────────────
  *   --color-text              Main text color
  *   --color-text-secondary    Muted / secondary text
- *   --color-text-inverse      Text on colored backgrounds (e.g. badges)
  *   --color-text-tertiary     Subtle / tertiary text (labels, counts)
+ *   --color-text-inverse      Text on colored backgrounds (e.g. badges)
+ *   --color-text-on-accent    Text on accent-colored backgrounds
  *
- * ── Backgrounds ────────────────────────────────────────────────────────────
- *   --color-bg                Page background (can be a gradient)
+ * ── Backgrounds ──────────────────────────────────────────────────────────
+ *   --color-bg                Page background (flat color)
  *   --color-bg-solid          Solid fallback for page background
- *   --color-bg-secondary      Card / panel background
- *   --color-bg-hover          Hover state background
+ *   --color-bg-secondary      Card / panel background (legacy alias for --color-surface)
+ *   --color-bg-hover          Hover state background tint
  *
- * ── Surfaces ───────────────────────────────────────────────────────────────
- *   --color-surface-hover     Hover surface tint (lists, rows, buttons)
+ * ── Surfaces ────────────────────────────────────────────────────────────
+ *   --color-surface           Primary surface (white in light, dark gray in dark)
  *   --color-surface-secondary Subtle secondary surface
+ *   --color-surface-hover     Hover surface tint (lists, rows, buttons)
  *   --color-surface-muted     Muted surface tint
  *
- * ── Interactive ────────────────────────────────────────────────────────────
+ * ── Interactive ─────────────────────────────────────────────────────────
  *   --color-primary           Primary brand / action color
  *   --color-primary-hover     Primary hover state
- *   --color-accent            Secondary accent color
+ *   --color-accent            Accent color (blue #2563eb in light)
  *   --color-link              Link color
  *
- * ── Borders ────────────────────────────────────────────────────────────────
- *   --color-border            Standard border
+ * ── Accent palette ───────────────────────────────────────────────────────
+ *   --color-accent-100        Lightest tint (message bubbles, active backgrounds)
+ *   --color-accent-200        Light tint (hover states)
+ *   --color-accent-300        Subtle accents (border bulle agent, etc.)
+ *   --color-accent-700        Dark tint (text on light backgrounds)
+ *   --color-accent-800        Darker tint
+ *   --color-accent-900        Darkest tint (marks, initials backgrounds)
+ *
+ * ── Neutral scale ───────────────────────────────────────────────────────
+ *   --color-neutral-100       Near-white surface
+ *   --color-neutral-200       Light border / separator
+ *   --color-neutral-500       Mid-gray (icons, placeholders)
+ *   --color-neutral-600       Secondary text
+ *   --color-neutral-700       Label text
+ *   --color-neutral-900       Near-black
+ *
+ * ── Borders / Dividers ─────────────────────────────────────────────────
+ *   --color-divider           Standard divider / border (canonical name)
+ *   --color-border            Alias for --color-divider (migration: prefer --color-divider)
  *   --color-border-light      Subtle border
  *
- * ── Status ─────────────────────────────────────────────────────────────────
+ * ── Shadows ──────────────────────────────────────────────────────────────
+ *   --shadow-sm               Subtle shadow (cards, inputs)
+ *   --shadow-lg               Strong shadow (dropdowns, modals)
+ *   --color-shadow            Legacy shadow color (use --shadow-sm/lg instead)
+ *
+ * ── Status ────────────────────────────────────────────────────────────────
  *   --color-success
  *   --color-success-bg        Success badge / panel background
  *   --color-error
  *   --color-warning
  *   --color-info
+ *   --red                     Danger / delete actions
+ *   --red-deep                Darker red (hover states)
+ *   --red-bg                  Red background tint (confirmation states)
  *
  * ── Code ───────────────────────────────────────────────────────────────────
  *   --color-code-bg           Inline code background
  *   --color-code-text         Inline code text color
  *
- * ── Glass Morphism ─────────────────────────────────────────────────────────
- *   --glass-bg                Translucent surface background
- *   --glass-border            Translucent surface border
- *   --glass-shadow            Surface drop shadow
- *   --glass-backdrop-blur     backdrop-filter blur value
- *
- * ── Utility ────────────────────────────────────────────────────────────────
- *   --color-shadow            Box shadow color
+ * ── Utility ───────────────────────────────────────────────────────────────
  *   --color-overlay           Modal / overlay background
  *
- * Example host setup (minimal):
+ * ── Glass morphism (legacy — apps/client only) ───────────────────────────
+ *   @deprecated Not consumed by agentos-ui. Kept for apps/client legacy components.
+ *   --glass-bg
+ *   --glass-border
+ *   --glass-shadow
+ *   --glass-backdrop-blur
+ *
+ * ── Example host setup (minimal) ─────────────────────────────────────────
  *
  *   :root {
- *     --color-text: #1d1d1f;
- *     --color-primary: #007aff;
- *     --glass-bg: rgba(255, 255, 255, 0.72);
+ *     --font-body:    'Inter', sans-serif;
+ *     --font-heading: 'Geist Mono', monospace;
+ *     --color-text:   #1d1d1f;
+ *     --color-primary: #016b71;
+ *     --color-accent:  #2563eb;
+ *     --color-divider: rgba(0, 0, 0, 0.08);
+ *     --color-border:  var(--color-divider);
  *     // ... etc.
  *   }
  *

@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import java.nio.file.Files
 import java.time.Instant
 import java.util.UUID
@@ -118,9 +119,12 @@ class ExchangeStorageServiceSpec :
 
             root.fileName.toString() shouldBe caseId.toString()
             root.parent.fileName.toString() shouldBe "09"
-            root.parent.parent.fileName.toString() shouldBe "12"
-            root.parent.parent.parent.fileName.toString() shouldBe "2025"
-            root.parent.parent.parent.parent.fileName.toString() shouldBe "cases"
+            root.parent.parent.fileName
+                .toString() shouldBe "12"
+            root.parent.parent.parent.fileName
+                .toString() shouldBe "2025"
+            root.parent.parent.parent.parent.fileName
+                .toString() shouldBe "cases"
         }
 
         "isUploadAllowed accepts a whitelisted extension and rejects others (case-insensitive)" {

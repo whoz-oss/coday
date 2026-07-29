@@ -1,22 +1,36 @@
 import { inject, Injectable, InjectionToken, OnDestroy, signal, Signal } from '@angular/core'
 
-/** Supported theme modes — single source for both the type and runtime validation. */
+/** Supported theme variants — visual identity / skin. */
+export const THEME_VARIANTS = ['industry', 'terminal'] as const
+export type ThemeVariant = (typeof THEME_VARIANTS)[number]
+
+/** Supported color modes — light / dark / follow OS. */
 export const THEME_MODES = ['light', 'dark', 'system'] as const
 export type ThemeMode = (typeof THEME_MODES)[number]
 
 /**
- * Abstraction over theme state. agentos-ui components consume this port — never a concrete host
- * service — so the lib keeps no dependency on app-level services from apps/client (see GUIDELINES.md).
- *
- * State is exposed as a single reactive `theme` signal: consumers read it directly in templates
- * (no Observable-to-signal bridging, no imperative getter).
+ * Full theme state: variant (skin) × mode (light/dark/system).
+ * Maps to a `data-theme` attribute value: `"industry"` (light default),
+ * `"industry-dark"`, `"terminal-light"`, `"terminal-dark"`.
  */
-export interface ThemePort {
-  readonly theme: Signal<ThemeMode>
-  setTheme(mode: ThemeMode): void
+export interface ThemeState {
+  variant: ThemeVariant
+  mode: ThemeMode
 }
 
-const STORAGE_KEY = 'agentos.theme'
+/**
+ * Abstraction over theme state. agentos-ui components consume this port — never a concrete host
+ * service — so the lib keeps no dependency on app-level services from apps/client.
+ */
+export interface ThemePort {
+  readonly theme: Signal<ThemeState>
+  setTheme(state: ThemeState): void
+}
+
+const STORAGE_KEY_VARIANT = 'agentos.theme.variant'
+const STORAGE_KEY_MODE = 'agentos.theme.mode'
+// Legacy key — migrated on first read.
+const STORAGE_KEY_LEGACY = 'agentos.theme'
 
 /**
  * AgentosThemeService — the lib's self-contained default implementation of ThemePort, so
@@ -29,16 +43,15 @@ const STORAGE_KEY = 'agentos.theme'
  */
 @Injectable({ providedIn: 'root' })
 export class AgentosThemeService implements ThemePort, OnDestroy {
-  private readonly _theme = signal<ThemeMode>(this.readStoredTheme())
+  private readonly _theme = signal<ThemeState>(this.readStoredTheme())
   readonly theme = this._theme.asReadonly()
 
   private readonly media =
     typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null
 
   private readonly onSystemChange = (): void => {
-    // Only react to OS changes while following the system preference.
-    if (this._theme() === 'system') {
-      this.applyTheme('system')
+    if (this._theme().mode === 'system') {
+      this.applyTheme(this._theme())
     }
   }
 
@@ -51,21 +64,26 @@ export class AgentosThemeService implements ThemePort, OnDestroy {
     this.media?.removeEventListener('change', this.onSystemChange)
   }
 
-  setTheme(mode: ThemeMode): void {
-    this._theme.set(mode)
+  setTheme(state: ThemeState): void {
+    this._theme.set(state)
     try {
-      localStorage.setItem(STORAGE_KEY, mode)
+      localStorage.setItem(STORAGE_KEY_VARIANT, state.variant)
+      localStorage.setItem(STORAGE_KEY_MODE, state.mode)
     } catch {
-      // localStorage may be unavailable (e.g. private mode); the theme still applies for the session.
+      // localStorage may be unavailable; the theme still applies for the session.
     }
-    this.applyTheme(mode)
+    this.applyTheme(state)
   }
 
-  private applyTheme(mode: ThemeMode): void {
-    const resolved = mode === 'system' ? this.resolveSystem() : mode
+  private applyTheme(state: ThemeState): void {
     if (typeof document === 'undefined' || !document.documentElement) return
-    if (resolved === 'dark') {
-      document.documentElement.setAttribute('data-theme', 'dark')
+    const resolvedMode = state.mode === 'system' ? this.resolveSystem() : state.mode
+    const attr =
+      state.variant === 'industry' && resolvedMode === 'light'
+        ? null // :root default = industry-light (no attribute)
+        : `${state.variant}-${resolvedMode}` // e.g. "industry-dark", "terminal-light"
+    if (attr) {
+      document.documentElement.setAttribute('data-theme', attr)
     } else {
       document.documentElement.removeAttribute('data-theme')
     }
@@ -75,16 +93,28 @@ export class AgentosThemeService implements ThemePort, OnDestroy {
     return this.media?.matches ? 'dark' : 'light'
   }
 
-  private readStoredTheme(): ThemeMode {
+  private readStoredTheme(): ThemeState {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored && (THEME_MODES as readonly string[]).includes(stored)) {
-        return stored as ThemeMode
+      // Migrate legacy single-key storage (light/dark/system → industry + mode)
+      const legacy = localStorage.getItem(STORAGE_KEY_LEGACY)
+      if (legacy && !localStorage.getItem(STORAGE_KEY_MODE)) {
+        const mode = (THEME_MODES as readonly string[]).includes(legacy) ? (legacy as ThemeMode) : 'system'
+        localStorage.setItem(STORAGE_KEY_MODE, mode)
+        localStorage.setItem(STORAGE_KEY_VARIANT, 'industry')
+        localStorage.removeItem(STORAGE_KEY_LEGACY)
+        return { variant: 'industry', mode }
       }
+
+      const storedVariant = localStorage.getItem(STORAGE_KEY_VARIANT)
+      const storedMode = localStorage.getItem(STORAGE_KEY_MODE)
+      const variant = (THEME_VARIANTS as readonly string[]).includes(storedVariant ?? '')
+        ? (storedVariant as ThemeVariant)
+        : 'industry'
+      const mode = (THEME_MODES as readonly string[]).includes(storedMode ?? '') ? (storedMode as ThemeMode) : 'system'
+      return { variant, mode }
     } catch {
-      // localStorage may be unavailable; fall back to following the system preference.
+      return { variant: 'industry', mode: 'system' }
     }
-    return 'system'
   }
 }
 
