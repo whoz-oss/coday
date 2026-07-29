@@ -185,6 +185,31 @@
     font-family: var(--font-heading);
   }
 
+  &__integration-state {
+    margin-left: 1.5rem;
+    padding: 0.375rem 0.625rem;
+    border-radius: 8px;
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    background: transparent;
+    color: var(--color-text, #1d1d1f);
+    font-size: 0.875rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s ease;
+
+    &:focus {
+      border-color: var(--color-primary, #007aff);
+    }
+  }
+
+  &__integration-restriction {
+    margin: 0 0 0 1.5rem;
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--color-text-secondary, #6e6e73);
+    line-height: 1.4;
+  }
+
   &__integration-builtin-desc {
     margin: 0 0 0 1.5rem;
     font-size: 0.8rem;

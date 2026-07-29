@@ -26,8 +26,17 @@ object ExchangeIntegrationTypes {
     const val CASE_CONFIG_NAME = "case-exchange"
     const val NAMESPACE_CONFIG_NAME = "namespace-exchange"
 
-    /** Catalogue descriptors for the built-in exchange integrations (toggle-only, no config). */
-    fun builtInDescriptors(): List<IntegrationTypeDescriptor> =
+    /**
+     * Catalogue descriptors for the built-in exchange integrations (toggle-only, no config).
+     *
+     * The two flags come from [ExchangeToolsConfigProperties] and are published so a client can tell
+     * what an agent that made no choice actually gets. They describe the fallback only: an agent that
+     * declares the key wins in both directions.
+     */
+    fun builtInDescriptors(
+        caseEnabledByDefault: Boolean,
+        namespaceEnabledByDefault: Boolean,
+    ): List<IntegrationTypeDescriptor> =
         listOf(
             IntegrationTypeDescriptor(
                 type = CASE,
@@ -35,6 +44,7 @@ object ExchangeIntegrationTypes {
                 description = "Read/write access to the files shared within the current case.",
                 configSchema = null,
                 builtIn = true,
+                enabledByDefault = caseEnabledByDefault,
             ),
             IntegrationTypeDescriptor(
                 type = NAMESPACE,
@@ -42,6 +52,7 @@ object ExchangeIntegrationTypes {
                 description = "Read access to the namespace's shared files; read/write for namespace admins.",
                 configSchema = null,
                 builtIn = true,
+                enabledByDefault = namespaceEnabledByDefault,
             ),
         )
 }
