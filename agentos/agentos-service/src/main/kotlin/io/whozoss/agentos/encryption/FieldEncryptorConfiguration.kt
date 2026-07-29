@@ -6,10 +6,14 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 /**
- * Registers the appropriate [FieldEncryptor] bean based on the presence of
- * [ENV_KEY] and [ENV_SALT] environment variables (or equivalent Spring properties).
+ * Registers the appropriate [FieldEncryptor] bean based on the
+ * `agentos.encryption.key` and `agentos.encryption.salt` Spring properties.
  *
- * Resolution order (env vars take precedence over Spring properties):
+ * These properties can be supplied via environment variables using Spring's relaxed
+ * binding: `AGENTOS_ENCRYPTION_KEY` → `agentos.encryption.key` and
+ * `AGENTOS_ENCRYPTION_SALT` → `agentos.encryption.salt`.
+ *
+ * Resolution:
  * - Both key and salt resolve to real values → [SpringFieldEncryptor] (AES-256-GCM)
  * - Both key and salt set to `NONE` (case-insensitive) → [NoOpFieldEncryptor] (no encryption, WARN logged)
  * - Any other case → fails fast with [IllegalStateException]
@@ -17,10 +21,6 @@ import org.springframework.context.annotation.Configuration
  * **You must explicitly configure encryption.** There is no silent fallback to no-encryption.
  * To opt out of encryption (e.g. for local development), set both [ENV_KEY] and [ENV_SALT]
  * to the sentinel value `NONE` (case-insensitive).
- *
- * Spring properties `agentos.encryption.key` and `agentos.encryption.salt` are
- * supported as an alternative to env vars, primarily to allow test profiles to
- * supply fixed credentials via `application-test.yml`.
  *
  * ## Key requirements
  *
@@ -37,22 +37,15 @@ import org.springframework.context.annotation.Configuration
 class FieldEncryptorConfiguration {
 
     @Value("\${agentos.encryption.key:}")
-    internal var propertyKey: String = ""
+    internal var key: String = ""
 
     @Value("\${agentos.encryption.salt:}")
-    internal var propertySalt: String = ""
-
-    /**
-     * Reads an environment variable by name. Extracted as an open method so that
-     * tests can override it without spawning a new process or using a Java agent.
-     */
-    open fun getEnv(name: String): String? = System.getenv(name)
+    internal var salt: String = ""
 
     @Bean
     fun fieldEncryptor(): FieldEncryptor {
-        // Env vars take precedence; fall back to Spring properties.
-        val rawKey  = getEnv(ENV_KEY)?.takeIf  { it.isNotBlank() } ?: propertyKey.takeIf  { it.isNotBlank() }
-        val rawSalt = getEnv(ENV_SALT)?.takeIf { it.isNotBlank() } ?: propertySalt.takeIf { it.isNotBlank() }
+        val rawKey  = key.takeIf  { it.isNotBlank() }
+        val rawSalt = salt.takeIf { it.isNotBlank() }
 
         val keyIsNone  = rawKey?.equals(NONE_SENTINEL, ignoreCase = true) == true
         val saltIsNone = rawSalt?.equals(NONE_SENTINEL, ignoreCase = true) == true

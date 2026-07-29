@@ -8,89 +8,64 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 /**
  * Unit tests for [FieldEncryptorConfiguration].
  *
- * Since [System.getenv] cannot be overridden in a standard JVM, we subclass
- * [FieldEncryptorConfiguration] and override [getEnv] to inject controlled
- * env-var values. Spring property fields ([propertyKey], [propertySalt]) are
- * `internal` so they can be set directly on the instance to test the
- * property-fallback path without a Spring context.
+ * [FieldEncryptorConfiguration.key] and [FieldEncryptorConfiguration.salt] are
+ * `internal`, so they can be set directly on an instance to supply controlled
+ * values without a Spring context.
  */
 class FieldEncryptorConfigurationSpec : StringSpec({
     timeout = 5000
 
-    // Creates a configuration with controlled env vars and optional Spring property values.
-    fun configWith(envKey: String?, envSalt: String?, propKey: String = "", propSalt: String = "") =
-        object : FieldEncryptorConfiguration() {
-            override fun getEnv(name: String): String? = when (name) {
-                FieldEncryptorConfiguration.ENV_KEY  -> envKey
-                FieldEncryptorConfiguration.ENV_SALT -> envSalt
-                else -> null
-            }
-        }.also {
-            it.propertyKey  = propKey
-            it.propertySalt = propSalt
+    fun configWith(key: String = "", salt: String = "") =
+        FieldEncryptorConfiguration().also {
+            it.key  = key
+            it.salt = salt
         }
 
-    "both env vars present with real values creates SpringFieldEncryptor" {
-        val config = configWith(envKey = "test-password-for-unit-tests", envSalt = "deadbeefcafe1234")
-        config.fieldEncryptor().shouldBeInstanceOf<SpringFieldEncryptor>()
-    }
-
-    "both Spring properties present creates SpringFieldEncryptor" {
-        val config = configWith(envKey = null, envSalt = null, propKey = "test-password-for-unit-tests", propSalt = "deadbeefcafe1234")
-        config.fieldEncryptor().shouldBeInstanceOf<SpringFieldEncryptor>()
-    }
-
-    "env vars take precedence over Spring properties" {
-        // Salt must be a valid hex string (Spring Security Crypto requirement).
-        val config = configWith(
-            envKey   = "env-password",
-            envSalt  = "deadbeefcafe1234",
-            propKey  = "property-password",
-            propSalt = "cafebabe12345678",
-        )
+    "both key and salt present with real values creates SpringFieldEncryptor" {
+        val config = configWith(key = "test-password-for-unit-tests", salt = "deadbeefcafe1234")
         config.fieldEncryptor().shouldBeInstanceOf<SpringFieldEncryptor>()
     }
 
     "both set to NONE returns NoOpFieldEncryptor" {
-        val config = configWith(envKey = "NONE", envSalt = "NONE")
+        val config = configWith(key = "NONE", salt = "NONE")
         config.fieldEncryptor().shouldBeInstanceOf<NoOpFieldEncryptor>()
     }
 
     "both set to NONE case-insensitive returns NoOpFieldEncryptor" {
-        val config = configWith(envKey = "none", envSalt = "none")
+        val config = configWith(key = "none", salt = "none")
         config.fieldEncryptor().shouldBeInstanceOf<NoOpFieldEncryptor>()
     }
 
     "both vars absent throws IllegalStateException" {
-        val config = configWith(envKey = null, envSalt = null)
+        val config = configWith()
         val ex = shouldThrow<IllegalStateException> { config.fieldEncryptor() }
         ex.message shouldContain FieldEncryptorConfiguration.NONE_SENTINEL
     }
 
     "only key present throws IllegalStateException" {
-        val config = configWith(envKey = "only-key-no-salt", envSalt = null)
+        val config = configWith(key = "only-key-no-salt")
         shouldThrow<IllegalStateException> { config.fieldEncryptor() }
     }
 
     "only salt present throws IllegalStateException" {
-        val config = configWith(envKey = null, envSalt = "deadbeefcafe1234")
+        val config = configWith(salt = "deadbeefcafe1234")
         shouldThrow<IllegalStateException> { config.fieldEncryptor() }
     }
 
     "key=NONE salt=real value throws IllegalStateException" {
-        val config = configWith(envKey = "NONE", envSalt = "deadbeefcafe1234")
+        val config = configWith(key = "NONE", salt = "deadbeefcafe1234")
         val ex = shouldThrow<IllegalStateException> { config.fieldEncryptor() }
         ex.message shouldContain FieldEncryptorConfiguration.ENV_KEY
     }
 
     "key=real value salt=NONE throws IllegalStateException" {
-        val config = configWith(envKey = "some-real-key", envSalt = "NONE")
+        val config = configWith(key = "some-real-key", salt = "NONE")
         val ex = shouldThrow<IllegalStateException> { config.fieldEncryptor() }
         ex.message shouldContain FieldEncryptorConfiguration.ENV_SALT
     }
 
     "IllegalStateException message names the missing variable" {
-        val config = configWith(envKey = "some-key", envSalt = null)
+        val config = configWith(key = "some-key")
         val ex = shouldThrow<IllegalStateException> { config.fieldEncryptor() }
         ex.message shouldContain FieldEncryptorConfiguration.ENV_SALT
     }
