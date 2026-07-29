@@ -65,23 +65,23 @@ class CredentialServiceImplSpec : StringSpec() {
             service.resolve(UUID.randomUUID(), UUID.randomUUID()).shouldBeNull()
         }
 
-        "revoke deletes the credential" {
+        "delete removes the credential" {
             val service = newService()
             val userId = UUID.randomUUID()
             val authSettingId = UUID.randomUUID()
             service.store(credential(userId = userId, authSettingId = authSettingId))
 
-            service.revoke(userId, authSettingId) shouldBe true
+            service.delete(userId, authSettingId) shouldBe true
             service.resolve(userId, authSettingId).shouldBeNull()
         }
 
-        "revoke returns false when credential does not exist" {
+        "delete returns false when credential does not exist" {
             val service = newService()
 
-            service.revoke(UUID.randomUUID(), UUID.randomUUID()) shouldBe false
+            service.delete(UUID.randomUUID(), UUID.randomUUID()) shouldBe false
         }
 
-        "revokeByAuthSetting cascades to all credentials for that authSetting" {
+        "deleteByAuthSetting cascades to all credentials for that authSetting" {
             val service = newService()
             val authSettingId = UUID.randomUUID()
             val userA = UUID.randomUUID()
@@ -92,7 +92,7 @@ class CredentialServiceImplSpec : StringSpec() {
             service.store(credential(userId = userB, authSettingId = authSettingId))
             service.store(credential(userId = userA, authSettingId = unrelated))
 
-            service.revokeByAuthSetting(authSettingId) shouldBe 2
+            service.deleteByAuthSetting(authSettingId) shouldBe 2
             service.resolve(userA, authSettingId).shouldBeNull()
             service.resolve(userB, authSettingId).shouldBeNull()
             // Unrelated credential is untouched

@@ -5,7 +5,6 @@ import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.encryption.FieldEncryptor
 import mu.KLogging
 import org.springframework.transaction.annotation.Transactional
-import java.time.Instant
 import java.util.UUID
 
 /**
@@ -15,8 +14,8 @@ import java.util.UUID
  * before writing, and decryption reverses that on read. This avoids per-field
  * parse/encrypt/re-serialize overhead and produces a single IV+tag per credential.
  *
- * [deleteByUserAndAuthSetting] and [deleteByAuthSettingId] are soft-deletes:
- * they set `removed = true` on the node rather than physically removing it.
+ * Deletes are **hard-deletes**: nodes are physically removed from the graph.
+ * Sensitive credential material must not linger after revocation.
  */
 open class Neo4jCredentialRepository(
     private val neo4jRepository: CredentialNodeNeo4jRepository,
@@ -35,32 +34,31 @@ open class Neo4jCredentialRepository(
 
     override fun findByUserAndAuthSetting(userId: UUID, authSettingId: UUID): Credential? =
         neo4jRepository
-            .findActiveByUserIdAndAuthSettingId(userId.toString(), authSettingId.toString())
+            .findByUserIdAndAuthSettingId(userId.toString(), authSettingId.toString())
             ?.let { it.copy(dataJson = decryptDataJson(it.dataJson)) }
             ?.toDomain(objectMapper)
 
     @Transactional
-    override fun deleteByUserAndAuthSetting(userId: UUID, authSettingId: UUID): Boolean =
-        neo4jRepository
-            .findActiveByUserIdAndAuthSettingId(userId.toString(), authSettingId.toString())
-            ?.let { node ->
-                neo4jRepository.save(node.copy(removed = true, modified = Instant.now(), modifiedBy = userId.toString()))
-                logger.debug { "[Neo4jCredentialRepository] Soft-deleted Credential ${node.id} (user=$userId, authSetting=$authSettingId)" }
-                true
-            } ?: false
+    override fun deleteByUserAndAuthSetting(userId: UUID, authSettingId: UUID): Boolean {
+        val exists = neo4jRepository.findByUserIdAndAuthSettingId(userId.toString(), authSettingId.toString()) != null
+        if (exists) {
+            neo4jRepository.deleteByUserIdAndAuthSettingId(userId.toString(), authSettingId.toString())
+            logger.debug { "[Neo4jCredentialRepository] Hard-deleted Credential (user=$userId, authSetting=$authSettingId)" }
+        }
+        return exists
+    }
 
     @Transactional
     override fun deleteByAuthSettingId(authSettingId: UUID): Int {
-        val active = neo4jRepository.findActiveByAuthSettingId(authSettingId.toString())
-        val now = Instant.now()
-        neo4jRepository.saveAll(active.map { it.copy(removed = true, modified = now) })
-        logger.debug { "[Neo4jCredentialRepository] Cascade soft-deleted ${active.size} Credential(s) for authSetting=$authSettingId" }
-        return active.size
+        val count = neo4jRepository.findByAuthSettingId(authSettingId.toString()).size
+        neo4jRepository.deleteByAuthSettingId(authSettingId.toString())
+        logger.debug { "[Neo4jCredentialRepository] Cascade hard-deleted $count Credential(s) for authSetting=$authSettingId" }
+        return count
     }
 
     override fun findByUserId(userId: UUID): List<Credential> =
         neo4jRepository
-            .findActiveByUserId(userId.toString())
+            .findByUserId(userId.toString())
             .map { it.copy(dataJson = decryptDataJson(it.dataJson)).toDomain(objectMapper) }
 
     private fun encryptDataJson(dataJson: String?): String? =

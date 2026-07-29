@@ -18,21 +18,15 @@ interface CredentialRepository {
     fun findByUserAndAuthSetting(userId: UUID, authSettingId: UUID): Credential?
 
     /**
-     * Soft-delete the credential for a specific user–authSetting pair.
+     * Hard-delete the credential for a specific user–authSetting pair.
      *
      * @return true if a credential was found and deleted, false if none existed.
      */
     fun deleteByUserAndAuthSetting(userId: UUID, authSettingId: UUID): Boolean
 
     /**
-     * Soft-delete all credentials associated with a given [AuthSetting].
+     * Hard-delete all credentials associated with a given [AuthSetting].
      * Called during cascade cleanup when an [AuthSetting] is deleted.
-     *
-     * Note: `modifiedBy` is intentionally left null on these cascade-deleted nodes. The
-     * deletion is triggered by an AuthSetting admin removing the setting, not by any
-     * individual credential owner — there is no meaningful per-credential actor identity
-     * to record. Propagating a userId here would require changing this interface and all
-     * call sites for marginal audit value.
      *
      * @return the number of credentials deleted.
      */

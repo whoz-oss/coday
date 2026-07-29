@@ -98,11 +98,4 @@ class CredentialNodeSpec : StringSpec({
         restored.metadata.removed shouldBe original.metadata.removed
     }
 
-    "removed=true is preserved across round-trip" {
-        val original = baseCredential().copy(
-            metadata = baseMetadata().copy(removed = true)
-        )
-        val restored = CredentialNode.fromDomain(original, mapper).toDomain(mapper)
-        restored.metadata.removed shouldBe true
-    }
 })

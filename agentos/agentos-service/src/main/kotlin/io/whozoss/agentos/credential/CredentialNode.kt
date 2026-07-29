@@ -22,6 +22,9 @@ import java.util.UUID
  *
  * [credentialType] is stored as its enum name string and round-tripped via
  * [CredentialType.valueOf].
+ *
+ * Credentials are **hard-deleted** — there is no `removed` field and no soft-delete
+ * lifecycle. Sensitive credential material must not linger in the graph after revocation.
  */
 @Node("Credential")
 data class CredentialNode(
@@ -40,7 +43,6 @@ data class CredentialNode(
     val createdBy: String? = null,
     val modified: Instant,
     val modifiedBy: String? = null,
-    val removed: Boolean? = null,
 ) {
     fun toDomain(objectMapper: ObjectMapper): Credential {
         val rawData: Map<String, String> =
@@ -53,7 +55,6 @@ data class CredentialNode(
                     createdBy = createdBy,
                     modified = modified,
                     modifiedBy = modifiedBy,
-                    removed = removed ?: false,
                 ),
             userId = UUID.fromString(userId),
             authSettingId = UUID.fromString(authSettingId),
@@ -79,7 +80,6 @@ data class CredentialNode(
                 createdBy = credential.metadata.createdBy,
                 modified = credential.metadata.modified,
                 modifiedBy = credential.metadata.modifiedBy,
-                removed = credential.metadata.removed.takeIf { it },
             )
     }
 }
