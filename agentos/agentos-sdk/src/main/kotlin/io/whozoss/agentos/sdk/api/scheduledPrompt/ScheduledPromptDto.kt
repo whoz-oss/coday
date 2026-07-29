@@ -1,9 +1,11 @@
 package io.whozoss.agentos.sdk.api.scheduledPrompt
 
 import com.fasterxml.jackson.annotation.JsonFormat
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
+import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Positive
@@ -71,7 +73,17 @@ data class PlanningDto(
     val endDate: LocalDate? = null,
     @field:Positive(message = "maxOccurrenceCount must be > 0")
     val maxOccurrenceCount: Int? = null,
-)
+) {
+    @get:AssertTrue(message = "endDate is required and must be after startDate when endType is ON_DATE")
+    @get:JsonIgnore
+    val isEndDateValidForOnDate: Boolean
+        get() = endType != SchedulerEndType.ON_DATE || (endDate != null && endDate.isAfter(startDate))
+
+    @get:AssertTrue(message = "maxOccurrenceCount is required when endType is OCCURRENCES")
+    @get:JsonIgnore
+    val isMaxOccurrenceCountValidForOccurrences: Boolean
+        get() = endType != SchedulerEndType.OCCURRENCES || maxOccurrenceCount != null
+}
 
 // ---------------------------------------------------------------------------
 // Root DTO
@@ -92,10 +104,9 @@ data class PlanningDto(
  * the linked Prompt entity automatically.
  *
  * [recurrence] describes how often and at what time the scheduled prompt fires.
- * [planning] describes the start date and end condition.
- *
- * Cross-field constraints (endDate after startDate, maxOccurrenceCount > 0) are
- * validated in the controller before delegating to the service.
+ * [planning] describes the start date and end condition. Cross-field constraints
+ * (endDate after startDate, maxOccurrenceCount required) are validated directly on
+ * [PlanningDto] via Bean Validation, cascaded here by `@Valid`.
  */
 @Schema(name = "ScheduledPrompt")
 @JsonInclude(JsonInclude.Include.NON_NULL)

@@ -2,14 +2,12 @@ package io.whozoss.agentos.scheduledPrompt
 
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
-import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
-import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.util.toSlug
 import mu.KLogging
@@ -25,9 +23,12 @@ import java.util.UUID
  * - [agentConfigId] must reference an existing, non-filesystem AgentConfig.
  * - [promptId] must reference an existing generic Prompt (agentConfigId = null).
  * - The AgentConfig's namespace must be compatible with the ScheduledPrompt's namespace.
- * - [planning.endDate][Planning.endDate] required when endType == ON_DATE, must be after startDate.
- * - [planning.maxOccurrenceCount][Planning.maxOccurrenceCount] required and > 0 when endType == OCCURRENCES.
  * - Name uniqueness per scope enforced by the `scheduled_prompt_triple_key_unique` UNIQUE constraint.
+ *
+ * Cross-field consistency of [Planning] (endDate/maxOccurrenceCount vs endType) is validated
+ * as Bean Validation on [io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto] and enforced
+ * by `@Valid` cascading from `ScheduledPromptDto.planning` on the controller's create/update
+ * endpoints — the sole write entry points into this service.
  *
  * ### Prompt lifecycle
  *
@@ -62,13 +63,11 @@ class ScheduledPromptServiceImpl(
         val prompt = promptService.findById(entity.promptTemplateId)
             ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptTemplateId}")
         if (prompt.agentConfigId != null) {
-            throw BadRequestException(
+            throw UnprocessableEntityException(
                 "Prompt ${entity.promptTemplateId} is linked to agent ${prompt.agentConfigId}. " +
                     "Only generic prompts (agentConfigId = null) may be associated with a ScheduledPrompt.",
             )
         }
-
-        validateEndCondition(entity)
 
         repository.findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ConflictException(conflictMessage(entity))
@@ -141,8 +140,6 @@ class ScheduledPromptServiceImpl(
     // -------------------------------------------------------------------------
 
     override fun createWithPrompt(entity: ScheduledPrompt, promptContent: String): Pair<ScheduledPrompt, String> {
-        validateEndCondition(entity)
-
         if (entity.namespaceId != null && namespaceService.findById(entity.namespaceId) == null) {
             throw ResourceNotFoundException("Namespace not found: ${entity.namespaceId}")
         }
@@ -162,8 +159,6 @@ class ScheduledPromptServiceImpl(
     }
 
     override fun updateWithPrompt(entity: ScheduledPrompt, promptContent: String): Pair<ScheduledPrompt, String> {
-        validateEndCondition(entity)
-
         val existingPrompt = promptService.findById(entity.promptTemplateId)
             ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptTemplateId}")
         promptService.update(
@@ -217,27 +212,9 @@ class ScheduledPromptServiceImpl(
     private fun validateAgentConfigScope(entity: ScheduledPrompt, agentConfig: AgentConfig) {
         val validScope = agentConfig.namespaceId == null || agentConfig.namespaceId == entity.namespaceId
         if (!validScope) {
-            throw BadRequestException(
+            throw UnprocessableEntityException(
                 "AgentConfig id=${entity.agentConfigId} does not belong to the ScheduledPrompt's namespace",
             )
-        }
-    }
-
-    private fun validateEndCondition(entity: ScheduledPrompt) {
-        when (entity.planning.endType) {
-            SchedulerEndType.ON_DATE -> {
-                val endDate = entity.planning.endDate
-                    ?: throw BadRequestException("endDate is required when endType is ON_DATE")
-                if (!endDate.isAfter(entity.planning.startDate)) {
-                    throw BadRequestException("endDate must be after startDate")
-                }
-            }
-            SchedulerEndType.OCCURRENCES -> {
-                val count = entity.planning.maxOccurrenceCount
-                    ?: throw BadRequestException("maxOccurrenceCount is required when endType is OCCURRENCES")
-                if (count <= 0) throw BadRequestException("maxOccurrenceCount must be > 0")
-            }
-            SchedulerEndType.NEVER -> Unit
         }
     }
 

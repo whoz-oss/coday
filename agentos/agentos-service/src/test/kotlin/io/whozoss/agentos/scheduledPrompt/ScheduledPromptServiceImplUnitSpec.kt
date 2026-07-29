@@ -14,7 +14,6 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
-import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
@@ -184,10 +183,10 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             shouldThrow<UnprocessableEntityException> { newService().create(sp(agentId = fsId)) }
         }
 
-        "create throws BadRequestException when agentConfig belongs to a different namespace" {
+        "create throws UnprocessableEntityException when agentConfig belongs to a different namespace" {
             val otherNs = UUID.randomUUID()
             every { agentConfigService.findById(agentConfigId) } returns defaultAgent(nsId = otherNs)
-            shouldThrow<BadRequestException> { newService().create(sp(nsId = namespaceId)) }
+            shouldThrow<UnprocessableEntityException> { newService().create(sp(nsId = namespaceId)) }
         }
 
         "create succeeds with platform agent (namespaceId == null) from any scope" {
@@ -210,55 +209,24 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             newService().create(sp()).promptTemplateId shouldBe promptId
         }
 
-        "create throws BadRequestException when prompt has agentConfigId" {
+        "create throws UnprocessableEntityException when prompt has agentConfigId" {
             every { promptService.findById(promptId) } returns defaultPrompt(linkedAgentId = agentConfigId)
-            val ex = shouldThrow<BadRequestException> { newService().create(sp()) }
+            val ex = shouldThrow<UnprocessableEntityException> { newService().create(sp()) }
             ex.message shouldContain "agentConfigId"
         }
 
         // -------------------------------------------------------------------------
-        // End condition validation (planning)
+        // End condition (planning) — cross-field consistency is now validated as
+        // Bean Validation on PlanningDto (see PlanningDtoUnitSpec), enforced by @Valid
+        // cascading from ScheduledPromptDto.planning on the controller's create/update
+        // endpoints. The service itself no longer validates it, so these round-trip
+        // sanity checks just confirm the service persists whatever Planning it is given.
         // -------------------------------------------------------------------------
-
-        "create throws BadRequestException when endType is ON_DATE and endDate is null" {
-            val ex = shouldThrow<BadRequestException> {
-                newService().create(sp(planning = planning(endType = SchedulerEndType.ON_DATE, endDate = null)))
-            }
-            ex.message shouldContain "endDate"
-        }
-
-        "create throws BadRequestException when endDate is not after startDate" {
-            val ex = shouldThrow<BadRequestException> {
-                newService().create(sp(planning = planning(endType = SchedulerEndType.ON_DATE, startDate = today, endDate = today)))
-            }
-            ex.message shouldContain "endDate"
-        }
 
         "create succeeds when endDate is after startDate" {
             newService().create(
                 sp(planning = planning(endType = SchedulerEndType.ON_DATE, endDate = today.plusDays(1))),
             ).planning.endType shouldBe SchedulerEndType.ON_DATE
-        }
-
-        "create throws BadRequestException when endType is OCCURRENCES and maxOccurrenceCount is null" {
-            val ex = shouldThrow<BadRequestException> {
-                newService().create(sp(planning = planning(endType = SchedulerEndType.OCCURRENCES, maxOccurrenceCount = null)))
-            }
-            ex.message shouldContain "maxOccurrenceCount"
-        }
-
-        "create throws BadRequestException when maxOccurrenceCount is 0" {
-            val ex = shouldThrow<BadRequestException> {
-                newService().create(sp(planning = planning(endType = SchedulerEndType.OCCURRENCES, maxOccurrenceCount = 0)))
-            }
-            ex.message shouldContain "maxOccurrenceCount"
-        }
-
-        "create throws BadRequestException when maxOccurrenceCount is negative" {
-            val ex = shouldThrow<BadRequestException> {
-                newService().create(sp(planning = planning(endType = SchedulerEndType.OCCURRENCES, maxOccurrenceCount = -1)))
-            }
-            ex.message shouldContain "maxOccurrenceCount"
         }
 
         "create succeeds when endType is OCCURRENCES and maxOccurrenceCount is 1" {
@@ -569,15 +537,6 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         "createWithPrompt throws ResourceNotFoundException when namespace not found" {
             every { namespaceService.findById(namespaceId) } returns null
             shouldThrow<ResourceNotFoundException> { newService().createWithPrompt(sp(), "Hello") }
-        }
-
-        "createWithPrompt throws BadRequestException when endType is ON_DATE and endDate is null" {
-            shouldThrow<BadRequestException> {
-                newService().createWithPrompt(
-                    sp(planning = planning(endType = SchedulerEndType.ON_DATE, endDate = null)),
-                    "Hello",
-                )
-            }
         }
 
         // -------------------------------------------------------------------------
