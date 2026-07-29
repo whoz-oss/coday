@@ -1,3 +1,13 @@
+## 0.231.0 (2026-07-29)
+
+### 🚀 Features
+
+- #1095 FieldEncryptor and Credential backend ([#1139](https://github.com/whoz-oss/coday/pull/1139), [#1095](https://github.com/whoz-oss/coday/issues/1095), [#1119](https://github.com/whoz-oss/coday/issues/1119))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.230.0 (2026-07-29)
 
 ### 🚀 Features
