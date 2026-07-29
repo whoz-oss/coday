@@ -43,7 +43,13 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
     private val fixedClock = Clock.fixed(fixedNow, ZoneOffset.UTC)
 
     private fun newService(repo: ScheduledPromptRepository = InMemoryScheduledPromptRepository()): ScheduledPromptServiceImpl =
-        ScheduledPromptServiceImpl(repo, agentConfigService, promptService, namespaceService, fixedClock)
+        ScheduledPromptServiceImpl(
+            repository = repo,
+            agentConfigService = agentConfigService,
+            promptService = promptService,
+            namespaceService = namespaceService,
+            nextRunCalculatorService = NextRunCalculatorService(clock = fixedClock),
+        )
 
     private val namespaceId: UUID = UUID.randomUUID()
     private val agentConfigId: UUID = UUID.randomUUID()

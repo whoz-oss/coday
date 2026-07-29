@@ -58,7 +58,14 @@ class SchedulerScannerUnitSpec : StringSpec() {
         spRepo: InMemoryScheduledPromptRepository,
         runRepo: InMemoryScheduledPromptRunRepository,
         agentConfigService: AgentConfigService = defaultAgentConfigService(),
-    ) = SchedulerScanner(spRepo, runRepo, agentConfigService, properties, clock)
+    ) = SchedulerScanner(
+        scheduledPromptRepository = spRepo,
+        runRepository = runRepo,
+        agentConfigService = agentConfigService,
+        properties = properties,
+        clock = clock,
+        nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+    )
 
     private fun InMemoryScheduledPromptRepository.insertSp(
         nextRunAt: Instant,

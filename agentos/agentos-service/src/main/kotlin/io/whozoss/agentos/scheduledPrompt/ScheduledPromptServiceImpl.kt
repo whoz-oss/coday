@@ -15,7 +15,6 @@ import io.whozoss.agentos.util.toSlug
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
-import java.time.Clock
 import java.util.UUID
 
 /**
@@ -43,7 +42,7 @@ class ScheduledPromptServiceImpl(
     private val agentConfigService: AgentConfigService,
     private val promptService: PromptService,
     private val namespaceService: NamespaceService,
-    private val clock: Clock = Clock.systemUTC(),
+    private val nextRunCalculatorService: NextRunCalculatorService,
 ) : ScheduledPromptService {
 
     // -------------------------------------------------------------------------
@@ -75,7 +74,7 @@ class ScheduledPromptServiceImpl(
             throw ConflictException(conflictMessage(entity))
         }
 
-        val withNextRun = entity.copy(nextRunAt = NextRunCalculator.compute(entity, clock))
+        val withNextRun = entity.copy(nextRunAt = nextRunCalculatorService.compute(entity))
         return saveOrConflict(withNextRun)
     }
 
@@ -88,7 +87,7 @@ class ScheduledPromptServiceImpl(
             ?.let { throw ConflictException(conflictMessage(entity)) }
 
         // Recalculate nextRunAt whenever recurrence or planning may have changed.
-        val withNextRun = entity.copy(nextRunAt = NextRunCalculator.compute(entity, clock))
+        val withNextRun = entity.copy(nextRunAt = nextRunCalculatorService.compute(entity))
         return saveOrConflict(withNextRun)
     }
 
@@ -119,7 +118,7 @@ class ScheduledPromptServiceImpl(
         val toggled = existing.copy(enabled = !existing.enabled)
         // Recalculate nextRunAt when re-enabling so the scheduler doesn't fire a stale instant.
         val withNextRun = if (toggled.enabled) {
-            toggled.copy(nextRunAt = NextRunCalculator.compute(toggled, clock))
+            toggled.copy(nextRunAt = nextRunCalculatorService.compute(toggled))
         } else {
             toggled
         }

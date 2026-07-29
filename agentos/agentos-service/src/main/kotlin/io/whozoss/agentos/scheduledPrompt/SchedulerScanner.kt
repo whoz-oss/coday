@@ -39,6 +39,7 @@ class SchedulerScanner(
     private val agentConfigService: AgentConfigService,
     private val properties: SchedulerProperties,
     private val clock: Clock,
+    private val nextRunCalculatorService: NextRunCalculatorService,
 ) {
     @Scheduled(fixedDelayString = "\${scheduler.tick-interval-ms:60000}")
     fun tick() {
@@ -89,7 +90,7 @@ class SchedulerScanner(
         }
 
         // Always advance nextRunAt — auto-repairing even on duplicate or skip.
-        val nextSlot = NextRunCalculator.nextAfter(scheduledPrompt.recurrence, scheduledPrompt.planning, slot, clock)
+        val nextSlot = nextRunCalculatorService.nextAfter(recurrence = scheduledPrompt.recurrence, planning = scheduledPrompt.planning, after = slot)
         val advanced = scheduledPromptRepository.advance(scheduledPrompt.id, slot, nextSlot)
         if (advanced) {
             logger.debug { "[SchedulerScanner] Advanced sp=${scheduledPrompt.id} nextRunAt=$nextSlot" }
