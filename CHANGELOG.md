@@ -1,3 +1,13 @@
+## 0.230.0 (2026-07-29)
+
+### 🚀 Features
+
+- make exchange agent tools configurable by env ([#1171](https://github.com/whoz-oss/coday/pull/1171))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 0.229.0 (2026-07-28)
 
 ### 🚀 Features
