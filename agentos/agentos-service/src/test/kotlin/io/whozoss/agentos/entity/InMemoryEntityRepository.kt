@@ -62,10 +62,15 @@ class InMemoryEntityRepository<T : Entity, P>(
         withRemoved: Boolean,
     ): List<T> = ids.mapNotNull { entitiesById[it] }.filter { withRemoved || !it.metadata.removed }
 
-    override fun findByParent(parentId: P): List<T> =
-        (entityIdsByParentId[parentKey(parentId)] ?: emptyList())
-            .mapNotNull { entitiesById[it] }
-            .filter { !it.metadata.removed }
+    override fun findByParent(parentId: P): List<T> {
+        // Take a snapshot of the id list under the same lock used by save() to prevent
+        // ConcurrentModificationException: save() adds/removes from the MutableList while
+        // coroutines may call findByParent() concurrently from a background thread.
+        val idSnapshot: List<UUID> = synchronized(this) {
+            entityIdsByParentId[parentKey(parentId)]?.toList() ?: emptyList()
+        }
+        return idSnapshot.mapNotNull { entitiesById[it] }.filter { !it.metadata.removed }
+    }
 
     /** Returns all non-removed entities across all parents. Useful in tests. */
     fun findAll(): List<T> = entitiesById.values.filter { !it.metadata.removed }.sortedWith(comparator)
