@@ -24,15 +24,15 @@ interface CredentialService {
      *
      * @return true if a credential existed and was deleted, false otherwise.
      */
-    fun revoke(userId: UUID, authSettingId: UUID): Boolean
+    fun delete(userId: UUID, authSettingId: UUID): Boolean
 
     /**
      * Delete all credentials associated with a given authSetting.
      * Called during cascade cleanup when an [AuthSetting] is deleted.
      *
-     * @return the number of credentials revoked.
+     * @return the number of credentials deleted.
      */
-    fun revokeByAuthSetting(authSettingId: UUID): Int
+    fun deleteByAuthSetting(authSettingId: UUID): Int
 
     /** Find all credentials owned by a given user. */
     fun findByUserId(userId: UUID): List<Credential>

@@ -28,6 +28,7 @@ class PromptSchemaInitializer(
         ensureTripleKeyUniqueConstraint()
         ensureNamespaceIdIndex()
         ensureUserIdIndex()
+        ensureAgentConfigIdIndex()
     }
 
     private fun ensureTripleKeyUniqueConstraint() {
@@ -53,6 +54,14 @@ class PromptSchemaInitializer(
                 "CREATE INDEX prompt_user_id IF NOT EXISTS FOR (p:Prompt) ON (p.userId)",
             ).run()
         logger.info { "[PromptSchema] index 'prompt_user_id' ensured" }
+    }
+
+    private fun ensureAgentConfigIdIndex() {
+        neo4jClient
+            .query(
+                "CREATE INDEX prompt_agent_config_id IF NOT EXISTS FOR (p:Prompt) ON (p.agentConfigId)",
+            ).run()
+        logger.info { "[PromptSchema] index 'prompt_agent_config_id' ensured" }
     }
 
     companion object : KLogging()

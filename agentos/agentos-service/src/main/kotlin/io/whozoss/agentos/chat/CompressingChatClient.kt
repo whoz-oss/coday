@@ -115,7 +115,9 @@ class CompressingChatClient(
                 logger.debug { "[CompressingChatClient] call.chatResponse() — null response from delegate" }
                 return null
             }
-            val raw = response.result.output.text?.trim() ?: return response
+            // A metadata-only response (e.g. an Anthropic MESSAGE_START chunk with an empty
+            // content list) has a null result; it carries no text, so pass it through untouched.
+            val raw = response.result?.output?.text?.trim() ?: return response
             val decompressed = compressorService.uncompress(raw, buffer)
             logger.debug {
                 "[CompressingChatClient] call.chatResponse() — ${raw.length} chars raw → ${decompressed.length} chars decompressed, buffer=${buffer.hashCode()}"
@@ -163,7 +165,9 @@ class CompressingChatClient(
                 .doOnNext { lastResponseRef.set(it) }
                 .flatMapIterable { response ->
                     val results = mutableListOf<ChatResponse>()
-                    val chunk = response.result.output.text?.takeIf { it.isNotEmpty() }
+                    // Streaming metadata chunks (e.g. Anthropic MESSAGE_START, content=[]) have a
+                    // null result and no text to compress, so skip them.
+                    val chunk = response.result?.output?.text?.takeIf { it.isNotEmpty() }
                     if (chunk != null) {
                         totalRawChars += chunk.length
                         val decompressed = compressorService.feed(chunk, buffer)
@@ -195,7 +199,7 @@ class CompressingChatClient(
 
         override fun content(): Flux<String> {
             logger.debug { "[CompressingChatClient] stream.content() started — buffer=${buffer.hashCode()}" }
-            return chatResponse().mapNotNull { it.result.output.text?.takeIf { t -> t.isNotEmpty() } }
+            return chatResponse().mapNotNull { it.result?.output?.text?.takeIf { t -> t.isNotEmpty() } }
         }
     }
 
@@ -214,7 +218,10 @@ class CompressingChatClient(
      */
     private fun Message.compress(buffer: MessageCompressorBuffer): Message {
         return when (this) {
-            is UserMessage -> UserMessage(compressorService.compress(this.text, buffer))
+            // mutate() preserves media (image attachments) and metadata: rebuilding with
+            // UserMessage(text) would silently strip them. Media byte arrays are never
+            // regex-scanned; only the text goes through the compressor.
+            is UserMessage -> this.mutate().text(compressorService.compress(this.text, buffer)).build()
             is SystemMessage -> SystemMessage(compressorService.compress(this.text, buffer))
             is AssistantMessage -> {
                 val toolCalls = this.toolCalls

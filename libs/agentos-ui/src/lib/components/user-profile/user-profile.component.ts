@@ -1,5 +1,5 @@
 import { Location } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
 import { IconButtonComponent } from '@whoz-oss/design-system'
@@ -65,10 +65,19 @@ export class UserProfileComponent implements OnInit {
 
   /** Current theme mode (light / dark / system), reflected in the Appearance section. */
   protected readonly theme = this.themePort.theme
+  /** Expose only the mode part of ThemeState for the appearance selector. */
+  protected readonly themeMode = computed(() => this.themePort.theme().mode)
   protected readonly themeOptions: ReadonlyArray<{ value: ThemeMode; label: string }> = [
     { value: 'light', label: 'Light' },
     { value: 'dark', label: 'Dark' },
     { value: 'system', label: 'System' },
+  ]
+
+  /** Expose variant for the skin selector. */
+  protected readonly themeVariant = computed(() => this.themePort.theme().variant)
+  protected readonly themeVariantOptions: ReadonlyArray<{ value: string; label: string; description: string }> = [
+    { value: 'industry', label: 'Industry', description: 'Bleu acier, Barlow' },
+    { value: 'terminal', label: 'Terminal', description: 'Ambre CRT, JetBrains Mono' },
   ]
 
   /** Current ENTER-key behavior in the chat composer, reflected in the Composer section. */
@@ -166,7 +175,11 @@ export class UserProfileComponent implements OnInit {
   }
 
   protected setTheme(mode: ThemeMode): void {
-    this.themePort.setTheme(mode)
+    this.themePort.setTheme({ variant: this.themePort.theme().variant, mode })
+  }
+
+  protected setThemeVariant(variant: string): void {
+    this.themePort.setTheme({ variant: variant as any, mode: this.themePort.theme().mode })
   }
 
   protected setEnterKeyBehavior(behavior: EnterKeyBehavior): void {

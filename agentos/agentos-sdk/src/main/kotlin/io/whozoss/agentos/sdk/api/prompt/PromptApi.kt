@@ -16,29 +16,30 @@ import java.util.UUID
  * - `(null, me)`     → user-global (authenticated only)
  * - `(ns, me)`       → user × namespace (READ on namespace)
  *
- * **[list]** returns prompts for the given [OverlayScope]. [namespaceId] is required
- * for `NAMESPACE` and `USER_NAMESPACE` scopes, and must be omitted for `PLATFORM`
- * and `USER`.
+ * **[search]** returns prompts declared at a single exact scope level.
+ * The `(namespaceId?, userId?)` combination in the body determines the level:
+ * - `(null, null)`   → platform
+ * - `(ns, null)`     → namespace-shared
+ * - `(null, userId)` → user-global
+ * - `(ns, userId)`   → user × namespace
+ * An optional [agentConfigIds] filter restricts results to prompts linked to those agents.
+ * No merge, no inheritance — admin view only.
  *
  * **[effective]** returns the merged set of prompts accessible in the given namespace
  * context (platform + namespace + user layers merged by name, highest layer wins).
+ * An optional [agentConfigId] filter is applied post-resolution.
  */
 interface PromptApi : EntityCrudApi<PromptDto> {
 
     /**
-     * GET /api/prompts/by-parentId/{parentId} — list namespace-scoped prompts.
-     * Requires READ on the namespace.
+     * POST /api/prompts/search — list prompts at an exact scope level.
+     * Requires READ on the namespace when namespaceId is provided.
      */
-    fun listByParent(parentId: UUID): List<PromptDto>
+    fun search(request: PromptSearchRequest): List<PromptDto>
 
     /**
-     * GET /api/prompts?scope=SCOPE[&namespaceId=UUID] — list prompts by explicit scope.
-     */
-    fun list(scope: String, namespaceId: UUID? = null): List<PromptDto>
-
-    /**
-     * GET /api/prompts/effective?namespaceId=UUID — effective merged prompt set.
+     * POST /api/prompts/effective — effective merged prompt set for a user in a namespace.
      * Requires READ on the namespace.
      */
-    fun findEffectiveByNamespaceId(namespaceId: UUID): List<PromptDto>
+    fun effective(request: PromptEffectiveRequest): List<PromptDto>
 }

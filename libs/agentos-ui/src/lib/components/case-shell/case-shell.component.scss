@@ -13,14 +13,14 @@
     width: 4px;
     flex-shrink: 0;
     cursor: col-resize;
-    background: var(--color-border, rgba(0, 0, 0, 0.09));
+    background: var(--color-divider);
     transition: background 150ms;
     position: relative;
     z-index: 10;
 
     &:hover,
     &:active {
-      background: var(--color-primary, #016b71);
+      background: var(--color-accent);
     }
   }
 
@@ -60,8 +60,6 @@
   }
 }
 
-// La sidebar gère sa propre visibilité via :host dans son propre scss
-
 // ── Sidebar expand button (visible only when sidebar is collapsed) ──
 .case-shell__expand-btn {
   position: fixed;
@@ -77,7 +75,7 @@
   border-radius: 8px;
   background: transparent;
   cursor: pointer;
-  color: var(--color-text-secondary, #968f85);
+  color: var(--color-text-secondary);
   transition: background 140ms;
 
   .material-icons {
@@ -85,8 +83,8 @@
   }
 
   &:hover {
-    background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
-    color: var(--color-text, #1b1916);
+    background: var(--color-surface-hover);
+    color: var(--color-text);
   }
 
   // Hidden on mobile — the mobile topbar handles navigation there

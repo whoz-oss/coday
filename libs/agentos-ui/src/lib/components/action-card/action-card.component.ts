@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, Directive, contentChild, input, output } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
-import { KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
+import { BlueprintDirective, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 // Re-export for consumers who typed ActionCardMenuItem directly
 export type { KebabMenuItem as ActionCardMenuItem }
@@ -14,7 +14,7 @@ export class ActionCardChipsDirective {}
   templateUrl: './action-card.component.html',
   styleUrl: './action-card.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [KebabMenuComponent, NgTemplateOutlet],
+  imports: [BlueprintDirective, KebabMenuComponent, NgTemplateOutlet],
 })
 export class ActionCardComponent {
   readonly name = input.required<string>()

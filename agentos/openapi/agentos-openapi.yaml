@@ -1058,6 +1058,8 @@ paths:
       - sse
   /api/cases/{caseId}/files:
     delete:
+      description: "DELETE /api/cases/{caseId}/files — delete a file from the case-private\
+        \ exchange scope."
       operationId: deleteCaseFileExchange
       parameters:
       - in: path
@@ -1078,6 +1080,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeDeleteResponse"
           description: OK
+      summary: Delete case exchange file
       tags:
       - exchange-controller
     post:
@@ -1111,6 +1114,8 @@ paths:
       - exchange-controller
   /api/cases/{caseId}/files/content:
     get:
+      description: "GET /api/cases/{caseId}/files/content — read the UTF-8 text content\
+        \ of a case exchange file."
       operationId: getCaseFileContentExchange
       parameters:
       - in: path
@@ -1131,6 +1136,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeFileContent"
           description: OK
+      summary: Read case exchange file content
       tags:
       - exchange-controller
   /api/cases/{caseId}/files/download:
@@ -1160,6 +1166,8 @@ paths:
       - exchange-controller
   /api/cases/{caseId}/files/manifest:
     get:
+      description: "GET /api/cases/{caseId}/files/manifest — list all files in the\
+        \ case-private exchange scope."
       operationId: getCaseFilesManifestExchange
       parameters:
       - in: path
@@ -1175,6 +1183,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeManifest"
           description: OK
+      summary: List case exchange files
       tags:
       - exchange-controller
   /api/cases/{caseId}/interrupt:
@@ -1801,6 +1810,8 @@ paths:
       - namespace-controller
   /api/namespaces/{namespaceId}/files:
     delete:
+      description: "DELETE /api/namespaces/{namespaceId}/files — delete a file from\
+        \ the namespace-shared exchange scope."
       operationId: deleteNamespaceFileExchange
       parameters:
       - in: path
@@ -1821,6 +1832,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeDeleteResponse"
           description: OK
+      summary: Delete namespace exchange file
       tags:
       - exchange-controller
     post:
@@ -1854,6 +1866,8 @@ paths:
       - exchange-controller
   /api/namespaces/{namespaceId}/files/content:
     get:
+      description: "GET /api/namespaces/{namespaceId}/files/content — read the UTF-8\
+        \ text content of a namespace exchange file."
       operationId: getNamespaceFileContentExchange
       parameters:
       - in: path
@@ -1874,6 +1888,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeFileContent"
           description: OK
+      summary: Read namespace exchange file content
       tags:
       - exchange-controller
   /api/namespaces/{namespaceId}/files/download:
@@ -1903,6 +1918,8 @@ paths:
       - exchange-controller
   /api/namespaces/{namespaceId}/files/manifest:
     get:
+      description: "GET /api/namespaces/{namespaceId}/files/manifest — list all files\
+        \ in the namespace-shared exchange scope."
       operationId: getNamespaceFilesManifestExchange
       parameters:
       - in: path
@@ -1918,6 +1935,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ExchangeManifest"
           description: OK
+      summary: List namespace exchange files
       tags:
       - exchange-controller
   /api/namespaces/{namespaceId}/members/{targetUserId}:
@@ -2168,47 +2186,6 @@ paths:
       tags:
       - plugin-controller
   /api/prompts:
-    get:
-      description: |-
-        Returns prompts for the given scope. `namespaceId` is required for `NAMESPACE` and `USER_NAMESPACE` scopes, and must be omitted for `PLATFORM` and `USER`.
-
-        | scope          | namespaceId | returned prompts                  | required permission       |
-        |----------------|-------------|-----------------------------------|---------------------------|
-        | PLATFORM       | absent      | platform-level (null, null)       | authenticated             |
-        | NAMESPACE      | required    | namespace-shared (ns, null)       | READ on namespace         |
-        | USER           | absent      | user-global (null, me)            | authenticated             |
-        | USER_NAMESPACE | required    | user × namespace (ns, me)        | READ on namespace         |
-      operationId: listPrompt
-      parameters:
-      - description: Scope of prompts to return.
-        in: query
-        name: scope
-        required: true
-        schema:
-          type: string
-          enum:
-          - PLATFORM
-          - NAMESPACE
-          - USER
-          - USER_NAMESPACE
-      - in: query
-        name: namespaceId
-        required: false
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
-          description: OK
-      summary: List Prompts by explicit scope
-      tags:
-      - prompt-controller
     post:
       description: |-
         Scope is inferred from `(body.namespaceId, body.userId)`:
@@ -2258,40 +2235,19 @@ paths:
           description: OK
       tags:
       - prompt-controller
-  /api/prompts/by-parentId/{parentId}:
-    get:
-      operationId: listByParentPrompt
-      parameters:
-      - in: path
-        name: parentId
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Prompt"
-          description: OK
-      tags:
-      - prompt-controller
   /api/prompts/effective:
-    get:
+    post:
       description: "Returns the resolved set of prompts accessible in the given namespace\
         \ context. Merges platform, namespace-shared, user-global and user×namespace\
-        \ layers by name, highest-priority layer wins. Requires READ on the namespace."
-      operationId: findEffectiveByNamespaceIdPrompt
-      parameters:
-      - in: query
-        name: namespaceId
+        \ layers by name, highest-priority layer wins. Optional `agentConfigId` filter\
+        \ applied post-resolution. Requires READ on the namespace."
+      operationId: effectivePrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptEffectiveRequest"
         required: true
-        schema:
-          type: string
-          format: uuid
       responses:
         "200":
           content:
@@ -2301,7 +2257,39 @@ paths:
                 items:
                   $ref: "#/components/schemas/Prompt"
           description: OK
-      summary: Effective prompts for a namespace
+      summary: Effective prompts for a user in a namespace
+      tags:
+      - prompt-controller
+  /api/prompts/search:
+    post:
+      description: |-
+        Returns prompts declared at a single exact scope level — no merge, no inheritance. The `(namespaceId?, userId?)` combination in the body determines the level:
+
+        | namespaceId | userId   | level            | required permission        |
+        |-------------|----------|------------------|----------------------------|
+        | null        | null     | platform         | authenticated              |
+        | non-null    | null     | namespace-shared | READ on namespace          |
+        | null        | non-null | user-global      | authenticated              |
+        | non-null    | non-null | user×namespace   | READ on namespace          |
+
+        Optional `agentConfigIds` filter restricts results to prompts linked to those agents.
+      operationId: searchPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptSearchRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prompt"
+          description: OK
+      summary: List Prompts at an exact scope level
       tags:
       - prompt-controller
   /api/prompts/{id}:
@@ -2453,6 +2441,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserGroupSearchResult"
+          description: OK
+      tags:
+      - user-group-controller
+  /api/user-groups/{userGroupId}/members:
+    get:
+      operationId: getMembersUserGroup
+      parameters:
+      - in: path
+        name: userGroupId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserGroupMember"
           description: OK
       tags:
       - user-group-controller
@@ -3056,6 +3065,9 @@ components:
         id:
           type: string
           format: uuid
+        lastMessageAt:
+          type: string
+          format: date-time
         modified:
           type: string
           format: date-time
@@ -3420,6 +3432,7 @@ components:
       required:
       - externalIds
     Image:
+      type: object
       allOf:
       - $ref: "#/components/schemas/MessageContent"
       - type: object
@@ -3479,12 +3492,20 @@ components:
           type: string
         displayName:
           type: string
+        enabledByDefault:
+          type: boolean
+          description: "What this instance grants an agent whose integrations map\
+            \ does not mention this type at all. An agent's own choice always wins,\
+            \ in both directions; this only fills the gap, so a client can label the\
+            \ \"platform default\" state of a toggle. Always false for non-built-in\
+            \ types."
         type:
           type: string
       required:
       - builtIn
       - description
       - displayName
+      - enabledByDefault
       - type
     IntentionGeneratedEvent:
       allOf:
@@ -3854,6 +3875,11 @@ components:
     Prompt:
       type: object
       properties:
+        agentConfigId:
+          type:
+          - string
+          - "null"
+          format: uuid
         content:
           type: array
           items:
@@ -3867,6 +3893,9 @@ components:
           format: date-time
         description:
           type: string
+        externalMetadata:
+          type: object
+          additionalProperties: {}
         id:
           type: string
           format: uuid
@@ -3896,6 +3925,32 @@ components:
       - content
       - name
       - parameters
+    PromptEffectiveRequest:
+      type: object
+      properties:
+        agentConfigId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        namespaceExternalId:
+          type:
+          - string
+          - "null"
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        userExternalId:
+          type:
+          - string
+          - "null"
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
     PromptParameter:
       type: object
       properties:
@@ -3910,6 +3965,28 @@ components:
       required:
       - defaultValue
       - name
+    PromptSearchRequest:
+      type: object
+      properties:
+        agentConfigIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        namespaceExternalId:
+          type:
+          - string
+          - "null"
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        userId:
+          type:
+          - string
+          - "null"
+          format: uuid
     QuestionEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -4026,6 +4103,10 @@ components:
           durationMs:
             type: integer
             format: int64
+          images:
+            type: array
+            items:
+              $ref: "#/components/schemas/Image"
           output:
             oneOf:
             - $ref: "#/components/schemas/Image"
@@ -4042,6 +4123,7 @@ components:
       required:
       - caseId
       - id
+      - images
       - metadata
       - namespaceId
       - output
@@ -4093,6 +4175,15 @@ components:
     UserGroupCreateRequest:
       type: object
       properties:
+        adminExternalIds:
+          type: array
+          description: Subset of userExternalIdsToAdd who should receive the ADMIN
+            role; each must also be a member.
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
         agentIds:
           type: array
           items:
@@ -4116,10 +4207,36 @@ components:
           minItems: 0
           uniqueItems: true
       required:
+      - adminExternalIds
       - agentIds
       - name
       - namespaceId
       - userExternalIdsToAdd
+    UserGroupMember:
+      type: object
+      properties:
+        email:
+          type: string
+        externalId:
+          type: string
+          description: Identity-provider key used to add or remove this member
+        firstname:
+          type: string
+        lastname:
+          type: string
+        role:
+          type: string
+          description: The user's relation to the group
+          enum:
+          - ADMIN
+          - MEMBER
+        userId:
+          type: string
+          format: uuid
+      required:
+      - externalId
+      - role
+      - userId
     UserGroupSearchResult:
       type: object
       properties:
@@ -4162,6 +4279,17 @@ components:
     UserGroupUpdateRequest:
       type: object
       properties:
+        adminExternalIds:
+          type: array
+          description: "Complete desired set of member external IDs holding the ADMIN\
+            \ role (replace semantics): members not listed are demoted to MEMBER,\
+            \ and an omitted or empty set demotes every current admin. Every listed\
+            \ id must be a member after the update."
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
         agentIds:
           type: array
           items:
@@ -4189,6 +4317,7 @@ components:
           minItems: 0
           uniqueItems: true
       required:
+      - adminExternalIds
       - agentIds
       - name
       - userExternalIdsToAdd
