@@ -1,15 +1,15 @@
-package io.whozoss.agentos.sdk.auth
+package io.whozoss.agentos.auth
 
 import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.sdk.credential.Credential
 import java.util.UUID
 
 /**
- * High-level authentication service available to plugins via [io.whozoss.agentos.sdk.tool.ToolContext].
+ * Internal authentication orchestration service.
  *
  * Orchestrates AuthSetting resolution (with 4-tier shadowing) and Credential
- * management (store, resolve, revoke). Plugins use this to authenticate
- * against external services without managing credentials directly.
+ * management (store, resolve, delete). Used internally by the credential provider
+ * factory to resolve credentials for plugin tool contexts.
  *
  * Implementations are request-scoped: created per tool invocation with the
  * resolved (namespaceId, userId) from the enclosing [io.whozoss.agentos.sdk.tool.ToolContext],

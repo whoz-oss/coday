@@ -131,21 +131,21 @@ class AuthServiceImplUnitSpec : StringSpec({
     // revokeCredential
     // -------------------------------------------------------------------------
 
-    "revokeCredential delegates to CredentialService.revoke with correct (userId, authSettingId) and returns true" {
+    "revokeCredential delegates to CredentialService.delete with correct (userId, authSettingId) and returns true" {
         val credentialService = mockk<CredentialService> {
-            every { revoke(userId, authSettingId) } returns true
+            every { delete(userId, authSettingId) } returns true
         }
         val svc = buildService(credentialService = credentialService)
 
         val result = svc.revokeCredential(authSettingId)
 
         result shouldBe true
-        verify(exactly = 1) { credentialService.revoke(userId, authSettingId) }
+        verify(exactly = 1) { credentialService.delete(userId, authSettingId) }
     }
 
     "revokeCredential returns false when no credential existed" {
         val credentialService = mockk<CredentialService> {
-            every { revoke(userId, authSettingId) } returns false
+            every { delete(userId, authSettingId) } returns false
         }
         val svc = buildService(credentialService = credentialService)
 

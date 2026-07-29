@@ -26,10 +26,6 @@ import io.whozoss.agentos.caseEvent.Neo4jCaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
-import io.whozoss.agentos.credential.CredentialNodeNeo4jRepository
-import io.whozoss.agentos.credential.CredentialRepository
-import io.whozoss.agentos.credential.Neo4jCredentialRepository
-import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
 import io.whozoss.agentos.feedback.FeedbackRepository
 import io.whozoss.agentos.feedback.Neo4jFeedbackRepository

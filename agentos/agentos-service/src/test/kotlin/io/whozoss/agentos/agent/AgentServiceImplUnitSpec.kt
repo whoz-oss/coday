@@ -418,6 +418,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolRegistryService = toolRegistryService,
                     toolMetricsService = toolMetricsService,
                     caseEventService = caseEventService,
+                    authServiceFactory = authServiceFactory,
                     exchangeStorageService = exchangeStorageService,
                     exchangeCapabilityService = exchangeCapabilityService,
                     exchangeToolGrantService = realGrantService,
