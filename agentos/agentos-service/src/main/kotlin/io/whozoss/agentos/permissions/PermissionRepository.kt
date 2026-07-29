@@ -6,7 +6,6 @@ package io.whozoss.agentos.permissions
  * (Neo4j, in-memory, etc.).
  */
 interface PermissionRepository {
-
     /**
      * Checks if a user has a direct permission relationship with an entity.
      * Does not check transitive permissions through namespace hierarchy.
@@ -21,7 +20,7 @@ interface PermissionRepository {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ): Boolean
 
     /**
@@ -37,7 +36,7 @@ interface PermissionRepository {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ): Boolean
 
     /**
@@ -52,7 +51,7 @@ interface PermissionRepository {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     )
 
     /**
@@ -67,7 +66,7 @@ interface PermissionRepository {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     )
 
     /**
@@ -81,7 +80,7 @@ interface PermissionRepository {
     fun listUsersWithPermission(
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation? = null
+        relation: PermissionRelation? = null,
     ): List<String>
 
     /**
@@ -96,7 +95,7 @@ interface PermissionRepository {
     fun listEntitiesForUser(
         userId: String,
         entityType: EntityType,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ): List<String>
 
     /**
@@ -133,7 +132,11 @@ interface PermissionRepository {
      * @return true if a [:MEMBER] edge was found and promoted; false if the user had
      *   no MEMBER relation on the entity (no-op: no [:ADMIN] edge is created).
      */
-    fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean
+    fun promoteMemberToAdmin(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean
 
     /**
      * Atomically demotes a [:ADMIN] relation to [:MEMBER].
@@ -144,11 +147,14 @@ interface PermissionRepository {
      * @return true if a [:ADMIN] edge was found and demoted; false if the user had
      *   no ADMIN relation on the entity (no-op: no [:MEMBER] edge is created).
      */
-    fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean
+    fun demoteAdminToMember(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean
 
     /**
      * Batch-apply share entries on an entity. Each entry is a (userId, targetRole) pair:
-<<<<<<< HEAD
      * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER,
      *   or create directly)
      * - targetRole = [PermissionRelation.MEMBER] → ensure user has MEMBER (demote from ADMIN,
