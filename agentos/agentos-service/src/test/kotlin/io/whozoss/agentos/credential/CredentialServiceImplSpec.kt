@@ -6,14 +6,15 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 class CredentialServiceImplSpec : StringSpec() {
-    private fun newService() = CredentialServiceImpl(InMemoryCredentialRepository())
-
     private fun credential(
         userId: UUID = UUID.randomUUID(),
         authSettingId: UUID = UUID.randomUUID(),
@@ -29,114 +30,93 @@ class CredentialServiceImplSpec : StringSpec() {
         )
 
     init {
-        "store a credential and resolve it" {
-            val service = newService()
+        "store delegates to repository and returns the saved credential" {
+            val repository = mockk<CredentialRepository>()
+            val service = CredentialServiceImpl(repository)
+            val cred = credential()
+            every { repository.save(cred) } returns cred
+
+            val result = service.store(cred)
+
+            result shouldBe cred
+            verify(exactly = 1) { repository.save(cred) }
+        }
+
+        "resolve delegates to repository" {
+            val repository = mockk<CredentialRepository>()
+            val service = CredentialServiceImpl(repository)
             val userId = UUID.randomUUID()
             val authSettingId = UUID.randomUUID()
             val cred = credential(userId = userId, authSettingId = authSettingId)
+            every { repository.findByUserAndAuthSetting(userId, authSettingId) } returns cred
 
-            service.store(cred)
+            val result = service.resolve(userId, authSettingId)
 
-            val resolved = service.resolve(userId, authSettingId)
-            resolved.shouldNotBeNull()
-            resolved.userId shouldBe userId
-            resolved.authSettingId shouldBe authSettingId
+            result.shouldNotBeNull()
+            result shouldBe cred
         }
 
-        "store overwrites existing credential for same (userId, authSettingId)" {
-            val service = newService()
+        "resolve returns null when repository returns null" {
+            val repository = mockk<CredentialRepository>()
+            val service = CredentialServiceImpl(repository)
             val userId = UUID.randomUUID()
             val authSettingId = UUID.randomUUID()
-            val first = credential(userId = userId, authSettingId = authSettingId, data = mapOf("key" to "old-value"))
-            val second = credential(userId = userId, authSettingId = authSettingId, data = mapOf("key" to "new-value"))
+            every { repository.findByUserAndAuthSetting(userId, authSettingId) } returns null
 
-            service.store(first)
-            service.store(second)
-
-            // Only the second credential should be visible
-            val resolved = service.resolve(userId, authSettingId)
-            resolved.shouldNotBeNull()
-            resolved.data["key"] shouldBe "new-value"
-        }
-
-        "resolve returns null when not found" {
-            val service = newService()
-
-            service.resolve(UUID.randomUUID(), UUID.randomUUID()).shouldBeNull()
-        }
-
-        "delete removes the credential" {
-            val service = newService()
-            val userId = UUID.randomUUID()
-            val authSettingId = UUID.randomUUID()
-            service.store(credential(userId = userId, authSettingId = authSettingId))
-
-            service.delete(userId, authSettingId) shouldBe true
             service.resolve(userId, authSettingId).shouldBeNull()
         }
 
-        "delete returns false when credential does not exist" {
-            val service = newService()
-
-            service.delete(UUID.randomUUID(), UUID.randomUUID()) shouldBe false
-        }
-
-        "deleteByAuthSetting cascades to all credentials for that authSetting" {
-            val service = newService()
-            val authSettingId = UUID.randomUUID()
-            val userA = UUID.randomUUID()
-            val userB = UUID.randomUUID()
-            val unrelated = UUID.randomUUID()
-
-            service.store(credential(userId = userA, authSettingId = authSettingId))
-            service.store(credential(userId = userB, authSettingId = authSettingId))
-            service.store(credential(userId = userA, authSettingId = unrelated))
-
-            service.deleteByAuthSetting(authSettingId) shouldBe 2
-            service.resolve(userA, authSettingId).shouldBeNull()
-            service.resolve(userB, authSettingId).shouldBeNull()
-            // Unrelated credential is untouched
-            service.resolve(userA, unrelated).shouldNotBeNull()
-        }
-
-        "findByUserId returns only that user's credentials" {
-            val service = newService()
-            val userA = UUID.randomUUID()
-            val userB = UUID.randomUUID()
-
-            service.store(credential(userId = userA, authSettingId = UUID.randomUUID()))
-            service.store(credential(userId = userA, authSettingId = UUID.randomUUID()))
-            service.store(credential(userId = userB, authSettingId = UUID.randomUUID()))
-
-            service.findByUserId(userA) shouldHaveSize 2
-            service.findByUserId(userB) shouldHaveSize 1
-            service.findByUserId(UUID.randomUUID()).shouldBeEmpty()
-        }
-
-        "data is preserved correctly through store/resolve cycle" {
-            val service = newService()
+        "delete delegates to repository and returns true when credential existed" {
+            val repository = mockk<CredentialRepository>()
+            val service = CredentialServiceImpl(repository)
             val userId = UUID.randomUUID()
             val authSettingId = UUID.randomUUID()
-            val data = mapOf(
-                "accessToken" to "tok_abc",
-                "refreshToken" to "ref_xyz",
-                "expiresAt" to "2099-01-01T00:00:00Z",
-                "tokenType" to "Bearer",
-                "scope" to "read write",
-            )
-            val cred = credential(
-                userId = userId,
-                authSettingId = authSettingId,
-                credentialType = CredentialType.OAUTH_TOKENS,
-                data = data,
-            )
+            every { repository.deleteByUserAndAuthSetting(userId, authSettingId) } returns true
 
-            service.store(cred)
+            service.delete(userId, authSettingId) shouldBe true
+            verify(exactly = 1) { repository.deleteByUserAndAuthSetting(userId, authSettingId) }
+        }
 
-            val resolved = service.resolve(userId, authSettingId)
-            resolved.shouldNotBeNull()
-            resolved.credentialType shouldBe CredentialType.OAUTH_TOKENS
-            resolved.data shouldBe data
+        "delete returns false when repository reports no credential" {
+            val repository = mockk<CredentialRepository>()
+            val service = CredentialServiceImpl(repository)
+            val userId = UUID.randomUUID()
+            val authSettingId = UUID.randomUUID()
+            every { repository.deleteByUserAndAuthSetting(userId, authSettingId) } returns false
+
+            service.delete(userId, authSettingId) shouldBe false
+        }
+
+        "deleteByAuthSetting delegates and returns the count from repository" {
+            val repository = mockk<CredentialRepository>()
+            val service = CredentialServiceImpl(repository)
+            val authSettingId = UUID.randomUUID()
+            every { repository.deleteByAuthSettingId(authSettingId) } returns 3
+
+            service.deleteByAuthSetting(authSettingId) shouldBe 3
+            verify(exactly = 1) { repository.deleteByAuthSettingId(authSettingId) }
+        }
+
+        "findByUserId delegates to repository" {
+            val repository = mockk<CredentialRepository>()
+            val service = CredentialServiceImpl(repository)
+            val userId = UUID.randomUUID()
+            val creds = listOf(credential(userId = userId), credential(userId = userId))
+            every { repository.findByUserId(userId) } returns creds
+
+            val result = service.findByUserId(userId)
+
+            result shouldHaveSize 2
+            verify(exactly = 1) { repository.findByUserId(userId) }
+        }
+
+        "findByUserId returns empty list when repository returns empty" {
+            val repository = mockk<CredentialRepository>()
+            val service = CredentialServiceImpl(repository)
+            val userId = UUID.randomUUID()
+            every { repository.findByUserId(userId) } returns emptyList()
+
+            service.findByUserId(userId).shouldBeEmpty()
         }
     }
 }

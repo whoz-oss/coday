@@ -26,7 +26,17 @@ open class Neo4jCredentialRepository(
         val node = CredentialNode.fromDomain(credential, objectMapper)
         val encrypted = node.copy(dataJson = encryptDataJson(node.dataJson))
         return neo4jRepository
-            .save(encrypted)
+            .upsert(
+                id = encrypted.id,
+                userId = encrypted.userId,
+                authSettingId = encrypted.authSettingId,
+                credentialType = encrypted.credentialType,
+                dataJson = encrypted.dataJson,
+                created = encrypted.created,
+                createdBy = encrypted.createdBy,
+                modified = encrypted.modified,
+                modifiedBy = encrypted.modifiedBy,
+            )
             .let { it.copy(dataJson = decryptDataJson(it.dataJson)) }
             .toDomain(objectMapper)
             .also { logger.debug { "[Neo4jCredentialRepository] Saved Credential ${it.id} (user=${credential.userId}, authSetting=${credential.authSettingId})" } }
