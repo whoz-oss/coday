@@ -1,6 +1,6 @@
 <ds-entity-list
   title="Platform Scheduled Prompts"
-  [items]="(promptItems$ | async) ?? []"
+  [items]="promptItems()"
   [showCreate]="true"
   emptyMessage="No platform scheduled prompts defined yet. Add one above."
   cardMinWidth="420px"
@@ -15,7 +15,8 @@
     <agentos-scheduled-prompt-item
       [definition]="definition"
       [platformMode]="true"
-      (toggleRequested)="togglePrompt($event)"
+      (enableRequested)="enablePrompt($event)"
+      (disableRequested)="disablePrompt($event)"
       (deleteRequested)="deletePrompt($event)"
     />
   }

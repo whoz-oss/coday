@@ -1,10 +1,8 @@
-import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { ScheduledPrompt } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { BehaviorSubject, map, switchMap } from 'rxjs'
 import { ScheduledPromptStateService } from '../../services/scheduled-prompt-state.service'
 import { ScheduledPromptItemComponent } from '../scheduled-prompt-item/scheduled-prompt-item.component'
 
@@ -16,10 +14,14 @@ import { ScheduledPromptItemComponent } from '../scheduled-prompt-item/scheduled
  *
  * Platform scheduled prompts have no namespaceId and no userId — they are shared
  * across all namespaces.
+ *
+ * State is a single signal, loaded once. Mutations (enable/disable) patch the
+ * signal locally from the updated entity returned by the API — no full refetch,
+ * no risk of stale reads from a second, independently-resolving subscription.
  */
 @Component({
   selector: 'agentos-platform-scheduled-prompts',
-  imports: [AsyncPipe, EntityListComponent, ScheduledPromptItemComponent, IconButtonComponent],
+  imports: [EntityListComponent, ScheduledPromptItemComponent, IconButtonComponent],
   templateUrl: './platform-scheduled-prompts.component.html',
   styleUrl: './platform-scheduled-prompts.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -29,37 +31,31 @@ export class PlatformScheduledPromptsComponent {
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(ScheduledPromptStateService)
 
-  private readonly refresh$ = new BehaviorSubject<void>(undefined)
-
-  /** Raw platform scheduled prompts, kept for mutation lookups. */
-  private readonly prompts$ = this.refresh$.pipe(switchMap(() => this.state.listPlatform()))
+  /** Single source of truth for platform scheduled prompts, loaded once in the constructor. */
+  private readonly prompts = signal<ScheduledPrompt[]>([])
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
-  protected readonly promptItems$ = this.prompts$.pipe(
-    map((defs) =>
-      defs.map(
-        (d: ScheduledPrompt): EntityListItem => ({
-          id: d.id ?? '',
-          name: d.name,
-          description: d.description,
-          badges: [
-            {
-              label: d.enabled ? 'Enabled' : 'Disabled',
-              variant: d.enabled ? 'success' : 'warning',
-            },
-          ],
-        })
-      )
+  protected readonly promptItems = computed<EntityListItem[]>(() =>
+    this.prompts().map(
+      (d): EntityListItem => ({
+        id: d.id ?? '',
+        name: d.name,
+        description: d.description,
+        badges: [
+          {
+            label: d.enabled ? 'Enabled' : 'Disabled',
+            variant: d.enabled ? 'success' : 'warning',
+          },
+        ],
+      })
     )
   )
 
-  /** Full prompt objects indexed by id — used to resolve itemTemplate events. */
-  private promptsById = new Map<string, ScheduledPrompt>()
-
   constructor() {
-    this.prompts$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((defs) => {
-      this.promptsById = new Map(defs.map((d: ScheduledPrompt) => [d.id ?? '', d]))
-    })
+    this.state
+      .listPlatform()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((defs) => this.prompts.set(defs))
   }
 
   protected goBack(): void {
@@ -70,21 +66,33 @@ export class PlatformScheduledPromptsComponent {
     this.router.navigate(['/agentos', 'admin', 'scheduled-prompts', 'new'])
   }
 
-  protected togglePrompt(definition: ScheduledPrompt): void {
+  protected enablePrompt(definition: ScheduledPrompt): void {
     this.state
-      .toggle(definition.id ?? '')
+      .enable(definition.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+      .subscribe((updated) => this.patchPrompt(updated))
+  }
+
+  protected disablePrompt(definition: ScheduledPrompt): void {
+    this.state
+      .disable(definition.id ?? '')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((updated) => this.patchPrompt(updated))
   }
 
   protected deletePrompt(definition: ScheduledPrompt): void {
+    const id = definition.id ?? ''
     this.state
-      .delete(definition.id ?? '')
+      .delete(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.refresh$.next())
+      .subscribe(() => this.prompts.update((list) => list.filter((p) => p.id !== id)))
   }
 
   protected resolvePrompt(id: string): ScheduledPrompt | null {
-    return this.promptsById.get(id) ?? null
+    return this.prompts().find((p) => p.id === id) ?? null
+  }
+
+  private patchPrompt(updated: ScheduledPrompt): void {
+    this.prompts.update((list) => list.map((p) => (p.id === updated.id ? updated : p)))
   }
 }

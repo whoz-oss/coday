@@ -7,11 +7,11 @@ import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-os
  * ScheduledPromptItemComponent — presentational component for a single scheduled prompt card.
  *
  * Displays name, schedule, and enabled status.
- * Actions: edit (navigates), toggle enable/disable, delete (two-step inline confirm).
+ * Actions: edit (navigates), enable/disable (idempotent, explicit target state), delete (two-step inline confirm).
  *
  * When platformMode is true, the edit route navigates to /admin/scheduled-prompts instead
  * of /:namespaceId/scheduled-prompts.
- * When readOnly is true, mutation actions (edit, toggle, delete) are hidden.
+ * When readOnly is true, mutation actions (edit, enable/disable, delete) are hidden.
  */
 @Component({
   selector: 'agentos-scheduled-prompt-item',
@@ -28,12 +28,15 @@ export class ScheduledPromptItemComponent {
   /** When true, edit navigates to the admin platform route instead of the namespace route. */
   readonly platformMode = input(false)
   /**
-   * When true, edit, toggle and delete actions are hidden.
+   * When true, edit, enable/disable and delete actions are hidden.
    * Used for platform-level definitions displayed in a namespace context (read-only visibility).
    */
   readonly readOnly = input(false)
 
-  readonly toggleRequested = output<ScheduledPrompt>()
+  /** Emitted when the user requests enabling a currently-disabled prompt. */
+  readonly enableRequested = output<ScheduledPrompt>()
+  /** Emitted when the user requests disabling a currently-enabled prompt. */
+  readonly disableRequested = output<ScheduledPrompt>()
   readonly deleteRequested = output<ScheduledPrompt>()
 
   protected readonly pendingDelete = signal(false)
@@ -107,7 +110,13 @@ export class ScheduledPromptItemComponent {
         }
         break
       case 'toggle':
-        this.toggleRequested.emit(def)
+        // The menu label already reflects the target action (Enable/Disable) based on
+        // the current state — emit the explicit intent rather than a blind flip.
+        if (def.enabled) {
+          this.disableRequested.emit(def)
+        } else {
+          this.enableRequested.emit(def)
+        }
         break
       case 'delete':
         this.pendingDelete.set(true)

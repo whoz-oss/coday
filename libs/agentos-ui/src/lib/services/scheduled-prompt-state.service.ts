@@ -64,9 +64,14 @@ export class ScheduledPromptStateService {
     return this.api.updateScheduledPrompt(id, payload)
   }
 
-  /** Flips the enabled flag on a single scheduled prompt. */
-  toggle(id: string): Observable<ScheduledPrompt> {
-    return this.api.toggleScheduledPrompt(id)
+  /** Enables a scheduled prompt. Idempotent — no-op if already enabled. */
+  enable(id: string): Observable<ScheduledPrompt> {
+    return this.api.enableScheduledPrompt(id)
+  }
+
+  /** Disables a scheduled prompt. Idempotent — no-op if already disabled. */
+  disable(id: string): Observable<ScheduledPrompt> {
+    return this.api.disableScheduledPrompt(id)
   }
 
   delete(id: string): Observable<unknown> {

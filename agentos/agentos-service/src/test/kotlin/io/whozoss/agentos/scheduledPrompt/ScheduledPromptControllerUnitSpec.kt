@@ -345,33 +345,39 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // toggle
+    // enable / disable
     // -------------------------------------------------------------------------
 
-    "toggle flips enabled from true to false" {
+    "disable flips enabled from true to false" {
         val id = UUID.randomUUID()
         val existing = sp(id = id, enabled = true)
-        val toggled = existing.copy(enabled = false)
+        val disabled = existing.copy(enabled = false)
         every { service.findById(id) } returns existing
-        every { service.toggle(id) } returns toggled
-        every { service.findByIdWithContent(toggled.id) } returns Pair(toggled, promptContent)
-        controller.toggle(id).enabled shouldBe false
+        every { service.disable(id) } returns disabled
+        every { service.findByIdWithContent(disabled.id) } returns Pair(disabled, promptContent)
+        controller.disable(id).enabled shouldBe false
     }
 
-    "toggle flips enabled from false to true" {
+    "enable flips enabled from false to true" {
         val id = UUID.randomUUID()
         val existing = sp(id = id, enabled = false)
-        val toggled = existing.copy(enabled = true)
+        val enabled = existing.copy(enabled = true)
         every { service.findById(id) } returns existing
-        every { service.toggle(id) } returns toggled
-        every { service.findByIdWithContent(toggled.id) } returns Pair(toggled, promptContent)
-        controller.toggle(id).enabled shouldBe true
+        every { service.enable(id) } returns enabled
+        every { service.findByIdWithContent(enabled.id) } returns Pair(enabled, promptContent)
+        controller.enable(id).enabled shouldBe true
     }
 
-    "toggle throws 404 when entity does not exist" {
+    "enable throws 404 when entity does not exist" {
         val id = UUID.randomUUID()
         every { service.findById(id) } returns null
-        shouldThrow<ResourceNotFoundException> { controller.toggle(id) }
+        shouldThrow<ResourceNotFoundException> { controller.enable(id) }
+    }
+
+    "disable throws 404 when entity does not exist" {
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns null
+        shouldThrow<ResourceNotFoundException> { controller.disable(id) }
     }
 
     // -------------------------------------------------------------------------
@@ -460,16 +466,16 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         result.name shouldBe "new"
     }
 
-    "toggle succeeds for non-admin user — controller delegates to service" {
+    "disable succeeds for non-admin user — controller delegates to service" {
         every { userService.getCurrentUser() } returns regularUser()
         every { permissionService.hasPermission(any(), any(), any(), any()) } returns true
         val id = UUID.randomUUID()
         val existing = sp(id = id, enabled = true)
-        val toggled = existing.copy(enabled = false)
+        val disabled = existing.copy(enabled = false)
         every { service.findById(id) } returns existing
-        every { service.toggle(id) } returns toggled
-        every { service.findByIdWithContent(toggled.id) } returns Pair(toggled, promptContent)
-        controller.toggle(id).enabled shouldBe false
+        every { service.disable(id) } returns disabled
+        every { service.findByIdWithContent(disabled.id) } returns Pair(disabled, promptContent)
+        controller.disable(id).enabled shouldBe false
     }
 
     "delete succeeds for non-admin user — controller delegates to service" {

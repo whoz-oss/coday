@@ -266,10 +266,10 @@ class ScheduledPromptControllerPermissionIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // PATCH /toggle — @PreAuthorize("hasPermission(#id, 'ScheduledPrompt', 'WRITE')")
+        // PATCH /enable, /disable — @PreAuthorize("hasPermission(#id, 'ScheduledPrompt', 'WRITE')")
         // -------------------------------------------------------------------------
 
-        "PATCH /toggle returns 200 for namespace ADMIN (transitive WRITE via Namespace.ADMIN)" {
+        "PATCH /enable returns 200 for namespace ADMIN (transitive WRITE via Namespace.ADMIN)" {
             permissionService.grantPermission(
                 alice.id.toString(),
                 EntityType.NAMESPACE,
@@ -279,11 +279,25 @@ class ScheduledPromptControllerPermissionIntegrationSpec : StringSpec() {
 
             val sp = createScheduledPrompt()
 
-            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/toggle"))
+            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/enable"))
                 .andExpect(status().isOk)
         }
 
-        "PATCH /toggle returns 404 for namespace MEMBER (WRITE denied — hidden via @HideOnAccessDenied)" {
+        "PATCH /disable returns 200 for namespace ADMIN (transitive WRITE via Namespace.ADMIN)" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.ADMIN,
+            )
+
+            val sp = createScheduledPrompt()
+
+            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/disable"))
+                .andExpect(status().isOk)
+        }
+
+        "PATCH /enable returns 404 for namespace MEMBER (WRITE denied — hidden via @HideOnAccessDenied)" {
             permissionService.grantPermission(
                 alice.id.toString(),
                 EntityType.NAMESPACE,
@@ -293,23 +307,53 @@ class ScheduledPromptControllerPermissionIntegrationSpec : StringSpec() {
 
             val sp = createScheduledPrompt()
 
-            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/toggle"))
+            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/enable"))
                 .andExpect(status().isNotFound)
         }
 
-        "PATCH /toggle returns 404 for user with no namespace permission" {
+        "PATCH /disable returns 404 for namespace MEMBER (WRITE denied — hidden via @HideOnAccessDenied)" {
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                namespace.id.toString(),
+                PermissionRelation.MEMBER,
+            )
+
             val sp = createScheduledPrompt()
 
-            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/toggle"))
+            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/disable"))
                 .andExpect(status().isNotFound)
         }
 
-        "PATCH /toggle returns 200 for super-admin" {
+        "PATCH /enable returns 404 for user with no namespace permission" {
+            val sp = createScheduledPrompt()
+
+            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/enable"))
+                .andExpect(status().isNotFound)
+        }
+
+        "PATCH /disable returns 404 for user with no namespace permission" {
+            val sp = createScheduledPrompt()
+
+            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/disable"))
+                .andExpect(status().isNotFound)
+        }
+
+        "PATCH /enable returns 200 for super-admin" {
             every { userService.getCurrentUser() } returns admin
 
             val sp = createScheduledPrompt()
 
-            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/toggle"))
+            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/enable"))
+                .andExpect(status().isOk)
+        }
+
+        "PATCH /disable returns 200 for super-admin" {
+            every { userService.getCurrentUser() } returns admin
+
+            val sp = createScheduledPrompt()
+
+            mockMvc.perform(patch("/api/scheduled-prompts/${sp.id}/disable"))
                 .andExpect(status().isOk)
         }
 

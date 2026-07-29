@@ -265,11 +265,16 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // toggle and delete — 404 on unknown id
+        // enable / disable and delete — 404 on unknown id
         // -------------------------------------------------------------------------
 
-        "PATCH /toggle on non-existent id returns 404" {
-            mockMvc.perform(patch("/api/scheduled-prompts/${UUID.randomUUID()}/toggle"))
+        "PATCH /enable on non-existent id returns 404" {
+            mockMvc.perform(patch("/api/scheduled-prompts/${UUID.randomUUID()}/enable"))
+                .andExpect(status().isNotFound)
+        }
+
+        "PATCH /disable on non-existent id returns 404" {
+            mockMvc.perform(patch("/api/scheduled-prompts/${UUID.randomUUID()}/disable"))
                 .andExpect(status().isNotFound)
         }
 

@@ -18,7 +18,7 @@ import java.util.UUID
  *
  * **[search]** returns scheduled prompts declared at a single exact scope level.
  * **[effective]** returns the merged set accessible in the given namespace context.
- * **[toggle]** flips the [ScheduledPromptDto.enabled] flag.
+ * **[enable]** / **[disable]** are idempotent actions on the [ScheduledPromptDto.enabled] flag.
  */
 interface ScheduledPromptApi : EntityCrudApi<ScheduledPromptDto> {
 
@@ -33,7 +33,14 @@ interface ScheduledPromptApi : EntityCrudApi<ScheduledPromptDto> {
     fun effective(request: ScheduledPromptEffectiveRequest): List<ScheduledPromptDto>
 
     /**
-     * PATCH /api/scheduled-prompts/{id}/toggle — toggle the enabled flag.
+     * PATCH /api/scheduled-prompts/{id}/enable — enable a scheduled prompt. Idempotent:
+     * calling it on an already-enabled prompt is a no-op that returns the entity unchanged.
      */
-    fun toggle(id: UUID): ScheduledPromptDto
+    fun enable(id: UUID): ScheduledPromptDto
+
+    /**
+     * PATCH /api/scheduled-prompts/{id}/disable — disable a scheduled prompt. Idempotent:
+     * calling it on an already-disabled prompt is a no-op that returns the entity unchanged.
+     */
+    fun disable(id: UUID): ScheduledPromptDto
 }

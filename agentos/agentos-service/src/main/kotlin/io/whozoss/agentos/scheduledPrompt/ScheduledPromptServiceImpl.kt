@@ -112,18 +112,22 @@ class ScheduledPromptServiceImpl(
     override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<ScheduledPrompt> =
         repository.findByScope(namespaceId, userId, agentConfigIds)
 
-    override fun toggle(id: UUID): ScheduledPrompt {
+    override fun enable(id: UUID): ScheduledPrompt {
         val existing = repository.findById(id)
             ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
-        val toggled = existing.copy(enabled = !existing.enabled)
-        // Recalculate nextRunAt when re-enabling so the scheduler doesn't fire a stale instant.
-        val withNextRun = if (toggled.enabled) {
-            toggled.copy(nextRunAt = nextRunCalculatorService.compute(toggled))
-        } else {
-            toggled
-        }
+        if (existing.enabled) return existing
+        val enabled = existing.copy(enabled = true)
+        val withNextRun = enabled.copy(nextRunAt = nextRunCalculatorService.compute(enabled))
         return repository.save(withNextRun)
-            .also { logger.info { "[ScheduledPrompt] Toggled enabled=${it.enabled} on $id" } }
+            .also { logger.info { "[ScheduledPrompt] Enabled $id, nextRunAt=${it.nextRunAt}" } }
+    }
+
+    override fun disable(id: UUID): ScheduledPrompt {
+        val existing = repository.findById(id)
+            ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
+        if (!existing.enabled) return existing
+        return repository.save(existing.copy(enabled = false))
+            .also { logger.info { "[ScheduledPrompt] Disabled $id" } }
     }
 
     override fun delete(id: UUID): Boolean =

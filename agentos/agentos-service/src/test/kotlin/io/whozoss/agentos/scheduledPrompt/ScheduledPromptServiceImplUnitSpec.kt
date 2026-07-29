@@ -318,12 +318,12 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             updated.nextRunAt shouldBe Instant.parse("2026-01-01T09:00:00Z")
         }
 
-        "toggle re-enables and recalculates nextRunAt" {
+        "disable then enable recalculates nextRunAt" {
             val svc = newService()
             val saved = svc.create(sp(enabled = true))
-            val disabled = svc.toggle(saved.id)
+            val disabled = svc.disable(saved.id)
             disabled.enabled.shouldBeFalse()
-            val reEnabled = svc.toggle(disabled.id)
+            val reEnabled = svc.enable(disabled.id)
             reEnabled.enabled.shouldBeTrue()
             reEnabled.nextRunAt shouldBe Instant.parse("2026-01-01T08:00:00Z")
         }
@@ -421,22 +421,38 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             platform.first().namespaceId shouldBe null
         }
 
-        // -------------------------------------------------------------------------
-        // toggle
-        // -------------------------------------------------------------------------
-
-        "toggle flips enabled from true to false" {
+        "disable flips enabled from true to false" {
             val svc = newService()
-            svc.toggle(svc.create(sp(enabled = true)).id).enabled.shouldBeFalse()
+            svc.disable(svc.create(sp(enabled = true)).id).enabled.shouldBeFalse()
         }
 
-        "toggle flips enabled from false to true" {
+        "enable flips enabled from false to true" {
             val svc = newService()
-            svc.toggle(svc.create(sp(enabled = false)).id).enabled.shouldBeTrue()
+            svc.enable(svc.create(sp(enabled = false)).id).enabled.shouldBeTrue()
         }
 
-        "toggle throws ResourceNotFoundException when entity does not exist" {
-            shouldThrow<ResourceNotFoundException> { newService().toggle(UUID.randomUUID()) }
+        "disable is idempotent on an already-disabled prompt" {
+            val svc = newService()
+            val saved = svc.create(sp(enabled = false))
+            val result = svc.disable(saved.id)
+            result.enabled.shouldBeFalse()
+            result shouldBe saved
+        }
+
+        "enable is idempotent on an already-enabled prompt" {
+            val svc = newService()
+            val saved = svc.create(sp(enabled = true))
+            val result = svc.enable(saved.id)
+            result.enabled.shouldBeTrue()
+            result shouldBe saved
+        }
+
+        "enable throws ResourceNotFoundException when entity does not exist" {
+            shouldThrow<ResourceNotFoundException> { newService().enable(UUID.randomUUID()) }
+        }
+
+        "disable throws ResourceNotFoundException when entity does not exist" {
+            shouldThrow<ResourceNotFoundException> { newService().disable(UUID.randomUUID()) }
         }
 
         // -------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 <ds-entity-list
   title="Scheduled Prompts"
-  [items]="(promptItems$ | async) ?? []"
+  [items]="promptItems()"
   [showCreate]="true"
   emptyMessage="No scheduled prompts yet. Create one to get started."
   cardMinWidth="420px"
@@ -16,7 +16,8 @@
       [definition]="definition"
       [namespaceId]="namespaceId"
       [readOnly]="isPlatformPrompt(item.id)"
-      (toggleRequested)="togglePrompt($event)"
+      (enableRequested)="enablePrompt($event)"
+      (disableRequested)="disablePrompt($event)"
       (deleteRequested)="deletePrompt($event)"
     />
   }

@@ -50,11 +50,21 @@ interface ScheduledPromptService : EntityService<ScheduledPrompt, UUID>, Ownersh
     fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<ScheduledPrompt>
 
     /**
-     * Toggle the [ScheduledPrompt.enabled] flag.
+     * Enable a [ScheduledPrompt] (idempotent). Recalculates [ScheduledPrompt.nextRunAt] only
+     * on the actual disabled→enabled transition, so the scheduler never fires a stale slot;
+     * a call on an already-enabled prompt is a no-op that returns the entity unchanged.
      *
      * @throws io.whozoss.agentos.exception.ResourceNotFoundException if [id] does not exist
      */
-    fun toggle(id: UUID): ScheduledPrompt
+    fun enable(id: UUID): ScheduledPrompt
+
+    /**
+     * Disable a [ScheduledPrompt] (idempotent). A call on an already-disabled prompt is a
+     * no-op that returns the entity unchanged.
+     *
+     * @throws io.whozoss.agentos.exception.ResourceNotFoundException if [id] does not exist
+     */
+    fun disable(id: UUID): ScheduledPrompt
 
     /**
      * Create a [ScheduledPrompt] together with its linked Prompt.

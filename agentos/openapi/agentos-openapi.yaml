@@ -2293,9 +2293,9 @@ paths:
           description: OK
       tags:
       - scheduled-prompt-controller
-  /api/scheduled-prompts/{id}/toggle:
+  /api/scheduled-prompts/{id}/disable:
     patch:
-      operationId: toggleScheduledPrompt
+      operationId: disableScheduledPrompt
       parameters:
       - in: path
         name: id
@@ -2310,7 +2310,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/ScheduledPrompt"
           description: OK
-      summary: Toggle a scheduled prompt enabled/disabled
+      summary: Disable a scheduled prompt (idempotent)
+      tags:
+      - scheduled-prompt-controller
+  /api/scheduled-prompts/{id}/enable:
+    patch:
+      operationId: enableScheduledPrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledPrompt"
+          description: OK
+      summary: Enable a scheduled prompt (idempotent)
       tags:
       - scheduled-prompt-controller
   /api/user-groups:

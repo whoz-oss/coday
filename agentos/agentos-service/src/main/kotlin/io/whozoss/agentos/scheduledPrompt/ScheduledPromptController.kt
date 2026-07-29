@@ -205,15 +205,27 @@ class ScheduledPromptController(
         scheduledPromptService.deleteWithPrompt(id)
     }
 
-    @PatchMapping("/{id}/toggle")
+    @PatchMapping("/{id}/enable")
     @PreAuthorize("hasPermission(#id, 'ScheduledPrompt', 'WRITE')")
     @HideOnAccessDenied
-    @Operation(summary = "Toggle a scheduled prompt enabled/disabled")
-    override fun toggle(@PathVariable id: UUID): ScheduledPromptDto {
+    @Operation(summary = "Enable a scheduled prompt (idempotent)")
+    override fun enable(@PathVariable id: UUID): ScheduledPromptDto {
         scheduledPromptService.findById(id)
             ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
-        val toggled = scheduledPromptService.toggle(id)
-        val (sp, content) = scheduledPromptService.findByIdWithContent(toggled.id) ?: (toggled to "")
+        val enabled = scheduledPromptService.enable(id)
+        val (sp, content) = scheduledPromptService.findByIdWithContent(enabled.id) ?: (enabled to "")
+        return toDto(sp, content)
+    }
+
+    @PatchMapping("/{id}/disable")
+    @PreAuthorize("hasPermission(#id, 'ScheduledPrompt', 'WRITE')")
+    @HideOnAccessDenied
+    @Operation(summary = "Disable a scheduled prompt (idempotent)")
+    override fun disable(@PathVariable id: UUID): ScheduledPromptDto {
+        scheduledPromptService.findById(id)
+            ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
+        val disabled = scheduledPromptService.disable(id)
+        val (sp, content) = scheduledPromptService.findByIdWithContent(disabled.id) ?: (disabled to "")
         return toDto(sp, content)
     }
 
