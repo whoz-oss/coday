@@ -36,19 +36,19 @@ object NextRunCalculator {
     /**
      * Compute the next run instant.
      *
-     * @param sp the scheduled prompt whose [ScheduledPrompt.recurrence] and [ScheduledPrompt.planning] drive the calculation
+     * @param scheduledPrompt the scheduled prompt whose [ScheduledPrompt.recurrence] and [ScheduledPrompt.planning] drive the calculation
      * @param clock source of "now"; defaults to UTC system clock
      * @return UTC instant of the next run
      */
-    fun compute(sp: ScheduledPrompt, clock: Clock = Clock.systemUTC()): Instant {
+    fun compute(scheduledPrompt: ScheduledPrompt, clock: Clock = Clock.systemUTC()): Instant {
         val now = LocalDateTime.now(clock.withZone(ZoneOffset.UTC))
-        val startDateTime = sp.planning.startDate.atTime(sp.recurrence.timeUtc)
+        val startDateTime = scheduledPrompt.planning.startDate.atTime(scheduledPrompt.recurrence.timeUtc)
         // Candidate: earliest point we are allowed to schedule from
         val candidate = if (startDateTime.isAfter(now)) startDateTime else now
 
-        return when (sp.recurrence.unit) {
-            SchedulerUnit.WEEK -> computeWeek(candidate, sp.recurrence, sp.planning)
-            SchedulerUnit.MONTH -> computeMonth(candidate, sp.recurrence, sp.planning)
+        return when (scheduledPrompt.recurrence.unit) {
+            SchedulerUnit.WEEK -> computeWeek(candidate, scheduledPrompt.recurrence, scheduledPrompt.planning)
+            SchedulerUnit.MONTH -> computeMonth(candidate, scheduledPrompt.recurrence, scheduledPrompt.planning)
         }.toInstant(ZoneOffset.UTC)
     }
 

@@ -51,31 +51,31 @@ class SchedulerScanner(
             .forEach { sp -> claim(sp) }
     }
 
-    private fun claim(sp: ScheduledPrompt) {
-        val slot = sp.nextRunAt
-        val correlationId = "sp-${sp.id.toString().take(8)}-${slot.epochSecond}"
+    private fun claim(scheduledPrompt: ScheduledPrompt) {
+        val slot = scheduledPrompt.nextRunAt
+        val correlationId = "sp-${scheduledPrompt.id.toString().take(8)}-${slot.epochSecond}"
 
         // Guard: disable the ScheduledPrompt if its AgentConfig is gone or disabled.
-        val agentConfig = agentConfigService.findById(sp.agentConfigId)
+        val agentConfig = agentConfigService.findById(scheduledPrompt.agentConfigId)
         if (agentConfig == null || !agentConfig.enabled) {
             logger.warn {
-                "[SchedulerScanner] AgentConfig ${sp.agentConfigId} is ${if (agentConfig == null) "deleted" else "disabled"} " +
-                    "— disabling sp=${sp.id} to prevent further zombie ticks"
+                "[SchedulerScanner] AgentConfig ${scheduledPrompt.agentConfigId} is ${if (agentConfig == null) "deleted" else "disabled"} " +
+                    "— disabling sp=${scheduledPrompt.id} to prevent further zombie ticks"
             }
-            scheduledPromptRepository.save(sp.copy(enabled = false))
+            scheduledPromptRepository.save(scheduledPrompt.copy(enabled = false))
             return
         }
 
         val status = when {
-            runRepository.hasActive(sp.id) -> {
-                logger.warn { "[SchedulerScanner] OVERLAP sp=${sp.id} has active run → SKIPPED" }
+            runRepository.hasActive(scheduledPrompt.id) -> {
+                logger.warn { "[SchedulerScanner] OVERLAP sp=${scheduledPrompt.id} has active run → SKIPPED" }
                 RunStatus.SKIPPED
             }
             else -> RunStatus.CLAIMED
         }
 
         val run = ScheduledPromptRun(
-            scheduledPromptId = sp.id,
+            scheduledPromptId = scheduledPrompt.id,
             scheduledFor = slot,
             status = status,
             correlationId = correlationId,
@@ -85,20 +85,20 @@ class SchedulerScanner(
             runRepository.insert(run)
             logger.info { "[SchedulerScanner] Inserted run correlationId=$correlationId status=$status" }
         } catch (e: DuplicateRunException) {
-            logger.info { "[SchedulerScanner] Duplicate slot for sp=${sp.id} slot=$slot — another tick won the race" }
+            logger.info { "[SchedulerScanner] Duplicate slot for sp=${scheduledPrompt.id} slot=$slot — another tick won the race" }
         }
 
         // Always advance nextRunAt — auto-repairing even on duplicate or skip.
-        val nextSlot = NextRunCalculator.nextAfter(sp.recurrence, sp.planning, slot, clock)
-        val advanced = scheduledPromptRepository.advance(sp.id, slot, nextSlot)
+        val nextSlot = NextRunCalculator.nextAfter(scheduledPrompt.recurrence, scheduledPrompt.planning, slot, clock)
+        val advanced = scheduledPromptRepository.advance(scheduledPrompt.id, slot, nextSlot)
         if (advanced) {
-            logger.debug { "[SchedulerScanner] Advanced sp=${sp.id} nextRunAt=$nextSlot" }
+            logger.debug { "[SchedulerScanner] Advanced sp=${scheduledPrompt.id} nextRunAt=$nextSlot" }
         } else {
-            logger.debug { "[SchedulerScanner] CAS miss for sp=${sp.id} (another tick advanced first)" }
+            logger.debug { "[SchedulerScanner] CAS miss for sp=${scheduledPrompt.id} (another tick advanced first)" }
         }
 
         if (status == RunStatus.CLAIMED) {
-            logger.info { "[SchedulerScanner] TODO execute sp=${sp.id} correlationId=$correlationId" }
+            logger.info { "[SchedulerScanner] TODO execute sp=${scheduledPrompt.id} correlationId=$correlationId" }
         }
     }
 

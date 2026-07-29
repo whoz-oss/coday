@@ -203,11 +203,11 @@ class ScheduledPromptServiceImpl(
     /** Prompt name pattern: scheduled--{nameSlug}, truncated to 100 chars. */
     private fun promptName(name: String): String = "scheduled--${name.toSlug()}".take(100)
 
-    private fun layerPriority(sp: ScheduledPrompt): Int =
+    private fun layerPriority(scheduledPrompt: ScheduledPrompt): Int =
         when {
-            sp.namespaceId == null && sp.userId == null -> 0
-            sp.namespaceId == null -> 1
-            sp.userId == null -> 2
+            scheduledPrompt.namespaceId == null && scheduledPrompt.userId == null -> 0
+            scheduledPrompt.namespaceId == null -> 1
+            scheduledPrompt.userId == null -> 2
             else -> 3
         }
 
