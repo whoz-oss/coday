@@ -5,6 +5,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /** Test-only in-memory implementation of [CredentialRepository]. */
+// TODO: Replace with embedded Neo4j test setup to eliminate in-memory test doubles
 class InMemoryCredentialRepository : CredentialRepository {
     private val store = ConcurrentHashMap<UUID, Credential>()
 

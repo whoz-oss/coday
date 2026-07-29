@@ -28,6 +28,12 @@ interface CredentialRepository {
      * Soft-delete all credentials associated with a given [AuthSetting].
      * Called during cascade cleanup when an [AuthSetting] is deleted.
      *
+     * Note: `modifiedBy` is intentionally left null on these cascade-deleted nodes. The
+     * deletion is triggered by an AuthSetting admin removing the setting, not by any
+     * individual credential owner — there is no meaningful per-credential actor identity
+     * to record. Propagating a userId here would require changing this interface and all
+     * call sites for marginal audit value.
+     *
      * @return the number of credentials deleted.
      */
     fun deleteByAuthSettingId(authSettingId: UUID): Int

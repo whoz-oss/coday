@@ -11,9 +11,9 @@ import java.util.UUID
 /**
  * Neo4j-backed implementation of [CredentialRepository].
  *
- * [encryptor] is injected and forwarded to [CredentialNode.toDomain] /
- * [CredentialNode.fromDomain] so that each value in [Credential.data] is
- * individually encrypted at rest.
+ * Encryption is applied to the entire [CredentialNode.dataJson] string as a single unit
+ * before writing, and decryption reverses that on read. This avoids per-field
+ * parse/encrypt/re-serialize overhead and produces a single IV+tag per credential.
  *
  * [deleteByUserAndAuthSetting] and [deleteByAuthSettingId] are soft-deletes:
  * they set `removed = true` on the node rather than physically removing it.
@@ -23,16 +23,21 @@ open class Neo4jCredentialRepository(
     private val encryptor: FieldEncryptor,
     private val objectMapper: ObjectMapper,
 ) : CredentialRepository {
-    override fun save(credential: Credential): Credential =
-        neo4jRepository
-            .save(CredentialNode.fromDomain(credential, encryptor, objectMapper))
-            .toDomain(encryptor, objectMapper)
+    override fun save(credential: Credential): Credential {
+        val node = CredentialNode.fromDomain(credential, objectMapper)
+        val encrypted = node.copy(dataJson = encryptDataJson(node.dataJson))
+        return neo4jRepository
+            .save(encrypted)
+            .let { it.copy(dataJson = decryptDataJson(it.dataJson)) }
+            .toDomain(objectMapper)
             .also { logger.debug { "[Neo4jCredentialRepository] Saved Credential ${it.id} (user=${credential.userId}, authSetting=${credential.authSettingId})" } }
+    }
 
     override fun findByUserAndAuthSetting(userId: UUID, authSettingId: UUID): Credential? =
         neo4jRepository
             .findActiveByUserIdAndAuthSettingId(userId.toString(), authSettingId.toString())
-            ?.toDomain(encryptor, objectMapper)
+            ?.let { it.copy(dataJson = decryptDataJson(it.dataJson)) }
+            ?.toDomain(objectMapper)
 
     @Transactional
     override fun deleteByUserAndAuthSetting(userId: UUID, authSettingId: UUID): Boolean =
@@ -56,7 +61,13 @@ open class Neo4jCredentialRepository(
     override fun findByUserId(userId: UUID): List<Credential> =
         neo4jRepository
             .findActiveByUserId(userId.toString())
-            .map { it.toDomain(encryptor, objectMapper) }
+            .map { it.copy(dataJson = decryptDataJson(it.dataJson)).toDomain(objectMapper) }
+
+    private fun encryptDataJson(dataJson: String?): String? =
+        dataJson?.let { encryptor.encrypt(it) }
+
+    private fun decryptDataJson(dataJson: String?): String? =
+        dataJson?.let { encryptor.decrypt(it) }
 
     companion object : KLogging()
 }

@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration
  * [ENV_KEY] and [ENV_SALT] environment variables (or equivalent Spring properties).
  *
  * Resolution order (env vars take precedence over Spring properties):
- * - Both key and salt resolve to real values  → [SpringFieldEncryptor] (AES-256-GCM)
+ * - Both key and salt resolve to real values → [SpringFieldEncryptor] (AES-256-GCM)
  * - Both key and salt set to `NONE` (case-insensitive) → [NoOpFieldEncryptor] (no encryption, WARN logged)
  * - Any other case → fails fast with [IllegalStateException]
  *
@@ -24,10 +24,10 @@ import org.springframework.context.annotation.Configuration
  *
  * ## Key requirements
  *
- * - `AGENTOS_ENCRYPTION_KEY` must be a **strong random key** (≥ 32 characters),
+ * - [ENV_KEY] must be a **strong random key** (≥ 32 characters),
  *   **not** a human-memorable password. Use a cryptographically random generator,
  *   e.g. `openssl rand -base64 32`.
- * - `AGENTOS_ENCRYPTION_SALT` must be a **hex-encoded string** (≥ 16 hex characters = 8 bytes),
+ * - [ENV_SALT] must be a **hex-encoded string** (≥ 16 hex characters = 8 bytes),
  *   e.g. `openssl rand -hex 16`.
  * - Both can be set to `NONE` (case-insensitive) to **explicitly disable encryption**
  *   for development or testing. This is a conscious opt-out, not a default.
@@ -76,15 +76,20 @@ class FieldEncryptorConfiguration {
                 val detail = when {
                     rawKey == null && rawSalt == null ->
                         "Both $ENV_KEY and $ENV_SALT are absent. " +
-                            "Set them to real values to enable encryption, or to '$NONE_SENTINEL' to explicitly disable it."
+                            "Set them to real values to enable encryption, " +
+                            "or to '$NONE_SENTINEL' to explicitly disable it."
                     rawKey == null ->
-                        "$ENV_KEY is absent but $ENV_SALT is set. Both must be provided together."
+                        "$ENV_KEY is absent but $ENV_SALT is set. " +
+                            "Both must be provided together."
                     rawSalt == null ->
-                        "$ENV_SALT is absent but $ENV_KEY is set. Both must be provided together."
+                        "$ENV_SALT is absent but $ENV_KEY is set. " +
+                            "Both must be provided together."
                     keyIsNone ->
-                        "$ENV_KEY is set to '$NONE_SENTINEL' but $ENV_SALT is a real value. Both must be '$NONE_SENTINEL' to disable encryption."
+                        "$ENV_KEY is set to '$NONE_SENTINEL' but $ENV_SALT is a real value. " +
+                            "Both must be '$NONE_SENTINEL' to disable encryption."
                     else ->
-                        "$ENV_SALT is set to '$NONE_SENTINEL' but $ENV_KEY is a real value. Both must be '$NONE_SENTINEL' to disable encryption."
+                        "$ENV_SALT is set to '$NONE_SENTINEL' but $ENV_KEY is a real value. " +
+                            "Both must be '$NONE_SENTINEL' to disable encryption."
                 }
                 throw IllegalStateException("[Encryption] Misconfiguration: $detail")
             }

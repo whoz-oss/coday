@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.credential.CredentialType
-import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
@@ -17,10 +16,9 @@ import java.util.UUID
  * Uniqueness is on the `(userId, authSettingId)` pair — there is no tripleKey
  * discriminator, because credentials have a simpler identity model than [AuthSetting].
  *
- * [dataJson] stores the [Credential.data] map serialised as JSON. Each value is
- * individually **encrypted** before write and **decrypted** after read using the
- * provided [FieldEncryptor]. Because [CredentialNode] is a plain data class (not a
- * Spring bean), the encryptor is passed explicitly to [toDomain] and [fromDomain].
+ * [dataJson] stores the [Credential.data] map serialised as JSON. Encryption and
+ * decryption of individual values is handled by the caller ([Neo4jCredentialRepository]),
+ * not by this node class. [CredentialNode] is a pure data holder.
  *
  * [credentialType] is stored as its enum name string and round-tripped via
  * [CredentialType.valueOf].
@@ -33,8 +31,8 @@ data class CredentialNode(
     val authSettingId: String,
     val credentialType: String,
     /**
-     * JSON-serialised [Credential.data] map. Each map value is encrypted at rest;
-     * decryption happens in [toDomain] via the caller-supplied [FieldEncryptor].
+     * JSON-serialised [Credential.data] map. Values may be encrypted at rest;
+     * see [Neo4jCredentialRepository] for the encryption/decryption lifecycle.
      */
     val dataJson: String? = null,
     // EntityMetadata fields
@@ -44,10 +42,9 @@ data class CredentialNode(
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
 ) {
-    fun toDomain(encryptor: FieldEncryptor, objectMapper: ObjectMapper): Credential {
+    fun toDomain(objectMapper: ObjectMapper): Credential {
         val rawData: Map<String, String> =
             dataJson?.let { objectMapper.readValue(it, DATA_TYPE) } ?: emptyMap()
-        val decryptedData = rawData.mapValues { (_, v) -> encryptor.decrypt(v) }
         return Credential(
             metadata =
                 EntityMetadata(
@@ -61,7 +58,7 @@ data class CredentialNode(
             userId = UUID.fromString(userId),
             authSettingId = UUID.fromString(authSettingId),
             credentialType = CredentialType.valueOf(credentialType),
-            data = decryptedData,
+            data = rawData,
         )
     }
 
@@ -70,22 +67,19 @@ data class CredentialNode(
 
         fun fromDomain(
             credential: Credential,
-            encryptor: FieldEncryptor,
             objectMapper: ObjectMapper,
-        ): CredentialNode {
-            val encryptedData = credential.data.mapValues { (_, v) -> encryptor.encrypt(v) }
-            return CredentialNode(
+        ): CredentialNode =
+            CredentialNode(
                 id = credential.id.toString(),
                 userId = credential.userId.toString(),
                 authSettingId = credential.authSettingId.toString(),
                 credentialType = credential.credentialType.name,
-                dataJson = encryptedData.takeIf { it.isNotEmpty() }?.let { objectMapper.writeValueAsString(it) },
+                dataJson = credential.data.takeIf { it.isNotEmpty() }?.let { objectMapper.writeValueAsString(it) },
                 created = credential.metadata.created,
                 createdBy = credential.metadata.createdBy,
                 modified = credential.metadata.modified,
                 modifiedBy = credential.metadata.modifiedBy,
                 removed = credential.metadata.removed.takeIf { it },
             )
-        }
     }
 }
