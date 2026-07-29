@@ -1,6 +1,8 @@
 package io.whozoss.agentos.sdk.api.scheduledPrompt
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.validation.constraints.AssertTrue
 import java.util.UUID
 
 /**
@@ -30,4 +32,14 @@ data class ScheduledPromptEffectiveRequest(
     val userExternalId: String? = null,
     @field:Schema(types = ["string", "null"], format = "uuid")
     val agentConfigId: UUID? = null,
-)
+) {
+    @get:AssertTrue(message = "Provide at least one of namespaceId or namespaceExternalId")
+    @get:JsonIgnore
+    val isNamespaceIdentifierProvided: Boolean
+        get() = namespaceId != null || namespaceExternalId != null
+
+    @get:AssertTrue(message = "Provide at least one of userId or userExternalId")
+    @get:JsonIgnore
+    val isUserIdentifierProvided: Boolean
+        get() = userId != null || userExternalId != null
+}
