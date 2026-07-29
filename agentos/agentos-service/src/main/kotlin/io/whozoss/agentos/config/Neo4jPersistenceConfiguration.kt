@@ -16,19 +16,20 @@ import io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseEvent.MessageContentSerializer
 import io.whozoss.agentos.caseEvent.Neo4jCaseEventRepository
-import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
-import io.whozoss.agentos.feedback.FeedbackRepository
-import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
+import io.whozoss.agentos.credential.CredentialNodeNeo4jRepository
+import io.whozoss.agentos.credential.CredentialRepository
+import io.whozoss.agentos.credential.Neo4jCredentialRepository
+import io.whozoss.agentos.encryption.FieldEncryptor
+import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
+import io.whozoss.agentos.feedback.FeedbackRepository
+import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
 import io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
-import io.whozoss.agentos.prompt.Neo4jPromptRepository
-import io.whozoss.agentos.prompt.PromptNodeNeo4jRepository
-import io.whozoss.agentos.prompt.PromptRepository
 import io.whozoss.agentos.namespace.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
@@ -38,6 +39,9 @@ import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRepository
 import io.whozoss.agentos.permissions.StarredRepository
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
+import io.whozoss.agentos.prompt.Neo4jPromptRepository
+import io.whozoss.agentos.prompt.PromptNodeNeo4jRepository
+import io.whozoss.agentos.prompt.PromptRepository
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
@@ -46,12 +50,12 @@ import io.whozoss.agentos.userGroup.UserGroupNodeNeo4jRepository
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
-import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
 import org.springframework.data.neo4j.config.EnableNeo4jAuditing
+import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 
 /**
@@ -90,6 +94,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.prompt",
         "io.whozoss.agentos.userGroup",
+        "io.whozoss.agentos.credential",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -179,6 +184,16 @@ class Neo4jPersistenceConfiguration {
             delegate = neo4jIntegrationConfigRepositoryDelegate,
             namespaceRepository = namespaceRepository,
         )
+    }
+
+    @Bean
+    fun neo4jCredentialRepository(
+        credentialNodeNeo4jRepository: CredentialNodeNeo4jRepository,
+        fieldEncryptor: FieldEncryptor,
+        objectMapper: ObjectMapper,
+    ): CredentialRepository {
+        logger.info { "[Persistence] Neo4jCredentialRepository active" }
+        return Neo4jCredentialRepository(credentialNodeNeo4jRepository, fieldEncryptor, objectMapper)
     }
 
     @Bean
