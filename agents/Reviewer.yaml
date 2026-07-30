@@ -132,3 +132,13 @@ mandatoryDocs:
   - ./agentos/docs/code-style.md
   - ./agentos/README.md
   - ./agentos/agentos-sdk/README.md
+
+docs:
+  - ../docs/to-rework/DEV_WORKFLOW.md
+  - ../docs/to-rework/ARCHITECTURE.md
+  - ../apps/client/docs/angular-guidelines.md
+  - ../apps/client/docs/architecture.md
+  - ../agentos/docs/architecture.md
+  - ../agentos/docs/code-style.md
+  - ../agentos/README.md
+  - ../agentos/agentos-sdk/README.md

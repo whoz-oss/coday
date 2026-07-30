@@ -67,6 +67,14 @@ mandatoryDocs:
   - ./libs/agentos-ui/GUIDELINES.md
   - ./libs/agentos-api-client/GUIDELINES.md
 
+docs:
+  - ../docs/to-rework/DEV_WORKFLOW.md
+  - ../apps/client/docs/*
+  - ../libs/
+  - ../libs/design-system/GUIDELINES.md
+  - ../libs/agentos-ui/GUIDELINES.md
+  - ../libs/agentos-api-client/GUIDELINES.md
+
 subAgents:
   - Nxay
   - Searchay
