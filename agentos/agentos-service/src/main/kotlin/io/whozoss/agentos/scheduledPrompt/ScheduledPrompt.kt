@@ -49,7 +49,8 @@ data class Planning(
 // ---------------------------------------------------------------------------
 
 /**
- * A declarative, quasi-immutable definition of a scheduled prompt.
+ * Declares a periodic prompt run: which agent to invoke, on what recurrence, within
+ * what planning window.
  *
  * ### Scope model
  *
