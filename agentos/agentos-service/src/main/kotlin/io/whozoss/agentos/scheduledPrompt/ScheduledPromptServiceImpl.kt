@@ -53,7 +53,7 @@ class ScheduledPromptServiceImpl(
     override fun create(entity: ScheduledPrompt): ScheduledPrompt {
         val agentConfig = agentConfigService.findById(entity.agentConfigId)
             ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
-        if (agentConfig.metadata.version == null) {
+        if (agentConfig.isFilesystemOnly) {
             throw UnprocessableEntityException(
                 "AgentConfig id=${entity.agentConfigId} is a filesystem-only agent and cannot be linked to a ScheduledPrompt",
             )

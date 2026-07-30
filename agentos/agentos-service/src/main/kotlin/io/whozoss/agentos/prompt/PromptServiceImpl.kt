@@ -35,9 +35,7 @@ class PromptServiceImpl(
         if (entity.agentConfigId != null) {
             val agentConfig = agentConfigService.findById(entity.agentConfigId)
                 ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
-            if (agentConfig.metadata.version == null) {
-                // version is null for entities that have never been persisted in Neo4j
-                // (filesystem agents are built in-memory and never go through SDN save).
+            if (agentConfig.isFilesystemOnly) {
                 throw UnprocessableEntityException(
                     "AgentConfig id=${entity.agentConfigId} is a filesystem-only agent and cannot be linked to a prompt",
                 )
