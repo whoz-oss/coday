@@ -153,7 +153,14 @@ class AgentServiceImplUnitSpec : StringSpec() {
     )
 
     init {
-        every { toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any(), credentialProviderFactory = any()) } returns
+        every {
+            toolResolverService.resolveToolsForRun(
+                agentIntegrations = any(),
+                context = any(),
+                allIntegrationConfigs = any(),
+                credentialProviderFactory = any(),
+            )
+        } returns
             emptyList()
         // dedupToolsByName is the shared collision-reconciler; identity is fine (no collisions in these tests).
         every { toolResolverService.dedupToolsByName(any()) } answers { firstArg() }
@@ -420,6 +427,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     objectMapper = testObjectMapper,
                     toolRegistryService = toolRegistryService,
                     toolMetricsService = toolMetricsService,
+                    oAuthFlowService = oAuthFlowService,
                     caseEventService = caseEventService,
                     authServiceFactory = authServiceFactory,
                     exchangeStorageService = exchangeStorageService,

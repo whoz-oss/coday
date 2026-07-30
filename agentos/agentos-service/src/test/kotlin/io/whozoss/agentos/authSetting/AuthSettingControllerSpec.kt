@@ -11,6 +11,14 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.whozoss.agentos.authSetting.ApiKeyAuthSettingDto
+import io.whozoss.agentos.authSetting.AuthSetting
+import io.whozoss.agentos.authSetting.AuthSettingDto
+import io.whozoss.agentos.authSetting.AuthType
+import io.whozoss.agentos.authSetting.OAuthDiscoverableAuthSettingDto
+import io.whozoss.agentos.authSetting.OAuthMcpDiscoverableAuthSettingDto
+import io.whozoss.agentos.authSetting.authSettingFromDataMap
+import io.whozoss.agentos.authSetting.toDataMap
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
@@ -18,21 +26,15 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.sdk.authSetting.AuthSetting
-import io.whozoss.agentos.sdk.authSetting.AuthType
-import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
-import io.whozoss.agentos.sdk.authSetting.toDataMap
-import io.whozoss.agentos.sdk.api.authSetting.AuthSettingDto
-import io.whozoss.agentos.sdk.api.authSetting.OAuthDiscoverableAuthSettingDto
-import io.whozoss.agentos.sdk.api.authSetting.OAuthMcpDiscoverableAuthSettingDto
-import io.whozoss.agentos.sdk.api.authSetting.ApiKeyAuthSettingDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import org.glassfish.jersey.internal.inject.Bindings.service
 import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.server.ResponseStatusException
+import org.springframework.web.servlet.mvc.method.annotation.MvcUriComponentsBuilder.controller
 import java.util.UUID
 
 // Convenience accessor so domain-entity assertions stay map-based.
@@ -128,7 +130,9 @@ class AuthSettingControllerSpec :
                         authType = authType,
                         apiKey = data?.get("apiKey"),
                     )
-                AuthType.OAUTH_MCP_DISCOVERABLE ->
+                }
+
+                AuthType.OAUTH_MCP_DISCOVERABLE -> {
                     OAuthMcpDiscoverableAuthSettingDto(
                         id = id,
                         namespaceId = nsId,
@@ -140,7 +144,9 @@ class AuthSettingControllerSpec :
                         clientSecret = data?.get("clientSecret"),
                         scopes = data?.get("scopes"),
                     )
-                else ->
+                }
+
+                else -> {
                     OAuthDiscoverableAuthSettingDto(
                         id = id,
                         namespaceId = nsId,
@@ -583,14 +589,16 @@ class AuthSettingControllerSpec :
         // -------------------------------------------------------------------------
 
         "toDto masks clientSecret for OAUTH_MCP_DISCOVERABLE" {
-            val s = setting(
-                authType = AuthType.OAUTH_MCP_DISCOVERABLE,
-                data = mapOf(
-                    "resourceUrl" to "https://mcp.example.com/sse",
-                    "clientId" to "my-client-id",
-                    "clientSecret" to "sk-secret-abcdefghijklmnop",
-                ),
-            )
+            val s =
+                setting(
+                    authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+                    data =
+                        mapOf(
+                            "resourceUrl" to "https://mcp.example.com/sse",
+                            "clientId" to "my-client-id",
+                            "clientSecret" to "sk-secret-abcdefghijklmnop",
+                        ),
+                )
             val dto = toDto(s) as OAuthMcpDiscoverableAuthSettingDto
 
             // clientSecret is sensitive — must be masked
@@ -602,14 +610,15 @@ class AuthSettingControllerSpec :
         }
 
         "dtoToDataMap correctly maps OAuthMcpDiscoverableAuthSettingDto" {
-            val dto = OAuthMcpDiscoverableAuthSettingDto(
-                namespaceId = namespaceId,
-                name = "mcp-setting",
-                resourceUrl = "https://mcp.example.com",
-                clientId = "my-client",
-                clientSecret = "my-secret",
-                scopes = "read write",
-            )
+            val dto =
+                OAuthMcpDiscoverableAuthSettingDto(
+                    namespaceId = namespaceId,
+                    name = "mcp-setting",
+                    resourceUrl = "https://mcp.example.com",
+                    clientId = "my-client",
+                    clientSecret = "my-secret",
+                    scopes = "read write",
+                )
             val map = dtoToDataMap(dto)
 
             map["resourceUrl"] shouldBe "https://mcp.example.com"
@@ -639,7 +648,7 @@ class AuthSettingControllerSpec :
                         name = "mcp-setting",
                         authType = AuthType.OAUTH_MCP_DISCOVERABLE,
                         data = mapOf("resourceUrl" to "https://mcp.example.com"),
-                    )
+                    ),
                 )
             }
 
@@ -648,27 +657,31 @@ class AuthSettingControllerSpec :
         }
 
         "update works with OAUTH_MCP_DISCOVERABLE and preserves masked clientSecret" {
-            val existing = setting(
-                authType = AuthType.OAUTH_MCP_DISCOVERABLE,
-                data = mapOf(
-                    "resourceUrl" to "https://mcp.example.com",
-                    "clientSecret" to "real-secret-value-12345",
-                ),
-            )
+            val existing =
+                setting(
+                    authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+                    data =
+                        mapOf(
+                            "resourceUrl" to "https://mcp.example.com",
+                            "clientSecret" to "real-secret-value-12345",
+                        ),
+                )
             val captured = slot<AuthSetting>()
             every { service.findById(existing.metadata.id) } returns existing
             every { service.update(capture(captured)) } answers { firstArg() }
 
             controller.update(
                 id = existing.metadata.id,
-                resource = resource(
-                    id = existing.metadata.id,
-                    authType = AuthType.OAUTH_MCP_DISCOVERABLE,
-                    data = mapOf(
-                        "resourceUrl" to "https://mcp.example.com",
-                        "clientSecret" to "re-a****345",  // masked sentinel
+                resource =
+                    resource(
+                        id = existing.metadata.id,
+                        authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+                        data =
+                            mapOf(
+                                "resourceUrl" to "https://mcp.example.com",
+                                "clientSecret" to "re-a****345", // masked sentinel
+                            ),
                     ),
-                ),
             )
 
             captured.captured.toDataMap()["clientSecret"] shouldBe "real-secret-value-12345"
