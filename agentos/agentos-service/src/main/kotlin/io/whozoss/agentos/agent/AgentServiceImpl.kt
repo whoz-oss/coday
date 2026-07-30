@@ -8,6 +8,7 @@ import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.auth.OAuthFlowService
+import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
@@ -27,7 +28,6 @@ import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.auth.CredentialProvider
-import io.whozoss.agentos.sdk.authSetting.AuthType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -275,11 +275,15 @@ class AgentServiceImpl(
                                     "falling back to direct lookup"
                             }
                         } else {
-                            logger.debug { "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, using direct credential lookup" }
+                            logger.debug {
+                                "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, using direct credential lookup"
+                            }
                         }
                         val credential = svc.resolveCredential(setting.metadata.id)
                         if (credential == null) {
-                            logger.warn { "CredentialProvider for '$authSettingName': no credential found for authSetting ${setting.metadata.id}" }
+                            logger.warn {
+                                "CredentialProvider for '$authSettingName': no credential found for authSetting ${setting.metadata.id}"
+                            }
                         } else {
                             logger.debug { "CredentialProvider for '$authSettingName': direct credential resolved" }
                         }
