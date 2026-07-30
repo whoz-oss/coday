@@ -20,7 +20,6 @@ import { catchError, debounceTime, firstValueFrom, map, of, Subject, switchMap }
 import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
-import { UserStateService } from '../../services/user-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
@@ -57,7 +56,6 @@ export class CaseHomeComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly promptState = inject(PromptStateService)
-  private readonly userState = inject(UserStateService)
   /** Nom du namespace actif — passé par CaseShellComponent */
   readonly namespaceName = input<string | null>(null)
   private readonly exchangeState = inject(ExchangeStateService)
@@ -131,9 +129,7 @@ export class CaseHomeComponent implements OnInit {
         switchMap((prefix) => {
           const source$ = this.promptsLoaded
             ? of(this.effectivePrompts)
-            : this.promptState
-                .listEffective(this.namespaceId, this.userState.currentUser()?.id ?? '')
-                .pipe(catchError(() => of([] as Prompt[])))
+            : this.promptState.listEffective(this.namespaceId).pipe(catchError(() => of([] as Prompt[])))
           return source$.pipe(map((prompts) => ({ prefix, prompts })))
         }),
         takeUntilDestroyed(this.destroyRef)

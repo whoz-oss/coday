@@ -54,14 +54,15 @@ export class PromptStateService {
    * Returns the effective (merged) prompt list for a namespace+user context.
    * Used for slash-command autocomplete in the chat composer.
    *
+   * The user overlay layer is resolved server-side from the authenticated caller —
+   * there is no user id to supply here (accepting one would be an impersonation vector).
+   *
    * @param namespaceId  The namespace to resolve prompts for.
-   * @param userId       The current user's AgentOS UUID.
    * @param agentConfigId  Optional filter — only prompts linked to this agent.
    */
-  listEffective(namespaceId: string, userId: string, agentConfigId?: string): Observable<Prompt[]> {
+  listEffective(namespaceId: string, agentConfigId?: string): Observable<Prompt[]> {
     return this.promptController.effectivePrompt({
       namespaceId,
-      userId,
       ...(agentConfigId ? { agentConfigId } : {}),
     })
   }
