@@ -2049,7 +2049,7 @@ paths:
         \ user-global and user×namespace layers by name, highest-priority layer wins.\
         \ Optional `agentConfigId` filter applied post-resolution. Requires READ on\
         \ the namespace."
-      operationId: effectivePrompt
+      operationId: resolveEffectivePrompt
       requestBody:
         content:
           application/json:
@@ -2197,7 +2197,7 @@ paths:
       - scheduled-prompt-controller
   /api/scheduled-prompts/effective:
     post:
-      operationId: effectiveScheduledPrompt
+      operationId: resolveEffectiveScheduledPrompt
       requestBody:
         content:
           application/json:

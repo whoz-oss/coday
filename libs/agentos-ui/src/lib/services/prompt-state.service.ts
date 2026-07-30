@@ -61,7 +61,7 @@ export class PromptStateService {
    * @param agentConfigId  Optional filter — only prompts linked to this agent.
    */
   listEffective(namespaceId: string, agentConfigId?: string): Observable<Prompt[]> {
-    return this.promptController.effectivePrompt({
+    return this.promptController.resolveEffectivePrompt({
       namespaceId,
       ...(agentConfigId ? { agentConfigId } : {}),
     })

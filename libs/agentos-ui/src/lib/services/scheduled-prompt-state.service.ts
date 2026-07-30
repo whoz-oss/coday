@@ -53,7 +53,7 @@ export class ScheduledPromptStateService {
    * Merges platform, namespace-shared, user-global and user×namespace layers by name.
    */
   listEffective(request: ScheduledPromptEffectiveRequest): Observable<ScheduledPrompt[]> {
-    return this.api.effectiveScheduledPrompt(request)
+    return this.api.resolveEffectiveScheduledPrompt(request)
   }
 
   create(payload: ScheduledPrompt): Observable<ScheduledPrompt> {
