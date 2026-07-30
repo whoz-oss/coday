@@ -362,5 +362,44 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
 
             userGroupRepo.findMembers(g.id).map { it.externalId } shouldBe listOf("bob@example.com")
         }
+
+        "removeUserFromAllGroups unlinks the user from every group across all namespaces, whatever their role" {
+            val ns1 = namespaceRepo.save(namespace())
+            val ns2 = namespaceRepo.save(namespace())
+            val g1 = userGroupRepo.save(userGroup(ns1.id, "Group 1"))
+            val g2 = userGroupRepo.save(userGroup(ns2.id, "Group 2"))
+            val alice = userRepo.save(user("alice@example.com"))
+            userGroupRepo.addUsers(g1.id, listOf("alice@example.com"))
+            userGroupRepo.addUsers(g2.id, listOf("alice@example.com"))
+            grantAdmin(g1.id, alice)
+
+            userGroupRepo.removeUserFromAllGroups("alice@example.com")
+
+            userGroupRepo.findMembers(g1.id).shouldBeEmpty()
+            userGroupRepo.findMembers(g2.id).shouldBeEmpty()
+        }
+
+        "removeUserFromAllGroups does not affect other users' membership in the same groups" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Group"))
+            userRepo.save(user("alice@example.com"))
+            userRepo.save(user("bob@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
+
+            userGroupRepo.removeUserFromAllGroups("alice@example.com")
+
+            userGroupRepo.findMembers(g.id).map { it.externalId } shouldBe listOf("bob@example.com")
+        }
+
+        "removeUserFromAllGroups is a no-op for a user with no group membership" {
+            val ns = namespaceRepo.save(namespace())
+            val g = userGroupRepo.save(userGroup(ns.id, "Group"))
+            userRepo.save(user("bob@example.com"))
+            userGroupRepo.addUsers(g.id, listOf("bob@example.com"))
+
+            userGroupRepo.removeUserFromAllGroups("nobody@example.com")
+
+            userGroupRepo.findMembers(g.id).map { it.externalId } shouldBe listOf("bob@example.com")
+        }
     }
 }

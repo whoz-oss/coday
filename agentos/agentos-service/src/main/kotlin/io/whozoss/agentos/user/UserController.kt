@@ -46,6 +46,7 @@ class UserController(
     private val userService: UserService,
     permissionService: PermissionService,
     private val userGroupService: UserGroupService,
+    private val userOffboardingService: UserOffboardingService,
 ) : UserApi {
     private val crud =
         EntityCrudDelegate(
@@ -125,6 +126,14 @@ class UserController(
     override fun delete(
         @PathVariable id: UUID,
     ) = crud.delete(id)
+
+    @DeleteMapping("/{id}/access")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Revoke all UserGroup and Namespace access for this user, platform-wide")
+    override fun revokeAllAccess(
+        @PathVariable id: UUID,
+    ) = userOffboardingService.revokeAllAccess(id)
 
     @GetMapping("/me")
     @ResponseStatus(HttpStatus.OK)

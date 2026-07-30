@@ -12,12 +12,11 @@ import java.util.UUID
  * routing annotations. AgentOS does not prescribe the client technology or configuration.
  *
  * Authorization summary (enforced server-side):
- * - [listAll], [create], [delete], [getByIds], [listByExternalIds]: SUPER_ADMIN only
+ * - [listAll], [create], [delete], [getByIds], [listByExternalIds], [revokeAllAccess]: SUPER_ADMIN only
  * - [getById], [update]: SUPER_ADMIN or self (caller's own UUID)
  * - [getMe], [getGroupsByExternalIds]: any authenticated user
  */
 interface UserApi : EntityCrudApi<UserDto> {
-
     /** GET /api/users — list all users. SUPER_ADMIN only. */
     fun listAll(): List<UserDto>
 
@@ -34,8 +33,18 @@ interface UserApi : EntityCrudApi<UserDto> {
     /**
      * POST /api/users/groups-by-external-ids — return groups per user, scoped to a namespace.
      *
+     *
      * Returns a map from external ID to the list of groups the user belongs to within the
      * requested namespace. Results are filtered to groups visible to the caller.
      */
     fun getGroupsByExternalIds(request: GroupsByExternalIdsRequest): Map<String, List<UserGroupSummary>>
+
+    /**
+     * DELETE /api/users/{id}/access — platform-wide offboarding. SUPER_ADMIN only.
+     *
+     * Revokes every UserGroup and Namespace relation held by [id], across all namespaces.
+     * Does not delete the user itself. Idempotent: a user with no remaining relations is a no-op.
+     * Returns 404 if [id] does not resolve to a user.
+     */
+    fun revokeAllAccess(id: UUID)
 }

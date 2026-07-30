@@ -138,6 +138,10 @@ open class Neo4jUserGroupRepository(
         neo4jRepository.removeUsers(userGroupId.toString(), userExternalIds.toList())
     }
 
+    override fun removeUserFromAllGroups(userExternalId: String) {
+        neo4jRepository.removeUserFromAllGroups(userExternalId)
+    }
+
     /**
      * Returns groups for the given user external IDs, optionally scoped to a namespace.
      * Both `[:MEMBER]` and `[:ADMIN]` links count as membership, so a group admin is still

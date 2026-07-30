@@ -2878,6 +2878,22 @@ paths:
           description: OK
       tags:
       - user-controller
+  /api/users/{id}/access:
+    delete:
+      operationId: revokeAllAccessUser
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      summary: "Revoke all UserGroup and Namespace access for this user, platform-wide"
+      tags:
+      - user-controller
 components:
   schemas:
     Actor:
