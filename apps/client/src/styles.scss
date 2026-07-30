@@ -27,7 +27,9 @@ select {
 html {
   color-scheme: light;
 
-  &[data-theme='dark'] {
+  &[data-theme='dark'],
+  &[data-theme='industry-dark'],
+  &[data-theme='terminal-dark'] {
     color-scheme: dark;
   }
 
@@ -60,7 +62,7 @@ body {
 body {
   background: var(--color-bg);
   color: var(--color-text);
-  font-family: var(--font-body);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   transition:
     background 0.3s ease,
     color 0.3s ease;
@@ -236,12 +238,11 @@ body {
   }
 }
 
-/* ─── Blueprint pattern — global corner styles ─────────────────────────────
- * Used by the ds-blueprint directive and any component that renders
- * .blueprint-corner.[tl|tr|bl|br] children.
- * The host element must be position: relative.
+/* ─── agentos-ui — animations (global keyframes, cannot be scoped in standard CSS) ──
+ * These keyframes are used exclusively by agentos-ui components.
+ * Keyframes cannot be scoped under a selector in standard CSS,
+ * so they remain global but use prefixed names to avoid conflicts.
  */
-/* cd-slidein — mobile drawer slide-in animation (shell-case-switcher-mobile) */
 @keyframes cd-slidein {
   from {
     transform: translateX(-100%);
@@ -251,7 +252,6 @@ body {
   }
 }
 
-/* cd-spin — RUNNING status glyph rotation */
 @keyframes cd-spin {
   from {
     transform: rotate(0deg);
@@ -261,7 +261,6 @@ body {
   }
 }
 
-/* cd-pulse — PENDING status glyph + typing dots */
 @keyframes cd-pulse {
   0%,
   100% {
@@ -274,7 +273,6 @@ body {
   }
 }
 
-/* Autocomplete dropdown animation — shared by case-chat and case-home */
 @keyframes autocomplete-in {
   from {
     opacity: 0;
@@ -286,127 +284,130 @@ body {
   }
 }
 
-.blueprint-corner {
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  border-color: var(--color-accent);
-  border-style: solid;
-  pointer-events: none;
-
-  &.tl {
-    top: -1px;
-    left: -1px;
-    border-width: 1.5px 0 0 1.5px;
-  }
-  &.tr {
-    top: -1px;
-    right: -1px;
-    border-width: 1.5px 1.5px 0 0;
-  }
-  &.bl {
-    bottom: -1px;
-    left: -1px;
-    border-width: 0 0 1.5px 1.5px;
-  }
-  &.br {
-    bottom: -1px;
-    right: -1px;
-    border-width: 0 1.5px 1.5px 0;
-  }
-}
-
-/* ─── Global utility classes — maquette design system ──────────────────────
- * Used throughout agentos-ui components as shared primitives.
- * All values use CSS tokens — no hardcoded colors or dimensions.
+/* ─── agentos-ui — scoped utilities and components ─────────────────────────────
+ * These rules apply only inside agentos-shell
+ * (the root component of libs/agentos-ui, mounted at /agentos).
+ * They do not affect the legacy apps/client app.
  */
-
-/* Base button reset */
-.btn {
-  appearance: none;
-  margin: 0;
-  font: inherit;
-  cursor: pointer;
-  text-align: center;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0;
-}
-
-/* Primary button */
-.btn-primary {
-  background: var(--color-accent);
-  color: var(--color-text-inverse);
-  border: 1px solid var(--color-accent);
-  font-family: var(--font-heading);
-  font-weight: 600;
-  font-size: 15px;
-  letter-spacing: 0.04em;
-  padding: 0 14px;
-  height: 34px;
-  gap: 7px;
-
-  &:hover {
-    background: var(--color-accent-700);
-    border-color: var(--color-accent-700);
-  }
-
-  &:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
-}
-
-/* Icon-only variant — square, no horizontal padding */
-.btn-icon {
-  padding: 0;
-  width: 32px;
-}
-
-/* Input */
-.input {
-  width: 100%;
-  border: 1px solid var(--color-divider);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-family: var(--font-body);
-  font-size: 15px;
-  padding: 0 10px;
-  min-height: 34px;
-  outline: none;
-  border-radius: 0;
-  box-sizing: border-box;
-
-  &:focus {
+agentos-shell {
+  /* Blueprint corner decorations — used by the dsBlueprint directive */
+  .blueprint-corner {
+    position: absolute;
+    width: 8px;
+    height: 8px;
     border-color: var(--color-accent);
+    border-style: solid;
+    pointer-events: none;
+
+    &.tl {
+      top: -1px;
+      left: -1px;
+      border-width: 1.5px 0 0 1.5px;
+    }
+    &.tr {
+      top: -1px;
+      right: -1px;
+      border-width: 1.5px 1.5px 0 0;
+    }
+    &.bl {
+      bottom: -1px;
+      left: -1px;
+      border-width: 0 0 1.5px 1.5px;
+    }
+    &.br {
+      bottom: -1px;
+      right: -1px;
+      border-width: 0 1.5px 1.5px 0;
+    }
   }
 
-  &::placeholder {
-    color: var(--color-neutral-500);
+  /* Base button reset — agentos-ui only */
+  .btn {
+    appearance: none;
+    margin: 0;
+    font: inherit;
+    cursor: pointer;
+    text-align: center;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0;
   }
-}
 
-/* Tag — base */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-family: var(--font-heading);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  border-radius: 0;
-}
+  /* Primary button — agentos-ui only */
+  .btn-primary {
+    background: var(--color-accent);
+    color: var(--color-text-inverse);
+    border: 1px solid var(--color-accent);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    padding: 0 14px;
+    height: 34px;
+    gap: 7px;
 
-/* Tag neutral variant */
-.tag-neutral {
-  border: 1px solid var(--color-divider);
-  color: var(--color-neutral-600);
+    &:hover {
+      background: var(--color-accent-700);
+      border-color: var(--color-accent-700);
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  }
+
+  /* Icon-only variant — square, no horizontal padding */
+  .btn-icon {
+    padding: 0;
+    width: 32px;
+  }
+
+  /* Input — agentos-ui design system */
+  .input {
+    width: 100%;
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    padding: 0 10px;
+    min-height: 34px;
+    outline: none;
+    border-radius: 0;
+    box-sizing: border-box;
+
+    &:focus {
+      border-color: var(--color-accent);
+    }
+
+    &::placeholder {
+      color: var(--color-neutral-500);
+    }
+  }
+
+  /* Tag — base */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-radius: 0;
+  }
+
+  /* Tag neutral variant — muted border + secondary text */
+  .tag-neutral {
+    border: 1px solid var(--color-divider);
+    color: var(--color-neutral-600);
+  }
 }
 
 /* Global Sidenav Styles */
@@ -490,7 +491,7 @@ app-main {
   }
 }
 
-/* Dark mode snackbar styles */
+/* Dark mode snackbar styles — legacy app (data-theme='dark') + agentos-ui dark variants */
 [data-theme='dark'],
 [data-theme^='industry-dark'],
 [data-theme^='terminal-dark'] {
@@ -521,37 +522,40 @@ mat-slide-toggle {
   transform-origin: right center;
 }
 
-/* ─── Terminal theme — règles structurelles ──────────────────────────────────────────
- * Ces règles s'appliquent sur les deux modes terminal-light et terminal-dark.
+/* ─── Terminal theme — structural rules (scoped under agentos-shell) ───────────
+ * These rules apply to both terminal-light and terminal-dark modes.
+ * Scoped to avoid affecting the legacy apps/client app.
  */
-[data-theme^='terminal'] {
-  /* Coins blueprint masqués */
-  .blueprint-corner {
-    display: none;
-  }
-
-  /* Tags style terminal : [contenu] via pseudo-éléments */
-  .tag {
-    background: transparent;
-    border: none;
-    padding: 0;
-
-    &::before {
-      content: '[';
+agentos-shell {
+  /* Terminal: hide blueprint corner decorations */
+  &[data-theme^='terminal'],
+  :is([data-theme^='terminal']) & {
+    .blueprint-corner {
+      display: none;
     }
-    &::after {
-      content: ']';
+
+    .tag {
+      background: transparent;
+      border: none;
+      padding: 0;
+
+      &::before {
+        content: '[';
+      }
+      &::after {
+        content: ']';
+      }
     }
   }
 }
 
-/* Liens — terminal dark : ambre vif sur fond quasi-noir */
-[data-theme='terminal-dark'] a {
+/* Links — terminal dark: bright amber on near-black background, scoped to agentos-shell */
+:is([data-theme='terminal-dark']) agentos-shell a {
   color: var(--color-link) !important;
 }
 
-/* Scanlines CRT — terminal dark uniquement */
-[data-theme='terminal-dark']::after {
+/* CRT scanlines overlay — terminal dark only, scoped under agentos-shell */
+:is([data-theme='terminal-dark']) agentos-shell::after {
   content: '';
   position: fixed;
   inset: 0;
@@ -566,22 +570,26 @@ mat-slide-toggle {
   );
 }
 
-/* ds-kebab-menu — panel styles for CDK overlay (mat-menu rendered outside component scope) */
+/* ds-kebab-menu — panel styles for CDK overlay (mat-menu rendered outside component scope).
+ * CDK overlay panels are rendered inside .cdk-overlay-container, outside agentos-shell.
+ * We target them via the .ds-kebab-panel class, which is exclusive to agentos-ui.
+ * These tokens use the Industry values defined in agentos-shell — they work because the CDK
+ * overlay inherits custom properties from the document, and agentos-shell defines them as a
+ * descendant. In practice these panels are only ever opened from within agentos-ui.
+ */
 .ds-kebab-panel {
-  /* Override Material MDC internal tokens */
-  --mat-menu-container-color: var(--color-surface);
-  --mat-menu-container-shape: 0px; // carré — aligné design system
-  --mat-menu-item-label-text-color: var(--color-text);
-  --mat-menu-item-label-text-font: var(--font-body); // force Barlow, écrase Roboto
+  --mat-menu-container-color: var(--color-surface, #dcdcde);
+  --mat-menu-container-shape: 0px;
+  --mat-menu-item-label-text-color: var(--color-text, #1d1f20);
+  --mat-menu-item-label-text-font: var(--font-body, 'Barlow', system-ui, sans-serif);
   --mat-menu-item-label-text-size: 15px;
   --mat-menu-item-label-text-weight: 500;
-  --mat-menu-item-hover-state-layer-color: var(--color-bg-hover);
-  --mat-menu-item-focus-state-layer-color: var(--color-bg-hover);
+  --mat-menu-item-hover-state-layer-color: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
+  --mat-menu-item-focus-state-layer-color: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
 
-  /* Border + shadow — aligné sur --color-divider et --shadow-lg */
   &.mat-mdc-menu-panel {
-    border: 1px solid var(--color-divider);
-    box-shadow: var(--shadow-lg) !important;
+    border: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+    box-shadow: var(--shadow-lg, 0 10px 25px rgba(0, 0, 0, 0.1)) !important;
     min-width: 160px;
   }
 
@@ -589,27 +597,24 @@ mat-slide-toggle {
     padding: 5px !important;
   }
 
-  /* Items — carré, padding aligné maquette */
   .mat-mdc-menu-item {
     border-radius: 0;
     min-height: 36px;
     padding: 0 10px;
-    font-family: var(--font-body) !important; // fallback si MDC ignore le token
+    font-family: var(--font-body, 'Barlow', system-ui, sans-serif) !important;
 
-    /* Danger variant — aligné sur var(--red) */
     &[data-variant='danger'] {
-      --mat-menu-item-label-text-color: var(--red);
-      --mat-menu-item-hover-state-layer-color: color-mix(in srgb, var(--red) 10%, transparent);
+      --mat-menu-item-label-text-color: var(--red, #ec3013);
+      --mat-menu-item-hover-state-layer-color: color-mix(in srgb, var(--red, #ec3013) 10%, transparent);
 
       .mat-icon {
-        color: var(--red);
+        color: var(--red, #ec3013);
       }
     }
   }
 
-  /* Divider — aligné sur --color-divider */
   .mat-divider {
     margin: 4px 0;
-    border-color: var(--color-divider);
+    border-color: var(--color-divider, rgba(29, 31, 32, 0.16));
   }
 }
