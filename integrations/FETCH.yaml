@@ -15,8 +15,11 @@
 name: "FETCH"
 integrationType: "MCP_STDIO"
 parameters:
-  command: "npx"
+  command: "uvx"
   args:
+  # temporary fix because of the recent mcp package evolution to cover MCP spec change in v2
+  - "--with"
+  - "mcp<2"
   - "mcp-server-fetch"
   - "--ignore-robots-txt"
   env: ""
