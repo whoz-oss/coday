@@ -1,0 +1,12 @@
+/**
+ * Typography tokens — agentos-ui design system
+ *
+ * --font-body    : Barlow (UI text, labels, paragraphs)
+ * --font-heading : IBM Plex Mono (headings, monospace, code, tags)
+ *
+ * These tokens are scoped under agentos-shell to avoid overriding the legacy
+ * apps/client font stack (SF Pro via Angular Material).
+ *
+ * The actual token definitions live in colors.scss under the agentos-shell selector.
+ * This file is kept for documentation purposes.
+ */

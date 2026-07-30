@@ -8,6 +8,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -87,7 +88,12 @@ class ToolResolverServiceSpec :
             val pluginManager = mockk<PluginManager>(relaxed = true)
             every { pluginManager.getExtensions(ToolPlugin::class.java) } returns plugins
             every { pluginManager.whichPlugin(any()) } returns null
-            val registry = ToolRegistryService(pluginManager, mockk<IntegrationTypeRegistry>(relaxed = true))
+            val registry =
+                ToolRegistryService(
+                    pluginManager,
+                    mockk<IntegrationTypeRegistry>(relaxed = true),
+                    ExchangeToolsConfigProperties(),
+                )
             registry.initialize()
             return registry
         }

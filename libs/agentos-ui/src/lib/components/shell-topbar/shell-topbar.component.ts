@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core'
 import { Router } from '@angular/router'
-import { THEME_PORT } from '../../services/theme.service'
+import { THEME_PORT, ThemeMode } from '../../services/theme.service'
 import { UserStateService } from '../../services/user-state.service'
 import { ShellUserMenuComponent } from '../case-shell/shell-user-menu/shell-user-menu.component'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
@@ -33,11 +33,15 @@ export class ShellTopbarComponent {
   protected readonly isAdmin = computed(() => this.userState.currentUser()?.isAdmin === true)
 
   protected readonly isDark = computed(() => {
-    const t = this.themePort.theme()
-    if (t === 'dark') return true
-    if (t === 'light') return false
-    return typeof document !== 'undefined' && document.documentElement.hasAttribute('data-theme')
+    const { mode } = this.themePort.theme()
+    if (mode === 'dark') return true
+    if (mode === 'light') return false
+    return (
+      typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')?.includes('dark') === true
+    )
   })
+
+  protected readonly themeVariant = computed(() => this.themePort.theme().variant)
 
   protected readonly userInitials = computed(() => {
     const user = this.userState.currentUser()
@@ -72,8 +76,14 @@ export class ShellTopbarComponent {
 
   protected onThemeToggle(): void {
     this.menuOpen.set(false)
-    const next = this.isDark() ? 'light' : 'dark'
-    this.themePort.setTheme(next as any)
+    const next: ThemeMode = this.isDark() ? 'light' : 'dark'
+    this.themePort.setTheme({ variant: this.themePort.theme().variant, mode: next })
+  }
+
+  protected onThemeVariantChanged(variant: string): void {
+    this.menuOpen.set(false)
+    const current = this.themePort.theme()
+    this.themePort.setTheme({ variant: variant as any, mode: current.mode })
   }
 
   protected onLogsToggle(): void {

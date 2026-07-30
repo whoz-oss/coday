@@ -15,11 +15,14 @@ import java.util.UUID
  * by an AiProvider — resolution is deferred to the runtime layer.
  *
  * [integrations] is an optional map from integration name to an optional list of
- * allowed tool names. When null, the agent receives all tools available in the
- * namespace (no filtering). When set, only tools whose integration key matches an
- * entry in this map are given to the agent. A null list for a given key means all
- * tools from that integration are allowed; a non-null list restricts to exactly
- * those tool names (or suffixes for multi-instance tools named `CONFIG__tool`).
+ * allowed tool names. The map is what the agent declares, key by key: a plugin
+ * integration contributes tools only when its name appears as an entry, so a null
+ * map binds none of them at all. The two built-in exchange keys are the exception,
+ * and they are decided per key rather than per map: an absent key defers to the
+ * platform default (see the property KDoc below), whether the rest of the map is
+ * set or not. A null list for a given key means all tools from that integration are
+ * allowed; a non-null list restricts to exactly those tool names (or suffixes for
+ * multi-instance tools named `CONFIG__tool`).
  *
  * Examples (from a Coday-style agent YAML):
  * ```yaml
@@ -47,7 +50,10 @@ data class AgentConfig(
     val instructions: String? = null,
     val modelName: String? = null,
     /**
-     * Optional tool-access filter. null = no restriction (all namespace tools).
+     * Integration bindings with an optional per-tool allowlist. null = no bindings:
+     * [io.whozoss.agentos.tool.ToolResolverService] then resolves no tools for this agent
+     * (only the platform exchange defaults described below can still grant the built-in
+     * file tools).
      * Map key = integration name (matches [IntegrationConfig.name] or
      * [ToolPlugin.integrationType] for config-less plugins).
      * Map value = allowed tool names, or null for all tools of that integration.
@@ -55,7 +61,13 @@ data class AgentConfig(
      * Reserved keys `CASE_FILE_EXCHANGE` / `NAMESPACE_FILE_EXCHANGE`
      * (see [io.whozoss.agentos.exchange.ExchangeIntegrationTypes]) enable the built-in
      * file-exchange integrations: they have no [IntegrationConfig] instance and are resolved by
-     * `AgentServiceImpl.buildExchangeTools` rather than the normal plugin path.
+     * `AgentServiceImpl.buildExchangeTools` rather than the normal plugin path. For those two keys
+     * only, an **empty list is an explicit opt-out** rather than an empty allow-list, and an
+     * **absent key does not mean "never granted"**: the platform defaults
+     * `agentos.exchange.tools.case-enabled-by-default` /
+     * `...namespace-enabled-by-default` (off by default) decide for an agent that stays silent.
+     * The namespace key is further gated at run time: whatever this map says, the scope is only
+     * granted when the invoking user holds Namespace READ.
      */
     val integrations: Map<String, List<String>?>? = null,
     /**

@@ -2,7 +2,7 @@ import { toSignal } from '@angular/core/rxjs-interop'
 import { Route } from '@angular/router'
 // Type-only import: erased at build time, so it adds no runtime dependency on the lazy
 // agentos-ui chunk and keeps the eager bundle free of agentos-ui code.
-import type { ThemePort } from '@whoz-oss/agentos-ui'
+import type { ThemePort, ThemeState } from '@whoz-oss/agentos-ui'
 import { projectStateGuard } from './core/guards/project-state.guard'
 import { threadStateGuard } from './core/guards/thread-state.guard'
 import { ThemeService } from './core/services/theme.service'
@@ -87,7 +87,7 @@ export const appRoutes: Route[] = [
               // already returns the resolved persisted theme (no initial flash).
               useFactory: (theme: ThemeService): ThemePort => ({
                 theme: toSignal(theme.currentTheme$, { initialValue: theme.getCurrentTheme() }),
-                setTheme: (mode) => theme.setTheme(mode),
+                setTheme: (state: ThemeState) => theme.setTheme(state),
               }),
               deps: [ThemeService],
             },

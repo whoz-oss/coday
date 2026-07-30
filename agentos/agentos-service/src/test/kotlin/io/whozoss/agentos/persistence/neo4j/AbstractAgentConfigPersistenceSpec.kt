@@ -743,5 +743,19 @@ abstract class AbstractAgentConfigPersistenceSpec : StringSpec() {
             reloaded.integrations?.containsKey("CASE_FILE_EXCHANGE") shouldBe true
             reloaded.integrations?.containsKey("NAMESPACE_FILE_EXCHANGE") shouldBe false
         }
+
+        "save round-trips an empty tool list on an exchange key as an empty list, not null" {
+            // [] is the explicit opt-out and null the full grant, so collapsing one into the other
+            // across the integrationsJson round-trip would flip the agent to platform-default.
+            val ns = namespaceRepo.save(namespace())
+            val saved = agentConfigRepo.save(
+                agentConfig(ns.id, "opted-out-agent").copy(integrations = mapOf("CASE_FILE_EXCHANGE" to emptyList())),
+            )
+
+            val reloaded = agentConfigRepo.findByParent(ns.id, withDisabled = true).single { it.id == saved.id }
+
+            reloaded.integrations?.containsKey("CASE_FILE_EXCHANGE") shouldBe true
+            reloaded.integrations?.get("CASE_FILE_EXCHANGE") shouldBe emptyList<String>()
+        }
     }
 }

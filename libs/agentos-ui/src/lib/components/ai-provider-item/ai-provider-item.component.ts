@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
 import { AiProvider } from '@whoz-oss/agentos-api-client'
-import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
+import { BlueprintDirective, IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 import { AiProviderScope } from '../../services/ai-provider-config-state.service'
 
 interface ScopeBadge {
@@ -44,7 +44,7 @@ const SCOPE_BADGES: Readonly<Record<AiProviderScope, ScopeBadge>> = Object.freez
  */
 @Component({
   selector: 'agentos-ai-provider-item',
-  imports: [KebabMenuComponent, IconButtonComponent],
+  imports: [BlueprintDirective, KebabMenuComponent, IconButtonComponent],
   templateUrl: './ai-provider-item.component.html',
   styleUrl: './ai-provider-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

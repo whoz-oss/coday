@@ -2,6 +2,75 @@
   <agentos-exchange-shell dsDrawerSide (closeRequested)="exchangeOpen.set(false)" />
 
   <div dsDrawerContent class="case-chat__host">
+    <!-- ── Case header: glyph + title + status badge ─────────────────────── -->
+    <header class="case-chat__header">
+      <!-- Title + status group — flex:1 pushes actions to the right -->
+      <div class="case-chat__header-title-group">
+        <agentos-case-status-glyph [status]="caseStatus()" [size]="16" />
+        <span class="case-chat__header-title">{{ activeCase()?.title ?? '' }}</span>
+        <span
+          class="case-chat__header-badge"
+          [class.case-chat__header-badge--running]="caseStatus() === CaseStatusEnum.RUNNING"
+          [class.case-chat__header-badge--error]="caseStatus() === CaseStatusEnum.ERROR"
+          [class.case-chat__header-badge--pending]="caseStatus() === CaseStatusEnum.PENDING"
+          [class.case-chat__header-badge--killed]="caseStatus() === CaseStatusEnum.KILLED"
+          >{{ caseStatus().toLowerCase() }}</span
+        >
+      </div>
+
+      <!-- Exchange toggle -->
+      <div class="case-chat__header-exchange">
+        <ds-icon-button
+          icon="folder"
+          variant="default"
+          [title]="'Files (' + exchangeFileCount() + ')'"
+          (action)="toggleExchange()"
+        />
+        @if (exchangeFileCount() > 0 && !exchangeOpen()) {
+          <span class="case-chat__exchange-badge" aria-hidden="true">{{ exchangeFileCount() }}</span>
+        }
+      </div>
+
+      <!-- Separator -->
+      <span class="case-chat__header-sep"></span>
+
+      <!-- Header actions: attach + star + delete (or confirmation) -->
+      @if (!confirmingDelete()) {
+        <!-- Star -->
+        <ds-icon-button
+          [icon]="activeCase()?.favorite ? 'star' : 'star_border'"
+          variant="default"
+          [title]="activeCase()?.favorite ? 'Remove from favorites' : 'Add to favorites'"
+          class="case-chat__header-star"
+          [class.case-chat__header-star--active]="activeCase()?.favorite"
+          (action)="starToggled.emit({ id: caseId, starred: !activeCase()?.favorite })"
+        />
+        <!-- Delete -->
+        <ds-icon-button icon="delete" variant="danger" title="Delete case" (action)="confirmingDelete.set(true)" />
+      } @else {
+        <!-- Confirmation inline -->
+        <span class="case-chat__header-confirm">
+          <span class="case-chat__header-confirm-label">Delete this case?</span>
+          <button
+            type="button"
+            class="case-chat__header-confirm-yes"
+            title="Confirm delete"
+            (click)="deleteRequested.emit(caseId); confirmingDelete.set(false)"
+          >
+            <span class="material-icons" aria-hidden="true">check</span>
+            Delete
+          </button>
+          <button
+            type="button"
+            class="case-chat__header-confirm-no"
+            title="Cancel"
+            (click)="confirmingDelete.set(false)"
+          >
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </span>
+      }
+    </header>
     <div
       class="case-chat"
       (dragenter)="canStageFiles() && attachments.onDragEnter($event)"
@@ -15,17 +84,7 @@
           <span>Drop files to attach</span>
         </div>
       }
-      <div class="case-chat__exchange-toggle">
-        <ds-icon-button
-          [icon]="exchangeOpen() ? 'chevron_right' : 'folder'"
-          variant="default"
-          [title]="'Files (' + exchangeFileCount() + ')'"
-          (action)="toggleExchange()"
-        />
-        @if (exchangeFileCount() > 0 && !exchangeOpen()) {
-          <span class="case-chat__exchange-badge" aria-hidden="true">{{ exchangeFileCount() }}</span>
-        }
-      </div>
+
       <div #messagesContainer class="case-chat__messages">
         @if (timeline().length === 0) {
           <div class="case-chat__empty">
@@ -51,7 +110,15 @@
                   </div>
                 }
                 <div class="case-chat__bubble-wrapper">
-                  <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+                  @if (item.event.actor.role === 'USER') {
+                    <div
+                      class="case-chat__bubble case-chat__message-text--markdown"
+                      dsBlueprint
+                      [innerHTML]="item.html"
+                    ></div>
+                  } @else {
+                    <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+                  }
                   <ds-copy-button class="case-chat__bubble-copy" [text]="messageText(item)" title="Copy message" />
                 </div>
               </div>
@@ -171,7 +238,7 @@
         </div>
       }
 
-      <div class="case-chat__composer">
+      <div class="case-chat__composer" dsBlueprint>
         @if (slashSuggestions().length > 0) {
           <div class="case-chat__autocomplete">
             <agentos-prompt-autocomplete
@@ -190,48 +257,40 @@
           (removed)="attachments.remove($event)"
           (filesSelected)="attachments.addFiles($event)"
         />
-        <div class="case-chat__composer-row">
+        <textarea
+          #composerInput
+          class="case-chat__input"
+          placeholder="Reply…"
+          rows="3"
+          [value]="inputValue()"
+          [disabled]="isRunning() || isTerminal() || attachments.isUploading()"
+          (input)="onInput($event)"
+          (keydown)="onKeydown($event)"
+        ></textarea>
+        <div class="case-chat__actions">
           @if (canAttach()) {
             <ds-icon-button
-              icon="add"
+              icon="attach_file"
               variant="default"
               title="Attach files"
               [disabled]="!canStageFiles()"
               (action)="attachmentsUi.openPicker()"
             />
           }
-          <textarea
-            #composerInput
-            class="case-chat__input"
-            placeholder="Reply…"
-            rows="3"
-            [value]="inputValue()"
-            [disabled]="isRunning() || isTerminal() || attachments.isUploading()"
-            (input)="onInput($event)"
-            (keydown)="onKeydown($event)"
-          ></textarea>
-          <div class="case-chat__actions">
+          <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
+
+          @if (isRunning()) {
+            <ds-icon-button icon="stop" variant="danger" title="Interrupt" (action)="interrupt()" />
+          } @else {
             <ds-icon-button
-              [icon]="showTechnical() ? 'visibility_off' : 'bug_report'"
-              variant="default"
-              [title]="showTechnical() ? 'Hide technical events' : 'Show technical events'"
-              (action)="toggleShowTechnical()"
+              icon="send"
+              variant="primary"
+              [title]="preferences.composerHint()"
+              [disabled]="!canSend"
+              (action)="submit()"
             />
-
-            @if (isRunning()) {
-              <ds-icon-button icon="stop" variant="danger" title="Interrupt" (action)="interrupt()" />
-            } @else {
-              <ds-icon-button
-                icon="send"
-                variant="primary"
-                [title]="preferences.composerHint()"
-                [disabled]="!canSend"
-                (action)="submit()"
-              />
-            }
-
-            <ds-icon-button icon="cancel" variant="danger" title="Kill" [disabled]="isTerminal()" (action)="kill()" />
-          </div>
+          }
+          <ds-icon-button icon="cancel" variant="danger" title="Kill" [disabled]="isTerminal()" (action)="kill()" />
         </div>
       </div>
     </div>

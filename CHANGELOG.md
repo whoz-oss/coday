@@ -1,3 +1,104 @@
+## 0.231.1 (2026-07-29)
+
+### 🩹 Fixes
+
+- #1179 Scope agentos-ui themes and dark mode styles ([#1179](https://github.com/whoz-oss/coday/issues/1179))
+- #1179 Scope agentos-ui themes and dark mode styles ([#1180](https://github.com/whoz-oss/coday/pull/1180), [#1179](https://github.com/whoz-oss/coday/issues/1179))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.231.0 (2026-07-29)
+
+### 🚀 Features
+
+- #1095 FieldEncryptor and Credential backend ([#1139](https://github.com/whoz-oss/coday/pull/1139), [#1095](https://github.com/whoz-oss/coday/issues/1095), [#1119](https://github.com/whoz-oss/coday/issues/1119))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.230.0 (2026-07-29)
+
+### 🚀 Features
+
+- make exchange agent tools configurable by env ([#1171](https://github.com/whoz-oss/coday/pull/1171))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.229.0 (2026-07-28)
+
+### 🚀 Features
+
+- rename a case from the drawer row actions ([#1170](https://github.com/whoz-oss/coday/pull/1170), [#1166](https://github.com/whoz-oss/coday/issues/1166))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.228.0 (2026-07-28)
+
+### 🚀 Features
+
+- wz-33579: add logs when file manipulation fail ([#1173](https://github.com/whoz-oss/coday/pull/1173))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.227.1 (2026-07-28)
+
+### 🩹 Fixes
+
+- cover reasoning effort constraint for openai ([c1407b9e](https://github.com/whoz-oss/coday/commit/c1407b9e))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.227.0 (2026-07-28)
+
+### 🚀 Features
+
+- #1023 Add new theme ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Add new theme (color) ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### 🩹 Fixes
+
+- #1023 Replace case chat header buttons with design-system icon buttons ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Test theme service ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 remove french comments ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 remove french comments ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Align mobile case chat messages to the right ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Reorganize shell sidebar top bar layout ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Reorganize shell sidebar top bar layout ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
+## 0.226.0 (2026-07-28)
+
+### 🚀 Features
+
+- wz-33587: improve readability of code ([#1169](https://github.com/whoz-oss/coday/pull/1169))
+
+### 🩹 Fixes
+
+- #1160 improve scripts ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 improve scripts ([#1165](https://github.com/whoz-oss/coday/pull/1165), [#1160](https://github.com/whoz-oss/coday/issues/1160))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.225.0 (2026-07-24)
 
 ### 🚀 Features
