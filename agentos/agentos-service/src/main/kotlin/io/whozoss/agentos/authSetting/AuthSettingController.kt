@@ -9,27 +9,6 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.sdk.authSetting.AuthSetting
-import io.whozoss.agentos.sdk.authSetting.AuthType
-import io.whozoss.agentos.sdk.authSetting.ApiKeyAuthSetting
-import io.whozoss.agentos.sdk.authSetting.BasicAuthAuthSetting
-import io.whozoss.agentos.sdk.authSetting.BearerTokenAuthSetting
-import io.whozoss.agentos.sdk.authSetting.OAuthCustomAuthSetting
-import io.whozoss.agentos.sdk.authSetting.OAuthDiscoverableAuthSetting
-import io.whozoss.agentos.sdk.authSetting.OAuthMcpDiscoverableAuthSetting
-import io.whozoss.agentos.sdk.authSetting.OAuthRegisteredAuthSetting
-import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
-import io.whozoss.agentos.sdk.authSetting.toDataMap
-import io.whozoss.agentos.sdk.authSetting.toSensitiveKeys
-import io.whozoss.agentos.sdk.api.authSetting.AuthSettingApi
-import io.whozoss.agentos.sdk.api.authSetting.AuthSettingDto
-import io.whozoss.agentos.sdk.api.authSetting.ApiKeyAuthSettingDto
-import io.whozoss.agentos.sdk.api.authSetting.BasicAuthAuthSettingDto
-import io.whozoss.agentos.sdk.api.authSetting.BearerTokenAuthSettingDto
-import io.whozoss.agentos.sdk.api.authSetting.OAuthCustomAuthSettingDto
-import io.whozoss.agentos.sdk.api.authSetting.OAuthDiscoverableAuthSettingDto
-import io.whozoss.agentos.sdk.api.authSetting.OAuthMcpDiscoverableAuthSettingDto
-import io.whozoss.agentos.sdk.api.authSetting.OAuthRegisteredAuthSettingDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -265,8 +244,14 @@ class AuthSettingController(
         for ((key, value) in incoming) {
             when {
                 isDataValueMasked(value) -> { /* preserve — no-op */ }
-                value.isBlank() -> result.remove(key)
-                else -> result[key] = value
+
+                value.isBlank() -> {
+                    result.remove(key)
+                }
+
+                else -> {
+                    result[key] = value
+                }
             }
         }
         return result
@@ -284,41 +269,61 @@ class AuthSettingController(
  */
 internal fun dtoToDataMap(dto: AuthSettingDto): Map<String, String> =
     when (dto) {
-        is ApiKeyAuthSettingDto -> buildMap {
-            dto.apiKey?.let { put("apiKey", it) }
+        is ApiKeyAuthSettingDto -> {
+            buildMap {
+                dto.apiKey?.let { put("apiKey", it) }
+            }
         }
-        is BearerTokenAuthSettingDto -> buildMap {
-            dto.token?.let { put("token", it) }
+
+        is BearerTokenAuthSettingDto -> {
+            buildMap {
+                dto.token?.let { put("token", it) }
+            }
         }
-        is BasicAuthAuthSettingDto -> buildMap {
-            dto.username?.let { put("username", it) }
-            dto.password?.let { put("password", it) }
+
+        is BasicAuthAuthSettingDto -> {
+            buildMap {
+                dto.username?.let { put("username", it) }
+                dto.password?.let { put("password", it) }
+            }
         }
-        is OAuthDiscoverableAuthSettingDto -> buildMap {
-            dto.discoveryUrl?.let { put("discoveryUrl", it) }
-            dto.clientId?.let { put("clientId", it) }
-            dto.clientSecret?.let { put("clientSecret", it) }
-            dto.scopes?.let { put("scopes", it) }
+
+        is OAuthDiscoverableAuthSettingDto -> {
+            buildMap {
+                dto.discoveryUrl?.let { put("discoveryUrl", it) }
+                dto.clientId?.let { put("clientId", it) }
+                dto.clientSecret?.let { put("clientSecret", it) }
+                dto.scopes?.let { put("scopes", it) }
+            }
         }
-        is OAuthRegisteredAuthSettingDto -> buildMap {
-            dto.clientId?.let { put("clientId", it) }
-            dto.clientSecret?.let { put("clientSecret", it) }
-            dto.authorizationUrl?.let { put("authorizationUrl", it) }
-            dto.tokenUrl?.let { put("tokenUrl", it) }
-            dto.scopes?.let { put("scopes", it) }
+
+        is OAuthRegisteredAuthSettingDto -> {
+            buildMap {
+                dto.clientId?.let { put("clientId", it) }
+                dto.clientSecret?.let { put("clientSecret", it) }
+                dto.authorizationUrl?.let { put("authorizationUrl", it) }
+                dto.tokenUrl?.let { put("tokenUrl", it) }
+                dto.scopes?.let { put("scopes", it) }
+            }
         }
-        is OAuthCustomAuthSettingDto -> buildMap {
-            dto.clientId?.let { put("clientId", it) }
-            dto.clientSecret?.let { put("clientSecret", it) }
-            dto.authorizationUrl?.let { put("authorizationUrl", it) }
-            dto.tokenUrl?.let { put("tokenUrl", it) }
-            dto.scopes?.let { put("scopes", it) }
+
+        is OAuthCustomAuthSettingDto -> {
+            buildMap {
+                dto.clientId?.let { put("clientId", it) }
+                dto.clientSecret?.let { put("clientSecret", it) }
+                dto.authorizationUrl?.let { put("authorizationUrl", it) }
+                dto.tokenUrl?.let { put("tokenUrl", it) }
+                dto.scopes?.let { put("scopes", it) }
+            }
         }
-        is OAuthMcpDiscoverableAuthSettingDto -> buildMap {
-            dto.resourceUrl?.let { put("resourceUrl", it) }
-            dto.clientId?.let { put("clientId", it) }
-            dto.clientSecret?.let { put("clientSecret", it) }
-            dto.scopes?.let { put("scopes", it) }
+
+        is OAuthMcpDiscoverableAuthSettingDto -> {
+            buildMap {
+                dto.resourceUrl?.let { put("resourceUrl", it) }
+                dto.clientId?.let { put("clientId", it) }
+                dto.clientSecret?.let { put("clientSecret", it) }
+                dto.scopes?.let { put("scopes", it) }
+            }
         }
     }
 
@@ -334,7 +339,7 @@ internal fun toDto(entity: AuthSetting): AuthSettingDto {
     val sensitiveKeys = entity.toSensitiveKeys()
     val maskedData = maskDataMapSelective(data, sensitiveKeys)
     return when (entity) {
-        is ApiKeyAuthSetting ->
+        is ApiKeyAuthSetting -> {
             ApiKeyAuthSettingDto(
                 id = entity.metadata.id,
                 namespaceId = entity.namespaceId,
@@ -344,7 +349,9 @@ internal fun toDto(entity: AuthSetting): AuthSettingDto {
                 authType = entity.authType,
                 apiKey = maskedData?.get("apiKey"),
             )
-        is BearerTokenAuthSetting ->
+        }
+
+        is BearerTokenAuthSetting -> {
             BearerTokenAuthSettingDto(
                 id = entity.metadata.id,
                 namespaceId = entity.namespaceId,
@@ -354,7 +361,9 @@ internal fun toDto(entity: AuthSetting): AuthSettingDto {
                 authType = entity.authType,
                 token = maskedData?.get("token"),
             )
-        is BasicAuthAuthSetting ->
+        }
+
+        is BasicAuthAuthSetting -> {
             BasicAuthAuthSettingDto(
                 id = entity.metadata.id,
                 namespaceId = entity.namespaceId,
@@ -365,7 +374,9 @@ internal fun toDto(entity: AuthSetting): AuthSettingDto {
                 username = maskedData?.get("username"),
                 password = maskedData?.get("password"),
             )
-        is OAuthDiscoverableAuthSetting ->
+        }
+
+        is OAuthDiscoverableAuthSetting -> {
             OAuthDiscoverableAuthSettingDto(
                 id = entity.metadata.id,
                 namespaceId = entity.namespaceId,
@@ -378,7 +389,9 @@ internal fun toDto(entity: AuthSetting): AuthSettingDto {
                 clientSecret = maskedData?.get("clientSecret"),
                 scopes = maskedData?.get("scopes"),
             )
-        is OAuthRegisteredAuthSetting ->
+        }
+
+        is OAuthRegisteredAuthSetting -> {
             OAuthRegisteredAuthSettingDto(
                 id = entity.metadata.id,
                 namespaceId = entity.namespaceId,
@@ -392,7 +405,9 @@ internal fun toDto(entity: AuthSetting): AuthSettingDto {
                 tokenUrl = maskedData?.get("tokenUrl"),
                 scopes = maskedData?.get("scopes"),
             )
-        is OAuthCustomAuthSetting ->
+        }
+
+        is OAuthCustomAuthSetting -> {
             OAuthCustomAuthSettingDto(
                 id = entity.metadata.id,
                 namespaceId = entity.namespaceId,
@@ -406,7 +421,9 @@ internal fun toDto(entity: AuthSetting): AuthSettingDto {
                 tokenUrl = maskedData?.get("tokenUrl"),
                 scopes = maskedData?.get("scopes"),
             )
-        is OAuthMcpDiscoverableAuthSetting ->
+        }
+
+        is OAuthMcpDiscoverableAuthSetting -> {
             OAuthMcpDiscoverableAuthSettingDto(
                 id = entity.metadata.id,
                 namespaceId = entity.namespaceId,
@@ -419,5 +436,6 @@ internal fun toDto(entity: AuthSetting): AuthSettingDto {
                 clientSecret = maskedData?.get("clientSecret"),
                 scopes = maskedData?.get("scopes"),
             )
+        }
     }
 }

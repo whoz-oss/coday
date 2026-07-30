@@ -8,11 +8,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.authSetting.AuthSettingService
+import io.whozoss.agentos.authSetting.AuthType
+import io.whozoss.agentos.authSetting.authSettingFromDataMap
 import io.whozoss.agentos.credential.CredentialService
 import io.whozoss.agentos.exception.ConfigNotFoundException
-import io.whozoss.agentos.sdk.authSetting.AuthSetting
-import io.whozoss.agentos.sdk.authSetting.AuthType
-import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -25,130 +24,140 @@ import java.util.UUID
  * correct parameters, and that exceptions from the underlying services propagate
  * unchanged.
  */
-class AuthServiceImplUnitSpec : StringSpec({
+class AuthServiceImplUnitSpec :
+    StringSpec({
 
-    val namespaceId: UUID = UUID.randomUUID()
-    val userId: UUID = UUID.randomUUID()
-    val authSettingId: UUID = UUID.randomUUID()
+        val namespaceId: UUID = UUID.randomUUID()
+        val userId: UUID = UUID.randomUUID()
+        val authSettingId: UUID = UUID.randomUUID()
 
-    fun authSetting(name: String = "my-setting") = authSettingFromDataMap(
-        authType = AuthType.OAUTH_DISCOVERABLE,
-        data = emptyMap(),
-        metadata = EntityMetadata(),
-        namespaceId = namespaceId,
-        userId = null,
-        name = name,
-        description = null,
-    )
+        fun authSetting(name: String = "my-setting") =
+            authSettingFromDataMap(
+                authType = AuthType.OAUTH_DISCOVERABLE,
+                data = emptyMap(),
+                metadata = EntityMetadata(),
+                namespaceId = namespaceId,
+                userId = null,
+                name = name,
+                description = null,
+            )
 
-    fun credential() = Credential(
-        metadata = EntityMetadata(),
-        userId = userId,
-        authSettingId = authSettingId,
-        credentialType = CredentialType.OAUTH_TOKENS,
-        data = mapOf("accessToken" to "tok"),
-    )
+        fun credential() =
+            Credential(
+                metadata = EntityMetadata(),
+                userId = userId,
+                authSettingId = authSettingId,
+                credentialType = CredentialType.OAUTH_TOKENS,
+                data = mapOf("accessToken" to "tok"),
+            )
 
-    fun buildService(
-        authSettingService: AuthSettingService = mockk(),
-        credentialService: CredentialService = mockk(),
-    ) = AuthServiceImpl(namespaceId, userId, authSettingService, credentialService)
+        fun buildService(
+            authSettingService: AuthSettingService = mockk(),
+            credentialService: CredentialService = mockk(),
+        ) = AuthServiceImpl(namespaceId, userId, authSettingService, credentialService)
 
-    // -------------------------------------------------------------------------
-    // resolveAuthSetting
-    // -------------------------------------------------------------------------
+        // -------------------------------------------------------------------------
+        // resolveAuthSetting
+        // -------------------------------------------------------------------------
 
-    "resolveAuthSetting delegates to AuthSettingService with correct (namespaceId, userId, name)" {
-        val setting = authSetting("github-oauth")
-        val authSettingService = mockk<AuthSettingService> {
-            every { resolveAuthSetting(namespaceId, userId, "github-oauth") } returns setting
+        "resolveAuthSetting delegates to AuthSettingService with correct (namespaceId, userId, name)" {
+            val setting = authSetting("github-oauth")
+            val authSettingService =
+                mockk<AuthSettingService> {
+                    every { resolveAuthSetting(namespaceId, userId, "github-oauth") } returns setting
+                }
+            val svc = buildService(authSettingService = authSettingService)
+
+            val result = svc.resolveAuthSetting("github-oauth")
+
+            result shouldBe setting
+            verify(exactly = 1) { authSettingService.resolveAuthSetting(namespaceId, userId, "github-oauth") }
         }
-        val svc = buildService(authSettingService = authSettingService)
 
-        val result = svc.resolveAuthSetting("github-oauth")
+        "resolveAuthSetting propagates ConfigNotFoundException from the underlying service" {
+            val authSettingService =
+                mockk<AuthSettingService> {
+                    every { resolveAuthSetting(any(), any(), any()) } throws
+                        ConfigNotFoundException(namespaceId, userId, "missing")
+                }
+            val svc = buildService(authSettingService = authSettingService)
 
-        result shouldBe setting
-        verify(exactly = 1) { authSettingService.resolveAuthSetting(namespaceId, userId, "github-oauth") }
-    }
-
-    "resolveAuthSetting propagates ConfigNotFoundException from the underlying service" {
-        val authSettingService = mockk<AuthSettingService> {
-            every { resolveAuthSetting(any(), any(), any()) } throws
-                ConfigNotFoundException(namespaceId, userId, "missing")
+            shouldThrow<ConfigNotFoundException> {
+                svc.resolveAuthSetting("missing")
+            }
         }
-        val svc = buildService(authSettingService = authSettingService)
 
-        shouldThrow<ConfigNotFoundException> {
-            svc.resolveAuthSetting("missing")
+        // -------------------------------------------------------------------------
+        // resolveCredential
+        // -------------------------------------------------------------------------
+
+        "resolveCredential delegates to CredentialService with correct (userId, authSettingId)" {
+            val cred = credential()
+            val credentialService =
+                mockk<CredentialService> {
+                    every { resolve(userId, authSettingId) } returns cred
+                }
+            val svc = buildService(credentialService = credentialService)
+
+            val result = svc.resolveCredential(authSettingId)
+
+            result shouldBe cred
+            verify(exactly = 1) { credentialService.resolve(userId, authSettingId) }
         }
-    }
 
-    // -------------------------------------------------------------------------
-    // resolveCredential
-    // -------------------------------------------------------------------------
+        "resolveCredential returns null when no credential exists" {
+            val credentialService =
+                mockk<CredentialService> {
+                    every { resolve(userId, authSettingId) } returns null
+                }
+            val svc = buildService(credentialService = credentialService)
 
-    "resolveCredential delegates to CredentialService with correct (userId, authSettingId)" {
-        val cred = credential()
-        val credentialService = mockk<CredentialService> {
-            every { resolve(userId, authSettingId) } returns cred
+            svc.resolveCredential(authSettingId).shouldBeNull()
         }
-        val svc = buildService(credentialService = credentialService)
 
-        val result = svc.resolveCredential(authSettingId)
+        // -------------------------------------------------------------------------
+        // storeCredential
+        // -------------------------------------------------------------------------
 
-        result shouldBe cred
-        verify(exactly = 1) { credentialService.resolve(userId, authSettingId) }
-    }
+        "storeCredential delegates to CredentialService.store and returns the stored credential" {
+            val cred = credential()
+            val stored = cred.copy(metadata = EntityMetadata())
+            val credentialService =
+                mockk<CredentialService> {
+                    every { store(cred) } returns stored
+                }
+            val svc = buildService(credentialService = credentialService)
 
-    "resolveCredential returns null when no credential exists" {
-        val credentialService = mockk<CredentialService> {
-            every { resolve(userId, authSettingId) } returns null
+            val result = svc.storeCredential(cred)
+
+            result shouldBe stored
+            verify(exactly = 1) { credentialService.store(cred) }
         }
-        val svc = buildService(credentialService = credentialService)
 
-        svc.resolveCredential(authSettingId).shouldBeNull()
-    }
+        // -------------------------------------------------------------------------
+        // revokeCredential
+        // -------------------------------------------------------------------------
 
-    // -------------------------------------------------------------------------
-    // storeCredential
-    // -------------------------------------------------------------------------
+        "revokeCredential delegates to CredentialService.delete with correct (userId, authSettingId) and returns true" {
+            val credentialService =
+                mockk<CredentialService> {
+                    every { delete(userId, authSettingId) } returns true
+                }
+            val svc = buildService(credentialService = credentialService)
 
-    "storeCredential delegates to CredentialService.store and returns the stored credential" {
-        val cred = credential()
-        val stored = cred.copy(metadata = EntityMetadata())
-        val credentialService = mockk<CredentialService> {
-            every { store(cred) } returns stored
+            val result = svc.deleteCredential(authSettingId)
+
+            result shouldBe true
+            verify(exactly = 1) { credentialService.delete(userId, authSettingId) }
         }
-        val svc = buildService(credentialService = credentialService)
 
-        val result = svc.storeCredential(cred)
+        "revokeCredential returns false when no credential existed" {
+            val credentialService =
+                mockk<CredentialService> {
+                    every { delete(userId, authSettingId) } returns false
+                }
+            val svc = buildService(credentialService = credentialService)
 
-        result shouldBe stored
-        verify(exactly = 1) { credentialService.store(cred) }
-    }
-
-    // -------------------------------------------------------------------------
-    // revokeCredential
-    // -------------------------------------------------------------------------
-
-    "revokeCredential delegates to CredentialService.delete with correct (userId, authSettingId) and returns true" {
-        val credentialService = mockk<CredentialService> {
-            every { delete(userId, authSettingId) } returns true
+            svc.deleteCredential(authSettingId) shouldBe false
         }
-        val svc = buildService(credentialService = credentialService)
-
-        val result = svc.revokeCredential(authSettingId)
-
-        result shouldBe true
-        verify(exactly = 1) { credentialService.delete(userId, authSettingId) }
-    }
-
-    "revokeCredential returns false when no credential existed" {
-        val credentialService = mockk<CredentialService> {
-            every { delete(userId, authSettingId) } returns false
-        }
-        val svc = buildService(credentialService = credentialService)
-
-        svc.revokeCredential(authSettingId) shouldBe false
-    }
-})
+    })

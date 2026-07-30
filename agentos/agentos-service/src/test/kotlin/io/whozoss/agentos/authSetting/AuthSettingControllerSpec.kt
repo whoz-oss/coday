@@ -119,7 +119,7 @@ class AuthSettingControllerSpec :
             data: Map<String, String>? = null,
         ): AuthSettingDto =
             when (authType) {
-                AuthType.API_KEY ->
+                AuthType.API_KEY -> {
                     ApiKeyAuthSettingDto(
                         id = id,
                         namespaceId = nsId,
@@ -152,6 +152,7 @@ class AuthSettingControllerSpec :
                         clientSecret = data?.get("clientSecret"),
                         scopes = data?.get("scopes"),
                     )
+                }
             }
 
         val existingNamespace =
@@ -194,11 +195,12 @@ class AuthSettingControllerSpec :
         }
 
         "toDto maps all fields and masks only the sensitive apiKey" {
-            val s = setting(
-                name = "my-oauth",
-                authType = AuthType.API_KEY,
-                data = mapOf("apiKey" to "sk-openai-123456789012"),
-            )
+            val s =
+                setting(
+                    name = "my-oauth",
+                    authType = AuthType.API_KEY,
+                    data = mapOf("apiKey" to "sk-openai-123456789012"),
+                )
             val dto = toDto(s) as ApiKeyAuthSettingDto
 
             dto.id shouldBe s.metadata.id
@@ -406,42 +408,46 @@ class AuthSettingControllerSpec :
         }
 
         "update with non-masked non-blank clientSecret replaces it" {
-            val existing = setting(
-                authType = AuthType.API_KEY,
-                data = mapOf("apiKey" to "old-key-abcdefghijklmnop"),
-            )
+            val existing =
+                setting(
+                    authType = AuthType.API_KEY,
+                    data = mapOf("apiKey" to "old-key-abcdefghijklmnop"),
+                )
             val captured = slot<AuthSetting>()
             every { service.findById(existing.metadata.id) } returns existing
             every { service.update(capture(captured)) } answers { firstArg() }
 
             controller.update(
                 id = existing.metadata.id,
-                resource = resource(
-                    id = existing.metadata.id,
-                    authType = AuthType.API_KEY,
-                    data = mapOf("apiKey" to "new-key-abcdefghijklmnop"),
-                ),
+                resource =
+                    resource(
+                        id = existing.metadata.id,
+                        authType = AuthType.API_KEY,
+                        data = mapOf("apiKey" to "new-key-abcdefghijklmnop"),
+                    ),
             )
 
             captured.captured.data["apiKey"] shouldBe "new-key-abcdefghijklmnop"
         }
 
         "update with blank apiKey clears the key" {
-            val existing = setting(
-                authType = AuthType.API_KEY,
-                data = mapOf("apiKey" to "real-key-abcdefghijklmnop"),
-            )
+            val existing =
+                setting(
+                    authType = AuthType.API_KEY,
+                    data = mapOf("apiKey" to "real-key-abcdefghijklmnop"),
+                )
             val captured = slot<AuthSetting>()
             every { service.findById(existing.metadata.id) } returns existing
             every { service.update(capture(captured)) } answers { firstArg() }
 
             controller.update(
                 id = existing.metadata.id,
-                resource = resource(
-                    id = existing.metadata.id,
-                    authType = AuthType.API_KEY,
-                    data = mapOf("apiKey" to ""),
-                ),
+                resource =
+                    resource(
+                        id = existing.metadata.id,
+                        authType = AuthType.API_KEY,
+                        data = mapOf("apiKey" to ""),
+                    ),
             )
 
             captured.captured.data.containsKey("apiKey") shouldBe false
@@ -463,11 +469,12 @@ class AuthSettingControllerSpec :
         }
 
         "update preserves keys absent from incoming map" {
-            val existingData = mapOf(
-                "clientId" to "my-client",
-                "clientSecret" to "real-secret-value-12345",
-                "discoveryUrl" to "https://auth.example.com",
-            )
+            val existingData =
+                mapOf(
+                    "clientId" to "my-client",
+                    "clientSecret" to "real-secret-value-12345",
+                    "discoveryUrl" to "https://auth.example.com",
+                )
             val existing = setting(data = existingData)
             val captured = slot<AuthSetting>()
             every { service.findById(existing.metadata.id) } returns existing
@@ -497,14 +504,23 @@ class AuthSettingControllerSpec :
         // -------------------------------------------------------------------------
 
         "list without filter returns the caller's overlays with masked sensitive data" {
-            val rows = listOf(
-                setting(nsId = null, uId = aliceId, name = "GLOBAL",
-                    authType = AuthType.OAUTH_DISCOVERABLE,
-                    data = mapOf("clientSecret" to "real-secret-value-12345")),
-                setting(nsId = namespaceId, uId = aliceId, name = "NS",
-                    authType = AuthType.API_KEY,
-                    data = mapOf("apiKey" to "another-secret-value-12345")),
-            )
+            val rows =
+                listOf(
+                    setting(
+                        nsId = null,
+                        uId = aliceId,
+                        name = "GLOBAL",
+                        authType = AuthType.OAUTH_DISCOVERABLE,
+                        data = mapOf("clientSecret" to "real-secret-value-12345"),
+                    ),
+                    setting(
+                        nsId = namespaceId,
+                        uId = aliceId,
+                        name = "NS",
+                        authType = AuthType.API_KEY,
+                        data = mapOf("apiKey" to "another-secret-value-12345"),
+                    ),
+                )
             every { service.findFiltered(any(), any(), any(), any()) } returns rows
 
             val resp = controller.list(namespaceId = null, userId = null)
@@ -538,10 +554,11 @@ class AuthSettingControllerSpec :
         }
 
         "list with specific namespaceId and no userId returns NS-shared rows" {
-            val rows = listOf(
-                setting(nsId = namespaceId, uId = null, name = "NS-A"),
-                setting(nsId = namespaceId, uId = null, name = "NS-B"),
-            )
+            val rows =
+                listOf(
+                    setting(nsId = namespaceId, uId = null, name = "NS-A"),
+                    setting(nsId = namespaceId, uId = null, name = "NS-B"),
+                )
             every { service.findFiltered(any(), any(), any(), any()) } returns rows
 
             val resp = controller.list(namespaceId = namespaceId.toString(), userId = null)

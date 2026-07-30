@@ -1,9 +1,6 @@
 package io.whozoss.agentos.authSetting
 
 import io.whozoss.agentos.reconciliation.MergeStrategy
-import io.whozoss.agentos.sdk.authSetting.AuthSetting
-import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
-import io.whozoss.agentos.sdk.authSetting.toDataMap
 import org.springframework.stereotype.Component
 
 /**
