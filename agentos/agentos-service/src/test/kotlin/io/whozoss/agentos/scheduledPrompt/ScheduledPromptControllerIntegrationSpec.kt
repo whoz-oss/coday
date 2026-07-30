@@ -252,15 +252,7 @@ class ScheduledPromptControllerIntegrationSpec : StringSpec() {
             mockMvc.perform(
                 post("/api/scheduled-prompts/effective")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"userId": "${UUID.randomUUID()}"}"""),
-            ).andExpect(status().isBadRequest)
-        }
-
-        "POST /effective without userId or userExternalId returns 400" {
-            mockMvc.perform(
-                post("/api/scheduled-prompts/effective")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"namespaceId": "$namespaceId"}"""),
+                    .content("""{}"""),
             ).andExpect(status().isBadRequest)
         }
 

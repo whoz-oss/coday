@@ -75,15 +75,27 @@ class PromptServiceImpl(
 
     override fun findByUserId(userId: UUID): List<Prompt> = repository.findByUserId(userId)
 
+    // The agentConfigId filter is intentionally applied here, in memory, and not pushed into
+    // the repository query. findEffective fetches raw candidates across all four overlay
+    // layers (platform / user-global / namespace-shared / user×namespace) for a given prompt
+    // name; which layer "wins" is only known after the groupBy+priority fold below. A layer
+    // that does NOT match agentConfigId can still be the eventual winner for its name, while a
+    // lower-priority layer that DOES match loses — filtering in the Cypher query (i.e. on the
+    // raw, pre-merge rows) would silently drop the winning row whenever its non-matching layer
+    // outranks a matching one, or spuriously keep a name whose only matching layer isn't the
+    // effective one. The filter must therefore run after the merge, on the already-resolved
+    // per-name winners — never before.
     override fun findEffective(
         namespaceId: UUID,
         callerId: UUID,
+        agentConfigId: UUID?,
     ): List<Prompt> =
         repository
             .findEffective(namespaceId, callerId)
             .sortedBy { layerPriority(it) }
             .groupBy { it.name }
             .map { (_, layers) -> layers.last() }
+            .filter { agentConfigId == null || it.agentConfigId == agentConfigId }
             .sortedBy { it.name }
 
     override fun findByScope(

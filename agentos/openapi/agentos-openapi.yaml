@@ -2045,9 +2045,10 @@ paths:
   /api/prompts/effective:
     post:
       description: "Returns the resolved set of prompts accessible in the given namespace\
-        \ context. Merges platform, namespace-shared, user-global and user×namespace\
-        \ layers by name, highest-priority layer wins. Optional `agentConfigId` filter\
-        \ applied post-resolution. Requires READ on the namespace."
+        \ context, scoped to the authenticated caller. Merges platform, namespace-shared,\
+        \ user-global and user×namespace layers by name, highest-priority layer wins.\
+        \ Optional `agentConfigId` filter applied post-resolution. Requires READ on\
+        \ the namespace."
       operationId: effectivePrompt
       requestBody:
         content:
@@ -2064,7 +2065,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/Prompt"
           description: OK
-      summary: Effective prompts for a user in a namespace
+      summary: Effective prompts for the authenticated user in a namespace
       tags:
       - prompt-controller
   /api/prompts/search:
@@ -2212,7 +2213,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/ScheduledPrompt"
           description: OK
-      summary: Effective scheduled prompts for a user in a namespace
+      summary: Effective scheduled prompts for the authenticated user in a namespace
       tags:
       - scheduled-prompt-controller
   /api/scheduled-prompts/search:
@@ -3715,15 +3716,6 @@ components:
           - string
           - "null"
           format: uuid
-        userExternalId:
-          type:
-          - string
-          - "null"
-        userId:
-          type:
-          - string
-          - "null"
-          format: uuid
     PromptParameter:
       type: object
       properties:
@@ -3755,6 +3747,10 @@ components:
           - string
           - "null"
           format: uuid
+        userExternalId:
+          type:
+          - string
+          - "null"
         userId:
           type:
           - string
@@ -3896,15 +3892,6 @@ components:
           - string
           - "null"
           format: uuid
-        userExternalId:
-          type:
-          - string
-          - "null"
-        userId:
-          type:
-          - string
-          - "null"
-          format: uuid
     ScheduledPromptSearchRequest:
       type: object
       properties:
@@ -3922,6 +3909,10 @@ components:
           - string
           - "null"
           format: uuid
+        userExternalId:
+          type:
+          - string
+          - "null"
         userId:
           type:
           - string

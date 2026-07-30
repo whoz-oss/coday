@@ -480,6 +480,59 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // findEffective — agentConfigId post-merge filter
+        // -------------------------------------------------------------------------
+
+        "findEffective with agentConfigId returns only scheduled prompts linked to that agent" {
+            val otherAgentId = UUID.randomUUID()
+            every { agentConfigService.findById(otherAgentId) } returns defaultAgent(nsId = null)
+            val svc = newService()
+            val user = UUID.randomUUID()
+            svc.create(sp(name = "linked", nsId = namespaceId, userId = null, agentId = agentConfigId))
+            svc.create(sp(name = "other-agent", nsId = namespaceId, userId = null, agentId = otherAgentId))
+
+            val effective = svc.findEffective(namespaceId, user, agentConfigId = agentConfigId)
+            effective shouldHaveSize 1
+            effective.first().name shouldBe "linked"
+        }
+
+        "findEffective with null agentConfigId returns all scheduled prompts regardless of agent" {
+            val otherAgentId = UUID.randomUUID()
+            every { agentConfigService.findById(otherAgentId) } returns defaultAgent(nsId = null)
+            val svc = newService()
+            val user = UUID.randomUUID()
+            svc.create(sp(name = "linked", nsId = namespaceId, userId = null, agentId = agentConfigId))
+            svc.create(sp(name = "other-agent", nsId = namespaceId, userId = null, agentId = otherAgentId))
+
+            svc.findEffective(namespaceId, user, agentConfigId = null) shouldHaveSize 2
+        }
+
+        "findEffective with agentConfigId matching no entity returns empty" {
+            val svc = newService()
+            val user = UUID.randomUUID()
+            svc.create(sp(name = "linked", nsId = namespaceId, userId = null, agentId = agentConfigId))
+
+            svc.findEffective(namespaceId, user, agentConfigId = UUID.randomUUID()).shouldBeEmpty()
+        }
+
+        "findEffective agentConfigId filter is applied after the layer merge, not before" {
+            val otherAgentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentConfigId) } returns defaultAgent(nsId = null)
+            every { agentConfigService.findById(otherAgentId) } returns defaultAgent(nsId = null)
+            val svc = newService()
+            val user = UUID.randomUUID()
+
+            // Platform layer is linked to agentConfigId, namespace layer (higher priority, same name)
+            // is linked to otherAgentId.
+            svc.create(sp(name = "deploy", nsId = null, userId = null, agentId = agentConfigId))
+            svc.create(sp(name = "deploy", nsId = namespaceId, userId = null, agentId = otherAgentId))
+
+            // The winning (namespace) layer is linked to otherAgentId, so filtering by agentConfigId
+            // excludes it even though a lower-priority layer with that name matched.
+            svc.findEffective(namespaceId, user, agentConfigId = agentConfigId).shouldBeEmpty()
+        }
+
+        // -------------------------------------------------------------------------
         // Round-trips
         // -------------------------------------------------------------------------
 

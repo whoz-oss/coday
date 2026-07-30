@@ -12,6 +12,4 @@ export interface ScheduledPromptEffectiveRequest {
   agentConfigId?: string | null
   namespaceExternalId?: string | null
   namespaceId?: string | null
-  userExternalId?: string | null
-  userId?: string | null
 }

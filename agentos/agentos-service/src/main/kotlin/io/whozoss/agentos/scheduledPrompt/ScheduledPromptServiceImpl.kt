@@ -100,12 +100,20 @@ class ScheduledPromptServiceImpl(
 
     override fun findPlatform(): List<ScheduledPrompt> = repository.findPlatform()
 
-    override fun findEffective(namespaceId: UUID, callerId: UUID): List<ScheduledPrompt> =
+    // Same rationale as PromptServiceImpl.findEffective: agentConfigId is filtered here, in
+    // memory, after the merge — not in the repository query. The repository returns raw
+    // candidates from all four overlay layers per name; the winning layer for a given name is
+    // only determined by the groupBy+priority fold below. A non-matching lower-priority layer
+    // could otherwise mask a matching higher-priority one (or vice versa) if the filter were
+    // pushed into Cypher and applied to the pre-merge rows. Filtering must happen strictly
+    // after the per-name winner is resolved.
+    override fun findEffective(namespaceId: UUID, callerId: UUID, agentConfigId: UUID?): List<ScheduledPrompt> =
         repository
             .findEffective(namespaceId, callerId)
             .sortedBy { layerPriority(it) }
             .groupBy { it.name }
             .map { (_, layers) -> layers.last() }
+            .filter { agentConfigId == null || it.agentConfigId == agentConfigId }
             .sortedBy { it.name }
 
     override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<ScheduledPrompt> =

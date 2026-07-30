@@ -2,10 +2,10 @@ package io.whozoss.agentos.scheduledPrompt
 
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
+import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -53,9 +53,9 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 )
 class ScheduledPromptController(
     private val scheduledPromptService: ScheduledPromptService,
-    private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
+    private val externalIdentifierResolver: ExternalIdentifierResolver,
 ) : ScheduledPromptApi {
 
     private val crud =
@@ -91,8 +91,9 @@ class ScheduledPromptController(
     @PreAuthorize("isAuthenticated()")
     override fun search(@Valid @RequestBody request: ScheduledPromptSearchRequest): List<ScheduledPromptDto> {
         val currentUser = userService.getCurrentUser()
-        val resolvedNs = resolveOptionalNamespaceId(request.namespaceId, request.namespaceExternalId)
-        if (request.userId != null && request.userId != currentUser.id && !currentUser.isAdmin) {
+        val resolvedNs = externalIdentifierResolver.resolveOptionalNamespaceId(request.namespaceId, request.namespaceExternalId)
+        val resolvedUserId = externalIdentifierResolver.resolveOptionalUserId(request.userId, request.userExternalId)
+        if (resolvedUserId != null && resolvedUserId != currentUser.id && !currentUser.isAdmin) {
             throw AccessDeniedException("Cannot search scheduled prompts for another user")
         }
         if (resolvedNs != null) {
@@ -105,19 +106,17 @@ class ScheduledPromptController(
             if (!granted) throw AccessDeniedException("Cannot read scheduled prompts in namespace $resolvedNs")
         }
         return scheduledPromptService
-            .findByScope(resolvedNs, request.userId, request.agentConfigIds)
+            .findByScope(resolvedNs, resolvedUserId, request.agentConfigIds)
             .let { scheduledPromptService.withContent(it) }
             .map { (sp, content) -> toDto(sp, content) }
     }
 
-    @Operation(summary = "Effective scheduled prompts for a user in a namespace")
+    @Operation(summary = "Effective scheduled prompts for the authenticated user in a namespace")
     @PostMapping("/effective", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
     override fun effective(@Valid @RequestBody request: ScheduledPromptEffectiveRequest): List<ScheduledPromptDto> {
-        val nsId = resolveNamespaceId(request.namespaceId, request.namespaceExternalId)
-        val uId = resolveUserId(request.userId, request.userExternalId)
+        val nsId = externalIdentifierResolver.resolveNamespaceId(request.namespaceId, request.namespaceExternalId)
         val currentUser = userService.getCurrentUser()
-        if (uId != currentUser.id) throw BadRequestException("userId must match authenticated user")
         val granted = permissionService.hasPermission(
             userId = currentUser.id.toString(),
             entityType = EntityType.NAMESPACE,
@@ -126,8 +125,7 @@ class ScheduledPromptController(
         )
         if (!granted) throw AccessDeniedException("Cannot read scheduled prompts in namespace $nsId")
         return scheduledPromptService
-            .findEffective(nsId, currentUser.id)
-            .filter { request.agentConfigId == null || it.agentConfigId == request.agentConfigId }
+            .findEffective(nsId, currentUser.id, request.agentConfigId)
             .let { scheduledPromptService.withContent(it) }
             .map { (sp, content) -> toDto(sp, content) }
     }
@@ -167,7 +165,7 @@ class ScheduledPromptController(
         }
 
         val entity = ScheduledPrompt(
-            metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
+            metadata = EntityMetadata(id = UUID.randomUUID()),
             namespaceId = resolvedNs,
             userId = resolvedUser,
             agentConfigId = resource.agentConfigId,
@@ -241,34 +239,6 @@ class ScheduledPromptController(
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
         )
-
-    private fun resolveNamespaceId(id: UUID?, externalId: String?): UUID {
-        if (id != null && externalId != null) throw BadRequestException("Provide namespaceId or namespaceExternalId, not both")
-        return id
-            ?: externalId?.let {
-                namespaceService.findByExternalId(it)?.metadata?.id
-                    ?: throw ResourceNotFoundException("Namespace not found for externalId: $it")
-            }
-            ?: throw BadRequestException("namespaceId or namespaceExternalId is required")
-    }
-
-    private fun resolveOptionalNamespaceId(id: UUID?, externalId: String?): UUID? {
-        if (id != null && externalId != null) throw BadRequestException("Provide namespaceId or namespaceExternalId, not both")
-        return id ?: externalId?.let {
-            namespaceService.findByExternalId(it)?.metadata?.id
-                ?: throw ResourceNotFoundException("Namespace not found for externalId: $it")
-        }
-    }
-
-    private fun resolveUserId(id: UUID?, externalId: String?): UUID {
-        if (id != null && externalId != null) throw BadRequestException("Provide userId or userExternalId, not both")
-        return id
-            ?: externalId?.let {
-                userService.findByExternalId(it)?.metadata?.id
-                    ?: throw ResourceNotFoundException("User not found for externalId: $it")
-            }
-            ?: throw BadRequestException("userId or userExternalId is required")
-    }
 
     companion object : KLogging()
 }

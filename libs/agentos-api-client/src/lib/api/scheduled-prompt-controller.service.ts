@@ -256,7 +256,7 @@ export class ScheduledPromptControllerService extends BaseService {
   }
 
   /**
-   * Effective scheduled prompts for a user in a namespace
+   * Effective scheduled prompts for the authenticated user in a namespace
    * @param scheduledPromptEffectiveRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.

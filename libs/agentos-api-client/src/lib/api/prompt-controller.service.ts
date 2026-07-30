@@ -188,8 +188,8 @@ export class PromptControllerService extends BaseService {
   }
 
   /**
-   * Effective prompts for a user in a namespace
-   * Returns the resolved set of prompts accessible in the given namespace context. Merges platform, namespace-shared, user-global and user×namespace layers by name, highest-priority layer wins. Optional &#x60;agentConfigId&#x60; filter applied post-resolution. Requires READ on the namespace.
+   * Effective prompts for the authenticated user in a namespace
+   * Returns the resolved set of prompts accessible in the given namespace context, scoped to the authenticated caller. Merges platform, namespace-shared, user-global and user×namespace layers by name, highest-priority layer wins. Optional &#x60;agentConfigId&#x60; filter applied post-resolution. Requires READ on the namespace.
    * @param promptEffectiveRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.

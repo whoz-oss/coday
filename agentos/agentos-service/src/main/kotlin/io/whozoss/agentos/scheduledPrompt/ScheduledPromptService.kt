@@ -40,8 +40,10 @@ interface ScheduledPromptService : EntityService<ScheduledPrompt, UUID>, Ownersh
      * Merges platform, namespace-shared, user-global and user×namespace layers by name.
      * Higher-priority layers override lower ones:
      * platform (0) < user-global (1) < namespace-shared (2) < user×namespace (3).
+     *
+     * [agentConfigId] is an optional post-merge filter; null means no filter.
      */
-    fun findEffective(namespaceId: UUID, callerId: UUID): List<ScheduledPrompt>
+    fun findEffective(namespaceId: UUID, callerId: UUID, agentConfigId: UUID? = null): List<ScheduledPrompt>
 
     /**
      * Find all non-removed scheduled prompts at an exact scope level — no merge, no inheritance.

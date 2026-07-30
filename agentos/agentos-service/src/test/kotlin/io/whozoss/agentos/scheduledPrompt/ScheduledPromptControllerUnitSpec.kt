@@ -7,6 +7,7 @@ import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
@@ -32,8 +33,11 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     val namespaceService = mockk<NamespaceService>(relaxed = true)
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
+    // Real instance (not mocked): preserves the id-vs-externalId resolution behaviour that
+    // used to be inlined in the controller, backed by the same namespaceService/userService mocks.
+    val externalIdentifierResolver = ExternalIdentifierResolver(namespaceService, userService)
     val controller = ScheduledPromptController(
-        service, namespaceService, userService, permissionService,
+        service, userService, permissionService, externalIdentifierResolver,
     )
 
     val namespaceId: UUID = UUID.randomUUID()

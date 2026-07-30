@@ -2,6 +2,7 @@ package io.whozoss.agentos.prompt
 
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
+import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -66,6 +67,7 @@ class PromptController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
+    private val externalIdentifierResolver: ExternalIdentifierResolver,
 ) : PromptApi {
     private val crud =
         EntityCrudDelegate(
@@ -119,10 +121,11 @@ class PromptController(
         @Valid @RequestBody request: PromptSearchRequest,
     ): List<PromptDto> {
         val currentUser = userService.getCurrentUser()
-        val resolvedNamespaceId = resolveOptionalNamespaceId(request.namespaceId, request.namespaceExternalId)
+        val resolvedNamespaceId = externalIdentifierResolver.resolveOptionalNamespaceId(request.namespaceId, request.namespaceExternalId)
+        val resolvedUserId = externalIdentifierResolver.resolveOptionalUserId(request.userId, request.userExternalId)
 
         // Mass-assignment guard: userId must match the authenticated user unless super-admin
-        if (request.userId != null && request.userId != currentUser.id && !currentUser.isAdmin) {
+        if (resolvedUserId != null && resolvedUserId != currentUser.id && !currentUser.isAdmin) {
             throw AccessDeniedException("Cannot search prompts for another user")
         }
 
@@ -141,15 +144,16 @@ class PromptController(
         return promptService
             .findByScope(
                 namespaceId = resolvedNamespaceId,
-                userId = request.userId,
+                userId = resolvedUserId,
                 agentConfigIds = request.agentConfigIds,
             ).map(::toDto)
     }
 
     @Operation(
-        summary = "Effective prompts for a user in a namespace",
+        summary = "Effective prompts for the authenticated user in a namespace",
         description =
-            "Returns the resolved set of prompts accessible in the given namespace context. " +
+            "Returns the resolved set of prompts accessible in the given namespace context, " +
+                "scoped to the authenticated caller. " +
                 "Merges platform, namespace-shared, user-global and user×namespace layers by name, " +
                 "highest-priority layer wins. Optional `agentConfigId` filter applied post-resolution. " +
                 "Requires READ on the namespace.",
@@ -162,13 +166,8 @@ class PromptController(
     override fun effective(
         @Valid @RequestBody request: PromptEffectiveRequest,
     ): List<PromptDto> {
-        val nsId = resolveNamespaceId(request.namespaceId, request.namespaceExternalId)
-        val uId = resolveUserId(request.userId, request.userExternalId)
-
+        val nsId = externalIdentifierResolver.resolveNamespaceId(request.namespaceId, request.namespaceExternalId)
         val currentUser = userService.getCurrentUser()
-        if (uId != currentUser.id) {
-            throw BadRequestException("userId must match authenticated user")
-        }
 
         val granted =
             permissionService.hasPermission(
@@ -180,14 +179,8 @@ class PromptController(
         if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $nsId")
 
         return promptService
-            .findEffective(nsId, currentUser.id)
-            .let { prompts ->
-                if (request.agentConfigId != null) {
-                    prompts.filter { it.agentConfigId == request.agentConfigId }
-                } else {
-                    prompts
-                }
-            }.map(::toDto)
+            .findEffective(nsId, currentUser.id, request.agentConfigId)
+            .map(::toDto)
     }
 
     // -------------------------------------------------------------------------
@@ -261,7 +254,7 @@ class PromptController(
 
         val target =
             Prompt(
-                metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
+                metadata = EntityMetadata(id = UUID.randomUUID()),
                 namespaceId = resolvedNs,
                 userId = resolvedUser,
                 agentConfigId = resource.agentConfigId,
@@ -302,66 +295,6 @@ class PromptController(
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
-
-    // -------------------------------------------------------------------------
-    // ExternalId resolution helpers
-    // -------------------------------------------------------------------------
-
-    /**
-     * Resolves a namespace UUID from either a direct UUID or an externalId.
-     * Exactly one must be provided.
-     */
-    private fun resolveNamespaceId(
-        id: UUID?,
-        externalId: String?,
-    ): UUID {
-        if (id != null && externalId != null) {
-            throw BadRequestException("Provide namespaceId or namespaceExternalId, not both")
-        }
-        return id
-            ?: externalId?.let {
-                namespaceService.findByExternalId(it)?.metadata?.id
-                    ?: throw ResourceNotFoundException("Namespace not found for externalId: $it")
-            }
-            ?: throw BadRequestException("namespaceId or namespaceExternalId is required")
-    }
-
-    /**
-     * Resolves a namespace UUID from either a direct UUID or an externalId.
-     * Both can be null (for platform-level scope).
-     */
-    private fun resolveOptionalNamespaceId(
-        id: UUID?,
-        externalId: String?,
-    ): UUID? {
-        if (id != null && externalId != null) {
-            throw BadRequestException("Provide namespaceId or namespaceExternalId, not both")
-        }
-        return id
-            ?: externalId?.let {
-                namespaceService.findByExternalId(it)?.metadata?.id
-                    ?: throw ResourceNotFoundException("Namespace not found for externalId: $it")
-            }
-    }
-
-    /**
-     * Resolves a user UUID from either a direct UUID or an externalId.
-     * Exactly one must be provided.
-     */
-    private fun resolveUserId(
-        id: UUID?,
-        externalId: String?,
-    ): UUID {
-        if (id != null && externalId != null) {
-            throw BadRequestException("Provide userId or userExternalId, not both")
-        }
-        return id
-            ?: externalId?.let {
-                userService.findByExternalId(it)?.metadata?.id
-                    ?: throw ResourceNotFoundException("User not found for externalId: $it")
-            }
-            ?: throw BadRequestException("userId or userExternalId is required")
-    }
 
     private fun toDomainForUpdate(
         resource: PromptDto,
@@ -408,24 +341,4 @@ internal fun toDto(entity: Prompt): PromptDto =
         createdOn = entity.metadata.created,
         updatedBy = entity.metadata.modifiedBy,
         updatedOn = entity.metadata.modified,
-    )
-
-internal fun toDomain(resource: PromptDto): Prompt =
-    Prompt(
-        metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-        namespaceId = resource.namespaceId,
-        userId = resource.userId,
-        agentConfigId = resource.agentConfigId,
-        name = resource.name,
-        description = resource.description,
-        content = resource.content,
-        parameters =
-            resource.parameters.map { p ->
-                PromptParameter(
-                    name = p.name,
-                    description = p.description,
-                    defaultValue = p.defaultValue,
-                )
-            },
-        externalMetadata = resource.externalMetadata,
     )
