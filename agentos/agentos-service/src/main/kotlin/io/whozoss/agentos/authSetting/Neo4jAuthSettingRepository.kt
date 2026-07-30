@@ -1,8 +1,7 @@
 package io.whozoss.agentos.authSetting
 
-import io.whozoss.agentos.persistence.Neo4jChildLinkService
-import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.encryption.FieldEncryptor
+import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
@@ -32,11 +31,13 @@ open class Neo4jAuthSettingRepository(
                 entity.namespaceId?.let { nsId ->
                     childLinkService.link("AuthSetting", savedNode.id, "Namespace", nsId.toString())
                 }
-            }
-            .toDomain(encryptor)
+            }.toDomain(encryptor)
             .also { logger.debug { "[Neo4jAuthSettingRepository] Saved AuthSetting ${it.id} ('${entity.name}')" } }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AuthSetting> =
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<AuthSetting> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
             .filter { withRemoved || it.removed != true }
@@ -55,7 +56,7 @@ open class Neo4jAuthSettingRepository(
             .findActiveByUserId(userId.toString())
             .map { it.toDomain(encryptor) }
 
-    override fun findByTriple(
+    override fun findByNamespaceIdAndUserIdAndName(
         namespaceId: UUID?,
         userId: UUID?,
         name: String,

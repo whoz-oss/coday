@@ -10,10 +10,6 @@ import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.sdk.authSetting.AuthSetting
-import io.whozoss.agentos.sdk.authSetting.AuthType
-import io.whozoss.agentos.sdk.authSetting.authSettingFromDataMap
-import io.whozoss.agentos.sdk.authSetting.toDataMap
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
 import org.springframework.web.server.ResponseStatusException
@@ -26,12 +22,13 @@ class AuthSettingServiceImplSpec : StringSpec() {
     // PermissionService and UserService are only used by findFiltered, which is not
     // exercised in this spec (tested via controller + integration tests).
     // Relaxed mocks satisfy the constructor without interfering with the tested methods.
-    private fun newService() = AuthSettingServiceImpl(
-        InMemoryAuthSettingRepository(),
-        AuthSettingMergeStrategy(),
-        mockk<PermissionService>(relaxed = true),
-        mockk<UserService>(relaxed = true),
-    )
+    private fun newService() =
+        AuthSettingServiceImpl(
+            InMemoryAuthSettingRepository(),
+            AuthSettingMergeStrategy(),
+            mockk<PermissionService>(relaxed = true),
+            mockk<UserService>(relaxed = true),
+        )
 
     private fun setting(
         namespaceId: UUID? = UUID.randomUUID(),
@@ -341,10 +338,14 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val service = newService()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(setting(
-                namespaceId = null, userId = null, name = "github",
-                data = mapOf("clientId" to "platform-id"),
-            ))
+            service.create(
+                setting(
+                    namespaceId = null,
+                    userId = null,
+                    name = "github",
+                    data = mapOf("clientId" to "platform-id"),
+                ),
+            )
 
             val resolved = service.resolveAuthSetting(nsId, userId, "github")
             resolved.data["clientId"] shouldBe "platform-id"
@@ -356,10 +357,22 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val service = newService()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(setting(namespaceId = null, userId = null, name = "github",
-                data = mapOf("clientId" to "platform-id")))
-            service.create(setting(namespaceId = nsId, userId = null, name = "github",
-                data = mapOf("clientId" to "ns-id")))
+            service.create(
+                setting(
+                    namespaceId = null,
+                    userId = null,
+                    name = "github",
+                    data = mapOf("clientId" to "platform-id"),
+                ),
+            )
+            service.create(
+                setting(
+                    namespaceId = nsId,
+                    userId = null,
+                    name = "github",
+                    data = mapOf("clientId" to "ns-id"),
+                ),
+            )
 
             val resolved = service.resolveAuthSetting(nsId, userId, "github")
             resolved.data["clientId"] shouldBe "ns-id"
@@ -369,12 +382,30 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val service = newService()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(setting(namespaceId = null, userId = null, name = "github",
-                data = mapOf("clientId" to "platform-id")))
-            service.create(setting(namespaceId = null, userId = userId, name = "github",
-                data = mapOf("clientId" to "user-id")))
-            service.create(setting(namespaceId = nsId, userId = null, name = "github",
-                data = mapOf("clientId" to "ns-id")))
+            service.create(
+                setting(
+                    namespaceId = null,
+                    userId = null,
+                    name = "github",
+                    data = mapOf("clientId" to "platform-id"),
+                ),
+            )
+            service.create(
+                setting(
+                    namespaceId = null,
+                    userId = userId,
+                    name = "github",
+                    data = mapOf("clientId" to "user-id"),
+                ),
+            )
+            service.create(
+                setting(
+                    namespaceId = nsId,
+                    userId = null,
+                    name = "github",
+                    data = mapOf("clientId" to "ns-id"),
+                ),
+            )
 
             // namespace-shared (rank 2) wins over user-global (rank 1)
             val resolved = service.resolveAuthSetting(nsId, userId, "github")
@@ -385,14 +416,38 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val service = newService()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(setting(namespaceId = null, userId = null, name = "github",
-                data = mapOf("clientId" to "platform-id")))
-            service.create(setting(namespaceId = nsId, userId = null, name = "github",
-                data = mapOf("clientId" to "ns-id")))
-            service.create(setting(namespaceId = null, userId = userId, name = "github",
-                data = mapOf("clientId" to "user-id")))
-            service.create(setting(namespaceId = nsId, userId = userId, name = "github",
-                data = mapOf("clientId" to "user-ns-id")))
+            service.create(
+                setting(
+                    namespaceId = null,
+                    userId = null,
+                    name = "github",
+                    data = mapOf("clientId" to "platform-id"),
+                ),
+            )
+            service.create(
+                setting(
+                    namespaceId = nsId,
+                    userId = null,
+                    name = "github",
+                    data = mapOf("clientId" to "ns-id"),
+                ),
+            )
+            service.create(
+                setting(
+                    namespaceId = null,
+                    userId = userId,
+                    name = "github",
+                    data = mapOf("clientId" to "user-id"),
+                ),
+            )
+            service.create(
+                setting(
+                    namespaceId = nsId,
+                    userId = userId,
+                    name = "github",
+                    data = mapOf("clientId" to "user-ns-id"),
+                ),
+            )
 
             val resolved = service.resolveAuthSetting(nsId, userId, "github")
             resolved.data["clientId"] shouldBe "user-ns-id"
@@ -403,10 +458,22 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
             // Platform provides discoveryUrl; namespace-shared provides clientId
-            service.create(setting(namespaceId = null, userId = null, name = "github",
-                data = mapOf("discoveryUrl" to "https://platform.discovery")))
-            service.create(setting(namespaceId = nsId, userId = null, name = "github",
-                data = mapOf("clientId" to "ns-client-id")))
+            service.create(
+                setting(
+                    namespaceId = null,
+                    userId = null,
+                    name = "github",
+                    data = mapOf("discoveryUrl" to "https://platform.discovery"),
+                ),
+            )
+            service.create(
+                setting(
+                    namespaceId = nsId,
+                    userId = null,
+                    name = "github",
+                    data = mapOf("clientId" to "ns-client-id"),
+                ),
+            )
 
             val resolved = service.resolveAuthSetting(nsId, userId, "github")
             resolved.data["clientId"] shouldBe "ns-client-id"
@@ -444,10 +511,23 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val service = newService()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            val platform = service.create(setting(namespaceId = null, userId = null, name = "github",
-                data = mapOf("clientId" to "platform-id")))
-            service.create(setting(namespaceId = nsId, userId = null, name = "github",
-                data = mapOf("clientId" to "ns-id")))
+            val platform =
+                service.create(
+                    setting(
+                        namespaceId = null,
+                        userId = null,
+                        name = "github",
+                        data = mapOf("clientId" to "platform-id"),
+                    ),
+                )
+            service.create(
+                setting(
+                    namespaceId = nsId,
+                    userId = null,
+                    name = "github",
+                    data = mapOf("clientId" to "ns-id"),
+                ),
+            )
 
             val resolved = service.resolveAuthSetting(nsId, userId, "github")
             // Result identity is from the lowest-rank layer that exists (platform)

@@ -1,6 +1,6 @@
 package io.whozoss.agentos.auth
 
-import io.whozoss.agentos.sdk.authSetting.AuthSetting
+import io.whozoss.agentos.authSetting.AuthSetting
 import io.whozoss.agentos.sdk.credential.Credential
 import java.util.UUID
 
@@ -45,5 +45,5 @@ interface AuthService {
      * Revoke (delete) the user's credential for the given AuthSetting.
      * Returns true if a credential was found and deleted.
      */
-    fun revokeCredential(authSettingId: UUID): Boolean
+    fun deleteCredential(authSettingId: UUID): Boolean
 }

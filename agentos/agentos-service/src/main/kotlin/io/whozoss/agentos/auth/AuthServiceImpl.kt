@@ -1,9 +1,8 @@
 package io.whozoss.agentos.auth
 
+import io.whozoss.agentos.authSetting.AuthSetting
 import io.whozoss.agentos.authSetting.AuthSettingService
 import io.whozoss.agentos.credential.CredentialService
-import io.whozoss.agentos.auth.AuthService
-import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.sdk.credential.Credential
 import java.util.UUID
 
@@ -22,16 +21,11 @@ class AuthServiceImpl(
     private val authSettingService: AuthSettingService,
     private val credentialService: CredentialService,
 ) : AuthService {
+    override fun resolveAuthSetting(name: String): AuthSetting = authSettingService.resolveAuthSetting(namespaceId, userId, name)
 
-    override fun resolveAuthSetting(name: String): AuthSetting =
-        authSettingService.resolveAuthSetting(namespaceId, userId, name)
+    override fun resolveCredential(authSettingId: UUID): Credential? = credentialService.resolve(userId, authSettingId)
 
-    override fun resolveCredential(authSettingId: UUID): Credential? =
-        credentialService.resolve(userId, authSettingId)
+    override fun storeCredential(credential: Credential): Credential = credentialService.store(credential)
 
-    override fun storeCredential(credential: Credential): Credential =
-        credentialService.store(credential)
-
-    override fun revokeCredential(authSettingId: UUID): Boolean =
-        credentialService.delete(userId, authSettingId)
+    override fun deleteCredential(authSettingId: UUID): Boolean = credentialService.delete(userId, authSettingId)
 }

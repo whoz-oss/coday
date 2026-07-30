@@ -1,4 +1,4 @@
-package io.whozoss.agentos.sdk.authSetting
+package io.whozoss.agentos.authSetting
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonSubTypes
@@ -149,10 +149,10 @@ data class OAuthMcpDiscoverableAuthSetting(
     override val userId: UUID? = null,
     override val name: String,
     override val description: String? = null,
-    val resourceUrl: String = "",    // The MCP server URL (entry point for discovery)
-    val clientId: String = "",       // Optional: pre-registered client ID (empty = dynamic registration)
-    val clientSecret: String = "",   // Optional: pre-registered client secret
-    val scopes: String? = null,      // Optional: override discovered scopes
+    val resourceUrl: String = "", // The MCP server URL (entry point for discovery)
+    val clientId: String = "", // Optional: pre-registered client ID (empty = dynamic registration)
+    val clientSecret: String = "", // Optional: pre-registered client secret
+    val scopes: String? = null, // Optional: override discovered scopes
 ) : AuthSetting {
     override val authType: AuthType = AuthType.OAUTH_MCP_DISCOVERABLE
 }
@@ -171,41 +171,61 @@ data class OAuthMcpDiscoverableAuthSetting(
  */
 fun AuthSetting.toDataMap(): Map<String, String> =
     when (this) {
-        is ApiKeyAuthSetting -> buildMap {
-            if (apiKey.isNotBlank()) put("apiKey", apiKey)
+        is ApiKeyAuthSetting -> {
+            buildMap {
+                if (apiKey.isNotBlank()) put("apiKey", apiKey)
+            }
         }
-        is BearerTokenAuthSetting -> buildMap {
-            if (token.isNotBlank()) put("token", token)
+
+        is BearerTokenAuthSetting -> {
+            buildMap {
+                if (token.isNotBlank()) put("token", token)
+            }
         }
-        is BasicAuthAuthSetting -> buildMap {
-            if (username.isNotBlank()) put("username", username)
-            if (password.isNotBlank()) put("password", password)
+
+        is BasicAuthAuthSetting -> {
+            buildMap {
+                if (username.isNotBlank()) put("username", username)
+                if (password.isNotBlank()) put("password", password)
+            }
         }
-        is OAuthDiscoverableAuthSetting -> buildMap {
-            if (discoveryUrl.isNotBlank()) put("discoveryUrl", discoveryUrl)
-            if (clientId.isNotBlank()) put("clientId", clientId)
-            if (clientSecret.isNotBlank()) put("clientSecret", clientSecret)
-            if (scopes != null) put("scopes", scopes)
+
+        is OAuthDiscoverableAuthSetting -> {
+            buildMap {
+                if (discoveryUrl.isNotBlank()) put("discoveryUrl", discoveryUrl)
+                if (clientId.isNotBlank()) put("clientId", clientId)
+                if (clientSecret.isNotBlank()) put("clientSecret", clientSecret)
+                if (scopes != null) put("scopes", scopes)
+            }
         }
-        is OAuthRegisteredAuthSetting -> buildMap {
-            if (clientId.isNotBlank()) put("clientId", clientId)
-            if (clientSecret.isNotBlank()) put("clientSecret", clientSecret)
-            if (authorizationUrl.isNotBlank()) put("authorizationUrl", authorizationUrl)
-            if (tokenUrl.isNotBlank()) put("tokenUrl", tokenUrl)
-            if (scopes != null) put("scopes", scopes)
+
+        is OAuthRegisteredAuthSetting -> {
+            buildMap {
+                if (clientId.isNotBlank()) put("clientId", clientId)
+                if (clientSecret.isNotBlank()) put("clientSecret", clientSecret)
+                if (authorizationUrl.isNotBlank()) put("authorizationUrl", authorizationUrl)
+                if (tokenUrl.isNotBlank()) put("tokenUrl", tokenUrl)
+                if (scopes != null) put("scopes", scopes)
+            }
         }
-        is OAuthCustomAuthSetting -> buildMap {
-            if (clientId.isNotBlank()) put("clientId", clientId)
-            if (clientSecret.isNotBlank()) put("clientSecret", clientSecret)
-            if (authorizationUrl.isNotBlank()) put("authorizationUrl", authorizationUrl)
-            if (tokenUrl.isNotBlank()) put("tokenUrl", tokenUrl)
-            if (scopes != null) put("scopes", scopes)
+
+        is OAuthCustomAuthSetting -> {
+            buildMap {
+                if (clientId.isNotBlank()) put("clientId", clientId)
+                if (clientSecret.isNotBlank()) put("clientSecret", clientSecret)
+                if (authorizationUrl.isNotBlank()) put("authorizationUrl", authorizationUrl)
+                if (tokenUrl.isNotBlank()) put("tokenUrl", tokenUrl)
+                if (scopes != null) put("scopes", scopes)
+            }
         }
-        is OAuthMcpDiscoverableAuthSetting -> buildMap {
-            if (resourceUrl.isNotBlank()) put("resourceUrl", resourceUrl)
-            if (clientId.isNotBlank()) put("clientId", clientId)
-            if (clientSecret.isNotBlank()) put("clientSecret", clientSecret)
-            if (scopes != null) put("scopes", scopes)
+
+        is OAuthMcpDiscoverableAuthSetting -> {
+            buildMap {
+                if (resourceUrl.isNotBlank()) put("resourceUrl", resourceUrl)
+                if (clientId.isNotBlank()) put("clientId", clientId)
+                if (clientSecret.isNotBlank()) put("clientSecret", clientSecret)
+                if (scopes != null) put("scopes", scopes)
+            }
         }
     }
 
@@ -248,7 +268,7 @@ fun authSettingFromDataMap(
     description: String?,
 ): AuthSetting =
     when (authType) {
-        AuthType.API_KEY ->
+        AuthType.API_KEY -> {
             ApiKeyAuthSetting(
                 metadata = metadata,
                 namespaceId = namespaceId,
@@ -257,7 +277,9 @@ fun authSettingFromDataMap(
                 description = description,
                 apiKey = data["apiKey"] ?: "",
             )
-        AuthType.BEARER_TOKEN ->
+        }
+
+        AuthType.BEARER_TOKEN -> {
             BearerTokenAuthSetting(
                 metadata = metadata,
                 namespaceId = namespaceId,
@@ -266,7 +288,9 @@ fun authSettingFromDataMap(
                 description = description,
                 token = data["token"] ?: "",
             )
-        AuthType.BASIC_AUTH ->
+        }
+
+        AuthType.BASIC_AUTH -> {
             BasicAuthAuthSetting(
                 metadata = metadata,
                 namespaceId = namespaceId,
@@ -276,7 +300,9 @@ fun authSettingFromDataMap(
                 username = data["username"] ?: "",
                 password = data["password"] ?: "",
             )
-        AuthType.OAUTH_DISCOVERABLE ->
+        }
+
+        AuthType.OAUTH_DISCOVERABLE -> {
             OAuthDiscoverableAuthSetting(
                 metadata = metadata,
                 namespaceId = namespaceId,
@@ -288,7 +314,9 @@ fun authSettingFromDataMap(
                 clientSecret = data["clientSecret"] ?: "",
                 scopes = data["scopes"],
             )
-        AuthType.OAUTH_REGISTERED ->
+        }
+
+        AuthType.OAUTH_REGISTERED -> {
             OAuthRegisteredAuthSetting(
                 metadata = metadata,
                 namespaceId = namespaceId,
@@ -301,7 +329,9 @@ fun authSettingFromDataMap(
                 tokenUrl = data["tokenUrl"] ?: "",
                 scopes = data["scopes"],
             )
-        AuthType.OAUTH_CUSTOM ->
+        }
+
+        AuthType.OAUTH_CUSTOM -> {
             OAuthCustomAuthSetting(
                 metadata = metadata,
                 namespaceId = namespaceId,
@@ -314,7 +344,9 @@ fun authSettingFromDataMap(
                 tokenUrl = data["tokenUrl"] ?: "",
                 scopes = data["scopes"],
             )
-        AuthType.OAUTH_MCP_DISCOVERABLE ->
+        }
+
+        AuthType.OAUTH_MCP_DISCOVERABLE -> {
             OAuthMcpDiscoverableAuthSetting(
                 metadata = metadata,
                 namespaceId = namespaceId,
@@ -326,4 +358,5 @@ fun authSettingFromDataMap(
                 clientSecret = data["clientSecret"] ?: "",
                 scopes = data["scopes"],
             )
+        }
     }
