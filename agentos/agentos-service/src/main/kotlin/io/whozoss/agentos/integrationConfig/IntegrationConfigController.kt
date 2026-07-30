@@ -279,7 +279,7 @@ class IntegrationConfigController(
         val entity =
             integrationConfigService.findById(id)
                 ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
-        val yaml = YAML_MAPPER.writeValueAsString(toExportModel(entity))
+        val yaml = PORTABILITY_COMMENT + YAML_MAPPER.writeValueAsString(toExportModel(entity))
         val filename = "${entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-")}.yaml"
         return ResponseEntity
             .ok()
@@ -312,6 +312,37 @@ class IntegrationConfigController(
     }
 
     companion object : KLogging() {
+        /**
+         * Comment block prefixed to every exported YAML file, explaining how to make the
+         * exported `parameters` paths portable across developer machines.
+         *
+         * Paths written through the UI/API are absolute and specific to the machine that
+         * entered them — there is no reverse substitution of `{{NAMESPACE_CONFIG_PATH}}` on
+         * export (the token is a one-way, load-time replacement performed by
+         * [io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository] for files
+         * placed under `<namespace.configPath>/integrations/`; configs created via the API are
+         * not resolved through that path). Each line is a valid YAML comment, so the file remains
+         * directly reloadable without edits.
+         */
+        private val PORTABILITY_COMMENT: String =
+            """
+            |# This file was exported from a persisted IntegrationConfig. Paths under `parameters`
+            |# (e.g. workingDirectory, rootPath, cwd, args) are absolute and specific to the machine
+            |# that entered them.
+            |#
+            |# To make this file portable across developer machines, replace the part of each path
+            |# that matches the namespace's configPath with the token {{NAMESPACE_CONFIG_PATH}}.
+            |# It is resolved automatically at load time, only for files placed in
+            |# {configPath}/integrations/ (configs created through the API are not affected).
+            |#
+            |# Example: workingDirectory: /home/alice/repos/myproject
+            |#       -> workingDirectory: "{{NAMESPACE_CONFIG_PATH}}/.."
+            |#
+            |# Relative path segments following the token are kept as-is, not normalised:
+            |# "{{NAMESPACE_CONFIG_PATH}}/../scripts" works.
+            |
+            """.trimMargin()
+
         /**
          * YAML mapper configured for clean, human-readable output:
          * - No `---` document start marker

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
+import io.whozoss.agentos.plugin.filesystem.substituteConfigPath
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import java.nio.file.Path
@@ -34,7 +35,6 @@ class FilesystemIntegrationConfigRepository(
     private val namespaceRepository: NamespaceRepository,
     ttl: Duration = Duration.ofMinutes(5),
 ) : IntegrationConfigRepository by delegate {
-
     private val yamlMapper =
         ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
 
@@ -84,9 +84,10 @@ class FilesystemIntegrationConfigRepository(
             // No namespace context means no configPath to read from.
             return fromDelegate
         }
-        val persistedNsSharedNames = fromDelegate
-            .filter { it.namespaceId == namespaceId && it.userId == null }
-            .mapTo(HashSet()) { it.name.lowercase() }
+        val persistedNsSharedNames =
+            fromDelegate
+                .filter { it.namespaceId == namespaceId && it.userId == null }
+                .mapTo(HashSet()) { it.name.lowercase() }
         val filesystem = filesystemConfigs(namespaceId, excludeNames = persistedNsSharedNames)
         return fromDelegate + filesystem
     }
@@ -130,26 +131,43 @@ class FilesystemIntegrationConfigRepository(
             .sortedBy { it.name }
     }
 
-    private fun parseYamlFile(file: Path): IntegrationConfig? {
-        val model = yamlMapper.readValue(file.toFile(), IntegrationConfigYamlModel::class.java)
-        if (model.name.isBlank()) {
+    /**
+     * [directory] is the cache's root directory (`<configPath>/integrations`, possibly with
+     * files nested arbitrarily deep under it via [io.whozoss.agentos.plugin.filesystem.FilesystemYamlCache]'s
+     * recursive walk). `directory.parent` is therefore the namespace's `configPath` regardless
+     * of where [file] itself sits — deriving it from `file.parent` would be wrong for any file
+     * not directly at the top level.
+     *
+     * The `{{NAMESPACE_CONFIG_PATH}}` token is substituted only in [IntegrationConfig.parameters]
+     * — never in `name`, `integrationType`, or `description`, which have no path semantics.
+     */
+    private fun parseYamlFile(
+        directory: Path,
+        file: Path,
+    ): IntegrationConfig? {
+        val integrationConfigYaml = yamlMapper.readValue(file.toFile(), IntegrationConfigYamlModel::class.java)
+        if (integrationConfigYaml.name.isBlank()) {
             logger.warn { "[FilesystemIntegrationConfigRepository] Skipping $file: 'name' is blank" }
             return null
         }
-        if (model.integrationType.isBlank()) {
+        if (integrationConfigYaml.integrationType.isBlank()) {
             logger.warn { "[FilesystemIntegrationConfigRepository] Skipping $file: 'integrationType' is blank" }
             return null
         }
+        val configPath = directory.parent?.toString()
         return IntegrationConfig(
             // Stable UUID derived from the name so identity survives restarts.
             // namespaceId is null here; it is overwritten by the caller.
-            metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("filesystem-integration:${model.name}".toByteArray(Charsets.UTF_8))),
+            metadata =
+                EntityMetadata(
+                    id = UUID.nameUUIDFromBytes("filesystem-integration:${integrationConfigYaml.name}".toByteArray(Charsets.UTF_8)),
+                ),
             namespaceId = null,
             userId = null,
-            name = model.name,
-            integrationType = model.integrationType,
-            description = model.description,
-            parameters = model.parameters,
+            name = integrationConfigYaml.name,
+            integrationType = integrationConfigYaml.integrationType,
+            description = integrationConfigYaml.description,
+            parameters = substituteConfigPath(integrationConfigYaml.parameters, configPath),
         )
     }
 
@@ -162,9 +180,12 @@ class FilesystemIntegrationConfigRepository(
  * YAML model for integration config files read from the filesystem.
  *
  * Both [name] and [integrationType] are required — a file missing either is skipped with a warning.
- * [parameters] is an arbitrary YAML object serialised verbatim as a [JsonNode]; no variable
- * substitution is performed. For credentials that vary per user, create a user-level overlay
- * via the API on top of this namespace-shared base.
+ * [parameters] is an arbitrary YAML object serialised verbatim as a [JsonNode]. The single
+ * exception is the `{{NAMESPACE_CONFIG_PATH}}` token (see
+ * [io.whozoss.agentos.plugin.filesystem.substituteConfigPath]), substituted by this namespace's
+ * `configPath` at parse time to make committed absolute paths portable across checkouts.
+ * For credentials that vary per user, create a user-level overlay via the API on top of this
+ * namespace-shared base.
  *
  * Example:
  * ```yaml
