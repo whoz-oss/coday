@@ -40,8 +40,15 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 /**
  * REST API for [ScheduledPrompt] entities at /api/scheduled-prompts.
  *
- * **Responsibilities**: HTTP routing, authentication/authorisation (scope dispatch,
- * permission checks), external-id resolution, and DTO ↔ domain mapping.
+ * **Responsibilities**: HTTP routing, scope-dispatch authorisation on create (namespace
+ * ADMIN/READ checks below), external-id resolution, and DTO ↔ domain mapping.
+ *
+ * **Authorisation for [getById]/[getByIds]** is done in the generic
+ * [io.whozoss.agentos.permissions.PermissionService] / repository layer (direct edge or
+ * parent-Namespace edge) — not here, not in [ScheduledPromptService]. [effective] applies a
+ * separate, stricter DEPLOYED_TO check in [ScheduledPromptNodeNeo4jRepository.findEffective].
+ * The two are not homogeneous yet: a namespace member without agent access is excluded from
+ * [effective] but not from [getByIds].
  *
  * **Business logic** (prompt lifecycle, planning validation, namespace/agent existence
  * checks, prompt content resolution) is fully delegated to [ScheduledPromptService].
