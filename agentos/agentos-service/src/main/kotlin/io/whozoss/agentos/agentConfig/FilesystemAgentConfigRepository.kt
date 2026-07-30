@@ -119,13 +119,14 @@ class FilesystemAgentConfigRepository(
         if (missing.isEmpty()) return fromDelegate
 
         val missingSet = missing.toHashSet()
-        val fromFilesystem = namespaceRepository
-            .findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY)
-            .filter { it.configPath != null }
-            .flatMap { namespace ->
-                filesystemAgents(namespace.metadata.id)
-                    .filter { it.metadata.id in missingSet }
-            }
+        val fromFilesystem =
+            namespaceRepository
+                .findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY)
+                .filter { it.configPath != null }
+                .flatMap { namespace ->
+                    filesystemAgents(namespace.metadata.id)
+                        .filter { it.metadata.id in missingSet }
+                }
 
         return fromDelegate + fromFilesystem
     }
@@ -168,21 +169,26 @@ class FilesystemAgentConfigRepository(
             modelName = model.modelName,
             integrations = model.integrations,
             subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-            docs = (model.docs ?: model.mandatoryDocs)
-                ?.filter { it.isNotBlank() }
-                ?.map { entry ->
-                    // Preserve the trailing pattern marker ('/' or '/*') before normalization:
-                    // Path.normalize() strips trailing slashes, which would make the
-                    // directory-listing pattern (endsWith("/")) undetectable downstream.
-                    val suffix = when {
-                        entry.endsWith("/*") -> "/*"
-                        entry.endsWith("/") -> "/"
-                        else -> ""
-                    }
-                    val rawPath = entry.removeSuffix(suffix)
-                    file.parent.resolve(rawPath).toAbsolutePath().normalize().toString() + suffix
-                }
-                ?.takeIf { it.isNotEmpty() },
+            docs =
+                model.docs
+                    ?.filter { it.isNotBlank() }
+                    ?.map { entry ->
+                        // Preserve the trailing pattern marker ('/' or '/*') before normalization:
+                        // Path.normalize() strips trailing slashes, which would make the
+                        // directory-listing pattern (endsWith("/")) undetectable downstream.
+                        val suffix =
+                            when {
+                                entry.endsWith("/*") -> "/*"
+                                entry.endsWith("/") -> "/"
+                                else -> ""
+                            }
+                        val rawPath = entry.removeSuffix(suffix)
+                        file.parent
+                            .resolve(rawPath)
+                            .toAbsolutePath()
+                            .normalize()
+                            .toString() + suffix
+                    }?.takeIf { it.isNotEmpty() },
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,
         )
