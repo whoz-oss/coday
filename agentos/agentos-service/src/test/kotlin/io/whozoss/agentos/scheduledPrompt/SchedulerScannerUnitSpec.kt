@@ -245,18 +245,18 @@ class SchedulerScannerUnitSpec : StringSpec() {
         // CAS advance
         // -------------------------------------------------------------------------
 
-        "advance CAS: returns true when slot matches" {
+        "advanceNextRunAt CAS: returns true when slot matches" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
             val scheduledPrompt = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
-            scheduledPromptRepo.advance(scheduledPrompt.id, slot, slot.plusSeconds(86400)).shouldBeTrue()
+            scheduledPromptRepo.advanceNextRunAt(scheduledPrompt.id, slot, slot.plusSeconds(86400)).shouldBeTrue()
         }
 
-        "advance CAS: returns false when slot does not match" {
+        "advanceNextRunAt CAS: returns false when slot does not match" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
             val scheduledPrompt = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
-            scheduledPromptRepo.advance(scheduledPrompt.id, slot.plusSeconds(1), slot.plusSeconds(86400)).shouldBeFalse()
+            scheduledPromptRepo.advanceNextRunAt(scheduledPrompt.id, slot.plusSeconds(1), slot.plusSeconds(86400)).shouldBeFalse()
         }
 
         // -------------------------------------------------------------------------

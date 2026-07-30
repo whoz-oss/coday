@@ -54,5 +54,5 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
      * @param nextSlot the new value to write
      * @return true if the update was applied (the CAS matched), false if another tick beat us
      */
-    fun advance(id: UUID, currentSlot: Instant, nextSlot: Instant): Boolean
+    fun advanceNextRunAt(id: UUID, currentSlot: Instant, nextSlot: Instant): Boolean
 }

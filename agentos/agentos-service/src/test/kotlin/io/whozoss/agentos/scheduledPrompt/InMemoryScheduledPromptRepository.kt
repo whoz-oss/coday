@@ -70,7 +70,7 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
     /**
      * CAS update: sets nextRunAt = nextSlot only when current stored value equals currentSlot.
      */
-    override fun advance(id: UUID, currentSlot: Instant, nextSlot: Instant): Boolean {
+    override fun advanceNextRunAt(id: UUID, currentSlot: Instant, nextSlot: Instant): Boolean {
         val existing = delegate.findAll().firstOrNull { it.metadata.id == id } ?: return false
         if (existing.nextRunAt != currentSlot) return false
         delegate.save(existing.copy(nextRunAt = nextSlot))

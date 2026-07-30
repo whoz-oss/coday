@@ -94,7 +94,7 @@ open class Neo4jScheduledPromptRepository(
     override fun findDue(now: Instant): List<ScheduledPrompt> =
         neo4jRepository.findDue(now).map { it.toDomain() }
 
-    override fun advance(id: UUID, currentSlot: Instant, nextSlot: Instant): Boolean =
+    override fun advanceNextRunAt(id: UUID, currentSlot: Instant, nextSlot: Instant): Boolean =
         neo4jRepository.advanceNextRunAt(id.toString(), currentSlot, nextSlot)
 
     @Transactional
