@@ -1,14 +1,12 @@
 /**
- * Typography tokens — Coday design system
+ * Typography tokens — agentos-ui design system
  *
  * --font-body    : Barlow (UI text, labels, paragraphs)
  * --font-heading : IBM Plex Mono (headings, monospace, code, tags)
  *
- * Applied globally on body in styles.scss.
- * Components should inherit via cascade — do NOT redeclare font-family
- * unless overriding to --font-heading for specific mono elements.
+ * These tokens are scoped under agentos-shell to avoid overriding the legacy
+ * apps/client font stack (SF Pro via Angular Material).
+ *
+ * The actual token definitions live in colors.scss under the agentos-shell selector.
+ * This file is kept for documentation purposes.
  */
-:root {
-  --font-body: 'Barlow', system-ui, sans-serif;
-  --font-heading: 'IBM Plex Mono', 'Fira Code', monospace;
-}
