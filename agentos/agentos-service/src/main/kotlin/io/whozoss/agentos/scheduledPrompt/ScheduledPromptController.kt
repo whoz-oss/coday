@@ -65,10 +65,10 @@ class ScheduledPromptController(
             permissions = permissionService,
             entityType = EntityType.SCHEDULED_PROMPT,
             toResource = { entity ->
-                val sp = entity as ScheduledPrompt
-                val (_, promptContent) = scheduledPromptService.findByIdWithContent(sp.id, withRemoved = true)
-                    ?: (sp to "")
-                toDto(sp, promptContent)
+                val scheduledPrompt = entity as ScheduledPrompt
+                val (_, promptContent) = scheduledPromptService.findByIdWithContent(scheduledPrompt.id, withRemoved = true)
+                    ?: (scheduledPrompt to "")
+                toDto(scheduledPrompt, promptContent)
             },
         )
 
