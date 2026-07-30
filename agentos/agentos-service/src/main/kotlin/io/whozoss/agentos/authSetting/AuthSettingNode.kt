@@ -2,7 +2,6 @@ package io.whozoss.agentos.authSetting
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -25,12 +24,16 @@ import java.util.UUID
  * User-scoped settings (`userId != null`, `namespaceId == null`) do NOT get the
  * @Relationship — they are user-global and have no namespace to link to.
  *
- * [dataJson] stores the typed properties of each [AuthSetting] subtype serialised
- * as a flat JSON map. Each value is individually **encrypted** before write and
- * **decrypted** after read using the provided [FieldEncryptor]. Conversion between
- * the typed domain object and the flat map goes through [AuthSetting.toDataMap]
- * (write) and [authSettingFromDataMap] (read). Because [AuthSettingNode] is a plain
- * data class (not a Spring bean), the encryptor is passed explicitly.
+ * [dataJson] stores the typed properties of each [AuthSetting] subtype serialised as a flat
+ * JSON map. Conversion between the typed domain object and the flat map goes through
+ * [AuthSetting.toDataMap] (write) and [authSettingFromDataMap] (read).
+ *
+ * **Encryption is not this class's responsibility.** [toDomain] and [fromDomain] only ever
+ * see plaintext JSON in [dataJson]; encrypting/decrypting the serialised string as a whole
+ * unit is applied by [Neo4jAuthSettingRepository] around the `save`/`find*` calls, the same
+ * pattern used by [io.whozoss.agentos.credential.CredentialNode] /
+ * [io.whozoss.agentos.credential.Neo4jCredentialRepository]. This keeps the node a pure data
+ * holder with no dependency on [io.whozoss.agentos.encryption.FieldEncryptor].
  *
  * [authType] is stored as its enum name string and round-tripped via [AuthType.valueOf].
  */
@@ -54,9 +57,8 @@ data class AuthSettingNode(
     val description: String? = null,
     val authType: String,
     /**
-     * JSON-serialised flat property map for the [AuthSetting] subtype. Each map value
-     * is encrypted at rest; decryption and reconstruction into the typed subtype happens
-     * in [toDomain] via the caller-supplied [FieldEncryptor] and [authSettingFromDataMap].
+     * JSON-serialised flat property map for the [AuthSetting] subtype. May be encrypted at
+     * rest — see the class KDoc. [toDomain] / [fromDomain] always operate on plaintext.
      */
     val dataJson: String? = null,
     // EntityMetadata fields
@@ -68,13 +70,12 @@ data class AuthSettingNode(
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
     val namespace: NamespaceNode? = null,
 ) {
-    fun toDomain(encryptor: FieldEncryptor): AuthSetting {
+    fun toDomain(): AuthSetting {
         val rawData: Map<String, String> =
             dataJson?.let { MAPPER.readValue(it, DATA_TYPE) } ?: emptyMap()
-        val decryptedData = rawData.mapValues { (_, v) -> encryptor.decrypt(v) }
         return authSettingFromDataMap(
             authType = AuthType.valueOf(authType),
-            data = decryptedData,
+            data = rawData,
             metadata =
                 EntityMetadata(
                     id = UUID.fromString(id),
@@ -103,17 +104,14 @@ data class AuthSettingNode(
 
         fun tombstoneTripleKey(id: String): String = OverlayKeyEncoding.tombstoneKey(id)
 
-        fun fromDomain(
-            config: AuthSetting,
-            encryptor: FieldEncryptor,
-        ): AuthSettingNode {
+        fun fromDomain(config: AuthSetting): AuthSettingNode {
             val idString = config.id.toString()
             val tripleKey =
                 when {
                     config.metadata.removed -> tombstoneTripleKey(idString)
                     else -> computeTripleKey(config.namespaceId, config.userId, config.name)
                 }
-            val encryptedData = config.toDataMap().mapValues { (_, v) -> encryptor.encrypt(v) }
+            val dataMap = config.toDataMap()
             return AuthSettingNode(
                 id = idString,
                 namespaceId = config.namespaceId?.toString(),
@@ -122,7 +120,7 @@ data class AuthSettingNode(
                 tripleKey = tripleKey,
                 description = config.description,
                 authType = config.authType.name,
-                dataJson = encryptedData.takeIf { it.isNotEmpty() }?.let { MAPPER.writeValueAsString(it) },
+                dataJson = dataMap.takeIf { it.isNotEmpty() }?.let { MAPPER.writeValueAsString(it) },
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,
                 modified = config.metadata.modified,
