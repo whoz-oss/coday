@@ -1,3 +1,15 @@
+## 0.231.1 (2026-07-29)
+
+### 🩹 Fixes
+
+- #1179 Scope agentos-ui themes and dark mode styles ([#1179](https://github.com/whoz-oss/coday/issues/1179))
+- #1179 Scope agentos-ui themes and dark mode styles ([#1180](https://github.com/whoz-oss/coday/pull/1180), [#1179](https://github.com/whoz-oss/coday/issues/1179))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.231.0 (2026-07-29)
 
 ### 🚀 Features
