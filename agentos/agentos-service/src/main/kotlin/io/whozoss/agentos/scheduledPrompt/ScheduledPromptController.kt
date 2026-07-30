@@ -40,13 +40,23 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * **Responsibilities**: HTTP routing, external-id resolution, DTO <-> domain mapping, and
  * delegating business logic to [ScheduledPromptService].
  *
- * **Authorisation is split by endpoint shape**:
- * - **Per-id endpoints** (`getById`, `getByIds`, `update`, `delete`, `enable`, `disable`) are
+ * **Authorisation is split by endpoint shape, and is attribute-based (ABAC) rather than
+ * role-based (RBAC) throughout**: access is never decided by a fixed role held by the
+ * caller, but by evaluating, at request time, the relationship between the caller and the
+ * target resource — direct ownership, the parent-Namespace edge, or a DEPLOYED_TO edge.
+ * - **Single-id endpoints** (`getById`, `update`, `delete`, `enable`, `disable`) are
  *   fully declarative: `@PreAuthorize("hasPermission(#id, 'ScheduledPrompt', ...)")` delegates
  *   to [io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator], which resolves
- *   direct edges or the parent-Namespace edge. [resolveEffective] applies a separate, stricter
- *   DEPLOYED_TO check in [ScheduledPromptNodeNeo4jRepository.findEffective]: a namespace
- *   member without agent access is excluded from `resolveEffective` but not from `getByIds`.
+ *   direct edges or the parent-Namespace edge for that single target id. [resolveEffective]
+ *   applies a separate, stricter DEPLOYED_TO check in
+ *   [ScheduledPromptNodeNeo4jRepository.findEffective]: a namespace member without agent
+ *   access is excluded from `resolveEffective` but not from `getByIds`.
+ * - **`getByIds` is not a declarative per-id check.** It only carries
+ *   `@PreAuthorize("isAuthenticated()")` and delegates to `crud.getByIds`
+ *   ([EntityCrudDelegate.getByIds]), the same batch entry point the service layer exposes.
+ *   Authorization happens *inside* the delegate via [PermissionService.filterVisibleIds],
+ *   which resolves attribute-based visibility for the whole batch in ≤ 2 Cypher queries,
+ *   instead of one SpEL evaluation per id.
  * - **Scope endpoints** (`search`, `effective`, `create`) have no target id to evaluate a
  *   permission against \u2014 the request body itself carries the `(namespaceId, userId)` scope
  *   that determines *which* permission check applies. This is handled by
