@@ -25,7 +25,7 @@ import java.util.UUID
  * An optional [agentConfigIds] filter restricts results to prompts linked to those agents.
  * No merge, no inheritance — admin view only.
  *
- * **[effective]** returns the merged set of prompts accessible in the given namespace
+ * **[resolveEffective]** returns the merged set of prompts accessible in the given namespace
  * context (platform + namespace + user layers merged by name, highest layer wins).
  * An optional [agentConfigId] filter is applied post-resolution.
  */
@@ -41,5 +41,5 @@ interface PromptApi : EntityCrudApi<PromptDto> {
      * POST /api/prompts/effective — effective merged prompt set for a user in a namespace.
      * Requires READ on the namespace.
      */
-    fun effective(request: PromptEffectiveRequest): List<PromptDto>
+    fun resolveEffective(request: PromptEffectiveRequest): List<PromptDto>
 }

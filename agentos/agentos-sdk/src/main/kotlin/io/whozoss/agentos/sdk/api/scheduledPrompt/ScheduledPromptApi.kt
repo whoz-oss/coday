@@ -17,7 +17,7 @@ import java.util.UUID
  * - `(ns, me)`       → user × namespace (READ on namespace)
  *
  * **[search]** returns scheduled prompts declared at a single exact scope level.
- * **[effective]** returns the merged set accessible in the given namespace context.
+ * **[resolveEffective]** returns the merged set accessible in the given namespace context.
  * **[enable]** / **[disable]** are idempotent actions on the [ScheduledPromptDto.enabled] flag.
  */
 interface ScheduledPromptApi : EntityCrudApi<ScheduledPromptDto> {
@@ -30,7 +30,7 @@ interface ScheduledPromptApi : EntityCrudApi<ScheduledPromptDto> {
     /**
      * POST /api/scheduled-prompts/effective — effective merged set for a user in a namespace.
      */
-    fun effective(request: ScheduledPromptEffectiveRequest): List<ScheduledPromptDto>
+    fun resolveEffective(request: ScheduledPromptEffectiveRequest): List<ScheduledPromptDto>
 
     /**
      * PATCH /api/scheduled-prompts/{id}/enable — enable a scheduled prompt. Idempotent:

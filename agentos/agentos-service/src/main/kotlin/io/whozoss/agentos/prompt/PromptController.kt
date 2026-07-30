@@ -53,9 +53,9 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * Mutable fields: name, description, content, parameters, externalMetadata.
  *
  * **[search]** returns prompts at an exact scope level — no merge, no inheritance.
- * **[effective]** returns the merged set across the four overlay layers.
+ * **[resolveEffective]** returns the merged set across the four overlay layers.
  *
- * **Why [search]/[effective]/[create] use [OverlayScopeAuthorizer] instead of `@PreAuthorize`**:
+ * **Why [search]/[resolveEffective]/[create] use [OverlayScopeAuthorizer] instead of `@PreAuthorize`**:
  * these three endpoints have no target id to evaluate a permission against — the request
  * body itself carries the `(namespaceId, userId)` scope that determines which check applies.
  * A `@PreAuthorize` SpEL expression can only ever produce 403 on refusal, but the
@@ -158,7 +158,7 @@ class PromptController(
         consumes = [MediaType.APPLICATION_JSON_VALUE],
     )
     @PreAuthorize("isAuthenticated()")
-    override fun effective(
+    override fun resolveEffective(
         @Valid @RequestBody request: PromptEffectiveRequest,
     ): List<PromptDto> {
         val scope = overlayScopeAuthorizer.authorizeEffectiveOrThrow(

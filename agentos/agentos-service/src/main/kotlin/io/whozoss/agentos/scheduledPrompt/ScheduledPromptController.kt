@@ -44,9 +44,9 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * - **Per-id endpoints** (`getById`, `getByIds`, `update`, `delete`, `enable`, `disable`) are
  *   fully declarative: `@PreAuthorize("hasPermission(#id, 'ScheduledPrompt', ...)")` delegates
  *   to [io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator], which resolves
- *   direct edges or the parent-Namespace edge. [effective] applies a separate, stricter
+ *   direct edges or the parent-Namespace edge. [resolveEffective] applies a separate, stricter
  *   DEPLOYED_TO check in [ScheduledPromptNodeNeo4jRepository.findEffective]: a namespace
- *   member without agent access is excluded from `effective` but not from `getByIds`.
+ *   member without agent access is excluded from `resolveEffective` but not from `getByIds`.
  * - **Scope endpoints** (`search`, `effective`, `create`) have no target id to evaluate a
  *   permission against \u2014 the request body itself carries the `(namespaceId, userId)` scope
  *   that determines *which* permission check applies. This is handled by
@@ -126,7 +126,7 @@ class ScheduledPromptController(
     @Operation(summary = "Effective scheduled prompts for the authenticated user in a namespace")
     @PostMapping("/effective", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
-    override fun effective(@Valid @RequestBody request: ScheduledPromptEffectiveRequest): List<ScheduledPromptDto> {
+    override fun resolveEffective(@Valid @RequestBody request: ScheduledPromptEffectiveRequest): List<ScheduledPromptDto> {
         val scope = overlayScopeAuthorizer.authorizeEffectiveOrThrow(
             pluralLabel = "scheduled prompts",
             namespaceId = request.namespaceId,
