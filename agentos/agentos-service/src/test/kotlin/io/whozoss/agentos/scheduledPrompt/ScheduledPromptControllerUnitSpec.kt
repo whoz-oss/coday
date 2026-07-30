@@ -12,6 +12,7 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
@@ -33,11 +34,13 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
     val namespaceService = mockk<NamespaceService>(relaxed = true)
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
-    // Real instance (not mocked): preserves the id-vs-externalId resolution behaviour that
-    // used to be inlined in the controller, backed by the same namespaceService/userService mocks.
+    // Real instances (not mocked): preserve the id-vs-externalId resolution and scope
+    // authorization behaviour that used to be inlined in the controller, backed by the
+    // same namespaceService/userService/permissionService mocks.
     val externalIdentifierResolver = ExternalIdentifierResolver(namespaceService, userService)
+    val overlayScopeAuthorizer = OverlayScopeAuthorizer(permissionService, userService, externalIdentifierResolver)
     val controller = ScheduledPromptController(
-        service, userService, permissionService, externalIdentifierResolver,
+        service, userService, permissionService, overlayScopeAuthorizer,
     )
 
     val namespaceId: UUID = UUID.randomUUID()

@@ -16,6 +16,7 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.prompt.PromptDto
 import io.whozoss.agentos.sdk.api.prompt.PromptParameterDto
@@ -44,10 +45,14 @@ class PromptControllerSpec : StringSpec({
     val namespaceService = mockk<NamespaceService>(relaxed = true)
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
-    // Real instance (not mocked): preserves the id-vs-externalId resolution behaviour that
-    // used to be inlined in the controller, backed by the same namespaceService/userService mocks.
+    // Real instances (not mocked): preserve the id-vs-externalId resolution and scope
+    // authorization behaviour that used to be inlined in the controller, backed by the
+    // same namespaceService/userService/permissionService mocks.
     val externalIdentifierResolver = ExternalIdentifierResolver(namespaceService, userService)
-    val controller = PromptController(service, namespaceService, userService, permissionService, externalIdentifierResolver)
+    val overlayScopeAuthorizer = OverlayScopeAuthorizer(permissionService, userService, externalIdentifierResolver)
+    val controller = PromptController(
+        service, namespaceService, userService, permissionService, overlayScopeAuthorizer,
+    )
 
     val namespaceId = UUID.randomUUID()
     val callerId = UUID.randomUUID()

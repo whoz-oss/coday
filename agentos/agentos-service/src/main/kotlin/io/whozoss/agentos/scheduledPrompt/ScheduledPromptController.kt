@@ -2,12 +2,10 @@ package io.whozoss.agentos.scheduledPrompt
 
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
-import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.entity.GetByIdsRequest
-import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.PlanningDto
 import io.whozoss.agentos.sdk.api.scheduledPrompt.RecurrenceDto
@@ -22,7 +20,6 @@ import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -40,15 +37,31 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 /**
  * REST API for [ScheduledPrompt] entities at /api/scheduled-prompts.
  *
- * **Responsibilities**: HTTP routing, scope-dispatch authorisation on create (namespace
- * ADMIN/READ checks below), external-id resolution, and DTO ↔ domain mapping.
+ * **Responsibilities**: HTTP routing, external-id resolution, DTO <-> domain mapping, and
+ * delegating business logic to [ScheduledPromptService].
  *
- * **Authorisation for [getById]/[getByIds]** is done in the generic
- * [io.whozoss.agentos.permissions.PermissionService] / repository layer (direct edge or
- * parent-Namespace edge) — not here, not in [ScheduledPromptService]. [effective] applies a
- * separate, stricter DEPLOYED_TO check in [ScheduledPromptNodeNeo4jRepository.findEffective].
- * The two are not homogeneous yet: a namespace member without agent access is excluded from
- * [effective] but not from [getByIds].
+ * **Authorisation is split by endpoint shape**:
+ * - **Per-id endpoints** (`getById`, `getByIds`, `update`, `delete`, `enable`, `disable`) are
+ *   fully declarative: `@PreAuthorize("hasPermission(#id, 'ScheduledPrompt', ...)")` delegates
+ *   to [io.whozoss.agentos.security.declarative.AgentOsPermissionEvaluator], which resolves
+ *   direct edges or the parent-Namespace edge. [effective] applies a separate, stricter
+ *   DEPLOYED_TO check in [ScheduledPromptNodeNeo4jRepository.findEffective]: a namespace
+ *   member without agent access is excluded from `effective` but not from `getByIds`.
+ * - **Scope endpoints** (`search`, `effective`, `create`) have no target id to evaluate a
+ *   permission against \u2014 the request body itself carries the `(namespaceId, userId)` scope
+ *   that determines *which* permission check applies. This is handled by
+ *   [OverlayScopeAuthorizer] rather than `@PreAuthorize`, for two structural reasons:
+ *   1. **HTTP status codes are not uniform.** The mass-assignment guard on `body.userId`
+ *      must produce 400 (malformed request), not 403 \u2014 a `@PreAuthorize` expression only
+ *      ever throws `AccessDeniedException` (403) on `false`, it cannot distinguish the two.
+ *   2. **External-id resolution would otherwise run twice.** The request body accepts a
+ *      UUID or an external identifier, resolved via
+ *      [io.whozoss.agentos.entity.ExternalIdentifierResolver] with a
+ *      Neo4j lookup. SpEL evaluated ahead of the method body cannot see that resolved
+ *      value, so it would have to re-resolve inside the method (an extra round-trip) or
+ *      duplicate the resolution logic in SpEL (not expressible there).
+ *   `@PreAuthorize("isAuthenticated()")` remains as the declarative floor on these three
+ *   endpoints; [OverlayScopeAuthorizer] refines it once the request body is available.
  *
  * **Business logic** (prompt lifecycle, planning validation, namespace/agent existence
  * checks, prompt content resolution) is fully delegated to [ScheduledPromptService].
@@ -62,7 +75,7 @@ class ScheduledPromptController(
     private val scheduledPromptService: ScheduledPromptService,
     private val userService: UserService,
     private val permissionService: PermissionService,
-    private val externalIdentifierResolver: ExternalIdentifierResolver,
+    private val overlayScopeAuthorizer: OverlayScopeAuthorizer,
 ) : ScheduledPromptApi {
 
     private val crud =
@@ -97,23 +110,15 @@ class ScheduledPromptController(
     @PostMapping("/search", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
     override fun search(@Valid @RequestBody request: ScheduledPromptSearchRequest): List<ScheduledPromptDto> {
-        val currentUser = userService.getCurrentUser()
-        val resolvedNs = externalIdentifierResolver.resolveOptionalNamespaceId(request.namespaceId, request.namespaceExternalId)
-        val resolvedUserId = externalIdentifierResolver.resolveOptionalUserId(request.userId, request.userExternalId)
-        if (resolvedUserId != null && resolvedUserId != currentUser.id && !currentUser.isAdmin) {
-            throw AccessDeniedException("Cannot search scheduled prompts for another user")
-        }
-        if (resolvedNs != null) {
-            val granted = permissionService.hasPermission(
-                userId = currentUser.id.toString(),
-                entityType = EntityType.NAMESPACE,
-                entityId = resolvedNs.toString(),
-                action = Action.READ,
-            )
-            if (!granted) throw AccessDeniedException("Cannot read scheduled prompts in namespace $resolvedNs")
-        }
+        val scope = overlayScopeAuthorizer.authorizeSearchOrThrow(
+            pluralLabel = "scheduled prompts",
+            namespaceId = request.namespaceId,
+            namespaceExternalId = request.namespaceExternalId,
+            userId = request.userId,
+            userExternalId = request.userExternalId,
+        )
         return scheduledPromptService
-            .findByScope(resolvedNs, resolvedUserId, request.agentConfigIds)
+            .findByScope(scope.namespaceId, scope.userId, request.agentConfigIds)
             .let { scheduledPromptService.withContent(it) }
             .map { (sp, content) -> toDto(sp, content) }
     }
@@ -122,17 +127,13 @@ class ScheduledPromptController(
     @PostMapping("/effective", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
     override fun effective(@Valid @RequestBody request: ScheduledPromptEffectiveRequest): List<ScheduledPromptDto> {
-        val nsId = externalIdentifierResolver.resolveNamespaceId(request.namespaceId, request.namespaceExternalId)
-        val currentUser = userService.getCurrentUser()
-        val granted = permissionService.hasPermission(
-            userId = currentUser.id.toString(),
-            entityType = EntityType.NAMESPACE,
-            entityId = nsId.toString(),
-            action = Action.READ,
+        val scope = overlayScopeAuthorizer.authorizeEffectiveOrThrow(
+            pluralLabel = "scheduled prompts",
+            namespaceId = request.namespaceId,
+            namespaceExternalId = request.namespaceExternalId,
         )
-        if (!granted) throw AccessDeniedException("Cannot read scheduled prompts in namespace $nsId")
         return scheduledPromptService
-            .findEffective(nsId, currentUser.id, request.agentConfigId)
+            .findEffective(scope.namespaceId!!, scope.userId!!, request.agentConfigId)
             .let { scheduledPromptService.withContent(it) }
             .map { (sp, content) -> toDto(sp, content) }
     }
@@ -145,36 +146,16 @@ class ScheduledPromptController(
     @PreAuthorize("isAuthenticated()")
     @ResponseStatus(HttpStatus.CREATED)
     override fun create(@Valid @RequestBody resource: ScheduledPromptDto): ScheduledPromptDto {
-        val currentUser = userService.getCurrentUser()
-        val me = currentUser.id
-        if (resource.userId != null && resource.userId != me) {
-            throw BadRequestException("userId in body must match authenticated user or be omitted")
-        }
-
-        val resolvedNs: UUID? = resource.namespaceId
-        val resolvedUser: UUID? = if (resource.userId != null) me else null
-        val isPlatform = resolvedNs == null && resolvedUser == null
-
-        when {
-            isPlatform -> if (!currentUser.isAdmin) throw AccessDeniedException("Platform-level ScheduledPrompt requires Super Admin")
-            resolvedNs != null -> {
-                val authzAction = if (resolvedUser != null) Action.READ else Action.WRITE
-                val granted = permissionService.hasPermission(
-                    userId = me.toString(),
-                    entityType = EntityType.NAMESPACE,
-                    entityId = resolvedNs.toString(),
-                    action = authzAction,
-                )
-                if (!granted) throw AccessDeniedException(
-                    "Cannot create ScheduledPrompt in namespace $resolvedNs (${authzAction.name} required)",
-                )
-            }
-        }
+        val scope = overlayScopeAuthorizer.authorizeCreateOrThrow(
+            entityLabel = "ScheduledPrompt",
+            requestedNamespaceId = resource.namespaceId,
+            requestedUserId = resource.userId,
+        )
 
         val entity = ScheduledPrompt(
             metadata = EntityMetadata(id = UUID.randomUUID()),
-            namespaceId = resolvedNs,
-            userId = resolvedUser,
+            namespaceId = scope.namespaceId,
+            userId = scope.userId,
             agentConfigId = resource.agentConfigId,
             promptTemplateId = UUID.randomUUID(), // placeholder — overwritten by createWithPrompt
             name = resource.name,

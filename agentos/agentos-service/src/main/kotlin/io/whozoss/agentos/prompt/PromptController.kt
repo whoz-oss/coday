@@ -2,13 +2,12 @@ package io.whozoss.agentos.prompt
 
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
-import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.prompt.PromptApi
 import io.whozoss.agentos.sdk.api.prompt.PromptDto
@@ -22,7 +21,6 @@ import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -56,6 +54,17 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  *
  * **[search]** returns prompts at an exact scope level — no merge, no inheritance.
  * **[effective]** returns the merged set across the four overlay layers.
+ *
+ * **Why [search]/[effective]/[create] use [OverlayScopeAuthorizer] instead of `@PreAuthorize`**:
+ * these three endpoints have no target id to evaluate a permission against — the request
+ * body itself carries the `(namespaceId, userId)` scope that determines which check applies.
+ * A `@PreAuthorize` SpEL expression can only ever produce 403 on refusal, but the
+ * mass-assignment guard on `body.userId` must produce 400 (malformed request); and the
+ * external-id resolution ([io.whozoss.agentos.entity.ExternalIdentifierResolver], a Neo4j
+ * lookup) would have to run twice — once in SpEL to authorize, once in the method body to
+ * use the resolved value.
+ * [OverlayScopeAuthorizer] resolves once and throws the correctly-typed exception, so
+ * `@PreAuthorize("isAuthenticated()")` remains only as the declarative floor on these three.
  */
 @RestController
 @RequestMapping(
@@ -67,7 +76,7 @@ class PromptController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
-    private val externalIdentifierResolver: ExternalIdentifierResolver,
+    private val overlayScopeAuthorizer: OverlayScopeAuthorizer,
 ) : PromptApi {
     private val crud =
         EntityCrudDelegate(
@@ -120,31 +129,17 @@ class PromptController(
     override fun search(
         @Valid @RequestBody request: PromptSearchRequest,
     ): List<PromptDto> {
-        val currentUser = userService.getCurrentUser()
-        val resolvedNamespaceId = externalIdentifierResolver.resolveOptionalNamespaceId(request.namespaceId, request.namespaceExternalId)
-        val resolvedUserId = externalIdentifierResolver.resolveOptionalUserId(request.userId, request.userExternalId)
-
-        // Mass-assignment guard: userId must match the authenticated user unless super-admin
-        if (resolvedUserId != null && resolvedUserId != currentUser.id && !currentUser.isAdmin) {
-            throw AccessDeniedException("Cannot search prompts for another user")
-        }
-
-        // Namespace-scoped levels require READ on the namespace
-        if (resolvedNamespaceId != null) {
-            val granted =
-                permissionService.hasPermission(
-                    userId = currentUser.id.toString(),
-                    entityType = EntityType.NAMESPACE,
-                    entityId = resolvedNamespaceId.toString(),
-                    action = Action.READ,
-                )
-            if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $resolvedNamespaceId")
-        }
-
+        val scope = overlayScopeAuthorizer.authorizeSearchOrThrow(
+            pluralLabel = "prompts",
+            namespaceId = request.namespaceId,
+            namespaceExternalId = request.namespaceExternalId,
+            userId = request.userId,
+            userExternalId = request.userExternalId,
+        )
         return promptService
             .findByScope(
-                namespaceId = resolvedNamespaceId,
-                userId = resolvedUserId,
+                namespaceId = scope.namespaceId,
+                userId = scope.userId,
                 agentConfigIds = request.agentConfigIds,
             ).map(::toDto)
     }
@@ -166,20 +161,13 @@ class PromptController(
     override fun effective(
         @Valid @RequestBody request: PromptEffectiveRequest,
     ): List<PromptDto> {
-        val nsId = externalIdentifierResolver.resolveNamespaceId(request.namespaceId, request.namespaceExternalId)
-        val currentUser = userService.getCurrentUser()
-
-        val granted =
-            permissionService.hasPermission(
-                userId = currentUser.id.toString(),
-                entityType = EntityType.NAMESPACE,
-                entityId = nsId.toString(),
-                action = Action.READ,
-            )
-        if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $nsId")
-
+        val scope = overlayScopeAuthorizer.authorizeEffectiveOrThrow(
+            pluralLabel = "prompts",
+            namespaceId = request.namespaceId,
+            namespaceExternalId = request.namespaceExternalId,
+        )
         return promptService
-            .findEffective(nsId, currentUser.id, request.agentConfigId)
+            .findEffective(scope.namespaceId!!, scope.userId!!, request.agentConfigId)
             .map(::toDto)
     }
 
@@ -206,57 +194,28 @@ class PromptController(
     override fun create(
         @Valid @RequestBody resource: PromptDto,
     ): PromptDto {
-        val currentUser = userService.getCurrentUser()
-        val me = currentUser.id
-
-        // Phase 1 — validation
-        if (resource.userId != null && resource.userId != me) {
-            throw BadRequestException("userId in body must match authenticated user or be omitted")
-        }
+        // Phase 1 — validation local to Prompt (unrelated to scope authorization)
         if (resource.content.any { it.isBlank() }) {
             throw BadRequestException("content elements must not be blank")
         }
 
-        // Phase 2 — scope determination
-        val resolvedNs: UUID? = resource.namespaceId
-        val resolvedUser: UUID? = if (resource.userId != null) me else null
-        val isPlatform = resolvedNs == null && resolvedUser == null
+        // Phase 2 — mass-assignment guard + scope dispatch + authorization
+        val scope = overlayScopeAuthorizer.authorizeCreateOrThrow(
+            entityLabel = "Prompt",
+            requestedNamespaceId = resource.namespaceId,
+            requestedUserId = resource.userId,
+        )
 
-        // Phase 3 — per-scope authorization
-        when {
-            isPlatform -> {
-                if (!currentUser.isAdmin) {
-                    throw AccessDeniedException("Platform-level Prompt requires Super Admin")
-                }
-            }
-            resolvedNs != null -> {
-                val authzAction = if (resolvedUser != null) Action.READ else Action.WRITE
-                val granted =
-                    permissionService.hasPermission(
-                        userId = me.toString(),
-                        entityType = EntityType.NAMESPACE,
-                        entityId = resolvedNs.toString(),
-                        action = authzAction,
-                    )
-                if (!granted) {
-                    throw AccessDeniedException(
-                        "Cannot create Prompt in namespace $resolvedNs (${authzAction.name} required)",
-                    )
-                }
-            }
-            // user-global: isAuthenticated() from @PreAuthorize is sufficient
-        }
-
-        // Phase 4 — namespace existence check (deferred after authz)
-        if (resolvedNs != null && namespaceService.findById(resolvedNs) == null) {
-            throw ResourceNotFoundException("Namespace not found: $resolvedNs")
+        // Phase 3 — namespace existence check (deferred after authz, anti-enumeration)
+        if (scope.namespaceId != null && namespaceService.findById(scope.namespaceId) == null) {
+            throw ResourceNotFoundException("Namespace not found: ${scope.namespaceId}")
         }
 
         val target =
             Prompt(
                 metadata = EntityMetadata(id = UUID.randomUUID()),
-                namespaceId = resolvedNs,
-                userId = resolvedUser,
+                namespaceId = scope.namespaceId,
+                userId = scope.userId,
                 agentConfigId = resource.agentConfigId,
                 name = resource.name,
                 description = resource.description,
