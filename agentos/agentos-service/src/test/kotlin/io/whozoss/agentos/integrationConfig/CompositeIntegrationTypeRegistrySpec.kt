@@ -30,11 +30,29 @@ class CompositeIntegrationTypeRegistrySpec :
         }
 
         "the built-in exchange descriptors are the two file-exchange types, flagged builtIn with no config" {
-            val descriptors = ExchangeIntegrationTypes.builtInDescriptors()
+            val descriptors =
+                ExchangeIntegrationTypes.builtInDescriptors(
+                    caseEnabledByDefault = false,
+                    namespaceEnabledByDefault = false,
+                )
 
             descriptors.map { it.type } shouldContainExactlyInAnyOrder
                 listOf(ExchangeIntegrationTypes.CASE, ExchangeIntegrationTypes.NAMESPACE)
             descriptors.all { it.builtIn } shouldBe true
             descriptors.all { it.configSchema == null } shouldBe true
+            descriptors.all { !it.enabledByDefault } shouldBe true
+        }
+
+        "each built-in exchange descriptor publishes its own platform default" {
+            // The client renders this to say which way the "platform default" state of a toggle
+            // resolves, so the two scopes must not be conflated.
+            val descriptors =
+                ExchangeIntegrationTypes.builtInDescriptors(
+                    caseEnabledByDefault = true,
+                    namespaceEnabledByDefault = false,
+                )
+
+            descriptors.single { it.type == ExchangeIntegrationTypes.CASE }.enabledByDefault shouldBe true
+            descriptors.single { it.type == ExchangeIntegrationTypes.NAMESPACE }.enabledByDefault shouldBe false
         }
     })

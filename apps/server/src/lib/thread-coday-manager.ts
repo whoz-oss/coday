@@ -42,6 +42,7 @@ class ThreadCodayInstance {
   private inactivityTimeout?: NodeJS.Timeout
   private isOneshot: boolean = false
   private isReplaying: boolean = false
+  private isCleaningUp: boolean = false
   coday?: Coday
 
   // Timeouts configuration
@@ -402,8 +403,11 @@ class ThreadCodayInstance {
       }
     }
 
-    // If this is a ThreadUpdateEvent with a name, update the thread service cache
-    if (event instanceof ThreadUpdateEvent && (event.name || event.summary)) {
+    // If this is a ThreadUpdateEvent with a name, update the thread service cache.
+    // Skip during cleanup — autoSave is writing the file concurrently, and this
+    // fire-and-forget IIFE would race with it (read-modify-write vs full write).
+    // The ThreadPostProcessor handles name/summary updates after autoSave completes.
+    if (event instanceof ThreadUpdateEvent && (event.name || event.summary) && !this.isCleaningUp) {
       debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} name/summary`)
       // Update only the metadata (name/summary) in the thread service cache.
       // IMPORTANT: do NOT reload from disk and re-save — that would overwrite the in-memory
@@ -498,6 +502,10 @@ class ThreadCodayInstance {
    * Cleanup and destroy the Coday instance
    */
   async cleanup(): Promise<void> {
+    // Set cleanup flag FIRST — prevents broadcastEvent's fire-and-forget IIFE from
+    // launching concurrent read-modify-write operations on the YAML file while
+    // autoSave (triggered by coday.kill()) is writing it.
+    this.isCleaningUp = true
     debugLog('THREAD_CODAY', `Cleaning up thread ${this.threadId}`)
 
     // Clear all timeouts

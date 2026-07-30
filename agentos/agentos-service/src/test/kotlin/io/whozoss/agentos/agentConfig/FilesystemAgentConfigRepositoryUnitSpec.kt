@@ -617,6 +617,105 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             result.single().modelName shouldBe "BIG"
         }
 
+        // -------------------------------------------------------------------------
+        // findByIds — filesystem augmentation
+        // -------------------------------------------------------------------------
+
+        "findByIds returns delegate result when all ids are found in Neo4j" {
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = mockk<NamespaceRepository>()
+            val config = persistedConfig(namespaceId, "Alpha")
+            every { delegate.findByIds(listOf(config.id), withRemoved = false) } returns listOf(config)
+
+            val result = buildRepo(delegate, nsRepo).findByIds(listOf(config.id), withRemoved = false)
+
+            result shouldBe listOf(config)
+            // namespaceRepository must not be consulted when all ids are satisfied by Neo4j
+            verify(exactly = 0) { nsRepo.findByParent(any<String>()) }
+        }
+
+        "findByIds resolves a filesystem agent id that Neo4j does not know" {
+            val root = tempDir()
+            writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev"))
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = mockk<NamespaceRepository>()
+            val fsId = UUID.nameUUIDFromBytes("filesystem-agent:Dev".toByteArray())
+
+            every { delegate.findByIds(listOf(fsId), withRemoved = false) } returns emptyList()
+            every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns
+                listOf(Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString()))
+            every { nsRepo.findByIds(listOf(namespaceId)) } returns
+                listOf(Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString()))
+
+            val result = buildRepo(delegate, nsRepo).findByIds(listOf(fsId), withRemoved = false)
+
+            result shouldHaveSize 1
+            result.single().name shouldBe "Dev"
+            result.single().namespaceId shouldBe namespaceId
+            result.single().id shouldBe fsId
+        }
+
+        "findByIds mixes Neo4j and filesystem results for a batch of ids" {
+            val root = tempDir()
+            writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev"))
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = mockk<NamespaceRepository>()
+            val neo4jConfig = persistedConfig(namespaceId, "Alpha")
+            val fsId = UUID.nameUUIDFromBytes("filesystem-agent:Dev".toByteArray())
+
+            every { delegate.findByIds(listOf(neo4jConfig.id, fsId), withRemoved = false) } returns listOf(neo4jConfig)
+            every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns
+                listOf(Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString()))
+            every { nsRepo.findByIds(listOf(namespaceId)) } returns
+                listOf(Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString()))
+
+            val result = buildRepo(delegate, nsRepo).findByIds(listOf(neo4jConfig.id, fsId), withRemoved = false)
+
+            result shouldHaveSize 2
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("Alpha", "Dev")
+        }
+
+        "findByIds returns empty when id is unknown to both Neo4j and filesystem" {
+            val root = tempDir()
+            writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev"))
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = mockk<NamespaceRepository>()
+            val unknownId = UUID.randomUUID()
+
+            every { delegate.findByIds(listOf(unknownId), withRemoved = false) } returns emptyList()
+            every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns
+                listOf(Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString()))
+            every { nsRepo.findByIds(listOf(namespaceId)) } returns
+                listOf(Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString()))
+
+            val result = buildRepo(delegate, nsRepo).findByIds(listOf(unknownId), withRemoved = false)
+
+            result.shouldBeEmpty()
+        }
+
+        "findByIds skips namespaces without configPath when scanning for missing ids" {
+            val root = tempDir()
+            writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev"))
+
+            val nsWithPath = Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", configPath = root.toString())
+            val nsWithoutPath = Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "no-path", configPath = null)
+            val fsId = UUID.nameUUIDFromBytes("filesystem-agent:Dev".toByteArray())
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = mockk<NamespaceRepository>()
+            every { delegate.findByIds(listOf(fsId), withRemoved = false) } returns emptyList()
+            every { nsRepo.findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY) } returns listOf(nsWithPath, nsWithoutPath)
+            every { nsRepo.findByIds(listOf(namespaceId)) } returns listOf(nsWithPath)
+
+            val result = buildRepo(delegate, nsRepo).findByIds(listOf(fsId), withRemoved = false)
+
+            result shouldHaveSize 1
+            result.single().name shouldBe "Dev"
+        }
+
         "findByParent with withDisabled=false places persisted first then filesystem" {
             val root = tempDir()
             writeYaml(agentsDir(root), "alpha.yaml", agentYaml("Alpha"))

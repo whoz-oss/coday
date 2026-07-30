@@ -196,6 +196,12 @@ class ToolResponseEventNode(
      */
     val metadataJson: String? = null,
     val durationMs: Long? = null,
+    /**
+     * JSON-serialised [List]<[io.whozoss.agentos.sdk.caseEvent.MessageContent.Image]> of images
+     * produced by the tool, or null when the tool produced no image. Stored as a nullable
+     * string for backward compatibility with existing nodes that pre-date this field.
+     */
+    val imagesJson: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

@@ -1,5 +1,8 @@
 package io.whozoss.agentos.exchange
 
+import io.whozoss.agentos.sdk.api.exchange.ExchangeFileContent
+import io.whozoss.agentos.sdk.api.exchange.ExchangeFileEntry
+import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.io.IOException
@@ -44,13 +47,6 @@ class ExchangeStorageService(
     }
 
     private val mountRoot: Path = Path.of(config.mountRoot)
-
-    /**
-     * Read size cap (bytes) applied to the user-facing read/download path. Also surfaced to the agent
-     * file-plugin grant so the agent's read tool honours the same limit on the same directories rather
-     * than the plugin's smaller built-in default.
-     */
-    val readMaxSizeBytes: Long get() = config.readMaxSizeBytes
 
     /**
      * Whether an upload with this relative path passes the configured extension allow-list.
@@ -217,6 +213,7 @@ class ExchangeStorageService(
         try {
             Files.write(resolved, bytes, StandardOpenOption.CREATE_NEW)
         } catch (e: FileAlreadyExistsException) {
+            logger.warn(e) { "File '$relativePath' already exists" }
             throw FileExistsException("File already exists: $relativePath")
         }
 
@@ -252,7 +249,7 @@ class ExchangeStorageService(
         val probe = (limit + 1).coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
         val bytes = Files.newInputStream(resolved).use { it.readNBytes(probe) }
         if (bytes.size.toLong() > limit) {
-            throw ExchangeFileTooLargeException("File is too large to read (exceeds the ${limit}-byte limit)")
+            throw ExchangeFileTooLargeException("File is too large to read (exceeds the $limit-byte limit)")
         }
         return bytes
     }
@@ -332,8 +329,7 @@ class ExchangeStorageService(
     }
 
     /** A display/Content-Type hint derived from the filename extension (no per-file I/O). */
-    private fun mimeTypeFor(filename: String): String? =
-        URLConnection.guessContentTypeFromName(filename) ?: textMimeFallback(filename)
+    private fun mimeTypeFor(filename: String): String? = URLConnection.guessContentTypeFromName(filename) ?: textMimeFallback(filename)
 
     /** Fallback for common text formats `guessContentTypeFromName` doesn't recognise (md/csv/yaml/log…). */
     private fun textMimeFallback(filename: String): String? =

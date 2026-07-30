@@ -11,11 +11,16 @@
 
 // ── Font stacks ─────────────────────────────────────────────────────────────
 
-/// UI font — Inter, used for all Coday-specific components
-$font-ui: 'Inter', sans-serif;
+/// UI font — resolves the CSS custom property first, falls back to the static stack.
+/// The host app defines --font-body in apps/client/src/app/styles/typography.scss.
+$font-ui: var(--font-body, 'Inter', -apple-system, sans-serif);
 
-/// Code font — monospace stack for inline code and code blocks
-$font-code: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+/// Heading / mono font — Geist Mono for labels, tags and headings.
+/// The host app defines --font-heading in apps/client/src/app/styles/typography.scss.
+$font-heading: var(--font-heading, 'Geist Mono', 'SF Mono', 'Fira Code', monospace);
+
+/// Code font — monospace stack for inline code and code blocks.
+$font-code: var(--font-heading, 'Geist Mono', 'SF Mono', 'Monaco', 'Inconsolata', monospace);
 
 // ── Mixins ───────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.tool
 
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
+import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
 import io.whozoss.agentos.integrationConfig.IntegrationTypeRegistry
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import jakarta.annotation.PostConstruct
@@ -24,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap
 class ToolRegistryService(
     private val pluginManager: PluginManager,
     private val integrationTypeRegistry: IntegrationTypeRegistry,
+    private val exchangeToolsConfigProperties: ExchangeToolsConfigProperties,
     /**
      * Spring-managed [ToolPlugin] beans (internal integrations such as REDIRECT).
      * Registered alongside PF4J-loaded plugins; Spring injects all implementations
@@ -51,7 +53,11 @@ class ToolRegistryService(
      */
     private fun registerBuiltInExchangeTypes() {
         if (findPlugin(ExchangeIntegrationTypes.FILE_ACCESS) != null) {
-            ExchangeIntegrationTypes.builtInDescriptors().forEach(integrationTypeRegistry::registerBuiltIn)
+            ExchangeIntegrationTypes
+                .builtInDescriptors(
+                    caseEnabledByDefault = exchangeToolsConfigProperties.caseEnabledByDefault,
+                    namespaceEnabledByDefault = exchangeToolsConfigProperties.namespaceEnabledByDefault,
+                ).forEach(integrationTypeRegistry::registerBuiltIn)
         } else {
             logger.info { "File-plugin (FILE_ACCESS) not loaded — built-in exchange integration types not registered" }
         }

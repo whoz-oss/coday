@@ -103,6 +103,34 @@ class FilesystemAgentConfigRepository(
     override fun findByParent(parentId: UUID?): List<AgentConfig> = findByParent(parentId, withDisabled = true)
 
     /**
+     * Augments the delegate lookup with filesystem agents.
+     *
+     * For IDs that Neo4j does not know about, scans every namespace that has a
+     * [configPath] and checks whether the synthetic filesystem ID matches.  The
+     * scan is cheap because [FilesystemYamlCacheRegistry] caches per directory.
+     */
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<AgentConfig> {
+        val fromDelegate = delegate.findByIds(ids, withRemoved)
+        val foundIds = fromDelegate.mapTo(HashSet()) { it.metadata.id }
+        val missing = ids.filter { it !in foundIds }
+        if (missing.isEmpty()) return fromDelegate
+
+        val missingSet = missing.toHashSet()
+        val fromFilesystem = namespaceRepository
+            .findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY)
+            .filter { it.configPath != null }
+            .flatMap { namespace ->
+                filesystemAgents(namespace.metadata.id)
+                    .filter { it.metadata.id in missingSet }
+            }
+
+        return fromDelegate + fromFilesystem
+    }
+
+    /**
      * Loads and returns agent configs from the filesystem for [parentId].
      *
      * When [excludeNames] is provided, any filesystem agent whose lowercased name

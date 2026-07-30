@@ -136,6 +136,15 @@ export class ExchangeStateService {
     this.refreshManifest()
   }
 
+  /**
+   * Namespace-only initialisation for composers rendered outside any case (home screen):
+   * loads the namespace manifest so `canWriteNamespace()` gating works before a case exists.
+   */
+  initializeForNamespace(namespaceId: string): void {
+    this.namespaceId = namespaceId
+    this.namespaceRefresh$.next()
+  }
+
   clear(): void {
     this.namespaceId = null
     this.caseId = null

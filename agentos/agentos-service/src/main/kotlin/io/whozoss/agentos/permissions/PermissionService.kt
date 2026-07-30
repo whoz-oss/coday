@@ -129,37 +129,24 @@ interface PermissionService {
     ): Set<String>
 
     /**
-     * Atomically promotes a [:MEMBER] relation to [:ADMIN], preserving all relation
-     * properties (e.g. `starred`). Prefer over `revokePermission(MEMBER)` +
-     * `grantPermission(ADMIN)` when upgrading an existing relation — the two-step
-     * approach silently drops properties stored on the old relation.
+     * Atomically promotes a [:MEMBER] relation to [:ADMIN].
+     *
+     * The [:STARRED] edge (if any) is a separate relationship and survives untouched.
      *
      * @return true if a [:MEMBER] edge was found and promoted; false if the user had
-     *   no MEMBER relation (the [:ADMIN] edge is still created in that case).
+     *   no MEMBER relation (no-op: no [:ADMIN] edge is created).
      */
     fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean
 
     /**
-     * Atomically demotes a [:ADMIN] relation to [:MEMBER], preserving all relation
-     * properties (e.g. `starred`). Prefer over `revokePermission(ADMIN)` +
-     * `grantPermission(MEMBER)` when downgrading an existing relation.
+     * Atomically demotes a [:ADMIN] relation to [:MEMBER].
+     *
+     * The [:STARRED] edge (if any) is a separate relationship and survives untouched.
      *
      * @return true if a [:ADMIN] edge was found and demoted; false if the user had
-     *   no ADMIN relation (the [:MEMBER] edge is still created in that case).
+     *   no ADMIN relation (no-op: no [:MEMBER] edge is created).
      */
     fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean
-
-    /**
-     * Sets the caller's per-user favorite flag on their direct relation to an entity.
-     * @return true if a direct relation was updated, false if the user has none.
-     */
-    fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean
-
-    /**
-     * The caller's direct relation (and starred flag) per entity of [entityType] they
-     * have a direct edge on, keyed by entity id. One round-trip; used to enrich listings.
-     */
-    fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation>
 
     /**
      * Clears the permission cache for a specific user.
@@ -168,4 +155,27 @@ interface PermissionService {
      * @param userId The ID of the user to clear cache for
      */
     fun clearUserCache(userId: String)
+
+    /**
+     * Batch-apply share entries on an entity in a single Cypher round-trip per role group.
+     * Each entry is a (userId, targetRole?) pair:
+     * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER,
+     *   or create directly)
+     * - targetRole = [PermissionRelation.MEMBER] → ensure user has MEMBER (demote from ADMIN,
+     *   or create directly)
+     * - targetRole = null → revoke all relations (ADMIN and MEMBER)
+     *
+     * Non-existent User nodes are silently skipped — the Cypher MATCH filters them out.
+     * Invalidates the permission cache after a successful write.
+     *
+     * @param entityType The type of entity being shared
+     * @param entityId The ID of the entity
+     * @param entries List of (userId, targetRole?) pairs
+     * @return List of userIds that were successfully processed
+     */
+    fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String>
 }

@@ -18,14 +18,14 @@ interface CredentialRepository {
     fun findByUserAndAuthSetting(userId: UUID, authSettingId: UUID): Credential?
 
     /**
-     * Soft-delete the credential for a specific user–authSetting pair.
+     * Hard-delete the credential for a specific user–authSetting pair.
      *
      * @return true if a credential was found and deleted, false if none existed.
      */
     fun deleteByUserAndAuthSetting(userId: UUID, authSettingId: UUID): Boolean
 
     /**
-     * Soft-delete all credentials associated with a given [AuthSetting].
+     * Hard-delete all credentials associated with a given [AuthSetting].
      * Called during cascade cleanup when an [AuthSetting] is deleted.
      *
      * @return the number of credentials deleted.

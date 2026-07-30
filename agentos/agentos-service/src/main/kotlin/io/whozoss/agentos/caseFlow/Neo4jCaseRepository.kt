@@ -22,11 +22,17 @@ open class Neo4jCaseRepository(
         caseNodeNeo4jRepository
             .save(CaseNode.fromDomain(entity))
             .also { childLinkService.link("Case", it.id, "Namespace", entity.namespaceId.toString()) }
-            .also { it.createdBy?.let { createdBy -> childLinkService.link("Case", it.id, "User", createdBy, relationship = "CREATED_BY") } }
-            .toDomain()
+            .also {
+                it.createdBy?.let { createdBy ->
+                    childLinkService.link("Case", it.id, "User", createdBy, relationship = "CREATED_BY")
+                }
+            }.toDomain()
             .also { logger.debug { "[Neo4jCaseRepository] Saved case ${it.id} under namespace ${entity.namespaceId}" } }
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<Case> =
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<Case> =
         caseNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
             .filter { withRemoved || it.removed != true }
@@ -37,26 +43,30 @@ open class Neo4jCaseRepository(
             .findActiveByNamespaceId(parentId.toString())
             .map { it.toDomain() }
 
-    override fun findAccessibleByUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
+    override fun findAccessibleByUserInNamespace(
+        userId: UUID,
+        namespaceId: UUID,
+    ): List<Case> =
         caseNodeNeo4jRepository
             .findAccessibleByUserInNamespace(
                 userId = userId.toString(),
                 namespaceId = namespaceId.toString(),
-            )
-            .map { it.toDomain() }
+            ).map { it.toDomain() }
 
     override fun findConcerningUser(userId: UUID): List<Case> =
         caseNodeNeo4jRepository
             .findConcerningUser(userId = userId.toString())
             .map { it.toDomain() }
 
-    override fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case> =
+    override fun findConcerningUserInNamespace(
+        userId: UUID,
+        namespaceId: UUID,
+    ): List<Case> =
         caseNodeNeo4jRepository
             .findConcerningUserInNamespace(
                 userId = userId.toString(),
                 namespaceId = namespaceId.toString(),
-            )
-            .map { it.toDomain() }
+            ).map { it.toDomain() }
 
     override fun delete(id: UUID): Boolean =
         caseNodeNeo4jRepository
@@ -78,8 +88,7 @@ open class Neo4jCaseRepository(
             .findActiveDescendants(caseId.toString())
             .map { it.toDomain() }
 
-    override fun countAncestorDepth(caseId: UUID): Int =
-        caseNodeNeo4jRepository.countAncestorDepth(caseId.toString())
+    override fun countAncestorDepth(caseId: UUID): Int = caseNodeNeo4jRepository.countAncestorDepth(caseId.toString())
 
     override fun linkParentToChild(
         parentCaseId: UUID,
@@ -87,7 +96,7 @@ open class Neo4jCaseRepository(
     ) = caseNodeNeo4jRepository.linkParentToChild(parentCaseId.toString(), childCaseId.toString())
 
     @Transactional
-    open override fun deleteByParent(parentId: UUID): Int {
+    override fun deleteByParent(parentId: UUID): Int {
         val active = caseNodeNeo4jRepository.findActiveByNamespaceId(parentId.toString())
         caseNodeNeo4jRepository.saveAll(active.map { it.copy(removed = true) })
         logger.debug { "[Neo4jCaseRepository] Soft-deleted ${active.size} cases under namespace $parentId" }

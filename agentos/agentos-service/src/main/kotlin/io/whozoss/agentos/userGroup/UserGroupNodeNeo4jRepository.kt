@@ -38,12 +38,18 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
         agentIds: List<String>,
     )
 
+    /**
+     * Adds the given users as MEMBERs of the group. A user already holding an `[:ADMIN]` edge is
+     * left untouched — ADMIN implies membership, and merging a parallel `[:MEMBER]` edge would
+     * leave the user with both relations.
+     */
     @Query(
         $$"""
         UNWIND $userExternalIds AS userExternalId
         MATCH (g:UserGroup {id: $groupId})
         MATCH (u:User {externalId: userExternalId})
-          WHERE u.removed IS NULL OR u.removed = false
+          WHERE (u.removed IS NULL OR u.removed = false)
+            AND NOT EXISTS { (u)-[:ADMIN]->(g) }
         MERGE (u)-[:MEMBER]->(g)
         """,
     )
@@ -55,7 +61,7 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
     @Query(
         $$"""
         UNWIND $userExternalIds AS userExternalId
-        MATCH (u:User {externalId: userExternalId})-[r:MEMBER]->(g:UserGroup {id: $groupId})
+        MATCH (u:User {externalId: userExternalId})-[r:MEMBER|ADMIN]->(g:UserGroup {id: $groupId})
         DELETE r
         """,
     )

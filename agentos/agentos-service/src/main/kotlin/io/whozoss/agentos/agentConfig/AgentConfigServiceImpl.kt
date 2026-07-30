@@ -1,9 +1,11 @@
 package io.whozoss.agentos.agentConfig
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.prompt.PromptRepository
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
@@ -12,6 +14,7 @@ import java.util.UUID
 @Service
 class AgentConfigServiceImpl(
     private val agentConfigRepository: AgentConfigRepository,
+    private val promptRepository: PromptRepository,
     private val userService: UserService,
 ) : AgentConfigService {
     override fun create(entity: AgentConfig): AgentConfig {
@@ -29,7 +32,12 @@ class AgentConfigServiceImpl(
 
     override fun findByParent(parentId: UUID?): List<AgentConfig> = agentConfigRepository.findByParent(parentId)
 
-    override fun delete(id: UUID): Boolean = agentConfigRepository.delete(id)
+    @Transactional
+    override fun delete(id: UUID): Boolean {
+        val deleted = agentConfigRepository.delete(id)
+        if (deleted) promptRepository.softDeleteByAgentConfigId(id)
+        return deleted
+    }
 
     override fun deleteByParent(parentId: UUID?): Int = agentConfigRepository.deleteByParent(parentId)
 

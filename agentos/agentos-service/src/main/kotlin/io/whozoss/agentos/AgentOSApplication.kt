@@ -4,6 +4,7 @@ import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.config.PersistenceConfigProperties
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
+import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
 import io.whozoss.agentos.service.config.AgentOsPluginsConfigProperties
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -23,6 +24,7 @@ import org.springframework.boot.runApplication
     AgentOsPluginsConfigProperties::class,
     PersistenceConfigProperties::class,
     ExchangeStorageConfigProperties::class,
+    ExchangeToolsConfigProperties::class,
 )
 class AgentOSApplication
 

@@ -10,7 +10,7 @@ import java.util.UUID
  * routing annotations. AgentOS does not prescribe the client technology or configuration.
  *
  * Authorization summary (enforced server-side):
- * - [searchByNamespaceId], [getById]: namespace READ
+ * - [findByNamespaceId], [getById], [getMembers]: namespace/UserGroup READ
  * - [create]: namespace WRITE
  * - [update]: UserGroup WRITE
  * - [delete]: UserGroup DELETE
@@ -21,6 +21,9 @@ interface UserGroupApi {
     fun findByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult>
 
     fun getById(userGroupId: UUID): UserGroupSearchResult
+
+    /** GET /api/user-groups/{userGroupId}/members — list the group's members with their role. */
+    fun getMembers(userGroupId: UUID): List<UserGroupMember>
 
     fun create(request: UserGroupCreateRequest): UserGroupSearchResult
 

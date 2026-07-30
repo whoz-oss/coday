@@ -10,6 +10,7 @@ import io.mockk.mockk
 import io.whozoss.agentos.entity.EntityRepository
 import io.whozoss.agentos.entity.InMemoryEntityRepository
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.prompt.PromptRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
 import java.util.UUID
@@ -52,11 +53,13 @@ class AgentConfigServiceImplUnitSpec :
         }
 
         val userService = mockk<UserService>(relaxed = true)
+        val promptRepository = mockk<PromptRepository>(relaxed = true)
 
         fun service(
             repo: AgentConfigRepository = repository(),
+            pr: PromptRepository = promptRepository,
             us: UserService = userService,
-        ) = AgentConfigServiceImpl(repo, us)
+        ) = AgentConfigServiceImpl(repo, pr, us)
 
         val namespaceId: UUID = UUID.randomUUID()
 
