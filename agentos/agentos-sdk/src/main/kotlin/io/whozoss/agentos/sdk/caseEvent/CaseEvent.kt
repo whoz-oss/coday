@@ -234,6 +234,11 @@ data class ToolRequestEvent(
  * [io.whozoss.agentos.sdk.tool.ToolContext.caseEvents] to perform coherence checks
  * (e.g. verifying that a referenced entity was fetched before being mutated).
  * The map is empty when the tool returned no metadata.
+ *
+ * [images] carries the visual attachments produced by the tool (see
+ * [io.whozoss.agentos.sdk.tool.ToolExecutionResult.images]). [output] stays the textual
+ * summary of the execution; provider tool responses are text-only, so images are delivered
+ * to the LLM separately at prompt-build time.
  */
 data class ToolResponseEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -248,6 +253,8 @@ data class ToolResponseEvent(
     val durationMs: Long? = null,
     /** Opaque metadata returned by the tool. Empty map when the tool produced no metadata. */
     val toolMetadata: Map<String, Any?> = emptyMap(),
+    /** Images produced by the tool. Empty list when the tool produced no image. */
+    val images: List<MessageContent.Image> = emptyList(),
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_RESPONSE
 }

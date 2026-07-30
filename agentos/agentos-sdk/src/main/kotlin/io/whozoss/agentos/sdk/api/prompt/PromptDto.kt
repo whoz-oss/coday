@@ -20,7 +20,15 @@ import java.util.UUID
  * - (null, me)    → user-global (authenticated)
  * - (ns, me)      → user × namespace (READ on namespace)
  *
- * On PUT, [namespaceId] and [userId] are immutable (preserved from the persisted entity).
+ * On PUT, [namespaceId], [userId] and [agentConfigId] are immutable
+ * (preserved from the persisted entity).
+ *
+ * [agentConfigId] links this prompt to an [io.whozoss.agentos.agentConfig.AgentConfig].
+ * When set, the prompt acts as a Starter for that agent. Immutable post-creation.
+ *
+ * [externalMetadata] is an opaque map persisted as-is by AgentOS.
+ * External consumers (Copilot, Studio) store their own metadata here
+ * (label, triggers, sections, etc.).
  *
  * [createdBy], [createdOn], [updatedBy], [updatedOn] are read-only audit fields
  * present in GET responses; ignored on write.
@@ -33,12 +41,15 @@ data class PromptDto(
     val namespaceId: UUID? = null,
     @field:Schema(types = ["string", "null"], format = "uuid")
     val userId: UUID? = null,
+    @field:Schema(types = ["string", "null"], format = "uuid")
+    val agentConfigId: UUID? = null,
     @field:NotBlank val name: String,
     val description: String? = null,
     @field:NotEmpty
     @ArraySchema(schema = Schema(implementation = String::class, minLength = 1))
     val content: List<String>,
     @field:Valid val parameters: List<PromptParameterDto> = emptyList(),
+    val externalMetadata: Map<String, Any?>? = null,
     val createdBy: String? = null,
     val createdOn: Instant? = null,
     val updatedBy: String? = null,

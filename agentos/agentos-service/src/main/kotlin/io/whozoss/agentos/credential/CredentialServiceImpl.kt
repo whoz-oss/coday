@@ -27,17 +27,17 @@ class CredentialServiceImpl(
     override fun resolve(userId: UUID, authSettingId: UUID): Credential? =
         repository.findByUserAndAuthSetting(userId, authSettingId)
 
-    override fun revoke(userId: UUID, authSettingId: UUID): Boolean {
+    override fun delete(userId: UUID, authSettingId: UUID): Boolean {
         val deleted = repository.deleteByUserAndAuthSetting(userId, authSettingId)
         if (deleted) {
-            logger.debug { "[CredentialService] Revoked credential for user=$userId, authSetting=$authSettingId" }
+            logger.debug { "[CredentialService] Deleted credential for user=$userId, authSetting=$authSettingId" }
         }
         return deleted
     }
 
-    override fun revokeByAuthSetting(authSettingId: UUID): Int {
+    override fun deleteByAuthSetting(authSettingId: UUID): Int {
         val count = repository.deleteByAuthSettingId(authSettingId)
-        logger.debug { "[CredentialService] Cascade-revoked $count credential(s) for authSetting=$authSettingId" }
+        logger.debug { "[CredentialService] Cascade-deleted $count credential(s) for authSetting=$authSettingId" }
         return count
     }
 

@@ -3,7 +3,9 @@
   <div class="entity-list__toolbar" [class.entity-list__toolbar--centered]="toolbarOnly()">
     <ng-content select="[toolbar-start]" />
     @if (!toolbarOnly()) {
-      <h1 class="entity-list__title">{{ title() }}</h1>
+      @if (!hideTitle()) {
+        <h1 class="entity-list__title">{{ title() }}</h1>
+      }
       <div class="entity-list__search-wrap">
         <span class="entity-list__search-icon">&#128269;</span>
         <input

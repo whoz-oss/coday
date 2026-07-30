@@ -7,7 +7,7 @@ export class GoogleClient extends OpenaiClient {
   override models = [
     {
       name: 'gemini-3.1-pro-preview',
-      contextWindow: 200000,
+      contextWindow: 1000000,
       alias: 'BIGGEST',
       temperature: 0.8,
       maxOutputTokens: 65536,
@@ -18,7 +18,7 @@ export class GoogleClient extends OpenaiClient {
       },
     },
     {
-      name: 'gemini-3.5-flash',
+      name: 'gemini-3.6-flash',
       alias: 'BIG',
       contextWindow: 1000000,
       temperature: 0.8,
@@ -26,19 +26,19 @@ export class GoogleClient extends OpenaiClient {
       price: {
         inputMTokens: 1.5,
         cacheRead: 0.15,
-        outputMTokens: 9.0,
+        outputMTokens: 7.5,
       },
     },
     {
-      name: 'gemini-3.1-flash-lite',
+      name: 'gemini-3.5-flash-lite',
       alias: 'SMALL',
       contextWindow: 1000000,
       temperature: 0.8,
       maxOutputTokens: 65536,
       price: {
-        inputMTokens: 0.25,
-        cacheRead: 0.025,
-        outputMTokens: 1.5,
+        inputMTokens: 0.3,
+        cacheRead: 0.03,
+        outputMTokens: 2.5,
       },
     },
   ]

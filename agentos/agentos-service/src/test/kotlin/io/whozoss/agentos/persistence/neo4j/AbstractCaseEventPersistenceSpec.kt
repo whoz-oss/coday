@@ -180,6 +180,29 @@ abstract class AbstractCaseEventPersistenceSpec : StringSpec() {
             found.first().status shouldBe CaseStatus.RUNNING
         }
 
+        "findLastMessageTimestamps returns the most recent MessageEvent timestamp per case" {
+            val ns = namespaceRepo.save(namespace())
+            val case1 = caseRepo.save(case(ns.id))
+            val case2 = caseRepo.save(case(ns.id))
+            val case3 = caseRepo.save(case(ns.id))
+            // case1: two messages — only the later one should be returned
+            val early = repo.save(msgEvent(case1.id, "first"))
+            val late = repo.save(msgEvent(case1.id, "second"))
+            // case2: one message
+            val only = repo.save(msgEvent(case2.id, "only"))
+            // case3: no messages — should be absent from the result
+
+            val result = repo.findLastMessageTimestamps(listOf(case1.id, case2.id, case3.id))
+
+            result.keys shouldBe setOf(case1.id, case2.id)
+            result[case1.id] shouldBe late.timestamp
+            result[case2.id] shouldBe only.timestamp
+        }
+
+        "findLastMessageTimestamps returns empty map when caseIds is empty" {
+            repo.findLastMessageTimestamps(emptyList()).values.shouldBeEmpty()
+        }
+
         "deleteByParent removes all events for a case" {
             val ns = namespaceRepo.save(namespace())
             val case1 = caseRepo.save(case(ns.id))

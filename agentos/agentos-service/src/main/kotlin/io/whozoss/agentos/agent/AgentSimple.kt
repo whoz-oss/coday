@@ -318,13 +318,7 @@ class AgentSimple(
                         val toolResponseMessages =
                             toolCallsForCurrentMessage.map { toolCall ->
                                 val response = toolResponses[toolCall.id()]
-                                val output =
-                                    response?.let {
-                                        when (val content = it.output) {
-                                            is MessageContent.Text -> content.content
-                                            else -> content.toString()
-                                        }
-                                    } ?: "[No response recorded]"
+                                val output = response?.let { toolResponseText(it) } ?: "[No response recorded]"
                                 ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
                             }
 
@@ -375,13 +369,7 @@ class AgentSimple(
             val toolResponseMessages =
                 toolCallsForCurrentMessage.map { toolCall ->
                     val response = toolResponses[toolCall.id()]
-                    val output =
-                        response?.let {
-                            when (val content = it.output) {
-                                is MessageContent.Text -> content.content
-                                else -> content.toString()
-                            }
-                        } ?: "[No response recorded]"
+                    val output = response?.let { toolResponseText(it) } ?: "[No response recorded]"
                     ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
                 }
 
@@ -389,6 +377,23 @@ class AgentSimple(
         }
 
         return messages
+    }
+
+    /**
+     * Textual rendering of a tool response for the LLM prompt. Never stringifies
+     * non-text content (a raw data-class toString would dump base64 payloads).
+     *
+     * AgentSimple does not support image attachments (its Spring AI tool loop is
+     * text-only), so when the response carries images the model is explicitly told
+     * they are not viewable here instead of being led to believe they are attached.
+     */
+    private fun toolResponseText(response: ToolResponseEvent): String {
+        val text =
+            when (val content = response.output) {
+                is MessageContent.Text -> content.content
+                is MessageContent.Image -> "[image ${content.mimeType} ${content.width}x${content.height}]"
+            }
+        return if (response.images.isEmpty()) text else text + "\n" + imagesNotSupportedNote(response.images.size)
     }
 
     /**
@@ -559,12 +564,28 @@ class AgentSimple(
                         success = executionResult.success,
                         durationMs = toolDuration.inWholeMilliseconds,
                         toolMetadata = executionResult.metadata,
+                        // Preserved on the event (persistence, SSE) even though this
+                        // runtime cannot deliver them to the LLM.
+                        images = executionResult.images,
                     ),
                 )
 
-                return executionResult.output
+                return if (executionResult.images.isEmpty()) {
+                    executionResult.output
+                } else {
+                    executionResult.output + "\n" + imagesNotSupportedNote(executionResult.images.size)
+                }
             }
         }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * Appended to a tool response whose result carries images: AgentSimple's
+         * Spring AI tool loop is text-only, so the model must not be led to believe
+         * the images are attached (image delivery is an AgentAdvanced feature).
+         */
+        internal fun imagesNotSupportedNote(count: Int): String =
+            "[Note: $count image(s) were produced but this agent runtime does not support image attachments;" +
+                " only this text summary is available. Image viewing requires an advanced-execution agent.]"
+    }
 }

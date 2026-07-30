@@ -2,7 +2,7 @@ package io.whozoss.agentos.auth
 
 import io.whozoss.agentos.authSetting.AuthSettingService
 import io.whozoss.agentos.credential.CredentialService
-import io.whozoss.agentos.sdk.auth.AuthService
+import io.whozoss.agentos.auth.AuthService
 import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.sdk.credential.Credential
 import java.util.UUID
@@ -33,5 +33,5 @@ class AuthServiceImpl(
         credentialService.store(credential)
 
     override fun revokeCredential(authSettingId: UUID): Boolean =
-        credentialService.revoke(userId, authSettingId)
+        credentialService.delete(userId, authSettingId)
 }

@@ -336,19 +336,6 @@ class Neo4jPermissionRepository(
         }
     }
 
-    override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean =
-        try {
-            permissionNodeRepository.setStarred(
-                userId = userId,
-                entityId = entityId,
-                entityLabel = entityType.label,
-                starred = starred,
-            ) > 0
-        } catch (e: Exception) {
-            logger.error(e) { "Error setting starred=$starred for user=$userId on $entityType:$entityId" }
-            throw e
-        }
-
     override fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean =
         try {
             permissionNodeRepository.promoteMemberToAdmin(
@@ -373,32 +360,52 @@ class Neo4jPermissionRepository(
             throw e
         }
 
-    override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
+    override fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String> {
+        if (entries.isEmpty()) return emptyList()
+        val label = entityType.label
         try {
-            val result = mutableMapOf<String, DirectRelation>()
-            for (row in permissionNodeRepository.findDirectRelations(userId, entityType.label)) {
-                // Each row is "id|relation|starred" (see findDirectRelations).
-                val parts = row.split('|')
-                if (parts.size != 3) continue
-                val id = parts[0]
-                val relation = PermissionRelation.valueOf(parts[1])
-                val starred = parts[2].toBoolean()
-                val existing = result[id]
-                // A user may hold both edges on the same entity — ADMIN wins, and the
-                // entity is "starred" if the flag is set on either edge.
-                val mergedRelation =
-                    if (existing?.relation == PermissionRelation.ADMIN || relation == PermissionRelation.ADMIN) {
-                        PermissionRelation.ADMIN
-                    } else {
-                        PermissionRelation.MEMBER
-                    }
-                result[id] = DirectRelation(mergedRelation, (existing?.starred ?: false) || starred)
+            val userIdsByRelation = entries.groupBy({ (_, relation) -> relation }, { (userId, _) -> userId })
+            val appliedUserIds =
+                userIdsByRelation
+                    .flatMap { (relation, userIds) ->
+                        when (relation) {
+                            PermissionRelation.ADMIN ->
+                                permissionNodeRepository.batchSetAdminRole(
+                                    userIds = userIds,
+                                    entityId = entityId,
+                                    entityLabel = label,
+                                )
+                            PermissionRelation.MEMBER ->
+                                permissionNodeRepository.batchSetMemberRole(
+                                    userIds = userIds,
+                                    entityId = entityId,
+                                    entityLabel = label,
+                                )
+                            null ->
+                                permissionNodeRepository.batchRevoke(
+                                    userIds = userIds,
+                                    entityId = entityId,
+                                    entityLabel = label,
+                                )
+                        }
+                    }.distinct()
+
+            logger.info {
+                val sizes = userIdsByRelation.mapValues { (_, userIds) -> userIds.size }
+                "applyShareBatch on $entityType:$entityId — " +
+                    "admin=${sizes[PermissionRelation.ADMIN] ?: 0}, member=${sizes[PermissionRelation.MEMBER] ?: 0}, " +
+                    "revoke=${sizes[null] ?: 0}, applied=${appliedUserIds.size}"
             }
-            result
+            return appliedUserIds
         } catch (e: Exception) {
-            logger.error(e) { "Error listing direct relations for user=$userId, type=$entityType" }
-            emptyMap() // fail-closed
+            logger.error(e) { "Error applying share batch on $entityType:$entityId" }
+            throw e
         }
+    }
 
     /**
      * Checks if the entity type is a child of Namespace in the hierarchy.

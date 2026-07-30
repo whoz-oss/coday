@@ -2,7 +2,7 @@ package io.whozoss.agentos.auth
 
 import io.whozoss.agentos.authSetting.AuthSettingService
 import io.whozoss.agentos.credential.CredentialService
-import io.whozoss.agentos.sdk.auth.AuthService
+import io.whozoss.agentos.auth.AuthService
 import org.springframework.stereotype.Component
 import java.util.UUID
 
