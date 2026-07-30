@@ -3,7 +3,6 @@ package io.whozoss.agentos.authSetting
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.reconciliation.ConfigLookup
-import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.security.declarative.OwnershipAware
 import java.util.UUID
 
@@ -14,8 +13,12 @@ import java.util.UUID
  * generic [io.whozoss.agentos.reconciliation.ConfigMergeService] can resolve overlays
  * without an intermediate wrapper bean.
  */
-interface AuthSettingService : EntityService<AuthSetting, UUID>, ConfigLookup<AuthSetting>, OwnershipAware {
+interface AuthSettingService :
+    EntityService<AuthSetting, UUID>,
+    ConfigLookup<AuthSetting>,
+    OwnershipAware {
     override val ownershipEntityType: EntityType get() = EntityType.AUTH_SETTING
+
     override fun resolveOwner(targetId: UUID): UUID? = findById(targetId)?.userId
 
     /**

@@ -1,7 +1,6 @@
 package io.whozoss.agentos.authSetting
 
 import io.whozoss.agentos.entity.EntityRepository
-import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import java.util.UUID
 
 /**
@@ -31,7 +30,7 @@ interface AuthSettingRepository : EntityRepository<AuthSetting, UUID> {
      * Find a single non-removed setting matching the (namespaceId, userId, name) triple.
      * NULL parameters match rows where the corresponding column is NULL.
      */
-    fun findByTriple(
+    fun findByNamespaceIdAndUserIdAndName(
         namespaceId: UUID?,
         userId: UUID?,
         name: String,

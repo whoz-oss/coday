@@ -4,7 +4,6 @@ import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.sdk.authSetting.AuthSetting
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
@@ -91,7 +90,7 @@ class AuthSettingServiceImpl(
         namespaceId: UUID?,
         userId: UUID?,
         name: String,
-    ): AuthSetting? = repository.findByTriple(namespaceId, userId, name)
+    ): AuthSetting? = repository.findByNamespaceIdAndUserIdAndName(namespaceId, userId, name)
 
     override fun findFiltered(
         namespaceId: UUID?,
@@ -170,14 +169,14 @@ class AuthSettingServiceImpl(
 
         if (namespaceId != null) {
             repository
-                .findByTriple(namespaceId, null, name)
+                .findByNamespaceIdAndUserIdAndName(namespaceId, null, name)
                 ?.takeIf { it.metadata.id != entityId && it.authType != type }
                 ?.let(::reject)
         }
 
         if (userId != null) {
             repository
-                .findByTriple(null, userId, name)
+                .findByNamespaceIdAndUserIdAndName(null, userId, name)
                 ?.takeIf { it.metadata.id != entityId && it.authType != type }
                 ?.let(::reject)
 

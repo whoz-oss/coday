@@ -1,10 +1,9 @@
-package io.whozoss.agentos.sdk.api.authSetting
+package io.whozoss.agentos.authSetting
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import io.swagger.v3.oas.annotations.media.Schema
-import io.whozoss.agentos.sdk.authSetting.AuthType
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import java.util.UUID

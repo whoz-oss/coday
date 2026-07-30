@@ -1,4 +1,4 @@
-package io.whozoss.agentos.sdk.api.authSetting
+package io.whozoss.agentos.authSetting
 
 import io.whozoss.agentos.sdk.api.common.EntityCrudApi
 
@@ -19,7 +19,6 @@ import io.whozoss.agentos.sdk.api.common.EntityCrudApi
  * preserves the stored value; sending `""` clears it; sending a new value replaces it.
  */
 interface AuthSettingApi : EntityCrudApi<AuthSettingDto> {
-
     /**
      * GET /api/auth-settings — list auth settings by scope.
      *
@@ -33,5 +32,8 @@ interface AuthSettingApi : EntityCrudApi<AuthSettingDto> {
      * [namespaceId] accepts a UUID string or the sentinel `"none"` (meaning `namespaceId IS NULL`).
      * [userId] accepts only the sentinel `"me"` or absent.
      */
-    fun list(namespaceId: String? = null, userId: String? = null): List<AuthSettingDto>
+    fun list(
+        namespaceId: String? = null,
+        userId: String? = null,
+    ): List<AuthSettingDto>
 }
