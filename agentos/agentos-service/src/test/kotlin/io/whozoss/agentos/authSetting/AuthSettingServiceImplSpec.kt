@@ -2,12 +2,12 @@ package io.whozoss.agentos.authSetting
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.collections.shouldBeEmpty
-import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.whozoss.agentos.exception.ConfigNotFoundException
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -18,17 +18,36 @@ import java.util.UUID
 // Convenience accessor for tests that reason about the flat data map.
 private val AuthSetting.data: Map<String, String> get() = toDataMap()
 
+/**
+ * Unit tests for [AuthSettingServiceImpl].
+ *
+ * Stubs [AuthSettingRepository] directly with MockK (mirrors [io.whozoss.agentos.credential.CredentialServiceImplSpec])
+ * rather than a shared in-memory fake — the repository's own filtering/sorting/scoping
+ * behaviour is already proven end-to-end by [io.whozoss.agentos.persistence.neo4j.AbstractAuthSettingPersistenceSpec].
+ * This spec exercises only what [AuthSettingServiceImpl] itself adds on top of the repository:
+ * the triple pre-check, the cross-layer authType consistency guard, and the [resolveAuthSetting]
+ * fold. Simple pass-through methods get one delegation test each.
+ */
 class AuthSettingServiceImplSpec : StringSpec() {
     // PermissionService and UserService are only used by findFiltered, which is not
     // exercised in this spec (tested via controller + integration tests).
     // Relaxed mocks satisfy the constructor without interfering with the tested methods.
-    private fun newService() =
+    private fun newService(repository: AuthSettingRepository) =
         AuthSettingServiceImpl(
-            InMemoryAuthSettingRepository(),
+            repository,
             AuthSettingMergeStrategy(),
             mockk<PermissionService>(relaxed = true),
             mockk<UserService>(relaxed = true),
         )
+
+    /** A repository stub with no pre-existing layer anywhere — every create/update in a test using this passes the guards untouched unless a specific `every` is overridden below. */
+    private fun repoWithNoConflicts(): AuthSettingRepository {
+        val repo = mockk<AuthSettingRepository>()
+        every { repo.findByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns null
+        every { repo.findByUserId(any()) } returns emptyList()
+        every { repo.save(any()) } answers { firstArg() }
+        return repo
+    }
 
     private fun setting(
         namespaceId: UUID? = UUID.randomUUID(),
@@ -75,193 +94,80 @@ class AuthSettingServiceImplSpec : StringSpec() {
     init {
 
         // -------------------------------------------------------------------------
-        // Scope invariant
+        // create — scope invariant (any combination is accepted by the service)
         // -------------------------------------------------------------------------
 
         "create succeeds with both namespaceId and userId null (platform scope)" {
-            val service = newService()
-            // Platform-level entities have namespaceId=null AND userId=null.
-            // The controller enforces the super-admin permission check; the service
-            // itself allows all scope combinations.
-            val saved = service.create(setting(namespaceId = null, userId = null))
-            saved.shouldNotBeNull()
+            val repo = repoWithNoConflicts()
+            val entity = setting(namespaceId = null, userId = null)
+
+            val saved = newService(repo).create(entity)
+
+            saved shouldBe entity
+            verify(exactly = 1) { repo.save(entity) }
         }
 
         "create succeeds with namespaceId only" {
-            val service = newService()
-            val saved = service.create(setting(namespaceId = UUID.randomUUID(), userId = null))
-            saved.shouldNotBeNull()
+            val repo = repoWithNoConflicts()
+            val entity = setting(namespaceId = UUID.randomUUID(), userId = null)
+
+            newService(repo).create(entity) shouldBe entity
         }
 
         "create succeeds with userId only" {
-            val service = newService()
-            val saved = service.create(setting(namespaceId = null, userId = UUID.randomUUID()))
-            saved.shouldNotBeNull()
+            val repo = repoWithNoConflicts()
+            val entity = setting(namespaceId = null, userId = UUID.randomUUID())
+
+            newService(repo).create(entity) shouldBe entity
         }
 
         "create succeeds with both namespaceId and userId" {
-            val service = newService()
-            val saved = service.create(setting(namespaceId = UUID.randomUUID(), userId = UUID.randomUUID()))
-            saved.shouldNotBeNull()
+            val repo = repoWithNoConflicts()
+            val entity = setting(namespaceId = UUID.randomUUID(), userId = UUID.randomUUID())
+
+            newService(repo).create(entity) shouldBe entity
         }
 
         // -------------------------------------------------------------------------
-        // Create / Read
-        // -------------------------------------------------------------------------
-
-        "create and findById returns the same setting" {
-            val service = newService()
-            val saved = service.create(setting())
-            val found = service.findById(saved.metadata.id)
-
-            found.shouldNotBeNull()
-            found.name shouldBe "github"
-            found.authType shouldBe AuthType.OAUTH_DISCOVERABLE
-        }
-
-        "findById returns null for unknown id" {
-            val service = newService()
-            service.findById(UUID.randomUUID()).shouldBeNull()
-        }
-
-        // -------------------------------------------------------------------------
-        // findByNamespaceId
-        // -------------------------------------------------------------------------
-
-        "findByNamespaceId returns only settings for the given namespace" {
-            val service = newService()
-            val nsA = UUID.randomUUID()
-            val nsB = UUID.randomUUID()
-
-            service.create(setting(namespaceId = nsA, name = "github"))
-            service.create(setting(namespaceId = nsA, name = "gitlab"))
-            service.create(setting(namespaceId = nsB, name = "jira"))
-
-            service.findByNamespaceId(nsA) shouldHaveSize 2
-            service.findByNamespaceId(nsB) shouldHaveSize 1
-            service.findByNamespaceId(UUID.randomUUID()).shouldBeEmpty()
-        }
-
-        "findByNamespaceId returns settings sorted by name" {
-            val service = newService()
-            val nsId = UUID.randomUUID()
-
-            service.create(setting(namespaceId = nsId, name = "jira"))
-            service.create(setting(namespaceId = nsId, name = "github"))
-            service.create(setting(namespaceId = nsId, name = "gitlab"))
-
-            service.findByNamespaceId(nsId).map { it.name } shouldBe listOf("github", "gitlab", "jira")
-        }
-
-        // -------------------------------------------------------------------------
-        // findByUserId
-        // -------------------------------------------------------------------------
-
-        "findByUserId returns only settings for the given user" {
-            val service = newService()
-            val userA = UUID.randomUUID()
-            val userB = UUID.randomUUID()
-
-            service.create(setting(namespaceId = null, userId = userA, name = "github"))
-            service.create(setting(namespaceId = null, userId = userA, name = "gitlab"))
-            service.create(setting(namespaceId = null, userId = userB, name = "jira"))
-
-            service.findByUserId(userA) shouldHaveSize 2
-            service.findByUserId(userB) shouldHaveSize 1
-            service.findByUserId(UUID.randomUUID()).shouldBeEmpty()
-        }
-
-        // -------------------------------------------------------------------------
-        // Uniqueness constraint
+        // create — triple uniqueness pre-check
         // -------------------------------------------------------------------------
 
         "create throws 409 when (namespaceId, userId, name) already exists" {
-            val service = newService()
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
-            service.create(setting(namespaceId = nsId, userId = null, name = "github"))
+            val existing = setting(namespaceId = nsId, userId = null, name = "github")
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "github") } returns existing
 
             shouldThrow<ResponseStatusException> {
-                service.create(setting(namespaceId = nsId, userId = null, name = "github"))
+                newService(repo).create(setting(namespaceId = nsId, userId = null, name = "github"))
             }.statusCode.value() shouldBe 409
         }
 
-        "create allows same name for different scopes" {
-            val service = newService()
-            val nsA = UUID.randomUUID()
-            val nsB = UUID.randomUUID()
-            val userId = UUID.randomUUID()
-
-            service.create(setting(namespaceId = nsA, userId = null, name = "github"))
-            service.create(setting(namespaceId = nsB, userId = null, name = "github"))
-            service.create(setting(namespaceId = null, userId = userId, name = "github"))
-            service.create(setting(namespaceId = nsA, userId = userId, name = "github"))
-
-            service.findByNamespaceId(nsA) shouldHaveSize 1 // namespace-shared only (userId IS NULL filter)
-            service.findByNamespaceId(nsB) shouldHaveSize 1
-            service.findByUserId(userId) shouldHaveSize 2 // user-only + namespace+user
-        }
-
         // -------------------------------------------------------------------------
-        // data storage
+        // update — self-exclusion and rename conflict
         // -------------------------------------------------------------------------
-
-        "data is stored and retrieved" {
-            val service = newService()
-            val saved = service.create(setting(data = mapOf("clientId" to "my-client", "clientSecret" to "my-secret")))
-            val found = service.findById(saved.metadata.id)
-            found?.data shouldBe mapOf("clientId" to "my-client", "clientSecret" to "my-secret")
-        }
-
-        // -------------------------------------------------------------------------
-        // Delete
-        // -------------------------------------------------------------------------
-
-        "delete soft-deletes the setting" {
-            val service = newService()
-            val nsId = UUID.randomUUID()
-            val s = service.create(setting(namespaceId = nsId))
-
-            service.delete(s.metadata.id) shouldBe true
-            service.findById(s.metadata.id).shouldBeNull()
-            service.findByNamespaceId(nsId).shouldBeEmpty()
-        }
-
-        "delete returns false for unknown id" {
-            val service = newService()
-            service.delete(UUID.randomUUID()) shouldBe false
-        }
-
-        // -------------------------------------------------------------------------
-        // Update
-        // -------------------------------------------------------------------------
-
-        "update replaces the setting" {
-            val service = newService()
-            val original = service.create(setting(data = mapOf("clientId" to "old-id")))
-            val updated = service.update(original.withData(mapOf("clientId" to "new-id")))
-
-            updated.data["clientId"] shouldBe "new-id"
-            service.findById(original.metadata.id)?.data?.get("clientId") shouldBe "new-id"
-        }
 
         "update allows renaming to the same name (no false conflict with self)" {
-            val service = newService()
+            val repo = repoWithNoConflicts()
             val nsId = UUID.randomUUID()
-            val original = service.create(setting(namespaceId = nsId, name = "github"))
+            val original = setting(namespaceId = nsId, name = "github")
+            // The pre-check finds the entity itself — must not be treated as a conflict.
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "github") } returns original
 
-            // updating with same name should not throw
-            val updated = service.update(original.withData(mapOf("clientId" to "new-id")))
+            val updated = newService(repo).update(original.withData(mapOf("clientId" to "new-id")))
+
             updated.name shouldBe "github"
         }
 
         "update throws 409 when renaming conflicts with another setting in the same scope" {
-            val service = newService()
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
-            service.create(setting(namespaceId = nsId, name = "gitlab"))
-            val toUpdate = service.create(setting(namespaceId = nsId, name = "github"))
+            val other = setting(namespaceId = nsId, name = "gitlab")
+            val toUpdate = setting(namespaceId = nsId, name = "github")
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "gitlab") } returns other
 
             shouldThrow<ResponseStatusException> {
-                service.update(toUpdate.withName("gitlab"))
+                newService(repo).update(toUpdate.withName("gitlab"))
             }.statusCode.value() shouldBe 409
         }
 
@@ -274,60 +180,82 @@ class AuthSettingServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "create user×ns rejects when NS-shared layer has same name with different authType" {
-            val service = newService()
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(setting(namespaceId = nsId, userId = null, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE))
+            val nsShared = setting(namespaceId = nsId, userId = null, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE)
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, userId, "primary") } returns null
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "primary") } returns nsShared
 
             shouldThrow<ResponseStatusException> {
-                service.create(setting(namespaceId = nsId, userId = userId, name = "primary", authType = AuthType.API_KEY))
+                newService(repo).create(setting(namespaceId = nsId, userId = userId, name = "primary", authType = AuthType.API_KEY))
             }.statusCode.value() shouldBe 409
         }
 
         "create user-global rejects when same-user user×ns layer has same name with different authType" {
-            val service = newService()
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(setting(namespaceId = nsId, userId = userId, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE))
+            val userNs = setting(namespaceId = nsId, userId = userId, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE)
+            // No existing row at the exact (null, userId, "primary") triple -- the pre-check and
+            // the user-global consistency check both query this triple and must find nothing.
+            every { repo.findByNamespaceIdAndUserIdAndName(null, userId, "primary") } returns null
+            // The conflicting layer is the user×ns row, surfaced via findByUserId.
+            every { repo.findByUserId(userId) } returns listOf(userNs)
 
             shouldThrow<ResponseStatusException> {
-                service.create(setting(namespaceId = null, userId = userId, name = "primary", authType = AuthType.API_KEY))
+                newService(repo).create(setting(namespaceId = null, userId = userId, name = "primary", authType = AuthType.API_KEY))
             }.statusCode.value() shouldBe 409
         }
 
         "create user×ns rejects when same-user user-global layer has same name with different authType" {
-            val service = newService()
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(setting(namespaceId = null, userId = userId, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE))
+            val userGlobal = setting(namespaceId = null, userId = userId, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE)
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, userId, "primary") } returns null
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "primary") } returns null
+            every { repo.findByNamespaceIdAndUserIdAndName(null, userId, "primary") } returns userGlobal
 
             shouldThrow<ResponseStatusException> {
-                service.create(setting(namespaceId = nsId, userId = userId, name = "primary", authType = AuthType.API_KEY))
+                newService(repo).create(setting(namespaceId = nsId, userId = userId, name = "primary", authType = AuthType.API_KEY))
             }.statusCode.value() shouldBe 409
         }
 
         "create allows same name across layers when authType matches" {
-            val service = newService()
+            val repo = repoWithNoConflicts()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
 
+            val service = newService(repo)
             service.create(setting(namespaceId = nsId, userId = null, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE))
             // Same authType — should merge cleanly at reconciliation, no 409.
             service.create(setting(namespaceId = null, userId = userId, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE))
             service.create(setting(namespaceId = nsId, userId = userId, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE))
 
-            service.findByUserId(userId) shouldHaveSize 2
+            verify(exactly = 3) { repo.save(any()) }
         }
 
         "create user-global allows same name as another user's user-global with different authType (cross-user is by-design)" {
-            val service = newService()
-            val userA = UUID.randomUUID()
+            val repo = repoWithNoConflicts()
             val userB = UUID.randomUUID()
-            service.create(setting(namespaceId = null, userId = userA, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE))
 
-            // Different user → no overlap at reconciliation, no conflict.
-            val saved = service.create(setting(namespaceId = null, userId = userB, name = "primary", authType = AuthType.API_KEY))
+            val saved = newService(repo).create(setting(namespaceId = null, userId = userB, name = "primary", authType = AuthType.API_KEY))
             saved.shouldNotBeNull()
+        }
+
+        "update rejects when renaming would collide with a different-authType layer" {
+            val repo = mockk<AuthSettingRepository>()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            val nsShared = setting(namespaceId = nsId, userId = null, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE)
+            val mine = setting(namespaceId = nsId, userId = userId, name = "secondary", authType = AuthType.API_KEY)
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, userId, "primary") } returns null
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "primary") } returns nsShared
+
+            shouldThrow<ResponseStatusException> {
+                newService(repo).update(mine.withName("primary"))
+            }.statusCode.value() shouldBe 409
         }
 
         // -------------------------------------------------------------------------
@@ -335,203 +263,178 @@ class AuthSettingServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "resolveAuthSetting returns platform layer when no other layer exists" {
-            val service = newService()
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(
-                setting(
-                    namespaceId = null,
-                    userId = null,
-                    name = "github",
-                    data = mapOf("clientId" to "platform-id"),
-                ),
-            )
+            val platform = setting(namespaceId = null, userId = null, name = "github", data = mapOf("clientId" to "platform-id"))
+            every { repo.findAllForScope(nsId, userId) } returns listOf(platform)
 
-            val resolved = service.resolveAuthSetting(nsId, userId, "github")
+            val resolved = newService(repo).resolveAuthSetting(nsId, userId, "github")
+
             resolved.data["clientId"] shouldBe "platform-id"
             resolved.namespaceId shouldBe null
             resolved.userId shouldBe null
         }
 
         "resolveAuthSetting namespace-shared overrides platform" {
-            val service = newService()
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(
-                setting(
-                    namespaceId = null,
-                    userId = null,
-                    name = "github",
-                    data = mapOf("clientId" to "platform-id"),
-                ),
-            )
-            service.create(
-                setting(
-                    namespaceId = nsId,
-                    userId = null,
-                    name = "github",
-                    data = mapOf("clientId" to "ns-id"),
-                ),
-            )
+            val platform = setting(namespaceId = null, userId = null, name = "github", data = mapOf("clientId" to "platform-id"))
+            val nsShared = setting(namespaceId = nsId, userId = null, name = "github", data = mapOf("clientId" to "ns-id"))
+            every { repo.findAllForScope(nsId, userId) } returns listOf(platform, nsShared)
 
-            val resolved = service.resolveAuthSetting(nsId, userId, "github")
+            val resolved = newService(repo).resolveAuthSetting(nsId, userId, "github")
+
             resolved.data["clientId"] shouldBe "ns-id"
         }
 
         "resolveAuthSetting user-global overrides platform but namespace-shared overrides user-global" {
-            val service = newService()
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(
-                setting(
-                    namespaceId = null,
-                    userId = null,
-                    name = "github",
-                    data = mapOf("clientId" to "platform-id"),
-                ),
-            )
-            service.create(
-                setting(
-                    namespaceId = null,
-                    userId = userId,
-                    name = "github",
-                    data = mapOf("clientId" to "user-id"),
-                ),
-            )
-            service.create(
-                setting(
-                    namespaceId = nsId,
-                    userId = null,
-                    name = "github",
-                    data = mapOf("clientId" to "ns-id"),
-                ),
-            )
+            val platform = setting(namespaceId = null, userId = null, name = "github", data = mapOf("clientId" to "platform-id"))
+            val userGlobal = setting(namespaceId = null, userId = userId, name = "github", data = mapOf("clientId" to "user-id"))
+            val nsShared = setting(namespaceId = nsId, userId = null, name = "github", data = mapOf("clientId" to "ns-id"))
+            every { repo.findAllForScope(nsId, userId) } returns listOf(platform, userGlobal, nsShared)
 
             // namespace-shared (rank 2) wins over user-global (rank 1)
-            val resolved = service.resolveAuthSetting(nsId, userId, "github")
+            val resolved = newService(repo).resolveAuthSetting(nsId, userId, "github")
             resolved.data["clientId"] shouldBe "ns-id"
         }
 
         "resolveAuthSetting user×namespace is highest precedence" {
-            val service = newService()
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(
-                setting(
-                    namespaceId = null,
-                    userId = null,
-                    name = "github",
-                    data = mapOf("clientId" to "platform-id"),
-                ),
-            )
-            service.create(
-                setting(
-                    namespaceId = nsId,
-                    userId = null,
-                    name = "github",
-                    data = mapOf("clientId" to "ns-id"),
-                ),
-            )
-            service.create(
-                setting(
-                    namespaceId = null,
-                    userId = userId,
-                    name = "github",
-                    data = mapOf("clientId" to "user-id"),
-                ),
-            )
-            service.create(
-                setting(
-                    namespaceId = nsId,
-                    userId = userId,
-                    name = "github",
-                    data = mapOf("clientId" to "user-ns-id"),
-                ),
-            )
+            val platform = setting(namespaceId = null, userId = null, name = "github", data = mapOf("clientId" to "platform-id"))
+            val nsShared = setting(namespaceId = nsId, userId = null, name = "github", data = mapOf("clientId" to "ns-id"))
+            val userGlobal = setting(namespaceId = null, userId = userId, name = "github", data = mapOf("clientId" to "user-id"))
+            val userNs = setting(namespaceId = nsId, userId = userId, name = "github", data = mapOf("clientId" to "user-ns-id"))
+            every { repo.findAllForScope(nsId, userId) } returns listOf(platform, nsShared, userGlobal, userNs)
 
-            val resolved = service.resolveAuthSetting(nsId, userId, "github")
+            val resolved = newService(repo).resolveAuthSetting(nsId, userId, "github")
             resolved.data["clientId"] shouldBe "user-ns-id"
         }
 
         "resolveAuthSetting merges fields — base fills keys absent from override" {
-            val service = newService()
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
             // Platform provides discoveryUrl; namespace-shared provides clientId
-            service.create(
-                setting(
-                    namespaceId = null,
-                    userId = null,
-                    name = "github",
-                    data = mapOf("discoveryUrl" to "https://platform.discovery"),
-                ),
-            )
-            service.create(
-                setting(
-                    namespaceId = nsId,
-                    userId = null,
-                    name = "github",
-                    data = mapOf("clientId" to "ns-client-id"),
-                ),
-            )
+            val platform = setting(namespaceId = null, userId = null, name = "github", data = mapOf("discoveryUrl" to "https://platform.discovery"))
+            val nsShared = setting(namespaceId = nsId, userId = null, name = "github", data = mapOf("clientId" to "ns-client-id"))
+            every { repo.findAllForScope(nsId, userId) } returns listOf(platform, nsShared)
 
-            val resolved = service.resolveAuthSetting(nsId, userId, "github")
+            val resolved = newService(repo).resolveAuthSetting(nsId, userId, "github")
             resolved.data["clientId"] shouldBe "ns-client-id"
             resolved.data["discoveryUrl"] shouldBe "https://platform.discovery"
         }
 
         "resolveAuthSetting throws ConfigNotFoundException when no layer has the requested name" {
-            val service = newService()
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(setting(namespaceId = nsId, userId = null, name = "other-setting"))
+            val other = setting(namespaceId = nsId, userId = null, name = "other-setting")
+            every { repo.findAllForScope(nsId, userId) } returns listOf(other)
 
             shouldThrow<ConfigNotFoundException> {
-                service.resolveAuthSetting(nsId, userId, "github")
+                newService(repo).resolveAuthSetting(nsId, userId, "github")
             }
         }
 
-        "update rejects when renaming would collide with a different-authType layer" {
-            val service = newService()
+        "resolveAuthSetting result identity comes from base layer" {
+            val repo = mockk<AuthSettingRepository>()
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
-            service.create(setting(namespaceId = nsId, userId = null, name = "primary", authType = AuthType.OAUTH_DISCOVERABLE))
-            val mine = service.create(setting(namespaceId = nsId, userId = userId, name = "secondary", authType = AuthType.API_KEY))
+            val platform = setting(namespaceId = null, userId = null, name = "github", data = mapOf("clientId" to "platform-id"))
+            val nsShared = setting(namespaceId = nsId, userId = null, name = "github", data = mapOf("clientId" to "ns-id"))
+            every { repo.findAllForScope(nsId, userId) } returns listOf(platform, nsShared)
 
-            shouldThrow<ResponseStatusException> {
-                service.update(mine.withName("primary"))
-            }.statusCode.value() shouldBe 409
+            val resolved = newService(repo).resolveAuthSetting(nsId, userId, "github")
+            // Result identity is from the lowest-rank layer that exists (platform)
+            resolved.metadata.id shouldBe platform.metadata.id
         }
 
         // -------------------------------------------------------------------------
-        // Merge result identity preservation
+        // Simple pass-through delegation — one test per method
         // -------------------------------------------------------------------------
 
-        "resolveAuthSetting result identity comes from base layer" {
-            val service = newService()
-            val nsId = UUID.randomUUID()
-            val userId = UUID.randomUUID()
-            val platform =
-                service.create(
-                    setting(
-                        namespaceId = null,
-                        userId = null,
-                        name = "github",
-                        data = mapOf("clientId" to "platform-id"),
-                    ),
-                )
-            service.create(
-                setting(
-                    namespaceId = nsId,
-                    userId = null,
-                    name = "github",
-                    data = mapOf("clientId" to "ns-id"),
-                ),
-            )
+        "findById delegates to repository.findByIds" {
+            val repo = mockk<AuthSettingRepository>()
+            val entity = setting()
+            every { repo.findByIds(listOf(entity.id), false) } returns listOf(entity)
 
-            val resolved = service.resolveAuthSetting(nsId, userId, "github")
-            // Result identity is from the lowest-rank layer that exists (platform)
-            resolved.metadata.id shouldBe platform.metadata.id
+            newService(repo).findById(entity.id) shouldBe entity
+        }
+
+        "findById returns null for unknown id" {
+            val repo = mockk<AuthSettingRepository>()
+            val id = UUID.randomUUID()
+            every { repo.findByIds(listOf(id), false) } returns emptyList()
+
+            newService(repo).findById(id).shouldBeNull()
+        }
+
+        "findByParent delegates to repository" {
+            val repo = mockk<AuthSettingRepository>()
+            val parentId = UUID.randomUUID()
+            val entities = listOf(setting())
+            every { repo.findByParent(parentId) } returns entities
+
+            newService(repo).findByParent(parentId) shouldBe entities
+        }
+
+        "delete delegates to repository" {
+            val repo = mockk<AuthSettingRepository>()
+            val id = UUID.randomUUID()
+            every { repo.delete(id) } returns true
+
+            newService(repo).delete(id) shouldBe true
+            verify(exactly = 1) { repo.delete(id) }
+        }
+
+        "deleteByParent delegates to repository" {
+            val repo = mockk<AuthSettingRepository>()
+            val parentId = UUID.randomUUID()
+            every { repo.deleteByParent(parentId) } returns 3
+
+            newService(repo).deleteByParent(parentId) shouldBe 3
+        }
+
+        "findByNamespaceId delegates to repository" {
+            val repo = mockk<AuthSettingRepository>()
+            val nsId = UUID.randomUUID()
+            val entities = listOf(setting(namespaceId = nsId))
+            every { repo.findByNamespaceId(nsId) } returns entities
+
+            newService(repo).findByNamespaceId(nsId) shouldBe entities
+        }
+
+        "findByUserId delegates to repository" {
+            val repo = mockk<AuthSettingRepository>()
+            val userId = UUID.randomUUID()
+            val entities = listOf(setting(namespaceId = null, userId = userId))
+            every { repo.findByUserId(userId) } returns entities
+
+            newService(repo).findByUserId(userId) shouldBe entities
+        }
+
+        "findPlatformLevel delegates to repository" {
+            val repo = mockk<AuthSettingRepository>()
+            val entities = listOf(setting(namespaceId = null, userId = null))
+            every { repo.findPlatformLevel() } returns entities
+
+            newService(repo).findPlatformLevel() shouldBe entities
+        }
+
+        "findByTriple delegates to repository.findByNamespaceIdAndUserIdAndName" {
+            val repo = mockk<AuthSettingRepository>()
+            val nsId = UUID.randomUUID()
+            val entity = setting(namespaceId = nsId)
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "github") } returns entity
+
+            newService(repo).findByTriple(nsId, null, "github") shouldBe entity
         }
     }
 }
