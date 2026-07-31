@@ -43,13 +43,13 @@ data class ScheduledPromptSearchRequest(
     val userExternalId: String? = null,
     val agentConfigIds: List<UUID>? = null,
 ) {
-    @get:AssertTrue(message = "Provide exactly one of namespaceId or namespaceExternalId")
+    @get:AssertTrue(message = "Provide namespaceId or namespaceExternalId, not both")
     @get:JsonIgnore
     val isNamespaceIdentifierValid: Boolean
-        get() = (namespaceId == null) != (namespaceExternalId == null)
+        get() = namespaceId == null || namespaceExternalId == null
 
-    @get:AssertTrue(message = "Provide exactly one of userId or userExternalId")
+    @get:AssertTrue(message = "Provide userId or userExternalId, not both")
     @get:JsonIgnore
     val isUserIdentifierValid: Boolean
-        get() = (userId == null) != (userExternalId == null)
+        get() = userId == null || userExternalId == null
 }
