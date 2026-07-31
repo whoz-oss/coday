@@ -1,6 +1,5 @@
 package io.whozoss.agentos.user
 
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -17,32 +16,26 @@ class UserOffboardingServiceImpl(
     private val permissionService: PermissionService,
 ) : UserOffboardingService {
     @Transactional
-    override fun revokeAllAccess(userId: UUID) {
+    override fun revokeNamespaceAccess(userId: UUID, namespaceId: UUID) {
         val user = userService.getById(userId)
         val userIdStr = userId.toString()
+        val namespaceIdStr = namespaceId.toString()
 
-        userGroupRepository.removeUserFromAllGroups(user.externalId)
+        userGroupRepository.removeUserFromGroupsInNamespace(user.externalId, namespaceId)
 
-        val adminNamespaceIds = permissionService.listEntitiesForUser(userIdStr, EntityType.NAMESPACE, Action.WRITE).toSet()
-        val memberNamespaceIds =
-            permissionService.listEntitiesForUser(userIdStr, EntityType.NAMESPACE, Action.READ).toSet() - adminNamespaceIds
+        runCatching {
+            permissionService.revokePermission(userIdStr, EntityType.NAMESPACE, namespaceIdStr, PermissionRelation.ADMIN)
+        }.onFailure { e -> logger.warn(e) { "Failed to revoke ADMIN on namespace $namespaceId for user $userId" } }
 
-        adminNamespaceIds.forEach { namespaceId ->
-            runCatching {
-                permissionService.revokePermission(userIdStr, EntityType.NAMESPACE, namespaceId, PermissionRelation.ADMIN)
-            }.onFailure { e -> logger.warn(e) { "Failed to revoke ADMIN on namespace $namespaceId for user $userId" } }
-        }
-        memberNamespaceIds.forEach { namespaceId ->
-            runCatching {
-                permissionService.revokePermission(userIdStr, EntityType.NAMESPACE, namespaceId, PermissionRelation.MEMBER)
-            }.onFailure { e -> logger.warn(e) { "Failed to revoke MEMBER on namespace $namespaceId for user $userId" } }
-        }
+        runCatching {
+            permissionService.revokePermission(userIdStr, EntityType.NAMESPACE, namespaceIdStr, PermissionRelation.MEMBER)
+        }.onFailure { e -> logger.warn(e) { "Failed to revoke MEMBER on namespace $namespaceId for user $userId" } }
 
-        // removeUserFromAllGroups bypasses the permission cache (direct Cypher write on
+        // removeUserFromGroupsInNamespace bypasses the permission cache (direct Cypher write on
         // MEMBER|ADMIN edges); revokePermission already clears the cache per-call, but that
         // does not help if the user held no namespace relation at all.
         permissionService.clearUserCache(userIdStr)
-        logger.info { "Revoked all group and namespace access for user $userId" }
+        logger.info { "Revoked group and namespace access for user $userId on namespace $namespaceId" }
     }
 
     companion object : KLogging()

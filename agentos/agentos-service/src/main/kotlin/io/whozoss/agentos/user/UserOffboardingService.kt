@@ -3,17 +3,17 @@ package io.whozoss.agentos.user
 import java.util.UUID
 
 /**
- * Platform-wide access revocation for a user, triggered by an external (async)
- * deprovisioning event. Not scoped to a single namespace — removes every
- * UserGroup and Namespace relation the user holds, everywhere.
+ * Namespace-scoped access revocation for a user.
+ * Removes only the UserGroup and Namespace relations held within the given namespace —
+ * other namespaces the user belongs to are left untouched.
  */
 interface UserOffboardingService {
     /**
-     * Revokes all UserGroup and Namespace relations for [userId] across the whole platform.
+     * Revokes all UserGroup and Namespace relations for [userId] within [namespaceId].
      * Does not delete the user itself. Idempotent: safe to call on a user with no
-     * remaining relations.
+     * remaining relations in that namespace.
      *
      * @throws io.whozoss.agentos.exception.ResourceNotFoundException if the user does not exist.
      */
-    fun revokeAllAccess(userId: UUID)
+    fun revokeNamespaceAccess(userId: UUID, namespaceId: UUID)
 }

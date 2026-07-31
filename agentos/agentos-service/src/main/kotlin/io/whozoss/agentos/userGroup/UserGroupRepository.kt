@@ -13,10 +13,10 @@ interface UserGroupRepository : EntityRepository<UserGroup, UUID> {
     fun removeUsers(userGroupId: UUID, userExternalIds: Collection<String>)
 
     /**
-     * Unlinks the user (by external id) from every UserGroup across all namespaces.
-     * Used by platform-wide user offboarding — not scoped to a single group or namespace.
+     * Unlinks the user (by external id) from every UserGroup within a single namespace.
+     * Used by namespace-scoped user offboarding.
      */
-    fun removeUserFromAllGroups(userExternalId: String)
+    fun removeUserFromGroupsInNamespace(userExternalId: String, namespaceId: UUID)
 
     /**
      * Returns groups for the given user external IDs, optionally scoped to a namespace.

@@ -363,7 +363,7 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             userGroupRepo.findMembers(g.id).map { it.externalId } shouldBe listOf("bob@example.com")
         }
 
-        "removeUserFromAllGroups unlinks the user from every group across all namespaces, whatever their role" {
+        "removeUserFromGroupsInNamespace unlinks the user from groups within that namespace only, whatever their role" {
             val ns1 = namespaceRepo.save(namespace())
             val ns2 = namespaceRepo.save(namespace())
             val g1 = userGroupRepo.save(userGroup(ns1.id, "Group 1"))
@@ -373,31 +373,32 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             userGroupRepo.addUsers(g2.id, listOf("alice@example.com"))
             grantAdmin(g1.id, alice)
 
-            userGroupRepo.removeUserFromAllGroups("alice@example.com")
+            userGroupRepo.removeUserFromGroupsInNamespace("alice@example.com", ns1.id)
 
             userGroupRepo.findMembers(g1.id).shouldBeEmpty()
-            userGroupRepo.findMembers(g2.id).shouldBeEmpty()
+            // ns2 group membership must survive — the call is scoped to ns1 only.
+            userGroupRepo.findMembers(g2.id).map { it.externalId } shouldBe listOf("alice@example.com")
         }
 
-        "removeUserFromAllGroups does not affect other users' membership in the same groups" {
+        "removeUserFromGroupsInNamespace does not affect other users' membership in the same groups" {
             val ns = namespaceRepo.save(namespace())
             val g = userGroupRepo.save(userGroup(ns.id, "Group"))
             userRepo.save(user("alice@example.com"))
             userRepo.save(user("bob@example.com"))
             userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
 
-            userGroupRepo.removeUserFromAllGroups("alice@example.com")
+            userGroupRepo.removeUserFromGroupsInNamespace("alice@example.com", ns.id)
 
             userGroupRepo.findMembers(g.id).map { it.externalId } shouldBe listOf("bob@example.com")
         }
 
-        "removeUserFromAllGroups is a no-op for a user with no group membership" {
+        "removeUserFromGroupsInNamespace is a no-op for a user with no group membership in that namespace" {
             val ns = namespaceRepo.save(namespace())
             val g = userGroupRepo.save(userGroup(ns.id, "Group"))
             userRepo.save(user("bob@example.com"))
             userGroupRepo.addUsers(g.id, listOf("bob@example.com"))
 
-            userGroupRepo.removeUserFromAllGroups("nobody@example.com")
+            userGroupRepo.removeUserFromGroupsInNamespace("nobody@example.com", ns.id)
 
             userGroupRepo.findMembers(g.id).map { it.externalId } shouldBe listOf("bob@example.com")
         }

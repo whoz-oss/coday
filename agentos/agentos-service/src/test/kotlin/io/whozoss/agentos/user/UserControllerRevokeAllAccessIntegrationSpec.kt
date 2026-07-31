@@ -20,7 +20,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
 /**
- * MVC integration tests for `DELETE /api/users/{id}/access` (platform-wide offboarding).
+ * MVC integration tests for `DELETE /api/users/{id}/access?namespaceId=...` (namespace-scoped offboarding).
  *
  * Verifies the `@PreAuthorize("hasRole('SUPER_ADMIN')")` guard end-to-end through the
  * dispatcher: a non-admin caller must get 403 without the service being invoked, a
@@ -64,32 +64,45 @@ class UserControllerRevokeAllAccessIntegrationSpec : StringSpec() {
     )
 
     init {
-        "DELETE /api/users/{id}/access as super-admin returns 204 and invokes the service" {
+        "DELETE /api/users/{id}/access?namespaceId=... as super-admin returns 204 and invokes the service" {
             val targetId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns superAdmin
 
-            mockMvc.perform(delete("/api/users/$targetId/access"))
+            mockMvc.perform(delete("/api/users/$targetId/access?namespaceId=$namespaceId"))
                 .andExpect(status().isNoContent)
 
-            verify(exactly = 1) { userOffboardingService.revokeAllAccess(targetId) }
+            verify(exactly = 1) { userOffboardingService.revokeNamespaceAccess(targetId, namespaceId) }
         }
 
-        "DELETE /api/users/{id}/access as a non-admin (even on self) returns 403" {
+        "DELETE /api/users/{id}/access?namespaceId=... as a non-admin (even on self) returns 403" {
+            val namespaceId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns regularUser
 
-            mockMvc.perform(delete("/api/users/$regularUserId/access"))
+            mockMvc.perform(delete("/api/users/$regularUserId/access?namespaceId=$namespaceId"))
                 .andExpect(status().isForbidden)
 
-            verify(exactly = 0) { userOffboardingService.revokeAllAccess(any()) }
+            verify(exactly = 0) { userOffboardingService.revokeNamespaceAccess(any(), any()) }
         }
 
-        "DELETE /api/users/{id}/access surfaces a 404 from the service when the user does not exist" {
+        "DELETE /api/users/{id}/access?namespaceId=... surfaces a 404 from the service when the user does not exist" {
+            val targetId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns superAdmin
+            every { userOffboardingService.revokeNamespaceAccess(targetId, namespaceId) } throws ResourceNotFoundException("Entity $targetId not found")
+
+            mockMvc.perform(delete("/api/users/$targetId/access?namespaceId=$namespaceId"))
+                .andExpect(status().isNotFound)
+        }
+
+        "DELETE /api/users/{id}/access without namespaceId returns 400 (missing required query param)" {
             val targetId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns superAdmin
-            every { userOffboardingService.revokeAllAccess(targetId) } throws ResourceNotFoundException("Entity $targetId not found")
 
             mockMvc.perform(delete("/api/users/$targetId/access"))
-                .andExpect(status().isNotFound)
+                .andExpect(status().isBadRequest)
+
+            verify(exactly = 0) { userOffboardingService.revokeNamespaceAccess(any(), any()) }
         }
     }
 }

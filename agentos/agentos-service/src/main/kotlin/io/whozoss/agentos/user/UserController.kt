@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
@@ -130,10 +131,11 @@ class UserController(
     @DeleteMapping("/{id}/access")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    @Operation(summary = "Revoke all UserGroup and Namespace access for this user, platform-wide")
-    override fun revokeAllAccess(
+    @Operation(summary = "Revoke a user's UserGroup and Namespace access, scoped to one namespace")
+    override fun revokeNamespaceAccess(
         @PathVariable id: UUID,
-    ) = userOffboardingService.revokeAllAccess(id)
+        @RequestParam namespaceId: UUID,
+    ) = userOffboardingService.revokeNamespaceAccess(id, namespaceId)
 
     @GetMapping("/me")
     @ResponseStatus(HttpStatus.OK)
