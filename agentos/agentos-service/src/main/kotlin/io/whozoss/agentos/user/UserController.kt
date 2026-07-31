@@ -128,6 +128,15 @@ class UserController(
         @PathVariable id: UUID,
     ) = crud.delete(id)
 
+    @DeleteMapping("/by-external-id/{externalId}/access")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Revoke a user's UserGroup and Namespace access by external id, scoped to one namespace")
+    override fun revokeNamespaceAccessByExternalId(
+        @PathVariable externalId: String,
+        @RequestParam namespaceId: UUID,
+    ) = userOffboardingService.revokeNamespaceAccessByExternalId(userExternalId = externalId, namespaceId = namespaceId)
+
     @DeleteMapping("/{id}/access")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('SUPER_ADMIN')")
@@ -135,7 +144,7 @@ class UserController(
     override fun revokeNamespaceAccess(
         @PathVariable id: UUID,
         @RequestParam namespaceId: UUID,
-    ) = userOffboardingService.revokeNamespaceAccess(id, namespaceId)
+    ) = userOffboardingService.revokeNamespaceAccess(userId = id, namespaceId = namespaceId)
 
     @GetMapping("/me")
     @ResponseStatus(HttpStatus.OK)

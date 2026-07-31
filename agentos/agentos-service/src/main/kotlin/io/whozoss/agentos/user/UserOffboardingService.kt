@@ -16,4 +16,6 @@ interface UserOffboardingService {
      * @throws io.whozoss.agentos.exception.ResourceNotFoundException if the user does not exist.
      */
     fun revokeNamespaceAccess(userId: UUID, namespaceId: UUID)
+
+    fun revokeNamespaceAccessByExternalId(userExternalId: String, namespaceId: UUID)
 }

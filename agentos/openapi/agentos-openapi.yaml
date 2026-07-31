@@ -2744,6 +2744,28 @@ paths:
           description: Created
       tags:
       - user-controller
+  /api/users/by-external-id/{externalId}/access:
+    delete:
+      operationId: revokeNamespaceAccessByExternalIdUser
+      parameters:
+      - in: path
+        name: externalId
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      summary: "Revoke a user's UserGroup and Namespace access by external id, scoped\
+        \ to one namespace"
+      tags:
+      - user-controller
   /api/users/by-external-ids:
     post:
       operationId: listByExternalIdsUser
