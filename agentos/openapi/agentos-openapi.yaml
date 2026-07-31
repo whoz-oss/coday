@@ -2880,7 +2880,7 @@ paths:
       - user-controller
   /api/users/{id}/access:
     delete:
-      operationId: revokeAllAccessUser
+      operationId: revokeNamespaceAccessUser
       parameters:
       - in: path
         name: id
@@ -2888,10 +2888,16 @@ paths:
         schema:
           type: string
           format: uuid
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
       responses:
         "204":
           description: No Content
-      summary: "Revoke all UserGroup and Namespace access for this user, platform-wide"
+      summary: "Revoke a user's UserGroup and Namespace access, scoped to one namespace"
       tags:
       - user-controller
 components:
