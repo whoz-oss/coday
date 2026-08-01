@@ -21,6 +21,7 @@ export class NamespaceItemComponent {
   readonly agentConfigsRequested = output<Namespace>()
   readonly promptsRequested = output<Namespace>()
   readonly userGroupsRequested = output<Namespace>()
+  readonly membersRequested = output<Namespace>()
   readonly deleteRequested = output<Namespace>()
 
   protected readonly pendingDelete = signal(false)
@@ -51,6 +52,9 @@ export class NamespaceItemComponent {
   }
   protected onUserGroups(): void {
     this.userGroupsRequested.emit(this.namespace())
+  }
+  protected onMembers(): void {
+    this.membersRequested.emit(this.namespace())
   }
 
   protected onMenuAction(key: string): void {
