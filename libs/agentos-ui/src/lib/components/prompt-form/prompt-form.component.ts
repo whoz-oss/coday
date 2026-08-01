@@ -115,6 +115,7 @@ export class PromptFormComponent implements OnInit {
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
+  protected readonly isExporting = signal(false)
   protected readonly errorMessage = signal<string | null>(null)
 
   /** Displayed literally in the hint text — avoids Angular interpolation parsing issues. */
@@ -328,6 +329,29 @@ export class PromptFormComponent implements OnInit {
         }
       },
     })
+  }
+
+  protected exportYaml(): void {
+    const id = this.existingPrompt?.id
+    if (!id || this.isExporting()) return
+
+    this.isExporting.set(true)
+    this.promptState
+      .exportAsYaml(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (yaml) => {
+          const blob = new Blob([yaml], { type: 'application/yaml' })
+          const url = URL.createObjectURL(blob)
+          const anchor = document.createElement('a')
+          anchor.href = url
+          anchor.download = `${this.existingPrompt?.name ?? 'prompt'}.yaml`
+          anchor.click()
+          URL.revokeObjectURL(url)
+          this.isExporting.set(false)
+        },
+        error: () => this.isExporting.set(false),
+      })
   }
 
   protected cancel(): void {

@@ -2156,6 +2156,40 @@ paths:
           description: OK
       tags:
       - prompt-controller
+  /api/prompts/{id}/export:
+    get:
+      description: "Returns the prompt as a downloadable YAML file, ready to be placed\
+        \ in the namespace `prompts/` directory under `configPath`. Only the fields\
+        \ meaningful in a filesystem prompt are included: `name`, `description`, `content`,\
+        \ `parameters`. Scope metadata (`id`, `namespaceId`, `userId`, `externalMetadata`)\
+        \ and audit fields are intentionally omitted. **`agentConfigId` is also omitted\
+        \ and, if set, this is a real loss of information**: `FilesystemPromptRepository`\
+        \ deliberately does not support linking a file-backed prompt to an AgentConfig\
+        \ (YAGNI — a file can only carry a name, and the need is already covered by\
+        \ an `@agentName` prefix in the prompt's own `content`). If the exported prompt\
+        \ targets an agent, add `@agentName` at the start of the content to preserve\
+        \ that targeting in the file."
+      operationId: exportPrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: string
+            application/yaml:
+              schema:
+                type: string
+          description: OK
+      summary: Export a Prompt as a YAML file
+      tags:
+      - prompt-controller
   /api/user-groups:
     get:
       operationId: findByNamespaceIdUserGroup

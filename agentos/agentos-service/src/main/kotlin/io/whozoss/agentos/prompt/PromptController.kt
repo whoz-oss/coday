@@ -1,5 +1,10 @@
 package io.whozoss.agentos.prompt
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
@@ -19,8 +24,10 @@ import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -299,9 +306,38 @@ class PromptController(
         crud.delete(id)
     }
 
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
+    @Operation(
+        summary = "Export a Prompt as a YAML file",
+        description =
+            "Returns the prompt as a downloadable YAML file, ready to be placed in " +
+                "the namespace `prompts/` directory under `configPath`. " +
+                "Only the fields meaningful in a filesystem prompt are included: " +
+                "`name`, `description`, `content`, `parameters`. " +
+                "Scope metadata (`id`, `namespaceId`, `userId`, `externalMetadata`) and audit fields " +
+                "are intentionally omitted. " +
+                "**`agentConfigId` is also omitted and, if set, this is a real loss of information**: " +
+                "`FilesystemPromptRepository` deliberately does not support linking a file-backed prompt " +
+                "to an AgentConfig (YAGNI \u2014 a file can only carry a name, and the need is already covered " +
+                "by an `@agentName` prefix in the prompt's own `content`). If the exported prompt targets " +
+                "an agent, add `@agentName` at the start of the content to preserve that targeting in the file.",
+    )
+    @GetMapping("/{id}/export", produces = [MediaType.APPLICATION_YAML_VALUE])
+    @PreAuthorize("hasPermission(#id, 'Prompt', 'WRITE')")
+    @HideOnAccessDenied
+    fun export(
+        @PathVariable id: UUID,
+    ): ResponseEntity<String> {
+        val entity =
+            promptService.findById(id)
+                ?: throw ResourceNotFoundException("Prompt not found: $id")
+        val yaml = YAML_MAPPER.writeValueAsString(toExportModel(entity))
+        val filename = entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-") + ".yaml"
+        return ResponseEntity
+            .ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
+            .contentType(MediaType.parseMediaType(MediaType.APPLICATION_YAML_VALUE))
+            .body(yaml)
+    }
 
     // -------------------------------------------------------------------------
     // ExternalId resolution helpers
@@ -383,7 +419,30 @@ class PromptController(
             defaultValue = defaultValue,
         )
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * YAML mapper configured for clean, human-readable output:
+         * - No `---` document start marker
+         * - No Jackson type tags
+         * - Null, blank and empty top-level values omitted by [toExportModel] itself
+         *
+         * Deliberately no mapper-level inclusion policy (`NON_EMPTY` or `NON_NULL`): a global
+         * inclusion policy would strip `defaultValue: \"\"` from an exported [PromptParameter] \u2014
+         * an empty string is a genuinely meaningful default (a free-form optional parameter) and
+         * the domain requires [PromptParameter.defaultValue] to be non-null. [toExportModel] and
+         * its parameter helper build their output explicitly via `buildMap`, adding a key only when
+         * it is meaningful, so `defaultValue` is always written verbatim regardless of its content
+         * \u2014 confirmed by [PromptControllerExportSpec]'s `defaultValue: \"\"` round-trip test.
+         */
+        private val YAML_MAPPER: ObjectMapper =
+            ObjectMapper(
+                YAMLFactory
+                    .builder()
+                    .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
+                    .build(),
+            ).registerModule(KotlinModule.Builder().build())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+    }
 }
 
 internal fun toDto(entity: Prompt): PromptDto =
@@ -429,3 +488,42 @@ internal fun toDomain(resource: PromptDto): Prompt =
             },
         externalMetadata = resource.externalMetadata,
     )
+
+/**
+ * Produces the filesystem-ready export model from a persisted [Prompt].
+ *
+ * Only the fields [FilesystemPromptRepository.parseYamlFile] reads are included: `name`,
+ * `description`, `content`, `parameters`. Scope and persistence artefacts (`id`, `namespaceId`,
+ * `userId`, `externalMetadata`, all audit fields) are intentionally excluded — they have no
+ * meaning in a standalone YAML file.
+ *
+ * **`agentConfigId` is deliberately excluded, even when set.** [FilesystemPromptRepository] does
+ * not support a filesystem prompt linking to an [io.whozoss.agentos.agentConfig.AgentConfig] (see
+ * its KDoc: YAGNI — a file can only declare a name, and the loader would silently ignore an
+ * `agentConfigId` field since [FilesystemPromptRepository]'s `PromptYamlModel` has no such
+ * property). Exporting the raw UUID would therefore be worse than omitting it: a value with no
+ * meaning outside this database, silently dropped on import. The targeting this field expresses
+ * can be preserved manually by the user, prefixing the exported `content` with `@agentName`,
+ * which [io.whozoss.agentos.caseFlow.CaseServiceImpl] already resolves at prompt-expansion time.
+ *
+ * The model is built explicitly via `buildMap` rather than through a mapper-level inclusion
+ * policy (`NON_EMPTY`/`NON_NULL`) so that [PromptParameter.defaultValue] survives export even
+ * when it is the empty string — a legitimate, meaningful value (a free-form optional parameter)
+ * that a global `NON_EMPTY` policy would strip. See [PromptController.YAML_MAPPER] KDoc.
+ */
+private fun toExportModel(entity: Prompt): Map<String, Any?> =
+    buildMap {
+        put("name", entity.name)
+        entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
+        put("content", entity.content)
+        entity.parameters.takeIf { it.isNotEmpty() }?.let { params ->
+            put("parameters", params.map { it.toExportModel() })
+        }
+    }
+
+private fun PromptParameter.toExportModel(): Map<String, Any?> =
+    buildMap {
+        put("name", name)
+        description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
+        put("defaultValue", defaultValue)
+    }

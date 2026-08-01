@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core'
-import { Prompt, PromptControllerService } from '@whoz-oss/agentos-api-client'
+import { Prompt, PromptControllerService, PromptExportService } from '@whoz-oss/agentos-api-client'
 import { Observable } from 'rxjs'
 
 /**
@@ -23,6 +23,7 @@ import { Observable } from 'rxjs'
 @Injectable({ providedIn: 'root' })
 export class PromptStateService {
   private readonly promptController = inject(PromptControllerService)
+  private readonly exportService = inject(PromptExportService)
 
   getById(id: string): Observable<Prompt> {
     return this.promptController.getByIdPrompt(id)
@@ -64,5 +65,18 @@ export class PromptStateService {
       userId,
       ...(agentConfigId ? { agentConfigId } : {}),
     })
+  }
+
+  /**
+   * Export a prompt as a YAML string. The caller is responsible for triggering the
+   * browser download — this method only fetches the raw YAML content from the backend.
+   *
+   * Delegates to `PromptExportService` (hand-written) rather than the generated
+   * controller, because the generator's `selectHeaderAccept` logic prefers JSON when
+   * both MIME types are listed (406), and maps `application/yaml` to `responseType:
+   * 'blob'` instead of `'text'`.
+   */
+  exportAsYaml(id: string): Observable<string> {
+    return this.exportService.exportAsYaml(id)
   }
 }
