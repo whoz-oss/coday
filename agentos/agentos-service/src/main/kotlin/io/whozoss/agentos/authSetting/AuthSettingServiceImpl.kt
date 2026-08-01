@@ -80,10 +80,9 @@ class AuthSettingServiceImpl(
                 .filter { it.name == name }
                 .sortedWith(LAYER_COMPARATOR)
         return layers
-            .drop(1)
-            .fold(layers.firstOrNull() ?: throw ConfigNotFoundException(namespaceId, userId, name)) { base, override ->
-                mergeStrategy.merge(base, override)
-            }
+            .takeIf { it.isNotEmpty() }
+            ?.reduce { base, override -> mergeStrategy.merge(base, override) }
+            ?: throw ConfigNotFoundException(namespaceId, userId, name)
     }
 
     override fun findByTriple(
