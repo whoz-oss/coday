@@ -8,41 +8,41 @@ import {
   signal,
   viewChildren,
 } from '@angular/core'
-import { Prompt } from '@whoz-oss/agentos-api-client'
+import { AgentConfig } from '@whoz-oss/agentos-api-client'
 
 /**
- * PromptAutocompleteComponent — presentational slash-command suggestion dropdown.
+ * AgentAutocompleteComponent — presentational @-mention suggestion dropdown.
  *
- * Receives the filtered list of prompts to display and emits the selected one.
+ * Receives the filtered list of agent configs to display and emits the selected one.
  * Keyboard navigation (ArrowUp/Down/Enter/Escape) is delegated from the parent
  * via the `navigate(key)` method — the parent owns the textarea and intercepts keydown.
  *
  * The component is purely presentational: no HTTP calls, no state management.
  */
 @Component({
-  selector: 'agentos-prompt-autocomplete',
+  selector: 'agentos-agent-autocomplete',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  templateUrl: './prompt-autocomplete.component.html',
-  styleUrl: './prompt-autocomplete.component.scss',
+  templateUrl: './agent-autocomplete.component.html',
+  styleUrl: './agent-autocomplete.component.scss',
 })
-export class PromptAutocompleteComponent {
-  /** Filtered list of prompts to display. */
-  readonly prompts = input.required<Prompt[]>()
+export class AgentAutocompleteComponent {
+  /** Filtered list of agent configs to display. */
+  readonly agents = input.required<AgentConfig[]>()
 
-  /** Emits the prompt chosen by the user (click or Enter). */
-  readonly selected = output<Prompt>()
+  /** Emits the agent config chosen by the user (click or Enter). */
+  readonly selected = output<AgentConfig>()
 
   /** Emits when the user presses Escape — parent should close the dropdown. */
   readonly dismissed = output<void>()
 
   protected readonly activeIndex = signal(0)
 
-  private readonly itemRefs = viewChildren<ElementRef<HTMLLIElement>>('promptItem')
+  private readonly itemRefs = viewChildren<ElementRef<HTMLLIElement>>('agentItem')
 
   constructor() {
     // Reset selection index whenever the list changes.
     effect(() => {
-      this.prompts()
+      this.agents()
       this.activeIndex.set(0)
     })
   }
@@ -52,7 +52,7 @@ export class PromptAutocompleteComponent {
    * @param key ArrowUp | ArrowDown | Enter | Escape
    */
   navigate(key: 'ArrowUp' | 'ArrowDown' | 'Enter' | 'Escape'): void {
-    const list = this.prompts()
+    const list = this.agents()
     switch (key) {
       case 'ArrowDown':
         this.activeIndex.set(Math.min(this.activeIndex() + 1, list.length - 1))
@@ -63,8 +63,8 @@ export class PromptAutocompleteComponent {
         this.scrollActiveIntoView()
         break
       case 'Enter': {
-        const prompt = list[this.activeIndex()]
-        if (prompt) this.selected.emit(prompt)
+        const agent = list[this.activeIndex()]
+        if (agent) this.selected.emit(agent)
         break
       }
       case 'Escape':
@@ -73,8 +73,8 @@ export class PromptAutocompleteComponent {
     }
   }
 
-  protected onItemClick(prompt: Prompt): void {
-    this.selected.emit(prompt)
+  protected onItemClick(agent: AgentConfig): void {
+    this.selected.emit(agent)
   }
 
   protected isActive(index: number): boolean {
@@ -83,13 +83,10 @@ export class PromptAutocompleteComponent {
 
   /**
    * Builds the completion text inserted into the textarea on selection.
-   *
-   * Always `/{name} ` with a trailing space — the user types arguments freely.
-   * The backend handles all parsing ($ARGUMENTS, $0, $1, …).
-   * Parameter names/defaults are shown as hints in the dropdown, not pre-filled.
+   * Always `@{name} ` with a trailing space.
    */
-  completionFor(prompt: Prompt): string {
-    return `/${prompt.name} `
+  completionFor(agent: AgentConfig): string {
+    return `@${agent.name} `
   }
 
   private scrollActiveIntoView(): void {
