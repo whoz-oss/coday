@@ -17,6 +17,8 @@ import { Observable } from 'rxjs'
 import { NamespaceUserListItem } from '../model/namespace-user-list-item'
 // @ts-ignore
 import { SyncUserRolesRequest } from '../model/sync-user-roles-request'
+// @ts-ignore
+import { UpdateNamespaceMembersRequest } from '../model/update-namespace-members-request'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -403,6 +405,93 @@ export class NamespacePermissionEndpointsService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<any>('delete', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * @param namespaceId
+   * @param updateNamespaceMembersRequest
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public updateMembers(
+    namespaceId: string,
+    updateNamespaceMembersRequest: UpdateNamespaceMembersRequest,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<Array<NamespaceUserListItem>>
+  public updateMembers(
+    namespaceId: string,
+    updateNamespaceMembersRequest: UpdateNamespaceMembersRequest,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<Array<NamespaceUserListItem>>>
+  public updateMembers(
+    namespaceId: string,
+    updateNamespaceMembersRequest: UpdateNamespaceMembersRequest,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<Array<NamespaceUserListItem>>>
+  public updateMembers(
+    namespaceId: string,
+    updateNamespaceMembersRequest: UpdateNamespaceMembersRequest,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (namespaceId === null || namespaceId === undefined) {
+      throw new Error('Required parameter namespaceId was null or undefined when calling updateMembers.')
+    }
+    if (updateNamespaceMembersRequest === null || updateNamespaceMembersRequest === undefined) {
+      throw new Error(
+        'Required parameter updateNamespaceMembersRequest was null or undefined when calling updateMembers.'
+      )
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/namespaces/${this.configuration.encodeParam({ name: 'namespaceId', value: namespaceId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/members`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<Array<NamespaceUserListItem>>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: updateNamespaceMembersRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
