@@ -21,12 +21,21 @@
     </div>
 
     <div class="case-home__composer" dsBlueprint>
-      @if (slashSuggestions().length > 0) {
+      @if (autocomplete.atSuggestions().length > 0) {
+        <div class="case-home__autocomplete">
+          <agentos-agent-autocomplete
+            [agents]="autocomplete.atSuggestions()"
+            (selected)="onAgentSelected($event)"
+            (dismissed)="closeAtAutocomplete()"
+          />
+        </div>
+      }
+      @if (autocomplete.slashSuggestions().length > 0) {
         <div class="case-home__autocomplete">
           <agentos-prompt-autocomplete
-            [prompts]="slashSuggestions()"
+            [prompts]="autocomplete.slashSuggestions()"
             (selected)="onPromptSelected($event)"
-            (dismissed)="closeAutocomplete()"
+            (dismissed)="closeSlashAutocomplete()"
           />
         </div>
       }

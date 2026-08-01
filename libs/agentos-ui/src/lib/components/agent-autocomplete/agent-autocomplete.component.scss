@@ -1,0 +1,64 @@
+@use 'libs/design-system/src/styles' as ds;
+
+.agent-autocomplete {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 400px;
+  width: 100%;
+  overflow-y: auto;
+
+  display: grid;
+  grid-template-columns: max-content 1fr;
+
+  // Smooth scrollbar
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-divider);
+    border-radius: 0;
+
+    &:hover {
+      background: var(--color-text-secondary);
+    }
+  }
+
+  &__item {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+    cursor: pointer;
+    transition: background 120ms ease;
+    border-left: 3px solid transparent;
+    padding: 8px 0;
+
+    &:hover,
+    &--active {
+      background: var(--color-bg-hover);
+    }
+
+    &--active {
+      border-left-color: var(--color-accent);
+    }
+  }
+
+  &__name {
+    @include ds.text-title;
+    font-family: ds.$font-ui;
+    white-space: nowrap;
+    padding: 0 24px 0 12px;
+  }
+
+  &__description {
+    @include ds.text-secondary;
+    line-height: 1.3;
+    padding: 0 16px 0 0;
+  }
+}
