@@ -1745,6 +1745,33 @@ paths:
       summary: List namespace exchange files
       tags:
       - exchange-controller
+  /api/namespaces/{namespaceId}/members:
+    post:
+      operationId: updateMembers
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNamespaceMembersRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NamespaceUserListItem"
+          description: OK
+      tags:
+      - namespace-permission-endpoints
   /api/namespaces/{namespaceId}/members/{targetUserId}:
     delete:
       operationId: revokeMember
@@ -3342,6 +3369,18 @@ components:
       - id
       - name
       - role
+    NamespaceMemberEntry:
+      type: object
+      properties:
+        role:
+          type: string
+          pattern: ADMIN|MEMBER
+        userId:
+          type: string
+          format: uuid
+      required:
+      - role
+      - userId
     NamespaceRoleEntry:
       type: object
       properties:
@@ -3735,6 +3774,22 @@ components:
       - timestamp
       - toolName
       - type
+    UpdateNamespaceMembersRequest:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamespaceMemberEntry"
+        userIdsToRemove:
+          type: array
+          items:
+            type: string
+            format: uuid
+          uniqueItems: true
+      required:
+      - members
+      - userIdsToRemove
     User:
       type: object
       properties:

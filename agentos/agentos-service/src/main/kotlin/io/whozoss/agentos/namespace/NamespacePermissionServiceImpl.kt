@@ -1,14 +1,17 @@
 package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 /**
  * Sync-algorithm-local role states.
@@ -157,6 +160,76 @@ class NamespacePermissionServiceImpl(
     ) {
         permissionService.demoteAdminToMember(userIdStr, EntityType.NAMESPACE, namespaceId)
         logger.info { "Demoted ADMIN to MEMBER on namespace $namespaceId for user $userIdStr" }
+    }
+
+    @Transactional
+    override fun updateMembers(
+        namespaceId: UUID,
+        request: UpdateNamespaceMembersRequest,
+        callerIsSuperAdmin: Boolean,
+    ): List<NamespaceUserListItem> {
+        namespaceService.getById(namespaceId)
+
+        val memberUserIds = request.members.map { it.userId }
+        val duplicated = memberUserIds.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+        if (duplicated.isNotEmpty()) {
+            throw UnprocessableEntityException("Duplicate userId(s) in members: $duplicated")
+        }
+        val overlap = memberUserIds.toSet() intersect request.userIdsToRemove
+        if (overlap.isNotEmpty()) {
+            throw UnprocessableEntityException("userId(s) cannot appear in both members and userIdsToRemove: $overlap")
+        }
+
+        val currentUsers = resolveNamespaceUsers(namespaceId, permissionService, userService)
+        val currentRoleByUserId = currentUsers.associateBy({ it.id }, { it.role })
+
+        val unknownRemovals = request.userIdsToRemove - currentRoleByUserId.keys
+        if (unknownRemovals.isNotEmpty()) {
+            throw UnprocessableEntityException("userId(s) not currently on the namespace: $unknownRemovals")
+        }
+
+        val newUserIds = memberUserIds.filter { it !in currentRoleByUserId }
+        if (newUserIds.isNotEmpty() && !callerIsSuperAdmin) {
+            throw AccessDeniedException("Only a super-admin may add a new user to a namespace")
+        }
+        if (newUserIds.isNotEmpty()) {
+            val found = userService.findByIds(newUserIds).map { it.metadata.id }.toSet()
+            val unknown = newUserIds.toSet() - found
+            if (unknown.isNotEmpty()) {
+                throw UnprocessableEntityException("Unknown userId(s): $unknown")
+            }
+        }
+
+        val roleChanges =
+            request.members.mapNotNull { entry ->
+                val current = currentRoleByUserId[entry.userId]
+                if (current == entry.role) {
+                    null
+                } else {
+                    entry.userId.toString() to PermissionRelation.valueOf(entry.role)
+                }
+            }
+        val revocations = request.userIdsToRemove.map { it.toString() to null as PermissionRelation? }
+
+        // Resulting role per userId after this update: members override, removals clear,
+        // everyone else keeps their current role. Building this explicit map (rather than
+        // counting deltas) keeps the zero-ADMIN guard a single readable pass.
+        val resultingRoleByUserId: Map<UUID, String?> =
+            currentRoleByUserId +
+                request.members.associate { it.userId to it.role } +
+                request.userIdsToRemove.associateWith { null }
+        val hadAdminBefore = currentRoleByUserId.values.any { it == PermissionRelation.ADMIN.name }
+        val hasAdminAfter = resultingRoleByUserId.values.any { it == PermissionRelation.ADMIN.name }
+        if (hadAdminBefore && !hasAdminAfter) {
+            throw UnprocessableEntityException("This update would leave the namespace with no ADMIN")
+        }
+
+        val entries = roleChanges + revocations
+        if (entries.isNotEmpty()) {
+            permissionService.applyShareBatch(EntityType.NAMESPACE, namespaceId.toString(), entries)
+        }
+
+        return resolveNamespaceUsers(namespaceId, permissionService, userService)
     }
 
     companion object : KLogging()

@@ -327,4 +327,41 @@ class NamespacePermissionEndpointsSpec :
 
             shouldThrow<ResourceNotFoundException> { controller.updateRolesByExternalId(request) }
         }
+
+        // -------------------------------------------------------------------------
+        // POST /{namespaceId}/members — delegation, caller admin-flag propagation
+        // -------------------------------------------------------------------------
+
+        "updateMembers delegates to namespacePermissionService with the caller's super-admin flag" {
+            val request = UpdateNamespaceMembersRequest(members = listOf(NamespaceMemberEntry(targetUserId, "MEMBER")))
+            val response = listOf(
+                NamespaceUserListItem(id = targetUserId, externalId = "target@example.com", email = "target@example.com", role = "MEMBER"),
+            )
+            every { userService.getCurrentUser() } returns caller.copy(isAdmin = true)
+            every { namespacePermissionService.updateMembers(namespaceId, request, true) } returns response
+
+            val result = controller.updateMembers(namespaceId, request)
+
+            result shouldBe response
+            verify(exactly = 1) { namespacePermissionService.updateMembers(namespaceId, request, true) }
+        }
+
+        "updateMembers propagates the caller's non-super-admin flag" {
+            val request = UpdateNamespaceMembersRequest(userIdsToRemove = setOf(targetUserId))
+            every { userService.getCurrentUser() } returns caller
+            every { namespacePermissionService.updateMembers(namespaceId, request, false) } returns emptyList()
+
+            controller.updateMembers(namespaceId, request)
+
+            verify(exactly = 1) { namespacePermissionService.updateMembers(namespaceId, request, false) }
+        }
+
+        "updateMembers propagates exceptions thrown by the service" {
+            val request = UpdateNamespaceMembersRequest(members = listOf(NamespaceMemberEntry(targetUserId, "ADMIN")))
+            every { userService.getCurrentUser() } returns caller
+            every { namespacePermissionService.updateMembers(namespaceId, request, false) } throws
+                ResourceNotFoundException("Namespace not found: $namespaceId")
+
+            shouldThrow<ResourceNotFoundException> { controller.updateMembers(namespaceId, request) }
+        }
     })
