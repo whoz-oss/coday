@@ -39,6 +39,7 @@ import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRepository
 import io.whozoss.agentos.permissions.StarredRepository
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
+import io.whozoss.agentos.prompt.FilesystemPromptRepository
 import io.whozoss.agentos.prompt.Neo4jPromptRepository
 import io.whozoss.agentos.prompt.PromptNodeNeo4jRepository
 import io.whozoss.agentos.prompt.PromptRepository
@@ -224,14 +225,36 @@ class Neo4jPersistenceConfiguration {
         return Neo4jFeedbackRepository(feedbackNodeNeo4jRepository, childLinkService)
     }
 
+    /**
+     * Inner Neo4j-backed bean, declared explicitly so that Spring AOP can proxy it and honour
+     * the [org.springframework.transaction.annotation.Transactional] boundaries declared on
+     * [Neo4jPromptRepository.save] and [Neo4jPromptRepository.deleteByParent].
+     *
+     * If this bean were constructed inline (via `Neo4jPromptRepository(...)` inside the outer
+     * factory method), it would not be managed by Spring and the AOP proxy would never be
+     * applied, silently disabling rollback semantics. This matters for [Neo4jPromptRepository.save]
+     * in particular: it creates the Prompt node then the BELONGS_TO edges to the namespace and
+     * the agent as two separate Neo4j operations — without a transaction, a failure on the edge
+     * step would leave an orphan Prompt node behind.
+     */
     @Bean
-    fun neo4jPromptRepository(
+    fun neo4jPromptRepositoryDelegate(
         promptNodeNeo4jRepository: PromptNodeNeo4jRepository,
         objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
+    ): Neo4jPromptRepository = Neo4jPromptRepository(promptNodeNeo4jRepository, objectMapper, childLinkService)
+
+    @Bean
+    @Primary
+    fun neo4jPromptRepository(
+        neo4jPromptRepositoryDelegate: Neo4jPromptRepository,
+        namespaceRepository: NamespaceRepository,
     ): PromptRepository {
-        logger.info { "[Persistence] Neo4jPromptRepository active" }
-        return Neo4jPromptRepository(promptNodeNeo4jRepository, objectMapper, childLinkService)
+        logger.info { "[Persistence] Neo4jPromptRepository active (filesystem augmentation enabled)" }
+        return FilesystemPromptRepository(
+            delegate = neo4jPromptRepositoryDelegate,
+            namespaceRepository = namespaceRepository,
+        )
     }
 
     @Bean
