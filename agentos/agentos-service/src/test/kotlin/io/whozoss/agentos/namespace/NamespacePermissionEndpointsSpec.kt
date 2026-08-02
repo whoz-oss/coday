@@ -13,6 +13,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -333,35 +334,35 @@ class NamespacePermissionEndpointsSpec :
         // -------------------------------------------------------------------------
 
         "updateMembers delegates to namespacePermissionService with the caller's super-admin flag" {
-            val request = UpdateNamespaceMembersRequest(members = listOf(NamespaceMemberEntry(targetUserId, "MEMBER")))
+            val members = listOf(UserMembershipRole(targetUserId, "MEMBER"))
             val response = listOf(
                 NamespaceUserListItem(id = targetUserId, externalId = "target@example.com", email = "target@example.com", role = "MEMBER"),
             )
             every { userService.getCurrentUser() } returns caller.copy(isAdmin = true)
-            every { namespacePermissionService.updateMembers(namespaceId, request, true) } returns response
+            every { namespacePermissionService.updateMembers(namespaceId, members, true) } returns response
 
-            val result = controller.updateMembers(namespaceId, request)
+            val result = controller.updateMembers(namespaceId, members)
 
             result shouldBe response
-            verify(exactly = 1) { namespacePermissionService.updateMembers(namespaceId, request, true) }
+            verify(exactly = 1) { namespacePermissionService.updateMembers(namespaceId, members, true) }
         }
 
         "updateMembers propagates the caller's non-super-admin flag" {
-            val request = UpdateNamespaceMembersRequest(userIdsToRemove = setOf(targetUserId))
+            val members = listOf(UserMembershipRole(targetUserId, null))
             every { userService.getCurrentUser() } returns caller
-            every { namespacePermissionService.updateMembers(namespaceId, request, false) } returns emptyList()
+            every { namespacePermissionService.updateMembers(namespaceId, members, false) } returns emptyList()
 
-            controller.updateMembers(namespaceId, request)
+            controller.updateMembers(namespaceId, members)
 
-            verify(exactly = 1) { namespacePermissionService.updateMembers(namespaceId, request, false) }
+            verify(exactly = 1) { namespacePermissionService.updateMembers(namespaceId, members, false) }
         }
 
         "updateMembers propagates exceptions thrown by the service" {
-            val request = UpdateNamespaceMembersRequest(members = listOf(NamespaceMemberEntry(targetUserId, "ADMIN")))
+            val members = listOf(UserMembershipRole(targetUserId, "ADMIN"))
             every { userService.getCurrentUser() } returns caller
-            every { namespacePermissionService.updateMembers(namespaceId, request, false) } throws
+            every { namespacePermissionService.updateMembers(namespaceId, members, false) } throws
                 ResourceNotFoundException("Namespace not found: $namespaceId")
 
-            shouldThrow<ResourceNotFoundException> { controller.updateMembers(namespaceId, request) }
+            shouldThrow<ResourceNotFoundException> { controller.updateMembers(namespaceId, members) }
         }
     })

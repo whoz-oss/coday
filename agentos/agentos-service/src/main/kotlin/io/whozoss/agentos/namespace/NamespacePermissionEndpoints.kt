@@ -5,6 +5,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
@@ -15,6 +16,7 @@ import mu.KotlinLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -50,41 +52,6 @@ data class SyncUserRolesRequest(
 )
 
 /**
- * One (userId, role) pair within an [UpdateNamespaceMembersRequest].
- *
- * Unlike [NamespaceRoleEntry] (external-id based, used by the platform-wide sync
- * endpoint), this works in **internal userId** terms — no externalId resolution,
- * no auto-creation of users. See [UpdateNamespaceMembersRequest] for the rationale.
- */
-@Schema(name = "NamespaceMemberEntry")
-data class NamespaceMemberEntry(
-    val userId: UUID,
-    @field:Pattern(regexp = "ADMIN|MEMBER", message = "role must be ADMIN or MEMBER")
-    val role: String,
-)
-
-/**
- * Request body for [NamespacePermissionEndpoints.updateMembers].
- *
- * A single batch call driving the whole namespace-membership form, modeled after
- * `UserGroupUpdateRequest`. Deliberately **internal userId** based: `applyShareBatch`
- * already works natively in internal ids, so there is no externalId resolution layer
- * and no auto-creation of users here (unlike UserGroup, which accepts externalIds and
- * auto-creates missing users). An externalId-based variant may be added later; out of
- * scope for now.
- *
- * Delta semantics (like UserGroup), **not** a declarative replace: [members] are the
- * users to add or whose role to change, with an explicit target role; [userIdsToRemove]
- * are fully revoked (both ADMIN and MEMBER). A userId absent from both lists is left
- * untouched — this is what prevents an accidental mass-revocation of the roster.
- */
-@Schema(name = "UpdateNamespaceMembersRequest")
-data class UpdateNamespaceMembersRequest(
-    val members: List<@Valid NamespaceMemberEntry> = emptyList(),
-    val userIdsToRemove: Set<UUID> = emptySet(),
-)
-
-/**
  * Dedicated endpoints for managing namespace ADMIN/MEMBER permissions.
  *
  * Authorization:
@@ -98,6 +65,7 @@ data class UpdateNamespaceMembersRequest(
  * so repeated PUTs/DELETEs are safe.
  */
 @RestController
+@Validated
 @RequestMapping(
     "/api/namespaces",
     produces = [MediaType.APPLICATION_JSON_VALUE],
@@ -212,24 +180,31 @@ class NamespacePermissionEndpoints(
      * POST /api/namespaces/{namespaceId}/members — single-call batch membership update,
      * driving a namespace-members form (add / change role / remove) in one round-trip.
      *
+     * Each [UserMembershipRole] entry targets one user: a non-null [UserMembershipRole.role]
+     * adds or changes their role, a null [UserMembershipRole.role] revokes all their relations.
+     * Users absent from the list are left untouched (delta semantics, not declarative replace).
+     *
+     * Input validation (400 on failure):
+     * - each entry's [UserMembershipRole.role] must be null, "ADMIN", or "MEMBER" (`@Pattern`)
+     * - the list must not contain duplicate [UserMembershipRole.userId] values (`@NoDuplicateUserIds`)
+     *
      * Authorization is two-tier: the route-level `@PreAuthorize` only checks that the caller
      * is a SUPER_ADMIN or holds namespace WRITE (so a namespace ADMIN can reach this endpoint
      * at all). The finer rule — adding a genuinely new user requires SUPER_ADMIN, while editing
      * or removing an existing member only requires WRITE — is enforced inside
      * [NamespacePermissionService.updateMembers], because it needs to inspect the namespace's
      * *current* membership to tell "new" from "existing", which a SpEL `@PreAuthorize` cannot
-     * express. See that method's KDoc for the full rationale (and why: `GET /api/users` is
-     * SUPER_ADMIN-only, so a plain namespace admin has no directory to add unknown users from).
+     * express. See that method's KDoc for the full rationale.
      */
     @PostMapping("/{namespaceId}/members", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.OK)
     @PreAuthorize("hasRole('SUPER_ADMIN') or hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     fun updateMembers(
         @PathVariable namespaceId: UUID,
-        @Valid @RequestBody request: UpdateNamespaceMembersRequest,
+        @Valid @NoDuplicateUserIds @RequestBody members: List<UserMembershipRole>,
     ): List<NamespaceUserListItem> {
         val callerIsSuperAdmin = userService.getCurrentUser().isAdmin
-        return namespacePermissionService.updateMembers(namespaceId, request, callerIsSuperAdmin)
+        return namespacePermissionService.updateMembers(namespaceId, members, callerIsSuperAdmin)
     }
 
     private fun requireExists(

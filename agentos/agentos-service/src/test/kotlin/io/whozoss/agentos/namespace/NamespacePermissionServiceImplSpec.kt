@@ -14,6 +14,7 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -312,38 +313,11 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         every { namespaceService.getById(namespaceId) } throws ResourceNotFoundException("Namespace not found: $namespaceId")
 
         shouldThrow<ResourceNotFoundException> {
-            service.updateMembers(namespaceId, UpdateNamespaceMembersRequest(), callerIsSuperAdmin = true)
+            service.updateMembers(namespaceId, emptyList(), callerIsSuperAdmin = true)
         }
     }
 
-    "updateMembers throws 422 on duplicate userId within members" {
-        every { namespaceService.getById(namespaceId) } returns namespace
-
-        shouldThrow<UnprocessableEntityException> {
-            service.updateMembers(
-                namespaceId,
-                UpdateNamespaceMembersRequest(
-                    members = listOf(NamespaceMemberEntry(userId, "ADMIN"), NamespaceMemberEntry(userId, "MEMBER")),
-                ),
-                callerIsSuperAdmin = true,
-            )
-        }
-    }
-
-    "updateMembers throws 422 when a userId appears in both members and userIdsToRemove" {
-        every { namespaceService.getById(namespaceId) } returns namespace
-
-        shouldThrow<UnprocessableEntityException> {
-            service.updateMembers(
-                namespaceId,
-                UpdateNamespaceMembersRequest(
-                    members = listOf(NamespaceMemberEntry(userId, "ADMIN")),
-                    userIdsToRemove = setOf(userId),
-                ),
-                callerIsSuperAdmin = true,
-            )
-        }
-    }
+    // Duplicate userId is enforced by @NoDuplicateUserIds at the controller level — not tested here.
 
     "updateMembers throws 422 when removing a userId not currently on the namespace" {
         every { namespaceService.getById(namespaceId) } returns namespace
@@ -357,7 +331,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         shouldThrow<UnprocessableEntityException> {
             service.updateMembers(
                 namespaceId,
-                UpdateNamespaceMembersRequest(userIdsToRemove = setOf(userId)),
+                listOf(UserMembershipRole(userId, null)),
                 callerIsSuperAdmin = true,
             )
         }
@@ -375,7 +349,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         shouldThrow<org.springframework.security.access.AccessDeniedException> {
             service.updateMembers(
                 namespaceId,
-                UpdateNamespaceMembersRequest(members = listOf(NamespaceMemberEntry(userId, "MEMBER"))),
+                listOf(UserMembershipRole(userId, "MEMBER")),
                 callerIsSuperAdmin = false,
             )
         }
@@ -395,7 +369,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         shouldThrow<UnprocessableEntityException> {
             service.updateMembers(
                 namespaceId,
-                UpdateNamespaceMembersRequest(members = listOf(NamespaceMemberEntry(userId, "MEMBER"))),
+                listOf(UserMembershipRole(userId, "MEMBER")),
                 callerIsSuperAdmin = true,
             )
         }
@@ -415,7 +389,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
         service.updateMembers(
             namespaceId,
-            UpdateNamespaceMembersRequest(members = listOf(NamespaceMemberEntry(userId, "MEMBER"))),
+            listOf(UserMembershipRole(userId, "MEMBER")),
             callerIsSuperAdmin = true,
         )
 
@@ -441,7 +415,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
         service.updateMembers(
             namespaceId,
-            UpdateNamespaceMembersRequest(members = listOf(NamespaceMemberEntry(userId, "ADMIN"))),
+            listOf(UserMembershipRole(userId, "ADMIN")),
             callerIsSuperAdmin = false,
         )
 
@@ -466,7 +440,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
         service.updateMembers(
             namespaceId,
-            UpdateNamespaceMembersRequest(members = listOf(NamespaceMemberEntry(userId, "ADMIN"))),
+            listOf(UserMembershipRole(userId, "ADMIN")),
             callerIsSuperAdmin = false,
         )
 
@@ -486,7 +460,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
         service.updateMembers(
             namespaceId,
-            UpdateNamespaceMembersRequest(userIdsToRemove = setOf(userId)),
+            listOf(UserMembershipRole(userId, null)),
             callerIsSuperAdmin = false,
         )
 
@@ -512,7 +486,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         shouldThrow<UnprocessableEntityException> {
             service.updateMembers(
                 namespaceId,
-                UpdateNamespaceMembersRequest(userIdsToRemove = setOf(userId)),
+                listOf(UserMembershipRole(userId, null)),
                 callerIsSuperAdmin = true,
             )
         }
@@ -539,9 +513,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
         service.updateMembers(
             namespaceId,
-            UpdateNamespaceMembersRequest(
-                members = listOf(NamespaceMemberEntry(userId, "MEMBER"), NamespaceMemberEntry(otherUserId, "ADMIN")),
-            ),
+            listOf(UserMembershipRole(userId, "MEMBER"), UserMembershipRole(otherUserId, "ADMIN")),
             callerIsSuperAdmin = true,
         )
 

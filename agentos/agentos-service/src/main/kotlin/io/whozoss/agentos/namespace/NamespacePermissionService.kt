@@ -1,5 +1,6 @@
 package io.whozoss.agentos.namespace
 
+import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import java.util.UUID
 
 /**
@@ -29,11 +30,15 @@ interface NamespacePermissionService {
 
     /**
      * Batch membership update for a single namespace, in **internal userId** terms
-     * (no externalId resolution, no auto-creation — see [UpdateNamespaceMembersRequest]).
+     * (no externalId resolution, no auto-creation).
      *
-     * Delta semantics (not a declarative replace): [UpdateNamespaceMembersRequest.members]
-     * are added or brought to their target role; [UpdateNamespaceMembersRequest.userIdsToRemove]
-     * lose every namespace relation; any user absent from both lists is left untouched.
+     * Delta semantics (not a declarative replace): entries with a non-null [io.whozoss.agentos.sdk.api.user.UserMembershipRole.role]
+     * are added or brought to that role; entries with a null role lose every namespace relation;
+     * any user absent from [members] is left untouched.
+     *
+     * Caller guarantees (enforced by controller-level Bean Validation before this is called):
+     * - each entry's role is null, "ADMIN", or "MEMBER"
+     * - no duplicate [io.whozoss.agentos.sdk.api.user.UserMembershipRole.userId] values in [members]
      *
      * Two-tier authorization enforced here (the `@PreAuthorize` on the controller only gates
      * entry, it cannot distinguish "add" from "edit/remove"):
@@ -43,26 +48,22 @@ interface NamespacePermissionService {
      * - Editing the role of, or removing, an already-present user only requires namespace WRITE,
      *   already checked by the controller's `@PreAuthorize`.
      *
-     * Only actual role transitions are forwarded to [io.whozoss.agentos.permissions.PermissionService.applyShareBatch]
-     * (mirrors `UserGroupServiceImpl.reconcileRoles`): a member re-sent with its current role is a no-op.
+     * Only actual role transitions are forwarded to [io.whozoss.agentos.permissions.PermissionService.applyShareBatch]:
+     * a member re-sent with its current role is a no-op.
      *
      * Anti-lockout guard: rejects with [io.whozoss.agentos.exception.UnprocessableEntityException] (422)
-     * any operation that would leave the namespace with zero ADMIN when it had at least one
-     * beforehand — an admin must never be able to stumble into orphaning the namespace to the
-     * point only a super-admin could recover it.
+     * any operation that would leave the namespace with zero ADMIN when it had at least one beforehand.
      *
-     * @return the resulting namespace membership, so the caller (typically a form) can refresh
-     *   without a second round-trip.
+     * @return the resulting namespace membership, so the caller can refresh without a second round-trip.
      * @throws io.whozoss.agentos.exception.ResourceNotFoundException if the namespace does not exist.
-     * @throws io.whozoss.agentos.exception.UnprocessableEntityException on duplicate userIds in
-     *   [UpdateNamespaceMembersRequest.members], a userId present in both lists, an unknown userId,
-     *   or the zero-ADMIN lockout guard.
+     * @throws io.whozoss.agentos.exception.UnprocessableEntityException on an unknown userId,
+     *   a revocation targeting a user not currently on the namespace, or the zero-ADMIN lockout guard.
      * @throws org.springframework.security.access.AccessDeniedException if a non-super-admin caller
      *   attempts to add a genuinely new user.
      */
     fun updateMembers(
         namespaceId: UUID,
-        request: UpdateNamespaceMembersRequest,
+        members: List<UserMembershipRole>,
         callerIsSuperAdmin: Boolean,
     ): List<NamespaceUserListItem>
 }

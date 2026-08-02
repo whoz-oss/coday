@@ -6,6 +6,7 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.security.access.AccessDeniedException
@@ -165,30 +166,25 @@ class NamespacePermissionServiceImpl(
     @Transactional
     override fun updateMembers(
         namespaceId: UUID,
-        request: UpdateNamespaceMembersRequest,
+        members: List<UserMembershipRole>,
         callerIsSuperAdmin: Boolean,
     ): List<NamespaceUserListItem> {
         namespaceService.getById(namespaceId)
 
-        val memberUserIds = request.members.map { it.userId }
-        val duplicated = memberUserIds.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
-        if (duplicated.isNotEmpty()) {
-            throw UnprocessableEntityException("Duplicate userId(s) in members: $duplicated")
-        }
-        val overlap = memberUserIds.toSet() intersect request.userIdsToRemove
-        if (overlap.isNotEmpty()) {
-            throw UnprocessableEntityException("userId(s) cannot appear in both members and userIdsToRemove: $overlap")
-        }
+        // Duplicate-userId check is enforced by @NoDuplicateUserIds at the controller level.
+        val (toUpsert, toRevoke) = members.partition { it.role != null }
+        val upsertUserIds = toUpsert.map { it.userId }
+        val revokeUserIds = toRevoke.map { it.userId }
 
         val currentUsers = resolveNamespaceUsers(namespaceId, permissionService, userService)
         val currentRoleByUserId = currentUsers.associateBy({ it.id }, { it.role })
 
-        val unknownRemovals = request.userIdsToRemove - currentRoleByUserId.keys
-        if (unknownRemovals.isNotEmpty()) {
-            throw UnprocessableEntityException("userId(s) not currently on the namespace: $unknownRemovals")
+        val unknownRevovals = revokeUserIds.toSet() - currentRoleByUserId.keys
+        if (unknownRevovals.isNotEmpty()) {
+            throw UnprocessableEntityException("userId(s) not currently on the namespace: $unknownRevovals")
         }
 
-        val newUserIds = memberUserIds.filter { it !in currentRoleByUserId }
+        val newUserIds = upsertUserIds.filter { it !in currentRoleByUserId }
         if (newUserIds.isNotEmpty() && !callerIsSuperAdmin) {
             throw AccessDeniedException("Only a super-admin may add a new user to a namespace")
         }
@@ -200,29 +196,27 @@ class NamespacePermissionServiceImpl(
             }
         }
 
-        val roleChanges =
-            request.members.mapNotNull { entry ->
-                val current = currentRoleByUserId[entry.userId]
-                if (current == entry.role) {
-                    null
-                } else {
-                    entry.userId.toString() to PermissionRelation.valueOf(entry.role)
-                }
-            }
-        val revocations = request.userIdsToRemove.map { it.toString() to null as PermissionRelation? }
-
-        // Resulting role per userId after this update: members override, removals clear,
+        // Resulting role per userId after this update: upserts override, revocations clear,
         // everyone else keeps their current role. Building this explicit map (rather than
         // counting deltas) keeps the zero-ADMIN guard a single readable pass.
         val resultingRoleByUserId: Map<UUID, String?> =
             currentRoleByUserId +
-                request.members.associate { it.userId to it.role } +
-                request.userIdsToRemove.associateWith { null }
+                toUpsert.associate { it.userId to it.role } +
+                revokeUserIds.associateWith { null }
         val hadAdminBefore = currentRoleByUserId.values.any { it == PermissionRelation.ADMIN.name }
         val hasAdminAfter = resultingRoleByUserId.values.any { it == PermissionRelation.ADMIN.name }
         if (hadAdminBefore && !hasAdminAfter) {
             throw UnprocessableEntityException("This update would leave the namespace with no ADMIN")
         }
+
+        val roleChanges: List<Pair<String, PermissionRelation?>> =
+            toUpsert.mapNotNull { entry ->
+                val current = currentRoleByUserId[entry.userId]
+                if (current == entry.role) null
+                else entry.userId.toString() to PermissionRelation.valueOf(entry.role!!)
+            }
+        val revocations: List<Pair<String, PermissionRelation?>> =
+            revokeUserIds.map { it.toString() to null }
 
         val entries = roleChanges + revocations
         if (entries.isNotEmpty()) {
