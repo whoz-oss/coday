@@ -53,41 +53,6 @@ data class SyncUserRolesRequest(
 )
 
 /**
- * One (userId, role) pair within an [UpdateNamespaceMembersRequest].
- *
- * Unlike [NamespaceRoleEntry] (external-id based, used by the platform-wide sync
- * endpoint), this works in **internal userId** terms — no externalId resolution,
- * no auto-creation of users. See [UpdateNamespaceMembersRequest] for the rationale.
- */
-@Schema(name = "NamespaceMemberEntry")
-data class NamespaceMemberEntry(
-    val userId: UUID,
-    @field:Pattern(regexp = "ADMIN|MEMBER", message = "role must be ADMIN or MEMBER")
-    val role: String,
-)
-
-/**
- * Request body for [NamespacePermissionEndpoints.updateMembers].
- *
- * A single batch call driving the whole namespace-membership form, modeled after
- * `UserGroupUpdateRequest`. Deliberately **internal userId** based: `applyShareBatch`
- * already works natively in internal ids, so there is no externalId resolution layer
- * and no auto-creation of users here (unlike UserGroup, which accepts externalIds and
- * auto-creates missing users). An externalId-based variant may be added later; out of
- * scope for now.
- *
- * Delta semantics (like UserGroup), **not** a declarative replace: [members] are the
- * users to add or whose role to change, with an explicit target role; [userIdsToRemove]
- * are fully revoked (both ADMIN and MEMBER). A userId absent from both lists is left
- * untouched — this is what prevents an accidental mass-revocation of the roster.
- */
-@Schema(name = "UpdateNamespaceMembersRequest")
-data class UpdateNamespaceMembersRequest(
-    val members: List<@Valid NamespaceMemberEntry> = emptyList(),
-    val userIdsToRemove: Set<UUID> = emptySet(),
-)
-
-/**
  * Dedicated endpoints for managing namespace ADMIN/MEMBER permissions.
  *
  * Authorization:
