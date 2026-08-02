@@ -18,7 +18,7 @@ import { NamespaceUserListItem } from '../model/namespace-user-list-item'
 // @ts-ignore
 import { SyncUserRolesRequest } from '../model/sync-user-roles-request'
 // @ts-ignore
-import { UpdateNamespaceMembersRequest } from '../model/update-namespace-members-request'
+import { UserMembershipRole } from '../model/user-membership-role'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -416,34 +416,34 @@ export class NamespacePermissionEndpointsService extends BaseService {
 
   /**
    * @param namespaceId
-   * @param updateNamespaceMembersRequest
+   * @param userMembershipRole
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public updateMembers(
     namespaceId: string,
-    updateNamespaceMembersRequest: UpdateNamespaceMembersRequest,
+    userMembershipRole: Array<UserMembershipRole>,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<Array<NamespaceUserListItem>>
   public updateMembers(
     namespaceId: string,
-    updateNamespaceMembersRequest: UpdateNamespaceMembersRequest,
+    userMembershipRole: Array<UserMembershipRole>,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<Array<NamespaceUserListItem>>>
   public updateMembers(
     namespaceId: string,
-    updateNamespaceMembersRequest: UpdateNamespaceMembersRequest,
+    userMembershipRole: Array<UserMembershipRole>,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<Array<NamespaceUserListItem>>>
   public updateMembers(
     namespaceId: string,
-    updateNamespaceMembersRequest: UpdateNamespaceMembersRequest,
+    userMembershipRole: Array<UserMembershipRole>,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -451,10 +451,8 @@ export class NamespacePermissionEndpointsService extends BaseService {
     if (namespaceId === null || namespaceId === undefined) {
       throw new Error('Required parameter namespaceId was null or undefined when calling updateMembers.')
     }
-    if (updateNamespaceMembersRequest === null || updateNamespaceMembersRequest === undefined) {
-      throw new Error(
-        'Required parameter updateNamespaceMembersRequest was null or undefined when calling updateMembers.'
-      )
+    if (userMembershipRole === null || userMembershipRole === undefined) {
+      throw new Error('Required parameter userMembershipRole was null or undefined when calling updateMembers.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -491,7 +489,7 @@ export class NamespacePermissionEndpointsService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<NamespaceUserListItem>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: updateNamespaceMembersRequest,
+      body: userMembershipRole,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

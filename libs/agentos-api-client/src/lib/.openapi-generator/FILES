@@ -64,7 +64,6 @@ model/message-event.ts
 model/models.ts
 model/namespace-agent-deploy-request.ts
 model/namespace-list-item.ts
-model/namespace-member-entry.ts
 model/namespace-role-entry.ts
 model/namespace-user-list-item.ts
 model/namespace.ts
@@ -85,12 +84,12 @@ model/tool-request-event.ts
 model/tool-response-event-all-of-output.ts
 model/tool-response-event.ts
 model/tool-selected-event.ts
-model/update-namespace-members-request.ts
 model/user-group-create-request.ts
 model/user-group-member.ts
 model/user-group-search-result.ts
 model/user-group-summary.ts
 model/user-group-update-request.ts
+model/user-membership-role.ts
 model/user.ts
 model/warn-event.ts
 param.ts

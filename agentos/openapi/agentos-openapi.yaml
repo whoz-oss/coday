@@ -1759,7 +1759,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateNamespaceMembersRequest"
+              type: array
+              items:
+                $ref: "#/components/schemas/UserMembershipRole"
         required: true
       responses:
         "200":
@@ -3369,18 +3371,6 @@ components:
       - id
       - name
       - role
-    NamespaceMemberEntry:
-      type: object
-      properties:
-        role:
-          type: string
-          pattern: ADMIN|MEMBER
-        userId:
-          type: string
-          format: uuid
-      required:
-      - role
-      - userId
     NamespaceRoleEntry:
       type: object
       properties:
@@ -3774,22 +3764,6 @@ components:
       - timestamp
       - toolName
       - type
-    UpdateNamespaceMembersRequest:
-      type: object
-      properties:
-        members:
-          type: array
-          items:
-            $ref: "#/components/schemas/NamespaceMemberEntry"
-        userIdsToRemove:
-          type: array
-          items:
-            type: string
-            format: uuid
-          uniqueItems: true
-      required:
-      - members
-      - userIdsToRemove
     User:
       type: object
       properties:
@@ -3960,6 +3934,23 @@ components:
       - name
       - userExternalIdsToAdd
       - userExternalIdsToRemove
+    UserMembershipRole:
+      type: object
+      properties:
+        role:
+          type: string
+          description: Target role for this user on the entity. Null means revoke
+            all relations.
+          enum:
+          - ADMIN
+          - MEMBER
+          pattern: ADMIN|MEMBER
+        userId:
+          type: string
+          format: uuid
+          description: Internal user id.
+      required:
+      - userId
     WarnEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
