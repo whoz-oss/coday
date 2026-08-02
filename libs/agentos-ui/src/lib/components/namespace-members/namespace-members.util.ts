@@ -1,9 +1,9 @@
 /**
  * Pure helpers for NamespaceMembersComponent — role-aware diffing against
- * `UpdateNamespaceMembersRequest`'s delta semantics (see NamespacePermissionEndpoints.kt):
- *   - `members` (toUpsert here) = users to add OR whose role changed
- *   - `userIdsToRemove` (toRemove here) = users to fully revoke
- *   - a user present in neither list is left untouched server-side
+ * `UserMembershipRole[]` delta semantics (see NamespacePermissionEndpoints.kt):
+ *   - entries with a role (toUpsert here) = users to add OR whose role changed
+ *   - entries without a role (toRemove here) = users to fully revoke
+ *   - a user absent from the list is left untouched server-side
  *
  * Unlike UserGroup (roles are additive: an admin is also a roster member),
  * namespace roles are EXCLUSIVE — a user is ADMIN, MEMBER, or absent. So the diff must

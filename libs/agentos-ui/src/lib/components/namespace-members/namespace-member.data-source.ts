@@ -11,7 +11,7 @@ const MAX_SUGGESTIONS = 20
  *
  * Keyed on the internal `id` (UUID) — unlike UserGroupMemberAutocompleteDataSource, which
  * keys on `externalId` and sources from `listNamespaceUsers()`. Here we need the internal id
- * because `NamespaceMemberEntry.userId` is the internal UUID, and the candidate pool is the
+ * because `UserMembershipRole.userId` is the internal UUID, and the candidate pool is the
  * whole platform directory (only accessible to super-admins), not the namespace's existing
  * users.
  *

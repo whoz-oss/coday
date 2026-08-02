@@ -2,11 +2,16 @@ import { HttpErrorResponse } from '@angular/common/http'
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { NamespaceUserListItem, NamespaceUserListItemRoleEnum, User } from '@whoz-oss/agentos-api-client'
+import {
+  NamespaceUserListItem,
+  NamespaceUserListItemRoleEnum,
+  User,
+  UserMembershipRoleRoleEnum,
+} from '@whoz-oss/agentos-api-client'
 import { AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-system'
 import { forkJoin, of } from 'rxjs'
 import { catchError } from 'rxjs/operators'
-import { NamespaceMemberStateService } from '../../services/namespace-member-state.service'
+import { MemberUpdateEntry, NamespaceMemberStateService } from '../../services/namespace-member-state.service'
 import { UserStateService } from '../../services/user-state.service'
 import { NamespaceMemberAutocompleteDataSource } from './namespace-member.data-source'
 import { computeMemberDiff, hasAtLeastOneAdmin, MemberRoleEntry, memberLabel } from './namespace-members.util'
@@ -187,11 +192,16 @@ export class NamespaceMembersComponent implements OnInit {
       return
     }
 
+    const updateEntries: MemberUpdateEntry[] = [
+      ...toUpsert.map((entry) => ({
+        userId: entry.userId,
+        role: entry.role as UserMembershipRoleRoleEnum,
+      })),
+      ...toRemove.map((userId) => ({ userId })),
+    ]
+
     this.memberState
-      .updateMembers(this.namespaceId, {
-        members: toUpsert.map((entry) => ({ userId: entry.userId, role: entry.role })),
-        userIdsToRemove: toRemove,
-      })
+      .updateMembers(this.namespaceId, updateEntries)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (refreshed) => {

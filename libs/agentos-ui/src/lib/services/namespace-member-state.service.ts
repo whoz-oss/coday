@@ -1,18 +1,18 @@
 import { inject, Injectable } from '@angular/core'
 import {
-  NamespaceMemberEntry,
   NamespacePermissionEndpointsService,
   NamespaceUserListItem,
   UserControllerService,
+  UserMembershipRole,
+  UserMembershipRoleRoleEnum,
 } from '@whoz-oss/agentos-api-client'
 import { Observable } from 'rxjs'
 
-/** Ergonomic input for updateMembers (arrays instead of the generated Set types). */
-export interface UpdateNamespaceMembersInput {
-  /** Users to add, or whose role changed. */
-  members: NamespaceMemberEntry[]
-  /** Users to fully revoke (both ADMIN and MEMBER). */
-  userIdsToRemove: string[]
+/** One entry in a batch update: upsert (with role) or revoke (without role). */
+export interface MemberUpdateEntry {
+  userId: string
+  /** Omit to revoke all roles for this user. */
+  role?: UserMembershipRoleRoleEnum
 }
 
 /**
@@ -22,10 +22,9 @@ export interface UpdateNamespaceMembersInput {
  * facade rather than injecting NamespacePermissionEndpointsService or UserControllerService
  * directly.
  *
- * Bridges the same generated-client quirk as UserGroupStateService: the backend request DTO
- * declares `userIdsToRemove` as a `Set<UUID>` (uniqueItems in the spec), which openapi-generator
- * maps to TS `Set<string>`. Angular's JSON serializer turns a real `Set` into `{}`, so callers
- * pass a plain array and this facade forwards it cast to the generated type (see [toWireSet]).
+ * The backend endpoint accepts a flat `Array<UserMembershipRole>` where each entry carries
+ * a userId and an optional role. A missing role means "revoke all relations for this user".
+ * This replaces the former `UpdateNamespaceMembersRequest` wrapper (members + userIdsToRemove).
  *
  * `listAllUsers()` wraps `UserControllerService.listAllUser()`, which is SUPER_ADMIN-only on
  * the backend — callers (the members component) must only invoke it when the current user is
@@ -50,20 +49,16 @@ export class NamespaceMemberStateService {
     return this.userController.listAllUser()
   }
 
-  /** Batch add / role-change / remove in a single round-trip. Returns the refreshed member list. */
-  updateMembers(namespaceId: string, input: UpdateNamespaceMembersInput): Observable<NamespaceUserListItem[]> {
-    return this.permissions.updateMembers(namespaceId, {
-      members: input.members,
-      userIdsToRemove: toWireSet(input.userIdsToRemove),
-    })
+  /**
+   * Batch upsert / revoke in a single round-trip. Returns the refreshed member list.
+   *
+   * Pass entries with a role to add or change, and entries without a role to revoke.
+   */
+  updateMembers(namespaceId: string, entries: MemberUpdateEntry[]): Observable<NamespaceUserListItem[]> {
+    const payload: UserMembershipRole[] = entries.map((e) => ({
+      userId: e.userId,
+      ...(e.role !== undefined ? { role: e.role } : {}),
+    }))
+    return this.permissions.updateMembers(namespaceId, payload)
   }
-}
-
-/**
- * The generated request DTO types `userIdsToRemove` as `Set<string>`, but a JS `Set`
- * serializes to `{}` via JSON. Send a plain array — valid JSON the backend deserializes
- * into a Set — cast to satisfy the generated type.
- */
-function toWireSet(values: string[]): Set<string> {
-  return values as unknown as Set<string>
 }
