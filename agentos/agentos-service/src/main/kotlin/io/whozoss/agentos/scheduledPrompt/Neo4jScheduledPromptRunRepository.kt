@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -26,6 +27,25 @@ open class Neo4jScheduledPromptRunRepository(
 
     override fun hasActive(scheduledPromptId: UUID): Boolean =
         neo4jRepository.existsActiveByScheduledPromptId(scheduledPromptId.toString())
+
+    override fun updateStatus(
+        id: UUID,
+        status: RunStatus,
+        finishedAt: Instant?,
+        error: String?,
+    ): Boolean {
+        val updated = neo4jRepository.updateStatus(
+            id = id.toString(),
+            status = status.name,
+            finishedAt = finishedAt,
+            error = error,
+            now = Instant.now(),
+        )
+        return updated > 0
+    }
+
+    override fun findById(id: UUID): ScheduledPromptRun? =
+        neo4jRepository.findById(id.toString()).orElse(null)?.toDomain()
 
     private fun isSlotKeyConflict(e: DataIntegrityViolationException): Boolean {
         val haystack = generateSequence<Throwable>(e) { it.cause }

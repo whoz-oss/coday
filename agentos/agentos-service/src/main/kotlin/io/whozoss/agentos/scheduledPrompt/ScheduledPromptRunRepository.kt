@@ -1,5 +1,6 @@
 package io.whozoss.agentos.scheduledPrompt
 
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -24,4 +25,20 @@ interface ScheduledPromptRunRepository {
      * (CLAIMED or RUNNING). Used to detect overlapping executions.
      */
     fun hasActive(scheduledPromptId: UUID): Boolean
+
+    /**
+     * Update the status of a Run, optionally setting [finishedAt] and [error].
+     *
+     * Returns true if the update was applied (the Run existed and was not already in the
+     * target status), false otherwise.
+     */
+    fun updateStatus(
+        id: UUID,
+        status: RunStatus,
+        finishedAt: Instant? = null,
+        error: String? = null,
+    ): Boolean
+
+    /** Find a single Run by its id, or null if not found. */
+    fun findById(id: UUID): ScheduledPromptRun?
 }

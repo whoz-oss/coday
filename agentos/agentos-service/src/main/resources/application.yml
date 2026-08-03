@@ -209,6 +209,9 @@ agentos:
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
 
 scheduler:
+  # Enable/disable the scheduler. Disabled by default to prevent accidental
+  # Case creation in dev. Enable in production via env var: SCHEDULER_ENABLED=true
+  enabled: ${SCHEDULER_ENABLED:false}
   # Interval between scanner ticks in milliseconds.
   # Override with env var: SCHEDULER_TICK_INTERVAL_MS
   tick-interval-ms: ${SCHEDULER_TICK_INTERVAL_MS:60000}

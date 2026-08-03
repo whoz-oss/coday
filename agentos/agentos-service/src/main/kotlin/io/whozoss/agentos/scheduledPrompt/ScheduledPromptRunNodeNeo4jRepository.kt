@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
+import java.time.Instant
 
 /**
  * Spring Data Neo4j repository for [ScheduledPromptRunNode].
@@ -22,4 +23,21 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
         """,
     )
     fun existsActiveByScheduledPromptId(scheduledPromptId: String): Boolean
+
+    /**
+     * Update status (and optionally finishedAt + error) of a Run by id.
+     * Returns the count of updated nodes (0 if not found).
+     */
+    @Query(
+        $$"""
+        MATCH (r:ScheduledPromptRun {id: $id})
+        SET r.status = $status,
+            r.finishedAt = $finishedAt,
+            r.error = $error,
+            r.modified = $now
+        RETURN count(r)
+        """,
+    )
+    fun updateStatus(id: String, status: String, finishedAt: Instant?, error: String?, now: Instant): Int
+
 }

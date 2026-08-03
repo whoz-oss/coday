@@ -10,6 +10,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.mockk.coEvery
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -58,14 +59,21 @@ class SchedulerScannerUnitSpec : StringSpec() {
         scheduledPromptRepo: InMemoryScheduledPromptRepository,
         runRepo: InMemoryScheduledPromptRunRepository,
         agentConfigService: AgentConfigService = defaultAgentConfigService(),
-    ) = SchedulerScanner(
-        scheduledPromptRepository = scheduledPromptRepo,
-        runRepository = runRepo,
-        agentConfigService = agentConfigService,
-        properties = properties,
-        clock = clock,
-        nextRunCalculatorService = NextRunCalculatorService(clock = clock),
-    )
+    ): SchedulerScanner {
+        val executor = mockk<ScheduledPromptExecutor>(relaxed = true).also {
+            every { it.materialize(any(), any()) } returns Unit
+            coEvery { it.consumeAvailable() } returns Unit
+        }
+        return SchedulerScanner(
+            scheduledPromptRepository = scheduledPromptRepo,
+            runRepository = runRepo,
+            agentConfigService = agentConfigService,
+            properties = properties,
+            clock = clock,
+            nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+            executor = executor,
+        )
+    }
 
     private fun InMemoryScheduledPromptRepository.insertScheduledPrompt(
         nextRunAt: Instant,
@@ -91,19 +99,19 @@ class SchedulerScannerUnitSpec : StringSpec() {
         // Tick — no due prompts
         // -------------------------------------------------------------------------
 
-        "tick with no due prompts: no runs created" {
+        "tickClaim with no due prompts: no runs created" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T10:00:00Z"))
-            scanner(scheduledPromptRepo, runRepo).tick()
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
             runRepo.all().shouldBeEmpty()
         }
 
-        "tick with disabled prompt: no runs created" {
+        "tickClaim with disabled prompt: no runs created" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T08:00:00Z"), enabled = false)
-            scanner(scheduledPromptRepo, runRepo).tick()
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
             runRepo.all().shouldBeEmpty()
         }
 
@@ -111,34 +119,34 @@ class SchedulerScannerUnitSpec : StringSpec() {
         // Tick — one due prompt, happy path
         // -------------------------------------------------------------------------
 
-        "tick with 1 due prompt: run CLAIMED inserted" {
+        "tickClaim with 1 due prompt: run CLAIMED inserted" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
             scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
-            scanner(scheduledPromptRepo, runRepo).tick()
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
             val runs = runRepo.all()
             runs shouldHaveSize 1
             runs.first().status shouldBe RunStatus.CLAIMED
         }
 
-        "tick with 1 due prompt: nextRunAt advanced" {
+        "tickClaim with 1 due prompt: nextRunAt advanced" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T09:00:00Z")
             // startDate=2026-01-01 (Thursday), WEEK no filter → next slot = next Thursday 2026-01-08
             val scheduledPrompt = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot, timeUtc = LocalTime.of(9, 0))
-            scanner(scheduledPromptRepo, runRepo).tick()
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
             val updated = scheduledPromptRepo.findById(scheduledPrompt.id)!!
             updated.nextRunAt shouldBe Instant.parse("2026-01-08T09:00:00Z")
         }
 
-        "tick with 1 due prompt: run scheduled for the claimed slot" {
+        "tickClaim with 1 due prompt: run scheduled for the claimed slot" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
             val scheduledPrompt = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
-            scanner(scheduledPromptRepo, runRepo).tick()
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
             val run = runRepo.all().first()
             run.scheduledPromptId shouldBe scheduledPrompt.id
             run.scheduledFor shouldBe slot
@@ -148,7 +156,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
         // Tick — overlap (active run already exists)
         // -------------------------------------------------------------------------
 
-        "tick with active run already exists: run SKIPPED (overlap)" {
+        "tickClaim with active run already exists: run SKIPPED (overlap)" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
@@ -161,13 +169,13 @@ class SchedulerScannerUnitSpec : StringSpec() {
                     correlationId = "pre-existing",
                 ),
             )
-            scanner(scheduledPromptRepo, runRepo).tick()
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
             val runs = runRepo.all()
             runs shouldHaveSize 2
             runs.filter { it.correlationId != "pre-existing" }.first().status shouldBe RunStatus.SKIPPED
         }
 
-        "tick with RUNNING run already exists: run SKIPPED (overlap)" {
+        "tickClaim with RUNNING run already exists: run SKIPPED (overlap)" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
@@ -180,11 +188,11 @@ class SchedulerScannerUnitSpec : StringSpec() {
                     correlationId = "running",
                 ),
             )
-            scanner(scheduledPromptRepo, runRepo).tick()
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
             runRepo.all().filter { it.correlationId != "running" }.first().status shouldBe RunStatus.SKIPPED
         }
 
-        "tick with DONE run: run CLAIMED (DONE is not active)" {
+        "tickClaim with DONE run: run CLAIMED (DONE is not active)" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
@@ -197,7 +205,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                     correlationId = "done-run",
                 ),
             )
-            scanner(scheduledPromptRepo, runRepo).tick()
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
             runRepo.all().filter { it.correlationId != "done-run" }.first().status shouldBe RunStatus.CLAIMED
         }
 
@@ -205,7 +213,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
         // Tick — DuplicateRunException (concurrent tick wins the race)
         // -------------------------------------------------------------------------
 
-        "tick with DuplicateRunException: nextRunAt still advanced" {
+        "tickClaim with DuplicateRunException: nextRunAt still advanced" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
@@ -219,12 +227,12 @@ class SchedulerScannerUnitSpec : StringSpec() {
                     correlationId = "first-tick",
                 ),
             )
-            scanner(scheduledPromptRepo, runRepo).tick()
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
             val updated = scheduledPromptRepo.findById(scheduledPrompt.id)!!
             updated.nextRunAt shouldBe Instant.parse("2026-01-08T08:00:00Z")
         }
 
-        "tick with DuplicateRunException: no extra run inserted" {
+        "tickClaim with DuplicateRunException: no extra run inserted" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
@@ -237,7 +245,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                     correlationId = "first-tick",
                 ),
             )
-            scanner(scheduledPromptRepo, runRepo).tick()
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
             runRepo.all() shouldHaveSize 1
         }
 
@@ -263,7 +271,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
         // AgentConfig guard
         // -------------------------------------------------------------------------
 
-        "tick with deleted AgentConfig: ScheduledPrompt disabled, no run inserted" {
+        "tickClaim with deleted AgentConfig: ScheduledPrompt disabled, no run inserted" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
@@ -271,12 +279,12 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val agentSvc = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns null
             }
-            scanner(scheduledPromptRepo, runRepo, agentSvc).tick()
+            scanner(scheduledPromptRepo, runRepo, agentSvc).tickClaim()
             runRepo.all().shouldBeEmpty()
             scheduledPromptRepo.findById(scheduledPrompt.id)!!.enabled shouldBe false
         }
 
-        "tick with disabled AgentConfig: ScheduledPrompt disabled, no run inserted" {
+        "tickClaim with disabled AgentConfig: ScheduledPrompt disabled, no run inserted" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
@@ -284,17 +292,17 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val agentSvc = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns activeAgent.copy(enabled = false)
             }
-            scanner(scheduledPromptRepo, runRepo, agentSvc).tick()
+            scanner(scheduledPromptRepo, runRepo, agentSvc).tickClaim()
             runRepo.all().shouldBeEmpty()
             scheduledPromptRepo.findById(scheduledPrompt.id)!!.enabled shouldBe false
         }
 
-        "tick with valid AgentConfig: run CLAIMED inserted normally" {
+        "tickClaim with valid AgentConfig: run CLAIMED inserted normally" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
             scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
-            scanner(scheduledPromptRepo, runRepo, defaultAgentConfigService()).tick()
+            scanner(scheduledPromptRepo, runRepo, defaultAgentConfigService()).tickClaim()
             runRepo.all() shouldHaveSize 1
             runRepo.all().first().status shouldBe RunStatus.CLAIMED
         }
