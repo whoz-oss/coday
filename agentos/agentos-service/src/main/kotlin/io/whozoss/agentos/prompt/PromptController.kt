@@ -137,13 +137,14 @@ class PromptController(
     override fun search(
         @Valid @RequestBody request: PromptSearchRequest,
     ): List<PromptDto> {
-        val scope = overlayScopeAuthorizer.authorizeSearchOrThrow(
-            pluralLabel = "prompts",
-            namespaceId = request.namespaceId,
-            namespaceExternalId = request.namespaceExternalId,
-            userId = request.userId,
-            userExternalId = request.userExternalId,
-        )
+        val scope =
+            overlayScopeAuthorizer.authorizeSearchOrThrow(
+                pluralLabel = "prompts",
+                namespaceId = request.namespaceId,
+                namespaceExternalId = request.namespaceExternalId,
+                userId = request.userId,
+                userExternalId = request.userExternalId,
+            )
         return promptService
             .findByScope(
                 namespaceId = scope.namespaceId,
@@ -169,11 +170,12 @@ class PromptController(
     override fun resolveEffective(
         @Valid @RequestBody request: PromptEffectiveRequest,
     ): List<PromptDto> {
-        val scope = overlayScopeAuthorizer.authorizeEffectiveOrThrow(
-            pluralLabel = "prompts",
-            namespaceId = request.namespaceId,
-            namespaceExternalId = request.namespaceExternalId,
-        )
+        val scope =
+            overlayScopeAuthorizer.authorizeEffectiveOrThrow(
+                pluralLabel = "prompts",
+                namespaceId = request.namespaceId,
+                namespaceExternalId = request.namespaceExternalId,
+            )
         return promptService
             .findEffective(scope.namespaceId!!, scope.userId!!, request.agentConfigId)
             .map(::toDto)
@@ -208,11 +210,12 @@ class PromptController(
         }
 
         // Phase 2 — mass-assignment guard + scope dispatch + authorization
-        val scope = overlayScopeAuthorizer.authorizeCreateOrThrow(
-            entityLabel = "Prompt",
-            requestedNamespaceId = resource.namespaceId,
-            requestedUserId = resource.userId,
-        )
+        val scope =
+            overlayScopeAuthorizer.authorizeCreateOrThrow(
+                entityLabel = "Prompt",
+                requestedNamespaceId = resource.namespaceId,
+                requestedUserId = resource.userId,
+            )
 
         // Phase 3 — namespace existence check (deferred after authz, anti-enumeration)
         if (scope.namespaceId != null && namespaceService.findById(scope.namespaceId) == null) {
@@ -360,26 +363,6 @@ internal fun toDto(entity: Prompt): PromptDto =
         createdOn = entity.metadata.created,
         updatedBy = entity.metadata.modifiedBy,
         updatedOn = entity.metadata.modified,
-    )
-
-internal fun toDomain(resource: PromptDto): Prompt =
-    Prompt(
-        metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-        namespaceId = resource.namespaceId,
-        userId = resource.userId,
-        agentConfigId = resource.agentConfigId,
-        name = resource.name,
-        description = resource.description,
-        content = resource.content,
-        parameters =
-            resource.parameters.map { p ->
-                PromptParameter(
-                    name = p.name,
-                    description = p.description,
-                    defaultValue = p.defaultValue,
-                )
-            },
-        externalMetadata = resource.externalMetadata,
     )
 
 /**

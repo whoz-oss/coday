@@ -175,7 +175,11 @@ class FilesystemPromptRepository(
             .sortedBy { it.name }
     }
 
-    private fun parseYamlFile(file: Path): Prompt? {
+    @Suppress("UNUSED_PARAMETER")
+    private fun parseYamlFile(
+        directory: Path,
+        file: Path,
+    ): Prompt? {
         val model = yamlMapper.readValue(file.toFile(), PromptYamlModel::class.java)
         if (model.name.isBlank()) {
             logger.warn { "[FilesystemPromptRepository] Skipping $file: 'name' is blank" }
