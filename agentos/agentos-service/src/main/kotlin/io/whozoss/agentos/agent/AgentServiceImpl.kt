@@ -250,18 +250,30 @@ class AgentServiceImpl(
                         // (check existing -> refresh -> interactive via QuestionEvent).
                         logger.debug { "CredentialProvider for '$authSettingName': using OAuth flow (authType=${setting.authType})" }
                         // NOTE — blocking thread analysis:
-                        // `CredentialProvider` is a synchronous lambda type alias from the SDK
-                        // public contract (`() -> Credential?`). It is invoked by plugins
-                        // (e.g. McpHttpToolProvider) during tool execution, which itself runs
-                        // inside a Kotlin coroutine on `Dispatchers.IO`. The `runBlocking` call
-                        // below therefore blocks a thread from that IO pool — NOT a Tomcat/MVC
+                        // The `runBlocking` below is INSIDE the body of the `CredentialProvider`
+                        // lambda — not before its creation. The lambda is the trigger for the
+                        // interactive OAuth flow, not a passive carrier of an already-obtained
+                        // credential.
+                        //
+                        // Invocation timing: `CredentialProvider` is called once per run and per
+                        // MCP integration by `McpHttpToolProvider.provideTools` (via
+                        // `ToolResolverService.extractTools`) during the tool-resolution phase,
+                        // before the agent processes any message. It establishes the HTTP MCP
+                        // connection and is NOT called again on each tool invocation.
+                        //
+                        // Blocked thread: `provideTools` is non-suspend (SDK public contract), so
+                        // the call stack at this point is synchronous. The `runBlocking` therefore
+                        // blocks a thread from the Kotlin `Dispatchers.IO` pool — NOT a Tomcat/MVC
                         // request thread — for up to `agentos.oauth.flow-timeout-minutes` (default
                         // 2 min) while waiting for the user to complete browser authorization.
                         // The pool ceiling (64 threads by default) implicitly caps the number of
                         // concurrent interactive OAuth flows; see OAuthPendingRegistry for the
-                        // capacity and multi-instance constraints.
-                        // Eliminating this blocking call requires making `CredentialProvider`
-                        // itself a suspend type, which is a breaking SDK change tracked in #1198.
+                        // capacity and instance constraints.
+                        //
+                        // Why `runBlocking` cannot be removed without touching the SDK: eliminating
+                        // it requires making `suspend` the entire chain `ToolPlugin.provideTools` →
+                        // `ToolContext.credentialProvider` → `CredentialProvider` — three elements
+                        // of the SDK public contract. Tracked in #1198.
                         val credential =
                             kotlinx.coroutines.runBlocking {
                                 oAuthFlowService.resolveOAuthCredential(

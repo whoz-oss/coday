@@ -19,12 +19,20 @@ import java.util.concurrent.ConcurrentHashMap
  * [TimeoutException] to release the entry and unblock any waiter. The registry
  * itself is stateless regarding time.
  *
- * **Single-instance constraint.** This registry is purely in-memory. In a
- * multi-instance deployment (horizontal scaling, rolling restart), the OAuth
- * callback arriving at a different instance than the one that registered the
- * `state` will find no matching future and return 400, causing the flow to
- * time out on the originating instance. Solving this requires an external
- * shared store (Redis, DB) for the pending-state map — tracked in #1198.
+ * **Single-instance and no-restart constraint.** This registry is purely in-memory,
+ * and the PKCE `codeVerifier` — required to exchange the authorization code for tokens
+ * — lives only in the stack frame of the suspended coroutine in [OAuthFlowService]. It
+ * is not persisted anywhere. This means:
+ * - In a multi-instance deployment, a callback arriving on a different instance than
+ *   the one that initiated the flow finds no matching future and returns 400; the
+ *   originating coroutine times out without receiving the code.
+ * - A restart of the originating instance during an active flow has the same effect:
+ *   the code, if it arrives after restart, cannot be used because `codeVerifier` is
+ *   gone.
+ * Making the callback serviceable by any instance would require persisting the full
+ * intermediate flow state: `codeVerifier`, `tokenEndpoint`, `clientId`, `clientSecret`,
+ * `redirectUri`, `userId`, `authSettingId` — two of which are secrets requiring
+ * encryption at rest. Tracked in #1198.
  *
  * **Bounded capacity.** Each pending flow holds one thread from the Kotlin
  * `Dispatchers.IO` pool for the duration of the timeout window. The pool has
