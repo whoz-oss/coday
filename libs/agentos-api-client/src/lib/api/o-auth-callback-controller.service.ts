@@ -35,7 +35,7 @@ export class OAuthCallbackControllerService extends BaseService {
 
   /**
    * Receive OAuth authorization code callback
-   * Called by the frontend popup after the OAuth provider redirects back with the authorization code. Resolves the pending server-side flow identified by &#x60;state&#x60;. Returns 200 when resolved, 400 when the state is unknown.
+   * Called by the frontend popup after the OAuth provider redirects back with the authorization code. Resolves the pending server-side flow identified by &#x60;state&#x60;. Returns 200 when resolved, 400 when the state is unknown or belongs to a different user.
    * @param oAuthCallbackRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.

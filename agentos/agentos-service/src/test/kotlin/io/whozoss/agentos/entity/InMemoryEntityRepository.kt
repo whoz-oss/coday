@@ -57,17 +57,20 @@ class InMemoryEntityRepository<T : Entity, P>(
         return entity
     }
 
+    @Synchronized
     override fun findByIds(
         ids: Collection<UUID>,
         withRemoved: Boolean,
     ): List<T> = ids.mapNotNull { entitiesById[it] }.filter { withRemoved || !it.metadata.removed }
 
+    @Synchronized
     override fun findByParent(parentId: P): List<T> =
         (entityIdsByParentId[parentKey(parentId)] ?: emptyList())
             .mapNotNull { entitiesById[it] }
             .filter { !it.metadata.removed }
 
     /** Returns all non-removed entities across all parents. Useful in tests. */
+    @Synchronized
     fun findAll(): List<T> = entitiesById.values.filter { !it.metadata.removed }.sortedWith(comparator)
 
     @Synchronized

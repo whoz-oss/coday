@@ -423,24 +423,7 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
                     .content("""
                         {
                             "namespaceId": "$namespaceId",
-                            "namespaceExternalId": "${ns.externalId}",
-                            "userId": "${aliceId}"
-                        }
-                    """.trimIndent()),
-            ).andExpect(status().isBadRequest)
-        }
-
-        "POST :effective with both userId and userExternalId returns 400" {
-            every { namespaceService.findByExternalId(ns.externalId!!) } returns ns
-
-            mockMvc.perform(
-                post("/api/prompts/effective")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""
-                        {
-                            "namespaceId": "$namespaceId",
-                            "userId": "${aliceId}",
-                            "userExternalId": "alice@example.com"
+                            "namespaceExternalId": "${ns.externalId}"
                         }
                     """.trimIndent()),
             ).andExpect(status().isBadRequest)
@@ -450,15 +433,7 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
             mockMvc.perform(
                 post("/api/prompts/effective")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "userId": "${aliceId}" }"""),
-            ).andExpect(status().isBadRequest)
-        }
-
-        "POST :effective with neither userId nor userExternalId returns 400" {
-            mockMvc.perform(
-                post("/api/prompts/effective")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId" }"""),
+                    .content("""{}"""),
             ).andExpect(status().isBadRequest)
         }
 
@@ -468,18 +443,7 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
             mockMvc.perform(
                 post("/api/prompts/effective")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceExternalId": "no-such-ns", "userId": "${aliceId}" }"""),
-            ).andExpect(status().isNotFound)
-        }
-
-        "POST :effective with unknown userExternalId returns 404" {
-            every { namespaceService.findByExternalId(ns.externalId!!) } returns ns
-            every { userService.findByExternalId("no-such-user") } returns null
-
-            mockMvc.perform(
-                post("/api/prompts/effective")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceId": "$namespaceId", "userExternalId": "no-such-user" }"""),
+                    .content("""{ "namespaceExternalId": "no-such-ns" }"""),
             ).andExpect(status().isNotFound)
         }
     }

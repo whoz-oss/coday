@@ -99,6 +99,31 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformIntegrationConfigsComponent
               ),
           },
+          // --- Admin: Platform Scheduled Prompts ---
+          {
+            path: 'admin/scheduled-prompts/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
+              ),
+          },
+          {
+            path: 'admin/scheduled-prompts/:scheduledPromptId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
+              ),
+          },
+          {
+            path: 'admin/scheduled-prompts',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-scheduled-prompts/platform-scheduled-prompts.component').then(
+                (m) => m.PlatformScheduledPromptsComponent
+              ),
+          },
           // --- Admin: Platform Prompts ---
           {
             path: 'admin/prompts/new',
@@ -323,6 +348,31 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/namespace-ai-models/namespace-ai-models.component').then(
                 (m) => m.NamespaceAiModelsComponent
+              ),
+          },
+          // --- Scheduled Prompts ---
+          {
+            path: ':namespaceId/scheduled-prompts/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/scheduled-prompts/:scheduledPromptId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/scheduled-prompts',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/scheduled-prompt-list/scheduled-prompt-list.component').then(
+                (m) => m.ScheduledPromptListComponent
               ),
           },
           // --- Prompts ---

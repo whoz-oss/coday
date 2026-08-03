@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http'
 import { JsonPipe } from '@angular/common'
-import { catchError, debounceTime, firstValueFrom, map, of, Subject, switchMap } from 'rxjs'
+import { firstValueFrom } from 'rxjs'
 import {
   afterNextRender,
   Component,
@@ -15,7 +15,7 @@ import {
   OnInit,
   output,
   signal,
-  ViewChild,
+  viewChild,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
@@ -40,7 +40,7 @@ import {
   ToolResponseEvent,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
-import { Prompt } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
 import { BlueprintDirective, CopyButtonComponent, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { CaseStateService } from '../../services/case-state.service'
@@ -48,10 +48,10 @@ import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { QuestionPanelComponent } from '../question-panel/question-panel.component'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
-import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
+import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
-import { UserStateService } from '../../services/user-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
@@ -120,13 +120,14 @@ function hasActiveSelection(): boolean {
     DrawerComponent,
     ExchangeShellComponent,
     PromptAutocompleteComponent,
+    AgentAutocompleteComponent,
     BlueprintDirective,
     CaseStatusGlyphComponent,
     CopyButtonComponent,
     ComposerAttachmentsComponent,
     QuestionPanelComponent,
   ],
-  providers: [ComposerAttachmentsService],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
   styleUrl: './case-chat.component.scss',
 })
@@ -141,8 +142,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly config = inject(Configuration)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly caseState = inject(CaseStateService)
-  private readonly promptState = inject(PromptStateService)
-  private readonly userState = inject(UserStateService)
   private readonly oauthService = inject(OAuthAgentosService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
@@ -151,6 +150,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Files staged on the next message (component-scoped instance, see providers). */
   protected readonly attachments = inject(ComposerAttachmentsService)
+  protected readonly autocomplete = inject(ComposerAutocompleteService)
   /** Attaching goes through the case exchange: same write gate as the drawer's upload button. */
   protected readonly canAttach = this.exchangeState.canWriteCase
   /**
@@ -198,9 +198,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private eventSource: EventSource | null = null
 
-  @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
-  @ViewChild('messagesContainer') private messagesContainer?: ElementRef<HTMLDivElement>
-  @ViewChild(PromptAutocompleteComponent) private autocompleteRef?: PromptAutocompleteComponent
+  private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
+  private readonly messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer')
+  private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
+  private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
 
@@ -237,21 +238,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   readonly deleteRequested = output<string>()
   readonly logsToggled = output<void>()
 
-  // ---------------------------------------------------------------------------
-  // Slash-command autocomplete
-  // ---------------------------------------------------------------------------
-
-  /** All effective prompts for this namespace. Loaded once when the first `/` is typed. */
-  private effectivePrompts: Prompt[] = []
-  private promptsLoaded = false
-  // slashPrefix$ carries the prefix string (after the /) so the subscribe callback
-  // can filter correctly even if inputValue has already changed by the time the HTTP
-  // response arrives.
-  private readonly slashPrefix$ = new Subject<string>()
-
-  /** Filtered prompts matching the current slash prefix. Empty list = dropdown closed. */
-  protected readonly slashSuggestions = signal<Prompt[]>([])
-
   readonly showTechnicalOverride = input(false)
   protected readonly showTechnical = computed(() => this.showTechnicalOverride())
 
@@ -284,27 +270,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private scrollListenerCleanup: (() => void) | null = null
 
   constructor() {
-    // Slash-command autocomplete: debounce input, load prompts on first `/`, filter locally.
-    // We carry the prefix through the pipeline so the subscribe callback can filter
-    // correctly even if the user has continued typing before the HTTP response arrives.
-    this.slashPrefix$
-      .pipe(
-        debounceTime(60),
-        switchMap((prefix) => {
-          const source$ = this.promptsLoaded
-            ? of(this.effectivePrompts)
-            : this.promptState
-                .listEffective(this.namespaceId, this.userState.currentUser()?.id ?? '')
-                .pipe(catchError(() => of([] as Prompt[])))
-          return source$.pipe(map((prompts) => ({ prefix, prompts })))
-        }),
-        takeUntilDestroyed(this.destroyRef)
-      )
-      .subscribe(({ prefix, prompts }) => {
-        this.effectivePrompts = prompts
-        this.promptsLoaded = true
-        this.slashSuggestions.set(prompts.filter((p) => p.name.toLowerCase().startsWith(prefix.toLowerCase())))
-      })
+    this.autocomplete.init(this.namespaceId)
 
     // Restore focus to the composer whenever we return to an interactive state,
     // but only when the user has no active text selection (avoid clearing copy intent).
@@ -312,7 +278,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       if (this.isRunning() || this.isTerminal()) return
       queueMicrotask(() => {
         if (hasActiveSelection()) return
-        this.composerInput?.nativeElement.focus()
+        this.composerInput()?.nativeElement.focus()
       })
     })
 
@@ -508,7 +474,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Called once after the first render.
    */
   private attachScrollListener(): void {
-    const el = this.messagesContainer?.nativeElement
+    const el = this.messagesContainer()?.nativeElement
     if (!el) return
 
     const onScroll = () => {
@@ -522,7 +488,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Programmatically scroll the messages container to the very bottom. */
   protected scrollToBottom(): void {
-    const el = this.messagesContainer?.nativeElement
+    const el = this.messagesContainer()?.nativeElement
     if (!el) return
     el.scrollTop = el.scrollHeight
   }
@@ -745,28 +711,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected onInput(event: Event): void {
     const value = (event.target as HTMLTextAreaElement).value
-    this.inputValue.set(value)
-    this.updateSlashAutocomplete(value)
+    this.autocomplete.onInput(value, this.inputValue)
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    if (this.slashSuggestions().length > 0) {
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault()
-        this.autocompleteRef?.navigate(event.key)
-        return
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        this.closeAutocomplete()
-        return
-      }
-      if (event.key === 'Tab' || event.key === 'Enter') {
-        event.preventDefault()
-        this.autocompleteRef?.navigate('Enter')
-        return
-      }
-    }
+    const consumed = this.autocomplete.onKeydown(event, this.promptAutocompleteRef, this.agentAutocompleteRef)
+    if (consumed) return
     if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
@@ -774,38 +724,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected onPromptSelected(prompt: Prompt): void {
-    const completion = this.autocompleteRef?.completionFor(prompt) ?? `/${prompt.name} `
-    this.inputValue.set(completion)
-    queueMicrotask(() => {
-      const el = this.composerInput?.nativeElement
-      if (!el) return
-      el.value = completion
-      el.setSelectionRange(completion.length, completion.length)
-      el.focus()
-    })
-    this.closeAutocomplete()
+    this.autocomplete.onPromptSelected(prompt, this.promptAutocompleteRef, this.composerInput, this.inputValue)
   }
 
-  protected closeAutocomplete(): void {
-    this.slashSuggestions.set([])
+  protected onAgentSelected(agent: AgentConfig): void {
+    this.autocomplete.onAgentSelected(agent, this.agentAutocompleteRef, this.composerInput, this.inputValue)
   }
 
-  private updateSlashAutocomplete(value: string): void {
-    if (!value.startsWith('/')) {
-      if (this.slashSuggestions().length) this.slashSuggestions.set([])
-      return
-    }
-    const withoutSlash = value.slice(1)
-    if (withoutSlash.includes(' ')) {
-      if (this.slashSuggestions().length) this.slashSuggestions.set([])
-      return
-    }
-    if (this.promptsLoaded) {
-      this.slashSuggestions.set(
-        this.effectivePrompts.filter((p) => p.name.toLowerCase().startsWith(withoutSlash.toLowerCase()))
-      )
-    }
-    this.slashPrefix$.next(withoutSlash)
+  protected closeSlashAutocomplete(): void {
+    this.autocomplete.slashSuggestions.set([])
+  }
+
+  protected closeAtAutocomplete(): void {
+    this.autocomplete.atSuggestions.set([])
   }
 
   /**
@@ -825,9 +756,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.streamingText.set('')
     this.collapsedTools.set(new Set())
     this.isAtBottom.set(true)
-    this.slashSuggestions.set([])
-    this.effectivePrompts = []
-    this.promptsLoaded = false
+    this.autocomplete.reset()
     this.attachments.reset()
     this.connectSse()
   }

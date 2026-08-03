@@ -1,10 +1,15 @@
 package io.whozoss.agentos.integrationConfig
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldStartWith
 import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -436,5 +441,51 @@ class IntegrationConfigControllerSpec : StringSpec({
         shouldThrow<BadRequestException> {
             controller.list(namespaceId = "not-a-uuid-and-not-none", userId = null)
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // export — portability comment block
+    // -------------------------------------------------------------------------
+
+    "export prefixes the YAML body with a portability comment block mentioning the token" {
+        val exportParams = JsonNodeFactory.instance.objectNode().put("workingDirectory", "/home/alice/repos/myproject")
+        val cfg = config(name = "BASH_LOCAL", integrationType = "BASH").let {
+            it.copy(parameters = exportParams)
+        }
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val response = controller.export(cfg.metadata.id)
+        val body = response.body!!
+
+        body shouldStartWith "# "
+        body shouldContain "{{NAMESPACE_CONFIG_PATH}}"
+    }
+
+    "export produces a body that re-parses to a valid YAML document with name, integrationType, parameters" {
+        val exportParams = JsonNodeFactory.instance.objectNode().put("workingDirectory", "/home/alice/repos/myproject")
+        val cfg = config(name = "BASH_LOCAL", integrationType = "BASH").let {
+            it.copy(parameters = exportParams)
+        }
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val response = controller.export(cfg.metadata.id)
+        val body = response.body!!
+
+        val yamlMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
+        val tree = yamlMapper.readTree(body)
+
+        tree.get("name").asText() shouldBe "BASH_LOCAL"
+        tree.get("integrationType").asText() shouldBe "BASH"
+        tree.get("parameters").get("workingDirectory").asText() shouldBe "/home/alice/repos/myproject"
+    }
+
+    "export keeps the existing Content-Disposition header and application/yaml content type" {
+        val cfg = config(name = "BASH_LOCAL", integrationType = "BASH")
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val response = controller.export(cfg.metadata.id)
+
+        response.headers.contentDisposition.toString() shouldContain "bash-local.yaml"
+        response.headers.contentType.toString() shouldBe org.springframework.http.MediaType.APPLICATION_YAML_VALUE
     }
 })

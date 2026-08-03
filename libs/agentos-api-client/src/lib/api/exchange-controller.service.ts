@@ -40,6 +40,8 @@ export class ExchangeControllerService extends BaseService {
   }
 
   /**
+   * Delete case exchange file
+   * DELETE /api/cases/{caseId}/files — delete a file from the case-private exchange scope.
    * @param caseId
    * @param path
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
@@ -121,6 +123,8 @@ export class ExchangeControllerService extends BaseService {
   }
 
   /**
+   * Delete namespace exchange file
+   * DELETE /api/namespaces/{namespaceId}/files — delete a file from the namespace-shared exchange scope.
    * @param namespaceId
    * @param path
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
@@ -366,6 +370,8 @@ export class ExchangeControllerService extends BaseService {
   }
 
   /**
+   * Read case exchange file content
+   * GET /api/cases/{caseId}/files/content — read the UTF-8 text content of a case exchange file.
    * @param caseId
    * @param path
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
@@ -447,6 +453,8 @@ export class ExchangeControllerService extends BaseService {
   }
 
   /**
+   * List case exchange files
+   * GET /api/cases/{caseId}/files/manifest — list all files in the case-private exchange scope.
    * @param caseId
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
@@ -516,6 +524,8 @@ export class ExchangeControllerService extends BaseService {
   }
 
   /**
+   * Read namespace exchange file content
+   * GET /api/namespaces/{namespaceId}/files/content — read the UTF-8 text content of a namespace exchange file.
    * @param namespaceId
    * @param path
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
@@ -599,6 +609,8 @@ export class ExchangeControllerService extends BaseService {
   }
 
   /**
+   * List namespace exchange files
+   * GET /api/namespaces/{namespaceId}/files/manifest — list all files in the namespace-shared exchange scope.
    * @param namespaceId
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.

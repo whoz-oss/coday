@@ -166,7 +166,7 @@ class OAuthFlowService(
                 scopes = scopesOf(authSetting),
                 resource = endpoints.resource,
             )
-        val future = pendingRegistry.register(state)
+        val future = pendingRegistry.register(state, userId)
         emitEvent(
             QuestionEvent(
                 namespaceId = namespaceId,
@@ -183,7 +183,7 @@ class OAuthFlowService(
         val code: String? =
             withContext(Dispatchers.IO) {
                 try {
-                    future.get(FLOW_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                    future.get(config.flowTimeoutMinutes, TimeUnit.MINUTES)
                 } catch (
                     e: TimeoutException,
                 ) {
@@ -437,7 +437,7 @@ class OAuthFlowService(
                         "redirect_uri",
                         redirectUri,
                     ).add("client_id", clientId)
-                    .add("client_secret", clientSecret)
+                    .apply { if (clientSecret.isNotBlank()) add("client_secret", clientSecret) }
                     .add("code_verifier", codeVerifier)
                     .build()
             httpClient
@@ -471,7 +471,7 @@ class OAuthFlowService(
                         "refresh_token",
                     ).add("refresh_token", refreshToken)
                     .add("client_id", clientId)
-                    .add("client_secret", clientSecret)
+                    .apply { if (clientSecret.isNotBlank()) add("client_secret", clientSecret) }
                     .build()
             httpClient
                 .newCall(
@@ -614,9 +614,7 @@ class OAuthFlowService(
             else -> null
         }
 
-    companion object : KLogging() {
-        const val FLOW_TIMEOUT_MINUTES = 5L
-    }
+    companion object : KLogging()
 }
 
 private data class OAuthEndpoints(

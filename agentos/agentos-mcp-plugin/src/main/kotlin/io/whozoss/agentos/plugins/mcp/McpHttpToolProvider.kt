@@ -78,6 +78,12 @@ class McpHttpToolProvider : ToolPlugin {
      * 1. [ToolContext.credentialProvider] — dynamic, per-user credential (OAuth tokens, API keys)
      * 2. [McpServerConfig.authToken] — static token from IntegrationConfig parameters
      * 3. null — no authentication
+     *
+     * **Unsupported credential type:** `BASIC_AUTH` credentials carry `username` and
+     * `password` keys, none of which match the recognised token keys (`accessToken`,
+     * `token`, `key`, `apiKey`). A `BASIC_AUTH` credential therefore falls through to
+     * the static-token fallback (or to unauthenticated if no static token is configured).
+     * Full Basic Auth transport support is tracked in issue #1201.
      */
     internal fun resolveBearerToken(context: ToolContext?, serverConfig: McpServerConfig): String? {
         val credential = context?.credentialProvider?.invoke()

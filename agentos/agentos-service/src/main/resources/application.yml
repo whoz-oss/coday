@@ -4,6 +4,8 @@ spring:
   jackson:
     mapper:
       sort-properties-alphabetically: true
+    serialization:
+      write-dates-as-timestamps: false
   servlet:
     multipart:
       # Global upload limits (file-exchange uploads + plugin jars), raised from Spring's 1MB
@@ -190,6 +192,11 @@ agentos:
     # In production, set to the deployed frontend callback URL (e.g. https://app.example.com/oauth/callback).
     # Override with env var: AGENTOS_OAUTH_REDIRECT_URI
     redirect-uri: ${AGENTOS_OAUTH_REDIRECT_URI:http://localhost:4100/agentos/oauth/callback}
+    # Maximum time in minutes to wait for the user to complete browser authorization.
+    # Each pending flow holds one Dispatchers.IO thread for this duration; lower values
+    # reduce the maximum blocking window. Default: 2 minutes.
+    # Override with env var: AGENTOS_OAUTH_FLOW_TIMEOUT_MINUTES
+    # flow-timeout-minutes: 2
   bootstrap:
     # Enable bootstrap service to run on startup
     # Override with env var: AGENTOS_BOOTSTRAP_ENABLED
@@ -211,6 +218,11 @@ agentos:
     #   neo4j                    - standalone Neo4j server (requires spring.neo4j.* config)
     # Override with env var: AGENTOS_PERSISTENCE_MODE
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
+
+scheduler:
+  # Interval between scanner ticks in milliseconds.
+  # Override with env var: SCHEDULER_TICK_INTERVAL_MS
+  tick-interval-ms: ${SCHEDULER_TICK_INTERVAL_MS:60000}
 
 springdoc:
   writer-with-order-by-keys: true

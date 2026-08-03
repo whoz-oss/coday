@@ -119,13 +119,14 @@ class FilesystemAgentConfigRepository(
         if (missing.isEmpty()) return fromDelegate
 
         val missingSet = missing.toHashSet()
-        val fromFilesystem = namespaceRepository
-            .findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY)
-            .filter { it.configPath != null }
-            .flatMap { namespace ->
-                filesystemAgents(namespace.metadata.id)
-                    .filter { it.metadata.id in missingSet }
-            }
+        val fromFilesystem =
+            namespaceRepository
+                .findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY)
+                .filter { it.configPath != null }
+                .flatMap { namespace ->
+                    filesystemAgents(namespace.metadata.id)
+                        .filter { it.metadata.id in missingSet }
+                }
 
         return fromDelegate + fromFilesystem
     }
@@ -151,7 +152,20 @@ class FilesystemAgentConfigRepository(
             .sortedBy { it.name }
     }
 
-    private fun parseYamlFile(file: Path): AgentConfig? {
+    /**
+     * [directory] (the cache's root, i.e. `<configPath>/agents`) is unused here —
+     * agent `docs` entries resolve relative to the YAML file itself ([file].parent),
+     * a deliberately distinct mechanism from the `{{NAMESPACE_CONFIG_PATH}}` token used
+     * for [io.whozoss.agentos.integrationConfig.IntegrationConfig] parameters. `docs` has a
+     * known, fixed semantics (file / directory listing) inherited from Coday, so it keeps
+     * its own path-resolution rule rather than being unified with the free-form
+     * `parameters` substitution.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun parseYamlFile(
+        directory: Path,
+        file: Path,
+    ): AgentConfig? {
         val model = yamlMapper.readValue(file.toFile(), AgentConfigYamlModel::class.java)
         if (model.name.isBlank()) {
             logger.warn { "[FilesystemAgentConfigRepository] Skipping $file: 'name' is blank" }
@@ -168,21 +182,26 @@ class FilesystemAgentConfigRepository(
             modelName = model.modelName,
             integrations = model.integrations,
             subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-            docs = (model.docs ?: model.mandatoryDocs)
-                ?.filter { it.isNotBlank() }
-                ?.map { entry ->
-                    // Preserve the trailing pattern marker ('/' or '/*') before normalization:
-                    // Path.normalize() strips trailing slashes, which would make the
-                    // directory-listing pattern (endsWith("/")) undetectable downstream.
-                    val suffix = when {
-                        entry.endsWith("/*") -> "/*"
-                        entry.endsWith("/") -> "/"
-                        else -> ""
-                    }
-                    val rawPath = entry.removeSuffix(suffix)
-                    file.parent.resolve(rawPath).toAbsolutePath().normalize().toString() + suffix
-                }
-                ?.takeIf { it.isNotEmpty() },
+            docs =
+                model.docs
+                    ?.filter { it.isNotBlank() }
+                    ?.map { entry ->
+                        // Preserve the trailing pattern marker ('/' or '/*') before normalization:
+                        // Path.normalize() strips trailing slashes, which would make the
+                        // directory-listing pattern (endsWith("/")) undetectable downstream.
+                        val suffix =
+                            when {
+                                entry.endsWith("/*") -> "/*"
+                                entry.endsWith("/") -> "/"
+                                else -> ""
+                            }
+                        val rawPath = entry.removeSuffix(suffix)
+                        file.parent
+                            .resolve(rawPath)
+                            .toAbsolutePath()
+                            .normalize()
+                            .toString() + suffix
+                    }?.takeIf { it.isNotEmpty() },
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,
         )

@@ -28,6 +28,8 @@ export * from './plugin-controller.service'
 import { PluginControllerService } from './plugin-controller.service'
 export * from './prompt-controller.service'
 import { PromptControllerService } from './prompt-controller.service'
+export * from './scheduled-prompt-controller.service'
+import { ScheduledPromptControllerService } from './scheduled-prompt-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
 export * from './user-controller.service'
@@ -50,6 +52,7 @@ export const APIS = [
   OAuthCallbackControllerService,
   PluginControllerService,
   PromptControllerService,
+  ScheduledPromptControllerService,
   SseService,
   UserControllerService,
   UserGroupControllerService,

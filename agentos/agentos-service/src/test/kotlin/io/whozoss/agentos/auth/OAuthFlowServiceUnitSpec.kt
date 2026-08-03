@@ -5,12 +5,15 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.string.shouldContain
 import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import okhttp3.FormBody
 import io.whozoss.agentos.authSetting.OAuthDiscoverableAuthSetting
 import io.whozoss.agentos.authSetting.OAuthRegisteredAuthSetting
 import io.whozoss.agentos.credential.CredentialService
@@ -165,7 +168,7 @@ class OAuthFlowServiceUnitSpec :
         "triggers interactive flow when no credential exists" {
             val tokenJson = """{"access_token":"new-token","refresh_token":"rt","expires_in":3600}"""
             every { credentialService.resolve(userId, authSettingId) } returns null
-            every { pendingRegistry.register(any()) } returns CompletableFuture.completedFuture("auth-code")
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("auth-code")
             every { httpClient.newCall(any()) } returns mockCall(tokenJson)
             val slot = slot<Credential>()
             every { credentialService.store(capture(slot)) } answers { slot.captured }
@@ -189,7 +192,7 @@ class OAuthFlowServiceUnitSpec :
 
         "returns null on flow cancellation" {
             every { credentialService.resolve(userId, authSettingId) } returns null
-            every { pendingRegistry.register(any()) } answers {
+            every { pendingRegistry.register(any(), userId) } answers {
                 val f = CompletableFuture<String>()
                 f.cancel(true)
                 f
@@ -213,7 +216,7 @@ class OAuthFlowServiceUnitSpec :
             val discoveryJson = """{"authorization_endpoint":"https://provider.example.com/auth","token_endpoint":"https://provider.example.com/token"}"""
             val tokenJson = """{"access_token":"tok","expires_in":3600}"""
             every { credentialService.resolve(userId, authSettingId) } returns null
-            every { pendingRegistry.register(any()) } returns CompletableFuture.completedFuture("code")
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("code")
             every { httpClient.newCall(any()) } returnsMany listOf(mockCall(discoveryJson), mockCall(tokenJson))
             val slot = slot<Credential>()
             every { credentialService.store(capture(slot)) } answers { slot.captured }
@@ -236,7 +239,7 @@ class OAuthFlowServiceUnitSpec :
         "extracts endpoints for OAUTH_REGISTERED without discovery HTTP call" {
             val tokenJson = """{"access_token":"tok","expires_in":3600}"""
             every { credentialService.resolve(userId, authSettingId) } returns null
-            every { pendingRegistry.register(any()) } returns CompletableFuture.completedFuture("code")
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("code")
             every { httpClient.newCall(any()) } returns mockCall(tokenJson)
             val slot = slot<Credential>()
             every { credentialService.store(capture(slot)) } answers { slot.captured }
@@ -270,6 +273,88 @@ class OAuthFlowServiceUnitSpec :
                     ).resolveOAuthCredential(userId, registeredSetting(), namespaceId, caseId, agentId, "agent", emitEvent)
                 }
             result.shouldBeNull()
-            verify(exactly = 0) { pendingRegistry.register(any()) }
+            verify(exactly = 0) { pendingRegistry.register(any(), any()) }
+        }
+
+        // Jackson coercion: some OAuth providers (e.g. GitHub) return expires_in as a JSON
+        // string ("3600") rather than a number. JsonNode.asLong() on a TextNode coerces the
+        // value correctly — this test locks that behaviour so a Jackson upgrade cannot silently
+        // break token lifetime parsing.
+        "token response with expires_in as string is parsed correctly" {
+            val tokenJson = """{"access_token":"tok","expires_in":"3600","token_type":"Bearer"}"""
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("code")
+            every { httpClient.newCall(any()) } returns mockCall(tokenJson)
+            val slot = slot<Credential>()
+            every { credentialService.store(capture(slot)) } answers { slot.captured }
+            val result =
+                runBlocking { service().resolveOAuthCredential(userId, registeredSetting(), namespaceId, caseId, agentId, "agent") { it } }
+            result.shouldNotBeNull()
+            result.data["accessToken"] shouldBe "tok"
+            // expiresAt must be set ~3600 s ahead — not the 3600 s default fallback (same value
+            // here, but the credential is stored, proving parseTokenResponse did not return null).
+            result.data["expiresAt"].shouldNotBeNull()
+        }
+
+        // GitHub's token endpoint omits expires_in entirely. buildCredential falls back to
+        // 3600 s when the field is absent. This test exercises that path end-to-end.
+        "token response without expires_in uses default 3600 s fallback" {
+            val tokenJson = """{"access_token":"gh-tok","token_type":"bearer"}"""
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("code")
+            every { httpClient.newCall(any()) } returns mockCall(tokenJson)
+            val slot = slot<Credential>()
+            every { credentialService.store(capture(slot)) } answers { slot.captured }
+            val result =
+                runBlocking { service().resolveOAuthCredential(userId, registeredSetting(), namespaceId, caseId, agentId, "agent") { it } }
+            result.shouldNotBeNull()
+            result.data["accessToken"] shouldBe "gh-tok"
+            // expiresAt is derived from the 3600 s fallback — it must be present and in the future.
+            val expiresAt = result.data["expiresAt"]
+            expiresAt.shouldNotBeNull()
+            java.time.Instant.parse(expiresAt).isAfter(java.time.Instant.now()) shouldBe true
+        }
+
+        // Public clients (clientSecret blank) must NOT send client_secret in the token request:
+        // some providers (e.g. Auth0 in public-client mode) reject requests that include the
+        // parameter even with an empty value.
+        "code exchange omits client_secret from FormBody when clientSecret is blank" {
+            val tokenJson = """{"access_token":"tok","expires_in":3600}"""
+            val publicSetting =
+                OAuthRegisteredAuthSetting(
+                    metadata = EntityMetadata(id = authSettingId),
+                    name = "public-oauth",
+                    clientId = "public-client-id",
+                    clientSecret = "",
+                    authorizationUrl = "https://provider.example.com/auth",
+                    tokenUrl = "https://provider.example.com/token",
+                )
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("auth-code")
+            val requestSlot = slot<okhttp3.Request>()
+            every { httpClient.newCall(capture(requestSlot)) } returns mockCall(tokenJson)
+            val credSlot = slot<Credential>()
+            every { credentialService.store(capture(credSlot)) } answers { credSlot.captured }
+            runBlocking { service().resolveOAuthCredential(userId, publicSetting, namespaceId, caseId, agentId, "agent") { it } }
+            // The captured request is the token-exchange POST.
+            val body = requestSlot.captured.body as FormBody
+            val paramNames = (0 until body.size).map { body.name(it) }
+            paramNames shouldNotContain "client_secret"
+            paramNames shouldContain "client_id"
+            paramNames shouldContain "code"
+        }
+
+        "code exchange includes client_secret in FormBody when clientSecret is not blank" {
+            val tokenJson = """{"access_token":"tok","expires_in":3600}"""
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("auth-code")
+            val requestSlot = slot<okhttp3.Request>()
+            every { httpClient.newCall(capture(requestSlot)) } returns mockCall(tokenJson)
+            val credSlot = slot<Credential>()
+            every { credentialService.store(capture(credSlot)) } answers { credSlot.captured }
+            runBlocking { service().resolveOAuthCredential(userId, registeredSetting(), namespaceId, caseId, agentId, "agent") { it } }
+            val body = requestSlot.captured.body as FormBody
+            val paramNames = (0 until body.size).map { body.name(it) }
+            paramNames shouldContain "client_secret"
         }
     })

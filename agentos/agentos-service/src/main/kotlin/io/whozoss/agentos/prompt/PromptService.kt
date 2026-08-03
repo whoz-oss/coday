@@ -34,10 +34,15 @@ interface PromptService : EntityService<Prompt, UUID>, OwnershipAware {
      * Higher-priority layers override lower ones (same precedence as IntegrationConfig):
      * platform (0) < user-global (1) < namespace-shared (2) < user×namespace (3).
      *
+     * [agentConfigId] is an optional post-merge filter: when provided, only prompts
+     * linked to that agent are returned. When null, all resolved prompts are returned
+     * (both agent-linked and autonomous).
+     *
      * @param namespaceId the namespace context
      * @param callerId the authenticated user's id
+     * @param agentConfigId optional post-merge filter
      */
-    fun findEffective(namespaceId: UUID, callerId: UUID): List<Prompt>
+    fun findEffective(namespaceId: UUID, callerId: UUID, agentConfigId: UUID? = null): List<Prompt>
 
     /**
      * Find all non-removed prompts at an exact scope level — no merge, no inheritance.
