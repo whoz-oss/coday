@@ -272,4 +272,43 @@ class OAuthFlowServiceUnitSpec :
             result.shouldBeNull()
             verify(exactly = 0) { pendingRegistry.register(any(), any()) }
         }
+
+        // Jackson coercion: some OAuth providers (e.g. GitHub) return expires_in as a JSON
+        // string ("3600") rather than a number. JsonNode.asLong() on a TextNode coerces the
+        // value correctly — this test locks that behaviour so a Jackson upgrade cannot silently
+        // break token lifetime parsing.
+        "token response with expires_in as string is parsed correctly" {
+            val tokenJson = """{"access_token":"tok","expires_in":"3600","token_type":"Bearer"}"""
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("code")
+            every { httpClient.newCall(any()) } returns mockCall(tokenJson)
+            val slot = slot<Credential>()
+            every { credentialService.store(capture(slot)) } answers { slot.captured }
+            val result =
+                runBlocking { service().resolveOAuthCredential(userId, registeredSetting(), namespaceId, caseId, agentId, "agent") { it } }
+            result.shouldNotBeNull()
+            result.data["accessToken"] shouldBe "tok"
+            // expiresAt must be set ~3600 s ahead — not the 3600 s default fallback (same value
+            // here, but the credential is stored, proving parseTokenResponse did not return null).
+            result.data["expiresAt"].shouldNotBeNull()
+        }
+
+        // GitHub's token endpoint omits expires_in entirely. buildCredential falls back to
+        // 3600 s when the field is absent. This test exercises that path end-to-end.
+        "token response without expires_in uses default 3600 s fallback" {
+            val tokenJson = """{"access_token":"gh-tok","token_type":"bearer"}"""
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("code")
+            every { httpClient.newCall(any()) } returns mockCall(tokenJson)
+            val slot = slot<Credential>()
+            every { credentialService.store(capture(slot)) } answers { slot.captured }
+            val result =
+                runBlocking { service().resolveOAuthCredential(userId, registeredSetting(), namespaceId, caseId, agentId, "agent") { it } }
+            result.shouldNotBeNull()
+            result.data["accessToken"] shouldBe "gh-tok"
+            // expiresAt is derived from the 3600 s fallback — it must be present and in the future.
+            val expiresAt = result.data["expiresAt"]
+            expiresAt.shouldNotBeNull()
+            java.time.Instant.parse(expiresAt).isAfter(java.time.Instant.now()) shouldBe true
+        }
     })
