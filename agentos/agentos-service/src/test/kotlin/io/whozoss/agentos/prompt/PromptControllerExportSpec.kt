@@ -15,6 +15,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
@@ -35,7 +36,8 @@ class PromptControllerExportSpec : StringSpec({
     val namespaceService = mockk<NamespaceService>(relaxed = true)
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
-    val controller = PromptController(promptService, namespaceService, userService, permissionService)
+    val overlayScopeAuthorizer = mockk<OverlayScopeAuthorizer>(relaxed = true)
+    val controller = PromptController(promptService, namespaceService, userService, permissionService, overlayScopeAuthorizer)
 
     val namespaceId = UUID.randomUUID()
 
