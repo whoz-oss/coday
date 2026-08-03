@@ -398,6 +398,21 @@ class AgentServiceImpl(
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
 
+    /**
+     * Builds a [CredentialProvider] scoped to a single AuthSetting name, resolved once at
+     * construction time. The returned closure captures the request-scoped [AuthService]
+     * so plugin code never sees identity resolution — it only ever calls the provider.
+     */
+    private fun buildCredentialProvider(
+        namespaceId: UUID,
+        userId: UUID,
+        authSettingName: String,
+    ): CredentialProvider {
+        val scopedAuthService = authServiceFactory.create(namespaceId, userId)
+        val setting = scopedAuthService.resolveAuthSetting(authSettingName)
+        return { scopedAuthService.resolveCredential(setting.metadata.id) }
+    }
+
     // -------------------------------------------------------------------------
     // Agent instantiation
     // -------------------------------------------------------------------------

@@ -116,4 +116,21 @@ data class AgentConfig(
      * Silently ignored when configPath is absent.
      */
     val docs: List<String>? = null,
-) : Entity
+) : Entity {
+    /**
+     * True when this [AgentConfig] was loaded from a filesystem YAML definition
+     * ([io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository]) rather than persisted
+     * in Neo4j.
+     *
+     * Filesystem agents are built in-memory on every read and never go through
+     * Spring Data Neo4j's `save()`, so [EntityMetadata.version] — which SDN sets to a
+     * non-null value on first persistence — stays `null` for their entire lifetime.
+     * This is an explicit, named proxy for that fact: callers that need to reject
+     * filesystem-only agents (e.g. before linking a [io.whozoss.agentos.prompt.Prompt] or a
+     * [io.whozoss.agentos.scheduledPrompt.ScheduledPrompt]) should read this property
+     * rather than re-deriving the same check from `metadata.version == null` at each
+     * call site.
+     */
+    val isFilesystemOnly: Boolean
+        get() = metadata.version == null
+}

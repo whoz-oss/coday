@@ -18,6 +18,14 @@ class AuthServiceFactory(
     private val authSettingService: AuthSettingService,
     private val credentialService: CredentialService,
 ) {
-    fun create(namespaceId: UUID, userId: UUID): AuthService =
-        AuthServiceImpl(namespaceId, userId, authSettingService, credentialService)
+    fun create(
+        namespaceId: UUID,
+        userId: UUID,
+    ): AuthService =
+        AuthServiceImpl(
+            namespaceId = namespaceId,
+            userId = userId,
+            authSettingService = authSettingService,
+            credentialService = credentialService,
+        )
 }

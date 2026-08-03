@@ -31,3 +31,6 @@ instructions: |
 
 mandatoryDocs:
   - ./docs/to-rework/DEV_WORKFLOW.md
+
+docs:
+  - ../docs/to-rework/DEV_WORKFLOW.md
