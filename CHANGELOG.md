@@ -1,3 +1,13 @@
+## 0.235.0 (2026-08-03)
+
+### 🚀 Features
+
+- #1095 AuthSetting, AuthService + frontend ([#1114](https://github.com/whoz-oss/coday/pull/1114), [#1095](https://github.com/whoz-oss/coday/issues/1095), [#1139](https://github.com/whoz-oss/coday/issues/1139))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.234.0 (2026-08-03)
 
 ### 🚀 Features
