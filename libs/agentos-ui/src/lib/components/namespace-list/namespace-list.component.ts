@@ -92,6 +92,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'prompts'])
   }
 
+  protected openScheduledPrompts(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'scheduled-prompts'])
+  }
+
   protected openUserGroups(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'user-groups'])
   }

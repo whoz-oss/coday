@@ -1,0 +1,36 @@
+<div class="scheduled-prompt-item" role="listitem">
+  <div class="scheduled-prompt-item__body">
+    <div class="scheduled-prompt-item__header">
+      <span class="scheduled-prompt-item__name">{{ definition().name }}</span>
+      <span
+        class="scheduled-prompt-item__status"
+        [class.scheduled-prompt-item__status--enabled]="definition().enabled"
+        [class.scheduled-prompt-item__status--disabled]="!definition().enabled"
+      >
+        {{ definition().enabled ? 'Enabled' : 'Disabled' }}
+      </span>
+    </div>
+    @if (definition().description) {
+      <span class="scheduled-prompt-item__description">{{ definition().description }}</span>
+    }
+    <span class="scheduled-prompt-item__schedule">{{ scheduleLabel }}</span>
+    @if (nextRunLabel) {
+      <span class="scheduled-prompt-item__next-run">Next: {{ nextRunLabel }}</span>
+    }
+    @if (lastRunLabel) {
+      <span class="scheduled-prompt-item__last-run">Last run: {{ lastRunLabel }}</span>
+    }
+  </div>
+
+  @if (!readOnly()) {
+    <div class="scheduled-prompt-item__actions" [class.scheduled-prompt-item__actions--confirming]="pendingDelete()">
+      @if (pendingDelete()) {
+        <span class="scheduled-prompt-item__confirm-label">Delete?</span>
+        <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+        <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+      } @else {
+        <ds-kebab-menu [items]="menuItems" (itemSelected)="onMenuAction($event)" />
+      }
+    </div>
+  }
+</div>
