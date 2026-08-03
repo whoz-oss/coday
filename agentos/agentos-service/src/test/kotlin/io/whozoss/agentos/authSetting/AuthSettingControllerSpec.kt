@@ -29,12 +29,10 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
-import org.glassfish.jersey.internal.inject.Bindings.service
 import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.server.ResponseStatusException
-import org.springframework.web.servlet.mvc.method.annotation.MvcUriComponentsBuilder.controller
 import java.util.UUID
 
 // Convenience accessor so domain-entity assertions stay map-based.
