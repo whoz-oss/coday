@@ -1,3 +1,13 @@
+## 0.237.0 (2026-08-03)
+
+### 🚀 Features
+
+- #1174 bundle AgentOS JAR in coday-server npm package ([#1177](https://github.com/whoz-oss/coday/pull/1177), [#1174](https://github.com/whoz-oss/coday/issues/1174))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.236.0 (2026-08-03)
 
 ### 🚀 Features
