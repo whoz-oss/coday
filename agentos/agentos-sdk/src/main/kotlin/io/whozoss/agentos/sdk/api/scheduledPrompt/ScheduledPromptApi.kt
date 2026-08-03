@@ -1,8 +1,7 @@
 package io.whozoss.agentos.sdk.api.scheduledPrompt
 
 import io.whozoss.agentos.sdk.api.common.EntityCrudApi
-import io.whozoss.agentos.sdk.api.common.GetByIdsRequest
-import java.util.UUID
+import java.util.*
 
 /**
  * HTTP API contract for ScheduledPrompt entities.
@@ -21,7 +20,6 @@ import java.util.UUID
  * **[enable]** / **[disable]** are idempotent actions on the [ScheduledPromptDto.enabled] flag.
  */
 interface ScheduledPromptApi : EntityCrudApi<ScheduledPromptDto> {
-
     /**
      * POST /api/scheduled-prompts/search — list scheduled prompts at an exact scope level.
      */

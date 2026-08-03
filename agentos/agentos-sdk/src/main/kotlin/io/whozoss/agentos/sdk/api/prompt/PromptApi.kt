@@ -1,8 +1,6 @@
 package io.whozoss.agentos.sdk.api.prompt
 
 import io.whozoss.agentos.sdk.api.common.EntityCrudApi
-import io.whozoss.agentos.sdk.api.common.GetByIdsRequest
-import java.util.UUID
 
 /**
  * HTTP API contract for Prompt entities.
@@ -30,7 +28,6 @@ import java.util.UUID
  * An optional [agentConfigId] filter is applied post-resolution.
  */
 interface PromptApi : EntityCrudApi<PromptDto> {
-
     /**
      * POST /api/prompts/search — list prompts at an exact scope level.
      * Requires READ on the namespace when namespaceId is provided.

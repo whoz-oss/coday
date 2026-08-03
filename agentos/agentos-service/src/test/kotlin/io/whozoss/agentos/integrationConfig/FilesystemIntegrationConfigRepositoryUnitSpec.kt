@@ -1,8 +1,6 @@
 package io.whozoss.agentos.integrationConfig
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.mockk.every
@@ -14,7 +12,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
-import java.util.UUID
+import java.util.*
 
 class FilesystemIntegrationConfigRepositoryUnitSpec :
     StringSpec({
@@ -325,7 +323,7 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
 
             val result = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId).single()
 
-            result.parameters?.get("workingDirectory")?.textValue() shouldBe "${root}/../.."
+            result.parameters?.get("workingDirectory")?.textValue() shouldBe "$root/../.."
         }
 
         "findByNamespaceId does not normalize the substituted path -- '..' is left literal" {
@@ -370,7 +368,10 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
 
             val result = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId).single()
 
-            result.parameters?.get("args")?.get(1)?.textValue() shouldBe "--config=$root/settings.json"
+            result.parameters
+                ?.get("args")
+                ?.get(1)
+                ?.textValue() shouldBe "--config=$root/settings.json"
         }
 
         "findByNamespaceId substitutes the token nested in an array of objects (BASH tools[].command case)" {
@@ -395,8 +396,16 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
 
             val result = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId).single()
 
-            result.parameters?.get("tools")?.get(0)?.get("command")?.textValue() shouldBe "$root/../scripts/build.sh"
-            result.parameters?.get("tools")?.get(0)?.get("name")?.textValue() shouldBe "build"
+            result.parameters
+                ?.get("tools")
+                ?.get(0)
+                ?.get("command")
+                ?.textValue() shouldBe "$root/../scripts/build.sh"
+            result.parameters
+                ?.get("tools")
+                ?.get(0)
+                ?.get("name")
+                ?.textValue() shouldBe "build"
         }
 
         "findByNamespaceId does not substitute the token in name, integrationType, or description" {
@@ -506,13 +515,14 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
             val delegate = mockk<IntegrationConfigRepository>()
             val nsRepo = mockk<NamespaceRepository>()
             val userId = UUID.randomUUID()
-            val userConfig = IntegrationConfig(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                namespaceId = null,
-                userId = userId,
-                name = "JIRA",
-                integrationType = "JIRA",
-            )
+            val userConfig =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = userId,
+                    name = "JIRA",
+                    integrationType = "JIRA",
+                )
             every { delegate.findAllForNamespaceIdAndUserId(null, userId) } returns listOf(userConfig)
 
             val result = buildRepo(delegate, nsRepo).findAllForNamespaceIdAndUserId(null, userId)
