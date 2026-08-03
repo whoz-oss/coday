@@ -1,3 +1,13 @@
+## 0.236.0 (2026-08-03)
+
+### 🚀 Features
+
+- #1011 case sharing — batch share + list users endpoints ([#1142](https://github.com/whoz-oss/coday/pull/1142), [#1011](https://github.com/whoz-oss/coday/issues/1011))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.235.0 (2026-08-03)
 
 ### 🚀 Features
