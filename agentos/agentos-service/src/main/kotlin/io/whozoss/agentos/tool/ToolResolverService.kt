@@ -1,6 +1,7 @@
 package io.whozoss.agentos.tool
 
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
+import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
@@ -21,8 +22,10 @@ class ToolResolverService(
      * identity (namespace, user, external id, agent name, case events).
      *
      * @param agentIntegrations Optional integration filter from AgentConfig.integrations.
-     *   When null, the agent has no integration bindings and no tools are resolved.
-     *   This is intentional: an agent with no declared integrations runs tool-free.
+     *   When null, the agent has no integration bindings and this resolver returns no tools.
+     *   That is a property of this resolver only, not of the whole run: the built-in exchange
+     *   scopes are granted outside it by [io.whozoss.agentos.exchange.ExchangeToolGrantService],
+     *   whose platform defaults can hand the file-plugin tools to an agent that declares nothing.
      * @param context Runtime context forwarded to each [ToolPlugin.provideTools] call.
      *   [ToolContext.userId] must be non-null.
      */
@@ -30,6 +33,7 @@ class ToolResolverService(
         agentIntegrations: Map<String, List<String>?>? = null,
         context: ToolContext,
         allIntegrationConfigs: List<IntegrationConfig>,
+        credentialProviderFactory: (String) -> CredentialProvider? = { null },
     ): Collection<StandardTool<*>> {
         val integrationNames = agentIntegrations?.keys?.toList() ?: emptyList()
         val integrationConfigs = allIntegrationConfigs.filter { it.name in integrationNames }
@@ -45,6 +49,7 @@ class ToolResolverService(
                                 config = config,
                                 plugin = plugin,
                                 context = context,
+                                credentialProviderFactory = credentialProviderFactory,
                             )
                         }
                 }.flatten()
@@ -71,13 +76,20 @@ class ToolResolverService(
         config: IntegrationConfig,
         plugin: ToolPlugin,
         context: ToolContext,
+        credentialProviderFactory: (String) -> CredentialProvider?,
     ): List<StandardTool<*>>? {
+        val enrichedContext =
+            config.authSettingName?.let { name ->
+                credentialProviderFactory(name)?.let { provider ->
+                    context.copy(credentialProvider = provider)
+                }
+            } ?: context
         val tools =
             try {
                 plugin.provideTools(
                     config = config.parameters,
                     configName = config.name,
-                    context = context,
+                    context = enrichedContext,
                 )
             } catch (e: Exception) {
                 logger.error(e) {

@@ -43,15 +43,16 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
     },
   },
   {
-    name: 'claude-sonnet-5',
+    name: 'claude-sonnet-4-6',
     alias: 'BIG',
     contextWindow: 200000,
+    temperature: 0.8,
     maxOutputTokens: 64000,
     price: {
-      inputMTokens: 2,
-      cacheWrite: 2.5,
-      cacheRead: 0.2,
-      outputMTokens: 10,
+      inputMTokens: 3,
+      cacheWrite: 3.75,
+      cacheRead: 0.3,
+      outputMTokens: 15,
     },
   },
   {

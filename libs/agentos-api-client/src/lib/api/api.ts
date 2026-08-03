@@ -4,6 +4,8 @@ export * from './ai-model-controller.service'
 import { AiModelControllerService } from './ai-model-controller.service'
 export * from './ai-provider-controller.service'
 import { AiProviderControllerService } from './ai-provider-controller.service'
+export * from './auth-setting-controller.service'
+import { AuthSettingControllerService } from './auth-setting-controller.service'
 export * from './case-controller.service'
 import { CaseControllerService } from './case-controller.service'
 export * from './case-event-rest-controller.service'
@@ -24,6 +26,8 @@ export * from './plugin-controller.service'
 import { PluginControllerService } from './plugin-controller.service'
 export * from './prompt-controller.service'
 import { PromptControllerService } from './prompt-controller.service'
+export * from './scheduled-prompt-controller.service'
+import { ScheduledPromptControllerService } from './scheduled-prompt-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
 export * from './user-controller.service'
@@ -34,6 +38,7 @@ export const APIS = [
   AgentConfigControllerService,
   AiModelControllerService,
   AiProviderControllerService,
+  AuthSettingControllerService,
   CaseControllerService,
   CaseEventRestControllerService,
   ExchangeControllerService,
@@ -44,6 +49,7 @@ export const APIS = [
   NamespacePermissionEndpointsService,
   PluginControllerService,
   PromptControllerService,
+  ScheduledPromptControllerService,
   SseService,
   UserControllerService,
   UserGroupControllerService,

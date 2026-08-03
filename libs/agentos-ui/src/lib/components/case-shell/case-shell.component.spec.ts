@@ -21,6 +21,7 @@ describe('CaseShellComponent', () => {
     loadCases: jest.Mock
     deleteCase: jest.Mock
     setStarred: jest.Mock
+    renameCase: jest.Mock
   }
   let userStateMock: { currentUser: jest.Mock; loadMe: jest.Mock }
   let namespaceControllerMock: { listAllNamespace: jest.Mock }
@@ -35,6 +36,7 @@ describe('CaseShellComponent', () => {
       loadCases: jest.fn(),
       deleteCase: jest.fn().mockReturnValue(of(undefined)),
       setStarred: jest.fn().mockReturnValue(of(undefined)),
+      renameCase: jest.fn().mockReturnValue(of(undefined)),
     }
     userStateMock = {
       currentUser: jest.fn().mockReturnValue(null),
@@ -139,6 +141,39 @@ describe('CaseShellComponent', () => {
       caseStateMock.setStarred.mockReturnValue(throwError(() => new Error('boom')))
 
       component['onStarToggled']({ id: 'case-1', starred: true })
+
+      expect(errorSpy).toHaveBeenCalled()
+      expect(alertSpy).toHaveBeenCalled()
+    })
+  })
+
+  describe('rename', () => {
+    it('delegates the rename to the state service', () => {
+      const confirmSpy = jest.spyOn(window, 'confirm')
+      const component = makeComponent({ ns: NS_ID })
+
+      component['onRenameRequested']({ id: 'case-1', title: 'New name' })
+
+      expect(caseStateMock.renameCase).toHaveBeenCalledWith('case-1', 'New name')
+      // The drawer already validated the title, so nothing is confirmed here.
+      expect(confirmSpy).not.toHaveBeenCalled()
+    })
+
+    it('stays on the active case', () => {
+      const component = makeComponent({ ns: NS_ID, case: 'case-1' })
+
+      component['onRenameRequested']({ id: 'case-1', title: 'New name' })
+
+      expect(routerMock.navigate).not.toHaveBeenCalled()
+    })
+
+    it('alerts the user when the rename request fails', () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => undefined)
+      const component = makeComponent({ ns: NS_ID })
+      caseStateMock.renameCase.mockReturnValue(throwError(() => new Error('boom')))
+
+      component['onRenameRequested']({ id: 'case-1', title: 'New name' })
 
       expect(errorSpy).toHaveBeenCalled()
       expect(alertSpy).toHaveBeenCalled()

@@ -11,24 +11,34 @@ import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
 import io.whozoss.agentos.aiProvider.AiProviderNodeNeo4jRepository
 import io.whozoss.agentos.aiProvider.AiProviderRepository
 import io.whozoss.agentos.aiProvider.Neo4jAiProviderRepository
+import io.whozoss.agentos.scheduledPrompt.Neo4jScheduledPromptRepository
+import io.whozoss.agentos.scheduledPrompt.Neo4jScheduledPromptRunRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptNodeNeo4jRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunNodeNeo4jRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunRepository
+import io.whozoss.agentos.authSetting.AuthSettingNodeNeo4jRepository
+import io.whozoss.agentos.authSetting.AuthSettingRepository
+import io.whozoss.agentos.authSetting.Neo4jAuthSettingRepository
+import io.whozoss.agentos.credential.CredentialNodeNeo4jRepository
+import io.whozoss.agentos.credential.CredentialRepository
+import io.whozoss.agentos.credential.Neo4jCredentialRepository
+import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.caseEvent.CaseEventNodeMapper
 import io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseEvent.MessageContentSerializer
 import io.whozoss.agentos.caseEvent.Neo4jCaseEventRepository
-import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
-import io.whozoss.agentos.feedback.FeedbackRepository
-import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
+import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
+import io.whozoss.agentos.feedback.FeedbackRepository
+import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
 import io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
-import io.whozoss.agentos.prompt.Neo4jPromptRepository
-import io.whozoss.agentos.prompt.PromptNodeNeo4jRepository
-import io.whozoss.agentos.prompt.PromptRepository
 import io.whozoss.agentos.namespace.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
@@ -38,6 +48,9 @@ import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRepository
 import io.whozoss.agentos.permissions.StarredRepository
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
+import io.whozoss.agentos.prompt.Neo4jPromptRepository
+import io.whozoss.agentos.prompt.PromptNodeNeo4jRepository
+import io.whozoss.agentos.prompt.PromptRepository
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
@@ -46,12 +59,12 @@ import io.whozoss.agentos.userGroup.UserGroupNodeNeo4jRepository
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
-import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
 import org.springframework.data.neo4j.config.EnableNeo4jAuditing
+import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 
 /**
@@ -90,6 +103,9 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.prompt",
         "io.whozoss.agentos.userGroup",
+        "io.whozoss.agentos.authSetting",
+        "io.whozoss.agentos.credential",
+        "io.whozoss.agentos.scheduledPrompt",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -182,6 +198,26 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
+    fun neo4jCredentialRepository(
+        credentialNodeNeo4jRepository: CredentialNodeNeo4jRepository,
+        fieldEncryptor: FieldEncryptor,
+        objectMapper: ObjectMapper,
+    ): CredentialRepository {
+        logger.info { "[Persistence] Neo4jCredentialRepository active" }
+        return Neo4jCredentialRepository(credentialNodeNeo4jRepository, fieldEncryptor, objectMapper)
+    }
+
+    @Bean
+    fun neo4jAuthSettingRepository(
+        authSettingNodeNeo4jRepository: AuthSettingNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+        fieldEncryptor: FieldEncryptor,
+    ): AuthSettingRepository {
+        logger.info { "[Persistence] Neo4jAuthSettingRepository active" }
+        return Neo4jAuthSettingRepository(authSettingNodeNeo4jRepository, childLinkService, fieldEncryptor)
+    }
+
+    @Bean
     fun neo4jAiProviderRepository(
         aiProviderNodeNeo4JRepository: AiProviderNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
@@ -220,12 +256,29 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
+    fun neo4jScheduledPromptRepository(
+        scheduledPromptNodeNeo4jRepository: ScheduledPromptNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): ScheduledPromptRepository {
+        logger.info { "[Persistence] Neo4jScheduledPromptRepository active" }
+        return Neo4jScheduledPromptRepository(scheduledPromptNodeNeo4jRepository, childLinkService)
+    }
+
+    @Bean
     fun neo4jAiModelRepository(
         aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
     ): AiModelRepository {
         logger.info { "[Persistence] Neo4jAiModelRepository active" }
         return Neo4JAiModelRepository(aiModelNodeNeo4JRepository, childLinkService)
+    }
+
+    @Bean
+    fun neo4jScheduledPromptRunRepository(
+        scheduledPromptRunNodeNeo4jRepository: ScheduledPromptRunNodeNeo4jRepository,
+    ): ScheduledPromptRunRepository {
+        logger.info { "[Persistence] Neo4jScheduledPromptRunRepository active" }
+        return Neo4jScheduledPromptRunRepository(scheduledPromptRunNodeNeo4jRepository)
     }
 
     companion object : KLogging()

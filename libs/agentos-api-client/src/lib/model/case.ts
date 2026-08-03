@@ -12,6 +12,7 @@ export interface Case {
   created?: string
   favorite: boolean
   id?: string
+  lastMessageAt?: string
   modified?: string
   namespaceId: string
   parentCaseId?: string

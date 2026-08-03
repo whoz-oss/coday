@@ -11,6 +11,7 @@ import { catchError, defer, Observable, Subscription, tap, throwError } from 'rx
  * Responsibilities:
  * - Load and hold the case list for the current namespace
  * - Apply in-place title patches from CaseUpdatedEvent without a full reload
+ * - Run the per-case mutations the drawer offers (star, rename, delete)
  */
 @Injectable({ providedIn: 'root' })
 export class CaseStateService {
@@ -79,9 +80,52 @@ export class CaseStateService {
     })
   }
 
+  /**
+   * Rename a case. The title is applied optimistically to the list (so the drawer reflects it at
+   * once) and reverted locally if the request fails, exactly like [setStarred].
+   *
+   * Sends the whole resource: PUT /api/cases/{id} only honours `title` (namespaceId and status
+   * are mass-assignment guarded server-side), but the endpoint is @Valid and CaseDto.namespaceId
+   * is @NotNull, so a title-only body would be rejected with a 400.
+   *
+   * The response is deliberately ignored. Single-case endpoints build their DTO with a mapper
+   * that sets neither `favorite` nor `role`, so merging it back would silently un-star the case
+   * and drop the ADMIN-gated actions until the next full reload. No reload either: a title-only
+   * update does not bump `modified`, so the drawer's ordering is unaffected.
+   *
+   * Note the rename is not broadcast: the server emits no CaseUpdatedEvent on this path, so
+   * other clients only see the new title on their next list load.
+   */
+  renameCase(caseId: string, title: string): Observable<Case> {
+    // defer for the same reason as setStarred: the optimistic patch is tied to subscription.
+    return defer(() => {
+      const existing = this.cases().find((c) => c.id === caseId)
+      if (!existing) {
+        return throwError(() => new Error(`[CaseState] Case ${caseId} is not in the current list`))
+      }
+      const previousTitle = existing.title
+      this.patchTitle(caseId, title)
+      return this.caseController.updateCase(caseId, { ...existing, title }).pipe(
+        catchError((err) => {
+          this.patchTitle(caseId, previousTitle)
+          return throwError(() => err)
+        })
+      )
+    })
+  }
+
   /** Set the favorite flag of a single case in-place (immutably, to re-emit the signal). */
   private patchFavorite(caseId: string, favorite: boolean): void {
     this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, favorite } : c)))
+  }
+
+  /**
+   * Set the title of a single case in-place (immutably, to re-emit the signal).
+   * Accepts undefined so a revert can restore a case that had no title: '' is not nullish, and
+   * the drawer falls back to the case ID only on a nullish title.
+   */
+  private patchTitle(caseId: string, title: string | undefined): void {
+    this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, title } : c)))
   }
 
   /** Reload the currently held namespace (no-op before the first load). */
@@ -105,7 +149,7 @@ export class CaseStateService {
    * No-op if the case is not in the current list.
    */
   updateCaseTitle(caseId: string, title: string): void {
-    this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, title } : c)))
+    this.patchTitle(caseId, title)
   }
 
   /**

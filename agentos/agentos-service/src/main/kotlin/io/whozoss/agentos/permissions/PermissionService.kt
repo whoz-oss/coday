@@ -34,7 +34,7 @@ interface PermissionService {
         userId: String,
         entityType: EntityType,
         entityId: String?,
-        action: Action
+        action: Action,
     ): Boolean
 
     /**
@@ -49,7 +49,7 @@ interface PermissionService {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     )
 
     /**
@@ -64,7 +64,7 @@ interface PermissionService {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     )
 
     /**
@@ -78,7 +78,7 @@ interface PermissionService {
     fun listUsersWithPermission(
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation? = null
+        relation: PermissionRelation? = null,
     ): List<String>
 
     /**
@@ -92,7 +92,7 @@ interface PermissionService {
     fun listEntitiesForUser(
         userId: String,
         entityType: EntityType,
-        action: Action
+        action: Action,
     ): List<String>
 
     /**
@@ -136,7 +136,11 @@ interface PermissionService {
      * @return true if a [:MEMBER] edge was found and promoted; false if the user had
      *   no MEMBER relation (no-op: no [:ADMIN] edge is created).
      */
-    fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean
+    fun promoteMemberToAdmin(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean
 
     /**
      * Atomically demotes a [:ADMIN] relation to [:MEMBER].
@@ -146,7 +150,11 @@ interface PermissionService {
      * @return true if a [:ADMIN] edge was found and demoted; false if the user had
      *   no ADMIN relation (no-op: no [:MEMBER] edge is created).
      */
-    fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean
+    fun demoteAdminToMember(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean
 
     /**
      * Clears the permission cache for a specific user.

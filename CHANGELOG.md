@@ -1,3 +1,130 @@
+## 0.237.0 (2026-08-03)
+
+### 🚀 Features
+
+- #1174 bundle AgentOS JAR in coday-server npm package ([#1177](https://github.com/whoz-oss/coday/pull/1177), [#1174](https://github.com/whoz-oss/coday/issues/1174))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.236.0 (2026-08-03)
+
+### 🚀 Features
+
+- #1011 case sharing — batch share + list users endpoints ([#1142](https://github.com/whoz-oss/coday/pull/1142), [#1011](https://github.com/whoz-oss/coday/issues/1011))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.235.0 (2026-08-03)
+
+### 🚀 Features
+
+- #1095 AuthSetting, AuthService + frontend ([#1114](https://github.com/whoz-oss/coday/pull/1114), [#1095](https://github.com/whoz-oss/coday/issues/1095), [#1139](https://github.com/whoz-oss/coday/issues/1139))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.234.0 (2026-08-03)
+
+### 🚀 Features
+
+- portable paths in filesystem IntegrationConfig via {{NAMESPACE_CONFIG_PATH}} token ([#1182](https://github.com/whoz-oss/coday/pull/1182))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.233.1 (2026-08-03)
+
+### 🚀 Features
+
+- regen openapi with runconfig ([#1193](https://github.com/whoz-oss/coday/pull/1193))
+
+### 🩹 Fixes
+
+- agentos filesystem agent docs resolution and mandatoryDocs/docs split ([#1183](https://github.com/whoz-oss/coday/pull/1183))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.233.0 (2026-08-03)
+
+### 🚀 Features
+
+- wz-33057 ScheduledPrompt CRUD & Execution Trigger ([#1062](https://github.com/whoz-oss/coday/pull/1062))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.232.1 (2026-08-02)
+
+### 🩹 Fixes
+
+- rollback default sonnet version to 4.6 ([#1194](https://github.com/whoz-oss/coday/pull/1194))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.232.0 (2026-08-01)
+
+### 🚀 Features
+
+- #1187 Add shared composer autocomplete service with agent mentions ([#1190](https://github.com/whoz-oss/coday/pull/1190), [#1187](https://github.com/whoz-oss/coday/issues/1187))
+
+### ❤️ Thank You
+
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.231.1 (2026-07-29)
+
+### 🩹 Fixes
+
+- #1179 Scope agentos-ui themes and dark mode styles ([#1179](https://github.com/whoz-oss/coday/issues/1179))
+- #1179 Scope agentos-ui themes and dark mode styles ([#1180](https://github.com/whoz-oss/coday/pull/1180), [#1179](https://github.com/whoz-oss/coday/issues/1179))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.231.0 (2026-07-29)
+
+### 🚀 Features
+
+- #1095 FieldEncryptor and Credential backend ([#1139](https://github.com/whoz-oss/coday/pull/1139), [#1095](https://github.com/whoz-oss/coday/issues/1095), [#1119](https://github.com/whoz-oss/coday/issues/1119))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.230.0 (2026-07-29)
+
+### 🚀 Features
+
+- make exchange agent tools configurable by env ([#1171](https://github.com/whoz-oss/coday/pull/1171))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.229.0 (2026-07-28)
+
+### 🚀 Features
+
+- rename a case from the drawer row actions ([#1170](https://github.com/whoz-oss/coday/pull/1170), [#1166](https://github.com/whoz-oss/coday/issues/1166))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 0.228.0 (2026-07-28)
 
 ### 🚀 Features

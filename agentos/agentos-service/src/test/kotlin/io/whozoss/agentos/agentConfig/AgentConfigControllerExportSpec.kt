@@ -173,6 +173,48 @@ class AgentConfigControllerExportSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // YAML body — built-in exchange states inside integrations are preserved
+    // -------------------------------------------------------------------------
+
+    "export YAML preserves a null integration value (all tools enabled)" {
+        val c = config(integrations = mapOf("NAMESPACE_FILE_EXCHANGE" to null))
+        every { service.findById(c.metadata.id) } returns c
+
+        val body = controller.export(c.metadata.id).body!!
+
+        body shouldContain "integrations:"
+        body shouldContain "NAMESPACE_FILE_EXCHANGE: null"
+    }
+
+    "export YAML preserves an empty-list integration value (explicit opt-out)" {
+        val c = config(integrations = mapOf("CASE_FILE_EXCHANGE" to emptyList()))
+        every { service.findById(c.metadata.id) } returns c
+
+        val body = controller.export(c.metadata.id).body!!
+
+        body shouldContain "integrations:"
+        body shouldContain "CASE_FILE_EXCHANGE: []"
+    }
+
+    "export YAML preserves null and empty-list integration values alongside a regular integration" {
+        val c = config(
+            integrations = mapOf(
+                "JIRA" to listOf("GetIssue"),
+                "NAMESPACE_FILE_EXCHANGE" to null,
+                "CASE_FILE_EXCHANGE" to emptyList(),
+            ),
+        )
+        every { service.findById(c.metadata.id) } returns c
+
+        val body = controller.export(c.metadata.id).body!!
+
+        body shouldContain "JIRA:"
+        body shouldContain "GetIssue"
+        body shouldContain "NAMESPACE_FILE_EXCHANGE: null"
+        body shouldContain "CASE_FILE_EXCHANGE: []"
+    }
+
+    // -------------------------------------------------------------------------
     // YAML body — excluded fields (scope metadata)
     // -------------------------------------------------------------------------
 

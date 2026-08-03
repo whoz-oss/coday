@@ -30,15 +30,35 @@ interface IntegrationRow {
 }
 
 /**
+ * What an agent says about a built-in integration.
+ *
+ * `default` is a real, persisted state — the absence of the key in AgentConfig.integrations — and
+ * not a synonym for "off": the platform decides for an agent that stays silent. Keeping it as its
+ * own state is what stops an agent that was never configured from being silently switched off the
+ * first time someone saves an unrelated change on the form.
+ */
+type BuiltInState = 'default' | 'on' | 'off'
+
+/**
  * A built-in integration (e.g. file exchange) surfaced by the backend in /api/integration-types
- * with `builtIn = true`. Enabled by adding its `type` to AgentConfig.integrations — no instance,
- * no per-tool allowlist (toggle only).
+ * with `builtIn = true`. Carried in AgentConfig.integrations under its `type` key, whose value
+ * follows the backend contract: null enables every tool, an empty array is an explicit opt-out,
+ * and a non-empty array restricts the grant to those tool names. The form only edits the first
+ * two; a persisted allowlist is surfaced read-only and written back verbatim on save.
  */
 interface BuiltInIntegrationRow {
   type: string
   displayName: string
   description: string
-  enabled: WritableSignal<boolean>
+  /** What this instance grants when the agent says nothing; labels the `default` state. */
+  enabledByDefault: boolean
+  state: WritableSignal<BuiltInState>
+  /**
+   * Non-empty per-tool allowlist persisted outside this form (API or YAML). The form offers no
+   * editor for it, so it is shown read-only and re-emitted verbatim while the row stays on `on`;
+   * mapping it to null would silently widen the grant to every tool.
+   */
+  restrictedTools: string[] | null
 }
 
 /**
@@ -137,7 +157,8 @@ export class AgentConfigFormComponent implements OnInit {
 
   /**
    * Built-in integration rows (e.g. file exchange) surfaced by the backend only when their
-   * prerequisite plugin is loaded. Toggled on/off; enablement rides AgentConfig.integrations.
+   * prerequisite plugin is loaded. Each row is a tri-state (platform default / on / off)
+   * persisted through AgentConfig.integrations.
    */
   protected readonly builtInRows = signal<BuiltInIntegrationRow[]>([])
 
@@ -233,14 +254,14 @@ export class AgentConfigFormComponent implements OnInit {
 
   /**
    * Resolve whether the file-exchange plugin is loaded by looking for a `FILE_ACCESS`
-   * integration type. Resilient: any error (e.g. endpoint unavailable) resolves to false
-   * so it never blocks the integrations load — and the checkboxes stay hidden (fail-safe).
+   * integration type. Resilient: any error (e.g. endpoint unavailable) resolves to an empty
+   * list so it never blocks the integrations load, and the built-in rows stay hidden (fail-safe).
    */
   private loadBuiltInTypes(): Observable<IntegrationTypeDescriptor[]> {
     return this.integrationTypeController.listTypesIntegrationType().pipe(
-      map((types) => types.filter((t) => t.builtIn === true)),
+      map((types) => types.filter((t) => !t.configSchema)),
       catchError((err) => {
-        // Fail-safe: hide the built-in toggles rather than block the form, but leave a diagnostic.
+        // Fail-safe: hide the built-in rows rather than block the form, but leave a diagnostic.
         console.error('[agent-config-form] failed to load integration types', err)
         return of([])
       })
@@ -272,19 +293,30 @@ export class AgentConfigFormComponent implements OnInit {
   }
 
   /**
-   * Build a toggle row per built-in integration type, pre-checked when the agent's integrations
-   * map already contains its `type` key.
+   * Build a tri-state row per built-in integration type, hydrated from the agent's integrations map:
+   * - key absent          → `default`, the agent expressed no choice and the platform decides;
+   * - key with `[]`       → `off`, an explicit opt-out that beats a platform default of on;
+   * - key with null       → `on`, every tool allowed;
+   * - key with tool names → `on`, restricted to those names; the list is kept on the row so the
+   *   save path can write it back verbatim instead of widening it to "all tools".
    */
   private buildBuiltInRows(
     types: IntegrationTypeDescriptor[],
     existingIntegrations: AgentConfig['integrations']
   ): BuiltInIntegrationRow[] {
-    return types.map((t) => ({
-      type: t.type,
-      displayName: t.displayName,
-      description: t.description,
-      enabled: signal(existingIntegrations != null && t.type in existingIntegrations),
-    }))
+    return types.map((t) => {
+      const declared = existingIntegrations != null && t.type in existingIntegrations
+      const entry = existingIntegrations?.[t.type]
+      const state: BuiltInState = !declared ? 'default' : Array.isArray(entry) && entry.length === 0 ? 'off' : 'on'
+      return {
+        type: t.type,
+        displayName: t.displayName,
+        description: t.description,
+        enabledByDefault: t.enabledByDefault === true,
+        state: signal(state),
+        restrictedTools: Array.isArray(entry) && entry.length > 0 ? entry : null,
+      }
+    })
   }
 
   /** Toggle the enabled signal for a given row. */
@@ -292,9 +324,14 @@ export class AgentConfigFormComponent implements OnInit {
     row.enabled.update((v) => !v)
   }
 
-  /** Toggle a built-in integration row. */
-  protected toggleBuiltIn(row: BuiltInIntegrationRow): void {
-    row.enabled.update((v) => !v)
+  /** Set the tri-state of a built-in integration row from the select. */
+  protected setBuiltInState(row: BuiltInIntegrationRow, value: string): void {
+    row.state.set(value as BuiltInState)
+  }
+
+  /** Label for the `default` option, so the user can see which way it currently resolves. */
+  protected builtInDefaultLabel(row: BuiltInIntegrationRow): string {
+    return row.enabledByDefault ? 'Platform default (enabled)' : 'Platform default (disabled)'
   }
 
   /** Add the current newSubAgentControl value as a new row, then reset the input. */
@@ -327,9 +364,11 @@ export class AgentConfigFormComponent implements OnInit {
    * Enabled rows with no tool names → null (all tools allowed).
    * Enabled rows with tool names → trimmed, non-empty string array.
    * Disabled rows → excluded from the map.
-   * If no rows are enabled → undefined (no filter, agent sees all namespace tools).
+   * Built-in rows are tri-state: `on` → null (or the persisted allowlist, preserved verbatim),
+   * `off` → [] (explicit opt-out), `default` → key omitted so the platform default keeps deciding.
+   * If nothing at all is selected → undefined, which binds no integration: the backend resolver
+   * grants no plugin tools, and only the platform exchange defaults can still add the file tools.
    */
-
   protected buildIntegrationsPayload(): AgentConfig['integrations'] {
     // null per integration means "all tools allowed" (backend contract). The generated TS type
     // declares Array<string> but the backend accepts null; springdoc does not emit nullable:true
@@ -348,9 +387,16 @@ export class AgentConfigFormComponent implements OnInit {
               .filter((t) => t.length > 0)
     }
 
-    // Built-in integrations are toggle-only: their type key with a null value (= all tools).
-    for (const row of this.builtInRows().filter((r) => r.enabled())) {
-      result[row.type] = null as any
+    // Built-in keys follow the backend contract: null = enabled with every tool, [] = explicit
+    // opt-out, non-empty = restricted to those tool names. The form only chooses between the first
+    // two, so a persisted allowlist is written back verbatim while the row stays on `on`; mapping
+    // it to null would silently grant the agent every tool. A row left on `default` writes no key
+    // at all: that absence is what lets the platform default decide, and overwriting it with []
+    // would turn "never chosen" into "chosen off" behind the user's back.
+    for (const row of this.builtInRows()) {
+      const state = row.state()
+      if (state === 'on') result[row.type] = row.restrictedTools ?? (null as any)
+      else if (state === 'off') result[row.type] = []
     }
 
     // Preserve any existing integration key the form could not represent this session — e.g. a

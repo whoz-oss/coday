@@ -161,6 +161,7 @@ export class ShellSidebarComponent {
   readonly createRequested = output<void>()
   readonly deleteRequested = output<string>()
   readonly starToggled = output<{ id: string; starred: boolean }>()
+  readonly renameRequested = output<{ id: string; title: string }>()
   readonly menuToggled = output<MouseEvent>()
   readonly menuClosed = output<Event>()
   readonly navigateTo = output<string>()
