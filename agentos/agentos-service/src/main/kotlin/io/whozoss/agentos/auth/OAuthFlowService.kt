@@ -166,7 +166,7 @@ class OAuthFlowService(
                 scopes = scopesOf(authSetting),
                 resource = endpoints.resource,
             )
-        val future = pendingRegistry.register(state)
+        val future = pendingRegistry.register(state, userId)
         emitEvent(
             QuestionEvent(
                 namespaceId = namespaceId,

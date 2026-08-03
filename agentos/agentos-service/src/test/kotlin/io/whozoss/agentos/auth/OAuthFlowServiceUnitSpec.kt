@@ -165,7 +165,7 @@ class OAuthFlowServiceUnitSpec :
         "triggers interactive flow when no credential exists" {
             val tokenJson = """{"access_token":"new-token","refresh_token":"rt","expires_in":3600}"""
             every { credentialService.resolve(userId, authSettingId) } returns null
-            every { pendingRegistry.register(any()) } returns CompletableFuture.completedFuture("auth-code")
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("auth-code")
             every { httpClient.newCall(any()) } returns mockCall(tokenJson)
             val slot = slot<Credential>()
             every { credentialService.store(capture(slot)) } answers { slot.captured }
@@ -189,7 +189,7 @@ class OAuthFlowServiceUnitSpec :
 
         "returns null on flow cancellation" {
             every { credentialService.resolve(userId, authSettingId) } returns null
-            every { pendingRegistry.register(any()) } answers {
+            every { pendingRegistry.register(any(), userId) } answers {
                 val f = CompletableFuture<String>()
                 f.cancel(true)
                 f
@@ -213,7 +213,7 @@ class OAuthFlowServiceUnitSpec :
             val discoveryJson = """{"authorization_endpoint":"https://provider.example.com/auth","token_endpoint":"https://provider.example.com/token"}"""
             val tokenJson = """{"access_token":"tok","expires_in":3600}"""
             every { credentialService.resolve(userId, authSettingId) } returns null
-            every { pendingRegistry.register(any()) } returns CompletableFuture.completedFuture("code")
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("code")
             every { httpClient.newCall(any()) } returnsMany listOf(mockCall(discoveryJson), mockCall(tokenJson))
             val slot = slot<Credential>()
             every { credentialService.store(capture(slot)) } answers { slot.captured }
@@ -236,7 +236,7 @@ class OAuthFlowServiceUnitSpec :
         "extracts endpoints for OAUTH_REGISTERED without discovery HTTP call" {
             val tokenJson = """{"access_token":"tok","expires_in":3600}"""
             every { credentialService.resolve(userId, authSettingId) } returns null
-            every { pendingRegistry.register(any()) } returns CompletableFuture.completedFuture("code")
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("code")
             every { httpClient.newCall(any()) } returns mockCall(tokenJson)
             val slot = slot<Credential>()
             every { credentialService.store(capture(slot)) } answers { slot.captured }
@@ -270,6 +270,6 @@ class OAuthFlowServiceUnitSpec :
                     ).resolveOAuthCredential(userId, registeredSetting(), namespaceId, caseId, agentId, "agent", emitEvent)
                 }
             result.shouldBeNull()
-            verify(exactly = 0) { pendingRegistry.register(any()) }
+            verify(exactly = 0) { pendingRegistry.register(any(), any()) }
         }
     })
