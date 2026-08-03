@@ -82,6 +82,26 @@ data class BearerTokenAuthSetting(
     override val authType: AuthType = AuthType.BEARER_TOKEN
 }
 
+/**
+ * Authentication setting for HTTP Basic Auth (RFC 7617) — `username` / `password`.
+ *
+ * **Status: declared and persisted, not wired to any transport.**
+ *
+ * The type is fully modelled, persisted, and exposed in the OpenAPI spec and UI.
+ * However, no transport layer currently constructs an `Authorization: Basic
+ * <base64(username:password)>` header from this credential type. In particular,
+ * `McpHttpToolProvider.resolveBearerToken` only extracts `accessToken`, `token`,
+ * `key`, or `apiKey` from a resolved credential — a `BASIC_AUTH` credential carries
+ * neither of those keys and is therefore silently treated as unauthenticated.
+ *
+ * A configuration using this type is accepted without error but produces no
+ * authentication header at the HTTP level until the transport is updated.
+ *
+ * **This is not a vestige to remove.** `BASIC_AUTH` is a reserved extension point
+ * for `AiProvider` configs that carry username/password credentials. Removing it
+ * would be a breaking change on the public API contract. Full transport support is
+ * tracked in issue #1201.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class BasicAuthAuthSetting(
     override val metadata: EntityMetadata = EntityMetadata(),
