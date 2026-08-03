@@ -437,7 +437,7 @@ class OAuthFlowService(
                         "redirect_uri",
                         redirectUri,
                     ).add("client_id", clientId)
-                    .add("client_secret", clientSecret)
+                    .apply { if (clientSecret.isNotBlank()) add("client_secret", clientSecret) }
                     .add("code_verifier", codeVerifier)
                     .build()
             httpClient
@@ -471,7 +471,7 @@ class OAuthFlowService(
                         "refresh_token",
                     ).add("refresh_token", refreshToken)
                     .add("client_id", clientId)
-                    .add("client_secret", clientSecret)
+                    .apply { if (clientSecret.isNotBlank()) add("client_secret", clientSecret) }
                     .build()
             httpClient
                 .newCall(

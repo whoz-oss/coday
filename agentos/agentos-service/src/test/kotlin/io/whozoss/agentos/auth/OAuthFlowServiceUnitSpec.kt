@@ -5,12 +5,15 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.string.shouldContain
 import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import okhttp3.FormBody
 import io.whozoss.agentos.authSetting.OAuthDiscoverableAuthSetting
 import io.whozoss.agentos.authSetting.OAuthRegisteredAuthSetting
 import io.whozoss.agentos.credential.CredentialService
@@ -310,5 +313,48 @@ class OAuthFlowServiceUnitSpec :
             val expiresAt = result.data["expiresAt"]
             expiresAt.shouldNotBeNull()
             java.time.Instant.parse(expiresAt).isAfter(java.time.Instant.now()) shouldBe true
+        }
+
+        // Public clients (clientSecret blank) must NOT send client_secret in the token request:
+        // some providers (e.g. Auth0 in public-client mode) reject requests that include the
+        // parameter even with an empty value.
+        "code exchange omits client_secret from FormBody when clientSecret is blank" {
+            val tokenJson = """{"access_token":"tok","expires_in":3600}"""
+            val publicSetting =
+                OAuthRegisteredAuthSetting(
+                    metadata = EntityMetadata(id = authSettingId),
+                    name = "public-oauth",
+                    clientId = "public-client-id",
+                    clientSecret = "",
+                    authorizationUrl = "https://provider.example.com/auth",
+                    tokenUrl = "https://provider.example.com/token",
+                )
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("auth-code")
+            val requestSlot = slot<okhttp3.Request>()
+            every { httpClient.newCall(capture(requestSlot)) } returns mockCall(tokenJson)
+            val credSlot = slot<Credential>()
+            every { credentialService.store(capture(credSlot)) } answers { credSlot.captured }
+            runBlocking { service().resolveOAuthCredential(userId, publicSetting, namespaceId, caseId, agentId, "agent") { it } }
+            // The captured request is the token-exchange POST.
+            val body = requestSlot.captured.body as FormBody
+            val paramNames = (0 until body.size).map { body.name(it) }
+            paramNames shouldNotContain "client_secret"
+            paramNames shouldContain "client_id"
+            paramNames shouldContain "code"
+        }
+
+        "code exchange includes client_secret in FormBody when clientSecret is not blank" {
+            val tokenJson = """{"access_token":"tok","expires_in":3600}"""
+            every { credentialService.resolve(userId, authSettingId) } returns null
+            every { pendingRegistry.register(any(), userId) } returns CompletableFuture.completedFuture("auth-code")
+            val requestSlot = slot<okhttp3.Request>()
+            every { httpClient.newCall(capture(requestSlot)) } returns mockCall(tokenJson)
+            val credSlot = slot<Credential>()
+            every { credentialService.store(capture(credSlot)) } answers { credSlot.captured }
+            runBlocking { service().resolveOAuthCredential(userId, registeredSetting(), namespaceId, caseId, agentId, "agent") { it } }
+            val body = requestSlot.captured.body as FormBody
+            val paramNames = (0 until body.size).map { body.name(it) }
+            paramNames shouldContain "client_secret"
         }
     })
