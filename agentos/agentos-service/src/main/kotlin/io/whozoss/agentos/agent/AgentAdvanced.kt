@@ -1057,7 +1057,6 @@ class AgentAdvanced(
             callType = "final_response",
             toolName = null,
             history = context.toRecordedMessages(accumulatedEvents, prompt),
-            prompt = prompt,
             rawOutput = content,
             success = content.isNotEmpty(),
         )
@@ -1381,7 +1380,6 @@ Output requirements:
                 callType = "parameter",
                 toolName = toolName,
                 history = context.toRecordedMessages(events, prompt),
-                prompt = prompt,
                 rawOutput = raw,
                 success = true,
             )

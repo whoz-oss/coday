@@ -161,7 +161,6 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
                     callType = "intention",
                     toolName = null,
                     history = context.toRecordedMessages(events, fullPrompt),
-                    prompt = fullPrompt,
                     rawOutput = response,
                 )
 
