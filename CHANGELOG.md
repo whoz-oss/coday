@@ -1,3 +1,13 @@
+## 0.237.1 (2026-08-03)
+
+### 🩹 Fixes
+
+- issue 1174 bundle agentos with right start port ([#1196](https://github.com/whoz-oss/coday/pull/1196))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.237.0 (2026-08-03)
 
 ### 🚀 Features
