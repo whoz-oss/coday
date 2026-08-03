@@ -11,7 +11,6 @@ import java.util.concurrent.TimeUnit
  * Configuration properties for the OAuth 2.1 flow.
  *
  * Bound from the `agentos.oauth` prefix (Spring relaxed binding).
- * Override with env var: AGENTOS_OAUTH_REDIRECT_URI
  */
 @ConfigurationProperties(prefix = "agentos.oauth")
 data class OAuthConfigProperties(
@@ -20,8 +19,23 @@ data class OAuthConfigProperties(
      * Must match the frontend OAuth callback page URL exactly.
      * Example: https://app.example.com/oauth/callback
      * When blank, interactive OAuth flows are disabled.
+     * Override with env var: AGENTOS_OAUTH_REDIRECT_URI
      */
     val redirectUri: String = "",
+
+    /**
+     * Maximum time in minutes that an interactive OAuth flow waits for the user
+     * to complete browser authorization before timing out.
+     *
+     * Reducing this value directly reduces the maximum duration a thread in the
+     * Kotlin `Dispatchers.IO` pool can be held by a pending OAuth flow.
+     * The default of 2 minutes is generous for a browser-based authorization
+     * interaction; a user who has not authorized within that window is very
+     * unlikely to do so.
+     *
+     * Override with env var: AGENTOS_OAUTH_FLOW_TIMEOUT_MINUTES
+     */
+    val flowTimeoutMinutes: Long = 2L,
 )
 
 /**

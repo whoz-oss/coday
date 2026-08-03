@@ -14,9 +14,24 @@ import java.util.concurrent.ConcurrentHashMap
  * future with the received authorization code, unblocking [OAuthFlowService].
  *
  * Timeout management is intentionally left to the caller: [OAuthFlowService] calls
- * `future.get(5, TimeUnit.MINUTES)` and invokes [cancel] on [TimeoutException] to
- * release the entry and unblock any waiter. The registry itself is stateless
- * regarding time.
+ * `future.get(flowTimeoutMinutes, TimeUnit.MINUTES)` (configurable via
+ * `agentos.oauth.flow-timeout-minutes`, default 2) and invokes [cancel] on
+ * [TimeoutException] to release the entry and unblock any waiter. The registry
+ * itself is stateless regarding time.
+ *
+ * **Single-instance constraint.** This registry is purely in-memory. In a
+ * multi-instance deployment (horizontal scaling, rolling restart), the OAuth
+ * callback arriving at a different instance than the one that registered the
+ * `state` will find no matching future and return 400, causing the flow to
+ * time out on the originating instance. Solving this requires an external
+ * shared store (Redis, DB) for the pending-state map — tracked in #1198.
+ *
+ * **Bounded capacity.** Each pending flow holds one thread from the Kotlin
+ * `Dispatchers.IO` pool for the duration of the timeout window. The pool has
+ * a fixed ceiling (64 threads by default), so the number of concurrently
+ * serviceable interactive OAuth flows is implicitly bounded by that pool size.
+ * Exceeding it stalls other IO operations (DB queries, LLM calls) until a
+ * flow times out or completes. See #1198 for the planned non-blocking redesign.
  */
 @Component
 class OAuthPendingRegistry {

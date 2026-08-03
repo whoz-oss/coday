@@ -183,7 +183,7 @@ class OAuthFlowService(
         val code: String? =
             withContext(Dispatchers.IO) {
                 try {
-                    future.get(FLOW_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                    future.get(config.flowTimeoutMinutes, TimeUnit.MINUTES)
                 } catch (
                     e: TimeoutException,
                 ) {
@@ -614,9 +614,7 @@ class OAuthFlowService(
             else -> null
         }
 
-    companion object : KLogging() {
-        const val FLOW_TIMEOUT_MINUTES = 5L
-    }
+    companion object : KLogging()
 }
 
 private data class OAuthEndpoints(

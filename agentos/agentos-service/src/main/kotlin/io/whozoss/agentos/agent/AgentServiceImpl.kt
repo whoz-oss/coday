@@ -249,6 +249,19 @@ class AgentServiceImpl(
                         // OAuth types: delegate to OAuthFlowService for full lifecycle
                         // (check existing -> refresh -> interactive via QuestionEvent).
                         logger.debug { "CredentialProvider for '$authSettingName': using OAuth flow (authType=${setting.authType})" }
+                        // NOTE — blocking thread analysis:
+                        // `CredentialProvider` is a synchronous lambda type alias from the SDK
+                        // public contract (`() -> Credential?`). It is invoked by plugins
+                        // (e.g. McpHttpToolProvider) during tool execution, which itself runs
+                        // inside a Kotlin coroutine on `Dispatchers.IO`. The `runBlocking` call
+                        // below therefore blocks a thread from that IO pool — NOT a Tomcat/MVC
+                        // request thread — for up to `agentos.oauth.flow-timeout-minutes` (default
+                        // 2 min) while waiting for the user to complete browser authorization.
+                        // The pool ceiling (64 threads by default) implicitly caps the number of
+                        // concurrent interactive OAuth flows; see OAuthPendingRegistry for the
+                        // capacity and multi-instance constraints.
+                        // Eliminating this blocking call requires making `CredentialProvider`
+                        // itself a suspend type, which is a breaking SDK change tracked in #1198.
                         val credential =
                             kotlinx.coroutines.runBlocking {
                                 oAuthFlowService.resolveOAuthCredential(
