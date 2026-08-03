@@ -1,3 +1,23 @@
+## 0.232.1 (2026-08-02)
+
+### 🩹 Fixes
+
+- rollback default sonnet version to 4.6 ([#1194](https://github.com/whoz-oss/coday/pull/1194))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.232.0 (2026-08-01)
+
+### 🚀 Features
+
+- #1187 Add shared composer autocomplete service with agent mentions ([#1190](https://github.com/whoz-oss/coday/pull/1190), [#1187](https://github.com/whoz-oss/coday/issues/1187))
+
+### ❤️ Thank You
+
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.231.1 (2026-07-29)
 
 ### 🩹 Fixes

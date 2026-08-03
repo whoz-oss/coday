@@ -9,17 +9,18 @@ import {
   input,
   OnInit,
   signal,
-  ViewChild,
+  viewChild,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { firstValueFrom } from 'rxjs'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Case, Configuration, Prompt } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, Case, Configuration, Prompt } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
 import { BlueprintDirective, IconButtonComponent } from '@whoz-oss/design-system'
-import { catchError, debounceTime, firstValueFrom, map, of, Subject, switchMap } from 'rxjs'
-import { PromptStateService } from '../../services/prompt-state.service'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
+import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
+import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
@@ -42,8 +43,14 @@ import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments
  */
 @Component({
   selector: 'agentos-case-home',
-  imports: [BlueprintDirective, IconButtonComponent, PromptAutocompleteComponent, ComposerAttachmentsComponent],
-  providers: [ComposerAttachmentsService],
+  imports: [
+    BlueprintDirective,
+    IconButtonComponent,
+    PromptAutocompleteComponent,
+    AgentAutocompleteComponent,
+    ComposerAttachmentsComponent,
+  ],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-home.component.html',
   styleUrl: './case-home.component.scss',
 })
@@ -55,16 +62,17 @@ export class CaseHomeComponent implements OnInit {
   private readonly caseState = inject(CaseStateService)
   private readonly destroyRef = inject(DestroyRef)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
-  private readonly promptState = inject(PromptStateService)
   /** Nom du namespace actif — passé par CaseShellComponent */
   readonly namespaceName = input<string | null>(null)
   private readonly exchangeState = inject(ExchangeStateService)
 
   /** Files staged on the first message (component-scoped instance, see providers). */
   protected readonly attachments = inject(ComposerAttachmentsService)
+  protected readonly autocomplete = inject(ComposerAutocompleteService)
 
-  @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
-  @ViewChild(PromptAutocompleteComponent) private autocompleteRef?: PromptAutocompleteComponent
+  private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
+  private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
+  private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
 
   protected namespaceId = this.route.snapshot.queryParams['ns'] as string
 
@@ -82,16 +90,6 @@ export class CaseHomeComponent implements OnInit {
     isNamespaceTargeted(this.inputValue(), this.exchangeState.canWriteNamespace())
   )
 
-  // ---------------------------------------------------------------------------
-  // Slash-command autocomplete
-  // ---------------------------------------------------------------------------
-
-  private effectivePrompts: Prompt[] = []
-  private promptsLoaded = false
-  private readonly slashPrefix$ = new Subject<string>()
-
-  protected readonly slashSuggestions = signal<Prompt[]>([])
-
   ngOnInit(): void {
     // Namespace-only exchange init: no case exists yet, but canWriteNamespace() gating
     // (namespace-intent badge and upload target) needs the namespace manifest.
@@ -104,10 +102,8 @@ export class CaseHomeComponent implements OnInit {
       const newNs = params['ns'] as string
       if (newNs && newNs !== this.namespaceId) {
         this.namespaceId = newNs
-        // Reset autocomplete state so stale suggestions from the previous namespace are cleared.
-        this.effectivePrompts = []
-        this.promptsLoaded = false
-        this.slashSuggestions.set([])
+        this.autocomplete.init(newNs)
+        this.autocomplete.reset()
         this.inputValue.set('')
         this.attachments.reset()
         this.pendingCaseId.set(null)
@@ -118,27 +114,11 @@ export class CaseHomeComponent implements OnInit {
 
   constructor() {
     this.destroyRef.onDestroy(() => (this.destroyed = true))
+    this.autocomplete.init(this.namespaceId)
 
     afterNextRender(() => {
-      this.composerInput?.nativeElement.focus()
+      this.composerInput()?.nativeElement.focus()
     })
-
-    this.slashPrefix$
-      .pipe(
-        debounceTime(60),
-        switchMap((prefix) => {
-          const source$ = this.promptsLoaded
-            ? of(this.effectivePrompts)
-            : this.promptState.listEffective(this.namespaceId).pipe(catchError(() => of([] as Prompt[])))
-          return source$.pipe(map((prompts) => ({ prefix, prompts })))
-        }),
-        takeUntilDestroyed(this.destroyRef)
-      )
-      .subscribe(({ prefix, prompts }) => {
-        this.effectivePrompts = prompts
-        this.promptsLoaded = true
-        this.slashSuggestions.set(prompts.filter((p) => p.name.toLowerCase().startsWith(prefix.toLowerCase())))
-      })
   }
 
   protected get canSend(): boolean {
@@ -147,28 +127,12 @@ export class CaseHomeComponent implements OnInit {
 
   protected onInput(event: Event): void {
     const value = (event.target as HTMLTextAreaElement).value
-    this.inputValue.set(value)
-    this.updateSlashAutocomplete(value)
+    this.autocomplete.onInput(value, this.inputValue)
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    if (this.slashSuggestions().length > 0) {
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault()
-        this.autocompleteRef?.navigate(event.key)
-        return
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        this.closeAutocomplete()
-        return
-      }
-      if (event.key === 'Tab' || event.key === 'Enter') {
-        event.preventDefault()
-        this.autocompleteRef?.navigate('Enter')
-        return
-      }
-    }
+    const consumed = this.autocomplete.onKeydown(event, this.promptAutocompleteRef, this.agentAutocompleteRef)
+    if (consumed) return
     if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
@@ -176,38 +140,19 @@ export class CaseHomeComponent implements OnInit {
   }
 
   protected onPromptSelected(prompt: Prompt): void {
-    const completion = this.autocompleteRef?.completionFor(prompt) ?? `/${prompt.name} `
-    this.inputValue.set(completion)
-    queueMicrotask(() => {
-      const el = this.composerInput?.nativeElement
-      if (!el) return
-      el.value = completion
-      el.setSelectionRange(completion.length, completion.length)
-      el.focus()
-    })
-    this.closeAutocomplete()
+    this.autocomplete.onPromptSelected(prompt, this.promptAutocompleteRef, this.composerInput, this.inputValue)
   }
 
-  protected closeAutocomplete(): void {
-    this.slashSuggestions.set([])
+  protected onAgentSelected(agent: AgentConfig): void {
+    this.autocomplete.onAgentSelected(agent, this.agentAutocompleteRef, this.composerInput, this.inputValue)
   }
 
-  private updateSlashAutocomplete(value: string): void {
-    if (!value.startsWith('/')) {
-      if (this.slashSuggestions().length) this.slashSuggestions.set([])
-      return
-    }
-    const withoutSlash = value.slice(1)
-    if (withoutSlash.includes(' ')) {
-      if (this.slashSuggestions().length) this.slashSuggestions.set([])
-      return
-    }
-    if (this.promptsLoaded) {
-      this.slashSuggestions.set(
-        this.effectivePrompts.filter((p) => p.name.toLowerCase().startsWith(withoutSlash.toLowerCase()))
-      )
-    }
-    this.slashPrefix$.next(withoutSlash)
+  protected closeSlashAutocomplete(): void {
+    this.autocomplete.slashSuggestions.set([])
+  }
+
+  protected closeAtAutocomplete(): void {
+    this.autocomplete.atSuggestions.set([])
   }
 
   // NOTE: this file exceeds the ~200-line guideline. The submit orchestration is kept
