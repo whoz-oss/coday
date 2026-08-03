@@ -54,6 +54,11 @@ async function main() {
     return
   }
 
+  if (process.env.AGENTOS_HOSTNAME || process.env.AGENTOS_PORT) {
+    console.log('[coday-server] External AgentOS configured — skipping JAR download')
+    return
+  }
+
   // Read version from package.json sitting next to this script
   const { createRequire } = await import('module')
   const require = createRequire(import.meta.url)
