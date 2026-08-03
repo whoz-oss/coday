@@ -1,3 +1,17 @@
+## 0.233.1 (2026-08-03)
+
+### 🚀 Features
+
+- regen openapi with runconfig ([#1193](https://github.com/whoz-oss/coday/pull/1193))
+
+### 🩹 Fixes
+
+- agentos filesystem agent docs resolution and mandatoryDocs/docs split ([#1183](https://github.com/whoz-oss/coday/pull/1183))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.233.0 (2026-08-03)
 
 ### 🚀 Features
