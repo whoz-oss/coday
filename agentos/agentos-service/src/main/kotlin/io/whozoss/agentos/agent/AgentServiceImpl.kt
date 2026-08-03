@@ -241,9 +241,9 @@ class AgentServiceImpl(
         val credentialProviderFactory: (String) -> CredentialProvider? = { authSettingName ->
             logger.debug { "CredentialProvider invoked for '$authSettingName'" }
             context.userId?.let { userId ->
-                val svc = authServiceFactory.create(context.namespaceId, userId)
+                val scopedAuthService = authServiceFactory.create(context.namespaceId, userId)
                 val provider: CredentialProvider = {
-                    val setting = svc.resolveAuthSetting(authSettingName)
+                    val setting = scopedAuthService.resolveAuthSetting(authSettingName)
                     logger.debug { "CredentialProvider for '$authSettingName': resolved authType=${setting.authType}" }
                     if (setting.authType in OAUTH_AUTH_TYPES && context.caseId != null && context.emitEvent != null) {
                         // OAuth types: delegate to OAuthFlowService for full lifecycle
@@ -304,7 +304,7 @@ class AgentServiceImpl(
                                 "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, using direct credential lookup"
                             }
                         }
-                        val credential = svc.resolveCredential(setting.metadata.id)
+                        val credential = scopedAuthService.resolveCredential(setting.metadata.id)
                         if (credential == null) {
                             logger.warn {
                                 "CredentialProvider for '$authSettingName': no credential found for authSetting ${setting.metadata.id}"
@@ -422,21 +422,6 @@ class AgentServiceImpl(
     }
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
-
-    /**
-     * Builds a [CredentialProvider] scoped to a single AuthSetting name, resolved once at
-     * construction time. The returned closure captures the request-scoped [AuthService]
-     * so plugin code never sees identity resolution — it only ever calls the provider.
-     */
-    private fun buildCredentialProvider(
-        namespaceId: UUID,
-        userId: UUID,
-        authSettingName: String,
-    ): CredentialProvider {
-        val scopedAuthService = authServiceFactory.create(namespaceId, userId)
-        val setting = scopedAuthService.resolveAuthSetting(authSettingName)
-        return { scopedAuthService.resolveCredential(setting.metadata.id) }
-    }
 
     // -------------------------------------------------------------------------
     // Agent instantiation

@@ -1,5 +1,6 @@
 package io.whozoss.agentos.auth
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.authSetting.AuthSetting
 import io.whozoss.agentos.authSetting.OAuthCustomAuthSetting
@@ -62,17 +63,17 @@ class OAuthFlowService(
 
         if (existing != null) {
             logger.debug { "[OAuth] resolveOAuthCredential: existing credential expired for ${authSetting.name}, attempting refresh" }
-            val rt = existing.data["refreshToken"]?.takeIf { it.isNotBlank() }
-            if (rt != null) {
-                val ep = resolveEndpoints(authSetting)
-                if (ep == null) {
+            val refreshToken = existing.data["refreshToken"]?.takeIf { it.isNotBlank() }
+            if (refreshToken != null) {
+                val endpoints = resolveEndpoints(authSetting)
+                if (endpoints == null) {
                     logger.warn {
                         "[OAuth] resolveOAuthCredential: endpoint resolution failed for ${authSetting.name}, cannot refresh — falling through to interactive flow"
                     }
                 } else {
                     // For MCP discoverable, check for stored dynamic client credentials
                     val (effectiveClientId, effectiveClientSecret) = resolveClientCredentials(authSetting, existing)
-                    val refreshed = refreshAccessToken(ep.tokenEndpoint, rt, effectiveClientId, effectiveClientSecret)
+                    val refreshed = refreshAccessToken(endpoints.tokenEndpoint, refreshToken, effectiveClientId, effectiveClientSecret)
                     if (refreshed != null) {
                         logger.debug { "[OAuth] resolveOAuthCredential: token refreshed successfully for ${authSetting.name}" }
                         val dynamicInfo = extractDynamicClientInfo(existing)
@@ -262,16 +263,16 @@ class OAuthFlowService(
             var resource: String? = null
 
             // Step 1: RFC 9728 — Protected Resource Metadata (optional, may not be implemented)
-            val prmUrl = "$origin/.well-known/oauth-protected-resource$path"
-            logger.debug { "[OAuth] discoverMcpEndpoints: fetching PRM from $prmUrl" }
-            val prmJson = fetchJson(prmUrl)
-            if (prmJson != null) {
+            val protectedResourceMetadataUrl = "$origin/.well-known/oauth-protected-resource$path"
+            logger.debug { "[OAuth] discoverMcpEndpoints: fetching PRM from $protectedResourceMetadataUrl" }
+            val protectedResourceMetadataJson = fetchJson(protectedResourceMetadataUrl)
+            if (protectedResourceMetadataJson != null) {
                 authServerUrl =
-                    prmJson["authorization_servers"]
+                    protectedResourceMetadataJson["authorization_servers"]
                         ?.firstOrNull()
                         ?.asText()
                         ?.takeIf { it.isNotBlank() }
-                resource = prmJson["resource"]?.asText()?.takeIf { it.isNotBlank() }
+                resource = protectedResourceMetadataJson["resource"]?.asText()?.takeIf { it.isNotBlank() }
                 if (authServerUrl != null) {
                     logger.debug { "[OAuth] discoverMcpEndpoints: PRM resolved authorization server = $authServerUrl" }
                 } else {
@@ -279,41 +280,41 @@ class OAuthFlowService(
                 }
             } else {
                 logger.info {
-                    "[OAuth] discoverMcpEndpoints: PRM not available at $prmUrl (RFC 9728 not implemented), falling back to direct ASM discovery"
+                    "[OAuth] discoverMcpEndpoints: PRM not available at $protectedResourceMetadataUrl (RFC 9728 not implemented), falling back to direct ASM discovery"
                 }
             }
 
             // Step 2: RFC 8414 — Authorization Server Metadata
             // If PRM gave us an auth server URL, use it. Otherwise fall back to the resource origin.
-            val asmOrigin: String
-            val asmPath: String
+            val authorizationServerMetadata: String
+            val authorizationServerMetadataPath: String
             if (authServerUrl != null) {
                 val asUri = java.net.URI.create(authServerUrl)
-                asmOrigin = "${asUri.scheme}://${asUri.authority}"
-                asmPath = asUri.path.takeIf { it.isNotBlank() && it != "/" } ?: ""
+                authorizationServerMetadata = "${asUri.scheme}://${asUri.authority}"
+                authorizationServerMetadataPath = asUri.path.takeIf { it.isNotBlank() && it != "/" } ?: ""
             } else {
                 // Fallback: try ASM directly on the resource origin (no path suffix)
-                asmOrigin = origin
-                asmPath = ""
+                authorizationServerMetadata = origin
+                authorizationServerMetadataPath = ""
             }
-            val asmUrl = "$asmOrigin/.well-known/oauth-authorization-server$asmPath"
-            logger.debug { "[OAuth] discoverMcpEndpoints: fetching ASM from $asmUrl" }
+            val authorizationServerMetadataUrl = "$authorizationServerMetadata/.well-known/oauth-authorization-server$authorizationServerMetadataPath"
+            logger.debug { "[OAuth] discoverMcpEndpoints: fetching ASM from $authorizationServerMetadataUrl" }
 
-            val asmJson = fetchJson(asmUrl)
-            if (asmJson == null) {
-                logger.warn { "[OAuth] discoverMcpEndpoints: ASM fetch failed for $asmUrl" }
+            val authorizationServerMetadataJson = fetchJson(authorizationServerMetadataUrl)
+            if (authorizationServerMetadataJson == null) {
+                logger.warn { "[OAuth] discoverMcpEndpoints: ASM fetch failed for $authorizationServerMetadataUrl" }
                 return null
             }
 
-            val authEndpoint = asmJson["authorization_endpoint"]?.asText()?.takeIf { it.isNotBlank() }
-            val tokenEndpoint = asmJson["token_endpoint"]?.asText()?.takeIf { it.isNotBlank() }
+            val authEndpoint = authorizationServerMetadataJson["authorization_endpoint"]?.asText()?.takeIf { it.isNotBlank() }
+            val tokenEndpoint = authorizationServerMetadataJson["token_endpoint"]?.asText()?.takeIf { it.isNotBlank() }
             if (authEndpoint == null || tokenEndpoint == null) {
                 logger.warn {
                     "[OAuth] discoverMcpEndpoints: ASM response missing required endpoints (auth=$authEndpoint, token=$tokenEndpoint)"
                 }
                 return null
             }
-            val registrationEndpoint = asmJson["registration_endpoint"]?.asText()?.takeIf { it.isNotBlank() }
+            val registrationEndpoint = authorizationServerMetadataJson["registration_endpoint"]?.asText()?.takeIf { it.isNotBlank() }
             logger.debug {
                 "[OAuth] discoverMcpEndpoints: resolved auth=$authEndpoint token=$tokenEndpoint registration=${registrationEndpoint ?: "(none)"}"
             }
@@ -330,7 +331,7 @@ class OAuthFlowService(
         }
     }
 
-    private fun fetchJson(url: String): com.fasterxml.jackson.databind.JsonNode? =
+    private fun fetchJson(url: String): JsonNode? =
         try {
             httpClient
                 .newCall(
@@ -385,9 +386,9 @@ class OAuthFlowService(
                         return null
                     }
                     val json = objectMapper.readTree(response.body?.string() ?: return null)
-                    val cId = json["client_id"]?.asText()?.takeIf { it.isNotBlank() } ?: return null
-                    val cSecret = json["client_secret"]?.asText()?.takeIf { it.isNotBlank() } ?: ""
-                    DynamicClientInfo(cId, cSecret)
+                    val clientId = json["client_id"]?.asText()?.takeIf { it.isNotBlank() } ?: return null
+                    val clientSecret = json["client_secret"]?.asText()?.takeIf { it.isNotBlank() } ?: ""
+                    DynamicClientInfo(clientId, clientSecret)
                 }
         } catch (e: Exception) {
             logger.error("[OAuth] Dynamic registration failed", e)
@@ -395,9 +396,9 @@ class OAuthFlowService(
         }
 
     private fun extractDynamicClientInfo(credential: Credential?): DynamicClientInfo? {
-        val cId = credential?.data?.get("dynamicClientId")?.takeIf { it.isNotBlank() } ?: return null
-        val cSecret = credential.data["dynamicClientSecret"] ?: ""
-        return DynamicClientInfo(cId, cSecret)
+        val clientId = credential?.data?.get("dynamicClientId")?.takeIf { it.isNotBlank() } ?: return null
+        val clientSecret = credential.data["dynamicClientSecret"] ?: ""
+        return DynamicClientInfo(clientId, clientSecret)
     }
 
     /**
@@ -449,7 +450,7 @@ class OAuthFlowService(
                         .build(),
                 ).execute()
                 .use {
-                    parseTokenResponse(it, tokenEndpoint, "code exchange")
+                    parseTokenResponse(it, "code exchange")
                 }
         } catch (e: Exception) {
             logger.error("[OAuth] Token exchange failed", e)
@@ -482,7 +483,7 @@ class OAuthFlowService(
                         .build(),
                 ).execute()
                 .use {
-                    parseTokenResponse(it, tokenEndpoint, "token refresh")
+                    parseTokenResponse(it, "token refresh")
                 }
         } catch (e: Exception) {
             logger.error("[OAuth] Token refresh failed", e)
@@ -491,7 +492,6 @@ class OAuthFlowService(
 
     private fun parseTokenResponse(
         response: okhttp3.Response,
-        endpoint: String,
         operation: String,
     ): TokenResponse? {
         if (!response.isSuccessful) {
@@ -537,24 +537,24 @@ class OAuthFlowService(
         val params =
             buildList {
                 add("response_type=code")
-                add("client_id=${enc(clientId)}")
-                add("redirect_uri=${enc(redirectUri)}")
-                add("state=${enc(state)}")
-                add("code_challenge=${enc(codeChallenge)}")
+                add("client_id=${encodeUtf8(clientId)}")
+                add("redirect_uri=${encodeUtf8(redirectUri)}")
+                add("state=${encodeUtf8(state)}")
+                add("code_challenge=${encodeUtf8(codeChallenge)}")
                 add("code_challenge_method=S256")
-                if (!scopes.isNullOrBlank()) add("scope=${enc(scopes)}")
-                if (!resource.isNullOrBlank()) add("resource=${enc(resource)}")
+                if (!scopes.isNullOrBlank()) add("scope=${encodeUtf8(scopes)}")
+                if (!resource.isNullOrBlank()) add("resource=${encodeUtf8(resource)}")
             }
-        val sep = if (authorizationEndpoint.contains('?')) "&" else "?"
-        return "$authorizationEndpoint$sep${params.joinToString("&")}"
+        val separator = if (authorizationEndpoint.contains('?')) "&" else "?"
+        return "$authorizationEndpoint$separator${params.joinToString("&")}"
     }
 
-    private fun enc(v: String): String = URLEncoder.encode(v, "UTF-8")
+    private fun encodeUtf8(v: String): String = URLEncoder.encode(v, "UTF-8")
 
     internal fun isExpired(credential: Credential): Boolean {
-        val s = credential.data["expiresAt"] ?: return true
+        val expiration = credential.data["expiresAt"] ?: return true
         return try {
-            Instant.now().isAfter(Instant.parse(s).minusSeconds(60))
+            Instant.now().isAfter(Instant.parse(expiration).minusSeconds(60))
         } catch (e: Exception) {
             true
         }
@@ -563,16 +563,16 @@ class OAuthFlowService(
     private fun buildCredential(
         userId: UUID,
         authSettingId: UUID,
-        t: TokenResponse,
+        tokenResponse: TokenResponse,
         dynamicClientInfo: DynamicClientInfo? = null,
     ): Credential {
         val data =
             buildMap {
-                put("accessToken", t.accessToken)
-                put("refreshToken", t.refreshToken ?: "")
-                put("expiresAt", Instant.now().plusSeconds(t.expiresIn ?: 3600L).toString())
-                put("tokenType", t.tokenType ?: "Bearer")
-                put("scope", t.scope ?: "")
+                put("accessToken", tokenResponse.accessToken)
+                put("refreshToken", tokenResponse.refreshToken ?: "")
+                put("expiresAt", Instant.now().plusSeconds(tokenResponse.expiresIn ?: 3600L).toString())
+                put("tokenType", tokenResponse.tokenType ?: "Bearer")
+                put("scope", tokenResponse.scope ?: "")
                 if (dynamicClientInfo != null) {
                     put("dynamicClientId", dynamicClientInfo.clientId)
                     put("dynamicClientSecret", dynamicClientInfo.clientSecret)
@@ -587,30 +587,30 @@ class OAuthFlowService(
         )
     }
 
-    private fun clientIdOf(a: AuthSetting): String =
-        when (a) {
-            is OAuthDiscoverableAuthSetting -> a.clientId
-            is OAuthRegisteredAuthSetting -> a.clientId
-            is OAuthCustomAuthSetting -> a.clientId
-            is OAuthMcpDiscoverableAuthSetting -> a.clientId
+    private fun clientIdOf(authSetting: AuthSetting): String =
+        when (authSetting) {
+            is OAuthDiscoverableAuthSetting -> authSetting.clientId
+            is OAuthRegisteredAuthSetting -> authSetting.clientId
+            is OAuthCustomAuthSetting -> authSetting.clientId
+            is OAuthMcpDiscoverableAuthSetting -> authSetting.clientId
             else -> ""
         }
 
-    private fun clientSecretOf(a: AuthSetting): String =
-        when (a) {
-            is OAuthDiscoverableAuthSetting -> a.clientSecret
-            is OAuthRegisteredAuthSetting -> a.clientSecret
-            is OAuthCustomAuthSetting -> a.clientSecret
-            is OAuthMcpDiscoverableAuthSetting -> a.clientSecret
+    private fun clientSecretOf(authSetting: AuthSetting): String =
+        when (authSetting) {
+            is OAuthDiscoverableAuthSetting -> authSetting.clientSecret
+            is OAuthRegisteredAuthSetting -> authSetting.clientSecret
+            is OAuthCustomAuthSetting -> authSetting.clientSecret
+            is OAuthMcpDiscoverableAuthSetting -> authSetting.clientSecret
             else -> ""
         }
 
-    private fun scopesOf(a: AuthSetting): String? =
-        when (a) {
-            is OAuthDiscoverableAuthSetting -> a.scopes
-            is OAuthRegisteredAuthSetting -> a.scopes
-            is OAuthCustomAuthSetting -> a.scopes
-            is OAuthMcpDiscoverableAuthSetting -> a.scopes
+    private fun scopesOf(authSetting: AuthSetting): String? =
+        when (authSetting) {
+            is OAuthDiscoverableAuthSetting -> authSetting.scopes
+            is OAuthRegisteredAuthSetting -> authSetting.scopes
+            is OAuthCustomAuthSetting -> authSetting.scopes
+            is OAuthMcpDiscoverableAuthSetting -> authSetting.scopes
             else -> null
         }
 
