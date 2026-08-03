@@ -5,7 +5,6 @@ import { catchError, debounceTime, map, of, Subject, switchMap } from 'rxjs'
 import { AgentStateService } from '../../services/agent-state.service'
 import { filterAndSortAgents } from '../../services/agent.utils'
 import { PromptStateService } from '../../services/prompt-state.service'
-import { UserStateService } from '../../services/user-state.service'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 
@@ -29,7 +28,6 @@ import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autoc
 export class ComposerAutocompleteService {
   private readonly promptState = inject(PromptStateService)
   private readonly agentState = inject(AgentStateService)
-  private readonly userState = inject(UserStateService)
   private readonly destroyRef = inject(DestroyRef)
 
   // ---------------------------------------------------------------------------
@@ -66,9 +64,7 @@ export class ComposerAutocompleteService {
         switchMap((prefix) => {
           const source$ = this.promptsLoaded
             ? of(this.effectivePrompts)
-            : this.promptState
-                .listEffective(this.namespaceId, this.userState.currentUser()?.id ?? '')
-                .pipe(catchError(() => of([] as Prompt[])))
+            : this.promptState.listEffective(this.namespaceId).pipe(catchError(() => of([] as Prompt[])))
           return source$.pipe(map((prompts) => ({ prefix, prompts })))
         }),
         takeUntilDestroyed(this.destroyRef)

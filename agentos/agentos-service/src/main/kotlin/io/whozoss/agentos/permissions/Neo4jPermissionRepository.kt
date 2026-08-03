@@ -425,5 +425,6 @@ class Neo4jPermissionRepository(
                 EntityType.AI_MODEL,
                 EntityType.USER_GROUP,
                 EntityType.PROMPT,
+                EntityType.SCHEDULED_PROMPT,
             )
 }

@@ -4,7 +4,6 @@ import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { AgentStateService } from '../../services/agent-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
-import { UserStateService } from '../../services/user-state.service'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { ComposerAutocompleteService } from './composer-autocomplete.service'
@@ -17,7 +16,6 @@ const makePrompt = (name: string): Prompt => ({ id: name, name }) as Prompt
 const makeAgent = (name: string, description?: string): AgentConfig => ({ name, description }) as AgentConfig
 
 const NS = 'ns-1'
-const USER_ID = 'user-42'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,14 +49,12 @@ interface TestContext {
 function setup(): TestContext {
   const promptState = { listEffective: jest.fn().mockReturnValue(of([])) }
   const agentState = { listEffective: jest.fn().mockReturnValue(of([])) }
-  const userState = { currentUser: jest.fn().mockReturnValue({ id: USER_ID }) }
 
   TestBed.configureTestingModule({
     providers: [
       ComposerAutocompleteService,
       { provide: PromptStateService, useValue: promptState },
       { provide: AgentStateService, useValue: agentState },
-      { provide: UserStateService, useValue: userState },
     ],
   })
 
@@ -87,7 +83,7 @@ describe('ComposerAutocompleteService', () => {
       service.onInput('/', { set: jest.fn() })
       tick(60)
 
-      expect(promptState.listEffective).toHaveBeenCalledWith(NS, USER_ID)
+      expect(promptState.listEffective).toHaveBeenCalledWith(NS)
     }))
   })
 
