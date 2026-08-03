@@ -152,7 +152,20 @@ class FilesystemAgentConfigRepository(
             .sortedBy { it.name }
     }
 
-    private fun parseYamlFile(file: Path): AgentConfig? {
+    /**
+     * [directory] (the cache's root, i.e. `<configPath>/agents`) is unused here —
+     * agent `docs` entries resolve relative to the YAML file itself ([file].parent),
+     * a deliberately distinct mechanism from the `{{NAMESPACE_CONFIG_PATH}}` token used
+     * for [io.whozoss.agentos.integrationConfig.IntegrationConfig] parameters. `docs` has a
+     * known, fixed semantics (file / directory listing) inherited from Coday, so it keeps
+     * its own path-resolution rule rather than being unified with the free-form
+     * `parameters` substitution.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun parseYamlFile(
+        directory: Path,
+        file: Path,
+    ): AgentConfig? {
         val model = yamlMapper.readValue(file.toFile(), AgentConfigYamlModel::class.java)
         if (model.name.isBlank()) {
             logger.warn { "[FilesystemAgentConfigRepository] Skipping $file: 'name' is blank" }
