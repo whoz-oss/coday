@@ -1,3 +1,13 @@
+## 0.234.0 (2026-08-03)
+
+### 🚀 Features
+
+- portable paths in filesystem IntegrationConfig via {{NAMESPACE_CONFIG_PATH}} token ([#1182](https://github.com/whoz-oss/coday/pull/1182))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.233.1 (2026-08-03)
 
 ### 🚀 Features
