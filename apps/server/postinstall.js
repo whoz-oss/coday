@@ -15,7 +15,8 @@
  *   AGENTOS_PORT            if set, an external AgentOS instance is configured — skip download
  *   CODAY_AGENTOS_VERSION   override the version used to find the GitHub Release (e.g. for testing)
  */
-import { createWriteStream, existsSync, mkdirSync } from 'fs'
+import { createHash } from 'crypto'
+import { createWriteStream, existsSync, mkdirSync, readFileSync } from 'fs'
 import { pipeline } from 'stream/promises'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
@@ -23,6 +24,8 @@ import { fileURLToPath } from 'url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const REPO = 'whoz-oss/coday'
+const SEMVER_RE = /^\d+\.\d+\.\d+$/
+const ALLOWED_DOWNLOAD_HOSTS = ['github.com', 'objects.githubusercontent.com']
 
 // JARs expected relative to this script's directory after download
 const JARS = [
@@ -43,11 +46,47 @@ async function fetchJson(url) {
   return res.json()
 }
 
+function validateDownloadUrl(url) {
+  const parsed = new URL(url)
+  if (!ALLOWED_DOWNLOAD_HOSTS.includes(parsed.hostname)) {
+    throw new Error(`Refusing to download from unexpected host: ${parsed.hostname}`)
+  }
+}
+
 async function downloadFile(url, destPath) {
+  validateDownloadUrl(url)
   mkdirSync(dirname(destPath), { recursive: true })
   const res = await fetch(url, { headers: { Accept: 'application/octet-stream' }, redirect: 'follow' })
   if (!res.ok) throw new Error(`Download ${url} → ${res.status} ${res.statusText}`)
   await pipeline(res.body, createWriteStream(destPath))
+}
+
+function sha256File(filePath) {
+  const hash = createHash('sha256')
+  hash.update(readFileSync(filePath))
+  return hash.digest('hex')
+}
+
+async function fetchChecksums(assets, tag) {
+  const checksumAsset = assets.find((a) => a.name === 'checksums.sha256')
+  if (!checksumAsset) {
+    console.warn(`[coday-server] No checksums.sha256 found in release ${tag} — skipping integrity check`)
+    return null
+  }
+  validateDownloadUrl(checksumAsset.browser_download_url)
+  const res = await fetch(checksumAsset.browser_download_url, {
+    headers: { Accept: 'application/octet-stream' },
+    redirect: 'follow',
+  })
+  if (!res.ok) throw new Error(`Download checksums.sha256 → ${res.status} ${res.statusText}`)
+  const text = await res.text()
+  // Parse "<hash>  <filename>" lines
+  const map = {}
+  for (const line of text.split('\n')) {
+    const parts = line.trim().split(/\s+/)
+    if (parts.length >= 2) map[parts[1]] = parts[0]
+  }
+  return map
 }
 
 async function main() {
@@ -60,7 +99,12 @@ async function main() {
   const { createRequire } = await import('module')
   const require = createRequire(import.meta.url)
   const { version: pkgVersion } = require('./package.json')
-  const version = process.env.CODAY_AGENTOS_VERSION ?? pkgVersion
+  const rawVersion = process.env.CODAY_AGENTOS_VERSION ?? pkgVersion
+  if (!SEMVER_RE.test(rawVersion)) {
+    console.warn(`[coday-server] Invalid version format: "${rawVersion}" — skipping JAR download`)
+    return
+  }
+  const version = rawVersion
 
   const tag = `release/${version}`
   const allPresent = JARS.every(({ dest }) => existsSync(resolve(__dirname, dest)))
@@ -80,6 +124,8 @@ async function main() {
     console.warn('[coday-server] AgentOS will not be available.')
     return
   }
+
+  const checksums = await fetchChecksums(assets, tag)
 
   let failed = false
   for (const { asset, assetPrefix, dest } of JARS) {
@@ -102,7 +148,31 @@ async function main() {
     process.stdout.write(`[coday-server]   ↓ ${found.name}...`)
     try {
       await downloadFile(found.browser_download_url, destPath)
-      process.stdout.write(' done\n')
+
+      // Verify checksum if manifest is available
+      if (checksums) {
+        // The manifest uses the stable filename (basename of dest)
+        const stableFilename = dest.split('/').pop()
+        const expectedHash = checksums[stableFilename]
+        if (!expectedHash) {
+          console.warn(`\n[coday-server]   ⚠ No checksum entry for ${stableFilename} — cannot verify integrity`)
+        } else {
+          const actualHash = sha256File(destPath)
+          if (actualHash !== expectedHash) {
+            process.stdout.write(` INTEGRITY FAILURE\n`)
+            console.error(`[coday-server]   ✗ Checksum mismatch for ${stableFilename}:`)
+            console.error(`[coday-server]     expected: ${expectedHash}`)
+            console.error(`[coday-server]     actual:   ${actualHash}`)
+            // Remove the corrupted file
+            import('fs').then(({ unlinkSync }) => { try { unlinkSync(destPath) } catch {} })
+            failed = true
+            continue
+          }
+          process.stdout.write(' ✓\n')
+        }
+      } else {
+        process.stdout.write(' done\n')
+      }
     } catch (err) {
       process.stdout.write(` FAILED: ${err.message}\n`)
       failed = true
