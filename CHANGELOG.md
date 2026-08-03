@@ -1,3 +1,13 @@
+## 0.233.0 (2026-08-03)
+
+### 🚀 Features
+
+- wz-33057 ScheduledPrompt CRUD & Execution Trigger ([#1062](https://github.com/whoz-oss/coday/pull/1062))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.232.1 (2026-08-02)
 
 ### 🩹 Fixes
