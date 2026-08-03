@@ -12,12 +12,16 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
+import io.whozoss.agentos.authSetting.ApiKeyAuthSetting
+import io.whozoss.agentos.authSetting.OAuthRegisteredAuthSetting
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.auth.AuthService
 import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.auth.OAuthFlowService
 import io.whozoss.agentos.caseEvent.CaseEventService
@@ -37,6 +41,10 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.auth.CredentialProvider
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.credential.Credential
+import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolPlugin
@@ -1293,6 +1301,170 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     credentialProviderFactory = any(),
                 )
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // OAuth dispatch in credentialProviderFactory
+        //
+        // The factory lambda built in resolveAgentDefinition contains a branch:
+        //   if (setting.authType in OAUTH_AUTH_TYPES && caseId != null && emitEvent != null) → OAuthFlowService
+        //   else → AuthService.resolveCredential
+        //
+        // toolResolverService.resolveToolsForRun is stubbed to return emptyList() in these tests,
+        // which means the factory is never invoked as a side-effect of resolveAgentDefinition.
+        // We capture the factory via a slot and invoke it directly so the dispatch branch
+        // is actually exercised.
+        // -------------------------------------------------------------------------
+
+        "credentialProviderFactory routes OAuth authType to OAuthFlowService.resolveOAuthCredential" {
+            val userId = UUID.randomUUID()
+            val authSettingId = UUID.randomUUID()
+            val emitFn: (CaseEvent) -> CaseEvent = { it }
+            // Context must have both caseId AND emitEvent non-null for the OAuth branch.
+            val oauthContext =
+                AgentExecutionContext(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    caseCreatedAt = caseCreatedAt,
+                    userId = userId,
+                    emitEvent = emitFn,
+                )
+            val oauthSetting =
+                OAuthRegisteredAuthSetting(
+                    metadata = EntityMetadata(id = authSettingId),
+                    name = "my-oauth",
+                    clientId = "client-id",
+                    clientSecret = "client-secret",
+                    authorizationUrl = "https://provider.example.com/auth",
+                    tokenUrl = "https://provider.example.com/token",
+                )
+            val mockAuthService = mockk<AuthService>()
+            every { authServiceFactory.create(namespaceId, userId) } returns mockAuthService
+            every { mockAuthService.resolveAuthSetting("my-oauth") } returns oauthSetting
+
+            // Stub oAuthFlowService explicitly (not relying on relaxed behaviour).
+            val expectedCredential =
+                Credential(
+                    metadata = EntityMetadata(),
+                    userId = userId,
+                    authSettingId = authSettingId,
+                    credentialType = CredentialType.OAUTH_TOKENS,
+                    data = mapOf("accessToken" to "oauth-tok"),
+                )
+            coEvery {
+                oAuthFlowService.resolveOAuthCredential(
+                    userId = userId,
+                    authSetting = oauthSetting,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = any(),
+                    agentName = any(),
+                    emitEvent = any(),
+                )
+            } returns expectedCredential
+
+            // Capture the factory so we can invoke it directly.
+            val factorySlot = slot<(String) -> CredentialProvider?>()
+            every {
+                toolResolverService.resolveToolsForRun(
+                    agentIntegrations = any(),
+                    context = any(),
+                    allIntegrationConfigs = any(),
+                    credentialProviderFactory = capture(factorySlot),
+                )
+            } returns emptyList()
+
+            val config = agentConfig(name = "oauth-agent", modelName = "sonnet")
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "oauth-agent") } returns listOf(config)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+            every { userService.findById(userId) } returns null
+            every { integrationConfigService.findEffective(namespaceId, userId) } returns emptyList()
+
+            agentService.findAgentByName("oauth-agent", oauthContext)
+
+            // Invoke the captured factory — this is what actually exercises the OAuth dispatch branch.
+            val provider = factorySlot.captured.invoke("my-oauth")
+            // The provider is the CredentialProvider lambda; invoke it to trigger resolveOAuthCredential.
+            val resolvedCredential = provider?.invoke()
+
+            resolvedCredential shouldBe expectedCredential
+            coVerify(exactly = 1) {
+                oAuthFlowService.resolveOAuthCredential(
+                    userId = userId,
+                    authSetting = oauthSetting,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = any(),
+                    agentName = any(),
+                    emitEvent = any(),
+                )
+            }
+            // Non-OAuth path must not be triggered.
+            verify(exactly = 0) { mockAuthService.resolveCredential(any()) }
+        }
+
+        "credentialProviderFactory routes non-OAuth authType to resolveCredential, not OAuthFlowService" {
+            val userId = UUID.randomUUID()
+            val authSettingId = UUID.randomUUID()
+            val emitFn: (CaseEvent) -> CaseEvent = { it }
+            val oauthContext =
+                AgentExecutionContext(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    caseCreatedAt = caseCreatedAt,
+                    userId = userId,
+                    emitEvent = emitFn,
+                )
+            val apiKeySetting =
+                ApiKeyAuthSetting(
+                    metadata = EntityMetadata(id = authSettingId),
+                    name = "my-api-key",
+                    apiKey = "sk-test",
+                )
+            val expectedCredential =
+                Credential(
+                    metadata = EntityMetadata(),
+                    userId = userId,
+                    authSettingId = authSettingId,
+                    credentialType = CredentialType.API_KEY,
+                    data = mapOf("apiKey" to "sk-test"),
+                )
+            val mockAuthService = mockk<AuthService>()
+            every { authServiceFactory.create(namespaceId, userId) } returns mockAuthService
+            every { mockAuthService.resolveAuthSetting("my-api-key") } returns apiKeySetting
+            every { mockAuthService.resolveCredential(authSettingId) } returns expectedCredential
+
+            val factorySlot = slot<(String) -> CredentialProvider?>()
+            every {
+                toolResolverService.resolveToolsForRun(
+                    agentIntegrations = any(),
+                    context = any(),
+                    allIntegrationConfigs = any(),
+                    credentialProviderFactory = capture(factorySlot),
+                )
+            } returns emptyList()
+
+            val config = agentConfig(name = "apikey-agent", modelName = "sonnet")
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "apikey-agent") } returns listOf(config)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+            every { userService.findById(userId) } returns null
+            every { integrationConfigService.findEffective(namespaceId, userId) } returns emptyList()
+
+            agentService.findAgentByName("apikey-agent", oauthContext)
+
+            val provider = factorySlot.captured.invoke("my-api-key")
+            val resolvedCredential = provider?.invoke()
+
+            resolvedCredential shouldBe expectedCredential
+            verify(exactly = 1) { mockAuthService.resolveCredential(authSettingId) }
+            // OAuth flow must never be triggered for a non-OAuth authType.
+            coVerify(exactly = 0) { oAuthFlowService.resolveOAuthCredential(any(), any(), any(), any(), any(), any(), any()) }
         }
 
         // -------------------------------------------------------------------------
