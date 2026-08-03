@@ -19,8 +19,6 @@ import { createWriteStream, existsSync, mkdirSync } from 'fs'
 import { pipeline } from 'stream/promises'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
-import { createReadStream } from 'fs'
-import { createGunzip } from 'zlib'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -29,10 +27,12 @@ const REPO = 'whoz-oss/coday'
 // JARs expected relative to this script's directory after download
 const JARS = [
   { asset: 'agentos-service.jar', dest: 'agentos/agentos-service.jar' },
-  { asset: 'agentos-bash-plugin.jar', dest: 'agentos/plugins/agentos-bash-plugin.jar' },
-  { asset: 'agentos-file-plugin.jar', dest: 'agentos/plugins/agentos-file-plugin.jar' },
-  { asset: 'agentos-mcp-plugin.jar', dest: 'agentos/plugins/agentos-mcp-plugin.jar' },
-  { asset: 'agentos-tmux-plugin.jar', dest: 'agentos/plugins/agentos-tmux-plugin.jar' },
+  // Plugin JARs are uploaded with versioned names (e.g. agentos-bash-plugin-1.2.3.jar).
+  // We match by prefix and rename to a stable filename on download.
+  { assetPrefix: 'agentos-bash-plugin-', dest: 'agentos/plugins/agentos-bash-plugin.jar' },
+  { assetPrefix: 'agentos-file-plugin-', dest: 'agentos/plugins/agentos-file-plugin.jar' },
+  { assetPrefix: 'agentos-mcp-plugin-', dest: 'agentos/plugins/agentos-mcp-plugin.jar' },
+  { assetPrefix: 'agentos-tmux-plugin-', dest: 'agentos/plugins/agentos-tmux-plugin.jar' },
 ]
 
 async function fetchJson(url) {
@@ -77,26 +77,29 @@ async function main() {
     assets = release.assets
   } catch (err) {
     console.warn(`[coday-server] Could not fetch release ${tag}: ${err.message}`)
-    console.warn('[coday-server] AgentOS will not be available. Set CODAY_SKIP_AGENTOS_DOWNLOAD=1 to suppress this warning.')
+    console.warn('[coday-server] AgentOS will not be available.')
     return
   }
 
   let failed = false
-  for (const { asset, dest } of JARS) {
+  for (const { asset, assetPrefix, dest } of JARS) {
     const destPath = resolve(__dirname, dest)
     if (existsSync(destPath)) {
-      console.log(`[coday-server]   ✓ ${asset} already present`)
+      console.log(`[coday-server]   ✓ ${dest} already present`)
       continue
     }
 
-    const found = assets.find((a) => a.name === asset)
+    const found = asset
+      ? assets.find((a) => a.name === asset)
+      : assets.find((a) => a.name.startsWith(assetPrefix) && a.name.endsWith('.jar'))
+    const assetLabel = asset ?? assetPrefix + '*'
     if (!found) {
-      console.warn(`[coday-server]   ✗ asset ${asset} not found in release ${tag}`)
+      console.warn(`[coday-server]   ✗ asset ${assetLabel} not found in release ${tag}`)
       failed = true
       continue
     }
 
-    process.stdout.write(`[coday-server]   ↓ ${asset}...`)
+    process.stdout.write(`[coday-server]   ↓ ${found.name}...`)
     try {
       await downloadFile(found.browser_download_url, destPath)
       process.stdout.write(' done\n')

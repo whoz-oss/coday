@@ -82,6 +82,7 @@
       }
     },
     "nx-release-publish": {
+      "_comment": "build-agentos is intentionally not a dependency: JARs are no longer bundled in the npm tarball, they are uploaded as GitHub Release assets and downloaded at install time via postinstall.js.",
       "dependsOn": ["build"],
       "options": {
         "packageRoot": "apps/server/dist"
