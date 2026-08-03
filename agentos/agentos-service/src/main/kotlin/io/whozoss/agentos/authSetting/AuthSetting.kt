@@ -126,6 +126,30 @@ data class OAuthRegisteredAuthSetting(
     override val authType: AuthType = AuthType.OAUTH_REGISTERED
 }
 
+/**
+ * OAuth setting with fully explicit, manually-configured endpoints.
+ *
+ * **Today**, the fields and runtime behaviour of this subtype are identical to
+ * [OAuthRegisteredAuthSetting]: both carry `clientId`, `clientSecret`,
+ * `authorizationUrl`, `tokenUrl`, and `scopes`, and both resolve endpoints via the
+ * same branch in `OAuthFlowService.resolveEndpoints`.
+ *
+ * **Why it exists as a separate type:**
+ *
+ * 1. **Public contract** — `OAUTH_CUSTOM` is exposed in the OpenAPI spec, in the
+ *    generated TypeScript client, and in the AgentOS UI (form selector and label
+ *    "OAuth — Custom endpoints"). Removing it would be a breaking change for any
+ *    client that already persists or references this discriminant value.
+ *
+ * 2. **Planned extension point** — issue #1199 identifies `OAUTH_CUSTOM` as the
+ *    natural carrier for non-standard OAuth parameters required by providers that
+ *    deviate from RFC 6749 (e.g. Basecamp's `type=web_server` extra form field).
+ *    Keeping the type separate avoids a future rename-and-migrate when that extension
+ *    lands.
+ *
+ * Until #1199 is implemented, treat `OAUTH_CUSTOM` as semantically equivalent to
+ * `OAUTH_REGISTERED` at the flow level, but distinct at the API and persistence level.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class OAuthCustomAuthSetting(
     override val metadata: EntityMetadata = EntityMetadata(),
