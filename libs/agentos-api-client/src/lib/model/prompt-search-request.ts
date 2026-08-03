@@ -12,5 +12,6 @@ export interface PromptSearchRequest {
   agentConfigIds?: Array<string>
   namespaceExternalId?: string | null
   namespaceId?: string | null
+  userExternalId?: string | null
   userId?: string | null
 }

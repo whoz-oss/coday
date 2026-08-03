@@ -1,0 +1,20 @@
+<ul class="agent-autocomplete" role="listbox" aria-label="Agent mentions">
+  @for (agent of agents(); track agent.id; let i = $index) {
+    <li
+      #agentItem
+      class="agent-autocomplete__item"
+      [class.agent-autocomplete__item--active]="isActive(i)"
+      role="option"
+      tabindex="-1"
+      [attr.aria-selected]="isActive(i)"
+      (click)="onItemClick(agent)"
+      (keydown.enter)="onItemClick(agent)"
+      (mouseenter)="activeIndex.set(i)"
+    >
+      <span class="agent-autocomplete__name">{{ '@' + agent.name }}</span>
+      @if (agent.description) {
+        <span class="agent-autocomplete__description">{{ agent.description }}</span>
+      }
+    </li>
+  }
+</ul>

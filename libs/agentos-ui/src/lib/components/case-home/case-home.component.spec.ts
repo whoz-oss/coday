@@ -8,7 +8,6 @@ import { CaseStateService } from '../../services/case-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
-import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { CaseHomeComponent } from './case-home.component'
 
@@ -70,7 +69,6 @@ describe('CaseHomeComponent — first message with attachments', () => {
         { provide: ExchangeStateService, useValue: exchangeState },
         { provide: CaseStateService, useValue: { addCase: jest.fn() } },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
-        { provide: UserStateService, useValue: { currentUser: () => ({ id: 'u-1' }) } },
         {
           provide: USER_PREFERENCES_PORT,
           useValue: { shouldSend: jest.fn().mockReturnValue(false), composerHint: () => 'hint' },

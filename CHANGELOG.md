@@ -1,3 +1,57 @@
+## 0.234.0 (2026-08-03)
+
+### 🚀 Features
+
+- portable paths in filesystem IntegrationConfig via {{NAMESPACE_CONFIG_PATH}} token ([#1182](https://github.com/whoz-oss/coday/pull/1182))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.233.1 (2026-08-03)
+
+### 🚀 Features
+
+- regen openapi with runconfig ([#1193](https://github.com/whoz-oss/coday/pull/1193))
+
+### 🩹 Fixes
+
+- agentos filesystem agent docs resolution and mandatoryDocs/docs split ([#1183](https://github.com/whoz-oss/coday/pull/1183))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.233.0 (2026-08-03)
+
+### 🚀 Features
+
+- wz-33057 ScheduledPrompt CRUD & Execution Trigger ([#1062](https://github.com/whoz-oss/coday/pull/1062))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.232.1 (2026-08-02)
+
+### 🩹 Fixes
+
+- rollback default sonnet version to 4.6 ([#1194](https://github.com/whoz-oss/coday/pull/1194))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.232.0 (2026-08-01)
+
+### 🚀 Features
+
+- #1187 Add shared composer autocomplete service with agent mentions ([#1190](https://github.com/whoz-oss/coday/pull/1190), [#1187](https://github.com/whoz-oss/coday/issues/1187))
+
+### ❤️ Thank You
+
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.231.1 (2026-07-29)
 
 ### 🩹 Fixes

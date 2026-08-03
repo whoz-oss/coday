@@ -18,6 +18,7 @@ api/namespace-controller.service.ts
 api/namespace-permission-endpoints.service.ts
 api/plugin-controller.service.ts
 api/prompt-controller.service.ts
+api/scheduled-prompt-controller.service.ts
 api/sse.service.ts
 api/user-controller.service.ts
 api/user-group-controller.service.ts
@@ -78,6 +79,7 @@ model/o-auth-discoverable-auth-setting.ts
 model/o-auth-mcp-discoverable-auth-setting.ts
 model/o-auth-registered-auth-setting.ts
 model/pending-confirmation-event.ts
+model/planning.ts
 model/plugin-action-response.ts
 model/plugin-info.ts
 model/plugin-upload-response.ts
@@ -86,6 +88,10 @@ model/prompt-parameter.ts
 model/prompt-search-request.ts
 model/prompt.ts
 model/question-event.ts
+model/recurrence.ts
+model/scheduled-prompt-effective-request.ts
+model/scheduled-prompt-search-request.ts
+model/scheduled-prompt.ts
 model/sync-user-roles-request.ts
 model/text-chunk-event.ts
 model/text.ts
