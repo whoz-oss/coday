@@ -12,9 +12,9 @@ import { AgentConfigFormComponent } from './agent-config-form.component'
 
 /**
  * Focused on the built-in file-exchange integrations in the agent-config form: they are
- * discovered from GET /api/integration-types (builtIn === true), listed under a "Built-in
- * integrations" separator, and their enablement round-trips through AgentConfig.integrations —
- * there are no dedicated boolean fields any more.
+ * discovered from GET /api/integration-types by the absence of a configSchema, listed under a
+ * "Built-in integrations" separator, and their enablement round-trips through
+ * AgentConfig.integrations — there are no dedicated boolean fields any more.
  *
  * The component class is driven directly (ngOnInit / submit) without rendering the template,
  * except the listing and tri-state select tests which render via detectChanges.
@@ -121,7 +121,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   })
 
   describe('built-in rows', () => {
-    it('lists only builtIn integration types as built-in rows', () => {
+    it('lists only types without a configSchema as built-in rows', () => {
       component.ngOnInit()
       expect(
         internals()
