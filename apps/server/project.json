@@ -67,7 +67,6 @@
     },
     "build-agentos": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build-server"],
       "outputs": ["{projectRoot}/dist/agentos"],
       "options": {
         "commands": [

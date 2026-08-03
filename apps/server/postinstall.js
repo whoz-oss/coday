@@ -11,7 +11,9 @@
  * in any environment without a prior `npm install`.
  *
  * Environment variables:
- *   CODAY_SKIP_AGENTOS_DOWNLOAD=1   skip the download entirely (CI, offline, etc.)
+ *   AGENTOS_HOSTNAME        if set, an external AgentOS instance is configured — skip download
+ *   AGENTOS_PORT            if set, an external AgentOS instance is configured — skip download
+ *   CODAY_AGENTOS_VERSION   override the version used to find the GitHub Release (e.g. for testing)
  */
 import { createWriteStream, existsSync, mkdirSync } from 'fs'
 import { pipeline } from 'stream/promises'
@@ -49,20 +51,16 @@ async function downloadFile(url, destPath) {
 }
 
 async function main() {
-  if (process.env.CODAY_SKIP_AGENTOS_DOWNLOAD === '1') {
-    console.log('[coday-server] CODAY_SKIP_AGENTOS_DOWNLOAD=1 — skipping AgentOS JAR download')
-    return
-  }
-
   if (process.env.AGENTOS_HOSTNAME || process.env.AGENTOS_PORT) {
     console.log('[coday-server] External AgentOS configured — skipping JAR download')
     return
   }
 
-  // Read version from package.json sitting next to this script
+  // Read version from package.json sitting next to this script (or use override)
   const { createRequire } = await import('module')
   const require = createRequire(import.meta.url)
-  const { version } = require('./package.json')
+  const { version: pkgVersion } = require('./package.json')
+  const version = process.env.CODAY_AGENTOS_VERSION ?? pkgVersion
 
   const tag = `release/${version}`
   const allPresent = JARS.every(({ dest }) => existsSync(resolve(__dirname, dest)))
