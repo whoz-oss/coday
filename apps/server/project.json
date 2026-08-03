@@ -16,7 +16,8 @@
       "options": {
         "commands": [
           "cp apps/server/package.json apps/server/dist/package.json",
-          "cp apps/server/bin.js apps/server/dist/bin.js"
+          "cp apps/server/bin.js apps/server/dist/bin.js",
+          "cp apps/server/postinstall.js apps/server/dist/postinstall.js"
         ],
         "parallel": false
       }
@@ -82,7 +83,7 @@
       }
     },
     "nx-release-publish": {
-      "dependsOn": ["build", "build-agentos"],
+      "dependsOn": ["build"],
       "options": {
         "packageRoot": "apps/server/dist"
       }
