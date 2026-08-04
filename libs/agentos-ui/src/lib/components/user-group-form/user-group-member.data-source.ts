@@ -1,4 +1,4 @@
-import { NamespaceUserListItem } from '@whoz-oss/agentos-api-client'
+import { MemberItem } from '@whoz-oss/agentos-api-client'
 import { AutocompleteDataSource, AutocompleteItem } from '@whoz-oss/design-system'
 import { Observable, of } from 'rxjs'
 import { memberLabel } from './user-group-form.util'
@@ -13,7 +13,7 @@ const MAX_SUGGESTIONS = 20
  */
 export class UserGroupMemberAutocompleteDataSource implements AutocompleteDataSource {
   constructor(
-    private readonly candidates: () => NamespaceUserListItem[],
+    private readonly candidates: () => MemberItem[],
     private readonly excludedExternalIds: () => Set<string>
   ) {}
 
@@ -28,7 +28,7 @@ export class UserGroupMemberAutocompleteDataSource implements AutocompleteDataSo
     return of(items)
   }
 
-  private matches(user: NamespaceUserListItem, normalizedQuery: string): boolean {
+  private matches(user: MemberItem, normalizedQuery: string): boolean {
     return (
       user.externalId.toLowerCase().includes(normalizedQuery) ||
       user.email.toLowerCase().includes(normalizedQuery) ||

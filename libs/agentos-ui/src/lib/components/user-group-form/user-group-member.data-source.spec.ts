@@ -1,9 +1,9 @@
-import { NamespaceUserListItem, NamespaceUserListItemRoleEnum } from '@whoz-oss/agentos-api-client'
+import { MemberItem, MemberItemRoleEnum } from '@whoz-oss/agentos-api-client'
 import { firstValueFrom } from 'rxjs'
 import { UserGroupMemberAutocompleteDataSource } from './user-group-member.data-source'
 
-function user(externalId: string, email: string, firstname?: string, lastname?: string): NamespaceUserListItem {
-  return { externalId, email, firstname, lastname, id: externalId, role: NamespaceUserListItemRoleEnum.MEMBER }
+function user(externalId: string, email: string, firstname?: string, lastname?: string): MemberItem {
+  return { externalId, email, firstname, lastname, id: externalId, role: MemberItemRoleEnum.MEMBER }
 }
 
 async function search(

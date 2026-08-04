@@ -2110,27 +2110,6 @@ paths:
           description: No Content
       tags:
       - namespace-controller
-  /api/namespaces/{namespaceId}/users:
-    get:
-      operationId: listNamespaceUsers
-      parameters:
-      - in: path
-        name: namespaceId
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/NamespaceUserListItem"
-          description: OK
-      tags:
-      - namespace-permission-endpoints
   /api/oauth/callback:
     post:
       description: "Called by the frontend popup after the OAuth provider redirects\

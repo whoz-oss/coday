@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core'
 import { toObservable } from '@angular/core/rxjs-interop'
-import { NamespacePermissionEndpointsService, NamespaceUserListItemRoleEnum } from '@whoz-oss/agentos-api-client'
+import { MemberItemRoleEnum, NamespaceMembershipControllerService } from '@whoz-oss/agentos-api-client'
 import { catchError, map, Observable, of, shareReplay, switchMap } from 'rxjs'
 import { UserStateService } from './user-state.service'
 
@@ -10,7 +10,7 @@ import { UserStateService } from './user-state.service'
  *
  * Decision rule:
  *   - User.isAdmin === true  → admin of every namespace (super-admin short-circuit, no HTTP)
- *   - else fetch listNamespaceUsers(namespaceId), find the current user, check role === 'ADMIN'
+ *   - else fetch getMembersNamespaceMembership(namespaceId), find the current user, check role === 'ADMIN'
  *   - 403/error → default-safe, return false
  *
  * The result is cached per namespaceId via shareReplay so concurrent subscribers (typically
@@ -19,7 +19,7 @@ import { UserStateService } from './user-state.service'
 @Injectable({ providedIn: 'root' })
 export class NamespaceRoleStateService {
   private readonly userState = inject(UserStateService)
-  private readonly permissions = inject(NamespacePermissionEndpointsService)
+  private readonly membership = inject(NamespaceMembershipControllerService)
 
   /** Reactive stream of the current user (null until loadMe completes). */
   private readonly currentUser$ = toObservable(this.userState.currentUser)
@@ -36,8 +36,8 @@ export class NamespaceRoleStateService {
       switchMap((user) => {
         if (!user) return of(false)
         if (user.isAdmin) return of(true)
-        return this.permissions.listNamespaceUsers(namespaceId).pipe(
-          map((users) => users.some((u) => u.id === user.id && u.role === NamespaceUserListItemRoleEnum.ADMIN)),
+        return this.membership.getMembersNamespaceMembership(namespaceId).pipe(
+          map((members) => members.some((m) => m.id === user.id && m.role === MemberItemRoleEnum.ADMIN)),
           catchError(() => of(false))
         )
       }),
