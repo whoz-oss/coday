@@ -16,8 +16,7 @@
       "options": {
         "commands": [
           "cp apps/server/package.json apps/server/dist/package.json",
-          "cp apps/server/bin.js apps/server/dist/bin.js",
-          "cp apps/server/postinstall.js apps/server/dist/postinstall.js"
+          "cp apps/server/bin.js apps/server/dist/bin.js"
         ],
         "parallel": false
       }
@@ -67,6 +66,7 @@
     },
     "build-agentos": {
       "executor": "nx:run-commands",
+      "dependsOn": ["build-server"],
       "outputs": ["{projectRoot}/dist/agentos"],
       "options": {
         "commands": [
@@ -82,8 +82,7 @@
       }
     },
     "nx-release-publish": {
-      "_comment": "build-agentos is intentionally not a dependency: JARs are no longer bundled in the npm tarball, they are uploaded as GitHub Release assets and downloaded at install time via postinstall.js.",
-      "dependsOn": ["build"],
+      "dependsOn": ["build", "build-agentos"],
       "options": {
         "packageRoot": "apps/server/dist"
       }
