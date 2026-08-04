@@ -1,3 +1,21 @@
+## 0.239.1 (2026-08-04)
+
+### 🩹 Fixes
+
+- wz-32986 implement endpoint removing access for user from user groups and namespaces ([fa307c64](https://github.com/whoz-oss/coday/commit/fa307c64))
+- wz-32986 Scope deletion to namespace ([490270ab](https://github.com/whoz-oss/coday/commit/490270ab))
+- wz-32986 update api schema ([2b50534a](https://github.com/whoz-oss/coday/commit/2b50534a))
+- wz-32986 revoke namespace access using user externalId ([8bd07651](https://github.com/whoz-oss/coday/commit/8bd07651))
+- wz-32986 code review ([b3ffbaf4](https://github.com/whoz-oss/coday/commit/b3ffbaf4))
+- wz-32986 fix tests ([be10a836](https://github.com/whoz-oss/coday/commit/be10a836))
+- wz-32986 implement endpoint removing access for user from user groups and namespaces ([#1186](https://github.com/whoz-oss/coday/pull/1186))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- mbarroux @mickael-barroux-whoz
+- Mickaël Barroux @mickael-barroux-whoz
+
 ## 0.239.0 (2026-08-04)
 
 ### 🚀 Features
