@@ -33,10 +33,9 @@ import java.util.UUID
 class FilesystemIntegrationConfigRepository(
     private val delegate: IntegrationConfigRepository,
     private val namespaceRepository: NamespaceRepository,
+    private val yamlMapper: ObjectMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build()),
     ttl: Duration = Duration.ofMinutes(5),
 ) : IntegrationConfigRepository by delegate {
-    private val yamlMapper =
-        ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
 
     private val cacheRegistry =
         FilesystemYamlCacheRegistry(

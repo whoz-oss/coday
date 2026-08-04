@@ -1,10 +1,6 @@
 package io.whozoss.agentos.prompt
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
@@ -28,7 +24,6 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -85,6 +80,7 @@ class PromptController(
     private val userService: UserService,
     private val permissionService: PermissionService,
     private val overlayScopeAuthorizer: OverlayScopeAuthorizer,
+    private val yamlExportMapper: ObjectMapper,
 ) : PromptApi {
     private val crud =
         EntityCrudDelegate(
@@ -286,7 +282,7 @@ class PromptController(
         val entity =
             promptService.findById(id)
                 ?: throw ResourceNotFoundException("Prompt not found: $id")
-        val yaml = YAML_MAPPER.writeValueAsString(toExportModel(entity))
+        val yaml = yamlExportMapper.writeValueAsString(toExportModel(entity))
         val filename = entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-") + ".yaml"
         return ResponseEntity
             .ok()
@@ -315,30 +311,7 @@ class PromptController(
             defaultValue = defaultValue,
         )
 
-    companion object : KLogging() {
-        /**
-         * YAML mapper configured for clean, human-readable output:
-         * - No `---` document start marker
-         * - No Jackson type tags
-         * - Null, blank and empty top-level values omitted by [toExportModel] itself
-         *
-         * Deliberately no mapper-level inclusion policy (`NON_EMPTY` or `NON_NULL`): a global
-         * inclusion policy would strip `defaultValue: \"\"` from an exported [PromptParameter] \u2014
-         * an empty string is a genuinely meaningful default (a free-form optional parameter) and
-         * the domain requires [PromptParameter.defaultValue] to be non-null. [toExportModel] and
-         * its parameter helper build their output explicitly via `buildMap`, adding a key only when
-         * it is meaningful, so `defaultValue` is always written verbatim regardless of its content
-         * \u2014 confirmed by [PromptControllerExportSpec]'s `defaultValue: \"\"` round-trip test.
-         */
-        private val YAML_MAPPER: ObjectMapper =
-            ObjectMapper(
-                YAMLFactory
-                    .builder()
-                    .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
-                    .build(),
-            ).registerModule(KotlinModule.Builder().build())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-    }
+    companion object : KLogging()
 }
 
 internal fun toDto(entity: Prompt): PromptDto =

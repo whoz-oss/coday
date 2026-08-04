@@ -115,11 +115,13 @@ class Neo4jPersistenceConfiguration {
         agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
         namespaceRepository: NamespaceRepository,
+        yamlMapper: ObjectMapper,
     ): AgentConfigRepository {
         logger.info { "[Persistence] Neo4jAgentConfigRepository active (filesystem augmentation enabled)" }
         return FilesystemAgentConfigRepository(
             delegate = Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository, childLinkService),
             namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
         )
     }
 
@@ -190,11 +192,13 @@ class Neo4jPersistenceConfiguration {
     fun neo4jIntegrationConfigRepository(
         neo4jIntegrationConfigRepositoryDelegate: Neo4jIntegrationConfigRepository,
         namespaceRepository: NamespaceRepository,
+        yamlMapper: ObjectMapper,
     ): IntegrationConfigRepository {
         logger.info { "[Persistence] Neo4jIntegrationConfigRepository active (filesystem augmentation enabled)" }
         return FilesystemIntegrationConfigRepository(
             delegate = neo4jIntegrationConfigRepositoryDelegate,
             namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
         )
     }
 
@@ -270,11 +274,13 @@ class Neo4jPersistenceConfiguration {
     fun neo4jPromptRepository(
         neo4jPromptRepositoryDelegate: Neo4jPromptRepository,
         namespaceRepository: NamespaceRepository,
+        yamlMapper: ObjectMapper,
     ): PromptRepository {
         logger.info { "[Persistence] Neo4jPromptRepository active (filesystem augmentation enabled)" }
         return FilesystemPromptRepository(
             delegate = neo4jPromptRepositoryDelegate,
             namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
         )
     }
 
