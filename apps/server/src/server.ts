@@ -74,9 +74,17 @@ let promptExecutionService: PromptExecutionService
 // Registered synchronously and BEFORE express.json() to avoid body-parser
 // consuming the request body before it can be forwarded.
 const AGENTOS_PORT = process.env.AGENTOS_PORT ? parseInt(process.env.AGENTOS_PORT) : 8124
-const AGENTOS_HOSTNAME = process.env.AGENTOS_HOSTNAME ?? 'localhost'
 const AGENTOS_EXTERNAL_USERID = process.env.AGENTOS_EXTERNAL_USERID
-const AGENTOS_URL = `http://${AGENTOS_HOSTNAME}:${AGENTOS_PORT}`
+const AGENTOS_URL = process.env.AGENTOS_URL ?? `http://localhost:${AGENTOS_PORT}`
+
+// Fail fast on malformed configuration rather than surfacing it as a 504 later.
+try {
+  new URL(AGENTOS_URL)
+} catch {
+  throw new Error(
+    `Invalid AGENTOS_URL: "${AGENTOS_URL}". Must be a complete URL including scheme, e.g. "http://localhost:8124".`
+  )
+}
 app.use(
   '/api/agentos',
   (req, _res, next) => {
