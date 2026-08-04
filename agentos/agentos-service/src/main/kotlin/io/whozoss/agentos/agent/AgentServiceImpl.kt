@@ -6,6 +6,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
@@ -24,6 +25,7 @@ import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -59,6 +61,7 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
+    private val authServiceFactory: AuthServiceFactory,
     private val idCompressorService: IdCompressorService,
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
@@ -232,11 +235,15 @@ class AgentServiceImpl(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
                 agentName = agentConfig.name,
             )
+        val credentialProviderFactory: (String) -> CredentialProvider? = { authSettingName ->
+            context.userId?.let { userId -> buildCredentialProvider(context.namespaceId, userId, authSettingName) }
+        }
         val baseTools =
             toolResolverService.resolveToolsForRun(
                 agentIntegrations = agentConfig.integrations,
                 context = toolContext,
                 allIntegrationConfigs = effectiveIntegrationConfigs,
+                credentialProviderFactory = credentialProviderFactory,
             )
         // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
         // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name
@@ -332,6 +339,21 @@ class AgentServiceImpl(
     }
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
+
+    /**
+     * Builds a [CredentialProvider] scoped to a single AuthSetting name, resolved once at
+     * construction time. The returned closure captures the request-scoped [AuthService]
+     * so plugin code never sees identity resolution — it only ever calls the provider.
+     */
+    private fun buildCredentialProvider(
+        namespaceId: UUID,
+        userId: UUID,
+        authSettingName: String,
+    ): CredentialProvider {
+        val scopedAuthService = authServiceFactory.create(namespaceId, userId)
+        val setting = scopedAuthService.resolveAuthSetting(authSettingName)
+        return { scopedAuthService.resolveCredential(setting.metadata.id) }
+    }
 
     // -------------------------------------------------------------------------
     // Agent instantiation

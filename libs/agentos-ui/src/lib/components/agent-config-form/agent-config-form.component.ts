@@ -259,7 +259,7 @@ export class AgentConfigFormComponent implements OnInit {
    */
   private loadBuiltInTypes(): Observable<IntegrationTypeDescriptor[]> {
     return this.integrationTypeController.listTypesIntegrationType().pipe(
-      map((types) => types.filter((t) => t.builtIn === true)),
+      map((types) => types.filter((t) => !t.configSchema)),
       catchError((err) => {
         // Fail-safe: hide the built-in rows rather than block the form, but leave a diagnostic.
         console.error('[agent-config-form] failed to load integration types', err)

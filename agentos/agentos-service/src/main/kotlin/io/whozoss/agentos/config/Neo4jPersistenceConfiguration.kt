@@ -17,6 +17,13 @@ import io.whozoss.agentos.scheduledPrompt.ScheduledPromptNodeNeo4jRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunNodeNeo4jRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunRepository
+import io.whozoss.agentos.authSetting.AuthSettingNodeNeo4jRepository
+import io.whozoss.agentos.authSetting.AuthSettingRepository
+import io.whozoss.agentos.authSetting.Neo4jAuthSettingRepository
+import io.whozoss.agentos.credential.CredentialNodeNeo4jRepository
+import io.whozoss.agentos.credential.CredentialRepository
+import io.whozoss.agentos.credential.Neo4jCredentialRepository
+import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.caseEvent.CaseEventNodeMapper
 import io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
@@ -25,10 +32,6 @@ import io.whozoss.agentos.caseEvent.Neo4jCaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
-import io.whozoss.agentos.credential.CredentialNodeNeo4jRepository
-import io.whozoss.agentos.credential.CredentialRepository
-import io.whozoss.agentos.credential.Neo4jCredentialRepository
-import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
 import io.whozoss.agentos.feedback.FeedbackRepository
 import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
@@ -101,6 +104,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.prompt",
         "io.whozoss.agentos.userGroup",
+        "io.whozoss.agentos.authSetting",
         "io.whozoss.agentos.credential",
         "io.whozoss.agentos.scheduledPrompt",
     ],
@@ -202,6 +206,16 @@ class Neo4jPersistenceConfiguration {
     ): CredentialRepository {
         logger.info { "[Persistence] Neo4jCredentialRepository active" }
         return Neo4jCredentialRepository(credentialNodeNeo4jRepository, fieldEncryptor, objectMapper)
+    }
+
+    @Bean
+    fun neo4jAuthSettingRepository(
+        authSettingNodeNeo4jRepository: AuthSettingNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+        fieldEncryptor: FieldEncryptor,
+    ): AuthSettingRepository {
+        logger.info { "[Persistence] Neo4jAuthSettingRepository active" }
+        return Neo4jAuthSettingRepository(authSettingNodeNeo4jRepository, childLinkService, fieldEncryptor)
     }
 
     @Bean

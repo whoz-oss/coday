@@ -29,6 +29,7 @@ enum class EntityType(
     AGENT_CONFIG("AgentConfig"),
     AI_MODEL("AiModel"),
     AI_PROVIDER("AiProvider"),
+    AUTH_SETTING("AuthSetting"),
     CASE("Case"),
     CASE_EVENT("CaseEvent"),
     FEEDBACK("Feedback"),

@@ -18,6 +18,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
@@ -64,6 +65,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val toolRegistryService: ToolRegistryService = mockk(relaxed = true)
     private val toolMetricsService: ToolMetricsService = mockk(relaxed = true)
     private val caseEventService: CaseEventService = mockk(relaxed = true)
+    private val authServiceFactory: AuthServiceFactory = mockk(relaxed = true)
     private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
@@ -87,6 +89,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             toolRegistryService = toolRegistryService,
             toolMetricsService = toolMetricsService,
             caseEventService = caseEventService,
+            authServiceFactory = authServiceFactory,
             exchangeStorageService = exchangeStorageService,
             exchangeCapabilityService = exchangeCapabilityService,
             exchangeToolGrantService = exchangeToolGrantService,
@@ -147,7 +150,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     )
 
     init {
-        every { toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any()) } returns
+        every { toolResolverService.resolveToolsForRun(agentIntegrations = any(), context = any(), allIntegrationConfigs = any(), credentialProviderFactory = any()) } returns
             emptyList()
         // dedupToolsByName is the shared collision-reconciler; identity is fine (no collisions in these tests).
         every { toolResolverService.dedupToolsByName(any()) } answers { firstArg() }
@@ -415,6 +418,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolRegistryService = toolRegistryService,
                     toolMetricsService = toolMetricsService,
                     caseEventService = caseEventService,
+                    authServiceFactory = authServiceFactory,
                     exchangeStorageService = exchangeStorageService,
                     exchangeCapabilityService = exchangeCapabilityService,
                     exchangeToolGrantService = realGrantService,
@@ -742,6 +746,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolRegistryService = toolRegistryService,
                     toolMetricsService = toolMetricsService,
                     caseEventService = caseEventService,
+                    authServiceFactory = authServiceFactory,
                     exchangeStorageService = exchangeStorageService,
                     exchangeCapabilityService = exchangeCapabilityService,
                     exchangeToolGrantService = exchangeToolGrantService,
@@ -1249,6 +1254,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentIntegrations = null,
                     context = any(),
                     allIntegrationConfigs = any(),
+                    credentialProviderFactory = any(),
                 )
             }
         }
@@ -1272,6 +1278,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentIntegrations = integrations,
                     context = any(),
                     allIntegrationConfigs = any(),
+                    credentialProviderFactory = any(),
                 )
             }
         }
