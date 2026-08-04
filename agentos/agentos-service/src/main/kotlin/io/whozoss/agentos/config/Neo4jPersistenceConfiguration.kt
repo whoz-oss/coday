@@ -59,6 +59,7 @@ import io.whozoss.agentos.userGroup.Neo4jUserGroupRepository
 import io.whozoss.agentos.userGroup.UserGroupNodeNeo4jRepository
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -115,7 +116,7 @@ class Neo4jPersistenceConfiguration {
         agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
         namespaceRepository: NamespaceRepository,
-        yamlMapper: ObjectMapper,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
     ): AgentConfigRepository {
         logger.info { "[Persistence] Neo4jAgentConfigRepository active (filesystem augmentation enabled)" }
         return FilesystemAgentConfigRepository(
@@ -143,7 +144,7 @@ class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jCaseEventRepository(
         caseEventNodeNeo4jRepository: CaseEventNodeNeo4jRepository,
-        objectMapper: ObjectMapper,
+        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
     ): CaseEventRepository {
         logger.info { "[Persistence] Neo4jCaseEventRepository active" }
@@ -181,7 +182,7 @@ class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jIntegrationConfigRepositoryDelegate(
         integrationConfigNodeNeo4jRepository: IntegrationConfigNodeNeo4jRepository,
-        objectMapper: ObjectMapper,
+        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
     ): Neo4jIntegrationConfigRepository {
         return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
@@ -192,7 +193,7 @@ class Neo4jPersistenceConfiguration {
     fun neo4jIntegrationConfigRepository(
         neo4jIntegrationConfigRepositoryDelegate: Neo4jIntegrationConfigRepository,
         namespaceRepository: NamespaceRepository,
-        yamlMapper: ObjectMapper,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
     ): IntegrationConfigRepository {
         logger.info { "[Persistence] Neo4jIntegrationConfigRepository active (filesystem augmentation enabled)" }
         return FilesystemIntegrationConfigRepository(
@@ -206,7 +207,7 @@ class Neo4jPersistenceConfiguration {
     fun neo4jCredentialRepository(
         credentialNodeNeo4jRepository: CredentialNodeNeo4jRepository,
         fieldEncryptor: FieldEncryptor,
-        objectMapper: ObjectMapper,
+        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
     ): CredentialRepository {
         logger.info { "[Persistence] Neo4jCredentialRepository active" }
         return Neo4jCredentialRepository(credentialNodeNeo4jRepository, fieldEncryptor, objectMapper)
@@ -265,7 +266,7 @@ class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jPromptRepositoryDelegate(
         promptNodeNeo4jRepository: PromptNodeNeo4jRepository,
-        objectMapper: ObjectMapper,
+        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
     ): Neo4jPromptRepository = Neo4jPromptRepository(promptNodeNeo4jRepository, objectMapper, childLinkService)
 
@@ -274,7 +275,7 @@ class Neo4jPersistenceConfiguration {
     fun neo4jPromptRepository(
         neo4jPromptRepositoryDelegate: Neo4jPromptRepository,
         namespaceRepository: NamespaceRepository,
-        yamlMapper: ObjectMapper,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
     ): PromptRepository {
         logger.info { "[Persistence] Neo4jPromptRepository active (filesystem augmentation enabled)" }
         return FilesystemPromptRepository(
