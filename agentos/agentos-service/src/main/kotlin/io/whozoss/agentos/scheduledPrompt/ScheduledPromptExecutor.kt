@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -89,7 +90,12 @@ class ScheduledPromptExecutor(
      *
      * Safe to call multiple times for the same Run (idempotent via MERGE).
      * Transitions the Run to [RunStatus.RUNNING] once materialisation is complete.
+     *
+     * The MERGE and the CLAIMED→RUNNING transition run in a single transaction: if the
+     * service crashes between the two, neither a set of orphaned PENDING UserRuns (never
+     * consumed) nor a RUNNING Run with no UserRuns can result.
      */
+    @Transactional
     fun materialize(run: ScheduledPromptRun, scheduledPrompt: ScheduledPrompt) {
         logger.info {
             "[Executor] Phase A: materialising run=${run.id} sp=${scheduledPrompt.id}"
