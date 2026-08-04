@@ -1,3 +1,13 @@
+## 0.238.0 (2026-08-04)
+
+### 🚀 Features
+
+- agentos auto download approach ([#1197](https://github.com/whoz-oss/coday/pull/1197))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.237.1 (2026-08-03)
 
 ### 🩹 Fixes
