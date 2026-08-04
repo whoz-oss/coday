@@ -22,8 +22,8 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.sync.Semaphore
 import java.util.UUID
-import java.util.concurrent.Semaphore
 
 /**
  * Executes [ScheduledPromptRun]s in two phases.
@@ -52,7 +52,9 @@ import java.util.concurrent.Semaphore
  *    which is incompatible with the leading `@mention`.
  * 5. Poll the runtime status until the Case leaves RUNNING/PENDING, then close the UserRun.
  *
- * A [Semaphore] caps concurrent in-flight coroutines to [SchedulerProperties.maxConcurrentExecutions].
+ * A [kotlinx.coroutines.sync.Semaphore] caps concurrent in-flight coroutines to
+ * [SchedulerProperties.maxConcurrentExecutions]. Unlike `java.util.concurrent.Semaphore`,
+ * [acquire][Semaphore.acquire] **suspends** instead of blocking an OS thread.
  * A [delay] of [SchedulerProperties.staggerDelayMs] ms separates each launch.
  *
  * ### Completion check
@@ -146,8 +148,9 @@ class ScheduledPromptExecutor(
      * coroutine inside [coroutineScope]; the scope suspends until all launched children
      * finish before the next batch is claimed.
      *
-     * A [Semaphore] caps concurrent in-flight coroutines to
-     * [SchedulerProperties.maxConcurrentExecutions].
+     * A [kotlinx.coroutines.sync.Semaphore] caps concurrent in-flight coroutines to
+     * [SchedulerProperties.maxConcurrentExecutions]. Its [acquire][Semaphore.acquire]
+     * suspends instead of blocking an OS thread.
      *
      * ### Delivery guarantee: at-least-once
      *
