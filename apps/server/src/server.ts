@@ -37,6 +37,7 @@ import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
 import { getCodayVersion } from './lib/version'
+import { downloadProbeJar } from './lib/agentos-download'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -435,9 +436,18 @@ PORT_PROMISE.then(async (PORT) => {
   // A failure here must never prevent the server from starting.
   try {
     const codayVersion = getCodayVersion()
-    await checkAgentosJars(codayVersion)
+    const jarStatus = await checkAgentosJars(codayVersion)
+
+    // Attempt to download agentos-bash-plugin if absent or at the wrong version.
+    // This is a probe to validate the GitHub Release download chain end-to-end.
+    // Only agentos-bash-plugin is attempted (smallest JAR, ~35 KB).
+    // No download occurs if the JAR is already present at the expected version.
+    const bashPluginResult = jarStatus.artifacts.find((a) => a.artifactId === 'agentos-bash-plugin')
+    const bashPluginPresent = bashPluginResult?.versionMatch === true
+    const downloadResult = await downloadProbeJar(codayVersion, bashPluginPresent)
+    debugLog('AGENTOS', `[DOWNLOAD] outcome: ${downloadResult.outcome} — ${downloadResult.message}`)
   } catch (error) {
-    debugLog('AGENTOS', 'Unexpected error during JAR check (non-fatal):', error)
+    debugLog('AGENTOS', 'Unexpected error during JAR check/download (non-fatal):', error)
   }
 
   // Start thread cleanup service after server is running
