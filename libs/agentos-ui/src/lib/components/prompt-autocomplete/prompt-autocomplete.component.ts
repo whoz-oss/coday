@@ -1,14 +1,12 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  effect,
   ElementRef,
   input,
-  OnChanges,
   output,
-  QueryList,
   signal,
-  SimpleChanges,
-  ViewChildren,
+  viewChildren,
 } from '@angular/core'
 import { Prompt } from '@whoz-oss/agentos-api-client'
 
@@ -27,7 +25,7 @@ import { Prompt } from '@whoz-oss/agentos-api-client'
   templateUrl: './prompt-autocomplete.component.html',
   styleUrl: './prompt-autocomplete.component.scss',
 })
-export class PromptAutocompleteComponent implements OnChanges {
+export class PromptAutocompleteComponent {
   /** Filtered list of prompts to display. */
   readonly prompts = input.required<Prompt[]>()
 
@@ -39,13 +37,14 @@ export class PromptAutocompleteComponent implements OnChanges {
 
   protected readonly activeIndex = signal(0)
 
-  @ViewChildren('promptItem') private itemRefs!: QueryList<ElementRef<HTMLLIElement>>
+  private readonly itemRefs = viewChildren<ElementRef<HTMLLIElement>>('promptItem')
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['prompts']) {
-      // Reset selection index when the list changes.
+  constructor() {
+    // Reset selection index whenever the list changes.
+    effect(() => {
+      this.prompts()
       this.activeIndex.set(0)
-    }
+    })
   }
 
   /**
@@ -83,10 +82,6 @@ export class PromptAutocompleteComponent implements OnChanges {
   }
 
   /**
-   * Builds the completion text that will be inserted into the textarea on selection.
-   * If the prompt has parameters, appends named placeholders so the user knows what to fill.
-   */
-  /**
    * Builds the completion text inserted into the textarea on selection.
    *
    * Always `/{name} ` with a trailing space — the user types arguments freely.
@@ -98,7 +93,6 @@ export class PromptAutocompleteComponent implements OnChanges {
   }
 
   private scrollActiveIntoView(): void {
-    const item = this.itemRefs?.toArray()?.[this.activeIndex()]
-    item?.nativeElement.scrollIntoView({ block: 'nearest' })
+    this.itemRefs()[this.activeIndex()]?.nativeElement.scrollIntoView({ block: 'nearest' })
   }
 }
