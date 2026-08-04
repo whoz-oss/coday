@@ -36,6 +36,7 @@ import { McpInstancePool } from '@coday/mcp'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
+import { getCodayVersion } from './lib/version'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -433,7 +434,8 @@ PORT_PROMISE.then(async (PORT) => {
   // Check AgentOS JAR availability at startup (log only — no side effects).
   // A failure here must never prevent the server from starting.
   try {
-    await checkAgentosJars()
+    const codayVersion = getCodayVersion()
+    await checkAgentosJars(codayVersion)
   } catch (error) {
     debugLog('AGENTOS', 'Unexpected error during JAR check (non-fatal):', error)
   }
