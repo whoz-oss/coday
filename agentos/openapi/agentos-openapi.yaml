@@ -1245,12 +1245,37 @@ paths:
       summary: Add a message
       tags:
       - case-controller
-  /api/cases/{caseId}/share:
-    put:
-      operationId: shareCase
+  /api/cases/{entityId}/members:
+    get:
+      description: Returns all users holding a direct ADMIN or MEMBER relation on
+        the entity.
+      operationId: getMembersCaseMembership
       parameters:
       - in: path
-        name: caseId
+        name: entityId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MemberItem"
+          description: OK
+      summary: List members
+      tags:
+      - case-membership-controller
+    patch:
+      description: "Delta update: add, change role, or revoke users. Users absent\
+        \ from the list are untouched."
+      operationId: updateMembersCaseMembership
+      parameters:
+      - in: path
+        name: entityId
         required: true
         schema:
           type: string
@@ -1259,7 +1284,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CaseShareRequest"
+              type: array
+              items:
+                $ref: "#/components/schemas/UserMembershipRole"
         required: true
       responses:
         "200":
@@ -1268,32 +1295,11 @@ paths:
               schema:
                 type: array
                 items:
-                  type: string
-                  format: uuid
+                  $ref: "#/components/schemas/MemberItem"
           description: OK
+      summary: Update members
       tags:
-      - case-controller
-  /api/cases/{caseId}/users:
-    get:
-      operationId: listCaseUsers
-      parameters:
-      - in: path
-        name: caseId
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/CaseUserListItem"
-          description: OK
-      tags:
-      - case-controller
+      - case-membership-controller
   /api/cases/{id}:
     delete:
       operationId: deleteCase
@@ -1738,6 +1744,61 @@ paths:
           description: OK
       tags:
       - namespace-permission-endpoints
+  /api/namespaces/{entityId}/members:
+    get:
+      description: Returns all users holding a direct ADMIN or MEMBER relation on
+        the entity.
+      operationId: getMembersNamespaceMembership
+      parameters:
+      - in: path
+        name: entityId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MemberItem"
+          description: OK
+      summary: List members
+      tags:
+      - namespace-membership-controller
+    patch:
+      description: "Delta update: add, change role, or revoke users. Users absent\
+        \ from the list are untouched."
+      operationId: updateMembersNamespaceMembership
+      parameters:
+      - in: path
+        name: entityId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/UserMembershipRole"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MemberItem"
+          description: OK
+      summary: Update members
+      tags:
+      - namespace-membership-controller
   /api/namespaces/{id}:
     delete:
       operationId: deleteNamespace
@@ -1987,35 +2048,6 @@ paths:
       summary: List namespace exchange files
       tags:
       - exchange-controller
-  /api/namespaces/{namespaceId}/members:
-    post:
-      operationId: updateMembers
-      parameters:
-      - in: path
-        name: namespaceId
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: "#/components/schemas/UserMembershipRole"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/NamespaceUserListItem"
-          description: OK
-      tags:
-      - namespace-permission-endpoints
   /api/namespaces/{namespaceId}/members/{targetUserId}:
     delete:
       operationId: revokeMember
@@ -3502,28 +3534,6 @@ components:
       - namespaceId
       - timestamp
       - type
-    CaseShareEntry:
-      type: object
-      properties:
-        role:
-          type: string
-          enum:
-          - ADMIN
-          - MEMBER
-        userId:
-          type: string
-          format: uuid
-      required:
-      - userId
-    CaseShareRequest:
-      type: object
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/CaseShareEntry"
-      required:
-      - entries
     CaseStatusEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3559,31 +3569,6 @@ components:
       - namespaceId
       - timestamp
       - type
-    CaseUserListItem:
-      type: object
-      properties:
-        email:
-          type: string
-        externalId:
-          type: string
-        firstname:
-          type: string
-        id:
-          type: string
-          format: uuid
-        lastname:
-          type: string
-        role:
-          type: string
-          description: The user's direct role on this case.
-          enum:
-          - ADMIN
-          - MEMBER
-      required:
-      - email
-      - externalId
-      - id
-      - role
     ConfirmationResolvedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3945,6 +3930,31 @@ components:
       required:
       - namespaceExternalId
       - userExternalId
+    MemberItem:
+      type: object
+      properties:
+        email:
+          type: string
+        externalId:
+          type: string
+        firstname:
+          type: string
+        id:
+          type: string
+          format: uuid
+        lastname:
+          type: string
+        role:
+          type: string
+          description: The user's direct role on this entity.
+          enum:
+          - ADMIN
+          - MEMBER
+      required:
+      - email
+      - externalId
+      - id
+      - role
     MessageContent:
       discriminator:
         propertyName: type
@@ -4052,31 +4062,6 @@ components:
           pattern: ADMIN|MEMBER
       required:
       - namespaceExternalId
-      - role
-    NamespaceUserListItem:
-      type: object
-      properties:
-        email:
-          type: string
-        externalId:
-          type: string
-        firstname:
-          type: string
-        id:
-          type: string
-          format: uuid
-        lastname:
-          type: string
-        role:
-          type: string
-          description: The user's direct role on this namespace
-          enum:
-          - ADMIN
-          - MEMBER
-      required:
-      - email
-      - externalId
-      - id
       - role
     OAuthCallbackRequest:
       type: object
