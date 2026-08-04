@@ -35,6 +35,7 @@ import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
+import { validateAgentOsUrl } from './lib/validate-agentos-url'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -78,13 +79,9 @@ const AGENTOS_EXTERNAL_USERID = process.env.AGENTOS_EXTERNAL_USERID
 const AGENTOS_URL = process.env.AGENTOS_URL ?? `http://localhost:${AGENTOS_PORT}`
 
 // Fail fast on malformed configuration rather than surfacing it as a 504 later.
-try {
-  new URL(AGENTOS_URL)
-} catch {
-  throw new Error(
-    `Invalid AGENTOS_URL: "${AGENTOS_URL}". Must be a complete URL including scheme, e.g. "http://localhost:8124".`
-  )
-}
+// Note: `new URL` alone is too permissive — it accepts 'localhost:8124' by reading
+// 'localhost:' as the scheme, which is the most likely migration mistake here.
+validateAgentOsUrl(AGENTOS_URL)
 app.use(
   '/api/agentos',
   (req, _res, next) => {
