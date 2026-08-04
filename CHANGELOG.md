@@ -1,3 +1,33 @@
+## 0.239.0 (2026-08-04)
+
+### 🚀 Features
+
+- #1130 OAuth 2.1 interactive flow in AuthService ([#1137](https://github.com/whoz-oss/coday/pull/1137), [#1130](https://github.com/whoz-oss/coday/issues/1130), [#1114](https://github.com/whoz-oss/coday/issues/1114), [#1097](https://github.com/whoz-oss/coday/issues/1097))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.238.1 (2026-08-04)
+
+### 🩹 Fixes
+
+- rollback agentos bundling attepmpt ([#1206](https://github.com/whoz-oss/coday/pull/1206))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.238.0 (2026-08-04)
+
+### 🚀 Features
+
+- agentos auto download approach ([#1197](https://github.com/whoz-oss/coday/pull/1197))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.237.1 (2026-08-03)
 
 ### 🩹 Fixes

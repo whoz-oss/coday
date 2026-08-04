@@ -7,6 +7,8 @@ import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthServiceFactory
+import io.whozoss.agentos.auth.OAuthFlowService
+import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
@@ -61,6 +63,7 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
+    private val oAuthFlowService: OAuthFlowService,
     private val authServiceFactory: AuthServiceFactory,
     private val idCompressorService: IdCompressorService,
     private val exchangeStorageService: ExchangeStorageService,
@@ -236,7 +239,87 @@ class AgentServiceImpl(
                 agentName = agentConfig.name,
             )
         val credentialProviderFactory: (String) -> CredentialProvider? = { authSettingName ->
-            context.userId?.let { userId -> buildCredentialProvider(context.namespaceId, userId, authSettingName) }
+            logger.debug { "CredentialProvider invoked for '$authSettingName'" }
+            context.userId?.let { userId ->
+                val scopedAuthService = authServiceFactory.create(context.namespaceId, userId)
+                val provider: CredentialProvider = {
+                    val setting = scopedAuthService.resolveAuthSetting(authSettingName)
+                    logger.debug { "CredentialProvider for '$authSettingName': resolved authType=${setting.authType}" }
+                    if (setting.authType in OAUTH_AUTH_TYPES && context.caseId != null && context.emitEvent != null) {
+                        // OAuth types: delegate to OAuthFlowService for full lifecycle
+                        // (check existing -> refresh -> interactive via QuestionEvent).
+                        logger.debug { "CredentialProvider for '$authSettingName': using OAuth flow (authType=${setting.authType})" }
+                        // NOTE — blocking thread analysis:
+                        // The `runBlocking` below is INSIDE the body of the `CredentialProvider`
+                        // lambda — not before its creation. The lambda is the trigger for the
+                        // interactive OAuth flow, not a passive carrier of an already-obtained
+                        // credential.
+                        //
+                        // Invocation timing: `CredentialProvider` is called once per run and per
+                        // MCP integration by `McpHttpToolProvider.provideTools` (via
+                        // `ToolResolverService.extractTools`) during the tool-resolution phase,
+                        // before the agent processes any message. It establishes the HTTP MCP
+                        // connection and is NOT called again on each tool invocation.
+                        //
+                        // Blocked thread: `provideTools` is non-suspend (SDK public contract), so
+                        // the call stack at this point is synchronous. The `runBlocking` therefore
+                        // blocks a thread from the Kotlin `Dispatchers.IO` pool — NOT a Tomcat/MVC
+                        // request thread — for up to `agentos.oauth.flow-timeout-minutes` (default
+                        // 2 min) while waiting for the user to complete browser authorization.
+                        // The pool ceiling (64 threads by default) implicitly caps the number of
+                        // concurrent interactive OAuth flows; see OAuthPendingRegistry for the
+                        // capacity and instance constraints.
+                        //
+                        // Why `runBlocking` cannot be removed without touching the SDK: eliminating
+                        // it requires making `suspend` the entire chain `ToolPlugin.provideTools` →
+                        // `ToolContext.credentialProvider` → `CredentialProvider` — three elements
+                        // of the SDK public contract. Tracked in #1198.
+                        val credential =
+                            kotlinx.coroutines.runBlocking {
+                                oAuthFlowService.resolveOAuthCredential(
+                                    userId = userId,
+                                    authSetting = setting,
+                                    namespaceId = context.namespaceId,
+                                    caseId = context.caseId,
+                                    agentId = UUID.nameUUIDFromBytes(agentConfig.name.toByteArray()),
+                                    agentName = agentConfig.name,
+                                    emitEvent = context.emitEvent,
+                                )
+                            }
+                        if (credential == null) {
+                            logger.warn { "CredentialProvider for '$authSettingName': OAuth flow returned null" }
+                        } else {
+                            logger.debug { "CredentialProvider for '$authSettingName': OAuth credential resolved" }
+                        }
+                        credential
+                    } else {
+                        if (setting.authType in OAUTH_AUTH_TYPES) {
+                            logger.warn {
+                                "CredentialProvider for '$authSettingName': OAuth type ${setting.authType} but " +
+                                    "missing caseId=${context.caseId != null} or emitEvent=${context.emitEvent != null}, " +
+                                    "falling back to direct lookup"
+                            }
+                        } else {
+                            logger.debug {
+                                "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, using direct credential lookup"
+                            }
+                        }
+                        val credential = scopedAuthService.resolveCredential(setting.metadata.id)
+                        if (credential == null) {
+                            logger.warn {
+                                "CredentialProvider for '$authSettingName': no credential found for authSetting ${setting.metadata.id}"
+                            }
+                        } else {
+                            logger.debug { "CredentialProvider for '$authSettingName': direct credential resolved" }
+                        }
+                        credential
+                    }
+                }
+                provider
+            } ?: run {
+                logger.debug { "CredentialProvider for '$authSettingName': no userId in context, skipping" }
+                null
+            }
         }
         val baseTools =
             toolResolverService.resolveToolsForRun(
@@ -339,21 +422,6 @@ class AgentServiceImpl(
     }
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
-
-    /**
-     * Builds a [CredentialProvider] scoped to a single AuthSetting name, resolved once at
-     * construction time. The returned closure captures the request-scoped [AuthService]
-     * so plugin code never sees identity resolution — it only ever calls the provider.
-     */
-    private fun buildCredentialProvider(
-        namespaceId: UUID,
-        userId: UUID,
-        authSettingName: String,
-    ): CredentialProvider {
-        val scopedAuthService = authServiceFactory.create(namespaceId, userId)
-        val setting = scopedAuthService.resolveAuthSetting(authSettingName)
-        return { scopedAuthService.resolveCredential(setting.metadata.id) }
-    }
 
     // -------------------------------------------------------------------------
     // Agent instantiation
@@ -711,5 +779,13 @@ class AgentServiceImpl(
         return tools
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        private val OAUTH_AUTH_TYPES =
+            setOf(
+                AuthType.OAUTH_DISCOVERABLE,
+                AuthType.OAUTH_REGISTERED,
+                AuthType.OAUTH_CUSTOM,
+                AuthType.OAUTH_MCP_DISCOVERABLE,
+            )
+    }
 }

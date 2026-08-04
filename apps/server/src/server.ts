@@ -35,11 +35,6 @@ import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
-import { startAgentos, AgentosProcess } from './lib/agentos-lifecycle'
-
-// AgentOS process handle — set when we successfully spawn the bundled JAR.
-// Declared here so gracefulShutdown() can reference it regardless of scope.
-let agentosProcess: AgentosProcess | null = null
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -75,18 +70,13 @@ debugLog('INIT', 'Webhook service initialized (will be initialized with prompt e
 // Note: projectPath will be set after projectService is initialized
 let promptService: PromptService
 let promptExecutionService: PromptExecutionService
-
-// ---------------------------------------------------------------------------
-// AgentOS proxy — registered synchronously BEFORE express.json() so that
-// body-parser cannot consume request bodies before they are forwarded.
-//
-// agentosUrl is a mutable module-level variable.  The proxy's `router` option
-// is called on every request, so updating agentosUrl later (inside
-// PORT_PROMISE.then) transparently redirects traffic to the spawned JAR.
-// ---------------------------------------------------------------------------
+// Proxy /api/agentos/* → AgentOS Spring backend
+// Registered synchronously and BEFORE express.json() to avoid body-parser
+// consuming the request body before it can be forwarded.
+const AGENTOS_PORT = process.env.AGENTOS_PORT ? parseInt(process.env.AGENTOS_PORT) : 8124
+const AGENTOS_HOSTNAME = process.env.AGENTOS_HOSTNAME ?? 'localhost'
 const AGENTOS_EXTERNAL_USERID = process.env.AGENTOS_EXTERNAL_USERID
-let agentosUrl = `http://${process.env.AGENTOS_HOSTNAME ?? 'localhost'}:${process.env.AGENTOS_PORT ?? '8124'}`
-
+const AGENTOS_URL = `http://${AGENTOS_HOSTNAME}:${AGENTOS_PORT}`
 app.use(
   '/api/agentos',
   (req, _res, next) => {
@@ -97,13 +87,12 @@ app.use(
     next()
   },
   createProxyMiddleware({
-    target: agentosUrl,
+    target: AGENTOS_URL,
     changeOrigin: true,
     pathRewrite: { '^/api/agentos': '' },
-    router: () => agentosUrl, // Dynamic — picks up updated agentosUrl at request time
   })
 )
-debugLog('INIT', `AgentOS proxy configured (initial target: ${agentosUrl})`)
+debugLog('INIT', `AgentOS proxy configured: /api/agentos → ${AGENTOS_URL}`)
 
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
@@ -436,18 +425,6 @@ PORT_PROMISE.then(async (PORT) => {
     debugLog('INIT', `Using configured base URL: ${codayOptions.baseUrl}`)
   }
 
-  // Start bundled AgentOS if no external instance is configured.
-  // Done before app.listen() so the proxy target is correct from the first request.
-  if (!process.env.AGENTOS_PORT && !process.env.AGENTOS_HOSTNAME) {
-    agentosProcess = await startAgentos(PORT + 1)
-    if (agentosProcess) {
-      agentosUrl = `http://localhost:${agentosProcess.port}`
-      debugLog('AGENTOS', `Proxy target updated to ${agentosUrl}`)
-    } else {
-      debugLog('AGENTOS', 'AgentOS not available — /api/agentos/* requests will fail')
-    }
-  }
-
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })
@@ -515,13 +492,6 @@ async function gracefulShutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully...`)
 
   try {
-    // Stop AgentOS first so the JVM shuts down cleanly before we tear down
-    // the Node.js side (which owns the proxy pointing at it).
-    if (agentosProcess) {
-      console.log('Stopping AgentOS process...')
-      await agentosProcess.shutdown()
-    }
-
     // Stop scheduler service
     console.log('Stopping scheduler service...')
     schedulerService.stop()
