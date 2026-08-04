@@ -47,6 +47,9 @@ open class Neo4jScheduledPromptRunRepository(
     override fun findById(id: UUID): ScheduledPromptRun? =
         neo4jRepository.findById(id.toString()).orElse(null)?.toDomain()
 
+    override fun countCompletedRuns(scheduledPromptId: UUID): Int =
+        neo4jRepository.countCompletedRuns(scheduledPromptId.toString())
+
     private fun isSlotKeyConflict(e: DataIntegrityViolationException): Boolean {
         val haystack = generateSequence<Throwable>(e) { it.cause }
             .mapNotNull { it.message }

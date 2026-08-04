@@ -40,4 +40,18 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
     )
     fun updateStatus(id: String, status: String, finishedAt: Instant?, error: String?, now: Instant): Int
 
+    /**
+     * Count non-SKIPPED runs for a given ScheduledPrompt.
+     */
+    @Query(
+        $$"""
+        MATCH (r:ScheduledPromptRun)
+        WHERE r.scheduledPromptId = $scheduledPromptId
+          AND r.status <> 'SKIPPED'
+          AND NOT COALESCE(r.removed, false)
+        RETURN count(r)
+        """,
+    )
+    fun countCompletedRuns(scheduledPromptId: String): Int
+
 }

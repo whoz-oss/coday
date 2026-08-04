@@ -1,6 +1,7 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component
 import jakarta.annotation.PostConstruct
 import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 
 /**
  * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them,
@@ -102,6 +104,16 @@ class SchedulerScanner(
             return
         }
 
+        // Guard: disable if the end condition is already reached before executing.
+        if (isEndConditionReached(scheduledPrompt)) {
+            logger.info {
+                "[SchedulerScanner] End condition already reached for sp=${scheduledPrompt.id} " +
+                    "(${scheduledPrompt.planning.endType}) \u2014 disabling without execution"
+            }
+            scheduledPromptRepository.save(scheduledPrompt.copy(enabled = false))
+            return
+        }
+
         val status = when {
             runRepository.hasActive(scheduledPrompt.id) -> {
                 logger.warn { "[SchedulerScanner] OVERLAP sp=${scheduledPrompt.id} has active run → SKIPPED" }
@@ -134,8 +146,74 @@ class SchedulerScanner(
             logger.debug { "[SchedulerScanner] CAS miss for sp=${scheduledPrompt.id} (another tick advanced first)" }
         }
 
+        // Check if the end condition will be reached after this run.
+        // If so, disable the ScheduledPrompt — no future run should fire.
+        checkEndConditionAfterAdvance(scheduledPrompt, nextSlot)
+
         if (status == RunStatus.CLAIMED && insertedRun != null) {
             executor.materialize(insertedRun, scheduledPrompt)
+        }
+    }
+
+    /**
+     * Check if the end condition is already reached BEFORE executing.
+     *
+     * - **ON_DATE**: the current slot (nextRunAt) falls after [Planning.endDate] at [Recurrence.timeUtc].
+     * - **OCCURRENCES**: the number of completed (non-SKIPPED) runs has already reached
+     *   [Planning.maxOccurrenceCount].
+     * - **NEVER**: never reached.
+     */
+    private fun isEndConditionReached(scheduledPrompt: ScheduledPrompt): Boolean {
+        val planning = scheduledPrompt.planning
+        return when (planning.endType) {
+            SchedulerEndType.NEVER -> false
+            SchedulerEndType.ON_DATE -> {
+                val endInstant = planning.endDate
+                    ?.atTime(scheduledPrompt.recurrence.timeUtc)
+                    ?.toInstant(ZoneOffset.UTC)
+                endInstant != null && scheduledPrompt.nextRunAt.isAfter(endInstant)
+            }
+            SchedulerEndType.OCCURRENCES -> {
+                val max = planning.maxOccurrenceCount ?: return false
+                val completed = runRepository.countCompletedRuns(scheduledPrompt.id)
+                completed >= max
+            }
+        }
+    }
+
+    /**
+     * Disable the [ScheduledPrompt] if the end condition will be reached after this run.
+     *
+     * Called after advancing nextRunAt. Checks the NEXT slot, not the current one.
+     *
+     * - **ON_DATE**: the next slot falls after [Planning.endDate] at [Recurrence.timeUtc].
+     * - **OCCURRENCES**: the number of completed (non-SKIPPED) runs (including the one just
+     *   inserted) has reached [Planning.maxOccurrenceCount].
+     * - **NEVER**: no end condition, never disables.
+     */
+    private fun checkEndConditionAfterAdvance(scheduledPrompt: ScheduledPrompt, nextSlot: Instant) {
+        val planning = scheduledPrompt.planning
+        val shouldDisable = when (planning.endType) {
+            SchedulerEndType.NEVER -> false
+            SchedulerEndType.ON_DATE -> {
+                val endInstant = planning.endDate
+                    ?.atTime(scheduledPrompt.recurrence.timeUtc)
+                    ?.toInstant(ZoneOffset.UTC)
+                endInstant != null && nextSlot.isAfter(endInstant)
+            }
+            SchedulerEndType.OCCURRENCES -> {
+                val max = planning.maxOccurrenceCount ?: return
+                val completed = runRepository.countCompletedRuns(scheduledPrompt.id)
+                completed >= max
+            }
+        }
+
+        if (shouldDisable) {
+            logger.info {
+                "[SchedulerScanner] End condition reached after advance for sp=${scheduledPrompt.id} " +
+                    "(${planning.endType}) \u2014 disabling"
+            }
+            scheduledPromptRepository.save(scheduledPrompt.copy(enabled = false))
         }
     }
 

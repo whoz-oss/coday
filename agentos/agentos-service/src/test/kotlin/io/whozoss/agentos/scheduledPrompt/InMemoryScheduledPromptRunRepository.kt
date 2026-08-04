@@ -41,6 +41,11 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
     override fun findById(id: UUID): ScheduledPromptRun? =
         store.values.firstOrNull { it.id == id }
 
+    override fun countCompletedRuns(scheduledPromptId: UUID): Int =
+        store.values.count {
+            it.scheduledPromptId == scheduledPromptId && it.status != RunStatus.SKIPPED
+        }
+
     /** Test helper: all stored runs. */
     fun all(): List<ScheduledPromptRun> = store.values.toList()
 

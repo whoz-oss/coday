@@ -41,4 +41,11 @@ interface ScheduledPromptRunRepository {
 
     /** Find a single Run by its id, or null if not found. */
     fun findById(id: UUID): ScheduledPromptRun?
+
+    /**
+     * Count completed (non-SKIPPED) runs for a given ScheduledPrompt.
+     * Counts DONE, FAILED, CLAIMED, and RUNNING — everything except SKIPPED,
+     * since SKIPPED runs are overlap-guards that never actually executed.
+     */
+    fun countCompletedRuns(scheduledPromptId: UUID): Int
 }

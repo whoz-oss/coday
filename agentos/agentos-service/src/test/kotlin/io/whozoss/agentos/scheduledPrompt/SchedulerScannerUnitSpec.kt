@@ -80,6 +80,9 @@ class SchedulerScannerUnitSpec : StringSpec() {
         enabled: Boolean = true,
         startDate: LocalDate = today,
         timeUtc: LocalTime = defaultTime,
+        endType: SchedulerEndType = SchedulerEndType.NEVER,
+        endDate: LocalDate? = null,
+        maxOccurrenceCount: Int? = null,
     ): ScheduledPrompt {
         val scheduledPrompt = ScheduledPrompt(
             metadata = EntityMetadata(id = UUID.randomUUID()),
@@ -87,7 +90,12 @@ class SchedulerScannerUnitSpec : StringSpec() {
             promptTemplateId = promptId,
             name = "sp-${UUID.randomUUID().toString().take(6)}",
             recurrence = Recurrence(unit = SchedulerUnit.WEEK, timeUtc = timeUtc),
-            planning = Planning(startDate = startDate, endType = SchedulerEndType.NEVER),
+            planning = Planning(
+                startDate = startDate,
+                endType = endType,
+                endDate = endDate,
+                maxOccurrenceCount = maxOccurrenceCount,
+            ),
             enabled = enabled,
             nextRunAt = nextRunAt,
         )
@@ -330,6 +338,175 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T10:00:00Z"))
             scheduledPromptRepo.findDue(nowInstant).shouldBeEmpty()
+        }
+
+        // -------------------------------------------------------------------------
+        // End condition — pre-check (before execution)
+        // -------------------------------------------------------------------------
+
+        "tickClaim with ON_DATE already past: disables without executing (slot past endDate)" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            // endDate = 2025-12-25 (in the past), slot = 2026-01-01T08:00 (due, but past endDate)
+            val sp = scheduledPromptRepo.insertScheduledPrompt(
+                nextRunAt = Instant.parse("2026-01-01T08:00:00Z"),
+                endType = SchedulerEndType.ON_DATE,
+                endDate = LocalDate.of(2025, 12, 25),
+            )
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            runRepo.all().shouldBeEmpty()
+            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe false
+        }
+
+        "tickClaim with OCCURRENCES already reached: disables without inserting a run" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp = scheduledPromptRepo.insertScheduledPrompt(
+                nextRunAt = slot,
+                endType = SchedulerEndType.OCCURRENCES,
+                maxOccurrenceCount = 1,
+            )
+            // Pre-insert 1 completed run → already at max
+            runRepo.insert(ScheduledPromptRun(
+                scheduledPromptId = sp.id,
+                scheduledFor = slot.minusSeconds(86400),
+                status = RunStatus.DONE,
+                correlationId = "prev-done",
+            ))
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            // Only the pre-existing run, no new one inserted
+            runRepo.all() shouldHaveSize 1
+            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe false
+        }
+
+        // -------------------------------------------------------------------------
+        // End condition — ON_DATE (post-advance)
+        // -------------------------------------------------------------------------
+
+        "tickClaim with ON_DATE: disables when next slot is after endDate" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            // endDate = 2026-01-05 → next slot after claim = 2026-01-08 > endDate
+            val sp = scheduledPromptRepo.insertScheduledPrompt(
+                nextRunAt = slot,
+                endType = SchedulerEndType.ON_DATE,
+                endDate = LocalDate.of(2026, 1, 5),
+            )
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            runRepo.all() shouldHaveSize 1
+            runRepo.all().first().status shouldBe RunStatus.CLAIMED
+            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe false
+        }
+
+        "tickClaim with ON_DATE: does NOT disable when next slot is before endDate" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            // endDate = 2026-01-15 → next slot = 2026-01-08 < endDate → still active
+            val sp = scheduledPromptRepo.insertScheduledPrompt(
+                nextRunAt = slot,
+                endType = SchedulerEndType.ON_DATE,
+                endDate = LocalDate.of(2026, 1, 15),
+            )
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe true
+        }
+
+        "tickClaim with ON_DATE: disables when next slot equals endDate at timeUtc" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            // endDate = 2026-01-08, next slot = 2026-01-08T08:00 — slot is NOT after endDate@timeUtc → still active
+            // Actually: endDate@timeUtc = 2026-01-08T08:00, nextSlot = 2026-01-08T08:00 → isAfter is false → NOT disabled
+            val sp = scheduledPromptRepo.insertScheduledPrompt(
+                nextRunAt = slot,
+                endType = SchedulerEndType.ON_DATE,
+                endDate = LocalDate.of(2026, 1, 8),
+            )
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // End condition — OCCURRENCES
+        // -------------------------------------------------------------------------
+
+        "tickClaim with OCCURRENCES: disables when completed runs reach maxOccurrenceCount" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp = scheduledPromptRepo.insertScheduledPrompt(
+                nextRunAt = slot,
+                endType = SchedulerEndType.OCCURRENCES,
+                maxOccurrenceCount = 2,
+            )
+            // Pre-insert 1 completed run
+            runRepo.insert(ScheduledPromptRun(
+                scheduledPromptId = sp.id,
+                scheduledFor = slot.minusSeconds(86400),
+                status = RunStatus.DONE,
+                correlationId = "prev-1",
+            ))
+            // tickClaim inserts run #2 → total completed = 2 (prev + this one) ≥ maxOccurrenceCount = 2
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe false
+        }
+
+        "tickClaim with OCCURRENCES: does NOT disable when completed runs are below maxOccurrenceCount" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp = scheduledPromptRepo.insertScheduledPrompt(
+                nextRunAt = slot,
+                endType = SchedulerEndType.OCCURRENCES,
+                maxOccurrenceCount = 5,
+            )
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe true
+        }
+
+        "tickClaim with OCCURRENCES: SKIPPED runs do not count toward maxOccurrenceCount" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp = scheduledPromptRepo.insertScheduledPrompt(
+                nextRunAt = slot,
+                endType = SchedulerEndType.OCCURRENCES,
+                maxOccurrenceCount = 2,
+            )
+            // Pre-insert 1 SKIPPED run (should not count)
+            runRepo.insert(ScheduledPromptRun(
+                scheduledPromptId = sp.id,
+                scheduledFor = slot.minusSeconds(86400),
+                status = RunStatus.SKIPPED,
+                correlationId = "skipped",
+            ))
+            // tickClaim inserts run #1 (non-skipped) → total completed = 1 < maxOccurrenceCount = 2
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // End condition — NEVER
+        // -------------------------------------------------------------------------
+
+        "tickClaim with NEVER: does not disable regardless of run count" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            repeat(10) { i ->
+                runRepo.insert(ScheduledPromptRun(
+                    scheduledPromptId = sp.id,
+                    scheduledFor = slot.minusSeconds((i + 1) * 86400L),
+                    status = RunStatus.DONE,
+                    correlationId = "done-$i",
+                ))
+            }
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe true
         }
     }
 }
