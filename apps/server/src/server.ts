@@ -439,7 +439,7 @@ PORT_PROMISE.then(async (PORT) => {
   // Start bundled AgentOS if no external instance is configured.
   // Done before app.listen() so the proxy target is correct from the first request.
   if (!process.env.AGENTOS_PORT && !process.env.AGENTOS_HOSTNAME) {
-    agentosProcess = await startAgentos(PORT + 1)
+    agentosProcess = await startAgentos()
     if (agentosProcess) {
       agentosUrl = `http://localhost:${agentosProcess.port}`
       debugLog('AGENTOS', `Proxy target updated to ${agentosUrl}`)

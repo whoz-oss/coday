@@ -9,8 +9,8 @@ import { findAvailablePort } from './find-available-port'
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Default port for AgentOS — starts right after the TypeScript server port */
-const AGENTOS_DEFAULT_PORT = 3001
+/** Default port for AgentOS — matches the historic env-var default in server.ts */
+const AGENTOS_DEFAULT_PORT = 8124
 
 /** How often (ms) to poll the Spring Boot health endpoint while waiting for startup */
 const HEALTH_POLL_INTERVAL_MS = 2_000
@@ -163,7 +163,7 @@ async function waitForHealthy(port: number): Promise<boolean> {
  *
  * @returns An `AgentosProcess` handle when AgentOS is healthy, or `null`.
  */
-export async function startAgentos(startPort?: number): Promise<AgentosProcess | null> {
+export async function startAgentos(): Promise<AgentosProcess | null> {
   // ------------------------------------------------------------------
   // 1. Resolve JAR path
   // ------------------------------------------------------------------
@@ -194,7 +194,7 @@ export async function startAgentos(startPort?: number): Promise<AgentosProcess |
   // ------------------------------------------------------------------
   let port: number
   try {
-    port = await findAvailablePort(startPort ?? AGENTOS_DEFAULT_PORT, 10)
+    port = await findAvailablePort(AGENTOS_DEFAULT_PORT, 10)
   } catch (err) {
     debugLog('AGENTOS', 'Could not find an available port — skipping AgentOS startup:', err)
     return null
