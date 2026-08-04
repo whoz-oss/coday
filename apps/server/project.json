@@ -64,24 +64,8 @@
         "commands": ["tsx watch apps/server/src/server.ts"]
       }
     },
-    "build-agentos": {
-      "executor": "nx:run-commands",
-      "outputs": ["{projectRoot}/dist/agentos"],
-      "options": {
-        "commands": [
-          "mkdir -p apps/server/dist/agentos/plugins",
-          "cd agentos && ./gradlew :agentos-service:bootJar :agentos-bash-plugin:jar :agentos-file-plugin:jar :agentos-mcp-plugin:jar :agentos-tmux-plugin:jar --no-daemon",
-          "cp agentos/agentos-service/build/libs/agentos-service.jar apps/server/dist/agentos/",
-          "cp agentos/agentos-bash-plugin/build/libs/agentos-bash-plugin-*.jar apps/server/dist/agentos/plugins/",
-          "cp agentos/agentos-file-plugin/build/libs/agentos-file-plugin-*.jar apps/server/dist/agentos/plugins/",
-          "cp agentos/agentos-mcp-plugin/build/libs/agentos-mcp-plugin-*.jar apps/server/dist/agentos/plugins/",
-          "cp agentos/agentos-tmux-plugin/build/libs/agentos-tmux-plugin-*.jar apps/server/dist/agentos/plugins/"
-        ],
-        "parallel": false
-      }
-    },
     "nx-release-publish": {
-      "dependsOn": ["build", "build-agentos"],
+      "dependsOn": ["build"],
       "options": {
         "packageRoot": "apps/server/dist"
       }
