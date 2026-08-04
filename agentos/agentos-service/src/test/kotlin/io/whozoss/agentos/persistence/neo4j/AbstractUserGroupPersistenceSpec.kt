@@ -373,7 +373,7 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
             userGroupRepo.addUsers(g2.id, listOf("alice@example.com"))
             grantAdmin(g1.id, alice)
 
-            userGroupRepo.removeUserFromGroupsInNamespace("alice@example.com", ns1.id)
+            userGroupRepo.removeUserFromGroupsInNamespace(alice.id.toString(), ns1.id)
 
             userGroupRepo.findMembers(g1.id).shouldBeEmpty()
             // ns2 group membership must survive — the call is scoped to ns1 only.
@@ -383,11 +383,11 @@ abstract class AbstractUserGroupPersistenceSpec : StringSpec() {
         "removeUserFromGroupsInNamespace does not affect other users' membership in the same groups" {
             val ns = namespaceRepo.save(namespace())
             val g = userGroupRepo.save(userGroup(ns.id, "Group"))
-            userRepo.save(user("alice@example.com"))
+            val alice = userRepo.save(user("alice@example.com"))
             userRepo.save(user("bob@example.com"))
             userGroupRepo.addUsers(g.id, listOf("alice@example.com", "bob@example.com"))
 
-            userGroupRepo.removeUserFromGroupsInNamespace("alice@example.com", ns.id)
+            userGroupRepo.removeUserFromGroupsInNamespace(alice.id.toString(), ns.id)
 
             userGroupRepo.findMembers(g.id).map { it.externalId } shouldBe listOf("bob@example.com")
         }
