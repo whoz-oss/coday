@@ -70,8 +70,9 @@ function sha256File(filePath) {
 async function fetchChecksums(assets, tag) {
   const checksumAsset = assets.find((a) => a.name === 'checksums.sha256')
   if (!checksumAsset) {
-    console.warn(`[coday-server] No checksums.sha256 found in release ${tag} — skipping integrity check`)
-    return null
+    const err = new Error(`No checksums.sha256 found in release ${tag} — aborting download to prevent supply-chain attack`)
+    err.securityFailure = true
+    throw err
   }
   validateDownloadUrl(checksumAsset.browser_download_url)
   const res = await fetch(checksumAsset.browser_download_url, {
@@ -149,30 +150,29 @@ async function main() {
     try {
       await downloadFile(found.browser_download_url, destPath)
 
-      // Verify checksum if manifest is available
-      if (checksums) {
-        // The manifest uses the stable filename (basename of dest)
-        const stableFilename = dest.split('/').pop()
-        const expectedHash = checksums[stableFilename]
-        if (!expectedHash) {
-          console.warn(`\n[coday-server]   ⚠ No checksum entry for ${stableFilename} — cannot verify integrity`)
-        } else {
-          const actualHash = sha256File(destPath)
-          if (actualHash !== expectedHash) {
-            process.stdout.write(` INTEGRITY FAILURE\n`)
-            console.error(`[coday-server]   ✗ Checksum mismatch for ${stableFilename}:`)
-            console.error(`[coday-server]     expected: ${expectedHash}`)
-            console.error(`[coday-server]     actual:   ${actualHash}`)
-            // Remove the corrupted file
-            import('fs').then(({ unlinkSync }) => { try { unlinkSync(destPath) } catch {} })
-            failed = true
-            continue
-          }
-          process.stdout.write(' ✓\n')
-        }
-      } else {
-        process.stdout.write(' done\n')
+      // Verify checksum — checksums is always defined here (fetchChecksums throws if absent)
+      // The manifest uses the stable filename (basename of dest)
+      const stableFilename = dest.split('/').pop()
+      const expectedHash = checksums[stableFilename]
+      if (!expectedHash) {
+        process.stdout.write(` INTEGRITY FAILURE\n`)
+        console.error(`[coday-server]   ✗ No checksum entry for ${stableFilename} in manifest — aborting`)
+        import('fs').then(({ unlinkSync }) => { try { unlinkSync(destPath) } catch {} })
+        failed = true
+        continue
       }
+      const actualHash = sha256File(destPath)
+      if (actualHash !== expectedHash) {
+        process.stdout.write(` INTEGRITY FAILURE\n`)
+        console.error(`[coday-server]   ✗ Checksum mismatch for ${stableFilename}:`)
+        console.error(`[coday-server]     expected: ${expectedHash}`)
+        console.error(`[coday-server]     actual:   ${actualHash}`)
+        // Remove the corrupted file
+        import('fs').then(({ unlinkSync }) => { try { unlinkSync(destPath) } catch {} })
+        failed = true
+        continue
+      }
+      process.stdout.write(' ✓\n')
     } catch (err) {
       process.stdout.write(` FAILED: ${err.message}\n`)
       failed = true
@@ -187,6 +187,11 @@ async function main() {
 }
 
 main().catch((err) => {
-  // Never fail the install — missing JARs just means AgentOS won't start
+  if (err.securityFailure) {
+    // Hard fail on integrity/security errors — a missing checksum manifest is a red flag
+    console.error('[coday-server] SECURITY ERROR:', err.message)
+    process.exit(1)
+  }
+  // Never fail the install for network/availability issues — missing JARs just means AgentOS won't start
   console.warn('[coday-server] postinstall error:', err.message)
 })
