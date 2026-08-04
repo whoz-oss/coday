@@ -35,6 +35,7 @@ import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
+import { checkAgentosJars } from './lib/agentos-lifecycle'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -428,6 +429,14 @@ PORT_PROMISE.then(async (PORT) => {
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })
+
+  // Check AgentOS JAR availability at startup (log only — no side effects).
+  // A failure here must never prevent the server from starting.
+  try {
+    await checkAgentosJars()
+  } catch (error) {
+    debugLog('AGENTOS', 'Unexpected error during JAR check (non-fatal):', error)
+  }
 
   // Start thread cleanup service after server is running
   try {
