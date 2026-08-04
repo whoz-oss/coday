@@ -3,6 +3,7 @@ package io.whozoss.agentos.namespace
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
+import io.whozoss.agentos.membership.NoDuplicateUserIdsValidator
 import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import jakarta.validation.ConstraintValidatorContext
 import java.util.UUID

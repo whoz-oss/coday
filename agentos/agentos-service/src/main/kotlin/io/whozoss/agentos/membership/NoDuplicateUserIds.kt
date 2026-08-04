@@ -1,4 +1,4 @@
-package io.whozoss.agentos.namespace
+package io.whozoss.agentos.membership
 
 import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import jakarta.validation.Constraint

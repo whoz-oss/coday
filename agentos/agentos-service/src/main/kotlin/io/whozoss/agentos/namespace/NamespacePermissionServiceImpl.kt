@@ -2,10 +2,12 @@ package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.membership.resolveMembers
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.membership.MemberItem
 import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
@@ -121,46 +123,9 @@ class NamespacePermissionServiceImpl(
         }
     }
 
-    private fun grant(
-        userIdStr: String,
-        namespaceId: String,
-        relation: PermissionRelation,
-    ) {
-        permissionService.grantPermission(userIdStr, EntityType.NAMESPACE, namespaceId, relation)
-        logger.info { "Granted $relation on namespace $namespaceId to user $userIdStr" }
-    }
-
-    private fun revoke(
-        userIdStr: String,
-        namespaceId: String,
-        relation: PermissionRelation,
-    ) {
-        permissionService.revokePermission(userIdStr, EntityType.NAMESPACE, namespaceId, relation)
-        logger.info { "Revoked $relation on namespace $namespaceId from user $userIdStr" }
-    }
-
-    /**
-     * Atomically promotes [:MEMBER] to [:ADMIN] on a namespace.
-     * The [:STARRED] edge survives untouched (separate relationship).
-     */
-    private fun promote(
-        userIdStr: String,
-        namespaceId: String,
-    ) {
-        permissionService.promoteMemberToAdmin(userIdStr, EntityType.NAMESPACE, namespaceId)
-        logger.info { "Promoted MEMBER to ADMIN on namespace $namespaceId for user $userIdStr" }
-    }
-
-    /**
-     * Atomically demotes [:ADMIN] to [:MEMBER] on a namespace.
-     * The [:STARRED] edge survives untouched (separate relationship).
-     */
-    private fun demote(
-        userIdStr: String,
-        namespaceId: String,
-    ) {
-        permissionService.demoteAdminToMember(userIdStr, EntityType.NAMESPACE, namespaceId)
-        logger.info { "Demoted ADMIN to MEMBER on namespace $namespaceId for user $userIdStr" }
+    override fun getMembers(namespaceId: UUID): List<MemberItem> {
+        namespaceService.getById(namespaceId)
+        return resolveMembers(namespaceId, EntityType.NAMESPACE, permissionService, userService)
     }
 
     @Transactional
@@ -168,7 +133,7 @@ class NamespacePermissionServiceImpl(
         namespaceId: UUID,
         members: List<UserMembershipRole>,
         callerIsSuperAdmin: Boolean,
-    ): List<NamespaceUserListItem> {
+    ): List<MemberItem> {
         namespaceService.getById(namespaceId)
 
         // Duplicate-userId check is enforced by @NoDuplicateUserIds at the controller level.
@@ -239,7 +204,49 @@ class NamespacePermissionServiceImpl(
             permissionService.applyShareBatch(EntityType.NAMESPACE, namespaceId.toString(), entries)
         }
 
-        return resolveNamespaceUsers(namespaceId, permissionService, userService)
+        return resolveMembers(namespaceId, EntityType.NAMESPACE, permissionService, userService)
+    }
+
+    private fun grant(
+        userIdStr: String,
+        namespaceId: String,
+        relation: PermissionRelation,
+    ) {
+        permissionService.grantPermission(userIdStr, EntityType.NAMESPACE, namespaceId, relation)
+        logger.info { "Granted $relation on namespace $namespaceId to user $userIdStr" }
+    }
+
+    private fun revoke(
+        userIdStr: String,
+        namespaceId: String,
+        relation: PermissionRelation,
+    ) {
+        permissionService.revokePermission(userIdStr, EntityType.NAMESPACE, namespaceId, relation)
+        logger.info { "Revoked $relation on namespace $namespaceId from user $userIdStr" }
+    }
+
+    /**
+     * Atomically promotes [:MEMBER] to [:ADMIN] on a namespace.
+     * The [:STARRED] edge survives untouched (separate relationship).
+     */
+    private fun promote(
+        userIdStr: String,
+        namespaceId: String,
+    ) {
+        permissionService.promoteMemberToAdmin(userIdStr, EntityType.NAMESPACE, namespaceId)
+        logger.info { "Promoted MEMBER to ADMIN on namespace $namespaceId for user $userIdStr" }
+    }
+
+    /**
+     * Atomically demotes [:ADMIN] to [:MEMBER] on a namespace.
+     * The [:STARRED] edge survives untouched (separate relationship).
+     */
+    private fun demote(
+        userIdStr: String,
+        namespaceId: String,
+    ) {
+        permissionService.demoteAdminToMember(userIdStr, EntityType.NAMESPACE, namespaceId)
+        logger.info { "Demoted ADMIN to MEMBER on namespace $namespaceId for user $userIdStr" }
     }
 
     companion object : KLogging()
