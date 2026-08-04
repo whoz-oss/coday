@@ -7,15 +7,6 @@
   "bin": {
     "coday-server": "./bin.js"
   },
-  "files": [
-    "bin.js",
-    "postinstall.js",
-    "server/",
-    "coday-client/"
-  ],
-  "scripts": {
-    "postinstall": "node postinstall.js"
-  },
   "dependencies": {
     "@vscode/ripgrep": "catalog:",
     "express": "catalog:",
