@@ -3,6 +3,13 @@ import { agentosReadyGuard } from './guards/agentos-ready.guard'
 
 export const AGENTOS_ROUTES: Route[] = [
   {
+    // OAuth popup callback — standalone route outside the AgentOS shell.
+    // The popup window does not need the full layout; it bootstraps, sends postMessage, and closes.
+    path: 'oauth/callback',
+    loadComponent: () =>
+      import('./components/oauth-callback/oauth-callback.component').then((m) => m.OAuthCallbackComponent),
+  },
+  {
     path: '',
     loadComponent: () =>
       import('./components/agentos-shell/agentos-shell.component').then((m) => m.AgentosShellComponent),
