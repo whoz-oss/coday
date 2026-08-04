@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
@@ -46,6 +47,7 @@ class UserController(
     private val userService: UserService,
     permissionService: PermissionService,
     private val userGroupService: UserGroupService,
+    private val userOffboardingService: UserOffboardingService,
 ) : UserApi {
     private val crud =
         EntityCrudDelegate(
@@ -125,6 +127,24 @@ class UserController(
     override fun delete(
         @PathVariable id: UUID,
     ) = crud.delete(id)
+
+    @DeleteMapping("/by-external-id/{externalId}/access")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Revoke a user's UserGroup and Namespace access by external id, scoped to one namespace")
+    override fun revokeNamespaceAccessByExternalId(
+        @PathVariable externalId: String,
+        @RequestParam namespaceId: UUID,
+    ) = userOffboardingService.revokeNamespaceAccessByExternalId(userExternalId = externalId, namespaceId = namespaceId)
+
+    @DeleteMapping("/{id}/access")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @Operation(summary = "Revoke a user's UserGroup and Namespace access, scoped to one namespace")
+    override fun revokeNamespaceAccess(
+        @PathVariable id: UUID,
+        @RequestParam namespaceId: UUID,
+    ) = userOffboardingService.revokeNamespaceAccess(userId = id, namespaceId = namespaceId)
 
     @GetMapping("/me")
     @ResponseStatus(HttpStatus.OK)
