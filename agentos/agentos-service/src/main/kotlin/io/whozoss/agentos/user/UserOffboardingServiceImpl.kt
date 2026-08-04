@@ -21,30 +21,10 @@ class UserOffboardingServiceImpl(
         userId: UUID,
         namespaceId: UUID,
     ) {
-        val user = userService.getById(userId)
-        revokeNamespaceAccess(user = user, namespaceId = namespaceId)
-    }
-
-    @Transactional
-    override fun revokeNamespaceAccessByExternalId(
-        userExternalId: String,
-        namespaceId: UUID,
-    ) {
-        val user = userService.findByExternalId(userExternalId) ?: run {
-            logger.warn { "[UserOffboardingService] User not found for externalId: $userExternalId" }
-            throw ResourceNotFoundException("User not found for externalId: $userExternalId")
-        }
-        revokeNamespaceAccess(user = user, namespaceId = namespaceId)
-    }
-
-    private fun revokeNamespaceAccess(
-        user: User,
-        namespaceId: UUID,
-    ) {
-        val userIdStr = user.id.toString()
+        val userIdStr = userId.toString()
         val namespaceIdStr = namespaceId.toString()
 
-        userGroupRepository.removeUserFromGroupsInNamespace(user.externalId, namespaceId)
+        userGroupRepository.removeUserFromGroupsInNamespace(userIdStr, namespaceId)
 
         runCatching {
             permissionService.revokePermission(userIdStr, EntityType.NAMESPACE, namespaceIdStr, PermissionRelation.ADMIN)
@@ -59,6 +39,18 @@ class UserOffboardingServiceImpl(
         // does not help if the user held no namespace relation at all.
         permissionService.clearUserCache(userIdStr)
         logger.info { "Revoked group and namespace access for user $userIdStr on namespace $namespaceId" }
+    }
+
+    @Transactional
+    override fun revokeNamespaceAccessByExternalId(
+        userExternalId: String,
+        namespaceId: UUID,
+    ) {
+        val user = userService.findByExternalId(userExternalId) ?: run {
+            logger.warn { "[UserOffboardingService] User not found for externalId: $userExternalId" }
+            throw ResourceNotFoundException("User not found for externalId: $userExternalId")
+        }
+        revokeNamespaceAccess(userId = user.id, namespaceId = namespaceId)
     }
 
     companion object : KLogging()

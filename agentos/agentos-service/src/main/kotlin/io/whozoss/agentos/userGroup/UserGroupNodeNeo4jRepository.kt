@@ -76,13 +76,13 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
      */
     @Query(
         $$"""
-        MATCH (u:User {externalId: $userExternalId})-[r:MEMBER|ADMIN]->(g:UserGroup)
+        MATCH (u:User {id: $userId})-[r:MEMBER|ADMIN]->(g:UserGroup)
         WHERE g.namespaceId = $namespaceId
         DELETE r
         """,
     )
     fun removeUserFromGroupsInNamespace(
-        userExternalId: String,
+        userId: String,
         namespaceId: String,
     )
 }

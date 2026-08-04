@@ -138,8 +138,8 @@ open class Neo4jUserGroupRepository(
         neo4jRepository.removeUsers(userGroupId.toString(), userExternalIds.toList())
     }
 
-    override fun removeUserFromGroupsInNamespace(userExternalId: String, namespaceId: UUID) {
-        neo4jRepository.removeUserFromGroupsInNamespace(userExternalId, namespaceId.toString())
+    override fun removeUserFromGroupsInNamespace(userId: String, namespaceId: UUID) {
+        neo4jRepository.removeUserFromGroupsInNamespace(userId, namespaceId.toString())
     }
 
     /**

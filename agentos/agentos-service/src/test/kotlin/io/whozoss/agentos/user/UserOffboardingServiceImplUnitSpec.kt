@@ -10,7 +10,7 @@ import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.userGroup.UserGroupRepository
-import java.util.UUID
+import java.util.*
 
 class UserOffboardingServiceImplUnitSpec :
     StringSpec({
@@ -23,22 +23,20 @@ class UserOffboardingServiceImplUnitSpec :
         "revokeNamespaceAccess removes the user from groups within that namespace only" {
             val userId = UUID.randomUUID()
             val namespaceId = UUID.randomUUID()
-            val target = user(userId, externalId = "alice@example.com")
-            val userService = mockk<UserService> { every { getById(userId) } returns target }
+            val userService = mockk<UserService>(relaxed = true)
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
             val permissionService = mockk<PermissionService>(relaxed = true)
 
             val service = UserOffboardingServiceImpl(userService, userGroupRepository, permissionService)
             service.revokeNamespaceAccess(userId, namespaceId)
 
-            verify(exactly = 1) { userGroupRepository.removeUserFromGroupsInNamespace("alice@example.com", namespaceId) }
+            verify(exactly = 1) { userGroupRepository.removeUserFromGroupsInNamespace(userId.toString(), namespaceId) }
         }
 
         "revokeNamespaceAccess revokes both ADMIN and MEMBER relations on the given namespace" {
             val userId = UUID.randomUUID()
             val namespaceId = UUID.randomUUID()
-            val target = user(userId)
-            val userService = mockk<UserService> { every { getById(userId) } returns target }
+            val userService = mockk<UserService>(relaxed = true)
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
             val permissionService = mockk<PermissionService>(relaxed = true)
 
@@ -67,8 +65,7 @@ class UserOffboardingServiceImplUnitSpec :
             val userId = UUID.randomUUID()
             val namespaceId = UUID.randomUUID()
             val otherNamespaceId = UUID.randomUUID()
-            val target = user(userId)
-            val userService = mockk<UserService> { every { getById(userId) } returns target }
+            val userService = mockk<UserService>(relaxed = true)
             val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
             val permissionService = mockk<PermissionService>(relaxed = true)
 
@@ -131,19 +128,6 @@ class UserOffboardingServiceImplUnitSpec :
             }
         }
 
-        "revokeNamespaceAccess throws 404 when the user does not exist" {
-            val userId = UUID.randomUUID()
-            val namespaceId = UUID.randomUUID()
-            val userService = mockk<UserService> { every { getById(userId) } throws ResourceNotFoundException("Entity $userId not found") }
-            val userGroupRepository = mockk<UserGroupRepository>(relaxed = true)
-            val permissionService = mockk<PermissionService>(relaxed = true)
-
-            val service = UserOffboardingServiceImpl(userService, userGroupRepository, permissionService)
-
-            shouldThrow<ResourceNotFoundException> { service.revokeNamespaceAccess(userId, namespaceId) }
-            verify(exactly = 0) { userGroupRepository.removeUserFromGroupsInNamespace(any(), any()) }
-        }
-
         "revokeNamespaceAccessByExternalId resolves the user by externalId and removes them from groups in that namespace" {
             val userId = UUID.randomUUID()
             val namespaceId = UUID.randomUUID()
@@ -155,7 +139,7 @@ class UserOffboardingServiceImplUnitSpec :
             val service = UserOffboardingServiceImpl(userService, userGroupRepository, permissionService)
             service.revokeNamespaceAccessByExternalId("bob@example.com", namespaceId)
 
-            verify(exactly = 1) { userGroupRepository.removeUserFromGroupsInNamespace("bob@example.com", namespaceId) }
+            verify(exactly = 1) { userGroupRepository.removeUserFromGroupsInNamespace(userId.toString(), namespaceId) }
         }
 
         "revokeNamespaceAccessByExternalId revokes both ADMIN and MEMBER relations and clears the cache" {
