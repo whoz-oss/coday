@@ -1,3 +1,13 @@
+## 0.238.1 (2026-08-04)
+
+### 🩹 Fixes
+
+- rollback agentos bundling attepmpt ([#1206](https://github.com/whoz-oss/coday/pull/1206))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.238.0 (2026-08-04)
 
 ### 🚀 Features
