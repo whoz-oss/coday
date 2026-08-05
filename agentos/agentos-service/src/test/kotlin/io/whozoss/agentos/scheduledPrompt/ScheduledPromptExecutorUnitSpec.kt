@@ -57,7 +57,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
 
     private val properties = SchedulerProperties(
         maxConcurrentExecutions = 5,
-        staggerDelayMs = 0L,
         leaseMinutes = 30L,
     )
 
@@ -604,7 +603,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             // Use a very short lease so the timeout triggers immediately.
             val shortLeaseProperties = SchedulerProperties(
                 maxConcurrentExecutions = 5,
-                staggerDelayMs = 0L,
                 leaseMinutes = 0L, // 0 minutes → withTimeoutOrNull(0) times out immediately
             )
 

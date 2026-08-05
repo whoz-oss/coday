@@ -14,7 +14,6 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -61,7 +60,8 @@ import java.util.UUID
  * A [Semaphore] caps concurrent in-flight coroutines to
  * [SchedulerProperties.maxConcurrentExecutions]. Unlike `java.util.concurrent.Semaphore`,
  * [Semaphore.acquire] **suspends** instead of blocking an OS thread.
- * A [delay] of [SchedulerProperties.staggerDelayMs] ms separates each launch.
+ * Burst control is not needed at this level: Spring AI's `RetryTemplate` on each
+ * `ChatModel` handles 429 (rate-limit) responses with exponential backoff.
  *
  * ### Completion check
  *
@@ -171,6 +171,8 @@ class ScheduledPromptExecutor(
      * A [Semaphore] caps concurrent in-flight coroutines to
      * [SchedulerProperties.maxConcurrentExecutions]. [Semaphore.withPermit] acquires
      * before the block and releases in a finally — exception-safe by construction.
+     * Burst control is delegated to Spring AI's `RetryTemplate` (exponential backoff
+     * on 429 responses) — no artificial stagger delay between launches.
      *
      * ### Delivery guarantee: at-least-once
      *
@@ -201,8 +203,6 @@ class ScheduledPromptExecutor(
                             executeUserRun(userRun)
                         }
                     }
-
-                    delay(properties.staggerDelayMs)
                 }
             }
 
