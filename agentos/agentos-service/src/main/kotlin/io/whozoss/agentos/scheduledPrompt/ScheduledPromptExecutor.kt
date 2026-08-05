@@ -60,7 +60,9 @@ import java.util.UUID
  *
  * ### Completion check
  *
- * After each UserRun closes, the parent Run is checked via two EXISTS queries:
+ * After each batch of UserRuns finishes, the distinct Runs touched in that batch are
+ * checked via [checkCompletion] — one call per Run, not per UserRun. Each check uses
+ * two LIMIT 1 queries:
  * 1. [ScheduledPromptUserRunRepository.hasAnyActive] — fast-path exit when work is still in flight.
  * 2. [ScheduledPromptUserRunRepository.hasAnyFailed] — only reached when all UserRuns are terminal.
  * Result: FAILED if any UserRun failed, DONE otherwise.
@@ -178,10 +180,12 @@ class ScheduledPromptExecutor(
         val semaphore = Semaphore(properties.maxConcurrentExecutions)
         val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
 
-        coroutineScope {
-            var batch: List<ScheduledPromptUserRun>
-            do {
-                batch = userRunRepository.claimBatch(leaseDuration, properties.maxConcurrentExecutions)
+        var batch: List<ScheduledPromptUserRun>
+        do {
+            batch = userRunRepository.claimBatch(leaseDuration, properties.maxConcurrentExecutions)
+            val runIds = batch.map { it.runId }.toSet()
+
+            coroutineScope {
                 for (userRun in batch) {
                     logger.info {
                         "[Executor] Phase B: claimed UserRun=${userRun.id} runId=${userRun.runId} userId=${userRun.userId}"
@@ -198,8 +202,13 @@ class ScheduledPromptExecutor(
 
                     delay(properties.staggerDelayMs)
                 }
-            } while (batch.isNotEmpty())
-        }
+            }
+
+            // All UserRuns in this batch have finished — check completion once per Run.
+            // The sweep recoverOrphanedRunningRuns covers crashes between markTerminal
+            // and this point.
+            runIds.forEach { checkCompletion(it) }
+        } while (batch.isNotEmpty())
     }
 
     // -------------------------------------------------------------------------
@@ -225,7 +234,6 @@ class ScheduledPromptExecutor(
         if (scheduledPrompt == null) {
             logger.warn { "[Executor] ScheduledPrompt ${run.scheduledPromptId} not found — marking UserRun=${userRun.id} FAILED" }
             markFailed(userRun.id, now, "ScheduledPrompt ${run.scheduledPromptId} not found")
-            checkCompletion(runId)
             return
         }
 
@@ -233,7 +241,6 @@ class ScheduledPromptExecutor(
         if (namespaceId == null) {
             logger.warn { "[Executor] Platform-scope ScheduledPrompt ${scheduledPrompt.id} — skipping UserRun=${userRun.id}" }
             markFailed(userRun.id, now, "Platform-scope ScheduledPrompt cannot be executed per-user")
-            checkCompletion(runId)
             return
         }
 
@@ -241,7 +248,6 @@ class ScheduledPromptExecutor(
         if (user == null) {
             logger.warn { "[Executor] User $userId not found — marking UserRun=${userRun.id} FAILED" }
             markFailed(userRun.id, now, "User $userId not found")
-            checkCompletion(runId)
             return
         }
 
@@ -257,7 +263,6 @@ class ScheduledPromptExecutor(
                     "— marking UserRun=${userRun.id} FAILED"
             }
             markFailed(userRun.id, now, "PromptTemplate ${scheduledPrompt.promptTemplateId} not found")
-            checkCompletion(runId)
             return
         }
 
@@ -270,7 +275,6 @@ class ScheduledPromptExecutor(
                     "— marking UserRun=${userRun.id} FAILED"
             }
             markFailed(userRun.id, now, "PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content")
-            checkCompletion(runId)
             return
         }
 
@@ -283,7 +287,6 @@ class ScheduledPromptExecutor(
                     "— marking UserRun=${userRun.id} FAILED"
             }
             markFailed(userRun.id, now, "AgentConfig ${scheduledPrompt.agentConfigId} not found")
-            checkCompletion(runId)
             return
         }
 
@@ -335,14 +338,13 @@ class ScheduledPromptExecutor(
             }
 
             // Step 5: Wait for the Case to finish, then close the UserRun.
-            waitForCaseAndClose(userRun.id, caseId, runId)
+            waitForCaseAndClose(userRun.id, caseId)
 
         } catch (e: Exception) {
             logger.error(e) {
                 "[Executor] UserRun=${userRun.id} failed during Case creation/launch for user=$userId"
             }
             markFailed(userRun.id, now, e.message ?: "Unknown error")
-            checkCompletion(runId)
         }
     }
 
@@ -356,7 +358,6 @@ class ScheduledPromptExecutor(
     private suspend fun waitForCaseAndClose(
         userRunId: UUID,
         caseId: UUID,
-        runId: UUID,
     ) {
         val deadline = Instant.now(clock).plusMillis(Duration.ofMinutes(properties.leaseMinutes).toMillis())
 
@@ -368,7 +369,6 @@ class ScheduledPromptExecutor(
                     "[Executor] UserRun=$userRunId lease expired while waiting for Case $caseId — marking FAILED"
                 }
                 markFailed(userRunId, now, "Lease expired waiting for Case $caseId")
-                checkCompletion(runId)
                 return
             }
 
@@ -393,7 +393,6 @@ class ScheduledPromptExecutor(
                         "[Executor] UserRun=$userRunId closed as $terminalUserRunStatus " +
                             "(caseId=$caseId status=$caseStatus)"
                     }
-                    checkCompletion(runId)
                     return
                 }
 
@@ -403,7 +402,6 @@ class ScheduledPromptExecutor(
                     logger.info {
                         "[Executor] UserRun=$userRunId closed as DONE (caseId=$caseId IDLE)"
                     }
-                    checkCompletion(runId)
                     return
                 }
 
