@@ -21,11 +21,22 @@
   position: relative;
   height: 100px;
   width: 24px;
-  border: 1px solid rgba(150, 150, 150, 0.35);
+  border: none;
   border-radius: 0 0 50rem 50rem;
-  background-color: var(--color-bg, rgba(20, 20, 20, 0.7));
+  background-color: #333333;
   cursor: default;
   overflow: visible;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: -3px;
+    top: 0px;
+    width: calc(100% + 6px);
+    height: 4px;
+    border-radius: 50rem;
+    background: #333333;
+  }
 }
 
 .body {
@@ -40,7 +51,7 @@
 
 .shine {
   position: absolute;
-  left: 10%;
+  left: 20%;
   top: 0;
   width: 10%;
   height: 100%;
@@ -258,6 +269,16 @@
   100% {
     background: rgba(255, 255, 255, 0);
     transform: scale(0.6);
+  }
+}
+
+:host-context(:root:not([data-theme='dark'])) {
+  .tube {
+    background-color: #dddddd;
+
+    &::after {
+      background: #dddddd;
+    }
   }
 }
 
