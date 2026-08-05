@@ -256,7 +256,7 @@ class SchedulerScanner(
     /**
      * Check if the end condition is already reached BEFORE executing.
      *
-     * - **ON_DATE**: the current slot (nextRunAt) falls on or after [Planning.endDate] (exclusive boundary) at [Recurrence.timeUtc].
+     * - **ON_DATE**: the current slot (nextRunAt) falls on or after [Planning.endDate] at 00:00 UTC (exclusive — the prompt does not run from endDate onwards).
      * - **OCCURRENCES**: the number of completed (non-SKIPPED) runs has already reached
      *   [Planning.maxOccurrenceCount].
      * - **NEVER**: never reached.
@@ -267,7 +267,7 @@ class SchedulerScanner(
             SchedulerEndType.NEVER -> false
             SchedulerEndType.ON_DATE -> {
                 val endInstant = planning.endDate
-                    ?.atTime(scheduledPrompt.recurrence.timeUtc)
+                    ?.atStartOfDay()
                     ?.toInstant(ZoneOffset.UTC)
                 endInstant != null && !scheduledPrompt.nextRunAt.isBefore(endInstant)
             }
@@ -284,7 +284,7 @@ class SchedulerScanner(
      *
      * Called after advancing nextRunAt. Checks the NEXT slot, not the current one.
      *
-     * - **ON_DATE**: the next slot falls on or after [Planning.endDate] (exclusive boundary) at [Recurrence.timeUtc].
+     * - **ON_DATE**: the next slot falls on or after [Planning.endDate] at 00:00 UTC (exclusive — the prompt does not run from endDate onwards).
      * - **OCCURRENCES**: the number of completed (non-SKIPPED) runs (including the one just
      *   inserted) has reached [Planning.maxOccurrenceCount].
      * - **NEVER**: no end condition, never disables.
@@ -295,7 +295,7 @@ class SchedulerScanner(
             SchedulerEndType.NEVER -> false
             SchedulerEndType.ON_DATE -> {
                 val endInstant = planning.endDate
-                    ?.atTime(scheduledPrompt.recurrence.timeUtc)
+                    ?.atStartOfDay()
                     ?.toInstant(ZoneOffset.UTC)
                 endInstant != null && !nextSlot.isBefore(endInstant)
             }

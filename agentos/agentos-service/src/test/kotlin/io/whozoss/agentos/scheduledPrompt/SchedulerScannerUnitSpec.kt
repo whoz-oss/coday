@@ -495,12 +495,13 @@ class SchedulerScannerUnitSpec : StringSpec() {
             scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe true
         }
 
-        "tickClaim with ON_DATE: disables when next slot equals endDate at timeUtc (exclusive boundary)" {
+        "tickClaim with ON_DATE: last valid run is the day before endDate (exclusive at midnight)" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
-            // slot = 2026-01-01T08:00 (Jan 1), endDate = 2026-01-08 (exclusive)
-            // current slot Jan 1 < endDate → runs; next slot Jan 8 == endInstant → !isBefore → disabled
+            // endDate = 2026-01-08 (exclusive) → endInstant = 2026-01-08T00:00Z
+            // current slot Jan 1 08:00 < Jan 8 00:00 → runs
+            // next slot Jan 8 08:00 >= Jan 8 00:00 → !isBefore → disables after
             val sp = scheduledPromptRepo.insertScheduledPrompt(
                 nextRunAt = slot,
                 endType = SchedulerEndType.ON_DATE,

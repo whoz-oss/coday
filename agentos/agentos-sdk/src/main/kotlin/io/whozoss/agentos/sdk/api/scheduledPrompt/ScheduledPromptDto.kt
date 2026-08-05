@@ -61,7 +61,7 @@ data class RecurrenceDto(
  * [startDate] is the earliest date on which a firing may occur.
  * [endType] controls termination:
  * - NEVER: runs indefinitely.
- * - ON_DATE: stops after [endDate] (required, must be strictly after [startDate]).
+ * - ON_DATE: stops before [endDate] at 00:00 UTC (exclusive, required, must be strictly after [startDate]).
  * - OCCURRENCES: stops after [maxOccurrenceCount] executions (required, > 0).
  */
 @Schema(name = "Planning")
