@@ -5,6 +5,7 @@ import { MemoryEditHandler } from './edit.handler'
 import { MemoryListHandler } from './list.handler'
 import { MemoryDeleteHandler } from './delete.handler'
 import { MemoryCurateHandler } from './curate.handler'
+import { MemoryReflectHandler } from './reflect.handler'
 
 export class MemoryHandler extends NestedHandler {
   constructor(interactor: Interactor, services: CodayServices) {
@@ -22,6 +23,7 @@ export class MemoryHandler extends NestedHandler {
       new MemoryEditHandler(interactor, services.memory),
       new MemoryDeleteHandler(interactor, services.memory),
       new MemoryCurateHandler(interactor),
+      new MemoryReflectHandler(interactor, services),
     ]
   }
 }

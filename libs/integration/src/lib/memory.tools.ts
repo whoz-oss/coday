@@ -27,7 +27,8 @@ export class MemoryTools extends AssistantToolFactory {
           // Return specific memory content
           const projectMemories = this.memoryService.listMemories(MemoryLevel.PROJECT, agentName)
           const userMemories = this.memoryService.listMemories(MemoryLevel.USER, agentName)
-          const allMemories = [...projectMemories, ...userMemories]
+          const learningMemories = this.memoryService.listMemories(MemoryLevel.LEARNING, agentName)
+          const allMemories = [...projectMemories, ...userMemories, ...learningMemories]
 
           const memory = allMemories.find((m) => m.title === title)
           if (!memory) {
@@ -39,8 +40,9 @@ export class MemoryTools extends AssistantToolFactory {
           // Return list of memories with titles and levels
           const projectMemories = this.memoryService.listMemories(MemoryLevel.PROJECT, agentName)
           const userMemories = this.memoryService.listMemories(MemoryLevel.USER, agentName)
+          const learningMemories = this.memoryService.listMemories(MemoryLevel.LEARNING, agentName)
 
-          if (projectMemories.length === 0 && userMemories.length === 0) {
+          if (projectMemories.length === 0 && userMemories.length === 0 && learningMemories.length === 0) {
             return 'No memories found.'
           }
 
@@ -57,6 +59,14 @@ export class MemoryTools extends AssistantToolFactory {
           if (userMemories.length > 0) {
             result += '## USER Level\n'
             userMemories.forEach((m) => {
+              result += `- ${m.title}\n`
+            })
+            result += '\n'
+          }
+
+          if (learningMemories.length > 0) {
+            result += '## LEARNING Level\n'
+            learningMemories.forEach((m) => {
               result += `- ${m.title}\n`
             })
           }
@@ -188,6 +198,57 @@ Do not memorize partial knowledge, single-use information, or minor implementati
     }
     result.push(memorizeUserTool)
 
+    // Tool to memorize at LEARNING level
+    const memorizeLearningFunction = async ({ title, content }: { title: string; content: string }) => {
+      try {
+        this.memoryService.upsertMemory({ title, content, level: MemoryLevel.LEARNING, agentName })
+        return `LEARNING memory added/updated with title: ${title}`
+      } catch (error) {
+        const errorMessage = `Failed to memorize at LEARNING level: ${error instanceof Error ? error.message : 'Unknown error'}`
+        this.interactor.error(errorMessage)
+        return errorMessage
+      }
+    }
+
+    const memorizeLearningTool: FunctionTool<{ title: string; content: string }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__memorizeLearning`,
+        description: `Upsert a LEARNING-level memory entry. LEARNING memories are for:
+- Technical knowledge discovered during conversations
+- Corrections and validated approaches
+- Hard-won resolutions and workarounds
+- Non-obvious patterns and conventions
+
+LEARNING memories are NOT injected in every conversation. They are searched and retrieved on-demand based on relevance to the current message. This means you can store many learnings without worrying about context pollution.
+
+Should be used selectively for significant knowledge that:
+1) was discovered through conversation or debugging
+2) will be valuable in future interactions
+3) is not redundant with existing memories (in that case, update the existing one)
+
+Do not memorize partial knowledge, single-use information, or minor implementation details.`,
+        parameters: {
+          type: 'object',
+          properties: {
+            title: {
+              type: 'string',
+              description:
+                'Title of the memory: should be precise, unique, and reflect the full scope of the content. Avoid generic titles unless the content is really generic.',
+            },
+            content: {
+              type: 'string',
+              description:
+                'Content of the memory: must be complete, validated knowledge with clear structure (sections, examples when relevant). Should include enough context to be self-contained but avoid redundancy with other memories. Length: preferably between a paragraph (for focused topics) and 3 pages (for complex patterns).',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: memorizeLearningFunction,
+      },
+    }
+    result.push(memorizeLearningTool)
+
     // Tool to delete memory
     const deleteMemoryFunction = async ({ title }: { title: string }) => {
       try {
@@ -204,7 +265,7 @@ Do not memorize partial knowledge, single-use information, or minor implementati
       type: 'function',
       function: {
         name: `${this.name}__delete`,
-        description: 'Delete a memory entry by its title. Works for both PROJECT and USER level memories.',
+        description: 'Delete a memory entry by its title. Works for PROJECT, USER, and LEARNING level memories.',
         parameters: {
           type: 'object',
           properties: {

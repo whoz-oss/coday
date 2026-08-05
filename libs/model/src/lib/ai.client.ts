@@ -548,6 +548,52 @@ It can be summarized as:
     return this.models.some((model) => model.name.toLowerCase() === name || model?.alias?.toLowerCase() === name)
   }
 
+  protected getCheapestModel(): AiModel | undefined {
+    if (!this.models.length) return undefined
+    const withPrice = this.models.filter((m) => m.price?.inputMTokens != null)
+    if (withPrice.length) {
+      return withPrice.reduce((cheapest, m) => (m.price!.inputMTokens! < cheapest.price!.inputMTokens! ? m : cheapest))
+    }
+    return this.models[this.models.length - 1]
+  }
+
+  async prefetchMemories(userMessage: string, titles: string[]): Promise<{ titles: string[]; price: number }> {
+    if (!titles.length) return { titles: [], price: 0 }
+
+    const model = this.getCheapestModel()
+    if (!model) return { titles: [], price: 0 }
+
+    const titlesBlock = titles.map((t) => `- ${t}`).join('\n')
+    const prompt = `Given the user message below, select which memories are relevant to help answer it.
+Return ONLY a JSON array of relevant titles. Return [] if none are relevant.
+
+## Available memories
+${titlesBlock}
+
+## User message
+${userMessage}`
+
+    try {
+      const response = await this.complete(prompt, {
+        model: model.name,
+        maxTokens: Math.min(1024, titles.length * 30),
+        temperature: 0,
+      })
+      const inputTokens = prompt.length / this.charsPerToken
+      const outputTokens = response.length / this.charsPerToken
+      const price = model.price
+        ? (inputTokens * (model.price.inputMTokens ?? 0) + outputTokens * (model.price.outputMTokens ?? 0)) / 1_000_000
+        : 0
+      const match = response.match(/\[([\s\S]*?)\]/)
+      if (!match) return { titles: [], price }
+      const selectedTitles = JSON.parse(`[${match[1]}]`).filter((t: string) => titles.includes(t))
+      return { titles: selectedTitles, price }
+    } catch (e) {
+      this.interactor.warn(`Memory prefetch failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+      return { titles: [], price: 0 }
+    }
+  }
+
   returnError(error: string): Observable<CodayEvent> {
     return of(new ErrorEvent({ error }))
   }

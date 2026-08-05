@@ -58,6 +58,18 @@ export class MemoryService {
     return this.memories.filter((m) => m.level === level && (!m.agentName || m.agentName === agentName))
   }
 
+  listTitles(levels: MemoryLevel[], agentName?: string): string[] {
+    this.checkInit()
+    return this.memories
+      .filter((m) => levels.includes(m.level) && (!m.agentName || m.agentName === agentName))
+      .map((m) => m.title)
+  }
+
+  getMemoriesByTitles(titles: string[]): Memory[] {
+    this.checkInit()
+    return this.memories.filter((m) => titles.includes(m.title))
+  }
+
   getFormattedMemories(level: MemoryLevel, agentName?: string): string {
     const levelMemories = this.listMemories(level, agentName).map((m: Memory) => `  - ${m.title}\n    ${m.content}`)
     if (!levelMemories.length) return ''
@@ -114,7 +126,7 @@ export class MemoryService {
 
   private saveMemories(): void {
     this.checkInit()
-    const userMemories = this.memories.filter((m) => m.level === MemoryLevel.USER)
+    const userMemories = this.memories.filter((m) => m.level === MemoryLevel.USER || m.level === MemoryLevel.LEARNING)
     const projectMemories = this.memories.filter((m) => m.level === MemoryLevel.PROJECT)
     writeYamlFile(this.userMemoriesPath!!, { memories: userMemories })
     writeYamlFile(this.projectMemoriesPath!!, { memories: projectMemories })
