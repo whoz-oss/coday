@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import jakarta.annotation.PostConstruct
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -19,10 +20,12 @@ import java.time.ZoneOffset
  * ### Two-tick architecture
  *
  * **[tickClaim]** (Phase A, every [SchedulerProperties.tickIntervalMs]):
- * 1. Query [ScheduledPromptRepository.findDue] for all prompts whose `nextRunAt <= now`.
- * 2. For each prompt, call [claim] — which inserts a CLAIMED run and synchronously
+ * 1. Sweep orphaned CLAIMED runs via [recoverOrphanedClaimedRuns] — handles the crash
+ *    window between Run insert and [ScheduledPromptExecutor.materialize] in [claim].
+ * 2. Query [ScheduledPromptRepository.findDue] for all prompts whose `nextRunAt <= now`.
+ * 3. For each prompt, call [claim] — which inserts a CLAIMED or SKIPPED Run and then
  *    calls [ScheduledPromptExecutor.materialize] to create PENDING UserRuns.
- * 3. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
+ * 4. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
  *
  * **[tickConsume]** (Phase B, every [SchedulerProperties.consumeIntervalMs]):
  * Calls [ScheduledPromptExecutor.consumeAvailable] via `runBlocking`, which suspends
@@ -36,14 +39,21 @@ import java.time.ZoneOffset
  * ### Claim logic
  *
  * For a given [ScheduledPrompt]:
- * - If [ScheduledPromptRunRepository.hasActive] is true → insert a SKIPPED run (overlap).
- * - Otherwise → insert a CLAIMED run and synchronously materialize UserRuns.
- * - In all cases, attempt [ScheduledPromptRunRepository.insert]; if [DuplicateRunException]
- *   is thrown (concurrent tick won the race), log and continue.
- * - After the insert (or on [DuplicateRunException]), advance `nextRunAt` via CAS.
+ * - If [ScheduledPromptRunRepository.hasActive] is true → insert a SKIPPED run (audit record).
+ * - Otherwise → insert a CLAIMED Run, then call [ScheduledPromptExecutor.materialize]
+ *   (MERGE + RUNNING transition in a single `@Transactional` boundary).
+ * - Catch [DuplicateRunException] for both SKIPPED and CLAIMED (concurrent tick won the race).
+ * - After the insert (or on duplicate), advance `nextRunAt` via CAS.
+ *
+ * ### Orphan recovery
+ *
+ * A CLAIMED Run older than [ORPHAN_THRESHOLD] is presumed orphaned (crash between insert
+ * and materialize). [recoverOrphanedClaimedRuns] marks such runs FAILED at the start of
+ * each tick, unblocking the [ScheduledPromptRunRepository.hasActive] overlap guard.
  *
  * The [clock] is injected so tests can freeze time.
  */
+
 @Component
 @ConditionalOnProperty(name = ["scheduler.enabled"], havingValue = "true")
 class SchedulerScanner(
@@ -71,12 +81,51 @@ class SchedulerScanner(
     @Scheduled(fixedDelayString = "\${scheduler.tick-interval-ms:60000}")
     fun tickClaim() {
         val now = Instant.now(clock)
+
+        // Sweep: abandon orphaned CLAIMED runs that were never materialised.
+        // This handles the crash window between Run insert and materialize() in claim().
+        // A CLAIMED Run older than the tick interval is presumed orphaned — materialize()
+        // normally completes in seconds. Marking it FAILED unblocks the hasActive() overlap
+        // guard so subsequent slots are not stuck in SKIPPED.
+        recoverOrphanedClaimedRuns(now)
+
         scheduledPromptRepository.findDue(now)
             .also { due ->
                 if (due.isEmpty()) logger.debug { "[SchedulerScanner] tickClaim: no due prompts" }
                 else logger.info { "[SchedulerScanner] tickClaim: ${due.size} due prompt(s)" }
             }
             .forEach { sp -> claim(sp) }
+    }
+
+    /**
+     * Mark orphaned CLAIMED runs as FAILED.
+     *
+     * A Run stays CLAIMED only during the brief window between [ScheduledPromptRunRepository.insert]
+     * and [ScheduledPromptExecutor.materialize] in [claim]. If the instance crashes in that window,
+     * the Run remains CLAIMED forever — no UserRuns were created, the slot is lost.
+     *
+     * This sweep detects CLAIMED Runs older than [ORPHAN_THRESHOLD] and marks them FAILED with
+     * an explanatory error. This:
+     * - Unblocks [ScheduledPromptRunRepository.hasActive] so subsequent slots are not stuck in SKIPPED
+     * - Leaves a diagnostic trace in the Run's error field
+     * - Is safe in multi-instance: multiple instances may race to update the same orphan,
+     *   but updateStatus is idempotent (second call is a no-op)
+     */
+    private fun recoverOrphanedClaimedRuns(now: Instant) {
+        val threshold = now.minus(ORPHAN_THRESHOLD)
+        val orphans = runRepository.findOrphanedClaimed(threshold)
+        orphans.forEach { run ->
+            logger.warn {
+                "[SchedulerScanner] Orphaned CLAIMED run=${run.id} sp=${run.scheduledPromptId} " +
+                    "created=${run.metadata.created} — marking FAILED (crash recovery)"
+            }
+            runRepository.updateStatus(
+                id = run.id,
+                status = RunStatus.FAILED,
+                finishedAt = now,
+                error = "Orphaned CLAIMED — materialize never completed (crash recovery)",
+            )
+        }
     }
 
     /**
@@ -224,5 +273,8 @@ class SchedulerScanner(
         }
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /** CLAIMED Runs older than this are presumed orphaned (crash between insert and materialize). */
+        private val ORPHAN_THRESHOLD = Duration.ofMinutes(5)
+    }
 }

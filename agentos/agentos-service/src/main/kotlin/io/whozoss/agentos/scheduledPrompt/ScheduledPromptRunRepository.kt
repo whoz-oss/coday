@@ -48,4 +48,13 @@ interface ScheduledPromptRunRepository {
      * since SKIPPED runs are overlap-guards that never actually executed.
      */
     fun countCompletedRuns(scheduledPromptId: UUID): Int
+
+    /**
+     * Find all Runs in CLAIMED status created before [olderThan].
+     *
+     * These are presumed orphaned — the instance that inserted them crashed before
+     * calling [ScheduledPromptExecutor.materialize]. The caller marks them FAILED
+     * to unblock the overlap guard and leave a diagnostic trace.
+     */
+    fun findOrphanedClaimed(olderThan: Instant): List<ScheduledPromptRun>
 }

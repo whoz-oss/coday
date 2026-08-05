@@ -54,4 +54,10 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
     )
     fun countCompletedRuns(scheduledPromptId: String): Int
 
+    /**
+     * Find all runs in [status] created before [before], ordered by creation time.
+     */
+    @Query($$"MATCH (r:ScheduledPromptRun) WHERE r.status = $status AND r.created < $before RETURN r ORDER BY r.created")
+    fun findByStatusAndCreatedBefore(status: String, before: Instant): List<ScheduledPromptRunNode>
+
 }

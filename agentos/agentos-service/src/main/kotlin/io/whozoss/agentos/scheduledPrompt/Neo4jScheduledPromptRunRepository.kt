@@ -50,6 +50,10 @@ open class Neo4jScheduledPromptRunRepository(
     override fun countCompletedRuns(scheduledPromptId: UUID): Int =
         neo4jRepository.countCompletedRuns(scheduledPromptId.toString())
 
+    override fun findOrphanedClaimed(olderThan: Instant): List<ScheduledPromptRun> =
+        neo4jRepository.findByStatusAndCreatedBefore(RunStatus.CLAIMED.name, olderThan)
+            .map { it.toDomain() }
+
     private fun isSlotKeyConflict(e: DataIntegrityViolationException): Boolean {
         val haystack = generateSequence<Throwable>(e) { it.cause }
             .mapNotNull { it.message }

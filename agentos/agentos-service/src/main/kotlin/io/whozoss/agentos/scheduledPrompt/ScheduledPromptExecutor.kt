@@ -30,13 +30,14 @@ import java.util.UUID
  *
  * ### Phase A — Materialisation (fast, no throttle)
  *
- * Called by [SchedulerScanner] immediately after a Run is CLAIMED.
- * Resolves all target users AND creates PENDING [ScheduledPromptUserRun]s in a **single
- * Cypher INSERT-SELECT** via [ScheduledPromptUserRunRepository.materialize]. No users are
- * loaded into JVM heap — the traversal and inserts happen entirely inside Neo4j.
+ * [materialize] is called by [SchedulerScanner.claim] after the Run has been inserted.
+ * It resolves all target users and creates PENDING [ScheduledPromptUserRun]s via a single
+ * Cypher INSERT-SELECT, then transitions the Run to RUNNING — all in a single
+ * `@Transactional` boundary.
  *
- * Re-entrant: if the service crashed mid-materialisation, calling [materialize] again is
- * safe because the MERGE is idempotent.
+ * If the service crashes between the Run insert in [SchedulerScanner.claim] and the
+ * [materialize] call, the Run remains CLAIMED forever. [SchedulerScanner.recoverOrphanedClaimedRuns]
+ * detects such orphans on the next tick and marks them FAILED, unblocking the overlap guard.
  *
  * ### Phase B — Consumption (throttled)
  *
@@ -93,9 +94,13 @@ class ScheduledPromptExecutor(
      * Safe to call multiple times for the same Run (idempotent via MERGE).
      * Transitions the Run to [RunStatus.RUNNING] once materialisation is complete.
      *
-     * The MERGE and the CLAIMED→RUNNING transition run in a single transaction: if the
-     * service crashes between the two, neither a set of orphaned PENDING UserRuns (never
+     * The MERGE and the CLAIMED→RUNNING transition run in a single `@Transactional`:
+     * if the service crashes between the two, neither orphaned PENDING UserRuns (never
      * consumed) nor a RUNNING Run with no UserRuns can result.
+     *
+     * Note: the Run insert happens in [SchedulerScanner.claim], **outside** this transaction.
+     * A crash between the insert and this call leaves an orphaned CLAIMED Run, which
+     * [SchedulerScanner.recoverOrphanedClaimedRuns] detects and marks FAILED on the next tick.
      */
     @Transactional
     fun materialize(run: ScheduledPromptRun, scheduledPrompt: ScheduledPrompt) {
@@ -409,9 +414,11 @@ class ScheduledPromptExecutor(
      * UserRuns are settled.
      *
      * Condition: `count(PENDING) == 0 && count(RUNNING) == 0`.
-     * Only inspects RUNNING Runs — a Run only reaches RUNNING after Phase A completes,
-     * so the CLAIMED→RUNNING transition is the guard that was previously served by the
-     * `materialized` flag.
+     * Only inspects RUNNING Runs — a Run only reaches RUNNING after [materialize]
+     * completes, so the CLAIMED→RUNNING transition acts as the completion guard
+     * (a CLAIMED Run whose [materialize] has not yet finished is never prematurely
+     * evaluated). Orphaned CLAIMED Runs (crash before [materialize]) are swept to
+     * FAILED by [SchedulerScanner.recoverOrphanedClaimedRuns] and never reach this path.
      * The Run is FAILED when at least one UserRun failed; DONE otherwise.
      */
     private fun checkCompletion(runId: UUID) {

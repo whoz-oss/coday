@@ -46,6 +46,11 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
             it.scheduledPromptId == scheduledPromptId && it.status != RunStatus.SKIPPED
         }
 
+    override fun findOrphanedClaimed(olderThan: Instant): List<ScheduledPromptRun> =
+        store.values.filter {
+            it.status == RunStatus.CLAIMED && it.metadata.created.isBefore(olderThan)
+        }.sortedBy { it.metadata.created }
+
     /** Test helper: all stored runs. */
     fun all(): List<ScheduledPromptRun> = store.values.toList()
 
