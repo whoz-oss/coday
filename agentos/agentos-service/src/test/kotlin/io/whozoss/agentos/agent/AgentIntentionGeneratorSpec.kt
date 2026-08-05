@@ -332,6 +332,7 @@ class AgentIntentionGeneratorSpec :
             val caseId = UUID.randomUUID()
 
             makeGenerator().generate(
+                "agent",
                 makeContext(mockChatClient),
                 makeEventsWithUserMessageAfterToolCall(namespaceId, caseId),
                 namespaceId,
@@ -352,6 +353,7 @@ class AgentIntentionGeneratorSpec :
             val caseId = UUID.randomUUID()
 
             makeGenerator().generate(
+                "agent",
                 makeContext(mockChatClient),
                 makeEventsWithAnswerAfterToolCall(namespaceId, caseId),
                 namespaceId,
@@ -372,6 +374,7 @@ class AgentIntentionGeneratorSpec :
             val caseId = UUID.randomUUID()
 
             makeGenerator().generate(
+                "agent",
                 makeContext(mockChatClient),
                 makeEventsWithUserMessageBeforeToolCall(namespaceId, caseId),
                 namespaceId,
@@ -400,7 +403,13 @@ class AgentIntentionGeneratorSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
 
-            val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+            val result = generator.generate(
+                "agent",
+                context,
+                makeInitialEvents(namespaceId, caseId),
+                namespaceId,
+                caseId
+            )
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "All good on retry"
@@ -421,7 +430,7 @@ class AgentIntentionGeneratorSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
 
-            val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+            val result = generator.generate("agent", context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "Recovered on retry"
@@ -439,7 +448,7 @@ class AgentIntentionGeneratorSpec :
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
 
-            val result = generator.generate(context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+            val result = generator.generate("agent", context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "Failed to plan next step after"

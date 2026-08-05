@@ -65,17 +65,45 @@ interface PromptNodeNeo4jRepository : Neo4jRepository<PromptNode, String> {
      * Find all non-removed prompts that belong to any of the four overlay layers for the
      * given (namespaceId, userId) pair, ordered by name:
      *   - platform         (namespaceId IS NULL AND userId IS NULL)
-     *   - user-global      (userId = $userId AND namespaceId IS NULL)
-     *   - namespace-shared (namespaceId = $namespaceId AND userId IS NULL)
-     *   - user×namespace   (namespaceId = $namespaceId AND userId = $userId)
+     *   - user-global      (userId = userId AND namespaceId IS NULL)
+     *   - namespace-shared (namespaceId = namespaceId AND userId IS NULL)
+     *   - user×namespace   (namespaceId = namespaceId AND userId = userId)
      *
-     * Prompts linked to a disabled (enabled=false) or soft-deleted AgentConfig are excluded.
-     * The OPTIONAL MATCH traverses the [:BELONGS_TO] edge to the linked AgentConfig; removed
-     * agents are filtered in the OPTIONAL MATCH WHERE so they appear as null, which the
-     * WITH/WHERE then treats as absent.
+     * Access control is applied per-prompt based on whether it is linked to an agent:
+     *
+     * Case 1 — Prompt WITH an agent (agentConfigId IS NOT NULL):
+     *   The agent must exist, be enabled, AND the user must have access via:
+     *     a) super-admin: u.isAdmin = true
+     *     b) user-group:  user is MEMBER|ADMIN of a UserGroup in the namespace
+     *                     AND the agent is DEPLOYED_TO that same UserGroup
+     *   There is NO namespace-direct fallback: if an agent is not deployed to any
+     *   user-group, only super-admins can see its prompts.
+     *
+     * Case 2 — Prompt WITHOUT an agent (agentConfigId IS NULL):
+     *   The user must have access to the prompt's namespace via:
+     *     a) no namespace (platform or user-global, p.namespaceId IS NULL): always included
+     *     b) super-admin: u.isAdmin = true
+     *     c) namespace membership: user is MEMBER|ADMIN of the namespace node in the graph
+     *
+     * Performance:
+     *   - u and ns resolved once via UNIQUE id constraints.
+     *   - User group memberships collected once into accessibleGroupIds before scanning prompts.
+     *   - isMemberOfNs and isAdmin pre-computed once, not re-evaluated per prompt row.
+     *   - MATCH (p:Prompt) runs with 1 input row, using namespaceId/userId indexes.
+     *   - BELONGS_TO traversal guarded by agentConfigId IS NOT NULL to skip agent-less prompts.
      */
     @Query(
         $$"""
+            OPTIONAL MATCH (u:User)
+              WHERE u.id = $userId AND NOT COALESCE(u.removed, false)
+            OPTIONAL MATCH (ns:Namespace)
+              WHERE ns.id = $namespaceId AND NOT COALESCE(ns.removed, false)
+            OPTIONAL MATCH (u)-[:MEMBER|ADMIN]->(ag:UserGroup)-[:BELONGS_TO]->(ns)
+              WHERE NOT COALESCE(ag.removed, false)
+            WITH u, ns,
+                 COALESCE(u.isAdmin, false) AS isAdmin,
+                 EXISTS { MATCH (u)-[:MEMBER|ADMIN]->(ns) } AS isMemberOfNs,
+                 collect(ag.id) AS accessibleGroupIds
             MATCH (p:Prompt)
             WHERE NOT COALESCE(p.removed, false)
               AND (
@@ -85,10 +113,30 @@ interface PromptNodeNeo4jRepository : Neo4jRepository<PromptNode, String> {
                 OR (p.namespaceId = $namespaceId AND p.userId = $userId)
               )
             OPTIONAL MATCH (p)-[:BELONGS_TO]->(a:AgentConfig)
-              WHERE NOT COALESCE(a.removed, false)
-            WITH p, a
-            WHERE p.agentConfigId IS NULL
-               OR (a IS NOT NULL AND a.enabled = true)
+              WHERE p.agentConfigId IS NOT NULL
+                AND NOT COALESCE(a.removed, false)
+            WITH p, a, isAdmin, isMemberOfNs, accessibleGroupIds
+            WHERE
+              (
+                p.agentConfigId IS NOT NULL
+                AND a IS NOT NULL AND a.enabled = true
+                AND (
+                  isAdmin
+                  OR EXISTS {
+                    MATCH (a)-[:DEPLOYED_TO]->(g:UserGroup)
+                    WHERE g.id IN accessibleGroupIds
+                  }
+                )
+              )
+              OR
+              (
+                p.agentConfigId IS NULL
+                AND (
+                  p.namespaceId IS NULL
+                  OR isAdmin
+                  OR isMemberOfNs
+                )
+              )
             RETURN p ORDER BY p.name ASC
             """,
     )

@@ -156,7 +156,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -231,7 +231,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -302,7 +302,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -374,7 +374,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -480,7 +480,7 @@ class AgentAdvancedSpec :
             val otherCount = AgentAdvanced.REPETITION_WINDOW - AgentAdvanced.REPETITION_THRESHOLD
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), isNull())
+                mockGenerator.generate(any(), any(), any(), any(), any(), isNull())
             } returnsMany
                 (1..otherCount).map {
                     IntentionGeneratedEvent(
@@ -501,7 +501,7 @@ class AgentAdvancedSpec :
                     )
                 }
             every {
-                mockGenerator.generate(any(), any(), any(), any(), not(isNull()))
+                mockGenerator.generate(any(), any(), any(), any(), any(), not(isNull()))
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -1474,7 +1474,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -1539,7 +1539,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -1617,7 +1617,7 @@ class AgentAdvancedSpec :
             every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -1696,7 +1696,7 @@ class AgentAdvancedSpec :
             every { chatClient.prompt(any<Prompt>()).call().content() } returns "{}"
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -1777,7 +1777,7 @@ class AgentAdvancedSpec :
             every { chatClient.prompt(any<Prompt>()).call().content() } returns expectedArgs
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returns
+            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
@@ -1991,7 +1991,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -2032,7 +2032,7 @@ class AgentAdvancedSpec :
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
 
             // The intention generator must have been called only once — no loop
-            verify(exactly = 1) { mockGenerator.generate(any(), any(), any(), any(), any()) }
+            verify(exactly = 1) { mockGenerator.generate(any(), any(), any(), any(), any(), any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -2061,7 +2061,7 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returns """{"value":"hello"}"""
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -2134,7 +2134,7 @@ class AgentAdvancedSpec :
                 )
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -2207,7 +2207,7 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returns response
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -2280,7 +2280,7 @@ class AgentAdvancedSpec :
             every { mockChatClient.prompt(any<Prompt>()).call().content() } returnsMany invalidResponses
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
-            every { mockGenerator.generate(any(), any(), any(), any(), any()) } returnsMany
+            every { mockGenerator.generate(any(), any(), any(), any(), any(), any()) } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
                         namespaceId = namespaceId,
@@ -2419,7 +2419,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -2512,7 +2512,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -2619,7 +2619,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -2743,7 +2743,7 @@ class AgentAdvancedSpec :
 
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returnsMany
                 listOf(
                     IntentionGeneratedEvent(
@@ -2844,7 +2844,7 @@ class AgentAdvancedSpec :
             // heeds the repetition warning.
             val mockGenerator = mockk<AgentIntentionGenerator>()
             every {
-                mockGenerator.generate(any(), any(), any(), any(), any())
+                mockGenerator.generate(any(), any(), any(), any(), any(), any())
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,
@@ -2941,7 +2941,7 @@ class AgentAdvancedSpec :
             // The agent self-corrects on the very next iteration (with the warning hint),
             // so count never reaches THRESHOLD+1 and ForceStop is never triggered.
             every {
-                mockGenerator.generate(any(), any(), any(), any(), isNull())
+                mockGenerator.generate(any(), any(), any(), any(), any(), isNull())
             } returnsMany
                 (1..AgentAdvanced.REPETITION_WINDOW).map {
                     IntentionGeneratedEvent(
@@ -2953,7 +2953,7 @@ class AgentAdvancedSpec :
                     )
                 }
             every {
-                mockGenerator.generate(any(), any(), any(), any(), not(isNull()))
+                mockGenerator.generate(any(), any(), any(), any(), any(), not(isNull()))
             } returns
                 IntentionGeneratedEvent(
                     namespaceId = namespaceId,

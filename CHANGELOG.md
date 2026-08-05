@@ -1,3 +1,70 @@
+## 0.225.0 (2026-07-24)
+
+### 🚀 Features
+
+- wz-33597 improve confirmation detection ([96de772d](https://github.com/whoz-oss/coday/commit/96de772d))
+- wz-33597 improve confirmation detection ([#1164](https://github.com/whoz-oss/coday/pull/1164))
+
+### ❤️ Thank You
+
+- Thibault Drillien @thibault-drillien-whoz
+
+## 0.224.3 (2026-07-23)
+
+### 🩹 Fixes
+
+- #1160 Prevent corrupted thread YAML round-trips ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 repair scripts ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 doc scripts ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 Prevent corrupted thread YAML round-trips ([#1161](https://github.com/whoz-oss/coday/pull/1161), [#1160](https://github.com/whoz-oss/coday/issues/1160))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.224.2 (2026-07-23)
+
+### 🩹 Fixes
+
+- wz-33213 prompt findEffective does not enforce user-group access control ([#1162](https://github.com/whoz-oss/coday/pull/1162))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.224.1 (2026-07-23)
+
+### 🩹 Fixes
+
+- wz-33587: fix last message mapping on ([#1163](https://github.com/whoz-oss/coday/pull/1163))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.224.0 (2026-07-23)
+
+### 🚀 Features
+
+- wz-33579: update README of sdk to mention API endpoints ([#1159](https://github.com/whoz-oss/coday/pull/1159))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.223.1 (2026-07-23)
+
+### 🚀 Features
+
+- **wz-33656:** improve intention generation ([bcedf6fe](https://github.com/whoz-oss/coday/commit/bcedf6fe))
+- **wz-33656:** improve intention generation ([#1158](https://github.com/whoz-oss/coday/pull/1158))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 0.223.0 (2026-07-22)
 
 ### 🚀 Features
