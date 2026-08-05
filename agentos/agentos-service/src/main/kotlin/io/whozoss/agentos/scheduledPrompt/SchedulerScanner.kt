@@ -105,6 +105,13 @@ class SchedulerScanner(
         }
 
         // Guard: disable if the end condition is already reached before executing.
+        // This is a crash-recovery safety net: if the server was down while the end condition
+        // expired, or if a previous tick crashed between advanceNextRunAt and the post-advance
+        // disable, the ScheduledPrompt may still be enabled with nextRunAt past the endDate
+        // (or with completed runs already at maxOccurrenceCount). Without this guard, each
+        // tick would keep creating SKIPPED or CLAIMED runs indefinitely.
+        // In multi-instance deployments, only one instance needs to win the disable — the
+        // others will see enabled=false on their next findDue() and skip naturally.
         if (isEndConditionReached(scheduledPrompt)) {
             logger.info {
                 "[SchedulerScanner] End condition already reached for sp=${scheduledPrompt.id} " +
