@@ -44,8 +44,7 @@
             }
           </button>
         </div>
-      } @else {
-      @if (message.type === 'technical' && message.fullContent) {
+      } @else if (message.type === 'technical' && message.fullContent) {
         <div class="simple-content technical-expandable">
           <span [innerHTML]="renderedContent"></span>
           <button class="technical-toggle" (click)="toggleTechnicalExpanded()" type="button">
@@ -69,7 +68,6 @@
             <a [href]="eventLink" target="_blank" class="event-link">view</a>
           }
         </div>
-      }
       }
     }
   </div>
