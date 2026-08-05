@@ -177,6 +177,36 @@
   opacity: 1;
 }
 
+.error-collapsible {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  .error-collapsed-text {
+    white-space: pre-wrap;
+    font-family: 'SF Mono', Monaco, Menlo, monospace;
+    font-size: 0.85rem;
+    word-break: break-all;
+  }
+
+  .error-toggle {
+    align-self: flex-start;
+    background: none;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    color: var(--color-error);
+    cursor: pointer;
+    font-size: 0.75rem;
+    opacity: 0.75;
+    padding: 0.15rem 0.5rem;
+    transition: opacity 0.15s ease;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+}
+
 // Simplified layout (system/technical/error/warning)
 .simple-content {
   display: flex;

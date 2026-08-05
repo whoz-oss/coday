@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core'
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject, signal } from '@angular/core'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { MessageContent } from '@coday/model'
 import { MessageContextMenuComponent, MenuAction } from '../message-context-menu/message-context-menu.component'
@@ -45,6 +45,10 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   renderedContent: SafeHtml = ''
   shouldHideTechnical = false
   shouldHideWarning = false
+
+  protected readonly isErrorExpanded = signal(false)
+
+  private static readonly ERROR_COLLAPSE_LINE_THRESHOLD = 5
 
   // Modern Angular dependency injection
   private sanitizer = inject(DomSanitizer)
@@ -114,6 +118,24 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
     if (this.message.role !== 'user' || !this.message.timestamp) return null
     const isToday = new Date().toDateString() === this.message.timestamp.toDateString()
     return this.datePipe.transform(this.message.timestamp, isToday ? 'HH:mm' : 'dd/MM HH:mm')
+  }
+
+  get isLongError(): boolean {
+    if (this.message.type !== 'error') return false
+    const textContent = this.extractTextContent()
+    // Support both real newlines and escaped \n (from JSON.stringify of error objects)
+    const lines = textContent.split(/\n|\\n/)
+    return lines.length > ChatMessageComponent.ERROR_COLLAPSE_LINE_THRESHOLD
+  }
+
+  get collapsedErrorText(): string {
+    const textContent = this.extractTextContent()
+    const lines = textContent.split(/\n|\\n/)
+    return lines.slice(0, ChatMessageComponent.ERROR_COLLAPSE_LINE_THRESHOLD).join('\n') + '\u2026'
+  }
+
+  toggleErrorExpanded(): void {
+    this.isErrorExpanded.update((v) => !v)
   }
 
   get isLongMessage(): boolean {
