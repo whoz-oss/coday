@@ -23,6 +23,8 @@ export interface ChatMessage {
   invite?: string // Original question (for context)
   subThreadId?: string
   delegationAgentName?: string
+  /** Full expandable content for technical messages (tool requests/responses) */
+  fullContent?: string
 }
 
 @Component({
@@ -39,6 +41,12 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   @Input() canDelete: boolean = true // Can this message be deleted (not first message, not during thinking)
   /** True when this message was sent by a different user than the current one */
   @Input() isOtherUser: boolean = false
+  /**
+   * ID of the thread containing this message.
+   * Set when the message belongs to a delegation sub-thread; falls back to the selected thread otherwise.
+   * Note: distinct from `ChatMessage.subThreadId` which identifies the sub-thread *opened* by a delegation message.
+   */
+  @Input() containingThreadId?: string
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   @Output() deleteRequested = new EventEmitter<ChatMessage>()
 
@@ -49,6 +57,8 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   protected readonly isErrorExpanded = signal(false)
 
   private static readonly ERROR_COLLAPSE_LINE_THRESHOLD = 5
+
+  protected readonly isTechnicalExpanded = signal(false)
 
   // Modern Angular dependency injection
   private sanitizer = inject(DomSanitizer)
@@ -138,6 +148,10 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
     this.isErrorExpanded.update((v) => !v)
   }
 
+  toggleTechnicalExpanded(): void {
+    this.isTechnicalExpanded.update((v) => !v)
+  }
+
   get isLongMessage(): boolean {
     const textContent = this.extractTextContent()
     return textContent.length > 1000 || textContent.split('\n').length > 20
@@ -169,11 +183,13 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   get eventLink(): string | null {
     if (!this.message.eventId) return null
 
-    // Get project and thread from state services
+    // Get project from state service
     const projectName = this.projectState.getSelectedProjectId()
-    const threadId = this.threadState.getSelectedThreadId()
+    if (!projectName) return null
 
-    if (!projectName || !threadId) return null
+    // Use containing thread ID if provided (delegation context), otherwise use the main thread
+    const threadId = this.containingThreadId ?? this.threadState.getSelectedThreadId()
+    if (!threadId) return null
 
     return `/api/projects/${projectName}/threads/${threadId}/messages/${encodeURIComponent(this.message.eventId)}/formatted`
   }
