@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -16,6 +17,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -24,7 +27,6 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
-import kotlinx.coroutines.sync.Semaphore
 import java.util.UUID
 
 /**
@@ -56,9 +58,9 @@ import java.util.UUID
  * 5. Collect the runtime's [CaseRuntime.statusFlow] until the Case reaches IDLE or a
  *    terminal status, then close the UserRun.
  *
- * A [kotlinx.coroutines.sync.Semaphore] caps concurrent in-flight coroutines to
+ * A [Semaphore] caps concurrent in-flight coroutines to
  * [SchedulerProperties.maxConcurrentExecutions]. Unlike `java.util.concurrent.Semaphore`,
- * [acquire][Semaphore.acquire] **suspends** instead of blocking an OS thread.
+ * [Semaphore.acquire] **suspends** instead of blocking an OS thread.
  * A [delay] of [SchedulerProperties.staggerDelayMs] ms separates each launch.
  *
  * ### Completion check
@@ -166,9 +168,9 @@ class ScheduledPromptExecutor(
      * coroutine inside [coroutineScope]; the scope suspends until all launched children
      * finish before the next batch is claimed.
      *
-     * A [kotlinx.coroutines.sync.Semaphore] caps concurrent in-flight coroutines to
-     * [SchedulerProperties.maxConcurrentExecutions]. Its [acquire][Semaphore.acquire]
-     * suspends instead of blocking an OS thread.
+     * A [Semaphore] caps concurrent in-flight coroutines to
+     * [SchedulerProperties.maxConcurrentExecutions]. [Semaphore.withPermit] acquires
+     * before the block and releases in a finally — exception-safe by construction.
      *
      * ### Delivery guarantee: at-least-once
      *
@@ -194,12 +196,9 @@ class ScheduledPromptExecutor(
                         "[Executor] Phase B: claimed UserRun=${userRun.id} runId=${userRun.runId} userId=${userRun.userId}"
                     }
 
-                    semaphore.acquire()
                     launch {
-                        try {
+                        semaphore.withPermit {
                             executeUserRun(userRun)
-                        } finally {
-                            semaphore.release()
                         }
                     }
 
@@ -345,11 +344,10 @@ class ScheduledPromptExecutor(
             val runtime = caseService.findActiveRuntime(caseId)
             if (runtime == null) {
                 // Runtime already evicted (terminal status reached before we got here)
-                closeCaseTerminal(userRun.id, caseId)
+                closeUserRun(userRun.id, caseService.findById(caseId)?.status, caseId)
             } else {
                 awaitCaseCompletion(userRun.id, caseId, runtime)
             }
-
         } catch (e: Exception) {
             logger.error(e) {
                 "[Executor] UserRun=${userRun.id} failed during Case creation/launch for user=$userId"
@@ -358,18 +356,22 @@ class ScheduledPromptExecutor(
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Case completion
+    // -------------------------------------------------------------------------
+
     /**
-     * Collect the runtime's [statusFlow] until the Case reaches IDLE or a terminal status.
+     * Collect the runtime's [CaseRuntime.statusFlow] until the Case reaches IDLE or a terminal status.
      *
-     * Replaces the former polling loop: [kotlinx.coroutines.flow.StateFlow.first] suspends
-     * reactively until the predicate matches — zero polling, zero delay. The lease duration
-     * is enforced via [withTimeoutOrNull]; on timeout the UserRun is marked FAILED and the
-     * next tick's [claimBatch] will reclaim expired RUNNING UserRuns.
+     * [kotlinx.coroutines.flow.StateFlow.first] suspends reactively until the predicate
+     * matches — zero polling, zero delay. The lease duration is enforced via
+     * [withTimeoutOrNull]; on timeout the UserRun is marked FAILED and the next tick's
+     * [claimBatch] will reclaim expired RUNNING UserRuns.
      */
     private suspend fun awaitCaseCompletion(
         userRunId: UUID,
         caseId: UUID,
-        runtime: io.whozoss.agentos.caseFlow.CaseRuntime,
+        runtime: CaseRuntime,
     ) {
         val leaseMs = Duration.ofMinutes(properties.leaseMinutes).toMillis()
 
@@ -377,61 +379,30 @@ class ScheduledPromptExecutor(
             runtime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
         }
 
-        val now = Instant.now(clock)
-        when {
-            finalStatus == null -> {
-                logger.warn {
-                    "[Executor] UserRun=$userRunId lease expired while waiting for Case $caseId — marking FAILED"
-                }
-                markFailed(userRunId, now, "Lease expired waiting for Case $caseId")
+        if (finalStatus == null) {
+            logger.warn {
+                "[Executor] UserRun=$userRunId lease expired while waiting for Case $caseId — marking FAILED"
             }
-            finalStatus.isTerminal() -> {
-                val terminalUserRunStatus = when (finalStatus) {
-                    CaseStatus.KILLED, CaseStatus.ERROR -> UserRunStatus.FAILED
-                    else -> UserRunStatus.DONE
-                }
-                val error = if (terminalUserRunStatus == UserRunStatus.FAILED) {
-                    "Case reached terminal status $finalStatus"
-                } else {
-                    null
-                }
-                userRunRepository.markTerminal(userRunId, terminalUserRunStatus, now, error)
-                logger.info {
-                    "[Executor] UserRun=$userRunId closed as $terminalUserRunStatus " +
-                        "(caseId=$caseId status=$finalStatus)"
-                }
-            }
-            else -> {
-                // IDLE — agent turn complete
-                userRunRepository.markTerminal(userRunId, UserRunStatus.DONE, now)
-                logger.info {
-                    "[Executor] UserRun=$userRunId closed as DONE (caseId=$caseId IDLE)"
-                }
-            }
+            markFailed(userRunId, Instant.now(clock), "Lease expired waiting for Case $caseId")
+        } else {
+            closeUserRun(userRunId, finalStatus, caseId)
         }
     }
 
     /**
-     * Close a UserRun when the runtime was already evicted before we could collect its flow.
-     * Falls back to reading the persisted Case status.
+     * Close a UserRun based on the final [CaseStatus].
+     *
+     * Maps [CaseStatus] to [UserRunStatus] via [toUserRunOutcome]:
+     * - IDLE or any non-error terminal → DONE
+     * - KILLED, ERROR → FAILED with diagnostic message
+     * - null (Case not found) → DONE (defensive, Case was likely cleaned up)
      */
-    private fun closeCaseTerminal(userRunId: UUID, caseId: UUID) {
+    private fun closeUserRun(userRunId: UUID, caseStatus: CaseStatus?, caseId: UUID) {
         val now = Instant.now(clock)
-        val case = caseService.findById(caseId)
-        val caseStatus = case?.status
-        val terminalUserRunStatus = when (caseStatus) {
-            CaseStatus.KILLED, CaseStatus.ERROR -> UserRunStatus.FAILED
-            else -> UserRunStatus.DONE
-        }
-        val error = if (terminalUserRunStatus == UserRunStatus.FAILED) {
-            "Case reached terminal status $caseStatus"
-        } else {
-            null
-        }
-        userRunRepository.markTerminal(userRunId, terminalUserRunStatus, now, error)
+        val (userRunStatus, error) = caseStatus.toUserRunOutcome()
+        userRunRepository.markTerminal(userRunId, userRunStatus, now, error)
         logger.info {
-            "[Executor] UserRun=$userRunId closed as $terminalUserRunStatus " +
-                "(caseId=$caseId status=$caseStatus, runtime already evicted)"
+            "[Executor] UserRun=$userRunId closed as $userRunStatus (caseId=$caseId status=$caseStatus)"
         }
     }
 
@@ -488,5 +459,16 @@ class ScheduledPromptExecutor(
         }
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * Maps a [CaseStatus] (possibly null when the Case was already cleaned up)
+         * to the corresponding [UserRunStatus] and optional error message.
+         */
+        private fun CaseStatus?.toUserRunOutcome(): Pair<UserRunStatus, String?> = when (this) {
+            CaseStatus.KILLED, CaseStatus.ERROR ->
+                UserRunStatus.FAILED to "Case reached terminal status $this"
+            else ->
+                UserRunStatus.DONE to null
+        }
+    }
 }
