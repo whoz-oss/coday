@@ -207,6 +207,42 @@
   }
 }
 
+.technical-expandable {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  .technical-toggle {
+    background: none;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    font-size: 0.7rem;
+    opacity: 0.6;
+    padding: 0 0.25rem;
+    line-height: 1;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+}
+
+.technical-full-content {
+  margin: 0.25rem 0 0 0;
+  padding: 0.75rem 1rem;
+  background: var(--color-code-bg, rgba(0, 0, 0, 0.2));
+  border-radius: 4px;
+  color: var(--color-code-text, var(--color-text-secondary));
+  font-family: 'SF Mono', Monaco, Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
 // Simplified layout (system/technical/error/warning)
 .simple-content {
   display: flex;

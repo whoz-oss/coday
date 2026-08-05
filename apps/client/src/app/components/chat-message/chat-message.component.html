@@ -45,12 +45,31 @@
           </button>
         </div>
       } @else {
+      @if (message.type === 'technical' && message.fullContent) {
+        <div class="simple-content technical-expandable">
+          <span [innerHTML]="renderedContent"></span>
+          <button class="technical-toggle" (click)="toggleTechnicalExpanded()" type="button">
+            @if (isTechnicalExpanded()) {
+              ▲
+            } @else {
+              ▼
+            }
+          </button>
+          @if (eventLink) {
+            <a [href]="eventLink" target="_blank" class="event-link">view</a>
+          }
+        </div>
+        @if (isTechnicalExpanded()) {
+          <pre class="technical-full-content">{{ message.fullContent }}</pre>
+        }
+      } @else {
         <div class="simple-content markdown-content">
           <span [innerHTML]="renderedContent"></span>
           @if (eventLink) {
             <a [href]="eventLink" target="_blank" class="event-link">view</a>
           }
         </div>
+      }
       }
     }
   </div>
