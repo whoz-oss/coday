@@ -6,6 +6,51 @@ import { FunctionTool } from '@coday/model'
 import { IntegrationConfig } from '@coday/model'
 import { redirectFunction } from './redirect.function'
 
+/**
+ * Build the redirect tool for the given agent summaries.
+ * Returns undefined when summaries is empty (no redirect tool should be exposed).
+ *
+ * Extracted as a pure exported function so that Toolbox can call it directly
+ * with pre-filtered summaries, keeping all delegation-vs-redirect logic out of
+ * this class (invariant b: AiTools has no knowledge of DelegateTools).
+ */
+export function buildRedirectTool(
+  factoryName: string,
+  context: CommandContext,
+  agentName: string,
+  summaries: AgentSummary[]
+): FunctionTool<{ query: string; agentName: string }> | undefined {
+  if (summaries.length === 0) return undefined
+
+  const redirect = redirectFunction(context, agentName)
+  const agentSummariesText = summaries.map((a) => `  - ${a.name} : ${a.description}`).join('\n')
+
+  return {
+    type: 'function',
+    function: {
+      name: `${factoryName}__redirect`,
+      description: `Redirect the current query to another available agent among:\n${agentSummariesText}\n\nThis tool allows you to select a different agent to handle the user's request when another agent is better suited for the task.\n\nUse this when:\n- The request clearly falls under another agent's specialty\n- You recognize a query pattern that another agent handles better\n- The user's intent would be better served by a different agent's capabilities\n\nThe redirected agent will run after this conversation completes and will have access to the full conversation history.\n`,
+      parameters: {
+        type: 'object',
+        properties: {
+          agentName: {
+            type: 'string',
+            description:
+              'Name of the agent to redirect to. Required. Should be selected based on which agent is most appropriate for the query.',
+          },
+          query: {
+            type: 'string',
+            description:
+              "The query to redirect to the selected agent. This should capture the user's intent and any necessary context.",
+          },
+        },
+      },
+      parse: JSON.parse,
+      function: redirect,
+    },
+  }
+}
+
 export class AiTools extends AssistantToolFactory {
   static readonly TYPE = 'AI' as const
 
@@ -18,7 +63,7 @@ export class AiTools extends AssistantToolFactory {
     super(interactor, instanceName, config)
   }
 
-  protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
+  protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 
     if (!context.oneshot) {
@@ -66,54 +111,11 @@ AVOID closed options unless the user explicitly needs to choose between specific
     }
 
     if (!context.oneshot) {
-      // Add redirect tool, filtered against delegatable agents
-      const delegateAgentNames = context.data?.delegateAgentNames as string[] | '__ALL__' | undefined
-
-      // If all agents are delegatable, skip redirect entirely
-      if (delegateAgentNames !== '__ALL__') {
-        const delegateLower = Array.isArray(delegateAgentNames) ? delegateAgentNames : []
-        const filteredSummaries = this.agentSummaries().filter((a) => !delegateLower.includes(a.name.toLowerCase()))
-
-        if (filteredSummaries.length > 0) {
-          const redirect = redirectFunction(context, _agentName)
-          const agentSummaries = filteredSummaries.map((a) => `  - ${a.name} : ${a.description}`).join('\n')
-          const redirectTool: FunctionTool<{ query: string; agentName: string }> = {
-            type: 'function',
-            function: {
-              name: `${this.name}__redirect`,
-              description: `Redirect the current query to another available agent among:
-${agentSummaries}
-
-This tool allows you to select a different agent to handle the user's request when another agent is better suited for the task.
-
-Use this when:
-- The request clearly falls under another agent's specialty
-- You recognize a query pattern that another agent handles better
-- The user's intent would be better served by a different agent's capabilities
-
-The redirected agent will run after this conversation completes and will have access to the full conversation history.
-`,
-              parameters: {
-                type: 'object',
-                properties: {
-                  agentName: {
-                    type: 'string',
-                    description:
-                      'Name of the agent to redirect to. Required. Should be selected based on which agent is most appropriate for the query.',
-                  },
-                  query: {
-                    type: 'string',
-                    description:
-                      "The query to redirect to the selected agent. This should capture the user's intent and any necessary context.",
-                  },
-                },
-              },
-              parse: JSON.parse,
-              function: redirect,
-            },
-          }
-          result.push(redirectTool)
-        }
+      // Build redirect tool with the full agent list — Toolbox will replace this tool
+      // with a filtered version when a DELEGATE integration is present.
+      const redirectTool = buildRedirectTool(this.name, context, agentName, this.agentSummaries())
+      if (redirectTool) {
+        result.push(redirectTool)
       }
     }
 

@@ -11,7 +11,6 @@ import {
   AnswerEvent,
   buildCodayEvent,
   CodayEvent,
-  ErrorEvent,
   MessageEvent,
   TextEvent,
   ToolRequestEvent,
@@ -132,12 +131,6 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
         type: 'text',
       })
     } else if (event instanceof ToolRequestEvent) {
-      let fullContent: string | undefined
-      try {
-        fullContent = `Tool: ${event.name}\n\nArguments:\n${JSON.stringify(JSON.parse(event.args), null, 2)}`
-      } catch {
-        fullContent = `Tool: ${event.name}\n\nArguments:\n${event.args}`
-      }
       this.addMessage({
         id: event.timestamp,
         role: 'system',
@@ -146,7 +139,6 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
         timestamp: new Date(),
         type: 'technical',
         eventId: event.timestamp,
-        fullContent,
       })
     } else if (event instanceof ToolResponseEvent) {
       this.addMessage({
@@ -168,15 +160,6 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
         type: 'delegation',
         subThreadId: event.subThreadId,
         delegationAgentName: event.agentName,
-      })
-    } else if (event instanceof ErrorEvent) {
-      this.addMessage({
-        id: event.timestamp,
-        role: 'system',
-        speaker: 'System',
-        content: [{ type: 'text', content: `Error: ${JSON.stringify(event.error)}` }],
-        timestamp: new Date(),
-        type: 'error',
       })
     } else if (event instanceof TextEvent) {
       this.addMessage({

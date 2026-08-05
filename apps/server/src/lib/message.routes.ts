@@ -2,7 +2,6 @@ import express from 'express'
 import { debugLog } from './log'
 import { ThreadCodayManager } from './thread-coday-manager'
 import { AnswerEvent, OAuthCallbackEvent, ThreadUpdateEvent, buildCodayEvent, hasAccess } from '@coday/model'
-import { ThreadService } from '@coday/service'
 
 /**
  * Message Management REST API Routes
@@ -39,8 +38,7 @@ import { ThreadService } from '@coday/service'
 export function registerMessageRoutes(
   app: express.Application,
   threadCodayManager: ThreadCodayManager,
-  getUsernameFn: (req: express.Request) => string,
-  threadService?: ThreadService
+  getUsernameFn: (req: express.Request) => string
 ): void {
   /**
    * GET /api/projects/:projectName/threads/:threadId/messages
@@ -275,33 +273,22 @@ export function registerMessageRoutes(
 
         debugLog('MESSAGE', `GET formatted message: ${eventId} from thread: ${threadId} in project: ${projectName}`)
 
-        // Try in-memory instance first, then fallback to persisted thread
+        // Get the thread instance
         const instance = threadCodayManager.get(<string>threadId)
-        let event: any = undefined
-
-        if (instance?.coday) {
-          const aiThread = instance.coday.context?.aiThread
-          if (!aiThread || !hasAccess(aiThread, username)) {
-            res.status(403).send('Access denied: thread belongs to another user')
-            return
-          }
-          event = aiThread.getEventById(eventId)
-        } else if (threadService) {
-          // Fallback: load from persisted thread (sub-threads are not in memory)
-          const thread = await threadService.getThread(<string>projectName, <string>threadId)
-          if (!thread) {
-            res.status(404).send(`Thread '${threadId}' not found`)
-            return
-          }
-          if (!hasAccess(thread, username)) {
-            res.status(403).send('Access denied: thread belongs to another user')
-            return
-          }
-          event = thread.getEventById(eventId)
-        } else {
+        if (!instance?.coday) {
           res.status(404).send('Thread not found or not active')
           return
         }
+
+        // Verify thread access
+        const aiThread = instance.coday.context?.aiThread
+        if (!aiThread || !hasAccess(aiThread, username)) {
+          res.status(403).send('Access denied: thread belongs to another user')
+          return
+        }
+
+        // Get message by eventId
+        const event = aiThread.getEventById(eventId)
 
         if (!event) {
           res.status(404).send(`Message '${eventId}' not found in thread '${threadId}'`)

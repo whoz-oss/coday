@@ -11,7 +11,7 @@ import {
   McpServerConfig,
   OAuthCallbackEvent,
 } from '@coday/model'
-import { AiTools, DelegateTools } from '@coday/integrations-ai'
+import { AiTools, buildRedirectTool, DelegateTools } from '@coday/integrations-ai'
 import { McpToolsFactory } from '@coday/mcp'
 import { CoreTools, MemoryTools, ProjectScriptsTools, ThreadTools, TmuxTools } from '@coday/integration'
 import { FileTools } from '@coday/integrations-file'
@@ -38,12 +38,17 @@ export class Toolbox implements Killable {
   /** Thread ID used when acquiring MCP factories — stored so OAuth callbacks can find the right factory */
   private currentThreadId: string | undefined
 
+  /** Stored so getTools() can rebuild a filtered redirect tool without going through a factory */
+  private readonly agentSummaries: () => AgentSummary[]
+
   constructor(
     private readonly interactor: Interactor,
     private readonly services: CodayServices,
     agentFind: (nameStart: string | undefined, context: CommandContext) => Promise<Agent | undefined>,
     agentSummaries: () => AgentSummary[]
   ) {
+    this.agentSummaries = agentSummaries
+
     // Store MCP configs for lazy initialization via pool
     this.mcpConfigs = services.mcp.getMergedConfiguration().servers
 
@@ -200,16 +205,6 @@ export class Toolbox implements Killable {
     // Combine all factories
     allFactories.push(...mcpFactories)
 
-    if (integrations?.has(DelegateTools.TYPE)) {
-      const delegateAgentNames = integrations.get(DelegateTools.TYPE)!
-      if (delegateAgentNames.length === 0) {
-        // Empty allow-list means all agents are delegatable
-        context.data = { ...context.data, delegateAgentNames: '__ALL__' }
-      } else {
-        context.data = { ...context.data, delegateAgentNames: delegateAgentNames.map((n) => n.toLowerCase()) }
-      }
-    }
-
     try {
       // Process each factory to get their tools
       const toolResults = await Promise.all(
@@ -230,13 +225,78 @@ export class Toolbox implements Killable {
           `Duplicate tool '${dup.name}': kept source '${dup.keptSource}', discarded source '${dup.discardedSource}'`
         )
       }
-      this.tools = deduplicated
+
+      this.tools = this.applyDelegateRedirectFilter(deduplicated, integrations, context, agentName ?? 'default')
       return this.tools
     } catch (error) {
       this.interactor.debug(`Unexpected error building tools for agent ${agentName}: ${error}`)
       // Return empty array in case of critical failure
       return []
     }
+  }
+
+  /**
+   * When an agent has the DELEGATE integration, it should prefer delegation over redirection
+   * for agents it can delegate to. This method post-processes the tool list to enforce that
+   * rule, without touching context.data or any shared state.
+   *
+   * Rules:
+   *   - No DELEGATE integration → return tools unchanged
+   *   - DELEGATE with empty allow-list (all agents delegatable) → remove redirect entirely
+   *   - DELEGATE with N agents → rebuild redirect with only non-delegatable agents;
+   *     remove redirect if none remain
+   *
+   * Agent name comparison is case-insensitive: names are normalised to lowercase before
+   * comparison so that allow-list entries like "Sway" and "sway" are treated identically.
+   */
+  private applyDelegateRedirectFilter(
+    tools: CodayTool[],
+    integrations: Map<string, string[]> | undefined,
+    context: CommandContext,
+    agentName: string
+  ): CodayTool[] {
+    if (!integrations?.has(DelegateTools.TYPE)) {
+      // No DELEGATE integration: redirect is exposed with the full agent list (unchanged)
+      return tools
+    }
+
+    const allowList = integrations.get(DelegateTools.TYPE)!
+
+    // Find the redirect tool produced by AiTools — identified by the "__redirect" suffix
+    // because the factory instance name (prefix) may differ from AiTools.TYPE.
+    const redirectIndex = tools.findIndex((t) => t.function.name.endsWith('__redirect'))
+    if (redirectIndex === -1) {
+      // No redirect tool in the list (e.g. context.oneshot === true): nothing to do
+      return tools
+    }
+
+    if (allowList.length === 0) {
+      // Empty allow-list means ALL agents are delegatable → remove redirect entirely
+      return tools.filter((_, i) => i !== redirectIndex)
+    }
+
+    // Non-empty allow-list: rebuild redirect with only agents NOT in the delegation allow-list.
+    // Normalise to lowercase once here — single source of truth for case-insensitive comparison.
+    const delegatableNames = new Set(allowList.map((n) => n.toLowerCase()))
+    const filteredSummaries = this.agentSummaries().filter((a) => !delegatableNames.has(a.name.toLowerCase()))
+
+    if (filteredSummaries.length === 0) {
+      // All agents are delegatable → remove redirect
+      return tools.filter((_, i) => i !== redirectIndex)
+    }
+
+    // Extract the factory name prefix from the existing redirect tool name (e.g. "AI" from "AI__redirect")
+    const existingRedirectName = tools[redirectIndex].function.name
+    const factoryName = existingRedirectName.substring(0, existingRedirectName.length - '__redirect'.length)
+
+    const rebuiltRedirect = buildRedirectTool(factoryName, context, agentName, filteredSummaries)
+    if (!rebuiltRedirect) {
+      return tools.filter((_, i) => i !== redirectIndex)
+    }
+
+    const result = [...tools]
+    result[redirectIndex] = rebuiltRedirect
+    return result
   }
 
   /**

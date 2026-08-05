@@ -336,7 +336,7 @@ registerThreadRoutes(
 )
 
 // Register message management routes
-registerMessageRoutes(app, threadCodayManager, getUsername, threadService)
+registerMessageRoutes(app, threadCodayManager, getUsername)
 
 // Register agent management routes
 const agentCrudService = new AgentCrudService(codayOptions.configDir, projectService)
