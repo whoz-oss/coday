@@ -14,7 +14,9 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
@@ -51,7 +53,8 @@ import java.util.UUID
  *    [CaseService.addMessage]. The Executor resolves content itself rather than using
  *    a `/slash-command` because PromptCommandParser requires the text to start with `/`,
  *    which is incompatible with the leading `@mention`.
- * 5. Poll the runtime status until the Case leaves RUNNING/PENDING, then close the UserRun.
+ * 5. Collect the runtime's [CaseRuntime.statusFlow] until the Case reaches IDLE or a
+ *    terminal status, then close the UserRun.
  *
  * A [kotlinx.coroutines.sync.Semaphore] caps concurrent in-flight coroutines to
  * [SchedulerProperties.maxConcurrentExecutions]. Unlike `java.util.concurrent.Semaphore`,
@@ -337,8 +340,15 @@ class ScheduledPromptExecutor(
                 "[Executor] UserRun=${userRun.id} — Case $caseId created and message injected for user=$userId"
             }
 
-            // Step 5: Wait for the Case to finish, then close the UserRun.
-            waitForCaseAndClose(userRun.id, caseId)
+            // Step 5: Collect the runtime's statusFlow until IDLE or terminal.
+            // The runtime is guaranteed to exist in activeRuntimes right after create().
+            val runtime = caseService.findActiveRuntime(caseId)
+            if (runtime == null) {
+                // Runtime already evicted (terminal status reached before we got here)
+                closeCaseTerminal(userRun.id, caseId)
+            } else {
+                awaitCaseCompletion(userRun.id, caseId, runtime)
+            }
 
         } catch (e: Exception) {
             logger.error(e) {
@@ -349,65 +359,79 @@ class ScheduledPromptExecutor(
     }
 
     /**
-     * Poll the Case status until it leaves RUNNING/PENDING, then close the UserRun.
+     * Collect the runtime's [statusFlow] until the Case reaches IDLE or a terminal status.
      *
-     * Polling interval: [POLL_INTERVAL_MS]. Gives up (marks FAILED) when the elapsed
-     * time exceeds the configured lease duration — the next tick's [claimBatch] will
-     * reclaim expired RUNNING UserRuns.
+     * Replaces the former polling loop: [kotlinx.coroutines.flow.StateFlow.first] suspends
+     * reactively until the predicate matches — zero polling, zero delay. The lease duration
+     * is enforced via [withTimeoutOrNull]; on timeout the UserRun is marked FAILED and the
+     * next tick's [claimBatch] will reclaim expired RUNNING UserRuns.
      */
-    private suspend fun waitForCaseAndClose(
+    private suspend fun awaitCaseCompletion(
         userRunId: UUID,
         caseId: UUID,
+        runtime: io.whozoss.agentos.caseFlow.CaseRuntime,
     ) {
-        val deadline = Instant.now(clock).plusMillis(Duration.ofMinutes(properties.leaseMinutes).toMillis())
+        val leaseMs = Duration.ofMinutes(properties.leaseMinutes).toMillis()
 
-        while (true) {
-            val now = Instant.now(clock)
+        val finalStatus = withTimeoutOrNull(leaseMs) {
+            runtime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
+        }
 
-            if (now.isAfter(deadline)) {
+        val now = Instant.now(clock)
+        when {
+            finalStatus == null -> {
                 logger.warn {
                     "[Executor] UserRun=$userRunId lease expired while waiting for Case $caseId — marking FAILED"
                 }
                 markFailed(userRunId, now, "Lease expired waiting for Case $caseId")
-                return
             }
-
-            val runtime = caseService.findActiveRuntime(caseId)
-
-            when {
-                // Runtime evicted — Case has reached a terminal status.
-                runtime == null -> {
-                    val case = caseService.findById(caseId)
-                    val caseStatus = case?.status
-                    val terminalUserRunStatus = when (caseStatus) {
-                        CaseStatus.KILLED, CaseStatus.ERROR -> UserRunStatus.FAILED
-                        else -> UserRunStatus.DONE
-                    }
-                    val error = if (terminalUserRunStatus == UserRunStatus.FAILED) {
-                        "Case reached terminal status $caseStatus"
-                    } else {
-                        null
-                    }
-                    userRunRepository.markTerminal(userRunId, terminalUserRunStatus, now, error)
-                    logger.info {
-                        "[Executor] UserRun=$userRunId closed as $terminalUserRunStatus " +
-                            "(caseId=$caseId status=$caseStatus)"
-                    }
-                    return
+            finalStatus.isTerminal() -> {
+                val terminalUserRunStatus = when (finalStatus) {
+                    CaseStatus.KILLED, CaseStatus.ERROR -> UserRunStatus.FAILED
+                    else -> UserRunStatus.DONE
                 }
-
-                // Case is IDLE and not running — agent turn complete.
-                runtime.statusFlow.value == CaseStatus.IDLE && !runtime.isRunning() -> {
-                    userRunRepository.markTerminal(userRunId, UserRunStatus.DONE, now)
-                    logger.info {
-                        "[Executor] UserRun=$userRunId closed as DONE (caseId=$caseId IDLE)"
-                    }
-                    return
+                val error = if (terminalUserRunStatus == UserRunStatus.FAILED) {
+                    "Case reached terminal status $finalStatus"
+                } else {
+                    null
                 }
-
-                // Case still active — poll again.
-                else -> delay(POLL_INTERVAL_MS)
+                userRunRepository.markTerminal(userRunId, terminalUserRunStatus, now, error)
+                logger.info {
+                    "[Executor] UserRun=$userRunId closed as $terminalUserRunStatus " +
+                        "(caseId=$caseId status=$finalStatus)"
+                }
             }
+            else -> {
+                // IDLE — agent turn complete
+                userRunRepository.markTerminal(userRunId, UserRunStatus.DONE, now)
+                logger.info {
+                    "[Executor] UserRun=$userRunId closed as DONE (caseId=$caseId IDLE)"
+                }
+            }
+        }
+    }
+
+    /**
+     * Close a UserRun when the runtime was already evicted before we could collect its flow.
+     * Falls back to reading the persisted Case status.
+     */
+    private fun closeCaseTerminal(userRunId: UUID, caseId: UUID) {
+        val now = Instant.now(clock)
+        val case = caseService.findById(caseId)
+        val caseStatus = case?.status
+        val terminalUserRunStatus = when (caseStatus) {
+            CaseStatus.KILLED, CaseStatus.ERROR -> UserRunStatus.FAILED
+            else -> UserRunStatus.DONE
+        }
+        val error = if (terminalUserRunStatus == UserRunStatus.FAILED) {
+            "Case reached terminal status $caseStatus"
+        } else {
+            null
+        }
+        userRunRepository.markTerminal(userRunId, terminalUserRunStatus, now, error)
+        logger.info {
+            "[Executor] UserRun=$userRunId closed as $terminalUserRunStatus " +
+                "(caseId=$caseId status=$caseStatus, runtime already evicted)"
         }
     }
 
@@ -464,7 +488,5 @@ class ScheduledPromptExecutor(
         }
     }
 
-    companion object : KLogging() {
-        private const val POLL_INTERVAL_MS = 2_000L
-    }
+    companion object : KLogging()
 }

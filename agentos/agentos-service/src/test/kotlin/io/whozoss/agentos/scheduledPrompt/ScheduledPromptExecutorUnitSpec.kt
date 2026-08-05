@@ -489,6 +489,180 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             userRun.error shouldBe "PromptTemplate $promptTemplateId has empty content"
         }
 
+        // -------------------------------------------------------------------------
+        // Phase B — awaitCaseCompletion via statusFlow
+        // -------------------------------------------------------------------------
+
+        "Phase B: awaitCaseCompletion closes UserRun as DONE when runtime reaches IDLE" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+
+            val createdCase = Case(
+                metadata = EntityMetadata(id = caseId),
+                namespaceId = namespaceId,
+            )
+
+            // Simulate a runtime whose statusFlow starts as RUNNING then transitions to IDLE
+            // after addMessage is called (mimicking the real CaseRuntime lifecycle).
+            val statusFlow = MutableStateFlow(CaseStatus.RUNNING)
+            val runtime = mockk<CaseRuntime>(relaxed = true).also {
+                every { it.statusFlow } returns statusFlow
+            }
+
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns runtime
+                // When addMessage is called, transition the statusFlow to IDLE
+                // (simulates the async agent execution completing).
+                every { it.addMessage(caseId = caseId, actor = any(), content = any()) } answers {
+                    statusFlow.value = CaseStatus.IDLE
+                }
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).consumeAvailable()
+
+            val userRun = userRunRepo.all().first()
+            userRun.status shouldBe UserRunStatus.DONE
+        }
+
+        "Phase B: awaitCaseCompletion closes UserRun as FAILED when runtime reaches ERROR" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+
+            val createdCase = Case(
+                metadata = EntityMetadata(id = caseId),
+                namespaceId = namespaceId,
+            )
+
+            val statusFlow = MutableStateFlow(CaseStatus.RUNNING)
+            val runtime = mockk<CaseRuntime>(relaxed = true).also {
+                every { it.statusFlow } returns statusFlow
+            }
+
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns runtime
+                every { it.addMessage(caseId = caseId, actor = any(), content = any()) } answers {
+                    statusFlow.value = CaseStatus.ERROR
+                }
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).consumeAvailable()
+
+            val userRun = userRunRepo.all().first()
+            userRun.status shouldBe UserRunStatus.FAILED
+            userRun.error shouldBe "Case reached terminal status ERROR"
+        }
+
+        "Phase B: awaitCaseCompletion marks UserRun FAILED on lease timeout" {
+            // Use a very short lease so the timeout triggers immediately.
+            val shortLeaseProperties = SchedulerProperties(
+                maxConcurrentExecutions = 5,
+                staggerDelayMs = 0L,
+                leaseMinutes = 0L, // 0 minutes → withTimeoutOrNull(0) times out immediately
+            )
+
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+
+            val createdCase = Case(
+                metadata = EntityMetadata(id = caseId),
+                namespaceId = namespaceId,
+            )
+
+            // StatusFlow stays RUNNING forever — simulates an agent that never finishes.
+            val statusFlow = MutableStateFlow(CaseStatus.RUNNING)
+            val runtime = mockk<CaseRuntime>(relaxed = true).also {
+                every { it.statusFlow } returns statusFlow
+            }
+
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns runtime
+            }
+
+            ScheduledPromptExecutor(
+                scheduledPromptRepository = makeSpRepo(sp),
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+                properties = shortLeaseProperties,
+                clock = clock,
+            ).consumeAvailable()
+
+            val userRun = userRunRepo.all().first()
+            userRun.status shouldBe UserRunStatus.FAILED
+            userRun.error!!.contains("Lease expired") shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // Phase B: prompt or agent not found — UserRun marked FAILED
+        // -------------------------------------------------------------------------
+
         "Phase B: agent config not found marks UserRun FAILED" {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
