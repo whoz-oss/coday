@@ -256,7 +256,7 @@ class SchedulerScanner(
     /**
      * Check if the end condition is already reached BEFORE executing.
      *
-     * - **ON_DATE**: the current slot (nextRunAt) falls after [Planning.endDate] at [Recurrence.timeUtc].
+     * - **ON_DATE**: the current slot (nextRunAt) falls on or after [Planning.endDate] (exclusive boundary) at [Recurrence.timeUtc].
      * - **OCCURRENCES**: the number of completed (non-SKIPPED) runs has already reached
      *   [Planning.maxOccurrenceCount].
      * - **NEVER**: never reached.
@@ -269,7 +269,7 @@ class SchedulerScanner(
                 val endInstant = planning.endDate
                     ?.atTime(scheduledPrompt.recurrence.timeUtc)
                     ?.toInstant(ZoneOffset.UTC)
-                endInstant != null && scheduledPrompt.nextRunAt.isAfter(endInstant)
+                endInstant != null && !scheduledPrompt.nextRunAt.isBefore(endInstant)
             }
             SchedulerEndType.OCCURRENCES -> {
                 val max = planning.maxOccurrenceCount ?: return false
@@ -284,7 +284,7 @@ class SchedulerScanner(
      *
      * Called after advancing nextRunAt. Checks the NEXT slot, not the current one.
      *
-     * - **ON_DATE**: the next slot falls after [Planning.endDate] at [Recurrence.timeUtc].
+     * - **ON_DATE**: the next slot falls on or after [Planning.endDate] (exclusive boundary) at [Recurrence.timeUtc].
      * - **OCCURRENCES**: the number of completed (non-SKIPPED) runs (including the one just
      *   inserted) has reached [Planning.maxOccurrenceCount].
      * - **NEVER**: no end condition, never disables.
@@ -297,7 +297,7 @@ class SchedulerScanner(
                 val endInstant = planning.endDate
                     ?.atTime(scheduledPrompt.recurrence.timeUtc)
                     ?.toInstant(ZoneOffset.UTC)
-                endInstant != null && nextSlot.isAfter(endInstant)
+                endInstant != null && !nextSlot.isBefore(endInstant)
             }
             SchedulerEndType.OCCURRENCES -> {
                 val max = planning.maxOccurrenceCount ?: return

@@ -26,7 +26,7 @@ enum class SchedulerUnit { WEEK, MONTH }
 enum class SchedulerEndType {
     /** Runs indefinitely. */
     NEVER,
-    /** Stops on [PlanningDto.endDate] (inclusive). Must be after [PlanningDto.startDate]. */
+    /** Stops before [PlanningDto.endDate] (exclusive). The run scheduled on endDate itself does NOT fire. Must be strictly after [PlanningDto.startDate]. */
     ON_DATE,
     /** Stops after [PlanningDto.maxOccurrenceCount] executions. */
     OCCURRENCES,
