@@ -96,8 +96,11 @@ open class Neo4jScheduledPromptUserRunRepository(
             statuses.map { it.name },
         )
 
+    override fun hasAnyActive(runId: UUID): Boolean =
+        neo4jRepository.findOneActive(runId.toString()) != null
+
     override fun hasAnyFailed(runId: UUID): Boolean =
-        neo4jRepository.hasAnyFailed(runId.toString())
+        neo4jRepository.findOneFailed(runId.toString()) != null
 
     companion object : KLogging()
 }

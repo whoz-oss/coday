@@ -60,8 +60,10 @@ import java.util.UUID
  *
  * ### Completion check
  *
- * After each UserRun closes, the parent Run is checked:
- * `count(PENDING) == 0 && count(RUNNING) == 0` → DONE (or FAILED if any UserRun failed).
+ * After each UserRun closes, the parent Run is checked via two EXISTS queries:
+ * 1. [ScheduledPromptUserRunRepository.hasAnyActive] — fast-path exit when work is still in flight.
+ * 2. [ScheduledPromptUserRunRepository.hasAnyFailed] — only reached when all UserRuns are terminal.
+ * Result: FAILED if any UserRun failed, DONE otherwise.
  * Only RUNNING Runs are inspected — the CLAIMED→RUNNING transition in Phase A acts as
  * the guard ensuring all UserRuns have been materialised before completion is evaluated.
  */
@@ -419,7 +421,10 @@ class ScheduledPromptExecutor(
      * Transition the parent [ScheduledPromptRun] to DONE (or FAILED) once all
      * UserRuns are settled.
      *
-     * Condition: `count(PENDING) == 0 && count(RUNNING) == 0`.
+     * Fast-path: [ScheduledPromptUserRunRepository.hasAnyActive] exits immediately
+     * (EXISTS query, stops at first match) when work is still in flight.
+     * Only when no active UserRuns remain does it check for failures.
+     *
      * Only inspects RUNNING Runs — a Run only reaches RUNNING after [materialize]
      * completes, so the CLAIMED→RUNNING transition acts as the completion guard
      * (a CLAIMED Run whose [materialize] has not yet finished is never prematurely
@@ -438,17 +443,11 @@ class ScheduledPromptExecutor(
         val run = runRepository.findById(runId) ?: return
         if (run.status != RunStatus.RUNNING && run.status != RunStatus.CLAIMED) return
 
-        val pendingCount = userRunRepository.countByRunIdAndStatus(runId, UserRunStatus.PENDING)
-        val runningCount = userRunRepository.countByRunIdAndStatus(runId, UserRunStatus.RUNNING)
+        if (userRunRepository.hasAnyActive(runId)) return
 
-        if (pendingCount == 0 && runningCount == 0) {
-            val finalStatus = when {
-                userRunRepository.hasAnyFailed(runId) -> RunStatus.FAILED
-                else -> RunStatus.DONE
-            }
-            runRepository.updateStatus(runId, finalStatus, Instant.now(clock))
-            logger.info { "[Executor] Run=$runId → $finalStatus" }
-        }
+        val finalStatus = if (userRunRepository.hasAnyFailed(runId)) RunStatus.FAILED else RunStatus.DONE
+        runRepository.updateStatus(runId, finalStatus, Instant.now(clock))
+        logger.info { "[Executor] Run=$runId → $finalStatus" }
     }
 
     // -------------------------------------------------------------------------

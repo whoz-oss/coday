@@ -86,6 +86,12 @@ interface ScheduledPromptUserRunRepository {
      */
     fun countByRunIdAndStatus(runId: UUID, vararg statuses: UserRunStatus): Int
 
+    /**
+     * Returns true if at least one UserRun for [runId] is still active (PENDING or RUNNING).
+     * Used as a fast-path exit in completion checks — avoids counting when work is still in flight.
+     */
+    fun hasAnyActive(runId: UUID): Boolean
+
     /** Returns true if at least one UserRun for [runId] is in FAILED status. */
     fun hasAnyFailed(runId: UUID): Boolean
 }

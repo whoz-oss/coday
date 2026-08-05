@@ -89,15 +89,34 @@ interface ScheduledPromptUserRunNodeNeo4jRepository : Neo4jRepository<ScheduledP
     )
     fun countByRunIdAndStatuses(runId: String, statuses: List<String>): Int
 
-    /** Returns true if at least one UserRun for [runId] has status FAILED. */
+    /**
+     * Returns a single UserRun for [runId] that is still active (PENDING or RUNNING),
+     * or null if none exists. LIMIT 1 lets Neo4j stop at the first match.
+     * The caller maps non-null → true.
+     */
+    @Query(
+        $$"""
+        MATCH (ur:ScheduledPromptUserRun)
+        WHERE ur.runId = $runId
+          AND ur.status IN ['PENDING', 'RUNNING']
+          AND NOT COALESCE(ur.removed, false)
+        RETURN ur LIMIT 1
+        """,
+    )
+    fun findOneActive(runId: String): ScheduledPromptUserRunNode?
+
+    /**
+     * Returns a single FAILED UserRun for [runId], or null if none exists.
+     * LIMIT 1 lets Neo4j stop at the first match. The caller maps non-null → true.
+     */
     @Query(
         $$"""
         MATCH (ur:ScheduledPromptUserRun)
         WHERE ur.runId = $runId
           AND ur.status = 'FAILED'
           AND NOT COALESCE(ur.removed, false)
-        RETURN count(ur) > 0
+        RETURN ur LIMIT 1
         """,
     )
-    fun hasAnyFailed(runId: String): Boolean
+    fun findOneFailed(runId: String): ScheduledPromptUserRunNode?
 }

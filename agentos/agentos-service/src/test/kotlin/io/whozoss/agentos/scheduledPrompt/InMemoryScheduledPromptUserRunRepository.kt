@@ -104,6 +104,9 @@ class InMemoryScheduledPromptUserRunRepository(
             ur.runId == runId && ur.status in statuses
         }
 
+    override fun hasAnyActive(runId: UUID): Boolean =
+        store.values.any { it.runId == runId && (it.status == UserRunStatus.PENDING || it.status == UserRunStatus.RUNNING) }
+
     override fun hasAnyFailed(runId: UUID): Boolean =
         store.values.any { it.runId == runId && it.status == UserRunStatus.FAILED }
 
