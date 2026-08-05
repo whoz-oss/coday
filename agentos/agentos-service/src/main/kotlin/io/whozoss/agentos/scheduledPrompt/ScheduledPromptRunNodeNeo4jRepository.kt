@@ -60,4 +60,26 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
     @Query($$"MATCH (r:ScheduledPromptRun) WHERE r.status = $status AND r.created < $before RETURN r ORDER BY r.created")
     fun findByStatusAndCreatedBefore(status: String, before: Instant): List<ScheduledPromptRunNode>
 
+    /**
+     * Find RUNNING Runs whose UserRuns are all terminal (none in PENDING or RUNNING).
+     *
+     * A Run qualifies when it is in RUNNING status, not removed, and has no UserRun
+     * in PENDING or RUNNING status. Runs with zero UserRuns never reach RUNNING status
+     * (they are transitioned directly to DONE in [ScheduledPromptExecutor.materialize]).
+     */
+    @Query(
+        """
+        MATCH (r:ScheduledPromptRun)
+        WHERE r.status = 'RUNNING'
+          AND NOT COALESCE(r.removed, false)
+          AND NOT EXISTS {
+              MATCH (ur:ScheduledPromptUserRun)
+              WHERE ur.runId = r.id AND ur.status IN ['PENDING', 'RUNNING']
+          }
+        RETURN r
+        ORDER BY r.created
+        """,
+    )
+    fun findSettledRunning(): List<ScheduledPromptRunNode>
+
 }

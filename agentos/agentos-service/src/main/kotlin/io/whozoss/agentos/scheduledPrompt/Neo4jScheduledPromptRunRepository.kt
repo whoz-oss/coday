@@ -54,6 +54,9 @@ open class Neo4jScheduledPromptRunRepository(
         neo4jRepository.findByStatusAndCreatedBefore(RunStatus.CLAIMED.name, olderThan)
             .map { it.toDomain() }
 
+    override fun findSettledRunning(): List<ScheduledPromptRun> =
+        neo4jRepository.findSettledRunning().map { it.toDomain() }
+
     private fun isSlotKeyConflict(e: DataIntegrityViolationException): Boolean {
         val haystack = generateSequence<Throwable>(e) { it.cause }
             .mapNotNull { it.message }

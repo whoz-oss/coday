@@ -32,8 +32,8 @@ import java.util.UUID
  *
  * [materialize] is called by [SchedulerScanner.claim] after the Run has been inserted.
  * It resolves all target users and creates PENDING [ScheduledPromptUserRun]s via a single
- * Cypher INSERT-SELECT, then transitions the Run to RUNNING — all in a single
- * `@Transactional` boundary.
+ * Cypher INSERT-SELECT, then transitions the Run to RUNNING (when UserRuns were created)
+ * or directly to DONE (when no target users exist) — all in a single `@Transactional` boundary.
  *
  * If the service crashes between the Run insert in [SchedulerScanner.claim] and the
  * [materialize] call, the Run remains CLAIMED forever. [SchedulerScanner.recoverOrphanedClaimedRuns]
@@ -92,7 +92,8 @@ class ScheduledPromptExecutor(
      * PENDING UserRun per distinct user — entirely inside Neo4j, no JVM heap pressure.
      *
      * Safe to call multiple times for the same Run (idempotent via MERGE).
-     * Transitions the Run to [RunStatus.RUNNING] once materialisation is complete.
+     * Transitions the Run to [RunStatus.RUNNING] when UserRuns are created, or directly
+     * to [RunStatus.DONE] when no target users exist (e.g. platform-scope ScheduledPrompt).
      *
      * The MERGE and the CLAIMED→RUNNING transition run in a single `@Transactional`:
      * if the service crashes between the two, neither orphaned PENDING UserRuns (never
@@ -125,13 +126,18 @@ class ScheduledPromptExecutor(
             }.getOrDefault(0)
         }
 
-        // Transition to RUNNING — Phase B's checkCompletion only inspects RUNNING Runs,
-        // so this transition acts as the guard that was previously served by the
-        // materialized flag. A Run only becomes RUNNING after materialize() completes.
-        runRepository.updateStatus(run.id, RunStatus.RUNNING)
+        // Transition based on whether any UserRuns were created:
+        // - RUNNING when count > 0 — Phase B will consume the UserRuns and checkCompletion
+        //   will close the Run once all are terminal.
+        // - DONE when count == 0 — no UserRuns to consume (platform-scope ScheduledPrompt
+        //   with no target users, or namespace with no deployed users). Transitioning to
+        //   RUNNING would leave the Run stuck forever since checkCompletion requires at
+        //   least one UserRun closure to trigger.
+        val finalStatus = if (count > 0) RunStatus.RUNNING else RunStatus.DONE
+        runRepository.updateStatus(run.id, finalStatus, if (count == 0) Instant.now(clock) else null)
 
         logger.info {
-            "[Executor] Phase A complete: run=${run.id} — $count UserRun(s) created"
+            "[Executor] Phase A complete: run=${run.id} — $count UserRun(s) created, status=$finalStatus"
         }
     }
 
@@ -420,6 +426,13 @@ class ScheduledPromptExecutor(
      * evaluated). Orphaned CLAIMED Runs (crash before [materialize]) are swept to
      * FAILED by [SchedulerScanner.recoverOrphanedClaimedRuns] and never reach this path.
      * The Run is FAILED when at least one UserRun failed; DONE otherwise.
+     *
+     * ### Crash window
+     *
+     * If the instance crashes after the last [ScheduledPromptUserRunRepository.markTerminal]
+     * but before this method runs, the Run stays RUNNING forever — no subsequent UserRun
+     * closure will re-trigger this check. [SchedulerScanner.recoverOrphanedRunningRuns]
+     * handles this by re-evaluating the completion condition on every tick.
      */
     private fun checkCompletion(runId: UUID) {
         val run = runRepository.findById(runId) ?: return

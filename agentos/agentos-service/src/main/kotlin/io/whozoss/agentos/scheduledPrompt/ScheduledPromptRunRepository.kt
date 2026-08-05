@@ -57,4 +57,17 @@ interface ScheduledPromptRunRepository {
      * to unblock the overlap guard and leave a diagnostic trace.
      */
     fun findOrphanedClaimed(olderThan: Instant): List<ScheduledPromptRun>
+
+    /**
+     * Find RUNNING Runs whose UserRuns are ALL in a terminal status (DONE or FAILED).
+     *
+     * A Run is "settled" when none of its UserRuns are in PENDING or RUNNING status.
+     * Runs with zero UserRuns (platform-scope or no target users) are directly transitioned
+     * to DONE in [ScheduledPromptExecutor.materialize] and never reach RUNNING status.
+     *
+     * These Runs are presumed orphaned — the instance that processed the last UserRun
+     * crashed after [ScheduledPromptUserRunRepository.markTerminal] but before
+     * [ScheduledPromptExecutor]'s `checkCompletion()` could transition the parent Run.
+     */
+    fun findSettledRunning(): List<ScheduledPromptRun>
 }

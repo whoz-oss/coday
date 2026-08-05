@@ -9,9 +9,16 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Detects duplicates on [slotKey] = `"$scheduledPromptId|$scheduledForEpochMilli"` and throws
  * [DuplicateRunException] exactly as the Neo4j implementation does.
+ *
+ * [findSettledRunning] requires access to the UserRun store to replicate the Cypher
+ * EXISTS sub-query logic. Wire this up by setting [userRunRepository] before calling
+ * [findSettledRunning]; when null (default), the method returns an empty list.
  */
 class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
     private val store = ConcurrentHashMap<String, ScheduledPromptRun>()
+
+    /** Set by scanner factory methods to enable [findSettledRunning] in tests. */
+    var userRunRepository: ScheduledPromptUserRunRepository? = null
 
     override fun insert(run: ScheduledPromptRun): ScheduledPromptRun {
         val key = ScheduledPromptRunNode.slotKey(run.scheduledPromptId, run.scheduledFor)
@@ -50,6 +57,18 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
         store.values.filter {
             it.status == RunStatus.CLAIMED && it.metadata.created.isBefore(olderThan)
         }.sortedBy { it.metadata.created }
+
+    override fun findSettledRunning(): List<ScheduledPromptRun> {
+        val urRepo = userRunRepository ?: return emptyList()
+        return store.values
+            .filter { it.status == RunStatus.RUNNING }
+            .filter { run ->
+                val pending = urRepo.countByRunIdAndStatus(run.id, UserRunStatus.PENDING)
+                val running = urRepo.countByRunIdAndStatus(run.id, UserRunStatus.RUNNING)
+                pending == 0 && running == 0
+            }
+            .sortedBy { it.metadata.created }
+    }
 
     /** Test helper: all stored runs. */
     fun all(): List<ScheduledPromptRun> = store.values.toList()

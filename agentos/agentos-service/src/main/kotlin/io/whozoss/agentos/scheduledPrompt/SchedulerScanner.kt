@@ -51,6 +51,11 @@ import java.time.ZoneOffset
  * and materialize). [recoverOrphanedClaimedRuns] marks such runs FAILED at the start of
  * each tick, unblocking the [ScheduledPromptRunRepository.hasActive] overlap guard.
  *
+ * A RUNNING Run whose UserRuns are all terminal but whose completion check was never
+ * called is handled by [recoverOrphanedRunningRuns], also called at the start of each
+ * tick. This covers the crash window between [ScheduledPromptUserRunRepository.markTerminal]
+ * and [ScheduledPromptExecutor.checkCompletion].
+ *
  * The [clock] is injected so tests can freeze time.
  */
 
@@ -59,6 +64,7 @@ import java.time.ZoneOffset
 class SchedulerScanner(
     private val scheduledPromptRepository: ScheduledPromptRepository,
     private val runRepository: ScheduledPromptRunRepository,
+    private val userRunRepository: ScheduledPromptUserRunRepository,
     private val agentConfigService: AgentConfigService,
     private val properties: SchedulerProperties,
     private val clock: Clock,
@@ -88,6 +94,11 @@ class SchedulerScanner(
         // normally completes in seconds. Marking it FAILED unblocks the hasActive() overlap
         // guard so subsequent slots are not stuck in SKIPPED.
         recoverOrphanedClaimedRuns(now)
+
+        // Sweep: close RUNNING runs whose UserRuns are all settled but whose completion
+        // check was missed. This handles the crash window between markTerminal() and
+        // checkCompletion() in ScheduledPromptExecutor.
+        recoverOrphanedRunningRuns(now)
 
         scheduledPromptRepository.findDue(now)
             .also { due ->
@@ -125,6 +136,37 @@ class SchedulerScanner(
                 finishedAt = now,
                 error = "Orphaned CLAIMED — materialize never completed (crash recovery)",
             )
+        }
+    }
+
+    /**
+     * Close RUNNING Runs whose UserRuns are all settled but whose completion check was missed.
+     *
+     * This handles the crash window where the last [ScheduledPromptUserRunRepository.markTerminal]
+     * completed but the instance crashed before [ScheduledPromptExecutor]'s `checkCompletion()`
+     * could transition the parent Run. Without this sweep, the Run would stay RUNNING forever
+     * — no subsequent UserRun closure will re-trigger the check.
+     *
+     * Uses a single [ScheduledPromptRunRepository.findSettledRunning] query that filters
+     * directly in the database: only RUNNING Runs with no UserRun in PENDING or RUNNING
+     * status are returned. In normal operation this returns an empty list (no N+1 queries).
+     * Only in crash recovery scenarios are results expected.
+     *
+     * Safe in multi-instance: [ScheduledPromptRunRepository.updateStatus] is idempotent
+     * (second call is a no-op when the Run is already in the target status).
+     */
+    private fun recoverOrphanedRunningRuns(now: Instant) {
+        val settledRuns = runRepository.findSettledRunning()
+        for (run in settledRuns) {
+            val finalStatus = when {
+                userRunRepository.hasAnyFailed(run.id) -> RunStatus.FAILED
+                else -> RunStatus.DONE
+            }
+            runRepository.updateStatus(run.id, finalStatus, now)
+            logger.warn {
+                "[SchedulerScanner] Orphaned RUNNING run=${run.id} sp=${run.scheduledPromptId} " +
+                    "— all UserRuns settled, closing as $finalStatus (crash recovery)"
+            }
         }
     }
 

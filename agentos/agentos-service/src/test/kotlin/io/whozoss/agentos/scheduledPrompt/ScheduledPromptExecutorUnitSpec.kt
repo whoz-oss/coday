@@ -216,7 +216,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             userRunRepo.all().size shouldBe 1
         }
 
-        "Phase A: platform-scope ScheduledPrompt materialises zero UserRuns" {
+        "Phase A: platform-scope ScheduledPrompt materialises zero UserRuns and transitions to DONE" {
             val sp = makeScheduledPrompt(nsId = null)
             val run = makeRun(sp)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
@@ -234,9 +234,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             ).materialize(run, sp)
 
             userRunRepo.all().size shouldBe 0
-            // Run still transitions to RUNNING (zero users is valid)
+            // No target users → Run transitions directly to DONE (nothing to consume)
             val updatedRun = runRepo.all().first { it.id == run.id }
-            updatedRun.status shouldBe RunStatus.RUNNING
+            updatedRun.status shouldBe RunStatus.DONE
         }
 
         // -------------------------------------------------------------------------
