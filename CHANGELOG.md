@@ -1,3 +1,15 @@
+## 0.241.0 (2026-08-05)
+
+### 🚀 Features
+
+- display tool call details in chat messages ([8a72bb36](https://github.com/whoz-oss/coday/commit/8a72bb36))
+- display tool call details in chat messages - rebase collapsed error messages ([d288b24c](https://github.com/whoz-oss/coday/commit/d288b24c))
+- display tool call details in chat messages ([#1216](https://github.com/whoz-oss/coday/pull/1216))
+
+### ❤️ Thank You
+
+- Romain Petit
+
 ## 0.240.0 (2026-08-05)
 
 ### 🚀 Features
