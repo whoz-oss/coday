@@ -300,7 +300,7 @@ class ScheduledPromptExecutor(
             val case = caseService.create(
                 Case(
                     namespaceId = namespaceId,
-                    title = buildCaseTitle(scheduledPrompt.name, user.displayName()),
+                    title = scheduledPrompt.name,
                 ),
             )
             val caseId = case.id
@@ -467,11 +467,7 @@ class ScheduledPromptExecutor(
         }
     }
 
-    private fun buildCaseTitle(scheduledPromptName: String, userDisplayName: String): String =
-        "$scheduledPromptName — $userDisplayName".take(MAX_TITLE_LENGTH)
-
     companion object : KLogging() {
-        private const val MAX_TITLE_LENGTH = 100
         private const val POLL_INTERVAL_MS = 2_000L
     }
 }

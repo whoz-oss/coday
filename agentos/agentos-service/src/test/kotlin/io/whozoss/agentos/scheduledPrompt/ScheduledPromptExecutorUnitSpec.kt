@@ -314,7 +314,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             // Wait for the background coroutine to settle
             kotlinx.coroutines.delay(500)
 
-            verify(exactly = 1) { caseService.create(any()) }
+            val caseSlot = slot<Case>()
+            verify(exactly = 1) { caseService.create(capture(caseSlot)) }
+            caseSlot.captured.title shouldBe "Weekly Digest"
             verify(exactly = 1) {
                 permissionService.grantPermission(
                     userId1.toString(),
