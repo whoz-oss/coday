@@ -15,7 +15,7 @@
 name: "GIT"
 integrationType: "BASH"
 parameters:
-  workingDirectory: "{{NAMESPACE_CONFIG_PATH"
+  workingDirectory: "{{NAMESPACE_CONFIG_PATH}}"
   defaultTimeoutSeconds: 30
   tools:
   - name: "git"
