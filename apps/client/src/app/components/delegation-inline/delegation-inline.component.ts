@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
+import { buildToolRequestFullContent } from '../chat-message/chat-message.utils'
 import { CodayService } from '../../core/services/coday.service'
 import { ThreadApiService } from '../../core/services/thread-api.service'
 import { Subscription } from 'rxjs'
@@ -11,6 +12,7 @@ import {
   AnswerEvent,
   buildCodayEvent,
   CodayEvent,
+  ErrorEvent,
   MessageEvent,
   TextEvent,
   ToolRequestEvent,
@@ -139,6 +141,7 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
         timestamp: new Date(),
         type: 'technical',
         eventId: event.timestamp,
+        fullContent: buildToolRequestFullContent(event),
       })
     } else if (event instanceof ToolResponseEvent) {
       this.addMessage({
@@ -160,6 +163,15 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
         type: 'delegation',
         subThreadId: event.subThreadId,
         delegationAgentName: event.agentName,
+      })
+    } else if (event instanceof ErrorEvent) {
+      this.addMessage({
+        id: event.timestamp,
+        role: 'system',
+        speaker: 'System',
+        content: [{ type: 'text', content: `Error: ${JSON.stringify(event.error)}` }],
+        timestamp: new Date(),
+        type: 'error',
       })
     } else if (event instanceof TextEvent) {
       this.addMessage({

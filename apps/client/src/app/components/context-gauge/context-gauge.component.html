@@ -1,0 +1,50 @@
+<div class="tube-host" [title]="tooltipText()" [class.hidden]="sidenavOpen()">
+  <div class="tube" [style.--tube-color]="liquidColor()">
+    <div class="bubbles-above">
+      @for (b of aboveBubbles; track $index) {
+        <div
+          class="bubble-color"
+          [class.invisible]="$index >= aboveBubbleCount()"
+          [style.--delay]="b.delay + 's'"
+          [style.--left]="b.left + '%'"
+          [style.--dur]="b.dur + 's'"
+          [style.--size]="b.size + 'px'"
+          [style.--rise]="b.rise + 'px'"
+        ></div>
+      }
+    </div>
+
+    <div class="foam" [class.active]="foamActive()" [style.bottom]="displayRatio() + '%'">
+      @for (b of foamBubbles; track $index) {
+        <div
+          class="foam-bubble"
+          [style.--delay]="b.delay + 's'"
+          [style.--size]="b.size + 'px'"
+          [style.--left]="b.left + '%'"
+          [style.--dur]="b.dur + 's'"
+          [style.--top]="b.top + 'px'"
+        ></div>
+      }
+    </div>
+
+    <div class="body">
+      <div class="shine"></div>
+      <div class="liquid">
+        <div class="percentage" [style.height.%]="displayRatio()">
+          <div class="bubbles-inside">
+            @for (b of insideBubbles; track $index) {
+              <div
+                class="bubble-dark"
+                [class.invisible]="$index >= insideBubbleCount()"
+                [style.--delay]="b.delay + 's'"
+                [style.--left]="b.left + '%'"
+                [style.--dur]="b.dur + 's'"
+                [style.--size]="b.size + 'px'"
+              ></div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

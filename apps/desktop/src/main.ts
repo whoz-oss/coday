@@ -11,6 +11,7 @@ import {
   startCodayServer,
   stopCodayServer,
   isServerResponsive,
+  resolveCodayWebSpec,
   createLoadingWindow,
   createMainWindow,
   showErrorDialog,
@@ -38,7 +39,6 @@ const fs = require('fs') as typeof import('fs')
 
 const PROTOCOL_NAME = 'coday'
 const CODAY_PORT = '3049'
-const SERVER_ARGS = ['--yes', '@whoz-oss/coday-web', '--base-url=coday://', '--multi']
 const PREFERENCES_KEY_SETUP_DONE = 'setupDone'
 
 const STORAGE_FILE = join(app.getPath('userData'), 'preferences.json')
@@ -446,11 +446,12 @@ async function initialize(): Promise<void> {
     log('INFO', 'Found npx at:', npxPath)
 
     // Start the Coday server
+    const serverArgs = ['--yes', resolveCodayWebSpec(app), '--base-url=coday://', '--multi']
     const result = await startCodayServer({
       appName: 'Coday',
       port: CODAY_PORT,
       npxPath,
-      serverArgs: SERVER_ARGS,
+      serverArgs,
       npxCwd: app.getPath('temp'),
       env: setupEnv(),
     })

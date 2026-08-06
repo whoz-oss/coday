@@ -9,6 +9,7 @@ import {
   startCodayServer,
   stopCodayServer,
   isServerResponsive,
+  resolveCodayWebSpec,
   createLoadingWindow,
   createMainWindow,
   showErrorDialog,
@@ -38,7 +39,6 @@ const fs = require('fs') as typeof import('fs')
 
 const PROTOCOL_NAME = 'coday-twin'
 const CODAY_TWIN_PORT = '3050'
-const SERVER_ARGS = ['--yes', '@whoz-oss/coday-web', '--base-url=coday-twin://', '--coday_project=CodayTwin']
 const DEFAULT_TWIN_PROJECT_PATH = join(app.getPath('home'), 'CodayTwin')
 const PREFERENCES_KEY_TWIN_PATH = 'twinProjectPath'
 const PREFERENCES_KEY_SLACK_ENABLED = 'slackEnabled'
@@ -1250,11 +1250,12 @@ async function initialize(): Promise<void> {
     ensureTwinProjectConfig(twinProjectPath)
 
     // Start the CodayTwin server
+    const serverArgs = ['--yes', resolveCodayWebSpec(app), '--base-url=coday-twin://', '--coday_project=CodayTwin']
     const result = await startCodayServer({
       appName: 'CodayTwin',
       port: CODAY_TWIN_PORT,
       npxPath,
-      serverArgs: SERVER_ARGS,
+      serverArgs,
       npxCwd: app.getPath('temp'),
       env: setupEnv(),
     })

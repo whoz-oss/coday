@@ -1,3 +1,64 @@
+## 0.243.0 (2026-08-06)
+
+### 🚀 Features
+
+- context tube ([7266d9ec](https://github.com/whoz-oss/coday/commit/7266d9ec))
+- context gauge ([1bcd9b66](https://github.com/whoz-oss/coday/commit/1bcd9b66))
+
+### 🩹 Fixes
+
+- set Github MCP version and fix Coday agents ([19aa86f9](https://github.com/whoz-oss/coday/commit/19aa86f9))
+- set Github MCP version and fix Coday agents ([#1221](https://github.com/whoz-oss/coday/pull/1221))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+- Romain Petit
+
+## 0.242.0 (2026-08-06)
+
+### 🚀 Features
+
+- make desktop apps use the current version of the build ([#1220](https://github.com/whoz-oss/coday/pull/1220))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.241.1 (2026-08-06)
+
+### 🩹 Fixes
+
+- add missing chat-message.utils module ([#1216](https://github.com/whoz-oss/coday/issues/1216))
+- add missing chat-message.utils module ([#1219](https://github.com/whoz-oss/coday/pull/1219))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 0.241.0 (2026-08-05)
+
+### 🚀 Features
+
+- display tool call details in chat messages ([8a72bb36](https://github.com/whoz-oss/coday/commit/8a72bb36))
+- display tool call details in chat messages - rebase collapsed error messages ([d288b24c](https://github.com/whoz-oss/coday/commit/d288b24c))
+- display tool call details in chat messages ([#1216](https://github.com/whoz-oss/coday/pull/1216))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 0.240.0 (2026-08-05)
+
+### 🚀 Features
+
+- collapse long error messages in chat ([c5031db0](https://github.com/whoz-oss/coday/commit/c5031db0))
+- collapse long error messages in chat ([#1215](https://github.com/whoz-oss/coday/pull/1215))
+
+### ❤️ Thank You
+
+- Romain Petit
+
 ## 0.239.1 (2026-08-04)
 
 ### 🩹 Fixes
