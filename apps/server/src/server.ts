@@ -539,10 +539,10 @@ PORT_PROMISE.then(async (PORT) => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })
 
-  // AgentOS provisioning — non-fatal: a failure here must never prevent the
-  // Express server from starting. The proxy will return errors until AgentOS is
-  // available, which is acceptable.
-  await provisionAgentos(PORT)
+  // AgentOS provisioning — fire-and-forget: runs in background so downloads
+  // (up to ~230 MB) never block server startup or other services.
+  // The proxy will return errors until AgentOS is ready, which is acceptable.
+  provisionAgentos(PORT).catch((err) => debugLog('AGENTOS', '[PROVISION] Unhandled error:', err))
 
   // Start thread cleanup service after server is running
   try {
