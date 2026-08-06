@@ -1,3 +1,18 @@
+## 0.244.0 (2026-08-06)
+
+### 🚀 Features
+
+- #1189 prompts as files ([#1191](https://github.com/whoz-oss/coday/pull/1191), [#1189](https://github.com/whoz-oss/coday/issues/1189))
+- #1174 check AgentOS JAR availability and probe download chain ([#1210](https://github.com/whoz-oss/coday/pull/1210), [#1174](https://github.com/whoz-oss/coday/issues/1174), [#1206](https://github.com/whoz-oss/coday/issues/1206), [#1207](https://github.com/whoz-oss/coday/issues/1207))
+
+### 🩹 Fixes
+
+- git.yaml missing closing braces on NAMESPACE_CONFIG_PATH token ([#1222](https://github.com/whoz-oss/coday/pull/1222))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.243.0 (2026-08-06)
 
 ### 🚀 Features
