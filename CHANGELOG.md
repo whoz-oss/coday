@@ -1,3 +1,14 @@
+## 0.244.1 (2026-08-06)
+
+### 🩹 Fixes
+
+- sort by agent name first ([22bd9d12](https://github.com/whoz-oss/coday/commit/22bd9d12))
+- sort by agent name first ([#1223](https://github.com/whoz-oss/coday/pull/1223))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+
 ## 0.244.0 (2026-08-06)
 
 ### 🚀 Features
