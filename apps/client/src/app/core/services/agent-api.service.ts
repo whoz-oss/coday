@@ -45,10 +45,16 @@ export class AgentApiService {
   }
 
   /**
-   * Get agents matching query for autocomplete (client-side filtering)
+   * Get agents matching query for autocomplete (client-side filtering + relevance sort).
+   *
+   * Results are ordered by match relevance:
+   *   1. Name starts with query (highest relevance)
+   *   2. Name contains query but does not start with it
+   *   3. Description match only (lowest relevance)
+   *
    * @param projectName Project name
    * @param query Query string to filter agents
-   * @returns Observable of filtered agent autocomplete items
+   * @returns Observable of filtered and sorted agent autocomplete items
    */
   getAgentsAutocomplete(projectName: string, query: string): Observable<AgentAutocomplete[]> {
     return this.getAgents(projectName).pipe(
@@ -58,13 +64,24 @@ export class AgentApiService {
         }
 
         const lowerQuery = query.toLowerCase()
-        return agents.filter((agent) => {
-          const lowerName = agent.name.toLowerCase()
-          const lowerDescription = agent.description?.toLowerCase() || ''
 
-          // Match if query is found in name or description
-          return lowerName.includes(lowerQuery) || lowerDescription.includes(lowerQuery)
-        })
+        /** Returns a relevance tier: 0 = name starts with, 1 = name contains, 2 = description only. */
+        const relevance = (agent: AgentAutocomplete): 0 | 1 | 2 => {
+          const lowerName = agent.name.toLowerCase()
+          if (lowerName.startsWith(lowerQuery)) return 0
+          if (lowerName.includes(lowerQuery)) return 1
+          return 2
+        }
+
+        return agents
+          .filter((agent) => {
+            const lowerName = agent.name.toLowerCase()
+            const lowerDescription = agent.description?.toLowerCase() || ''
+
+            // Match if query is found in name or description
+            return lowerName.includes(lowerQuery) || lowerDescription.includes(lowerQuery)
+          })
+          .sort((a, b) => relevance(a) - relevance(b))
       })
     )
   }
