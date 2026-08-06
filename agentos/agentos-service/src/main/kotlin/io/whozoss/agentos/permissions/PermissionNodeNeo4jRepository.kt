@@ -432,7 +432,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * Returns a list of two-element string arrays `[userId, relationType]`.
      */
     @Query(
-        $"""
+        $$"""
         UNWIND $userIds AS uid
         MATCH (u:User {id: uid})-[r:ADMIN|MEMBER]->(e {id: $entityId})
         WHERE $entityLabel IN labels(e)
