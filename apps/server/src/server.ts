@@ -456,6 +456,17 @@ async function provisionAgentos(expressPort: number): Promise<void> {
   try {
     const codayVersion = getCodayVersion()
 
+    // Dev sentinel: getCodayVersion() returns 'dev' when no package.json version
+    // can be resolved (e.g. tsx watch from monorepo root without a build).
+    // No release exists to download from, and no JAR will be found — skip cleanly.
+    if (codayVersion === 'dev') {
+      debugLog(
+        'AGENTOS',
+        '[PROVISION] Dev version detected — skipping managed provisioning. Set AGENTOS_URL to point to your AgentOS instance.'
+      )
+      return
+    }
+
     // --- 1. Check JAR inventory ---
     const jarStatus = checkAgentosJars(codayOptions.configDir, codayVersion)
 
