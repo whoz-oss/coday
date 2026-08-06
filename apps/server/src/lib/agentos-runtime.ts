@@ -4,11 +4,10 @@
  * Launch the AgentOS Spring Boot JAR as a managed child process.
  *
  * Design decisions:
- *   - Port FIXE 8124. AgentOS est un singleton de fait (Neo4j embedded locke
- *     data/neo4j/ et le port Bolt 7688). Faire tourner deux instances en
- *     parallèle est proscrit.
- *   - Avant de spawner, on sonde /management/health. Si un AgentOS répond
- *     déjà, on l'ADOPTE sans le tuer — et on ne le tue PAS au shutdown.
+ *   - Port dynamique : findAvailablePort(expressPort + 1) — AgentOS ne prend
+ *     jamais le port du serveur Express, et s'adapte si le suivant est pris.
+ *   - Avant de spawner, on sonde /management/health sur le port choisi. Si un
+ *     AgentOS répond déjà, on l'ADOPTE sans le tuer — et on ne le tue PAS au shutdown.
  *   - cwd = <configDir>/agentos : les chemins relatifs de Spring (plugins/,
  *     data/, data/exchange/) tombent exactement sur le layout voulu sans
  *     aucune env var supplémentaire.
@@ -25,13 +24,11 @@
 import { spawn, execFileSync, ChildProcess } from 'child_process'
 import * as path from 'path'
 import { debugLog } from './log'
+import { findAvailablePort } from './find-available-port'
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/** Fixed port for AgentOS. See module JSDoc for rationale. */
-const AGENTOS_PORT = 8124
 
 /** Minimum Java major version required. AgentOS toolchain targets Java 25. */
 const JAVA_MIN_VERSION = 25
@@ -133,9 +130,9 @@ function detectJava(): { available: boolean; version?: string } {
  * Check if an AgentOS instance is already healthy at the fixed port.
  * Single probe, no retry. Used for adoption detection before spawn.
  */
-async function isAlreadyRunning(): Promise<boolean> {
+async function isAlreadyRunning(port: number): Promise<boolean> {
   try {
-    const url = `http://localhost:${AGENTOS_PORT}/management/health`
+    const url = `http://localhost:${port}/management/health`
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 3_000)
     let res: Response
@@ -154,25 +151,28 @@ async function isAlreadyRunning(): Promise<boolean> {
  * Poll /management/health until Spring Boot reports 2xx or timeout.
  * Spring Boot with Neo4j embedded can take up to ~60 s on first start.
  */
-async function waitForHealthy(): Promise<boolean> {
-  const url = `http://localhost:${AGENTOS_PORT}/management/health`
+async function waitForHealthy(port: number): Promise<boolean> {
+  const url = `http://localhost:${port}/management/health`
   const deadline = Date.now() + HEALTH_TIMEOUT_MS
 
   while (Date.now() < deadline) {
     try {
       const res = await fetch(url)
       if (res.ok) {
-        debugLog('AGENTOS', `[RUNTIME] Health check passed on port ${AGENTOS_PORT}`)
+        debugLog('AGENTOS', `[RUNTIME] Health check passed on port ${port}`)
         return true
       }
-      debugLog('AGENTOS', `[RUNTIME] Health check returned ${res.status}, retrying in ${HEALTH_POLL_INTERVAL_MS}ms...`)
+      debugLog(
+        'AGENTOS',
+        `[RUNTIME] Health check on port ${port} returned ${res.status}, retrying in ${HEALTH_POLL_INTERVAL_MS}ms...`
+      )
     } catch {
       // Connection refused or network error — process still starting
     }
     await new Promise((resolve) => setTimeout(resolve, HEALTH_POLL_INTERVAL_MS))
   }
 
-  debugLog('AGENTOS', `[RUNTIME] Health check timed out after ${HEALTH_TIMEOUT_MS / 1000} s`)
+  debugLog('AGENTOS', `[RUNTIME] Health check on port ${port} timed out after ${HEALTH_TIMEOUT_MS / 1000} s`)
   return false
 }
 
@@ -205,18 +205,24 @@ export async function startAgentos(
   expressPort: number
 ): Promise<AgentosProcess | null> {
   // ------------------------------------------------------------------
-  // 1. Check if an AgentOS instance is already running (adoption)
+  // 1. Find available port (expressPort + 1 as starting point)
   // ------------------------------------------------------------------
-  const alreadyRunning = await isAlreadyRunning()
+  const agentosPort = await findAvailablePort(expressPort + 1, 10)
+  debugLog('AGENTOS', `[RUNTIME] Selected port ${agentosPort} for AgentOS (Express is on ${expressPort})`)
+
+  // ------------------------------------------------------------------
+  // 2. Check if an AgentOS instance is already running on that port (adoption)
+  // ------------------------------------------------------------------
+  const alreadyRunning = await isAlreadyRunning(agentosPort)
   if (alreadyRunning) {
     debugLog(
       'AGENTOS',
-      `[RUNTIME] An AgentOS instance is already responding at http://localhost:${AGENTOS_PORT}.` +
+      `[RUNTIME] An AgentOS instance is already responding at http://localhost:${agentosPort}.` +
         ` ADOPTING it — Coday did NOT start this process and will NOT stop it at shutdown.` +
         ` NOTE: it may be running an older version. If you observe unexpected behaviour, kill it manually and restart Coday.`
     )
     return {
-      port: AGENTOS_PORT,
+      port: agentosPort,
       spawned: false,
       shutdown: async () => {
         debugLog('AGENTOS', '[RUNTIME] Adopted process — skipping shutdown')
@@ -225,7 +231,7 @@ export async function startAgentos(
   }
 
   // ------------------------------------------------------------------
-  // 2. Detect Java >= 25
+  // 3. Detect Java >= 25
   // ------------------------------------------------------------------
   const java = detectJava()
   if (!java.available) {
@@ -234,7 +240,7 @@ export async function startAgentos(
   }
 
   // ------------------------------------------------------------------
-  // 3. Verify JAR exists
+  // 4. Verify JAR exists
   // ------------------------------------------------------------------
   const agentosDir = path.join(configDir, 'agentos')
   const jarPath = path.join(agentosDir, `agentos-service-${version}.jar`)
@@ -247,16 +253,20 @@ export async function startAgentos(
   }
 
   // ------------------------------------------------------------------
-  // 4. Spawn the process
+  // 5. Spawn the process
   // ------------------------------------------------------------------
-  debugLog('AGENTOS', `[RUNTIME] Spawning AgentOS on port ${AGENTOS_PORT}`)
-  debugLog('AGENTOS', `[RUNTIME]   JAR:  ${jarPath}`)
-  debugLog('AGENTOS', `[RUNTIME]   CWD:  ${agentosDir}`)
+  debugLog('AGENTOS', `[RUNTIME] Spawning AgentOS — config:`)
+  debugLog('AGENTOS', `[RUNTIME]   port:     ${agentosPort}`)
+  debugLog('AGENTOS', `[RUNTIME]   JAR:      ${jarPath}`)
+  debugLog('AGENTOS', `[RUNTIME]   CWD:      ${agentosDir}`)
+  debugLog('AGENTOS', `[RUNTIME]   JAVA_HOME: ${process.env.JAVA_HOME ?? '(not set, using PATH)'}`)
+  debugLog('AGENTOS', `[RUNTIME]   encryption: NONE (plaintext — temporary)`)
+  debugLog('AGENTOS', `[RUNTIME]   OAuth redirect: http://localhost:${expressPort}/agentos/oauth/callback`)
 
   const javaHome = process.env.JAVA_HOME
   const javaBin = javaHome ? path.join(javaHome, 'bin', 'java') : 'java'
 
-  const child: ChildProcess = spawn(javaBin, ['-jar', jarPath, `--server.port=${AGENTOS_PORT}`], {
+  const child: ChildProcess = spawn(javaBin, ['-jar', jarPath, `--server.port=${agentosPort}`], {
     cwd: agentosDir,
     // Inherit env from parent process, then add our overrides.
     // AGENTOS_ENCRYPTION_KEY/SALT=NONE: explicitly disables field encryption
@@ -300,10 +310,13 @@ export async function startAgentos(
   })
 
   // ------------------------------------------------------------------
-  // 5. Wait for healthy
+  // 6. Wait for healthy
   // ------------------------------------------------------------------
-  debugLog('AGENTOS', `[RUNTIME] Waiting for AgentOS to become healthy (up to ${HEALTH_TIMEOUT_MS / 1000} s)...`)
-  const healthy = await waitForHealthy()
+  debugLog(
+    'AGENTOS',
+    `[RUNTIME] Waiting for AgentOS to become healthy on port ${agentosPort} (up to ${HEALTH_TIMEOUT_MS / 1000} s)...`
+  )
+  const healthy = await waitForHealthy(agentosPort)
 
   const spawnErrorMsg = spawnError ? (spawnError as { message: string }).message : null
   if (!healthy || exited || spawnError) {
@@ -319,10 +332,10 @@ export async function startAgentos(
     return null
   }
 
-  debugLog('AGENTOS', `[RUNTIME] AgentOS is up and healthy on port ${AGENTOS_PORT}`)
+  debugLog('AGENTOS', `[RUNTIME] AgentOS is up and healthy on port ${agentosPort}`)
 
   // ------------------------------------------------------------------
-  // 6. Build and return the handle
+  // 7. Build and return the handle
   // ------------------------------------------------------------------
   const shutdown = (): Promise<void> =>
     new Promise((resolve) => {
@@ -356,5 +369,5 @@ export async function startAgentos(
       }
     })
 
-  return { port: AGENTOS_PORT, spawned: true, shutdown }
+  return { port: agentosPort, spawned: true, shutdown }
 }
