@@ -17,6 +17,7 @@ import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
@@ -51,7 +52,7 @@ class IntegrationConfigControllerSpec : StringSpec({
     val namespaceService = mockk<NamespaceService>(relaxed = true)
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
-    val controller = IntegrationConfigController(service, namespaceService, userService, permissionService)
+    val controller = IntegrationConfigController(service, namespaceService, userService, permissionService, yamlExportMapper())
 
     val namespaceId = UUID.randomUUID()
     val aliceId = UUID.randomUUID()

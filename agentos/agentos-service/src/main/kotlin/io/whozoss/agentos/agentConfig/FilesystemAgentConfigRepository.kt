@@ -26,10 +26,9 @@ import java.util.UUID
 class FilesystemAgentConfigRepository(
     private val delegate: AgentConfigRepository,
     private val namespaceRepository: NamespaceRepository,
+    private val yamlMapper: ObjectMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build()),
     ttl: Duration = Duration.ofMinutes(5),
 ) : AgentConfigRepository by delegate {
-    private val yamlMapper =
-        ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
 
     private val cacheRegistry =
         FilesystemYamlCacheRegistry(
