@@ -360,6 +360,24 @@ class Neo4jPermissionRepository(
             throw e
         }
 
+    override fun listRelationsForUsers(
+        entityType: EntityType,
+        entityId: String,
+        userIds: Collection<String>,
+    ): Map<String, PermissionRelation> {
+        if (userIds.isEmpty()) return emptyMap()
+        return try {
+            permissionNodeRepository
+                .findRelationsForUsers(userIds, entityId, entityType.label)
+                .associate { row ->
+                    row.userId to PermissionRelation.valueOf(row.relation)
+                }
+        } catch (e: Exception) {
+            logger.error(e) { "Error listing relations for users on $entityType:$entityId" }
+            emptyMap() // Fail-closed: return empty map on error
+        }
+    }
+
     override fun applyShareBatch(
         entityType: EntityType,
         entityId: String,

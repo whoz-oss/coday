@@ -165,6 +165,26 @@ interface PermissionService {
     fun clearUserCache(userId: String)
 
     /**
+     * Returns the current [PermissionRelation] for each of the given [userIds] on [entityId].
+     *
+     * Only direct relations are considered (no transitive namespace lookup). Users in [userIds]
+     * that hold no relation on the entity are absent from the returned map.
+     * Unknown user ids are silently ignored.
+     *
+     * Fail-closed: returns an empty map on error.
+     *
+     * @param entityType The type of entity
+     * @param entityId The ID of the entity
+     * @param userIds The user ids to look up (by internal string UUID)
+     * @return Map of userId → [PermissionRelation] for users that have any direct relation
+     */
+    fun listRelationsForUsers(
+        entityType: EntityType,
+        entityId: String,
+        userIds: Collection<String>,
+    ): Map<String, PermissionRelation>
+
+    /**
      * Batch-apply share entries on an entity in a single Cypher round-trip per role group.
      * Each entry is a (userId, targetRole?) pair:
      * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER,

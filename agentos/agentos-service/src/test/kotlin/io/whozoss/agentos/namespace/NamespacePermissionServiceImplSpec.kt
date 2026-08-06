@@ -322,11 +322,8 @@ class NamespacePermissionServiceImplSpec : StringSpec({
     "updateMembers throws 422 when removing a userId not currently on the namespace" {
         every { namespaceService.getById(namespaceId) } returns namespace
         every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
-        } returns emptyList()
-        every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
-        } returns emptyList()
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns emptyMap()
 
         shouldThrow<UnprocessableEntityException> {
             service.updateMembers(
@@ -340,11 +337,8 @@ class NamespacePermissionServiceImplSpec : StringSpec({
     "updateMembers throws AccessDenied when a non-super-admin caller adds a genuinely new user" {
         every { namespaceService.getById(namespaceId) } returns namespace
         every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
-        } returns emptyList()
-        every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
-        } returns emptyList()
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns emptyMap()
 
         shouldThrow<org.springframework.security.access.AccessDeniedException> {
             service.updateMembers(
@@ -359,10 +353,10 @@ class NamespacePermissionServiceImplSpec : StringSpec({
     "updateMembers throws 422 when a new user's userId is unknown" {
         every { namespaceService.getById(namespaceId) } returns namespace
         every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
-        } returns emptyList()
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns emptyMap()
         every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
         } returns emptyList()
         every { userService.findByIds(listOf(userId)) } returns emptyList()
 
@@ -379,12 +373,14 @@ class NamespacePermissionServiceImplSpec : StringSpec({
     "updateMembers grants MEMBER to a new user when the caller is super-admin" {
         every { namespaceService.getById(namespaceId) } returns namespace
         every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns emptyMap()
+        every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
         } returns emptyList()
-        every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
-        } returns emptyList()
-        every { userService.findByIds(any()) } returns listOf(user)
+        // findByIds is called once to validate the new userId exists, then again by resolveNamespaceUsers.
+        every { userService.findByIds(listOf(userId)) } returns listOf(user)
+        every { userService.findByIds(emptyList()) } returns emptyList()
         every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(userId.toString())
 
         service.updateMembers(
@@ -405,11 +401,11 @@ class NamespacePermissionServiceImplSpec : StringSpec({
     "updateMembers allows a namespace-write (non-super-admin) caller to change an existing member's role" {
         every { namespaceService.getById(namespaceId) } returns namespace
         every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns mapOf(userId.toString() to PermissionRelation.MEMBER)
+        every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
         } returns emptyList()
-        every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
-        } returns listOf(userId.toString())
         every { userService.findByIds(any()) } returns listOf(user)
         every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(userId.toString())
 
@@ -431,11 +427,11 @@ class NamespacePermissionServiceImplSpec : StringSpec({
     "updateMembers skips the share batch when no role actually changes" {
         every { namespaceService.getById(namespaceId) } returns namespace
         every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns mapOf(userId.toString() to PermissionRelation.ADMIN)
+        every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
         } returns listOf(userId.toString())
-        every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
-        } returns emptyList()
         every { userService.findByIds(any()) } returns listOf(user)
 
         service.updateMembers(
@@ -450,11 +446,11 @@ class NamespacePermissionServiceImplSpec : StringSpec({
     "updateMembers revokes an existing member without requiring super-admin" {
         every { namespaceService.getById(namespaceId) } returns namespace
         every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns mapOf(userId.toString() to PermissionRelation.MEMBER)
+        every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
         } returns emptyList()
-        every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
-        } returns listOf(userId.toString())
         every { userService.findByIds(any()) } returns emptyList()
         every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(userId.toString())
 
@@ -476,12 +472,11 @@ class NamespacePermissionServiceImplSpec : StringSpec({
     "updateMembers throws 422 when the update would leave the namespace with no ADMIN" {
         every { namespaceService.getById(namespaceId) } returns namespace
         every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns mapOf(userId.toString() to PermissionRelation.ADMIN)
+        every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
         } returns listOf(userId.toString())
-        every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
-        } returns emptyList()
-        every { userService.findByIds(listOf(userId)) } returns listOf(user)
 
         shouldThrow<UnprocessableEntityException> {
             service.updateMembers(
@@ -503,11 +498,18 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         )
         every { namespaceService.getById(namespaceId) } returns namespace
         every {
+            permissionService.listRelationsForUsers(
+                EntityType.NAMESPACE,
+                namespaceId.toString(),
+                match { it.containsAll(listOf(userId.toString(), otherUserId.toString())) },
+            )
+        } returns mapOf(
+            userId.toString() to PermissionRelation.ADMIN,
+            otherUserId.toString() to PermissionRelation.MEMBER,
+        )
+        every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
         } returns listOf(userId.toString())
-        every {
-            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
-        } returns listOf(otherUserId.toString())
         every { userService.findByIds(any()) } returns listOf(user, otherUser)
         every { permissionService.applyShareBatch(any(), any(), any()) } returns emptyList()
 

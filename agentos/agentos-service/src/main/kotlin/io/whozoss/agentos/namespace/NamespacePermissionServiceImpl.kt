@@ -175,37 +175,25 @@ class NamespacePermissionServiceImpl(
         val (toUpsert, toRevoke) = members.partition { it.role != null }
         val upsertUserIds = toUpsert.map { it.userId }
         val revokeUserIds = toRevoke.map { it.userId }
-
-        // Load only the users involved in the request + existing admins.
-        // Existing admins are always needed for the anti-lockout guard; involved users
-        // are needed to distinguish "new" from "existing" and to validate revocations.
-        // This avoids a full namespace scan on large tenants.
-        val namespaceIdStr = namespaceId.toString()
-        val existingAdminIds =
-            permissionService
-                .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdStr, PermissionRelation.ADMIN)
-                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
-                .toSet()
         val involvedIds = (upsertUserIds + revokeUserIds).toSet()
-        val involvedMemberIds =
-            permissionService
-                .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdStr, PermissionRelation.MEMBER)
-                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
-                .filter { it in involvedIds }
-                .toSet()
-        // Build currentRoleByUserId for the involved users only (admins + members in request).
-        // Non-involved members are left untouched by delta semantics, so we don't need them here.
-        val involvedAdminIds = existingAdminIds.filter { it in involvedIds }.toSet()
-        val currentRoleByUserId: Map<UUID, PermissionRelation?> =
-            (involvedAdminIds.associateWith { PermissionRelation.ADMIN as PermissionRelation? }) +
-                (involvedMemberIds.associateWith { PermissionRelation.MEMBER as PermissionRelation? })
+        val namespaceIdStr = namespaceId.toString()
 
-        val unknownRevovals = revokeUserIds.toSet() - currentRoleByUserId.keys
+        // Single targeted query: fetch current relations only for the users in this request.
+        // Non-involved members are left untouched by delta semantics — no need to load them.
+        val currentRelationByUserId: Map<UUID, PermissionRelation> =
+            permissionService
+                .listRelationsForUsers(
+                    EntityType.NAMESPACE,
+                    namespaceIdStr,
+                    involvedIds.map { it.toString() },
+                ).mapKeys { (k, _) -> UUID.fromString(k) }
+
+        val unknownRevovals = revokeUserIds.toSet() - currentRelationByUserId.keys
         if (unknownRevovals.isNotEmpty()) {
             throw UnprocessableEntityException("userId(s) not currently on the namespace: $unknownRevovals")
         }
 
-        val newUserIds = upsertUserIds.filter { it !in currentRoleByUserId }
+        val newUserIds = upsertUserIds.filter { it !in currentRelationByUserId }
         if (newUserIds.isNotEmpty() && !callerIsSuperAdmin) {
             throw AccessDeniedException("Only a super-admin may add a new user to a namespace")
         }
@@ -217,11 +205,14 @@ class NamespacePermissionServiceImpl(
             }
         }
 
-        // Anti-lockout guard: compute the resulting admin set without loading the whole namespace.
-        // Start from all existing admins, then apply the delta from this request:
-        //   - admins being revoked (role=null) are removed
-        //   - admins being demoted (role=MEMBER) are removed
-        //   - members or new users being promoted (role=ADMIN) are added
+        // Anti-lockout guard: load all existing admins (needed to account for admins
+        // not in this request who will still be admins after the update).
+        // Then apply the delta: remove revoked/demoted admins, add promoted ones.
+        val existingAdminIds: Set<UUID> =
+            permissionService
+                .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdStr, PermissionRelation.ADMIN)
+                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+                .toSet()
         val hadAdminBefore = existingAdminIds.isNotEmpty()
         val removedFromAdmin: Set<UUID> =
             revokeUserIds.toSet() +
@@ -236,7 +227,7 @@ class NamespacePermissionServiceImpl(
         val roleChanges: List<Pair<String, PermissionRelation?>> =
             toUpsert.mapNotNull { entry ->
                 val targetRelation = PermissionRelation.valueOf(entry.role!!)
-                val current = currentRoleByUserId[entry.userId]
+                val current = currentRelationByUserId[entry.userId]
                 if (current == targetRelation) null
                 else entry.userId.toString() to targetRelation
             }
