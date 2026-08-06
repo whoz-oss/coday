@@ -446,6 +446,27 @@ export class DelegationEvent extends CodayEvent {
   }
 }
 
+export class UsageEvent extends CodayEvent {
+  static override type = 'usage'
+
+  inputTokens: number
+  outputTokens: number
+  contextWindow: number
+  price: number
+  iterations: number
+  cacheReadTokens: number
+
+  constructor(event: Partial<UsageEvent>) {
+    super(event, UsageEvent.type)
+    this.inputTokens = event.inputTokens ?? 0
+    this.outputTokens = event.outputTokens ?? 0
+    this.contextWindow = event.contextWindow ?? 0
+    this.price = event.price ?? 0
+    this.iterations = event.iterations ?? 0
+    this.cacheReadTokens = event.cacheReadTokens ?? 0
+  }
+}
+
 export class OAuthCallbackEvent extends CodayEvent {
   code?: string
   state: string
@@ -484,6 +505,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [FileEvent.type]: FileEvent,
   [OAuthRequestEvent.type]: OAuthRequestEvent,
   [OAuthCallbackEvent.type]: OAuthCallbackEvent,
+  [UsageEvent.type]: UsageEvent,
 }
 
 export function buildCodayEvent(data: any): CodayEvent | undefined {
