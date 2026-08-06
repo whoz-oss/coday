@@ -384,7 +384,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
         } returns emptyList()
-        every { userService.findByIds(listOf(userId)) } returns listOf(user)
+        every { userService.findByIds(any()) } returns listOf(user)
         every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(userId.toString())
 
         service.updateMembers(
@@ -410,7 +410,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
         } returns listOf(userId.toString())
-        every { userService.findByIds(listOf(userId)) } returns listOf(user)
+        every { userService.findByIds(any()) } returns listOf(user)
         every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(userId.toString())
 
         service.updateMembers(
@@ -436,7 +436,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
         } returns emptyList()
-        every { userService.findByIds(listOf(userId)) } returns listOf(user)
+        every { userService.findByIds(any()) } returns listOf(user)
 
         service.updateMembers(
             namespaceId,
@@ -455,7 +455,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
         } returns listOf(userId.toString())
-        every { userService.findByIds(listOf(userId)) } returns listOf(user)
+        every { userService.findByIds(any()) } returns emptyList()
         every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(userId.toString())
 
         service.updateMembers(
@@ -508,7 +508,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
         } returns listOf(otherUserId.toString())
-        every { userService.findByIds(listOf(userId, otherUserId)) } returns listOf(user, otherUser)
+        every { userService.findByIds(any()) } returns listOf(user, otherUser)
         every { permissionService.applyShareBatch(any(), any(), any()) } returns emptyList()
 
         service.updateMembers(
