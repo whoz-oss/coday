@@ -1,10 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.entity.EntityCrudDelegate
@@ -68,6 +64,7 @@ class AgentConfigController(
     private val agentService: AgentService,
     private val userService: UserService,
     permissionService: PermissionService,
+    private val yamlExportMapper: ObjectMapper,
 ) : AgentConfigApi {
     private val crud =
         EntityCrudDelegate(
@@ -202,7 +199,7 @@ class AgentConfigController(
         val entity =
             agentConfigService.findById(id)
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
-        val yaml = YAML_MAPPER.writeValueAsString(toExportModel(entity))
+        val yaml = yamlExportMapper.writeValueAsString(toExportModel(entity))
         val filename = entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-") + ".yaml"
         return ResponseEntity
             .ok()
@@ -256,28 +253,7 @@ class AgentConfigController(
         )
     }
 
-    companion object : KLogging() {
-        /**
-         * YAML mapper configured for clean, human-readable output:
-         * - No `---` document start marker
-         * - No Jackson type tags
-         * - Null, blank and empty top-level values omitted by [toExportModel] itself
-         *
-         * Deliberately no mapper-level inclusion policy: `setSerializationInclusion` also sets the
-         * CONTENT inclusion, which prunes entries inside the `integrations` map. There a null value
-         * ("all tools of the integration") and an empty list (explicit opt-out) are distinct,
-         * meaningful states that must survive the export so the file re-imports identically through
-         * [FilesystemAgentConfigRepository].
-         */
-        private val YAML_MAPPER: ObjectMapper =
-            ObjectMapper(
-                YAMLFactory
-                    .builder()
-                    .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
-                    .build(),
-            ).registerModule(KotlinModule.Builder().build())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-    }
+    companion object : KLogging()
 }
 
 internal fun toDomain(resource: AgentConfigDto): AgentConfig {

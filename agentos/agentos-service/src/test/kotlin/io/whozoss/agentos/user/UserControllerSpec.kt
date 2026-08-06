@@ -47,7 +47,8 @@ class UserControllerSpec : StringSpec({
     val userService = mockk<UserService>()
     val permissionService = mockk<io.whozoss.agentos.permissions.PermissionService>(relaxed = true)
     val userGroupService = mockk<UserGroupService>(relaxed = true)
-    val controller = UserController(userService, permissionService, userGroupService)
+    val userOffboardingService = mockk<UserOffboardingService>(relaxed = true)
+    val controller = UserController(userService, permissionService, userGroupService, userOffboardingService)
 
     fun user(
         id: UUID = UUID.randomUUID(),

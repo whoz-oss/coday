@@ -252,29 +252,37 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="release/${{ needs.release.outputs.new_version }}"
+          VERSION="${{ needs.release.outputs.new_version }}"
 
-          # Collect all JARs into a staging directory with stable, version-less names.
-          # The stable naming is a deliberate contract: consumers resolve assets by
-          # exact name, never by version-prefix matching.
+          # Collect all JARs into a staging directory with versioned names.
+          # Naming contract: "<artifactId>-<version>.jar" — same convention as deployPlugins
+          # in agentos/build.gradle.kts, which identifies artifacts by splitting on the first
+          # "-<digit>" boundary. Consumers MUST use this same split to derive the artifactId
+          # and version from the filename, never by version-prefix glob matching.
+          #
+          # agentos-service: bootJar forces archiveFileName="agentos-service.jar" (no version).
+          # We rename it explicitly here using the release version from needs.release.outputs.
+          # Plugins already produce versioned names from Gradle (e.g. agentos-bash-plugin-0.239.0.jar);
+          # we copy them as-is without renaming.
           mkdir -p /tmp/agentos-jars
-          cp agentos/agentos-service/build/libs/agentos-service.jar /tmp/agentos-jars/
-          cp agentos/agentos-bash-plugin/build/libs/agentos-bash-plugin-*.jar /tmp/agentos-jars/agentos-bash-plugin.jar
-          cp agentos/agentos-file-plugin/build/libs/agentos-file-plugin-*.jar /tmp/agentos-jars/agentos-file-plugin.jar
-          cp agentos/agentos-mcp-plugin/build/libs/agentos-mcp-plugin-*.jar /tmp/agentos-jars/agentos-mcp-plugin.jar
-          cp agentos/agentos-tmux-plugin/build/libs/agentos-tmux-plugin-*.jar /tmp/agentos-jars/agentos-tmux-plugin.jar
+          cp agentos/agentos-service/build/libs/agentos-service.jar "/tmp/agentos-jars/agentos-service-${VERSION}.jar"
+          cp agentos/agentos-bash-plugin/build/libs/agentos-bash-plugin-*.jar /tmp/agentos-jars/
+          cp agentos/agentos-file-plugin/build/libs/agentos-file-plugin-*.jar /tmp/agentos-jars/
+          cp agentos/agentos-mcp-plugin/build/libs/agentos-mcp-plugin-*.jar /tmp/agentos-jars/
+          cp agentos/agentos-tmux-plugin/build/libs/agentos-tmux-plugin-*.jar /tmp/agentos-jars/
 
-          # Generate checksums manifest, keyed by the stable asset names above
+          # Generate checksums manifest keyed by the versioned filenames above
           cd /tmp/agentos-jars
           sha256sum *.jar > checksums.sha256
           cat checksums.sha256
           cd -
 
           gh release upload "$TAG" \
-            /tmp/agentos-jars/agentos-service.jar \
-            /tmp/agentos-jars/agentos-bash-plugin.jar \
-            /tmp/agentos-jars/agentos-file-plugin.jar \
-            /tmp/agentos-jars/agentos-mcp-plugin.jar \
-            /tmp/agentos-jars/agentos-tmux-plugin.jar \
+            "/tmp/agentos-jars/agentos-service-${VERSION}.jar" \
+            /tmp/agentos-jars/agentos-bash-plugin-*.jar \
+            /tmp/agentos-jars/agentos-file-plugin-*.jar \
+            /tmp/agentos-jars/agentos-mcp-plugin-*.jar \
+            /tmp/agentos-jars/agentos-tmux-plugin-*.jar \
             /tmp/agentos-jars/checksums.sha256 \
             --clobber
 

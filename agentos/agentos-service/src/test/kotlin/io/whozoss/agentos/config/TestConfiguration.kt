@@ -1,20 +1,15 @@
 package io.whozoss.agentos.config
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.springframework.boot.test.context.TestConfiguration
-import org.springframework.context.annotation.Bean
 
 /**
  * Provides beans that are needed in the test application context but are not
- * auto-configured in the test profile (e.g. because no real AI provider is wired).
+ * auto-configured in the test profile.
  *
- * Spring Boot 4.x still auto-configures [ObjectMapper] via [JacksonAutoConfiguration]
- * when spring-boot-starter-web is on the classpath, but the full-context integration
- * test needs it explicitly declared to avoid ordering issues.
+ * The [ObjectMapper] beans ([ObjectMapperConfiguration.jacksonObjectMapper],
+ * [ObjectMapperConfiguration.yamlMapper], [ObjectMapperConfiguration.yamlExportMapper])
+ * are declared in the production [ObjectMapperConfiguration] and are always available
+ * in the Spring context — no override needed here.
  */
 @TestConfiguration
-class TestConfiguration {
-    @Bean
-    fun objectMapper(): ObjectMapper = jacksonObjectMapper()
-}
+class TestConfiguration

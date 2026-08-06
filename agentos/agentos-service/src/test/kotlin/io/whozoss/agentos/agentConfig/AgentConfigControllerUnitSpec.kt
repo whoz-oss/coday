@@ -10,6 +10,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.agent.ResolvedAgentDefinition
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
@@ -50,7 +51,7 @@ class AgentConfigControllerUnitSpec :
         val agentService = mockk<AgentService>()
         val userService = mockk<UserService>()
         val permissionService = mockk<PermissionService>()
-        val controller = AgentConfigController(service, agentService, userService, permissionService)
+        val controller = AgentConfigController(service, agentService, userService, permissionService, yamlExportMapper())
 
         val namespaceId = UUID.randomUUID()
         val callerId = UUID.randomUUID()
