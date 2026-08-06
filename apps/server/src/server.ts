@@ -37,7 +37,7 @@ import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
 import { getAgentosVersion } from './lib/version'
-import { downloadAgentosJars } from './lib/agentos-download'
+import { downloadAgentosJars, checkAndSwapNext, downloadAgentosJarsToNext } from './lib/agentos-download'
 import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
 
@@ -456,10 +456,16 @@ async function provisionAgentos(expressPort: number): Promise<void> {
   try {
     const agentosVersion = getAgentosVersion()
 
-    // --- 1. Check JAR inventory ---
+    // --- 1. Apply pending update from next/ (swap before inventory check) ---
+    const swapResult = checkAndSwapNext(codayOptions.configDir, agentosVersion)
+    if (swapResult.outcome === 'swapped') {
+      debugLog('AGENTOS', `[PROVISION] Swap applied: ${swapResult.message}`)
+    }
+
+    // --- 2. Check JAR inventory ---
     const jarStatus = checkAgentosJars(codayOptions.configDir, agentosVersion)
 
-    // --- 2. Download missing JARs + strict cleanup ---
+    // --- 3. Download missing JARs + strict cleanup ---
     // downloadAgentosJars always performs strict cleanup after downloads.
     // If missing is empty it returns 'skipped:all-present' immediately (no cleanup),
     // which is correct: if all JARs are at the right version, there is nothing stale.
@@ -475,7 +481,7 @@ async function provisionAgentos(expressPort: number): Promise<void> {
       return
     }
 
-    // --- 3. Start the process ---
+    // --- 4. Start the process ---
     debugLog('AGENTOS', '[PROVISION] Starting AgentOS process...')
     agentosProcess = await startAgentos(codayOptions.configDir, agentosVersion, expressPort)
 
@@ -483,6 +489,12 @@ async function provisionAgentos(expressPort: number): Promise<void> {
       debugLog('AGENTOS', '[PROVISION] AgentOS did not start. The proxy will return errors until AgentOS is available.')
       return
     }
+
+    // --- 5. Pre-fetch next version in background (fire-and-forget) ---
+    // downloadAgentosJarsToNext is a no-op if next/ is already complete or version unchanged.
+    downloadAgentosJarsToNext(codayOptions.configDir, agentosVersion).catch((err) =>
+      debugLog('AGENTOS', '[UPDATE] Unhandled error in background pre-fetch:', err)
+    )
 
     // Update the proxy target (always localhost:8124 in managed mode, but kept
     // explicit so future flexibility (e.g. dynamic port) requires no refactor)
