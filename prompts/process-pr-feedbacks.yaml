@@ -8,3 +8,10 @@ content:
   - Read the PR comments with github tools, if you can't, stop and say so.
   - work on the local files and DO NOT PUSH FILE CHANGES DIRECTLY ON GITHUB
   - check you are on the correct git branch locally matching the one of the PR. If not, try to change branch. If you can't, stop and say so.
+parameters:
+  - name: agentName
+    description: Name of the agent to delegate to
+    defaultValue: ""
+  - name: prNumber
+    description: Pull request number to process feedbacks for
+    defaultValue: ""
