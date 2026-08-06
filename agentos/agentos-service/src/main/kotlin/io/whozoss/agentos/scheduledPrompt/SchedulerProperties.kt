@@ -10,7 +10,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * | Property | Env var | Default | Description |
  * |---|---|---|---|
  * | `scheduler.enabled` | `SCHEDULER_ENABLED` | false | Enable/disable the scheduler |
- * | `scheduler.tick-interval-ms` | `SCHEDULER_TICK_INTERVAL_MS` | 60000 | Interval between scanner ticks (ms) |
+ * | `scheduler.tick-interval-ms` | `SCHEDULER_TICK_INTERVAL_MS` | 60000 | Interval between claim ticks (ms) |
+ * | `scheduler.consume-interval-ms` | `SCHEDULER_CONSUME_INTERVAL_MS` | 10000 | Interval between consume ticks (ms) |
  * | `scheduler.batch-size` | `SCHEDULER_BATCH_SIZE` | 20 | Max UserRuns claimed and executed in parallel per consume tick |
  * | `scheduler.launch-timeout-seconds` | `SCHEDULER_LAUNCH_TIMEOUT_SECONDS` | 30 | Max seconds to wait for a Case to reach IDLE or terminal after launch |
  * | `scheduler.lease-minutes` | `SCHEDULER_LEASE_MINUTES` | 30 | Lease duration for RUNNING UserRuns (minutes) |
