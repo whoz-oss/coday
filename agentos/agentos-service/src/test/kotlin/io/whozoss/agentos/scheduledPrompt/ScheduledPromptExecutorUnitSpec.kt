@@ -489,10 +489,10 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // Phase B — awaitCaseCompletion via statusFlow
+        // Phase B — monitorLaunch via statusFlow
         // -------------------------------------------------------------------------
 
-        "Phase B: awaitCaseCompletion closes UserRun as DONE when runtime reaches IDLE" {
+        "Phase B: monitorLaunch closes UserRun as DONE when runtime reaches IDLE" {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
@@ -547,7 +547,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             userRun.status shouldBe UserRunStatus.DONE
         }
 
-        "Phase B: awaitCaseCompletion closes UserRun as FAILED when runtime reaches ERROR" {
+        "Phase B: monitorLaunch closes UserRun as FAILED when runtime reaches ERROR" {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
@@ -599,11 +599,12 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             userRun.error shouldBe "Case reached terminal status ERROR"
         }
 
-        "Phase B: awaitCaseCompletion marks UserRun FAILED on lease timeout" {
-            // Use a very short lease so the timeout triggers immediately.
-            val shortLeaseProperties = SchedulerProperties(
+        "Phase B: monitorLaunch closes UserRun as DONE on timeout (Case still RUNNING)" {
+            // Use a zero launch timeout so it times out immediately.
+            val shortTimeoutProperties = SchedulerProperties(
                 batchSize = 5,
-                leaseMinutes = 0L, // 0 minutes → withTimeoutOrNull(0) times out immediately
+                launchTimeoutSeconds = 0L, // 0 seconds → withTimeoutOrNull(0) times out immediately
+                leaseMinutes = 30L,
             )
 
             val sp = makeScheduledPrompt()
@@ -628,7 +629,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 namespaceId = namespaceId,
             )
 
-            // StatusFlow stays RUNNING forever — simulates an agent that never finishes.
+            // StatusFlow stays RUNNING forever — simulates a slow but healthy agent.
             val statusFlow = MutableStateFlow(CaseStatus.RUNNING)
             val runtime = mockk<CaseRuntime>(relaxed = true).also {
                 every { it.statusFlow } returns statusFlow
@@ -648,13 +649,14 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = caseService,
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-                properties = shortLeaseProperties,
+                properties = shortTimeoutProperties,
                 clock = clock,
             ).consumeAvailable()
 
+            // Timeout on a still-RUNNING Case is not a failure — the Case is healthy,
+            // just slow. The UserRun is closed as DONE.
             val userRun = userRunRepo.all().first()
-            userRun.status shouldBe UserRunStatus.FAILED
-            userRun.error!!.contains("Lease expired") shouldBe true
+            userRun.status shouldBe UserRunStatus.DONE
         }
 
         // -------------------------------------------------------------------------

@@ -52,8 +52,11 @@ import java.util.UUID
  *    [CaseService.addMessage]. The Executor resolves content itself rather than using
  *    a `/slash-command` because PromptCommandParser requires the text to start with `/`,
  *    which is incompatible with the leading `@mention`.
- * 5. Collect the runtime's [CaseRuntime.statusFlow] until the Case reaches IDLE or a
- *    terminal status, then close the UserRun.
+ * 5. Await the Case launch: collect the runtime's [CaseRuntime.statusFlow] for up to
+ *    [SchedulerProperties.launchTimeoutSeconds] seconds to detect immediate failures.
+ *    If the Case reaches IDLE or is still RUNNING after the timeout, the UserRun is
+ *    closed as DONE (the Case continues independently). Only an immediate terminal
+ *    status (ERROR/KILLED) marks the UserRun as FAILED.
  *
  * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
  * each batch contains at most that many UserRuns, and all are launched as structured
@@ -196,7 +199,7 @@ class ScheduledPromptExecutor(
                     }
 
                     launch {
-                        executeUserRun(userRun)
+                        processUserRun(userRun)
                     }
                 }
             }
@@ -209,10 +212,10 @@ class ScheduledPromptExecutor(
     }
 
     // -------------------------------------------------------------------------
-    // Single UserRun execution
+    // Single UserRun processing
     // -------------------------------------------------------------------------
 
-    private suspend fun executeUserRun(userRun: ScheduledPromptUserRun) {
+    private suspend fun processUserRun(userRun: ScheduledPromptUserRun) {
         val now = Instant.now(clock)
         val runId = userRun.runId
         val userId = userRun.userId
@@ -334,14 +337,16 @@ class ScheduledPromptExecutor(
                 "[Executor] UserRun=${userRun.id} — Case $caseId created and message injected for user=$userId"
             }
 
-            // Step 5: Collect the runtime's statusFlow until IDLE or terminal.
+            // Step 5: Await launch — detect immediate failures.
             // The runtime is guaranteed to exist in activeRuntimes right after create().
+            // If the Case is still RUNNING after the timeout, it's healthy — close as DONE.
+            // Only an immediate terminal status (ERROR/KILLED) means the launch failed.
             val runtime = caseService.findActiveRuntime(caseId)
             if (runtime == null) {
                 // Runtime already evicted (terminal status reached before we got here)
                 closeUserRun(userRun.id, caseService.findById(caseId)?.status, caseId)
             } else {
-                awaitCaseCompletion(userRun.id, caseId, runtime)
+                monitorLaunch(userRun.id, caseId, runtime)
             }
         } catch (e: Exception) {
             logger.error(e) {
@@ -356,31 +361,34 @@ class ScheduledPromptExecutor(
     // -------------------------------------------------------------------------
 
     /**
-     * Collect the runtime's [CaseRuntime.statusFlow] until the Case reaches IDLE or a terminal status.
+     * Await the Case launch and detect immediate failures.
      *
-     * [kotlinx.coroutines.flow.StateFlow.first] suspends reactively until the predicate
-     * matches — zero polling, zero delay. The lease duration is enforced via
-     * [withTimeoutOrNull]; on timeout the UserRun is marked FAILED and the next tick's
-     * [claimBatch] will reclaim expired RUNNING UserRuns.
+     * Collects [CaseRuntime.statusFlow] for up to [SchedulerProperties.launchTimeoutSeconds]
+     * seconds. This is a **health check**, not a completion wait:
+     * - IDLE → agent finished its turn quickly → DONE
+     * - Timeout (still RUNNING) → Case is healthy, just slow → DONE
+     * - ERROR/KILLED → immediate crash → FAILED
+     *
+     * The Case continues running independently after this method returns.
+     * The lease on the UserRun is only relevant for crash recovery (instance down
+     * between Case creation and this point).
      */
-    private suspend fun awaitCaseCompletion(
+    private suspend fun monitorLaunch(
         userRunId: UUID,
         caseId: UUID,
         runtime: CaseRuntime,
     ) {
-        val leaseMs = Duration.ofMinutes(properties.leaseMinutes).toMillis()
+        val timeoutMs = Duration.ofSeconds(properties.launchTimeoutSeconds).toMillis()
 
-        val finalStatus = withTimeoutOrNull(leaseMs) {
+        val finalStatus = withTimeoutOrNull(timeoutMs) {
             runtime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
         }
 
-        if (finalStatus == null) {
-            logger.warn {
-                "[Executor] UserRun=$userRunId lease expired while waiting for Case $caseId — marking FAILED"
-            }
-            markFailed(userRunId, Instant.now(clock), "Lease expired waiting for Case $caseId")
-        } else {
+        if (finalStatus != null && finalStatus.isTerminal()) {
             closeUserRun(userRunId, finalStatus, caseId)
+        } else {
+            // IDLE or timeout (still RUNNING) — Case launched successfully
+            closeUserRun(userRunId, CaseStatus.IDLE, caseId)
         }
     }
 
