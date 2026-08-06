@@ -236,6 +236,71 @@ class AuthSettingServiceImplSpec : StringSpec() {
             verify(exactly = 3) { repo.save(any()) }
         }
 
+        // -------------------------------------------------------------------------
+        // OAUTH_MCP_DISCOVERABLE
+        // -------------------------------------------------------------------------
+
+        "create and findById round-trip works for OAUTH_MCP_DISCOVERABLE" {
+            val repo = repoWithNoConflicts()
+            val service = newService(repo)
+            val saved =
+                service.create(
+                    setting(
+                        authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+                        data = mapOf("resourceUrl" to "https://mcp.example.com/sse", "scopes" to "read write"),
+                    ),
+                )
+            every { repo.findByIds(listOf(saved.metadata.id), false) } returns listOf(saved)
+            val found = service.findById(saved.metadata.id)
+
+            found.shouldNotBeNull()
+            found.authType shouldBe AuthType.OAUTH_MCP_DISCOVERABLE
+            found.data["resourceUrl"] shouldBe "https://mcp.example.com/sse"
+            found.data["scopes"] shouldBe "read write"
+        }
+
+        "cross-layer authType consistency guard works for OAUTH_MCP_DISCOVERABLE" {
+            val repo = mockk<AuthSettingRepository>()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            val nsShared =
+                setting(namespaceId = nsId, userId = null, name = "mcp-setting", authType = AuthType.OAUTH_MCP_DISCOVERABLE)
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, userId, "mcp-setting") } returns null
+            every { repo.findByNamespaceIdAndUserIdAndName(nsId, null, "mcp-setting") } returns nsShared
+
+            shouldThrow<ResponseStatusException> {
+                newService(repo).create(setting(namespaceId = nsId, userId = userId, name = "mcp-setting", authType = AuthType.API_KEY))
+            }.statusCode.value() shouldBe 409
+        }
+
+        "OAUTH_MCP_DISCOVERABLE merges across layers correctly" {
+            val repo = mockk<AuthSettingRepository>()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            // Platform provides resourceUrl; namespace-shared provides clientId
+            val platform =
+                setting(
+                    namespaceId = null,
+                    userId = null,
+                    name = "mcp-setting",
+                    authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+                    data = mapOf("resourceUrl" to "https://mcp.example.com"),
+                )
+            val nsShared =
+                setting(
+                    namespaceId = nsId,
+                    userId = null,
+                    name = "mcp-setting",
+                    authType = AuthType.OAUTH_MCP_DISCOVERABLE,
+                    data = mapOf("clientId" to "ns-client-id"),
+                )
+            every { repo.findAllForScope(nsId, userId) } returns listOf(platform, nsShared)
+
+            val resolved = newService(repo).resolveAuthSetting(nsId, userId, "mcp-setting")
+            resolved.data["resourceUrl"] shouldBe "https://mcp.example.com"
+            resolved.data["clientId"] shouldBe "ns-client-id"
+        }
+
         "create user-global allows same name as another user's user-global with different authType (cross-user is by-design)" {
             val repo = repoWithNoConflicts()
             val userB = UUID.randomUUID()
@@ -322,7 +387,14 @@ class AuthSettingServiceImplSpec : StringSpec() {
             val nsId = UUID.randomUUID()
             val userId = UUID.randomUUID()
             // Platform provides discoveryUrl; namespace-shared provides clientId
-            val platform = setting(namespaceId = null, userId = null, name = "github", data = mapOf("discoveryUrl" to "https://platform.discovery"))
+            val platform =
+                setting(
+                    namespaceId = null,
+                    userId = null,
+                    name = "github",
+                    data =
+                        mapOf("discoveryUrl" to "https://platform.discovery"),
+                )
             val nsShared = setting(namespaceId = nsId, userId = null, name = "github", data = mapOf("clientId" to "ns-client-id"))
             every { repo.findAllForScope(nsId, userId) } returns listOf(platform, nsShared)
 

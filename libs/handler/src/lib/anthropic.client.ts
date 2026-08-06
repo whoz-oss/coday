@@ -11,6 +11,7 @@ import {
   TextChunkEvent,
   ToolRequestEvent,
   ToolResponseEvent,
+  UsageEvent,
 } from '@coday/model'
 import { Observable, of, Subject } from 'rxjs'
 import { AiThread, ThreadMessage } from '@coday/model'
@@ -279,6 +280,17 @@ export class AnthropicClient extends AiClient {
       cache_write: usage?.cache_creation_input_tokens ?? 0,
       price,
     })
+    this.interactor.sendEvent(
+      new UsageEvent({
+        inputTokens: usage?.input_tokens ?? 0,
+        outputTokens: thread.usage.output,
+        contextWindow: this.getModel(agent)?.contextWindow ?? 0,
+        price: thread.usage.price,
+        iterations: thread.usage.iterations,
+        cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
+        threadId: thread.id,
+      })
+    )
   }
 
   private isAnthropicReady(): Anthropic | undefined {

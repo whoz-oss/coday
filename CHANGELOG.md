@@ -1,3 +1,112 @@
+## 0.243.0 (2026-08-06)
+
+### 🚀 Features
+
+- context tube ([7266d9ec](https://github.com/whoz-oss/coday/commit/7266d9ec))
+- context gauge ([1bcd9b66](https://github.com/whoz-oss/coday/commit/1bcd9b66))
+
+### 🩹 Fixes
+
+- set Github MCP version and fix Coday agents ([19aa86f9](https://github.com/whoz-oss/coday/commit/19aa86f9))
+- set Github MCP version and fix Coday agents ([#1221](https://github.com/whoz-oss/coday/pull/1221))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+- Romain Petit
+
+## 0.242.0 (2026-08-06)
+
+### 🚀 Features
+
+- make desktop apps use the current version of the build ([#1220](https://github.com/whoz-oss/coday/pull/1220))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.241.1 (2026-08-06)
+
+### 🩹 Fixes
+
+- add missing chat-message.utils module ([#1216](https://github.com/whoz-oss/coday/issues/1216))
+- add missing chat-message.utils module ([#1219](https://github.com/whoz-oss/coday/pull/1219))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 0.241.0 (2026-08-05)
+
+### 🚀 Features
+
+- display tool call details in chat messages ([8a72bb36](https://github.com/whoz-oss/coday/commit/8a72bb36))
+- display tool call details in chat messages - rebase collapsed error messages ([d288b24c](https://github.com/whoz-oss/coday/commit/d288b24c))
+- display tool call details in chat messages ([#1216](https://github.com/whoz-oss/coday/pull/1216))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 0.240.0 (2026-08-05)
+
+### 🚀 Features
+
+- collapse long error messages in chat ([c5031db0](https://github.com/whoz-oss/coday/commit/c5031db0))
+- collapse long error messages in chat ([#1215](https://github.com/whoz-oss/coday/pull/1215))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 0.239.1 (2026-08-04)
+
+### 🩹 Fixes
+
+- wz-32986 implement endpoint removing access for user from user groups and namespaces ([fa307c64](https://github.com/whoz-oss/coday/commit/fa307c64))
+- wz-32986 Scope deletion to namespace ([490270ab](https://github.com/whoz-oss/coday/commit/490270ab))
+- wz-32986 update api schema ([2b50534a](https://github.com/whoz-oss/coday/commit/2b50534a))
+- wz-32986 revoke namespace access using user externalId ([8bd07651](https://github.com/whoz-oss/coday/commit/8bd07651))
+- wz-32986 code review ([b3ffbaf4](https://github.com/whoz-oss/coday/commit/b3ffbaf4))
+- wz-32986 fix tests ([be10a836](https://github.com/whoz-oss/coday/commit/be10a836))
+- wz-32986 implement endpoint removing access for user from user groups and namespaces ([#1186](https://github.com/whoz-oss/coday/pull/1186))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- mbarroux @mickael-barroux-whoz
+- Mickaël Barroux @mickael-barroux-whoz
+
+## 0.239.0 (2026-08-04)
+
+### 🚀 Features
+
+- #1130 OAuth 2.1 interactive flow in AuthService ([#1137](https://github.com/whoz-oss/coday/pull/1137), [#1130](https://github.com/whoz-oss/coday/issues/1130), [#1114](https://github.com/whoz-oss/coday/issues/1114), [#1097](https://github.com/whoz-oss/coday/issues/1097))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.238.1 (2026-08-04)
+
+### 🩹 Fixes
+
+- rollback agentos bundling attepmpt ([#1206](https://github.com/whoz-oss/coday/pull/1206))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.238.0 (2026-08-04)
+
+### 🚀 Features
+
+- agentos auto download approach ([#1197](https://github.com/whoz-oss/coday/pull/1197))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.237.1 (2026-08-03)
 
 ### 🩹 Fixes

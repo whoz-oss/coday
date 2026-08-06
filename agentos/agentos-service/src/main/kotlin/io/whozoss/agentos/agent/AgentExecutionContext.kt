@@ -21,6 +21,10 @@ import java.util.UUID
  *   of invocation. Evaluated lazily so tool calls during a single agent run see events
  *   produced by prior tool calls in the same turn (e.g. a read before a write).
  *   Ignored when [caseId] is null.
+ * @param emitEvent Callback to persist and emit a [CaseEvent] into the live case's SSE stream.
+ *   Used by [io.whozoss.agentos.auth.OAuthFlowService] to emit [io.whozoss.agentos.sdk.caseEvent.QuestionEvent]s
+ *   during interactive OAuth flows. Returns the persisted event (with stable id).
+ *   Null when running outside a live case (e.g. definition resolution for a debug endpoint).
  */
 data class AgentExecutionContext(
     val namespaceId: UUID,
@@ -28,6 +32,7 @@ data class AgentExecutionContext(
     val caseCreatedAt: Instant? = null,
     val userId: UUID? = null,
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
+    val emitEvent: ((CaseEvent) -> CaseEvent)? = null,
 ) {
     fun toToolContext(
         userExternalId: String?,

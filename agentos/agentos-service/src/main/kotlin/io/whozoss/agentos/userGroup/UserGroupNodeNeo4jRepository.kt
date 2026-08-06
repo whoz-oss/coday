@@ -69,4 +69,20 @@ interface UserGroupNodeNeo4jRepository : Neo4jRepository<UserGroupNode, String> 
         groupId: String,
         userExternalIds: List<String>,
     )
+
+    /**
+     * Unlinks the user from every UserGroup they belong to within a single namespace.
+     * Used by the namespace-scoped user offboarding flow.
+     */
+    @Query(
+        $$"""
+        MATCH (u:User {id: $userId})-[r:MEMBER|ADMIN]->(g:UserGroup)
+        WHERE g.namespaceId = $namespaceId
+        DELETE r
+        """,
+    )
+    fun removeUserFromGroupsInNamespace(
+        userId: String,
+        namespaceId: String,
+    )
 }

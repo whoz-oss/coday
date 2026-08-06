@@ -11,6 +11,7 @@ import {
   TextChunkEvent,
   ToolRequestEvent,
   ToolResponseEvent,
+  UsageEvent,
 } from '@coday/model'
 import { AiThread, ThreadMessage } from '@coday/model'
 import { Observable, Subject } from 'rxjs'
@@ -403,6 +404,17 @@ export class OpenaiClient extends AiClient {
       cache_write: 0, // cannot deduce it as not given and not priced in documentation
       price,
     })
+    this.interactor.sendEvent(
+      new UsageEvent({
+        inputTokens: usage?.prompt_tokens ?? 0,
+        outputTokens: thread.usage.output,
+        contextWindow: model.contextWindow ?? 0,
+        price: thread.usage.price,
+        iterations: thread.usage.iterations,
+        cacheReadTokens: usage?.prompt_tokens_details?.cached_tokens ?? 0,
+        threadId: thread.id,
+      })
+    )
   }
 
   private isOpenaiReady(): OpenAI | undefined {

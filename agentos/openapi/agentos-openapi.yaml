@@ -2070,6 +2070,27 @@ paths:
           description: OK
       tags:
       - namespace-permission-endpoints
+  /api/oauth/callback:
+    post:
+      description: "Called by the frontend popup after the OAuth provider redirects\
+        \ back with the authorization code. Resolves the pending server-side flow\
+        \ identified by `state`. Returns 200 when resolved, 400 when the state is\
+        \ unknown or belongs to a different user."
+      operationId: handleCallbackOAuthCallback
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuthCallbackRequest"
+        required: true
+      responses:
+        "200":
+          description: Flow resolved successfully
+        "400":
+          description: "Unknown, already-consumed, or mismatched state"
+      summary: Receive OAuth authorization code callback
+      tags:
+      - o-auth-callback-controller
   /api/plugins:
     get:
       operationId: getAllPlugins
@@ -2757,6 +2778,28 @@ paths:
           description: Created
       tags:
       - user-controller
+  /api/users/by-external-id/{externalId}/access:
+    delete:
+      operationId: revokeNamespaceAccessByExternalIdUser
+      parameters:
+      - in: path
+        name: externalId
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      summary: "Revoke a user's UserGroup and Namespace access by external id, scoped\
+        \ to one namespace"
+      tags:
+      - user-controller
   /api/users/by-external-ids:
     post:
       operationId: listByExternalIdsUser
@@ -2889,6 +2932,28 @@ paths:
               schema:
                 $ref: "#/components/schemas/User"
           description: OK
+      tags:
+      - user-controller
+  /api/users/{id}/access:
+    delete:
+      operationId: revokeNamespaceAccessUser
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      summary: "Revoke a user's UserGroup and Namespace access, scoped to one namespace"
       tags:
       - user-controller
 components:
@@ -3984,6 +4049,16 @@ components:
       - externalId
       - id
       - role
+    OAuthCallbackRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        state:
+          type: string
+      required:
+      - code
+      - state
     OAuthCustomAuthSetting:
       allOf:
       - $ref: "#/components/schemas/AuthSettingDto"
