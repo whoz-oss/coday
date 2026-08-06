@@ -1,3 +1,13 @@
+## 0.242.0 (2026-08-06)
+
+### 🚀 Features
+
+- make desktop apps use the current version of the build ([#1220](https://github.com/whoz-oss/coday/pull/1220))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.241.1 (2026-08-06)
 
 ### 🩹 Fixes
