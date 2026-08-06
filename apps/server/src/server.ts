@@ -36,7 +36,7 @@ import { McpInstancePool } from '@coday/mcp'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
-import { getCodayVersion } from './lib/version'
+import { getAgentosVersion } from './lib/version'
 import { downloadAgentosJars } from './lib/agentos-download'
 import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
@@ -454,27 +454,16 @@ async function provisionAgentos(expressPort: number): Promise<void> {
   debugLog('AGENTOS', '[PROVISION] Managed mode — starting AgentOS provisioning...')
 
   try {
-    const codayVersion = getCodayVersion()
-
-    // Dev sentinel: getCodayVersion() returns 'dev' when no package.json version
-    // can be resolved (e.g. tsx watch from monorepo root without a build).
-    // No release exists to download from, and no JAR will be found — skip cleanly.
-    if (codayVersion === 'dev') {
-      debugLog(
-        'AGENTOS',
-        '[PROVISION] Dev version detected — skipping managed provisioning. Set AGENTOS_URL to point to your AgentOS instance.'
-      )
-      return
-    }
+    const agentosVersion = getAgentosVersion()
 
     // --- 1. Check JAR inventory ---
-    const jarStatus = checkAgentosJars(codayOptions.configDir, codayVersion)
+    const jarStatus = checkAgentosJars(codayOptions.configDir, agentosVersion)
 
     // --- 2. Download missing JARs + strict cleanup ---
     // downloadAgentosJars always performs strict cleanup after downloads.
     // If missing is empty it returns 'skipped:all-present' immediately (no cleanup),
     // which is correct: if all JARs are at the right version, there is nothing stale.
-    const downloadResult = await downloadAgentosJars(codayOptions.configDir, codayVersion, jarStatus.missing)
+    const downloadResult = await downloadAgentosJars(codayOptions.configDir, agentosVersion, jarStatus.missing)
     debugLog('AGENTOS', `[PROVISION] Download outcome: ${downloadResult.outcome} — ${downloadResult.message}`)
 
     if (
@@ -488,7 +477,7 @@ async function provisionAgentos(expressPort: number): Promise<void> {
 
     // --- 3. Start the process ---
     debugLog('AGENTOS', '[PROVISION] Starting AgentOS process...')
-    agentosProcess = await startAgentos(codayOptions.configDir, codayVersion, expressPort)
+    agentosProcess = await startAgentos(codayOptions.configDir, agentosVersion, expressPort)
 
     if (!agentosProcess) {
       debugLog('AGENTOS', '[PROVISION] AgentOS did not start. The proxy will return errors until AgentOS is available.')
