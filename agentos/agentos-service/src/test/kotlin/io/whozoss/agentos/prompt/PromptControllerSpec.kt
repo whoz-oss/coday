@@ -13,6 +13,7 @@ import io.mockk.verify
 import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -51,7 +52,7 @@ class PromptControllerSpec : StringSpec({
     val externalIdentifierResolver = ExternalIdentifierResolver(namespaceService, userService)
     val overlayScopeAuthorizer = OverlayScopeAuthorizer(permissionService, userService, externalIdentifierResolver)
     val controller = PromptController(
-        service, namespaceService, userService, permissionService, overlayScopeAuthorizer,
+        service, namespaceService, userService, permissionService, overlayScopeAuthorizer, yamlExportMapper(),
     )
 
     val namespaceId = UUID.randomUUID()

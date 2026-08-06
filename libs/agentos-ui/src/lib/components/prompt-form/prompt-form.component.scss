@@ -347,5 +347,15 @@
         border-color: var(--color-accent-700);
       }
     }
+
+    &--export {
+      border-color: var(--color-divider);
+      color: var(--color-text-secondary);
+
+      &:hover:not(:disabled) {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+      }
+    }
   }
 }

@@ -48,6 +48,7 @@ import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRepository
 import io.whozoss.agentos.permissions.StarredRepository
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
+import io.whozoss.agentos.prompt.FilesystemPromptRepository
 import io.whozoss.agentos.prompt.Neo4jPromptRepository
 import io.whozoss.agentos.prompt.PromptNodeNeo4jRepository
 import io.whozoss.agentos.prompt.PromptRepository
@@ -58,6 +59,7 @@ import io.whozoss.agentos.userGroup.Neo4jUserGroupRepository
 import io.whozoss.agentos.userGroup.UserGroupNodeNeo4jRepository
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -114,11 +116,13 @@ class Neo4jPersistenceConfiguration {
         agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
         namespaceRepository: NamespaceRepository,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
     ): AgentConfigRepository {
         logger.info { "[Persistence] Neo4jAgentConfigRepository active (filesystem augmentation enabled)" }
         return FilesystemAgentConfigRepository(
             delegate = Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository, childLinkService),
             namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
         )
     }
 
@@ -140,7 +144,7 @@ class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jCaseEventRepository(
         caseEventNodeNeo4jRepository: CaseEventNodeNeo4jRepository,
-        objectMapper: ObjectMapper,
+        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
     ): CaseEventRepository {
         logger.info { "[Persistence] Neo4jCaseEventRepository active" }
@@ -178,7 +182,7 @@ class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jIntegrationConfigRepositoryDelegate(
         integrationConfigNodeNeo4jRepository: IntegrationConfigNodeNeo4jRepository,
-        objectMapper: ObjectMapper,
+        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
     ): Neo4jIntegrationConfigRepository {
         return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
@@ -189,11 +193,13 @@ class Neo4jPersistenceConfiguration {
     fun neo4jIntegrationConfigRepository(
         neo4jIntegrationConfigRepositoryDelegate: Neo4jIntegrationConfigRepository,
         namespaceRepository: NamespaceRepository,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
     ): IntegrationConfigRepository {
         logger.info { "[Persistence] Neo4jIntegrationConfigRepository active (filesystem augmentation enabled)" }
         return FilesystemIntegrationConfigRepository(
             delegate = neo4jIntegrationConfigRepositoryDelegate,
             namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
         )
     }
 
@@ -201,7 +207,7 @@ class Neo4jPersistenceConfiguration {
     fun neo4jCredentialRepository(
         credentialNodeNeo4jRepository: CredentialNodeNeo4jRepository,
         fieldEncryptor: FieldEncryptor,
-        objectMapper: ObjectMapper,
+        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
     ): CredentialRepository {
         logger.info { "[Persistence] Neo4jCredentialRepository active" }
         return Neo4jCredentialRepository(credentialNodeNeo4jRepository, fieldEncryptor, objectMapper)
@@ -245,14 +251,38 @@ class Neo4jPersistenceConfiguration {
         return Neo4jFeedbackRepository(feedbackNodeNeo4jRepository, childLinkService)
     }
 
+    /**
+     * Inner Neo4j-backed bean, declared explicitly so that Spring AOP can proxy it and honour
+     * the [org.springframework.transaction.annotation.Transactional] boundaries declared on
+     * [Neo4jPromptRepository.save] and [Neo4jPromptRepository.deleteByParent].
+     *
+     * If this bean were constructed inline (via `Neo4jPromptRepository(...)` inside the outer
+     * factory method), it would not be managed by Spring and the AOP proxy would never be
+     * applied, silently disabling rollback semantics. This matters for [Neo4jPromptRepository.save]
+     * in particular: it creates the Prompt node then the BELONGS_TO edges to the namespace and
+     * the agent as two separate Neo4j operations — without a transaction, a failure on the edge
+     * step would leave an orphan Prompt node behind.
+     */
     @Bean
-    fun neo4jPromptRepository(
+    fun neo4jPromptRepositoryDelegate(
         promptNodeNeo4jRepository: PromptNodeNeo4jRepository,
-        objectMapper: ObjectMapper,
+        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
+    ): Neo4jPromptRepository = Neo4jPromptRepository(promptNodeNeo4jRepository, objectMapper, childLinkService)
+
+    @Bean
+    @Primary
+    fun neo4jPromptRepository(
+        neo4jPromptRepositoryDelegate: Neo4jPromptRepository,
+        namespaceRepository: NamespaceRepository,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
     ): PromptRepository {
-        logger.info { "[Persistence] Neo4jPromptRepository active" }
-        return Neo4jPromptRepository(promptNodeNeo4jRepository, objectMapper, childLinkService)
+        logger.info { "[Persistence] Neo4jPromptRepository active (filesystem augmentation enabled)" }
+        return FilesystemPromptRepository(
+            delegate = neo4jPromptRepositoryDelegate,
+            namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
+        )
     }
 
     @Bean
