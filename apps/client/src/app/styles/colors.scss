@@ -1,21 +1,29 @@
 /**
  * Coday Color Variables
  *
- * A simplified theme system with essential color variables.
- * Default theme is light, with dark theme available via data-theme="dark".
+ * Two-layer system:
+ *   - :root / [data-theme='dark'] : glass morphism palette (Apple) — legacy apps/client app
+ *   - agentos-shell               : Industry palette (Barlow / steel blue) — agentos-ui
+ *
+ * Industry tokens are scoped under agentos-shell to avoid polluting the legacy app.
+ * Terminal themes are also scoped under agentos-shell.
+ *
+ * Shared tokens (--glass-*, --color-overlay, etc.) remain in :root because
+ * the legacy app consumes them directly.
  */
 
-:root {
-  /* Light Theme (Default) - Apple Glass Aesthetic */
+/* ─── Legacy app apps/client — Glass morphism (Apple) ──────────────────────── */
 
+:root {
   /* Base Colors */
-  --color-bg: linear-gradient(135deg, #fafbfc 0%, #f5f6f8 100%);
-  --color-bg-solid: #fafbfc;
+  --color-bg: #f5f6f8;
+  --color-bg-solid: #f5f6f8;
   --color-bg-secondary: rgba(255, 255, 255, 0.7);
   --color-bg-secondary-rgb: 255 255 255;
   --color-text: #1d1d1f;
   --color-text-secondary: #6e6e73;
   --color-text-inverse: #ffffff;
+  --color-text-tertiary: #a1a1a6;
 
   /* Interactive Elements */
   --color-primary: #007aff;
@@ -25,19 +33,20 @@
   --color-border: rgba(0, 0, 0, 0.1);
   --color-border-light: rgba(40, 40, 40, 0.08);
   --color-input-bg: rgba(255, 255, 255, 0.8);
+  --color-bg-hover: rgba(0, 0, 0, 0.04);
 
   /* Status Colors */
   --color-success: #34c759;
+  --color-success-bg: #e3f5e1;
   --color-error: #ff3b30;
   --color-warning: #ff9500;
   --color-info: #5ac8fa;
 
-  /* Application-Specific - Glass morphism */
+  /* Application-Specific — Glass morphism */
   --color-message-user: rgba(0, 122, 255, 0.1);
   --color-message-ai: rgba(255, 255, 255, 0.8);
   --color-code-bg: rgba(142, 142, 147, 0.12);
   --color-code-text: #ff375f;
-  --color-bg-hover: rgba(0, 0, 0, 0.04);
 
   /* Glass Effect Variables */
   --glass-bg: rgba(255, 255, 255, 0.72);
@@ -47,6 +56,7 @@
 
   /* Modal / Dialog */
   --color-modal-bg: #ffffff;
+  --color-surface: #ffffff;
   --color-modal-border: rgba(0, 0, 0, 0.12);
   --color-modal-shadow: 0 8px 40px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.1);
 
@@ -54,31 +64,29 @@
   --color-shadow: rgba(0, 0, 0, 0.08);
   --color-overlay: rgba(0, 0, 0, 0.4);
 
-  /* Surfaces & extended tokens (consumed by agentos-ui) */
-  --color-text-tertiary: #a1a1a6;
-  --color-surface-hover: var(--color-bg-hover); /* alias: same hover tint, one source for both themes */
+  /* Surfaces — aliases for agentos-ui compatibility (read-only from legacy app) */
+  --color-surface-hover: var(--color-bg-hover);
   --color-surface-secondary: rgba(0, 0, 0, 0.03);
   --color-surface-muted: rgba(0, 0, 0, 0.05);
-  --color-success-bg: #e3f5e1;
 
-  /* Chat bubble surfaces */
-  --color-bubble-agent-bg: #f0f0ee;
-  --color-bubble-user-bg: #6e6e73;
-  --color-bubble-system-bg: #0f1115;
-  --color-bubble-system-text: #e8eaf0;
-  --color-text-on-accent: #ffffff;
+  /* Divider — alias for --color-border, for compatibility */
+  --color-divider: rgba(0, 0, 0, 0.1);
 }
 
-/* Dark Theme - Apple Glass Aesthetic */
-[data-theme='dark'] {
+/* ─── Dark theme — legacy apps/client ──────────────────────────────────────── */
+/* data-theme='dark'          : set by legacy ThemeService                       */
+/* data-theme='industry-dark' : set by new ThemeService (variant + mode concat)  */
+[data-theme='dark'],
+[data-theme='industry-dark'] {
   /* Base Colors */
-  --color-bg: linear-gradient(135deg, #1c1c1e 0%, #2c2c2e 100%);
+  --color-bg: #1c1c1e;
   --color-bg-solid: #1c1c1e;
   --color-bg-secondary: rgba(44, 44, 46, 0.72);
   --color-bg-secondary-rgb: 44 44 46;
   --color-text: #f5f5f7;
   --color-text-secondary: #98989d;
   --color-text-inverse: #ffffff;
+  --color-text-tertiary: #8e8e93;
 
   /* Interactive Elements */
   --color-primary: #0a84ff;
@@ -88,22 +96,23 @@
   --color-border: rgba(255, 255, 255, 0.15);
   --color-border-light: rgba(255, 255, 255, 0.05);
   --color-input-bg: rgba(44, 44, 46, 0.8);
+  --color-bg-hover: rgba(255, 255, 255, 0.08);
 
   /* Status Colors */
   --color-success: #32d74b;
+  --color-success-bg: rgba(50, 215, 75, 0.15);
   --color-error: #ff453a;
   --color-warning: #ff9f0a;
   --color-info: #64d2ff;
 
-  /* Application-Specific - Glass morphism */
+  /* Application-Specific — Glass morphism */
   --color-message-user: rgba(10, 132, 255, 0.15);
   --color-message-ai: rgba(58, 58, 60, 0.72);
   --color-code-bg: rgba(142, 142, 147, 0.24);
   --color-code-text: #ff375f;
-  --color-bg-hover: rgba(255, 255, 255, 0.08);
 
   /* Glass Effect Variables */
-  --glass-bg: rgba(40, 42, 44);
+  --glass-bg: rgba(40, 42, 44, 0.9);
   --glass-border: rgba(255, 255, 255, 0.18);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
   --glass-backdrop-blur: blur(20px);
@@ -117,16 +126,452 @@
   --color-shadow: rgba(0, 0, 0, 0.5);
   --color-overlay: rgba(0, 0, 0, 0.8);
 
-  /* Surfaces & extended tokens (consumed by agentos-ui) */
-  --color-text-tertiary: #8e8e93;
+  /* Surfaces */
+  --color-surface: #2c2c2e;
+  --color-surface-hover: var(--color-bg-hover);
   --color-surface-secondary: rgba(255, 255, 255, 0.04);
   --color-surface-muted: rgba(255, 255, 255, 0.06);
-  --color-success-bg: rgba(50, 215, 75, 0.15);
 
-  /* Chat bubble surfaces */
-  --color-bubble-agent-bg: #2c2c2e;
-  --color-bubble-user-bg: #636366;
-  --color-bubble-system-bg: #0f1115;
-  --color-bubble-system-text: #e8eaf0;
+  /* Divider */
+  --color-divider: rgba(255, 255, 255, 0.15);
+}
+
+/* ─── Dark theme aliases — terminal variants for legacy components ────────────────────
+ * When agentos-ui switches to a terminal theme, data-theme='terminal-*' is set on <html>.
+ * Legacy components don't understand terminal themes — map them to the nearest
+ * equivalent: terminal-light → light (:root), terminal-dark → dark.
+ */
+[data-theme='terminal-dark'] {
+  /* Reuse the same dark glass morphism tokens as [data-theme='dark'] */
+  --color-bg: #1c1c1e;
+  --color-bg-solid: #1c1c1e;
+  --color-bg-secondary: rgba(44, 44, 46, 0.72);
+  --color-bg-secondary-rgb: 44 44 46;
+  --color-text: #f5f5f7;
+  --color-text-secondary: #98989d;
+  --color-text-inverse: #ffffff;
+  --color-text-tertiary: #8e8e93;
+  --color-primary: #0a84ff;
+  --color-primary-hover: #409cff;
+  --color-accent: #a78bfa;
+  --color-link: #0a84ff;
+  --color-border: rgba(255, 255, 255, 0.15);
+  --color-border-light: rgba(255, 255, 255, 0.05);
+  --color-input-bg: rgba(44, 44, 46, 0.8);
+  --color-bg-hover: rgba(255, 255, 255, 0.08);
+  --color-success: #32d74b;
+  --color-success-bg: rgba(50, 215, 75, 0.15);
+  --color-error: #ff453a;
+  --color-warning: #ff9f0a;
+  --color-info: #64d2ff;
+  --color-message-user: rgba(10, 132, 255, 0.15);
+  --color-message-ai: rgba(58, 58, 60, 0.72);
+  --color-code-bg: rgba(142, 142, 147, 0.24);
+  --color-code-text: #ff375f;
+  --glass-bg: rgba(40, 42, 44, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --glass-backdrop-blur: blur(20px);
+  --color-modal-bg: #2c2c2e;
+  --color-modal-border: rgba(255, 255, 255, 0.12);
+  --color-modal-shadow: 0 8px 48px rgba(0, 0, 0, 0.55), 0 2px 12px rgba(0, 0, 0, 0.35);
+  --color-shadow: rgba(0, 0, 0, 0.5);
+  --color-overlay: rgba(0, 0, 0, 0.8);
+  --color-surface: #2c2c2e;
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-secondary: rgba(255, 255, 255, 0.04);
+  --color-surface-muted: rgba(255, 255, 255, 0.06);
+  --color-divider: rgba(255, 255, 255, 0.15);
+}
+
+/* ─── agentos-ui — Industry palette (Barlow / steel blue) ──────────────────────
+ * Scoped under agentos-shell to avoid polluting the legacy app.
+ * agentos-shell is the root element of libs/agentos-ui.
+ * These tokens locally override the glass morphism palette defined in :root.
+ */
+agentos-shell {
+  /* ── Typography ── */
+  --font-body: 'Barlow', system-ui, sans-serif;
+  --font-heading: 'IBM Plex Mono', 'Fira Code', monospace;
+
+  /* ── Accent steel (Industry) — light ── */
+  --color-accent: #5980a6;
+  --color-accent-100: #eef6ff;
+  --color-accent-200: #d6ebff;
+  --color-accent-300: #b5d9fd;
+  --color-accent-600: #597ea3;
+  --color-accent-700: #416180;
+  --color-accent-800: #2c455d;
+  --color-accent-900: #1d2d3d;
+
+  /* ── Neutral scale (Industry) — light ── */
+  --color-neutral-100: #ebebed;
+  --color-neutral-200: #e9e9ea;
+  --color-neutral-500: #98989b;
+  --color-neutral-600: #7a7a7d;
+  --color-neutral-700: #5c5c5f;
+  --color-neutral-900: #111827;
+
+  /* ── Semantic red (Modernist) — light ── */
+  --red: #ec3013;
+  --red-deep: #ae1800;
+  --red-bg: #ffe0d9;
+
+  /* ── Light mode — Surface / background ── */
+  --color-bg: #f2f2f3;
+  --color-bg-solid: #f2f2f3;
+  --color-surface: #dcdcde;
+  --color-surface-secondary: #dcdcde;
+  --color-bg-secondary: rgba(255, 255, 255, 0.7);
+  --color-bg-secondary-rgb: 255 255 255;
+  --color-text: #1d1f20;
+  --color-text-secondary: #5c5c5f;
+  --color-text-tertiary: #98989b;
+  --color-text-inverse: #ffffff;
   --color-text-on-accent: #ffffff;
+
+  /* ── Light mode — Interactive ── */
+  --color-primary: #5980a6;
+  --color-primary-hover: #416180;
+  --color-link: #416180;
+  --color-bg-hover: rgba(29, 31, 32, 0.06);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-muted: rgba(29, 31, 32, 0.04);
+  --color-input-bg: #dcdcde;
+
+  /* ── Light mode — Borders / Dividers ── */
+  --color-divider: rgba(29, 31, 32, 0.16);
+  --color-border: var(--color-divider);
+  --color-border-light: rgba(29, 31, 32, 0.08);
+
+  /* ── Light mode — Shadows ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 10px rgba(0, 0, 0, 0.06);
+  --color-shadow: rgba(0, 0, 0, 0.08);
+
+  /* ── Light mode — Status ── */
+  --color-success: #34c759;
+  --color-success-bg: #e3f5e1;
+  --color-error: #ec3013;
+  --color-warning: #ff9500;
+  --color-info: #5ac8fa;
+
+  /* ── Light mode — Case status ── */
+  --status-pending-color: #d98a2b;
+  --status-pending-text: #b06f1e;
+  --status-pending-bg: rgba(217, 138, 43, 0.1);
+  --status-idle-color: #8a949e;
+  --status-idle-text: var(--color-neutral-600);
+  --status-idle-bg: rgba(138, 148, 158, 0.08);
+  --status-killed-color: #6b7178;
+  --status-killed-text: var(--color-neutral-700);
+  --status-killed-bg: rgba(107, 113, 120, 0.08);
+
+  /* ── Light mode — Modal / Dialog ── */
+  --color-modal-bg: #f2f2f3;
+  --color-modal-border: rgba(29, 31, 32, 0.16);
+  --color-modal-shadow: 0 8px 40px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.1);
+  --color-overlay: rgba(0, 0, 0, 0.4);
+
+  /* ── Light mode — Code ── */
+  --color-code-bg: rgba(29, 31, 32, 0.06);
+  --color-code-text: #ec3013;
+
+  /* ── Light mode — Chat bubbles ── */
+  --color-message-user: rgba(89, 128, 166, 0.12);
+  --color-message-ai: rgba(255, 255, 255, 0.8);
+  --color-bubble-agent-bg: #ebebed;
+  --color-bubble-user-bg: #d6ebff;
+  --color-bubble-system-bg: #1d1f20;
+  --color-bubble-system-text: #f2f2f3;
+
+  /* ── Glass morphism — legacy (apps/client only) ── */
+  --glass-bg: rgba(242, 242, 243, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+  --glass-backdrop-blur: blur(20px);
+}
+
+/* ─── Industry Dark ─────────────────────────────────────────────────────────── */
+agentos-shell[data-theme='dark'],
+agentos-shell[data-theme='industry-dark'],
+:is([data-theme='dark'], [data-theme='industry-dark']) agentos-shell {
+  /* ── Accent steel — dark ── */
+  --color-accent: #749dc4;
+  --color-accent-100: #1d2d3d;
+  --color-accent-200: #2c455d;
+  --color-accent-300: #416180;
+  --color-accent-600: #94bce3;
+  --color-accent-700: #b5d9fd;
+  --color-accent-800: #d6ebff;
+  --color-accent-900: #eef6ff;
+
+  /* ── Neutral scale — dark ── */
+  --color-neutral-100: #2b2b2d;
+  --color-neutral-200: #232527;
+  --color-neutral-500: #98989b;
+  --color-neutral-600: #b7b7ba;
+  --color-neutral-700: #c4c4c7;
+  --color-neutral-900: #f2f2f3;
+
+  /* ── Semantic red — dark ── */
+  --red: #ff563c;
+  --red-deep: #ff9783;
+  --red-bg: #4d170e;
+
+  /* ── Dark mode — Surface / background ── */
+  --color-bg: #191b1d;
+  --color-bg-solid: #191b1d;
+  --color-surface: #232527;
+  --color-surface-secondary: #232527;
+  --color-bg-secondary: rgba(35, 37, 39, 0.72);
+  --color-bg-secondary-rgb: 35 37 39;
+  --color-text: #f2f2f3;
+  --color-text-secondary: #b7b7ba;
+  --color-text-tertiary: #98989b;
+  --color-text-inverse: #1d1f20;
+  --color-text-on-accent: #ffffff;
+
+  /* ── Dark mode — Interactive ── */
+  --color-primary: #749dc4;
+  --color-primary-hover: #94bce3;
+  --color-link: #b5d9fd;
+  --color-bg-hover: rgba(242, 242, 243, 0.08);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-muted: rgba(242, 242, 243, 0.05);
+  --color-input-bg: #232527;
+
+  /* ── Dark mode — Borders / Dividers ── */
+  --color-divider: rgba(242, 242, 243, 0.14);
+  --color-border: var(--color-divider);
+  --color-border-light: rgba(242, 242, 243, 0.07);
+
+  /* ── Dark mode — Shadows ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.4), 0 4px 10px rgba(0, 0, 0, 0.3);
+  --color-shadow: rgba(0, 0, 0, 0.5);
+
+  /* ── Dark mode — Status ── */
+  --color-success: #32d74b;
+  --color-success-bg: rgba(50, 215, 75, 0.15);
+  --color-error: #ff563c;
+  --color-warning: #ff9f0a;
+  --color-info: #64d2ff;
+
+  /* ── Dark mode — Case status ── */
+  --status-pending-color: #e8a547;
+  --status-pending-text: #f0be78;
+  --status-pending-bg: rgba(232, 165, 71, 0.12);
+  --status-idle-color: #6e7880;
+  --status-idle-text: var(--color-neutral-600);
+  --status-idle-bg: rgba(110, 120, 128, 0.1);
+  --status-killed-color: #55595e;
+  --status-killed-text: var(--color-neutral-700);
+  --status-killed-bg: rgba(85, 89, 94, 0.12);
+
+  /* ── Dark mode — Modal / Dialog ── */
+  --color-modal-bg: #232527;
+  --color-modal-border: rgba(242, 242, 243, 0.14);
+  --color-modal-shadow: 0 8px 48px rgba(0, 0, 0, 0.55), 0 2px 12px rgba(0, 0, 0, 0.35);
+  --color-overlay: rgba(0, 0, 0, 0.8);
+
+  /* ── Dark mode — Code ── */
+  --color-code-bg: rgba(242, 242, 243, 0.1);
+  --color-code-text: #ff563c;
+
+  /* ── Dark mode — Chat bubbles ── */
+  --color-message-user: rgba(116, 157, 196, 0.15);
+  --color-message-ai: rgba(35, 37, 39, 0.72);
+  --color-bubble-agent-bg: #2b2b2d;
+  --color-bubble-user-bg: #2c455d;
+  --color-bubble-system-bg: #191b1d;
+  --color-bubble-system-text: #f2f2f3;
+
+  /* ── Glass morphism — legacy ── */
+  --glass-bg: rgba(35, 37, 39, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --glass-backdrop-blur: blur(20px);
+}
+
+/* ─── Terminal Light ────────────────────────────────────────────────────────── */
+agentos-shell[data-theme='terminal-light'],
+:is([data-theme='terminal-light']) agentos-shell {
+  --font-body: 'JetBrains Mono', ui-monospace, monospace;
+  --font-heading: 'JetBrains Mono', ui-monospace, monospace;
+
+  --color-accent: #a35a00;
+  --color-accent-100: #f4f1e8;
+  --color-accent-200: #ece0c8;
+  --color-accent-300: #dcc79a;
+  --color-accent-600: #b37a29;
+  --color-accent-700: #7a4400;
+  --color-accent-800: #5c3300;
+  --color-accent-900: #3d2200;
+
+  --color-neutral-100: #f4f1e8;
+  --color-neutral-200: #ece7d8;
+  --color-neutral-500: #8f8567;
+  --color-neutral-600: #6b6555;
+  --color-neutral-700: #4a4433;
+  --color-neutral-900: #1c1a12;
+
+  --red: #ec3013;
+  --red-deep: #ae1800;
+  --red-bg: #ffe0d9;
+
+  --color-bg: #f4f1e8;
+  --color-bg-solid: #f4f1e8;
+  --color-surface: #ece7d8;
+  --color-surface-secondary: #ece7d8;
+  --color-bg-secondary: rgba(244, 241, 232, 0.7);
+  --color-bg-secondary-rgb: 244 241 232;
+  --color-text: #1c1a12;
+  --color-text-secondary: #4a4433;
+  --color-text-tertiary: #8f8567;
+  --color-text-inverse: #f4f1e8;
+  --color-text-on-accent: #f4f1e8;
+
+  --color-primary: #a35a00;
+  --color-primary-hover: #7a4400;
+  --color-link: #7a4400;
+  --color-bg-hover: rgba(28, 26, 18, 0.06);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-muted: rgba(28, 26, 18, 0.04);
+  --color-input-bg: #ece7d8;
+
+  --color-divider: #1c1a12;
+  --color-border: var(--color-divider);
+  --color-border-light: rgba(28, 26, 18, 0.3);
+
+  --shadow-sm: 0 1px 3px rgba(28, 26, 18, 0.15), 0 1px 2px rgba(28, 26, 18, 0.1);
+  --shadow-lg: 0 10px 25px rgba(28, 26, 18, 0.2), 0 4px 10px rgba(28, 26, 18, 0.12);
+  --color-shadow: rgba(28, 26, 18, 0.12);
+
+  --color-success: #34c759;
+  --color-success-bg: #e3f5e1;
+  --color-error: #ec3013;
+  --color-warning: #b37a29;
+  --color-info: #5ac8fa;
+
+  --status-pending-color: #b37a29;
+  --status-pending-text: #7a4400;
+  --status-pending-bg: rgba(163, 90, 0, 0.1);
+  --status-idle-color: #8f8567;
+  --status-idle-text: var(--color-neutral-600);
+  --status-idle-bg: rgba(143, 133, 103, 0.08);
+  --status-killed-color: #6b6555;
+  --status-killed-text: var(--color-neutral-700);
+  --status-killed-bg: rgba(107, 101, 85, 0.08);
+
+  --color-modal-bg: #f4f1e8;
+  --color-modal-border: #1c1a12;
+  --color-modal-shadow: 0 8px 40px rgba(28, 26, 18, 0.25), 0 2px 8px rgba(28, 26, 18, 0.15);
+  --color-overlay: rgba(28, 26, 18, 0.5);
+
+  --color-code-bg: rgba(28, 26, 18, 0.06);
+  --color-code-text: #a35a00;
+
+  --color-message-user: rgba(163, 90, 0, 0.1);
+  --color-message-ai: rgba(244, 241, 232, 0.8);
+  --color-bubble-agent-bg: #ece7d8;
+  --color-bubble-user-bg: #ece0c8;
+  --color-bubble-system-bg: #1c1a12;
+  --color-bubble-system-text: #f4f1e8;
+
+  --glass-bg: rgba(244, 241, 232, 0.72);
+  --glass-border: rgba(28, 26, 18, 0.15);
+  --glass-shadow: 0 8px 32px 0 rgba(28, 26, 18, 0.15);
+  --glass-backdrop-blur: blur(20px);
+}
+
+/* ─── Terminal Dark (CRT) ───────────────────────────────────────────────────── */
+agentos-shell[data-theme='terminal-dark'],
+:is([data-theme='terminal-dark']) agentos-shell {
+  --font-body: 'JetBrains Mono', ui-monospace, monospace;
+  --font-heading: 'JetBrains Mono', ui-monospace, monospace;
+
+  --color-accent: #ffb000;
+  --color-accent-100: #2a1f00;
+  --color-accent-200: #3d2d00;
+  --color-accent-300: #5c4300;
+  --color-accent-600: #c78e00;
+  --color-accent-700: #ffc84d;
+  --color-accent-800: #ffdb85;
+  --color-accent-900: #ffedbd;
+
+  --color-neutral-100: #14170f;
+  --color-neutral-200: #1c2016;
+  --color-neutral-500: #7a8272;
+  --color-neutral-600: #a3ab96;
+  --color-neutral-700: #c4cab8;
+  --color-neutral-900: #d8dcd0;
+
+  --red: #ff563c;
+  --red-deep: #ff9783;
+  --red-bg: #4d170e;
+
+  --color-bg: #0b0d0a;
+  --color-bg-solid: #0b0d0a;
+  --color-surface: #14170f;
+  --color-surface-secondary: #14170f;
+  --color-bg-secondary: rgba(20, 23, 15, 0.72);
+  --color-bg-secondary-rgb: 20 23 15;
+  --color-text: #d8dcd0;
+  --color-text-secondary: #a3ab96;
+  --color-text-tertiary: #7a8272;
+  --color-text-inverse: #0b0d0a;
+  --color-text-on-accent: #0b0d0a;
+
+  --color-primary: #ffb000;
+  --color-primary-hover: #ffc84d;
+  --color-link: #ffc84d;
+  --color-bg-hover: rgba(216, 220, 208, 0.08);
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-muted: rgba(216, 220, 208, 0.05);
+  --color-input-bg: #14170f;
+
+  --color-divider: #3a3f30;
+  --color-border: var(--color-divider);
+  --color-border-light: rgba(58, 63, 48, 0.6);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.7), 0 4px 10px rgba(0, 0, 0, 0.5);
+  --color-shadow: rgba(0, 0, 0, 0.6);
+
+  --color-success: #32d74b;
+  --color-success-bg: rgba(50, 215, 75, 0.15);
+  --color-error: #ff563c;
+  --color-warning: #ffb000;
+  --color-info: #64d2ff;
+
+  --status-pending-color: #ffb000;
+  --status-pending-text: #ffc84d;
+  --status-pending-bg: rgba(255, 176, 0, 0.12);
+  --status-idle-color: #5a5f4e;
+  --status-idle-text: var(--color-neutral-600);
+  --status-idle-bg: rgba(90, 95, 78, 0.1);
+  --status-killed-color: #3a3f30;
+  --status-killed-text: var(--color-neutral-700);
+  --status-killed-bg: rgba(58, 63, 48, 0.12);
+
+  --color-modal-bg: #14170f;
+  --color-modal-border: #3a3f30;
+  --color-modal-shadow: 0 8px 48px rgba(0, 0, 0, 0.8), 0 2px 12px rgba(0, 0, 0, 0.6);
+  --color-overlay: rgba(0, 0, 0, 0.85);
+
+  --color-code-bg: rgba(216, 220, 208, 0.08);
+  --color-code-text: #ffb000;
+
+  --color-message-user: rgba(255, 176, 0, 0.1);
+  --color-message-ai: rgba(20, 23, 15, 0.72);
+  --color-bubble-agent-bg: #14170f;
+  --color-bubble-user-bg: #3d2d00;
+  --color-bubble-system-bg: #0b0d0a;
+  --color-bubble-system-text: #d8dcd0;
+
+  --glass-bg: rgba(20, 23, 15, 0.92);
+  --glass-border: rgba(216, 220, 208, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+  --glass-backdrop-blur: blur(20px);
 }

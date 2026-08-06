@@ -31,6 +31,18 @@ interface RateLimitInfo {
 
 const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   {
+    name: 'claude-fable-5',
+    alias: 'FRONTIER',
+    contextWindow: 200000,
+    maxOutputTokens: 64000,
+    price: {
+      inputMTokens: 10,
+      cacheWrite: 12.5,
+      cacheRead: 1.0,
+      outputMTokens: 50,
+    },
+  },
+  {
     name: 'claude-sonnet-4-6',
     alias: 'BIG',
     contextWindow: 200000,
@@ -44,10 +56,9 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
     },
   },
   {
-    name: 'claude-opus-4-6',
+    name: 'claude-opus-5',
     alias: 'BIGGEST',
     contextWindow: 200000,
-    temperature: 0.8,
     maxOutputTokens: 64000,
     price: {
       inputMTokens: 5,
@@ -563,6 +574,7 @@ export class AnthropicClient extends AiClient {
 
     // Add cache_control to the last tool (covers all tools)
     if (tools.length > 0) {
+      // eslint-disable-next-line no-extra-semi
       ;(tools[tools.length - 1] as any).cache_control = { type: 'ephemeral' }
     }
 
@@ -605,7 +617,9 @@ export class AnthropicClient extends AiClient {
         },
       ] as unknown as Array<Anthropic.TextBlockParam>,
       tools: this.getClaudeTools(agent.tools),
-      temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
+      ...((agent.definition.temperature ?? model.temperature) !== undefined && {
+        temperature: agent.definition.temperature ?? model.temperature,
+      }),
       max_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? 8192,
     })
 
@@ -772,7 +786,7 @@ export class AnthropicClient extends AiClient {
           model: modelName,
           messages: [{ role: 'user', content: prompt }],
           max_tokens: actualMaxTokens,
-          temperature: options?.temperature ?? 0.5,
+          ...(options?.temperature !== undefined && { temperature: options.temperature }),
           stop_sequences: options?.stopSequences,
         })
         response = await stream.finalMessage()
@@ -781,7 +795,7 @@ export class AnthropicClient extends AiClient {
           model: modelName,
           messages: [{ role: 'user', content: prompt }],
           max_tokens: actualMaxTokens,
-          temperature: options?.temperature ?? 0.5,
+          ...(options?.temperature !== undefined && { temperature: options.temperature }),
           stop_sequences: options?.stopSequences,
         })
       }

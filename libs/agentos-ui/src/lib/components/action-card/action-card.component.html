@@ -1,9 +1,9 @@
 @if (clickable()) {
-  <button class="ac ac--clickable" type="button" (click)="nameClicked.emit()">
+  <button class="ac ac--clickable" type="button" dsBlueprint (click)="nameClicked.emit()">
     <ng-container *ngTemplateOutlet="cardContent" />
   </button>
 } @else {
-  <div class="ac">
+  <div class="ac" dsBlueprint>
     <ng-container *ngTemplateOutlet="cardContent" />
   </div>
 }

@@ -9,6 +9,7 @@
  */
 import { EntityMetadata } from './entity-metadata'
 import { ToolResponseEventAllOfOutput } from './tool-response-event-all-of-output'
+import { Image } from './image'
 
 export interface ToolResponseEvent {
   caseId: string
@@ -18,6 +19,7 @@ export interface ToolResponseEvent {
   timestamp: string
   type: 'ToolResponseEvent'
   durationMs?: number
+  images: Array<Image>
   output: ToolResponseEventAllOfOutput
   success: boolean
   toolMetadata: { [key: string]: any }

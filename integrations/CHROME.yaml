@@ -1,0 +1,25 @@
+# This file was exported from a persisted IntegrationConfig. Paths under `parameters`
+# (e.g. workingDirectory, rootPath, cwd, args) are absolute and specific to the machine
+# that entered them.
+#
+# To make this file portable across developer machines, replace the part of each path
+# that matches the namespace's configPath with the token {{NAMESPACE_CONFIG_PATH}}.
+# It is resolved automatically at load time, only for files placed in
+# {configPath}/integrations/ (configs created through the API are not affected).
+#
+# Example: workingDirectory: /home/alice/repos/myproject
+#       -> workingDirectory: "{{NAMESPACE_CONFIG_PATH}}/.."
+#
+# Relative path segments following the token are kept as-is, not normalised:
+# "{{NAMESPACE_CONFIG_PATH}}/../scripts" works.
+name: "CHROME"
+integrationType: "MCP_STDIO"
+parameters:
+  command: "npx"
+  args:
+  - "chrome-devtools-mcp@latest"
+  env: ""
+  cwd: null
+  timeoutSeconds: 30
+  toolCallTimeoutSeconds: 60
+  idleTimeoutMinutes: 10

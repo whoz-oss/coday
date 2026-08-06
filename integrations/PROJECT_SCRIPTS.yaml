@@ -1,0 +1,117 @@
+# This file was exported from a persisted IntegrationConfig. Paths under `parameters`
+# (e.g. workingDirectory, rootPath, cwd, args) are absolute and specific to the machine
+# that entered them.
+#
+# To make this file portable across developer machines, replace the part of each path
+# that matches the namespace's configPath with the token {{NAMESPACE_CONFIG_PATH}}.
+# It is resolved automatically at load time, only for files placed in
+# {configPath}/integrations/ (configs created through the API are not affected).
+#
+# Example: workingDirectory: /home/alice/repos/myproject
+#       -> workingDirectory: "{{NAMESPACE_CONFIG_PATH}}/.."
+#
+# Relative path segments following the token are kept as-is, not normalised:
+# "{{NAMESPACE_CONFIG_PATH}}/../scripts" works.
+#
+# Ported from the `scripts` section of coday.yaml (BASH plugin equivalent of the
+# legacy AssistantTools scripts). Keep both in sync manually until coday.yaml's
+# `scripts` mechanism is retired.
+name: "PROJECT_SCRIPTS"
+integrationType: "BASH"
+parameters:
+  workingDirectory: "{{NAMESPACE_CONFIG_PATH}}"
+  defaultTimeoutSeconds: 60
+  tools:
+  - name: "nx"
+    description: |
+      Run Nx commands for the monorepo. Nx is the build system orchestrating all projects.
+
+      Common targets:
+      - build: Compile a project (e.g., "nx build client")
+      - test: Run tests (e.g., "nx test server", "nx test agentos-service")
+      - lint: Run linter (e.g., "nx lint client")
+      - serve: Start dev server (e.g., "nx serve client")
+
+      Common commands:
+      - "test agentos-service" - Run all Kotlin tests for AgentOS service
+      - "test client" - Run all Angular client tests
+      - "lint server" - Lint the server code
+      - "build client" - Build the Angular client
+      - "run-many --target=test --all" - Run all tests in monorepo
+      - "run-many --target=build --all" - Build all projects
+      - "affected --target=test" - Test only affected projects
+      - "list" - List all projects in workspace
+      - "show project client" - Show project configuration
+
+      For Kotlin-specific test filtering (e.g., specific test class):
+      Use gradle directly: "cd agentos && ./gradlew :agentos-service:test --tests ChatClientProviderTest"
+
+      Note: Nx handles both TypeScript (Jest) and Kotlin (Gradle) projects seamlessly.
+
+      ⚠️ Do not run interactive commands!
+      ⚠️ Commands that modify dependencies require user confirmation.
+    command: "pnpm nx PARAMETERS"
+    parametersDescription: |
+      Nx command with arguments. Examples:
+      - "test agentos-service"
+      - "build client"
+      - "run-many --target=test --all"
+      - "affected --target=build --base=origin/master"
+    path: null
+    timeoutSeconds: 900
+  - name: "gradle"
+    description: |
+      Run Gradle commands for Kotlin/Java projects in the agentos/ directory.
+
+      Common commands:
+      - ":agentos-service:test" - Run all service tests
+      - ":agentos-service:test --tests ChatClientProviderTest" - Run specific test class
+      - ":agentos-service:build" - Build the service
+      - ":agentos-sdk:test" - Run SDK tests
+      - "test" - Run all tests in agentos/
+      - "build" - Build all Gradle projects
+
+      The command runs from agentos/ directory with optimized flags:
+      --no-build-cache --no-configuration-cache --no-daemon
+    command: "./gradlew PARAMETERS --no-build-cache --no-configuration-cache --no-daemon"
+    parametersDescription: |
+      Gradle task with arguments. Examples:
+      - ":agentos-service:test"
+      - ":agentos-service:test --tests ChatClientProviderTest"
+      - ":agentos-sdk:build"
+      - "test" (all tests)
+    path: "agentos"
+    timeoutSeconds: 900
+  - name: "setup"
+    description: |
+      Project setup script. Checks that required binaries (node, pnpm, java) are available on PATH,
+      then installs dependencies using pnpm with a frozen lockfile.
+      Works both in the main clone and in git worktrees.
+      Run this once after cloning or creating a new worktree.
+    command: "bash setup.sh"
+    timeoutSeconds: 300
+  - name: "web-dev"
+    description: |
+      Starts the full Coday dev stack (AgentOS + Express server + Angular client) in tmux sessions.
+      Ports are allocated dynamically to avoid collisions across worktrees.
+
+      Three tmux sessions are created (one process per session):
+        - agentos_<branch>_<port>   AgentOS Spring Boot backend
+        - server_<branch>_<port>    Express server
+        - client_<branch>_<port>    Angular dev server
+      Where <branch> is the first 12 chars of the last git branch segment.
+
+      Output includes a machine-readable block with allocated ports:
+        AGENTOS_PORT=<n>
+        SERVER_PORT=<n>
+        CLIENT_PORT=<n>
+
+      Ready signals to look for in tmux logs:
+        AgentOS  : "Started AgentOSApplication"
+        Server   : "Server is running on http://localhost:<port>"
+        Client   : "Local:   http://localhost:<port>"
+
+      Run with --help for full documentation:
+        bash scripts/web-dev-tmux.sh --help
+    command: "bash ./scripts/web-dev-tmux.sh"
+    timeoutSeconds: 60

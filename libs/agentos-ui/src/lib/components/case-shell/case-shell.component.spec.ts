@@ -1,4 +1,4 @@
-import { signal } from '@angular/core'
+import { ElementRef, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Case, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
@@ -21,6 +21,7 @@ describe('CaseShellComponent', () => {
     loadCases: jest.Mock
     deleteCase: jest.Mock
     setStarred: jest.Mock
+    renameCase: jest.Mock
   }
   let userStateMock: { currentUser: jest.Mock; loadMe: jest.Mock }
   let namespaceControllerMock: { listAllNamespace: jest.Mock }
@@ -35,6 +36,7 @@ describe('CaseShellComponent', () => {
       loadCases: jest.fn(),
       deleteCase: jest.fn().mockReturnValue(of(undefined)),
       setStarred: jest.fn().mockReturnValue(of(undefined)),
+      renameCase: jest.fn().mockReturnValue(of(undefined)),
     }
     userStateMock = {
       currentUser: jest.fn().mockReturnValue(null),
@@ -62,6 +64,7 @@ describe('CaseShellComponent', () => {
         { provide: UserStateService, useValue: userStateMock },
         { provide: NamespaceControllerService, useValue: namespaceControllerMock },
         { provide: THEME_PORT, useValue: themeMock },
+        { provide: ElementRef, useValue: { nativeElement: document.createElement('div') } },
       ],
     })
 
@@ -78,17 +81,7 @@ describe('CaseShellComponent', () => {
   })
 
   describe('soft-delete', () => {
-    it('does not delete the case when the user cancels the confirmation', () => {
-      jest.spyOn(window, 'confirm').mockReturnValue(false)
-      const component = makeComponent({ ns: NS_ID })
-
-      component['onDeleteRequested']('case-1')
-
-      expect(caseStateMock.deleteCase).not.toHaveBeenCalled()
-    })
-
-    it('calls deleteCase on the state service once confirmed', () => {
-      jest.spyOn(window, 'confirm').mockReturnValue(true)
+    it('calls deleteCase on the state service', () => {
       const component = makeComponent({ ns: NS_ID })
 
       component['onDeleteRequested']('case-1')
@@ -97,7 +90,6 @@ describe('CaseShellComponent', () => {
     })
 
     it('navigates away when the deleted case is the active one', () => {
-      jest.spyOn(window, 'confirm').mockReturnValue(true)
       const component = makeComponent({ ns: NS_ID, case: 'active-1' })
 
       component['onDeleteRequested']('active-1')
@@ -106,7 +98,6 @@ describe('CaseShellComponent', () => {
     })
 
     it('does not navigate when the deleted case is not the active one', () => {
-      jest.spyOn(window, 'confirm').mockReturnValue(true)
       const component = makeComponent({ ns: NS_ID, case: 'active-1' })
 
       component['onDeleteRequested']('other-2')
@@ -114,28 +105,8 @@ describe('CaseShellComponent', () => {
       expect(routerMock.navigate).not.toHaveBeenCalled()
     })
 
-    it('confirms with the case title when available', () => {
-      const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false)
-      const component = makeComponent({ ns: NS_ID }, [caseWith('case-1', 'My Case')])
-
-      component['onDeleteRequested']('case-1')
-
-      expect(confirmSpy).toHaveBeenCalledWith('Delete "My Case"?')
-    })
-
-    it('confirms with the case id when the case is not in the current list', () => {
-      const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false)
-      const component = makeComponent({ ns: NS_ID }, [])
-
-      component['onDeleteRequested']('gone-9')
-
-      expect(confirmSpy).toHaveBeenCalledWith('Delete "gone-9"?')
-    })
-
-    it('logs and alerts the user when the delete request fails', () => {
-      jest.spyOn(window, 'confirm').mockReturnValue(true)
+    it('logs an error when the delete request fails', () => {
       const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
-      const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => undefined)
       const component = makeComponent({ ns: NS_ID, case: 'active-1' })
       caseStateMock.deleteCase.mockReturnValue(throwError(() => new Error('boom')))
 
@@ -143,7 +114,6 @@ describe('CaseShellComponent', () => {
 
       expect(routerMock.navigate).not.toHaveBeenCalled()
       expect(errorSpy).toHaveBeenCalled()
-      expect(alertSpy).toHaveBeenCalled()
     })
   })
 
@@ -171,6 +141,39 @@ describe('CaseShellComponent', () => {
       caseStateMock.setStarred.mockReturnValue(throwError(() => new Error('boom')))
 
       component['onStarToggled']({ id: 'case-1', starred: true })
+
+      expect(errorSpy).toHaveBeenCalled()
+      expect(alertSpy).toHaveBeenCalled()
+    })
+  })
+
+  describe('rename', () => {
+    it('delegates the rename to the state service', () => {
+      const confirmSpy = jest.spyOn(window, 'confirm')
+      const component = makeComponent({ ns: NS_ID })
+
+      component['onRenameRequested']({ id: 'case-1', title: 'New name' })
+
+      expect(caseStateMock.renameCase).toHaveBeenCalledWith('case-1', 'New name')
+      // The drawer already validated the title, so nothing is confirmed here.
+      expect(confirmSpy).not.toHaveBeenCalled()
+    })
+
+    it('stays on the active case', () => {
+      const component = makeComponent({ ns: NS_ID, case: 'case-1' })
+
+      component['onRenameRequested']({ id: 'case-1', title: 'New name' })
+
+      expect(routerMock.navigate).not.toHaveBeenCalled()
+    })
+
+    it('alerts the user when the rename request fails', () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => undefined)
+      const component = makeComponent({ ns: NS_ID })
+      caseStateMock.renameCase.mockReturnValue(throwError(() => new Error('boom')))
+
+      component['onRenameRequested']({ id: 'case-1', title: 'New name' })
 
       expect(errorSpy).toHaveBeenCalled()
       expect(alertSpy).toHaveBeenCalled()

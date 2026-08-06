@@ -1,0 +1,27 @@
+# This file was exported from a persisted IntegrationConfig. Paths under `parameters`
+# (e.g. workingDirectory, rootPath, cwd, args) are absolute and specific to the machine
+# that entered them.
+#
+# To make this file portable across developer machines, replace the part of each path
+# that matches the namespace's configPath with the token {{NAMESPACE_CONFIG_PATH}}.
+# It is resolved automatically at load time, only for files placed in
+# {configPath}/integrations/ (configs created through the API are not affected).
+#
+# Example: workingDirectory: /home/alice/repos/myproject
+#       -> workingDirectory: "{{NAMESPACE_CONFIG_PATH}}/.."
+#
+# Relative path segments following the token are kept as-is, not normalised:
+# "{{NAMESPACE_CONFIG_PATH}}/../scripts" works.
+name: "GIT"
+integrationType: "BASH"
+parameters:
+  workingDirectory: "{{NAMESPACE_CONFIG_PATH"
+  defaultTimeoutSeconds: 30
+  tools:
+  - name: "git"
+    description: "runs git with the given commands in parameters"
+    command: "git PARAMETERS"
+    parametersDescription: "the arguments for the git command, ex `commit -m \"fix\
+      \ something\"`, `log`, `reset --hard`"
+    path: null
+    timeoutSeconds: null

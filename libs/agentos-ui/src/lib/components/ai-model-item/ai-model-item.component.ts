@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core'
 import { AiModel } from '@whoz-oss/agentos-api-client'
-import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
+import { BlueprintDirective, IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
  * AiModelItemComponent — presentational component for a single AI model card.
@@ -12,7 +12,7 @@ import { IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-os
  */
 @Component({
   selector: 'agentos-ai-model-item',
-  imports: [KebabMenuComponent, IconButtonComponent],
+  imports: [BlueprintDirective, KebabMenuComponent, IconButtonComponent],
   templateUrl: './ai-model-item.component.html',
   styleUrl: './ai-model-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

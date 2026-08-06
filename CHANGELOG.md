@@ -1,3 +1,290 @@
+## 0.242.0 (2026-08-06)
+
+### 🚀 Features
+
+- make desktop apps use the current version of the build ([#1220](https://github.com/whoz-oss/coday/pull/1220))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.241.1 (2026-08-06)
+
+### 🩹 Fixes
+
+- add missing chat-message.utils module ([#1216](https://github.com/whoz-oss/coday/issues/1216))
+- add missing chat-message.utils module ([#1219](https://github.com/whoz-oss/coday/pull/1219))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 0.241.0 (2026-08-05)
+
+### 🚀 Features
+
+- display tool call details in chat messages ([8a72bb36](https://github.com/whoz-oss/coday/commit/8a72bb36))
+- display tool call details in chat messages - rebase collapsed error messages ([d288b24c](https://github.com/whoz-oss/coday/commit/d288b24c))
+- display tool call details in chat messages ([#1216](https://github.com/whoz-oss/coday/pull/1216))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 0.240.0 (2026-08-05)
+
+### 🚀 Features
+
+- collapse long error messages in chat ([c5031db0](https://github.com/whoz-oss/coday/commit/c5031db0))
+- collapse long error messages in chat ([#1215](https://github.com/whoz-oss/coday/pull/1215))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 0.239.1 (2026-08-04)
+
+### 🩹 Fixes
+
+- wz-32986 implement endpoint removing access for user from user groups and namespaces ([fa307c64](https://github.com/whoz-oss/coday/commit/fa307c64))
+- wz-32986 Scope deletion to namespace ([490270ab](https://github.com/whoz-oss/coday/commit/490270ab))
+- wz-32986 update api schema ([2b50534a](https://github.com/whoz-oss/coday/commit/2b50534a))
+- wz-32986 revoke namespace access using user externalId ([8bd07651](https://github.com/whoz-oss/coday/commit/8bd07651))
+- wz-32986 code review ([b3ffbaf4](https://github.com/whoz-oss/coday/commit/b3ffbaf4))
+- wz-32986 fix tests ([be10a836](https://github.com/whoz-oss/coday/commit/be10a836))
+- wz-32986 implement endpoint removing access for user from user groups and namespaces ([#1186](https://github.com/whoz-oss/coday/pull/1186))
+
+### ❤️ Thank You
+
+- alan @AlanMenantWhoz
+- mbarroux @mickael-barroux-whoz
+- Mickaël Barroux @mickael-barroux-whoz
+
+## 0.239.0 (2026-08-04)
+
+### 🚀 Features
+
+- #1130 OAuth 2.1 interactive flow in AuthService ([#1137](https://github.com/whoz-oss/coday/pull/1137), [#1130](https://github.com/whoz-oss/coday/issues/1130), [#1114](https://github.com/whoz-oss/coday/issues/1114), [#1097](https://github.com/whoz-oss/coday/issues/1097))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.238.1 (2026-08-04)
+
+### 🩹 Fixes
+
+- rollback agentos bundling attepmpt ([#1206](https://github.com/whoz-oss/coday/pull/1206))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.238.0 (2026-08-04)
+
+### 🚀 Features
+
+- agentos auto download approach ([#1197](https://github.com/whoz-oss/coday/pull/1197))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.237.1 (2026-08-03)
+
+### 🩹 Fixes
+
+- issue 1174 bundle agentos with right start port ([#1196](https://github.com/whoz-oss/coday/pull/1196))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.237.0 (2026-08-03)
+
+### 🚀 Features
+
+- #1174 bundle AgentOS JAR in coday-server npm package ([#1177](https://github.com/whoz-oss/coday/pull/1177), [#1174](https://github.com/whoz-oss/coday/issues/1174))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.236.0 (2026-08-03)
+
+### 🚀 Features
+
+- #1011 case sharing — batch share + list users endpoints ([#1142](https://github.com/whoz-oss/coday/pull/1142), [#1011](https://github.com/whoz-oss/coday/issues/1011))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.235.0 (2026-08-03)
+
+### 🚀 Features
+
+- #1095 AuthSetting, AuthService + frontend ([#1114](https://github.com/whoz-oss/coday/pull/1114), [#1095](https://github.com/whoz-oss/coday/issues/1095), [#1139](https://github.com/whoz-oss/coday/issues/1139))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.234.0 (2026-08-03)
+
+### 🚀 Features
+
+- portable paths in filesystem IntegrationConfig via {{NAMESPACE_CONFIG_PATH}} token ([#1182](https://github.com/whoz-oss/coday/pull/1182))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.233.1 (2026-08-03)
+
+### 🚀 Features
+
+- regen openapi with runconfig ([#1193](https://github.com/whoz-oss/coday/pull/1193))
+
+### 🩹 Fixes
+
+- agentos filesystem agent docs resolution and mandatoryDocs/docs split ([#1183](https://github.com/whoz-oss/coday/pull/1183))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.233.0 (2026-08-03)
+
+### 🚀 Features
+
+- wz-33057 ScheduledPrompt CRUD & Execution Trigger ([#1062](https://github.com/whoz-oss/coday/pull/1062))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.232.1 (2026-08-02)
+
+### 🩹 Fixes
+
+- rollback default sonnet version to 4.6 ([#1194](https://github.com/whoz-oss/coday/pull/1194))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.232.0 (2026-08-01)
+
+### 🚀 Features
+
+- #1187 Add shared composer autocomplete service with agent mentions ([#1190](https://github.com/whoz-oss/coday/pull/1190), [#1187](https://github.com/whoz-oss/coday/issues/1187))
+
+### ❤️ Thank You
+
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.231.1 (2026-07-29)
+
+### 🩹 Fixes
+
+- #1179 Scope agentos-ui themes and dark mode styles ([#1179](https://github.com/whoz-oss/coday/issues/1179))
+- #1179 Scope agentos-ui themes and dark mode styles ([#1180](https://github.com/whoz-oss/coday/pull/1180), [#1179](https://github.com/whoz-oss/coday/issues/1179))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.231.0 (2026-07-29)
+
+### 🚀 Features
+
+- #1095 FieldEncryptor and Credential backend ([#1139](https://github.com/whoz-oss/coday/pull/1139), [#1095](https://github.com/whoz-oss/coday/issues/1095), [#1119](https://github.com/whoz-oss/coday/issues/1119))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.230.0 (2026-07-29)
+
+### 🚀 Features
+
+- make exchange agent tools configurable by env ([#1171](https://github.com/whoz-oss/coday/pull/1171))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 0.229.0 (2026-07-28)
+
+### 🚀 Features
+
+- rename a case from the drawer row actions ([#1170](https://github.com/whoz-oss/coday/pull/1170), [#1166](https://github.com/whoz-oss/coday/issues/1166))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 0.228.0 (2026-07-28)
+
+### 🚀 Features
+
+- wz-33579: add logs when file manipulation fail ([#1173](https://github.com/whoz-oss/coday/pull/1173))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.227.1 (2026-07-28)
+
+### 🩹 Fixes
+
+- cover reasoning effort constraint for openai ([c1407b9e](https://github.com/whoz-oss/coday/commit/c1407b9e))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.227.0 (2026-07-28)
+
+### 🚀 Features
+
+- #1023 Add new theme ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Add new theme (color) ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### 🩹 Fixes
+
+- #1023 Replace case chat header buttons with design-system icon buttons ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Test theme service ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 remove french comments ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 remove french comments ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Align mobile case chat messages to the right ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Reorganize shell sidebar top bar layout ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+- #1023 Reorganize shell sidebar top bar layout ([#1023](https://github.com/whoz-oss/coday/issues/1023))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
+## 0.226.0 (2026-07-28)
+
+### 🚀 Features
+
+- wz-33587: improve readability of code ([#1169](https://github.com/whoz-oss/coday/pull/1169))
+
+### 🩹 Fixes
+
+- #1160 improve scripts ([#1160](https://github.com/whoz-oss/coday/issues/1160))
+- #1160 improve scripts ([#1165](https://github.com/whoz-oss/coday/pull/1165), [#1160](https://github.com/whoz-oss/coday/issues/1160))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.225.0 (2026-07-24)
 
 ### 🚀 Features

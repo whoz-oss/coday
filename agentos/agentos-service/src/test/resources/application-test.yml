@@ -32,6 +32,11 @@ eureka:
     enabled: false
 
 agentos:
+  # Fixed test credentials — NOT real secrets; exist solely to satisfy
+  # FieldEncryptorConfiguration's fail-fast requirement in integration tests.
+  encryption:
+    key: test-password-for-unit-tests
+    salt: deadbeefcafe1234
   plugins:
     dir: build/test-plugins
   persistence:
@@ -42,6 +47,10 @@ agentos:
     # invariants (default admin / single-user migration) would otherwise
     # contaminate the embedded Neo4j DB.
     enabled: false
+
+scheduler:
+  # Disable the scheduler in tests to prevent background ticks from interfering.
+  enabled: false
 
 logging:
   level:
