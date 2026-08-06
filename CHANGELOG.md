@@ -1,3 +1,20 @@
+## 0.243.0 (2026-08-06)
+
+### 🚀 Features
+
+- context tube ([7266d9ec](https://github.com/whoz-oss/coday/commit/7266d9ec))
+- context gauge ([1bcd9b66](https://github.com/whoz-oss/coday/commit/1bcd9b66))
+
+### 🩹 Fixes
+
+- set Github MCP version and fix Coday agents ([19aa86f9](https://github.com/whoz-oss/coday/commit/19aa86f9))
+- set Github MCP version and fix Coday agents ([#1221](https://github.com/whoz-oss/coday/pull/1221))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+- Romain Petit
+
 ## 0.242.0 (2026-08-06)
 
 ### 🚀 Features
