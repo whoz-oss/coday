@@ -87,22 +87,22 @@ function detectJava(): { available: boolean; version?: string } {
     debugLog('AGENTOS', `[RUNTIME] Using JAVA_HOME: ${javaHome}`)
   }
   try {
-    const stderr = execFileSync(javaBin, ['-version'], {
+    // --version writes to stdout and exits 0 on Java 9+.
+    // -version writes to stderr — unreliable with execFileSync.
+    const stdout = execFileSync(javaBin, ['--version'], {
       encoding: 'utf8',
-      stdio: ['ignore', 'ignore', 'pipe'],
+      stdio: ['ignore', 'pipe', 'ignore'],
     })
 
-    // First line: `openjdk version "25.0.1" ...` or `java version "1.8.0_382"`
-    const versionMatch = stderr.match(/"(\d+)(?:\.(\d+))?/)
+    // First line: `openjdk 25 2025-09-16` or `openjdk 21.0.3 2024-04-16`
+    const versionMatch = stdout.match(/^\S+\s+(\d+)/)
     if (!versionMatch) {
-      debugLog('AGENTOS', `[RUNTIME] java -version output could not be parsed: ${stderr.slice(0, 200)}`)
+      debugLog('AGENTOS', `[RUNTIME] java --version output could not be parsed: ${stdout.slice(0, 200)}`)
       return { available: false }
     }
 
-    const rawMajor = parseInt(versionMatch[1] ?? '0', 10)
-    // Java 8 and earlier use "1.x" notation; 9+ use single-component major.
-    const major = rawMajor === 1 ? parseInt(versionMatch[2] ?? '0', 10) : rawMajor
-    const versionString = stderr.split('\n')[0]?.trim() ?? `Java ${major}`
+    const major = parseInt(versionMatch[1] ?? '0', 10)
+    const versionString = stdout.split('\n')[0]?.trim() ?? `Java ${major}`
 
     if (major < JAVA_MIN_VERSION) {
       debugLog(
