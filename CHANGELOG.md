@@ -1,3 +1,14 @@
+## 0.241.1 (2026-08-06)
+
+### 🩹 Fixes
+
+- add missing chat-message.utils module ([#1216](https://github.com/whoz-oss/coday/issues/1216))
+- add missing chat-message.utils module ([#1219](https://github.com/whoz-oss/coday/pull/1219))
+
+### ❤️ Thank You
+
+- Romain Petit
+
 ## 0.241.0 (2026-08-05)
 
 ### 🚀 Features
