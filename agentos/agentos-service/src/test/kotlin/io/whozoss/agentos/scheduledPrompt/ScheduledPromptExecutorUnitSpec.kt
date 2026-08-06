@@ -56,7 +56,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
     private val caseId: UUID = UUID.fromString("50000000-0000-0000-0000-000000000001")
 
     private val properties = SchedulerProperties(
-        maxConcurrentExecutions = 5,
+        batchSize = 5,
         leaseMinutes = 30L,
     )
 
@@ -602,7 +602,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         "Phase B: awaitCaseCompletion marks UserRun FAILED on lease timeout" {
             // Use a very short lease so the timeout triggers immediately.
             val shortLeaseProperties = SchedulerProperties(
-                maxConcurrentExecutions = 5,
+                batchSize = 5,
                 leaseMinutes = 0L, // 0 minutes → withTimeoutOrNull(0) times out immediately
             )
 

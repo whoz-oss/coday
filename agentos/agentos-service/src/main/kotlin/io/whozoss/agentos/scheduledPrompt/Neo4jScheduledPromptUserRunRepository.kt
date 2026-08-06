@@ -1,6 +1,7 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import mu.KLogging
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.time.Instant
@@ -24,13 +25,13 @@ import java.util.UUID
  * Reads up to `limit` claimable candidates via [ScheduledPromptUserRunNodeNeo4jRepository.findClaimable],
  * then saves each with SDN's optimistic lock. "Claimable" means PENDING, or RUNNING with an
  * expired lease (crash recovery). Concurrent instances that race on the same node will get an
- * [org.springframework.dao.OptimisticLockingFailureException] and skip that entry.
+ * [OptimisticLockingFailureException] and skip that entry.
  *
  * ### markTerminal
  *
  * Loads the node, mutates the relevant fields, and saves via SDN. The [ScheduledPromptUserRunNode.version]
  * field triggers SDN's optimistic-locking check; callers must handle
- * [org.springframework.dao.OptimisticLockingFailureException] when two instances race.
+ * [OptimisticLockingFailureException] when two instances race.
  */
 open class Neo4jScheduledPromptUserRunRepository(
     private val neo4jRepository: ScheduledPromptUserRunNodeNeo4jRepository,
@@ -59,7 +60,7 @@ open class Neo4jScheduledPromptUserRunRepository(
                     leaseUntil = leaseUntil,
                 )
                 neo4jRepository.save(claimed).toDomain()
-            } catch (e: org.springframework.dao.OptimisticLockingFailureException) {
+            } catch (e: OptimisticLockingFailureException) {
                 logger.debug {
                     "[Neo4jScheduledPromptUserRunRepository] Optimistic lock conflict on UserRun=${node.id}" +
                         " — skipped (another instance claimed it)"

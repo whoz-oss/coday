@@ -16,8 +16,6 @@ import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -57,11 +55,11 @@ import java.util.UUID
  * 5. Collect the runtime's [CaseRuntime.statusFlow] until the Case reaches IDLE or a
  *    terminal status, then close the UserRun.
  *
- * A [Semaphore] caps concurrent in-flight coroutines to
- * [SchedulerProperties.maxConcurrentExecutions]. Unlike `java.util.concurrent.Semaphore`,
- * [Semaphore.acquire] **suspends** instead of blocking an OS thread.
- * Burst control is not needed at this level: Spring AI's `RetryTemplate` on each
- * `ChatModel` handles 429 (rate-limit) responses with exponential backoff.
+ * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
+ * each batch contains at most that many UserRuns, and all are launched as structured
+ * coroutines within a single [coroutineScope]. No additional semaphore is needed.
+ * Burst control is delegated to Spring AI's `RetryTemplate` on each `ChatModel`
+ * (exponential backoff on 429 rate-limit responses).
  *
  * ### Completion check
  *
@@ -168,11 +166,11 @@ class ScheduledPromptExecutor(
      * coroutine inside [coroutineScope]; the scope suspends until all launched children
      * finish before the next batch is claimed.
      *
-     * A [Semaphore] caps concurrent in-flight coroutines to
-     * [SchedulerProperties.maxConcurrentExecutions]. [Semaphore.withPermit] acquires
-     * before the block and releases in a finally — exception-safe by construction.
-     * Burst control is delegated to Spring AI's `RetryTemplate` (exponential backoff
-     * on 429 responses) — no artificial stagger delay between launches.
+     * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
+     * each batch contains at most that many UserRuns, all launched as structured coroutines
+     * within a single [coroutineScope]. No additional semaphore is needed — the batch size
+     * IS the concurrency cap. Burst control is delegated to Spring AI's `RetryTemplate`
+     * (exponential backoff on 429 responses).
      *
      * ### Delivery guarantee: at-least-once
      *
@@ -184,12 +182,11 @@ class ScheduledPromptExecutor(
      * creation (e.g. a UNIQUE constraint on `runId|userId` carried by the Case).
      */
     suspend fun consumeAvailable() {
-        val semaphore = Semaphore(properties.maxConcurrentExecutions)
         val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
 
         var batch: List<ScheduledPromptUserRun>
         do {
-            batch = userRunRepository.claimBatch(leaseDuration, properties.maxConcurrentExecutions)
+            batch = userRunRepository.claimBatch(leaseDuration, properties.batchSize)
             val runIds = batch.map { it.runId }.toSet()
 
             coroutineScope {
@@ -199,9 +196,7 @@ class ScheduledPromptExecutor(
                     }
 
                     launch {
-                        semaphore.withPermit {
-                            executeUserRun(userRun)
-                        }
+                        executeUserRun(userRun)
                     }
                 }
             }
