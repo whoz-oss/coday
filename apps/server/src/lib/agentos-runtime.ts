@@ -79,8 +79,15 @@ export interface AgentosProcess {
  * @returns { available: true, version } when a suitable JVM is found, otherwise { available: false }.
  */
 function detectJava(): { available: boolean; version?: string } {
+  // JAVA_HOME may not be set in non-interactive shells (e.g. SDKMAN, Homebrew).
+  // Resolve the java binary path: prefer JAVA_HOME/bin/java, fall back to 'java' on PATH.
+  const javaHome = process.env.JAVA_HOME
+  const javaBin = javaHome ? path.join(javaHome, 'bin', 'java') : 'java'
+  if (javaHome) {
+    debugLog('AGENTOS', `[RUNTIME] Using JAVA_HOME: ${javaHome}`)
+  }
   try {
-    const stderr = execFileSync('java', ['-version'], {
+    const stderr = execFileSync(javaBin, ['-version'], {
       encoding: 'utf8',
       stdio: ['ignore', 'ignore', 'pipe'],
     })
@@ -111,8 +118,8 @@ function detectJava(): { available: boolean; version?: string } {
   } catch {
     debugLog(
       'AGENTOS',
-      `[RUNTIME] WARN: 'java' not found in PATH. AgentOS will NOT be started.` +
-        ` The proxy will return errors until Java >= ${JAVA_MIN_VERSION} is installed and on PATH.`
+      `[RUNTIME] WARN: java binary not found (tried: ${javaHome ? path.join(javaHome, 'bin', 'java') : 'java in PATH'}).` +
+        ` AgentOS will NOT be started. Set JAVA_HOME or ensure java >= ${JAVA_MIN_VERSION} is on PATH.`
     )
     return { available: false }
   }
@@ -246,7 +253,10 @@ export async function startAgentos(
   debugLog('AGENTOS', `[RUNTIME]   JAR:  ${jarPath}`)
   debugLog('AGENTOS', `[RUNTIME]   CWD:  ${agentosDir}`)
 
-  const child: ChildProcess = spawn('java', ['-jar', jarPath, `--server.port=${AGENTOS_PORT}`], {
+  const javaHome = process.env.JAVA_HOME
+  const javaBin = javaHome ? path.join(javaHome, 'bin', 'java') : 'java'
+
+  const child: ChildProcess = spawn(javaBin, ['-jar', jarPath, `--server.port=${AGENTOS_PORT}`], {
     cwd: agentosDir,
     // Inherit env from parent process, then add our overrides.
     // AGENTOS_ENCRYPTION_KEY/SALT=NONE: explicitly disables field encryption
