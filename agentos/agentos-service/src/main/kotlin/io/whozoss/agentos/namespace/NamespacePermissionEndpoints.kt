@@ -7,6 +7,7 @@ import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
+import io.whozoss.agentos.user.NoDuplicateUserIds
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank

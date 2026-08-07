@@ -369,9 +369,7 @@ class Neo4jPermissionRepository(
         return try {
             permissionNodeRepository
                 .findRelationsForUsers(userIds, entityId, entityType.label)
-                .associate { row ->
-                    row.userId to PermissionRelation.valueOf(row.relation)
-                }
+                .associate { row -> row.userId to row.relation }
         } catch (e: Exception) {
             logger.error(e) { "Error listing relations for users on $entityType:$entityId" }
             emptyMap() // Fail-closed: return empty map on error
@@ -385,44 +383,39 @@ class Neo4jPermissionRepository(
     ): List<String> {
         if (entries.isEmpty()) return emptyList()
         val label = entityType.label
-        try {
-            val userIdsByRelation = entries.groupBy({ (_, relation) -> relation }, { (userId, _) -> userId })
-            val appliedUserIds =
-                userIdsByRelation
-                    .flatMap { (relation, userIds) ->
-                        when (relation) {
-                            PermissionRelation.ADMIN ->
-                                permissionNodeRepository.batchSetAdminRole(
-                                    userIds = userIds,
-                                    entityId = entityId,
-                                    entityLabel = label,
-                                )
-                            PermissionRelation.MEMBER ->
-                                permissionNodeRepository.batchSetMemberRole(
-                                    userIds = userIds,
-                                    entityId = entityId,
-                                    entityLabel = label,
-                                )
-                            null ->
-                                permissionNodeRepository.batchRevoke(
-                                    userIds = userIds,
-                                    entityId = entityId,
-                                    entityLabel = label,
-                                )
-                        }
-                    }.distinct()
+        val userIdsByRelation = entries.groupBy({ (_, relation) -> relation }, { (userId, _) -> userId })
+        val appliedUserIds =
+            userIdsByRelation
+                .flatMap { (relation, userIds) ->
+                    when (relation) {
+                        PermissionRelation.ADMIN ->
+                            permissionNodeRepository.batchSetAdminRole(
+                                userIds = userIds,
+                                entityId = entityId,
+                                entityLabel = label,
+                            )
+                        PermissionRelation.MEMBER ->
+                            permissionNodeRepository.batchSetMemberRole(
+                                userIds = userIds,
+                                entityId = entityId,
+                                entityLabel = label,
+                            )
+                        null ->
+                            permissionNodeRepository.batchRevoke(
+                                userIds = userIds,
+                                entityId = entityId,
+                                entityLabel = label,
+                            )
+                    }
+                }.distinct()
 
-            logger.info {
-                val sizes = userIdsByRelation.mapValues { (_, userIds) -> userIds.size }
-                "applyShareBatch on $entityType:$entityId — " +
-                    "admin=${sizes[PermissionRelation.ADMIN] ?: 0}, member=${sizes[PermissionRelation.MEMBER] ?: 0}, " +
-                    "revoke=${sizes[null] ?: 0}, applied=${appliedUserIds.size}"
-            }
-            return appliedUserIds
-        } catch (e: Exception) {
-            logger.error(e) { "Error applying share batch on $entityType:$entityId" }
-            throw e
+        logger.info {
+            val sizes = userIdsByRelation.mapValues { (_, userIds) -> userIds.size }
+            "applyShareBatch on $entityType:$entityId — " +
+                "admin=${sizes[PermissionRelation.ADMIN] ?: 0}, member=${sizes[PermissionRelation.MEMBER] ?: 0}, " +
+                "revoke=${sizes[null] ?: 0}, applied=${appliedUserIds.size}"
         }
+        return appliedUserIds
     }
 
     /**

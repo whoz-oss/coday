@@ -262,8 +262,7 @@ class PermissionServiceImpl(
             permissionCache.invalidateUser(userId)
             logger.info { "Cleared permission cache for user: $userId" }
         } catch (e: Exception) {
-            logger.error(e) { "Failed to clear cache for user: $userId" }
-            // Don't throw - cache clearing failure shouldn't break the flow
+            logger.warn(e) { "Failed to clear cache for user: $userId — cache clearing is best-effort, not rethrowing" }
         }
     }
 }

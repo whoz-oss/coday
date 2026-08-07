@@ -1,4 +1,4 @@
-package io.whozoss.agentos.namespace
+package io.whozoss.agentos.user
 
 import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import jakarta.validation.Constraint
@@ -12,6 +12,8 @@ import kotlin.reflect.KClass
  * Applied at the controller method parameter level (requires `@Validated` on the controller class).
  * Reports a single violation message rather than per-element indices, which is more useful for
  * a batch endpoint where the client knows the full list it sent.
+ *
+ * Lives in the `user` package because it validates [UserMembershipRole], a user-domain type.
  */
 @Target(AnnotationTarget.VALUE_PARAMETER)
 @Retention(AnnotationRetention.RUNTIME)

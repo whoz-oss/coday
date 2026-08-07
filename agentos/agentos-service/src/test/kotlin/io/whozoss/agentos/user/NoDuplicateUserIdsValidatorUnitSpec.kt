@@ -1,4 +1,4 @@
-package io.whozoss.agentos.namespace
+package io.whozoss.agentos.user
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
