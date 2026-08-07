@@ -228,83 +228,54 @@ class ScheduledPromptExecutor(
         val runId = userRun.runId
         val userId = userRun.userId
 
-        // --- Resolve context ---
-
-        val run = runRepository.findById(runId)
-        if (run == null) {
-            logger.warn { "[Executor] Run $runId not found for UserRun=${userRun.id} — marking FAILED" }
-            markFailed(userRun.id, now, "Parent Run $runId not found")
-            return
-        }
-
-        val scheduledPrompt = scheduledPromptRepository.findByIds(listOf(run.scheduledPromptId))
-            .firstOrNull()
-        if (scheduledPrompt == null) {
-            logger.warn { "[Executor] ScheduledPrompt ${run.scheduledPromptId} not found — marking UserRun=${userRun.id} FAILED" }
-            markFailed(userRun.id, now, "ScheduledPrompt ${run.scheduledPromptId} not found")
-            return
-        }
-
-        val namespaceId = scheduledPrompt.namespaceId
-        if (namespaceId == null) {
-            logger.warn { "[Executor] Platform-scope ScheduledPrompt ${scheduledPrompt.id} — skipping UserRun=${userRun.id}" }
-            markFailed(userRun.id, now, "Platform-scope ScheduledPrompt cannot be executed per-user")
-            return
-        }
-
-        val user = userService.findById(userId)
-        if (user == null) {
-            logger.warn { "[Executor] User $userId not found — marking UserRun=${userRun.id} FAILED" }
-            markFailed(userRun.id, now, "User $userId not found")
-            return
-        }
-
-        // Resolve the prompt content directly — the Executor is the consumer of the prompt
-        // and has the full context (userId, namespaceId, scheduling metadata) needed to
-        // resolve it. Injecting a /slash-command would fail because addMessage's
-        // PromptCommandParser requires text to start with '/' but the @mention prefix
-        // prevents that.
-        val prompt = promptService.findById(scheduledPrompt.promptTemplateId)
-        if (prompt == null) {
-            logger.warn {
-                "[Executor] PromptTemplate ${scheduledPrompt.promptTemplateId} not found " +
-                    "— marking UserRun=${userRun.id} FAILED"
-            }
-            markFailed(userRun.id, now, "PromptTemplate ${scheduledPrompt.promptTemplateId} not found")
-            return
-        }
-
-        // Mono-line content (enforced by ScheduledPromptService validation).
-        // Future: resolve {{placeholders}} here with execution context (user name, date, etc.)
-        val promptContent = prompt.content.firstOrNull()
-        if (promptContent.isNullOrBlank()) {
-            logger.warn {
-                "[Executor] PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content " +
-                    "— marking UserRun=${userRun.id} FAILED"
-            }
-            markFailed(userRun.id, now, "PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content")
-            return
-        }
-
-        // Resolve the agent name — prepended as @mention so selectAgent picks it up
-        // via the normal @mention resolution path (no special-casing in the runtime).
-        val agentName = agentConfigService.findById(scheduledPrompt.agentConfigId)?.name
-        if (agentName == null) {
-            logger.warn {
-                "[Executor] AgentConfig ${scheduledPrompt.agentConfigId} not found " +
-                    "— marking UserRun=${userRun.id} FAILED"
-            }
-            markFailed(userRun.id, now, "AgentConfig ${scheduledPrompt.agentConfigId} not found")
-            return
-        }
-
-        // Inject resolved content with @mention — selectAgent resolves the agent,
-        // PromptCommandParser sees no /command and passes text through unchanged.
-        val message = "@$agentName $promptContent"
-
-        // --- Execute ---
-
         try {
+            // --- Resolve context ---
+            // Each check is required: the resolved value is consumed below to create the Case,
+            // build the Actor, or compose the message. IllegalStateException on missing data
+            // is caught by the outer try/catch and marks the UserRun FAILED with a diagnostic.
+
+            val run = checkNotNull(runRepository.findById(runId)) {
+                "Parent Run $runId not found"
+            }
+
+            val scheduledPrompt = scheduledPromptRepository.findByIds(listOf(run.scheduledPromptId))
+                .firstOrNull()
+                ?: error("ScheduledPrompt ${run.scheduledPromptId} not found")
+
+            val namespaceId = checkNotNull(scheduledPrompt.namespaceId) {
+                "Platform-scope ScheduledPrompt cannot be executed per-user"
+            }
+
+            val user = checkNotNull(userService.findById(userId)) {
+                "User $userId not found"
+            }
+
+            // Resolve the prompt content directly — the Executor is the consumer of the prompt
+            // and has the full context (userId, namespaceId, scheduling metadata) needed to
+            // resolve it. Injecting a /slash-command would fail because addMessage's
+            // PromptCommandParser requires text to start with '/' but the @mention prefix
+            // prevents that.
+            val prompt = checkNotNull(promptService.findById(scheduledPrompt.promptTemplateId)) {
+                "PromptTemplate ${scheduledPrompt.promptTemplateId} not found"
+            }
+
+            // Mono-line content (enforced by ScheduledPromptService validation).
+            // Future: resolve {{placeholders}} here with execution context (user name, date, etc.)
+            val promptContent = prompt.content.firstOrNull()?.takeIf { it.isNotBlank() }
+                ?: error("PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content")
+
+            // Resolve the agent name — prepended as @mention so selectAgent picks it up
+            // via the normal @mention resolution path (no special-casing in the runtime).
+            val agentName = checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
+                "AgentConfig ${scheduledPrompt.agentConfigId} not found"
+            }
+
+            // Inject resolved content with @mention — selectAgent resolves the agent,
+            // PromptCommandParser sees no /command and passes text through unchanged.
+            val message = "@$agentName $promptContent"
+
+            // --- Execute ---
+
             // Step 1: Create the Case.
             // No idempotence key links this Case to the UserRun — if the instance crashes
             // after this point but before markTerminal(), the lease expires and another
@@ -358,7 +329,7 @@ class ScheduledPromptExecutor(
             }
         } catch (e: Exception) {
             logger.error(e) {
-                "[Executor] UserRun=${userRun.id} failed during Case creation/launch for user=$userId"
+                "[Executor] UserRun=${userRun.id} failed for user=$userId"
             }
             markFailed(userRun.id, now, e.message ?: "Unknown error")
         }
