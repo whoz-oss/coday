@@ -1,6 +1,9 @@
 import express from 'express'
 import path from 'path'
 import fs from 'fs'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { ThreadCodayManager } from './lib/thread-coday-manager'
 
 import { debugLog } from './lib/log'
@@ -76,17 +79,12 @@ let promptExecutionService: PromptExecutionService
 // Proxy /api/agentos/* → AgentOS Spring backend
 // Registered synchronously and BEFORE express.json() to avoid body-parser
 // consuming the request body before it can be forwarded.
-const AGENTOS_PORT = process.env.AGENTOS_PORT ? parseInt(process.env.AGENTOS_PORT) : 8124
-const AGENTOS_HOSTNAME = process.env.AGENTOS_HOSTNAME ?? 'localhost'
-const AGENTOS_EXTERNAL_USERID = process.env.AGENTOS_EXTERNAL_USERID
-const AGENTOS_URL = `http://${AGENTOS_HOSTNAME}:${AGENTOS_PORT}`
+const AGENTOS_PORT = process.env.AGENTOS_PORT ? parseInt(process.env.AGENTOS_PORT) : 8123
+const AGENTOS_URL = `http://localhost:${AGENTOS_PORT}`
 app.use(
   '/api/agentos',
   (req, _res, next) => {
     console.log(`[AGENTOS PROXY] ${req.method} ${req.path}`)
-    if (AGENTOS_EXTERNAL_USERID) {
-      req.headers['X-External-User-Id'] = AGENTOS_EXTERNAL_USERID
-    }
     next()
   },
   createProxyMiddleware({
@@ -339,7 +337,7 @@ registerThreadRoutes(
 )
 
 // Register message management routes
-registerMessageRoutes(app, threadCodayManager, getUsername, threadService)
+registerMessageRoutes(app, threadCodayManager, getUsername)
 
 // Register agent management routes
 const agentCrudService = new AgentCrudService(codayOptions.configDir, projectService)
@@ -490,26 +488,15 @@ PORT_PROMISE.catch((error) => {
 })
 
 // Graceful shutdown with proper cleanup
-// Counter-based guard: 1st signal starts shutdown, 2nd is tolerated (MCP child cascading),
-// 3rd force-exits. This prevents data loss from SIGINT propagating to child processes
-// in the same process group (e.g. MCP FETCH via uvx) which cascades back as a second signal.
-let shutdownSignalCount = 0
+let isShuttingDown = false
 
 async function gracefulShutdown(signal: string) {
-  shutdownSignalCount++
-
-  if (shutdownSignalCount === 2) {
-    console.log(
-      `Received ${signal} during shutdown (likely from child process cascade) — shutdown in progress, press Ctrl+C again to force exit`
-    )
-    return
-  }
-
-  if (shutdownSignalCount >= 3) {
-    console.log(`Received ${signal} — forcing exit`)
+  if (isShuttingDown) {
+    console.log(`Received ${signal} during shutdown, forcing exit...`)
     process.exit(1)
   }
 
+  isShuttingDown = true
   console.log(`Received ${signal}, shutting down gracefully...`)
 
   try {
@@ -552,7 +539,7 @@ process.on('uncaughtException', (error) => {
     return // Don't shutdown for this specific error
   }
 
-  if (shutdownSignalCount === 0) {
+  if (!isShuttingDown) {
     gracefulShutdown('uncaughtException')
   }
 })
@@ -583,7 +570,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
   // Only shutdown for critical unhandled rejections
   console.error('Critical unhandled rejection detected')
-  if (shutdownSignalCount === 0) {
+  if (!isShuttingDown) {
     gracefulShutdown('unhandledRejection')
   }
 })

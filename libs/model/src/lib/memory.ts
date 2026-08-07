@@ -31,5 +31,6 @@ export class Memory {
 
 export enum MemoryLevel {
   USER = 'USER',
+  LEARNING = 'LEARNING',
   PROJECT = 'PROJECT',
 }

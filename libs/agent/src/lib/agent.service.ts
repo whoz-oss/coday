@@ -1,5 +1,7 @@
 import * as fs from 'fs/promises'
+import * as os from 'os'
 import * as path from 'path'
+import { fileURLToPath } from 'url'
 import * as yaml from 'yaml'
 import { getFormattedDocs, findFilesByName } from '@coday/function'
 import {
@@ -351,6 +353,22 @@ export class AgentService implements Killable, AgentServiceModel {
     this.interactor.debug(`  📝 Parsed agent files: ${parseTime.toFixed(2)}ms`)
   }
 
+  private async readLearningPrompt(): Promise<string> {
+    const userFilePath = path.join(os.homedir(), '.coday', 'learning-prompt.md')
+    try {
+      return await fs.readFile(userFilePath, 'utf-8')
+    } catch {
+      // fall back to default
+    }
+    const currentDir = path.dirname(fileURLToPath(import.meta.url))
+    const defaultFilePath = path.join(currentDir, 'default-learning-prompt.md')
+    try {
+      return await fs.readFile(defaultFilePath, 'utf-8')
+    } catch {
+      return ''
+    }
+  }
+
   /**
    * Try to create and add an agent (lazy loading)
    * Logs error if dependencies are missing
@@ -388,16 +406,17 @@ export class AgentService implements Killable, AgentServiceModel {
       const agentDocs = await getFormattedDocs(def, this.interactor, basePath, def.name)
       const docsTime = performance.now() - docsStart
 
-      // overwrite agent instructions with the added project and user context
+      const learningPrompt = await this.readLearningPrompt()
+
       def.instructions = `${def.instructions}\n\n
 ## Project description
 ${context.project.description}
 
 ${this.services.memory.getFormattedMemories(MemoryLevel.USER, def.name)}
 
-${this.services.memory.getFormattedMemories(MemoryLevel.PROJECT, def.name)}
-
 ${agentDocs}
+
+${learningPrompt}
 
 `
 
@@ -427,7 +446,7 @@ ${agentDocs}
       )
 
       const toolset = new ToolSet([...syncTools])
-      const agent = new Agent(def, aiClient, toolset)
+      const agent = new Agent(def, aiClient, toolset, false, this.services.memory)
 
       const totalTime = performance.now() - agentStart
       this.interactor.debug(
