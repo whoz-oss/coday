@@ -87,3 +87,23 @@ export function getCodayVersion(): string {
   debugLog('VERSION', `Could not resolve version from any candidate — using sentinel 'dev'`)
   return _resolved
 }
+
+/**
+ * Hardcoded AgentOS version — updated only when AgentOS itself changes,
+ * NOT on every Coday release. This decouples the ~230 MB JAR download
+ * from the Coday release cadence.
+ *
+ * Override with AGENTOS_VERSION env var for local dev or testing:
+ *   AGENTOS_VERSION=0.244.1 pnpm web
+ */
+const AGENTOS_BUNDLED_VERSION = '0.244.1'
+
+export function getAgentosVersion(): string {
+  const override = process.env.AGENTOS_VERSION
+  if (override) {
+    debugLog('VERSION', `AgentOS version from AGENTOS_VERSION env var: ${override}`)
+    return override
+  }
+  debugLog('VERSION', `AgentOS version (bundled): ${AGENTOS_BUNDLED_VERSION}`)
+  return AGENTOS_BUNDLED_VERSION
+}

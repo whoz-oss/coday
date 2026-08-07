@@ -1,340 +1,395 @@
 /**
  * agentos-download.ts
  *
- * Attempt to download a single AgentOS JAR from the GitHub Release assets.
+ * Download all 5 AgentOS JARs from GitHub Release assets, verify their
+ * SHA-256 checksums, write them atomically to disk, and clean up stale JARs.
  *
- * SCOPE: one artefact only — agentos-bash-plugin — to validate the download
- * chain end-to-end (URL reachability, public access without auth, checksum
- * verification, atomic write to disk). Extending to other artefacts is
- * intentionally left for a later iteration once the chain is validated.
+ * Active layout:
+ *   <configDir>/agentos/agentos-service-<version>.jar
+ *   <configDir>/agentos/plugins/agentos-bash-plugin-<version>.jar
+ *   ... (4 plugins)
  *
- * NAMING CONTRACT NOTE:
- *   The release 0.239.0 (and earlier) published assets with version-less names:
- *   "agentos-bash-plugin.jar", "checksums.sha256", etc.
- *   Starting from the NEXT release, assets will use versioned names:
- *   "agentos-bash-plugin-<version>.jar", etc.
- *   The code below builds URLs with versioned names (the target contract).
- *   On the current release this will produce 404s — that is EXPECTED and logged
- *   as a known transition artefact, NOT a bug. The 404s will disappear once the
- *   first release with the new naming lands.
+ * Background update layout (next/):
+ *   <configDir>/agentos/next/agentos-service-<version>.jar
+ *   <configDir>/agentos/next/plugins/agentos-bash-plugin-<version>.jar
+ *   ... (same structure)
  *
- * INVARIANTS (same as the rest of this module family):
+ * On next startup, checkAndSwapNext() promotes next/ to the active layout.
+ *
+ * INVARIANTS:
  *   - Never throws. Every error is caught, logged, and returned as a structured result.
  *   - No side effects at import time.
- *   - No new npm dependencies (uses Node 24 built-in fetch + node:crypto + node:fs).
- *   - No process spawn.
- *   - No network access unless the JAR is absent or at the wrong version.
+ *   - No new npm dependencies (uses Node built-in fetch + node:crypto + node:fs).
  */
 
 import * as crypto from 'crypto'
 import * as fs from 'fs'
-import * as os from 'os'
 import * as path from 'path'
 import { debugLog } from './log'
+import { AGENTOS_ARTIFACT_IDS, AgentosArtifactId } from './agentos-lifecycle'
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/**
- * The only artefact we attempt to download in this initial probe.
- * Deliberately limited to the smallest JAR (~35 KB) to validate the chain
- * without risking a 227 MB download (agentos-service.jar) at server startup.
- */
-const PROBE_ARTIFACT_ID = 'agentos-bash-plugin'
-
-/**
- * Timeout for each individual HTTP request (JAR download + manifest download).
- * 10 s is generous for a ~35 KB file on a normal connection; it avoids hanging
- * the server startup indefinitely on a slow or unreachable network.
- */
-const FETCH_TIMEOUT_MS = 10_000
+/** Timeout for each individual HTTP request. */
+const FETCH_TIMEOUT_MS = 60_000
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
 export type DownloadOutcome =
-  | 'skipped:already-present' // JAR already at the expected version — no network access
-  | 'skipped:dev-version' // getCodayVersion() returned 'dev' — no release to download from
+  | 'skipped:all-present' // All JARs already at the expected version
+  | 'skipped:dev-version' // version is 'dev' — no release to download from
+  | 'skipped:already-in-next' // next/ already contains all JARs at the target version
   | 'error:manifest-unavailable' // checksums.sha256 returned non-2xx
   | 'error:manifest-parse' // checksums.sha256 could not be parsed
-  | 'error:jar-unavailable' // JAR URL returned non-2xx (e.g. 404 during naming transition)
-  | 'error:checksum-mismatch' // Downloaded JAR hash does not match manifest
-  | 'error:write' // Filesystem error during atomic write
-  | 'error:network' // fetch threw (DNS failure, timeout, AbortError, etc.)
-  | 'success' // JAR downloaded, checksum verified, written to disk
+  | 'error:download-failed' // One or more JARs failed to download/verify/write
+  | 'success' // All needed JARs downloaded, verified, written; stale JARs cleaned
 
 export interface DownloadResult {
   outcome: DownloadOutcome
-  /** Absolute path of the JAR (set even on failure if destination was determined). */
-  destPath?: string
-  /** HTTP status received for the JAR URL, if a request was made. */
-  jarHttpStatus?: number
-  /** HTTP status received for the manifest URL, if a request was made. */
-  manifestHttpStatus?: number
-  /** SHA-256 hash of the downloaded bytes, if computed. */
-  downloadedHash?: string
-  /** SHA-256 hash expected from the manifest, if found. */
-  expectedHash?: string
-  /** Size of the downloaded JAR in bytes, if received. */
-  downloadedBytes?: number
   /** Human-readable description of the outcome. */
   message: string
+  /** Number of JARs successfully downloaded. */
+  downloaded?: number
+  /** Number of stale JARs removed. */
+  cleaned?: number
+}
+
+export type SwapOutcome =
+  | 'swapped' // next/ promoted to active, old JARs cleaned
+  | 'skipped:no-next' // next/ does not exist
+  | 'skipped:incomplete' // next/ exists but missing some JARs at target version
+  | 'error' // rename/unlink failed
+
+export interface SwapResult {
+  outcome: SwapOutcome
+  message: string
+  version?: string
 }
 
 // ---------------------------------------------------------------------------
-// Implementation
+// URL builders
 // ---------------------------------------------------------------------------
 
-/**
- * Build the GitHub Release download URL for a versioned JAR asset.
- *
- * URL pattern: https://github.com/whoz-oss/coday/releases/download/release/<version>/<artifactId>-<version>.jar
- * Tag pattern confirmed in .github/workflows/release.yml: TAG="release/${VERSION}"
- */
 function buildJarUrl(artifactId: string, version: string): string {
   return `https://github.com/whoz-oss/coday/releases/download/release/${version}/${artifactId}-${version}.jar`
 }
 
-/**
- * Build the GitHub Release download URL for the checksums manifest.
- *
- * NOTE: The manifest filename follows the same naming convention as the JARs.
- * For releases <= 0.239.0: "checksums.sha256" (version-less, old contract).
- * For releases after the naming change: "checksums.sha256" (unchanged — the
- * manifest filename itself has no version).
- */
 function buildManifestUrl(version: string): string {
   return `https://github.com/whoz-oss/coday/releases/download/release/${version}/checksums.sha256`
 }
 
-/**
- * Parse the checksums.sha256 manifest and extract the hash for a given filename.
- *
- * Format (generated by `sha256sum *.jar`):
- *   <64-hex-chars>  <filename>\n
- * (two spaces between hash and filename)
- *
- * The filename in the manifest matches the asset name as uploaded — which may
- * be versioned ("agentos-bash-plugin-0.240.0.jar") or version-less
- * ("agentos-bash-plugin.jar") depending on the release.
- * We search for a line whose filename component matches `targetFilename` exactly.
- */
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function extractHashFromManifest(manifestText: string, targetFilename: string): string | null {
   for (const line of manifestText.split('\n')) {
     const trimmed = line.trim()
     if (!trimmed) continue
-    // sha256sum format: "<hash>  <filename>" (two spaces)
     const spaceIdx = trimmed.indexOf('  ')
     if (spaceIdx === -1) continue
     const hash = trimmed.slice(0, spaceIdx).trim()
     const filename = trimmed.slice(spaceIdx + 2).trim()
-    if (filename === targetFilename && hash.length === 64) {
-      return hash
-    }
+    if (filename === targetFilename && hash.length === 64) return hash
   }
   return null
 }
 
-/**
- * Compute the SHA-256 hash of a Buffer and return the hex digest.
- */
 function sha256hex(data: Buffer): string {
   return crypto.createHash('sha256').update(data).digest('hex')
 }
 
 /**
- * Attempt to download agentos-bash-plugin from the GitHub Release assets,
- * verify its SHA-256 checksum, and write it atomically to ~/.coday/agentos/.
- *
- * Conditions under which NO network access is attempted:
- *   - The JAR is already present at `destDir/<artifactId>-<version>.jar`
- *   - The resolved version is the sentinel 'dev'
- *
- * @param expectedVersion  Version string from getCodayVersion().
- * @param jarAlreadyPresent  True when checkAgentosJars() found the JAR at the expected version.
- * @returns A structured DownloadResult describing every step taken.
+ * Compute the dest path for an artifact inside an arbitrary base directory.
+ * Service JAR at root, plugins in plugins/.
  */
-export async function downloadProbeJar(expectedVersion: string, jarAlreadyPresent: boolean): Promise<DownloadResult> {
-  const destDir = path.join(os.homedir(), '.coday', 'agentos')
-  const jarFilename = `${PROBE_ARTIFACT_ID}-${expectedVersion}.jar`
-  const destPath = path.join(destDir, jarFilename)
+function jarDestPath(baseDir: string, artifactId: AgentosArtifactId, version: string): string {
+  return artifactId === 'agentos-service'
+    ? path.join(baseDir, `${artifactId}-${version}.jar`)
+    : path.join(baseDir, 'plugins', `${artifactId}-${version}.jar`)
+}
 
-  // --- Guard: skip if already present at the correct version ---
-  if (jarAlreadyPresent) {
-    debugLog(
-      'AGENTOS',
-      `[DOWNLOAD] ${PROBE_ARTIFACT_ID}: already present at version ${expectedVersion} — skipping download`
-    )
-    return { outcome: 'skipped:already-present', destPath, message: `Already present at ${destPath}` }
+/**
+ * Remove any JAR/.tmp in dir that is NOT in allowedFilenames. Never throws.
+ */
+function cleanDirectory(dir: string, allowedFilenames: Set<string>): number {
+  let removed = 0
+  try {
+    for (const filename of fs.readdirSync(dir).filter((f) => f.endsWith('.jar') || f.endsWith('.tmp'))) {
+      if (!allowedFilenames.has(filename)) {
+        const fullPath = path.join(dir, filename)
+        try {
+          fs.unlinkSync(fullPath)
+          debugLog('AGENTOS', `  [CLEAN] Removed stale file: ${fullPath}`)
+          removed++
+        } catch (err) {
+          debugLog('AGENTOS', `  [CLEAN] Failed to remove ${fullPath}: ${err instanceof Error ? err.message : err}`)
+        }
+      }
+    }
+  } catch {
+    // Directory doesn't exist — nothing to clean
+  }
+  return removed
+}
+
+// ---------------------------------------------------------------------------
+// Internal: download all 5 JARs into an arbitrary target directory
+// ---------------------------------------------------------------------------
+
+/**
+ * Download all 5 AgentOS JARs for `version` into `targetDir`.
+ * Creates targetDir and targetDir/plugins/ if needed.
+ * Throws on any error — callers must catch.
+ */
+async function downloadAllToDir(targetDir: string, version: string, label: string): Promise<{ downloaded: number }> {
+  fs.mkdirSync(path.join(targetDir, 'plugins'), { recursive: true })
+
+  const manifestUrl = buildManifestUrl(version)
+  debugLog('AGENTOS', `${label} Fetching manifest for version ${version}: ${manifestUrl}`)
+
+  const mc = new AbortController()
+  const mt = setTimeout(() => mc.abort(), FETCH_TIMEOUT_MS)
+  let manifestRes: Response
+  try {
+    manifestRes = await fetch(manifestUrl, { signal: mc.signal })
+  } finally {
+    clearTimeout(mt)
+  }
+  debugLog('AGENTOS', `${label} Manifest HTTP ${manifestRes.status}`)
+  if (!manifestRes.ok) throw new Error(`Manifest HTTP ${manifestRes.status}`)
+  const manifestText = await manifestRes.text()
+  debugLog('AGENTOS', `${label} Manifest fetched (${manifestText.length} chars)`)
+
+  let downloaded = 0
+  for (const artifactId of AGENTOS_ARTIFACT_IDS) {
+    const jarFilename = `${artifactId}-${version}.jar`
+    const dest = jarDestPath(targetDir, artifactId, version)
+    const jarUrl = buildJarUrl(artifactId, version)
+
+    debugLog('AGENTOS', `${label} Downloading ${jarFilename}...`)
+    debugLog('AGENTOS', `${label}   URL: ${jarUrl}`)
+
+    const expectedHash = extractHashFromManifest(manifestText, jarFilename)
+    if (!expectedHash) throw new Error(`No manifest entry for '${jarFilename}'`)
+    debugLog('AGENTOS', `${label}   Expected SHA-256: ${expectedHash}`)
+
+    const jc = new AbortController()
+    const jt = setTimeout(() => jc.abort(), FETCH_TIMEOUT_MS)
+    let jarRes: Response
+    try {
+      jarRes = await fetch(jarUrl, { signal: jc.signal })
+    } finally {
+      clearTimeout(jt)
+    }
+    debugLog('AGENTOS', `${label}   JAR HTTP ${jarRes.status}`)
+    if (!jarRes.ok) throw new Error(`JAR HTTP ${jarRes.status} for '${jarFilename}'`)
+
+    const jarBuffer = Buffer.from(await jarRes.arrayBuffer())
+    debugLog('AGENTOS', `${label}   Received ${jarBuffer.length} bytes`)
+
+    const computedHash = sha256hex(jarBuffer)
+    if (computedHash !== expectedHash) throw new Error(`Checksum mismatch for '${jarFilename}'`)
+    debugLog('AGENTOS', `${label}   Checksum OK`)
+
+    const tmp = `${dest}.tmp`
+    try {
+      fs.writeFileSync(tmp, jarBuffer)
+      fs.renameSync(tmp, dest)
+      debugLog('AGENTOS', `${label}   Written to ${dest} (${jarBuffer.length} bytes)`)
+      downloaded++
+    } catch (err) {
+      try {
+        fs.unlinkSync(tmp)
+      } catch {
+        /* ignore */
+      }
+      throw err
+    }
   }
 
-  // --- Guard: skip if version is the 'dev' sentinel ---
+  return { downloaded }
+}
+
+// ---------------------------------------------------------------------------
+// Public: swap next/ into active layout
+// ---------------------------------------------------------------------------
+
+/**
+ * Check whether <configDir>/agentos/next/ contains all 5 JARs at targetVersion,
+ * and if so promote them to the active layout via atomic renames, then clean up.
+ *
+ * Called at startup BEFORE the inventory check.
+ */
+export function checkAndSwapNext(configDir: string, targetVersion: string): SwapResult {
+  const agentosDir = path.join(configDir, 'agentos')
+  const nextDir = path.join(agentosDir, 'next')
+  const activePluginsDir = path.join(agentosDir, 'plugins')
+
+  if (!fs.existsSync(nextDir)) {
+    return { outcome: 'skipped:no-next', message: 'No next/ directory — nothing to swap' }
+  }
+
+  // Verify completeness
+  const missing = AGENTOS_ARTIFACT_IDS.filter((id) => !fs.existsSync(jarDestPath(nextDir, id, targetVersion)))
+  if (missing.length > 0) {
+    debugLog(
+      'AGENTOS',
+      `[SWAP] next/ incomplete for version ${targetVersion} — missing: ${missing.join(', ')} — skipping`
+    )
+    return { outcome: 'skipped:incomplete', message: `next/ missing: ${missing.join(', ')}` }
+  }
+
+  debugLog('AGENTOS', `[SWAP] Promoting next/ (version ${targetVersion}) to active layout...`)
+
+  try {
+    // Move service JAR
+    fs.renameSync(
+      jarDestPath(nextDir, 'agentos-service', targetVersion),
+      path.join(agentosDir, `agentos-service-${targetVersion}.jar`)
+    )
+    debugLog('AGENTOS', `[SWAP]   agentos-service-${targetVersion}.jar`)
+
+    // Move plugin JARs
+    fs.mkdirSync(activePluginsDir, { recursive: true })
+    for (const artifactId of AGENTOS_ARTIFACT_IDS.filter((id) => id !== 'agentos-service')) {
+      fs.renameSync(
+        jarDestPath(nextDir, artifactId, targetVersion),
+        path.join(activePluginsDir, `${artifactId}-${targetVersion}.jar`)
+      )
+      debugLog('AGENTOS', `[SWAP]   ${artifactId}-${targetVersion}.jar`)
+    }
+
+    // Remove next/ entirely
+    fs.rmSync(nextDir, { recursive: true, force: true })
+    debugLog('AGENTOS', `[SWAP] next/ removed`)
+
+    // Strict cleanup of old versions
+    const allowedRoot = new Set([`agentos-service-${targetVersion}.jar`])
+    const allowedPlugins = new Set(
+      AGENTOS_ARTIFACT_IDS.filter((id) => id !== 'agentos-service').map((id) => `${id}-${targetVersion}.jar`)
+    )
+    const cleaned = cleanDirectory(agentosDir, allowedRoot) + cleanDirectory(activePluginsDir, allowedPlugins)
+    if (cleaned > 0) debugLog('AGENTOS', `[SWAP] Removed ${cleaned} stale JAR(s) from previous version`)
+
+    debugLog('AGENTOS', `[SWAP] Complete — AgentOS ${targetVersion} is now active`)
+    return { outcome: 'swapped', message: `Promoted version ${targetVersion} from next/`, version: targetVersion }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    debugLog('AGENTOS', `[SWAP] Error during swap: ${msg}`)
+    return { outcome: 'error', message: msg }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public: background pre-fetch into next/
+// ---------------------------------------------------------------------------
+
+/**
+ * Download all 5 AgentOS JARs for targetVersion into <configDir>/agentos/next/.
+ * Skips silently if next/ already contains all JARs at targetVersion.
+ * Fire-and-forget safe — never throws.
+ *
+ * @param configDir     Root config directory.
+ * @param targetVersion Version to pre-fetch (AGENTOS_BUNDLED_VERSION).
+ */
+export async function downloadAgentosJarsToNext(configDir: string, targetVersion: string): Promise<DownloadResult> {
+  if (targetVersion === 'dev') {
+    return { outcome: 'skipped:dev-version', message: "Version is 'dev' — nothing to pre-fetch" }
+  }
+
+  const nextDir = path.join(configDir, 'agentos', 'next')
+
+  // Skip if next/ already complete
+  const alreadyComplete = AGENTOS_ARTIFACT_IDS.every((id) => fs.existsSync(jarDestPath(nextDir, id, targetVersion)))
+  if (alreadyComplete) {
+    debugLog('AGENTOS', `[UPDATE] next/ already complete for version ${targetVersion} — skipping`)
+    return { outcome: 'skipped:already-in-next', message: `next/ already complete for ${targetVersion}` }
+  }
+
+  debugLog('AGENTOS', `[UPDATE] Pre-fetching version ${targetVersion} into next/ (background)...`)
+
+  try {
+    const { downloaded } = await downloadAllToDir(nextDir, targetVersion, '[UPDATE]')
+    debugLog(
+      'AGENTOS',
+      `[UPDATE] Pre-fetch complete: ${downloaded} JAR(s) ready in next/. Will activate on next Coday startup.`
+    )
+    return { outcome: 'success', message: `Pre-fetched ${downloaded} JAR(s) to next/`, downloaded }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    debugLog('AGENTOS', `[UPDATE] Pre-fetch failed (non-fatal): ${msg}`)
+    return { outcome: 'error:download-failed', message: msg }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public: blocking download to active layout (first-run / missing JARs)
+// ---------------------------------------------------------------------------
+
+/**
+ * Download all missing AgentOS JARs directly to the active layout, then clean up stale JARs.
+ * Used only on first run or when JARs are missing/corrupted.
+ *
+ * @param configDir        Root config directory.
+ * @param expectedVersion  Version string from getAgentosVersion().
+ * @param missingArtifacts Artifact IDs that are absent or at the wrong version.
+ */
+export async function downloadAgentosJars(
+  configDir: string,
+  expectedVersion: string,
+  missingArtifacts: AgentosArtifactId[]
+): Promise<DownloadResult> {
+  if (missingArtifacts.length === 0) {
+    debugLog('AGENTOS', '[DOWNLOAD] All JARs already present at the expected version — skipping download')
+    return { outcome: 'skipped:all-present', message: 'All JARs already present at the expected version' }
+  }
+
   if (expectedVersion === 'dev') {
-    debugLog('AGENTOS', `[DOWNLOAD] ${PROBE_ARTIFACT_ID}: version is 'dev' sentinel — no release to download from`)
+    debugLog('AGENTOS', "[DOWNLOAD] Version is 'dev' sentinel — no release to download from")
     return { outcome: 'skipped:dev-version', message: "Version is 'dev' sentinel — no release URL available" }
   }
 
-  const jarUrl = buildJarUrl(PROBE_ARTIFACT_ID, expectedVersion)
-  const manifestUrl = buildManifestUrl(expectedVersion)
+  const agentosDir = path.join(configDir, 'agentos')
+  const pluginsDir = path.join(agentosDir, 'plugins')
 
-  debugLog('AGENTOS', `[DOWNLOAD] ${PROBE_ARTIFACT_ID}: initiating probe download`)
-  debugLog('AGENTOS', `[DOWNLOAD]   JAR URL:      ${jarUrl}`)
-  debugLog('AGENTOS', `[DOWNLOAD]   Manifest URL: ${manifestUrl}`)
   debugLog(
     'AGENTOS',
-    `[DOWNLOAD]   NOTE: on releases <= 0.239.0 the JAR URL will return 404 (old naming contract).
-` + `[DOWNLOAD]         This is expected during the naming transition and will resolve on the next release.`
+    `[DOWNLOAD] Starting download of ${missingArtifacts.length} artifact(s) for version ${expectedVersion}`
   )
+  debugLog('AGENTOS', `[DOWNLOAD] Missing: ${missingArtifacts.join(', ')}`)
 
-  // --- Step 1: Fetch the checksums manifest ---
-  let manifestText: string
   try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-    let manifestRes: Response
-    try {
-      manifestRes = await fetch(manifestUrl, { signal: controller.signal })
-    } finally {
-      clearTimeout(timer)
-    }
-
-    debugLog('AGENTOS', `[DOWNLOAD]   manifest HTTP ${manifestRes.status}`)
-
-    if (!manifestRes.ok) {
-      return {
-        outcome: 'error:manifest-unavailable',
-        manifestHttpStatus: manifestRes.status,
-        message: `Manifest request failed with HTTP ${manifestRes.status} — cannot verify JAR integrity, aborting download`,
-      }
-    }
-    manifestText = await manifestRes.text()
+    await downloadAllToDir(agentosDir, expectedVersion, '[DOWNLOAD]')
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    debugLog('AGENTOS', `[DOWNLOAD]   manifest fetch error: ${msg}`)
-    return {
-      outcome: 'error:network',
-      message: `Network error fetching manifest: ${msg}`,
-    }
+    debugLog('AGENTOS', `[DOWNLOAD] Download failed: ${msg}`)
+    return { outcome: 'error:download-failed', message: msg }
   }
 
-  // --- Step 2: Extract the expected hash from the manifest ---
-  // The manifest may list the JAR under its versioned name (new releases) or
-  // version-less name (releases <= 0.239.0). Try both.
-  const versionedFilename = jarFilename // e.g. "agentos-bash-plugin-0.239.0.jar"
-  const versionlessFilename = `${PROBE_ARTIFACT_ID}.jar` // e.g. "agentos-bash-plugin.jar"
-
-  let expectedHash = extractHashFromManifest(manifestText, versionedFilename)
-  let hashSource = versionedFilename
-  if (!expectedHash) {
-    expectedHash = extractHashFromManifest(manifestText, versionlessFilename)
-    hashSource = versionlessFilename
-  }
-
-  if (!expectedHash) {
-    debugLog(
-      'AGENTOS',
-      `[DOWNLOAD]   manifest does not contain an entry for '${versionedFilename}' or '${versionlessFilename}'`
-    )
-    return {
-      outcome: 'error:manifest-parse',
-      message: `Could not find hash for ${versionedFilename} (or ${versionlessFilename}) in manifest`,
-    }
-  }
-  debugLog('AGENTOS', `[DOWNLOAD]   expected SHA-256 (from manifest entry '${hashSource}'): ${expectedHash}`)
-
-  // --- Step 3: Fetch the JAR ---
-  let jarBuffer: Buffer
-  let jarHttpStatus: number
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-    let jarRes: Response
-    try {
-      jarRes = await fetch(jarUrl, { signal: controller.signal })
-    } finally {
-      clearTimeout(timer)
-    }
-
-    jarHttpStatus = jarRes.status
-    debugLog('AGENTOS', `[DOWNLOAD]   JAR HTTP ${jarHttpStatus}`)
-
-    if (!jarRes.ok) {
-      return {
-        outcome: 'error:jar-unavailable',
-        jarHttpStatus,
-        message: `JAR request failed with HTTP ${jarHttpStatus} — likely naming transition (expected on releases <= 0.239.0)`,
-      }
-    }
-
-    const arrayBuffer = await jarRes.arrayBuffer()
-    jarBuffer = Buffer.from(arrayBuffer)
-    debugLog('AGENTOS', `[DOWNLOAD]   received ${jarBuffer.length} bytes`)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    debugLog('AGENTOS', `[DOWNLOAD]   JAR fetch error: ${msg}`)
-    return {
-      outcome: 'error:network',
-      message: `Network error fetching JAR: ${msg}`,
-    }
-  }
-
-  // --- Step 4: Verify checksum ---
-  const downloadedHash = sha256hex(jarBuffer)
-  debugLog('AGENTOS', `[DOWNLOAD]   computed  SHA-256: ${downloadedHash}`)
-  debugLog('AGENTOS', `[DOWNLOAD]   expected  SHA-256: ${expectedHash}`)
-
-  if (downloadedHash !== expectedHash) {
-    debugLog('AGENTOS', `[DOWNLOAD]   CHECKSUM MISMATCH — discarding downloaded bytes`)
-    return {
-      outcome: 'error:checksum-mismatch',
-      jarHttpStatus,
-      downloadedHash,
-      expectedHash,
-      downloadedBytes: jarBuffer.length,
-      destPath,
-      message: `Checksum mismatch for ${jarFilename} — downloaded bytes discarded`,
-    }
-  }
-  debugLog('AGENTOS', `[DOWNLOAD]   checksum OK`)
-
-  // --- Step 5: Atomic write to disk ---
-  // Write to a temp file first, then rename, so an interrupted download
-  // never leaves a truncated JAR that would be mistaken for valid on next startup.
-  const tmpPath = `${destPath}.tmp`
-  try {
-    fs.mkdirSync(destDir, { recursive: true })
-    fs.writeFileSync(tmpPath, jarBuffer)
-    fs.renameSync(tmpPath, destPath)
-    debugLog('AGENTOS', `[DOWNLOAD]   written to ${destPath} (${jarBuffer.length} bytes)`)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    debugLog('AGENTOS', `[DOWNLOAD]   write error: ${msg}`)
-    // Best-effort cleanup of the temp file
-    try {
-      fs.unlinkSync(tmpPath)
-    } catch {
-      /* ignore */
-    }
-    return {
-      outcome: 'error:write',
-      jarHttpStatus,
-      downloadedHash,
-      expectedHash,
-      downloadedBytes: jarBuffer.length,
-      destPath,
-      message: `Failed to write JAR to disk: ${msg}`,
-    }
+  // Strict cleanup
+  const allowedRoot = new Set([`agentos-service-${expectedVersion}.jar`])
+  const allowedPlugins = new Set(
+    AGENTOS_ARTIFACT_IDS.filter((id) => id !== 'agentos-service').map((id) => `${id}-${expectedVersion}.jar`)
+  )
+  debugLog('AGENTOS', '[DOWNLOAD] Running strict cleanup...')
+  const cleanedRoot = cleanDirectory(agentosDir, allowedRoot)
+  const cleanedPlugins = cleanDirectory(pluginsDir, allowedPlugins)
+  const totalCleaned = cleanedRoot + cleanedPlugins
+  if (totalCleaned > 0) {
+    debugLog('AGENTOS', `[DOWNLOAD] Cleanup: removed ${totalCleaned} stale file(s)`)
+  } else {
+    debugLog('AGENTOS', '[DOWNLOAD] Cleanup: no stale files found')
   }
 
   return {
     outcome: 'success',
-    jarHttpStatus,
-    downloadedHash,
-    expectedHash,
-    downloadedBytes: jarBuffer.length,
-    destPath,
-    message: `Successfully downloaded and verified ${jarFilename} (${jarBuffer.length} bytes)`,
+    message: `Downloaded ${missingArtifacts.length} JAR(s), cleaned ${totalCleaned} stale file(s)`,
+    downloaded: missingArtifacts.length,
+    cleaned: totalCleaned,
   }
 }

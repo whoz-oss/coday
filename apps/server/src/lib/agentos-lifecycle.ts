@@ -1,20 +1,21 @@
 /**
  * agentos-lifecycle.ts
  *
- * JAR presence and version check for AgentOS.
+ * JAR presence and version check for AgentOS — single-directory edition.
+ *
+ * There is exactly one location for AgentOS JARs: <configDir>/agentos/.
+ * The layout is:
+ *   <configDir>/agentos/agentos-service-<version>.jar
+ *   <configDir>/agentos/plugins/agentos-bash-plugin-<version>.jar
+ *   <configDir>/agentos/plugins/agentos-file-plugin-<version>.jar
+ *   <configDir>/agentos/plugins/agentos-mcp-plugin-<version>.jar
+ *   <configDir>/agentos/plugins/agentos-tmux-plugin-<version>.jar
  *
  * THIS MODULE HAS NO SIDE EFFECTS AT IMPORT TIME.
- * All filesystem access is strictly inside the exported functions.
- *
- * Current scope: scan candidate directories, identify AgentOS JARs by their
- * versioned filename, compare found versions against the expected version, and
- * log the result. No download, no Java detection, no process spawn, no network.
  */
 
 import * as fs from 'fs'
-import * as os from 'os'
 import * as path from 'path'
-import { fileURLToPath } from 'url'
 import { debugLog } from './log'
 
 // ---------------------------------------------------------------------------
@@ -24,23 +25,13 @@ import { debugLog } from './log'
 /**
  * Canonical artifact IDs for the AgentOS JARs we own.
  *
- * NAMING CONTRACT — versioned filenames, same convention as `deployPlugins` in
- * agentos/build.gradle.kts:
- *
+ * NAMING CONTRACT — versioned filenames:
  *   "<artifactId>-<version>.jar"
  *
  * The artifactId NEVER contains a digit immediately after a hyphen, which makes
  * the split unambiguous: cut at the first "-<digit>" boundary.
- * Example: "agentos-bash-plugin-0.239.0.jar"
- *          └── artifactId: "agentos-bash-plugin"   version: "0.239.0"
- *
- * WHY version-prefix matching is now the expected approach (and why it must
- * be done correctly):
- *   The historical bug was NOT in using prefixes per se — it was an inconsistency
- *   between the producer (CI renamed to version-less names) and the consumer
- *   (code expected version-less names). Now both sides agree: versioned names,
- *   split on "-<digit>". Use `parseJarFilename()` to derive artifactId and version;
- *   NEVER use a raw `startsWith('agentos-bash-plugin-')` without the digit check.
+ * Example: "agentos-bash-plugin-0.244.0.jar"
+ *          └── artifactId: "agentos-bash-plugin"   version: "0.244.0"
  */
 export const AGENTOS_ARTIFACT_IDS = [
   'agentos-service',
@@ -51,6 +42,9 @@ export const AGENTOS_ARTIFACT_IDS = [
 ] as const
 
 export type AgentosArtifactId = (typeof AGENTOS_ARTIFACT_IDS)[number]
+
+/** Artifacts stored at the root of <configDir>/agentos/ */
+const ROOT_ARTIFACTS: readonly AgentosArtifactId[] = ['agentos-service']
 
 // ---------------------------------------------------------------------------
 // Filename parsing — pure function, exported for unit testing
@@ -96,26 +90,19 @@ export function parseJarFilename(filename: string): ParsedJarFilename {
 }
 
 // ---------------------------------------------------------------------------
-// Candidate directories
+// Layout helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Ordered list of directories to scan for AgentOS JARs.
- *
- * Easy to extend: add new entries here and the check loop picks them up.
- *
- * - `moduleDir/agentos`  : historical location when JARs were bundled inside
- *   the npm tarball (dist/agentos/). No longer populated; kept as a sentinel
- *   so logs confirm the old path is absent.
- * - `~/.coday/agentos`   : user-level cache aligned with Coday's persistence
- *   model (~/.coday/). Intended home for on-demand downloaded JARs.
+ * Return the expected absolute path for a given artifact at the given version.
+ * Encodes the layout: service at root, plugins in plugins/.
  */
-function getCandidateDirectories(): string[] {
-  // Portable ESM-compatible path resolution — works with tsx (no __dirname)
-  // and with the esbuild bundle (which injects a __dirname shim via `banner`).
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url))
-
-  return [path.resolve(moduleDir, 'agentos'), path.join(os.homedir(), '.coday', 'agentos')]
+export function expectedJarPath(configDir: string, artifactId: AgentosArtifactId, version: string): string {
+  const agentosDir = path.join(configDir, 'agentos')
+  if ((ROOT_ARTIFACTS as readonly string[]).includes(artifactId)) {
+    return path.join(agentosDir, `${artifactId}-${version}.jar`)
+  }
+  return path.join(agentosDir, 'plugins', `${artifactId}-${version}.jar`)
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +118,8 @@ export interface ArtifactCheckResult {
   foundVersion: string | null
   /** True when the found version matches the expected version. */
   versionMatch: boolean
+  /** Expected absolute path for this artifact at the expected version. */
+  expectedPath: string
 }
 
 export interface AgentosJarStatus {
@@ -140,10 +129,8 @@ export interface AgentosJarStatus {
   expectedVersion: string
   /** Per-artifact detail. */
   artifacts: ArtifactCheckResult[]
-  /** JARs present in scanned directories that are NOT one of our artifact IDs. */
-  unknownJars: string[]
-  /** Candidate directories that were inspected. */
-  inspectedDirectories: string[]
+  /** Artifacts that are missing or at the wrong version. */
+  missing: AgentosArtifactId[]
 }
 
 // ---------------------------------------------------------------------------
@@ -151,94 +138,80 @@ export interface AgentosJarStatus {
 // ---------------------------------------------------------------------------
 
 /**
- * Scan candidate directories for AgentOS JARs, compare versions, and log.
+ * Check <configDir>/agentos for the 5 expected AgentOS JARs at the expected version.
  *
  * - Never throws: all I/O errors are caught and logged.
  * - No network access, no process spawn.
  * - Safe to call at any point during server startup.
  *
+ * @param configDir        Root config directory (from codayOptions.configDir).
  * @param expectedVersion  Version string to compare against found JARs.
  * @returns A structured status describing what was found and where.
  */
-export async function checkAgentosJars(expectedVersion: string): Promise<AgentosJarStatus> {
-  const candidates = getCandidateDirectories()
+export function checkAgentosJars(configDir: string, expectedVersion: string): AgentosJarStatus {
+  const agentosDir = path.join(configDir, 'agentos')
   debugLog('AGENTOS', `Checking JAR availability (expected version: ${expectedVersion})`)
-  debugLog('AGENTOS', `Scanning ${candidates.length} candidate director${candidates.length === 1 ? 'y' : 'ies'}:`)
-  for (const dir of candidates) {
-    debugLog('AGENTOS', `  * ${dir}`)
-  }
+  debugLog('AGENTOS', `AgentOS directory: ${agentosDir}`)
 
-  // Build a map: artifactId → { path, version } for the first match found
-  const found = new Map<string, { filePath: string; version: string | null }>()
-  const unknownJars: string[] = []
-
-  for (const dir of candidates) {
-    let entries: string[]
-    try {
-      entries = fs.readdirSync(dir).filter((f) => f.endsWith('.jar'))
-    } catch {
-      // Directory does not exist or is not readable — expected for absent candidates
-      continue
-    }
-
-    for (const filename of entries) {
-      const { artifactId, version } = parseJarFilename(filename)
-      const isOurs = (AGENTOS_ARTIFACT_IDS as readonly string[]).includes(artifactId)
-
-      if (!isOurs) {
-        const fullPath = path.join(dir, filename)
-        unknownJars.push(fullPath)
-        debugLog('AGENTOS', `  [UNKNOWN] ${filename} — not one of our artifacts (${fullPath})`)
-        continue
-      }
-
-      // First match per artifactId wins (candidates are ordered by priority)
-      if (!found.has(artifactId)) {
-        found.set(artifactId, { filePath: path.join(dir, filename), version })
-      }
-    }
-  }
-
-  // Build per-artifact results
   const artifacts: ArtifactCheckResult[] = AGENTOS_ARTIFACT_IDS.map((artifactId) => {
-    const entry = found.get(artifactId) ?? null
-    const foundVersion = entry?.version ?? null
+    const expPath = expectedJarPath(configDir, artifactId, expectedVersion)
+
+    let foundAt: string | null = null
+    let foundVersion: string | null = null
+
+    try {
+      if (fs.existsSync(expPath)) {
+        foundAt = expPath
+        foundVersion = expectedVersion
+      } else {
+        // Check if any other version of this artifact exists (for MISMATCH logging)
+        const dir = (ROOT_ARTIFACTS as readonly string[]).includes(artifactId)
+          ? agentosDir
+          : path.join(agentosDir, 'plugins')
+        try {
+          const entries = fs.readdirSync(dir).filter((f) => f.endsWith('.jar'))
+          for (const filename of entries) {
+            const parsed = parseJarFilename(filename)
+            if (parsed.artifactId === artifactId) {
+              foundAt = path.join(dir, filename)
+              foundVersion = parsed.version
+              break
+            }
+          }
+        } catch {
+          // Directory doesn't exist yet — fine
+        }
+      }
+    } catch {
+      // existsSync threw — treat as absent
+    }
+
     const versionMatch = foundVersion === expectedVersion
 
-    if (!entry) {
-      debugLog('AGENTOS', `  [MISSING]  ${artifactId} — not found in any candidate directory`)
+    if (!foundAt) {
+      debugLog('AGENTOS', `  [MISSING]  ${artifactId} — expected at ${expPath}`)
     } else if (!versionMatch) {
       debugLog(
         'AGENTOS',
-        `  [MISMATCH] ${artifactId} — found ${foundVersion} at ${entry.filePath} (expected ${expectedVersion})`
+        `  [MISMATCH] ${artifactId} — found version ${foundVersion} at ${foundAt} (expected ${expectedVersion})`
       )
     } else {
-      debugLog('AGENTOS', `  [OK]       ${artifactId}-${foundVersion}.jar — ${entry.filePath}`)
+      debugLog('AGENTOS', `  [OK]       ${artifactId}-${foundVersion}.jar`)
     }
 
-    return {
-      artifactId,
-      foundAt: entry?.filePath ?? null,
-      foundVersion,
-      versionMatch,
-    }
+    return { artifactId, foundAt, foundVersion, versionMatch, expectedPath: expPath }
   })
 
-  const allPresent = artifacts.every((a) => a.versionMatch)
-  const presentCount = artifacts.filter((a) => a.versionMatch).length
+  const missing = artifacts.filter((a) => !a.versionMatch).map((a) => a.artifactId)
+  const allPresent = missing.length === 0
+  const presentCount = artifacts.length - missing.length
 
   debugLog(
     'AGENTOS',
     allPresent
       ? `JAR check complete: all ${AGENTOS_ARTIFACT_IDS.length} JARs present at version ${expectedVersion}.`
-      : `JAR check complete: ${presentCount}/${AGENTOS_ARTIFACT_IDS.length} JARs match version ${expectedVersion} — AgentOS will not start until all JARs are available at the expected version.`
+      : `JAR check complete: ${presentCount}/${AGENTOS_ARTIFACT_IDS.length} JARs match version ${expectedVersion} — missing: ${missing.join(', ')}`
   )
 
-  return {
-    allPresent,
-    expectedVersion,
-    artifacts,
-    unknownJars,
-    inspectedDirectories: candidates,
-  }
+  return { allPresent, expectedVersion, artifacts, missing }
 }
