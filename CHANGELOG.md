@@ -1,3 +1,13 @@
+## 0.246.0 (2026-08-07)
+
+### 🚀 Features
+
+- agentos background update ([#1225](https://github.com/whoz-oss/coday/pull/1225))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.245.0 (2026-08-07)
 
 ### 🚀 Features
