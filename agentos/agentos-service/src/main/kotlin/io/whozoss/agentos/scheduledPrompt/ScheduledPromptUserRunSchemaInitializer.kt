@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component
  * Idempotent Neo4j schema initialiser for [ScheduledPromptUserRun].
  *
  * Creates:
- * - A UNIQUE constraint on [ScheduledPromptUserRunNode.userRunKey] — the distributed lock
+ * - A composite UNIQUE constraint on `(runId, userId)` — the distributed lock
  *   preventing duplicate per-user launches within the same Run.
  * - Auxiliary indexes on [ScheduledPromptUserRunNode.status], [ScheduledPromptUserRunNode.runId],
  *   and [ScheduledPromptUserRunNode.userId] to back the
@@ -26,19 +26,19 @@ class ScheduledPromptUserRunSchemaInitializer(
     private val neo4jClient: Neo4jClient,
 ) : ApplicationRunner {
     override fun run(args: ApplicationArguments) {
-        ensureUserRunKeyUniqueConstraint()
+        ensureUserRunUniqueConstraint()
         ensureStatusIndex()
         ensureRunIdIndex()
         ensureUserIdIndex()
     }
 
-    private fun ensureUserRunKeyUniqueConstraint() {
+    private fun ensureUserRunUniqueConstraint() {
         neo4jClient
             .query(
-                "CREATE CONSTRAINT sp_user_run_key_unique IF NOT EXISTS " +
-                    "FOR (ur:ScheduledPromptUserRun) REQUIRE ur.userRunKey IS UNIQUE",
+                "CREATE CONSTRAINT sp_user_run_unique IF NOT EXISTS " +
+                    "FOR (ur:ScheduledPromptUserRun) REQUIRE (ur.runId, ur.userId) IS UNIQUE",
             ).run()
-        logger.info { "[ScheduledPromptUserRunSchema] constraint 'sp_user_run_key_unique' ensured" }
+        logger.info { "[ScheduledPromptUserRunSchema] constraint 'sp_user_run_unique' ensured" }
     }
 
     private fun ensureStatusIndex() {

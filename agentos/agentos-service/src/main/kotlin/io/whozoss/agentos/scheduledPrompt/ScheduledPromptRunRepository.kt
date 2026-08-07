@@ -16,7 +16,7 @@ interface ScheduledPromptRunRepository {
      * Persist a new [ScheduledPromptRun].
      *
      * @throws DuplicateRunException if a run for the same `(scheduledPromptId, scheduledFor)` slot
-     *   already exists (UNIQUE constraint on [ScheduledPromptRunNode.slotKey]).
+     *   already exists (composite UNIQUE constraint on those two fields).
      */
     fun insert(run: ScheduledPromptRun): ScheduledPromptRun
 

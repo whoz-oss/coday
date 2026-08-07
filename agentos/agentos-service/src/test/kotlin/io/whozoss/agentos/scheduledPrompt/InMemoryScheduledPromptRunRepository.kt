@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * In-memory implementation of [ScheduledPromptRunRepository] for unit tests.
  *
- * Detects duplicates on [slotKey] = `"$scheduledPromptId|$scheduledForEpochMilli"` and throws
+ * Detects duplicates on the composite `(scheduledPromptId, scheduledFor)` key and throws
  * [DuplicateRunException] exactly as the Neo4j implementation does.
  *
  * [findSettledRunning] requires access to the UserRun store to replicate the Cypher
@@ -21,7 +21,7 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
     var userRunRepository: ScheduledPromptUserRunRepository? = null
 
     override fun insert(run: ScheduledPromptRun): ScheduledPromptRun {
-        val key = ScheduledPromptRunNode.slotKey(run.scheduledPromptId, run.scheduledFor)
+        val key = "${run.scheduledPromptId}|${run.scheduledFor.toEpochMilli()}"
         if (store.putIfAbsent(key, run) != null) {
             throw DuplicateRunException(run.scheduledPromptId, run.scheduledFor)
         }

@@ -23,7 +23,7 @@ enum class RunStatus {
  * Represents a single execution attempt of a [ScheduledPrompt].
  *
  * One [ScheduledPromptRun] is created per scheduler tick that processes a given prompt.
- * The [slotKey] = `"$scheduledPromptId|$scheduledFor"` is UNIQUE in Neo4j — it acts as an
+ * A composite UNIQUE constraint on `(scheduledPromptId, scheduledFor)` in Neo4j acts as an
  * optimistic distributed lock preventing duplicate firings for the same slot.
  *
  * ### Lifecycle

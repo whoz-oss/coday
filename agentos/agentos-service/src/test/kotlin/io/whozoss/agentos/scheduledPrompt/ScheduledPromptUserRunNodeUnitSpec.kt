@@ -8,43 +8,16 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Unit tests for [ScheduledPromptUserRunNode] toDomain / fromDomain round-trip
- * and the [ScheduledPromptUserRunNode.userRunKey] static helper.
+ * Unit tests for [ScheduledPromptUserRunNode] toDomain / fromDomain round-trip.
+ *
+ * Uniqueness is enforced by a composite Neo4j constraint on `(runId, userId)`;
+ * there is no synthetic key field.
  */
 class ScheduledPromptUserRunNodeUnitSpec : StringSpec({
 
     val runId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
     val userId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000002")
     val now: Instant = Instant.parse("2025-01-15T10:00:00Z")
-
-    // -------------------------------------------------------------------------
-    // userRunKey helper
-    // -------------------------------------------------------------------------
-
-    "userRunKey produces deterministic composite key" {
-        val key = ScheduledPromptUserRunNode.userRunKey(runId, userId)
-        key shouldBe "$runId|$userId"
-    }
-
-    "userRunKey is stable across calls" {
-        val k1 = ScheduledPromptUserRunNode.userRunKey(runId, userId)
-        val k2 = ScheduledPromptUserRunNode.userRunKey(runId, userId)
-        k1 shouldBe k2
-    }
-
-    "userRunKey differs when runId differs" {
-        val other = UUID.fromString("00000000-0000-0000-0000-000000000099")
-        val k1 = ScheduledPromptUserRunNode.userRunKey(runId, userId)
-        val k2 = ScheduledPromptUserRunNode.userRunKey(other, userId)
-        (k1 == k2) shouldBe false
-    }
-
-    "userRunKey differs when userId differs" {
-        val other = UUID.fromString("00000000-0000-0000-0000-000000000099")
-        val k1 = ScheduledPromptUserRunNode.userRunKey(runId, userId)
-        val k2 = ScheduledPromptUserRunNode.userRunKey(runId, other)
-        (k1 == k2) shouldBe false
-    }
 
     // -------------------------------------------------------------------------
     // fromDomain / toDomain round-trip — PENDING
@@ -138,16 +111,6 @@ class ScheduledPromptUserRunNodeUnitSpec : StringSpec({
     // -------------------------------------------------------------------------
     // Node field invariants
     // -------------------------------------------------------------------------
-
-    "fromDomain sets userRunKey to the composite runId|userId key" {
-        val domain = ScheduledPromptUserRun(
-            runId = runId,
-            userId = userId,
-            status = UserRunStatus.PENDING,
-        )
-        val node = ScheduledPromptUserRunNode.fromDomain(domain)
-        node.userRunKey shouldBe "$runId|$userId"
-    }
 
     "fromDomain sets removed to null for active UserRun" {
         val domain = ScheduledPromptUserRun(

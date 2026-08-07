@@ -14,12 +14,12 @@ import java.util.UUID
 /**
  * Spring Data Neo4j projection for [ScheduledPromptUserRun].
  *
- * ### userRunKey
+ * ### Uniqueness
  *
- * Denormalised unique discriminator: `"$runId|$userId"`. The UNIQUE constraint on [userRunKey]
- * acts as the distributed lock preventing duplicate per-user launches within the same Run.
- * The [materialize][ScheduledPromptUserRunNodeNeo4jRepository.materialize] Cypher uses MERGE,
- * so duplicates are silently absorbed — no exception is thrown.
+ * A composite UNIQUE constraint on `(runId, userId)` acts as the distributed lock
+ * preventing duplicate per-user launches within the same Run. The
+ * [materialize][ScheduledPromptUserRunNodeNeo4jRepository.materialize] Cypher uses MERGE
+ * on these two fields, so duplicates are silently absorbed — no exception is thrown.
  *
  * ### leaseUntil
  *
@@ -43,8 +43,6 @@ data class ScheduledPromptUserRunNode(
     val finishedAt: Instant? = null,
     /** Lease expiry for RUNNING status; null for non-RUNNING entries. */
     val leaseUntil: Instant? = null,
-    /** UNIQUE constraint key: "$runId|$userId". */
-    val userRunKey: String,
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
     @CreatedBy val createdBy: String? = null,
@@ -73,8 +71,6 @@ data class ScheduledPromptUserRunNode(
         )
 
     companion object {
-        fun userRunKey(runId: UUID, userId: UUID): String = "$runId|$userId"
-
         fun fromDomain(userRun: ScheduledPromptUserRun): ScheduledPromptUserRunNode =
             ScheduledPromptUserRunNode(
                 id = userRun.id.toString(),
@@ -85,7 +81,6 @@ data class ScheduledPromptUserRunNode(
                 startedAt = userRun.startedAt,
                 finishedAt = userRun.finishedAt,
                 leaseUntil = userRun.leaseUntil,
-                userRunKey = userRunKey(userRun.runId, userRun.userId),
                 version = userRun.metadata.version,
                 created = userRun.metadata.created,
                 createdBy = userRun.metadata.createdBy,

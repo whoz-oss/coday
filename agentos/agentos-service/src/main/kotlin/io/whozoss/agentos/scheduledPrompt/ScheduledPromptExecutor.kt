@@ -280,7 +280,7 @@ class ScheduledPromptExecutor(
             // No idempotence key links this Case to the UserRun — if the instance crashes
             // after this point but before markTerminal(), the lease expires and another
             // instance will create a second Case for the same user (at-least-once).
-            // Exactly-once would require a UNIQUE constraint on Case keyed by userRunKey.
+            // Exactly-once would require a UNIQUE constraint on Case keyed by (runId, userId).
             val case = caseService.create(
                 Case(
                     namespaceId = namespaceId,

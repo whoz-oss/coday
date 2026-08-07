@@ -128,7 +128,7 @@ abstract class AbstractScheduledPromptUserRunPersistenceSpec : StringSpec() {
             userRunRepo.materialize(runId, fixture.agent.id, fixture.ns.id)
             userRunRepo.materialize(runId, fixture.agent.id, fixture.ns.id)
 
-            // MERGE is idempotent on the UNIQUE userRunKey constraint — no duplicate nodes
+            // MERGE is idempotent on the composite UNIQUE (runId, userId) constraint — no duplicate nodes
             userRunRepo.findByRunId(runId).size shouldBe 1
         }
 

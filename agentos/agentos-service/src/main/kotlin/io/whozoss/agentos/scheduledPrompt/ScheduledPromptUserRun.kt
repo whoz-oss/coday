@@ -21,7 +21,7 @@ enum class UserRunStatus {
  * Tracks the execution of a single [ScheduledPromptRun] for a single target user.
  *
  * One [ScheduledPromptUserRun] is created per `(run, user)` pair during the materialization
- * phase. The [userRunKey] = `"$runId|$userId"` is UNIQUE in Neo4j — it acts as a distributed
+ * phase. A composite UNIQUE constraint on `(runId, userId)` in Neo4j acts as a distributed
  * lock preventing duplicate per-user launches.
  *
  * ### Lifecycle

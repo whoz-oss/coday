@@ -27,7 +27,7 @@ interface ScheduledPromptUserRunNodeNeo4jRepository : Neo4jRepository<ScheduledP
      * Both paths are resolved via OPTIONAL MATCH and collected into a single set.
      * Then MERGEs a PENDING [ScheduledPromptUserRunNode] for each distinct eligible user.
      *
-     * Safe to replay on crash — MERGE is idempotent on the UNIQUE `userRunKey` constraint.
+     * Safe to replay on crash — MERGE is idempotent on the composite UNIQUE `(runId, userId)` constraint.
      *
      * Returns the number of UserRuns created (0 when all already existed or no users found).
      */
@@ -51,17 +51,14 @@ interface ScheduledPromptUserRunNodeNeo4jRepository : Neo4jRepository<ScheduledP
                 )
             )
         WITH DISTINCT u.id AS userId
-        MERGE (ur:ScheduledPromptUserRun {userRunKey: $runId + '|' + userId})
+        MERGE (ur:ScheduledPromptUserRun {runId: $runId, userId: userId})
         ON CREATE SET
-            ur.id         = randomUUID(),
-            ur.runId      = $runId,
-            ur.userId     = userId,
-            ur.status     = 'PENDING',
-            ur.userRunKey = $runId + '|' + userId,
-            ur.version    = 0,
-            ur.created    = datetime(),
-            ur.modified   = datetime(),
-            ur.removed    = null
+            ur.id       = randomUUID(),
+            ur.status   = 'PENDING',
+            ur.version  = 0,
+            ur.created  = datetime(),
+            ur.modified = datetime(),
+            ur.removed  = null
         RETURN count(ur)
         """,
     )

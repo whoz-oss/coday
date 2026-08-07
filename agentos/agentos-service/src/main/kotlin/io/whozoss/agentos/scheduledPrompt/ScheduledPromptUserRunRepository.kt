@@ -15,7 +15,7 @@ import java.util.UUID
  *
  * [materialize] resolves target users via a single Cypher INSERT-SELECT that traverses the
  * deployment graph and MERGEs PENDING UserRuns atomically. Safe to replay on crash — MERGE
- * is idempotent on the UNIQUE `userRunKey` constraint.
+ * is idempotent on the composite UNIQUE `(runId, userId)` constraint.
  *
  * [claimBatch] reads candidates via a read-only query then saves each via SDN with the
  * [ScheduledPromptUserRunNode.version] optimistic lock, so concurrent instances cannot
@@ -47,7 +47,7 @@ interface ScheduledPromptUserRunRepository {
      *
      * Then MERGEs a PENDING [ScheduledPromptUserRun] for each distinct user.
      *
-     * Safe to replay on crash — MERGE is idempotent on the UNIQUE `userRunKey` constraint.
+     * Safe to replay on crash — MERGE is idempotent on the composite UNIQUE `(runId, userId)` constraint.
      *
      * Returns the number of UserRuns created (0 when all already existed or no users found).
      */
