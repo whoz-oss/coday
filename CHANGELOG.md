@@ -1,3 +1,13 @@
+## 0.247.0 (2026-08-07)
+
+### 🚀 Features
+
+- wz-330620 scheduler initiate cases ([#1214](https://github.com/whoz-oss/coday/pull/1214))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.246.0 (2026-08-07)
 
 ### 🚀 Features
