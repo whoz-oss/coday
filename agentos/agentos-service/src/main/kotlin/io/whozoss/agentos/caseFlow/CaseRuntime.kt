@@ -385,6 +385,41 @@ class CaseRuntime(
 
                 is AgentSelectedEvent -> {
                     logger.info { "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}" }
+
+                    // ── Anti-redirect-loop guard ─────────────────────────────────────────────
+                    // Count how many AgentSelectedEvents for this agent name exist in the
+                    // current turn (strictly after the last user MessageEvent). The current
+                    // event is included in the slice — intentional, see spec.
+                    val sliceStart = (lastUserMessageIndex + 1).coerceAtLeast(0)
+                    val sameAgentSelectionCount = events
+                        .subList(sliceStart, events.size)
+                        .count { it is AgentSelectedEvent && it.agentName == event.agentName }
+
+                    if (sameAgentSelectionCount >= MAX_SAME_AGENT_SELECTIONS_PER_TURN) {
+                        logger.warn {
+                            "[CaseRuntime $id] Redirect loop detected for agent '${event.agentName}': " +
+                                "$sameAgentSelectionCount selection(s) this turn (threshold=$MAX_SAME_AGENT_SELECTIONS_PER_TURN)"
+                        }
+                        storeAndEmitEvent(
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = id,
+                                message = "Agent ${event.agentName} could not complete the task, " +
+                                    "try rephrasing, precising or addressing another agent.",
+                            ),
+                        )
+                        storeAndEmitEvent(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = id,
+                                agentId = event.agentId,
+                                agentName = event.agentName,
+                            ),
+                        )
+                        return StepResult.AGENT_FINISHED
+                    }
+                    // ────────────────────────────────────────────────────────────────────────
+
                     val userId = resolveUserId(events)
                     if (!isAgentAuthorized(event.agentName, userId)) {
                         logger.warn {
@@ -439,5 +474,25 @@ class CaseRuntime(
             .lastOrNull { it.actor.role == ActorRole.USER }
             ?.actor
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * Number of selections of the same agent within a single user turn above which
+         * the redirect chain becomes suspicious.
+         * Reserved for future use (early non-blocking warning); today it is the base
+         * for computing [MAX_SAME_AGENT_SELECTIONS_PER_TURN].
+         */
+        internal const val REDIRECT_SUSPICION_THRESHOLD = 3
+
+        /** Multiplier applied to [REDIRECT_SUSPICION_THRESHOLD] to derive the hard stop. */
+        private const val REDIRECT_FORCE_STOP_FACTOR = 3
+
+        /**
+         * Maximum number of times the same agent may be selected within a single user turn.
+         * When this count is reached the turn is closed with [CaseStatus.IDLE] — the case
+         * remains alive and the user can reformulate.
+         * Calibrated generously to never interrupt a legitimate orchestration chain.
+         */
+        internal const val MAX_SAME_AGENT_SELECTIONS_PER_TURN =
+            REDIRECT_SUSPICION_THRESHOLD * REDIRECT_FORCE_STOP_FACTOR
+    }
 }
