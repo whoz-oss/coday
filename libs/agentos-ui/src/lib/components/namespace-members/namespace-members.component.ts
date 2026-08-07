@@ -2,12 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http'
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  NamespaceUserListItem,
-  NamespaceUserListItemRoleEnum,
-  User,
-  UserMembershipRoleRoleEnum,
-} from '@whoz-oss/agentos-api-client'
+import { MemberItem, MemberItemRoleEnum, User, UserMembershipRoleRoleEnum } from '@whoz-oss/agentos-api-client'
 import { AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-system'
 import { forkJoin, of } from 'rxjs'
 import { catchError } from 'rxjs/operators'
@@ -21,7 +16,7 @@ interface SelectedMember {
   userId: string
   label: string
   email?: string
-  role: NamespaceUserListItemRoleEnum
+  role: MemberItemRoleEnum
 }
 
 /**
@@ -125,7 +120,7 @@ export class NamespaceMembersComponent implements OnInit {
       })
   }
 
-  private applyMembers(members: NamespaceUserListItem[]): void {
+  private applyMembers(members: MemberItem[]): void {
     this.originalMembers = members.map((member) => ({ userId: member.id, role: member.role }))
     this.selectedMembers.set(
       members.map((member) => ({
@@ -145,7 +140,7 @@ export class NamespaceMembersComponent implements OnInit {
     if (this.selectedMembers().some((member) => member.userId === item.id)) return
     this.selectedMembers.update((members) => [
       ...members,
-      { userId: item.id, label: item.name, email: item.description, role: NamespaceUserListItemRoleEnum.MEMBER },
+      { userId: item.id, label: item.name, email: item.description, role: MemberItemRoleEnum.MEMBER },
     ])
   }
 
@@ -154,10 +149,7 @@ export class NamespaceMembersComponent implements OnInit {
   }
 
   protected setMemberRole(userId: string, role: string): void {
-    const nextRole =
-      role === NamespaceUserListItemRoleEnum.ADMIN
-        ? NamespaceUserListItemRoleEnum.ADMIN
-        : NamespaceUserListItemRoleEnum.MEMBER
+    const nextRole = role === MemberItemRoleEnum.ADMIN ? MemberItemRoleEnum.ADMIN : MemberItemRoleEnum.MEMBER
     this.selectedMembers.update((members) =>
       members.map((member) => (member.userId === userId ? { ...member, role: nextRole } : member))
     )

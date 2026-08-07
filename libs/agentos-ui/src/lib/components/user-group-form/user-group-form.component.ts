@@ -4,12 +4,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  AgentConfig,
-  NamespaceUserListItem,
-  UserGroupMemberRoleEnum,
-  UserGroupSearchResult,
-} from '@whoz-oss/agentos-api-client'
+import { AgentConfig, MemberItem, UserGroupMemberRoleEnum, UserGroupSearchResult } from '@whoz-oss/agentos-api-client'
 import { AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-system'
 import { Observable } from 'rxjs'
 import { UserGroupStateService } from '../../services/user-group-state.service'
@@ -87,7 +82,7 @@ export class UserGroupFormComponent implements OnInit {
   protected readonly selectedAgentIds = signal<Set<string>>(new Set())
 
   // --- Members ---
-  protected readonly candidateUsers = signal<NamespaceUserListItem[]>([])
+  protected readonly candidateUsers = signal<MemberItem[]>([])
   protected readonly selectedMembers = signal<SelectedMember[]>([])
   private originalMemberExternalIds: string[] = []
 

@@ -2,8 +2,8 @@ import { inject, Injectable } from '@angular/core'
 import {
   AgentConfig,
   AgentConfigControllerService,
-  NamespacePermissionEndpointsService,
-  NamespaceUserListItem,
+  MemberItem,
+  NamespaceMembershipControllerService,
   UserGroupControllerService,
   UserGroupMember,
   UserGroupSearchResult,
@@ -35,7 +35,7 @@ export interface UserGroupFormData {
   namespaceAgents: AgentConfig[]
   platformAgents: AgentConfig[]
   groups: UserGroupSearchResult[]
-  users: NamespaceUserListItem[]
+  users: MemberItem[]
 }
 
 /** An existing group plus its members, for the edit form. */
@@ -59,7 +59,7 @@ export interface ExistingUserGroup {
 export class UserGroupStateService {
   private readonly controller = inject(UserGroupControllerService)
   private readonly agentConfigController = inject(AgentConfigControllerService)
-  private readonly namespacePermissions = inject(NamespacePermissionEndpointsService)
+  private readonly namespaceMembership = inject(NamespaceMembershipControllerService)
 
   listByNamespace(namespaceId: string): Observable<UserGroupSearchResult[]> {
     return this.controller.findByNamespaceIdUserGroup(namespaceId)
@@ -71,7 +71,7 @@ export class UserGroupStateService {
       namespaceAgents: this.agentConfigController.listByParentAgentConfig(namespaceId, false),
       platformAgents: this.agentConfigController.listPlatformAgentsAgentConfig(false),
       groups: this.listByNamespace(namespaceId),
-      users: this.namespacePermissions.listNamespaceUsers(namespaceId),
+      users: this.namespaceMembership.getMembersNamespaceMembership(namespaceId),
     })
   }
 

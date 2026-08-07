@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core'
 import {
-  NamespacePermissionEndpointsService,
-  NamespaceUserListItem,
+  MemberItem,
+  NamespaceMembershipControllerService,
   UserControllerService,
   UserMembershipRole,
   UserMembershipRoleRoleEnum,
@@ -19,12 +19,11 @@ export interface MemberUpdateEntry {
  * NamespaceMemberStateService — API-layer facade for namespace ADMIN/MEMBER management.
  *
  * Follows the two-layer pattern (see UserGroupStateService): components go through this
- * facade rather than injecting NamespacePermissionEndpointsService or UserControllerService
+ * facade rather than injecting NamespaceMembershipControllerService or UserControllerService
  * directly.
  *
  * The backend endpoint accepts a flat `Array<UserMembershipRole>` where each entry carries
  * a userId and an optional role. A missing role means "revoke all relations for this user".
- * This replaces the former `UpdateNamespaceMembersRequest` wrapper (members + userIdsToRemove).
  *
  * `listAllUsers()` wraps `UserControllerService.listAllUser()`, which is SUPER_ADMIN-only on
  * the backend — callers (the members component) must only invoke it when the current user is
@@ -33,12 +32,12 @@ export interface MemberUpdateEntry {
  */
 @Injectable({ providedIn: 'root' })
 export class NamespaceMemberStateService {
-  private readonly permissions = inject(NamespacePermissionEndpointsService)
+  private readonly membership = inject(NamespaceMembershipControllerService)
   private readonly userController = inject(UserControllerService)
 
   /** Current members (and their role) of a namespace. */
-  listMembers(namespaceId: string): Observable<NamespaceUserListItem[]> {
-    return this.permissions.listNamespaceUsers(namespaceId)
+  listMembers(namespaceId: string): Observable<MemberItem[]> {
+    return this.membership.getMembersNamespaceMembership(namespaceId)
   }
 
   /**
@@ -54,11 +53,11 @@ export class NamespaceMemberStateService {
    *
    * Pass entries with a role to add or change, and entries without a role to revoke.
    */
-  updateMembers(namespaceId: string, entries: MemberUpdateEntry[]): Observable<NamespaceUserListItem[]> {
+  updateMembers(namespaceId: string, entries: MemberUpdateEntry[]): Observable<MemberItem[]> {
     const payload: UserMembershipRole[] = entries.map((e) => ({
       userId: e.userId,
       ...(e.role !== undefined ? { role: e.role } : {}),
     }))
-    return this.permissions.updateMembers(namespaceId, payload)
+    return this.membership.updateMembersNamespaceMembership(namespaceId, payload)
   }
 }
