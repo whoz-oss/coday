@@ -13,10 +13,12 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.user.UserService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -171,6 +173,11 @@ class ScheduledPromptExecutor(
      * coroutine inside [coroutineScope]; the scope suspends until all launched children
      * finish before the next batch is claimed.
      *
+     * Runs on [Dispatchers.IO] so the coroutines launched inside [coroutineScope] execute on
+     * the IO thread pool (default 64 threads) rather than being serialised on the caller's
+     * single thread. This is required because [processUserRun] calls blocking Spring services
+     * (Neo4j, CaseService, PermissionService) that would otherwise starve the coroutine dispatcher.
+     *
      * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
      * each batch contains at most that many UserRuns, all launched as structured coroutines
      * within a single [coroutineScope]. A short [SchedulerProperties.launchStaggerMs] delay
@@ -187,7 +194,7 @@ class ScheduledPromptExecutor(
      * no data corruption). Exactly-once would require an idempotence key on Case
      * creation (e.g. a UNIQUE constraint on `runId|userId` carried by the Case).
      */
-    suspend fun consumeAvailable() {
+    suspend fun consumeAvailable() = withContext(Dispatchers.IO) {
         val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
 
         var batch: List<ScheduledPromptUserRun>
