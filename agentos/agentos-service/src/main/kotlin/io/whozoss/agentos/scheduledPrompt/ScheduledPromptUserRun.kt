@@ -13,6 +13,12 @@ enum class UserRunStatus {
     RUNNING,
     /** Case reached a terminal status (IDLE or KILLED). */
     DONE,
+    /**
+     * Monitoring was released before the Case finished — [ScheduledPromptExecutor.monitorLaunch]
+     * reached [SchedulerProperties.launchTimeoutSeconds] while the Case was still RUNNING.
+     * The Case continues executing independently; the UserRun is closed for audit purposes.
+     */
+    TIMEOUT,
     /** Execution failed (Case creation, permission grant, or Case ERROR). */
     FAILED,
 }
@@ -27,6 +33,7 @@ enum class UserRunStatus {
  * ### Lifecycle
  *
  * PENDING → RUNNING → DONE (happy path)
+ *                   → TIMEOUT (monitoring released; Case still running)
  *                   → FAILED (execution error)
  *
  * RUNNING entries whose [leaseUntil] has expired are re-claimed by the next tick

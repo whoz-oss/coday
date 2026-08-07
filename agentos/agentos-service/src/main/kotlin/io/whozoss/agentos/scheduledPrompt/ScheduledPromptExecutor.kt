@@ -352,8 +352,12 @@ class ScheduledPromptExecutor(
      * Collects [CaseRuntime.statusFlow] for up to [SchedulerProperties.launchTimeoutSeconds]
      * seconds. This is a **health check**, not a completion wait:
      * - IDLE → agent finished its turn quickly → DONE
-     * - Timeout (still RUNNING) → Case is healthy, just slow → DONE
+     * - Timeout (still RUNNING) → Case is healthy but slow; monitoring released → TIMEOUT
      * - ERROR/KILLED → immediate crash → FAILED
+     *
+     * On timeout the UserRun is closed as [UserRunStatus.TIMEOUT] via a direct
+     * [ScheduledPromptUserRunRepository.markTerminal] call, bypassing [closeUserRun] and
+     * [toUserRunOutcome] (which only map [CaseStatus] values).
      *
      * The Case continues running independently after this method returns.
      * The lease on the UserRun is only relevant for crash recovery (instance down
@@ -371,10 +375,17 @@ class ScheduledPromptExecutor(
         }
 
         if (finalStatus != null && finalStatus.isTerminal()) {
+            // Immediate terminal status (ERROR/KILLED) — execution failed.
             closeUserRun(userRunId, finalStatus, caseId)
-        } else {
-            // IDLE or timeout (still RUNNING) — Case launched successfully
+        } else if (finalStatus == CaseStatus.IDLE) {
+            // Agent finished its turn before the timeout — clean completion.
             closeUserRun(userRunId, CaseStatus.IDLE, caseId)
+        } else {
+            // Timeout — Case is still RUNNING; monitoring released, Case continues independently.
+            userRunRepository.markTerminal(userRunId, UserRunStatus.TIMEOUT, Instant.now(clock))
+            logger.info {
+                "[Executor] UserRun=$userRunId timed out (caseId=$caseId still running) — monitoring released"
+            }
         }
     }
 

@@ -599,7 +599,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             userRun.error shouldBe "Case reached terminal status ERROR"
         }
 
-        "Phase B: monitorLaunch closes UserRun as DONE on timeout (Case still RUNNING)" {
+        "Phase B: monitorLaunch closes UserRun as TIMEOUT on timeout (Case still RUNNING)" {
             // Use a zero launch timeout so it times out immediately.
             val shortTimeoutProperties = SchedulerProperties(
                 batchSize = 5,
@@ -654,9 +654,10 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             ).consumeAvailable()
 
             // Timeout on a still-RUNNING Case is not a failure — the Case is healthy,
-            // just slow. The UserRun is closed as DONE.
+            // just slow. Monitoring is released and the UserRun is closed as TIMEOUT
+            // for audit visibility; the Case continues running independently.
             val userRun = userRunRepo.all().first()
-            userRun.status shouldBe UserRunStatus.DONE
+            userRun.status shouldBe UserRunStatus.TIMEOUT
         }
 
         // -------------------------------------------------------------------------

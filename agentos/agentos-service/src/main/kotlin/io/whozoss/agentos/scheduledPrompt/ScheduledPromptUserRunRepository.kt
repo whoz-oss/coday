@@ -67,10 +67,11 @@ interface ScheduledPromptUserRunRepository {
     fun claimBatch(leaseDuration: Duration, limit: Int): List<ScheduledPromptUserRun>
 
     /**
-     * Transition a UserRun to a terminal status (DONE or FAILED).
+     * Transition a UserRun to a terminal status (DONE, TIMEOUT, or FAILED).
      *
      * Populates [ScheduledPromptUserRun.finishedAt] = [now] and [ScheduledPromptUserRun.error]
-     * when [status] is FAILED.
+     * when [status] is FAILED. For [UserRunStatus.TIMEOUT], [error] is null — the Case is
+     * still running independently; the UserRun is closed only for audit visibility.
      *
      * @throws org.springframework.dao.OptimisticLockingFailureException if the node was
      *   concurrently modified by another instance (treat as idempotent: it is already closed).
@@ -93,10 +94,17 @@ interface ScheduledPromptUserRunRepository {
 
     /**
      * Returns true if at least one UserRun for [runId] is still active (PENDING or RUNNING).
+     * [UserRunStatus.TIMEOUT] is NOT active — the UserRun is terminal even though the Case
+     * continues running independently.
      * Used as a fast-path exit in completion checks — avoids counting when work is still in flight.
      */
     fun hasAnyActive(runId: UUID): Boolean
 
-    /** Returns true if at least one UserRun for [runId] is in FAILED status. */
+    /**
+     * Returns true if at least one UserRun for [runId] is in FAILED status.
+     * [UserRunStatus.TIMEOUT] is NOT a failure — it indicates monitoring was released, not that
+     * execution failed. A Run with all UserRuns in DONE/TIMEOUT/FAILED transitions to DONE
+     * unless at least one is FAILED.
+     */
     fun hasAnyFailed(runId: UUID): Boolean
 }

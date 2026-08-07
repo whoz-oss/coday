@@ -109,6 +109,27 @@ class ScheduledPromptUserRunNodeUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // fromDomain / toDomain round-trip — TIMEOUT
+    // -------------------------------------------------------------------------
+
+    "fromDomain then toDomain preserves all fields for a TIMEOUT UserRun" {
+        val domain = ScheduledPromptUserRun(
+            runId = runId,
+            userId = userId,
+            status = UserRunStatus.TIMEOUT,
+            startedAt = now,
+            finishedAt = now.plusSeconds(30),
+        )
+
+        val roundTripped = ScheduledPromptUserRunNode.fromDomain(domain).toDomain()
+
+        roundTripped.status shouldBe UserRunStatus.TIMEOUT
+        roundTripped.finishedAt shouldBe now.plusSeconds(30)
+        roundTripped.error.shouldBeNull()
+        roundTripped.leaseUntil.shouldBeNull()
+    }
+
+    // -------------------------------------------------------------------------
     // Node field invariants
     // -------------------------------------------------------------------------
 
