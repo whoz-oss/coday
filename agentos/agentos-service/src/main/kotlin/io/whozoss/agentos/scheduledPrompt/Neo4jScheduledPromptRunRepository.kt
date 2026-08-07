@@ -8,10 +8,9 @@ import java.util.UUID
 /**
  * Neo4j-backed implementation of [ScheduledPromptRunRepository].
  *
- * [insert] wraps the SDN save in a constraint-violation detector: if Neo4j rejects the write
- * because the composite `(scheduledPromptId, scheduledFor)` constraint is violated, the
- * [DataIntegrityViolationException] is caught and translated to a [DuplicateRunException]
- * so callers can handle it gracefully.
+ * [insert] catches [DataIntegrityViolationException] and translates it to [DuplicateRunException].
+ * The only UNIQUE constraint on [ScheduledPromptRunNode] is the composite
+ * `(scheduledPromptId, scheduledFor)`, so any integrity violation from insert is a duplicate slot.
  */
 open class Neo4jScheduledPromptRunRepository(
     private val neo4jRepository: ScheduledPromptRunNodeNeo4jRepository,
@@ -21,7 +20,8 @@ open class Neo4jScheduledPromptRunRepository(
         try {
             neo4jRepository.save(ScheduledPromptRunNode.fromDomain(run)).toDomain()
         } catch (e: DataIntegrityViolationException) {
-            if (!isSlotConflict(e)) throw e
+            // The only UNIQUE constraint on ScheduledPromptRun is (scheduledPromptId, scheduledFor).
+            // Any DataIntegrityViolationException from insert is a duplicate slot.
             logger.warn { "[Neo4jScheduledPromptRunRepository] Duplicate slot: sp=${run.scheduledPromptId} for=${run.scheduledFor}" }
             throw DuplicateRunException(run.scheduledPromptId, run.scheduledFor)
         }
@@ -58,18 +58,5 @@ open class Neo4jScheduledPromptRunRepository(
     override fun findSettledRunning(): List<ScheduledPromptRun> =
         neo4jRepository.findSettledRunning().map { it.toDomain() }
 
-    private fun isSlotConflict(e: DataIntegrityViolationException): Boolean {
-        val haystack = generateSequence<Throwable>(e) { it.cause }
-            .mapNotNull { it.message }
-            .joinToString(separator = " | ")
-        return SLOT_CONSTRAINT_NAME in haystack ||
-            SLOT_PROPERTY_A in haystack ||
-            SLOT_PROPERTY_B in haystack
-    }
-
-    companion object : KLogging() {
-        private const val SLOT_CONSTRAINT_NAME = "scheduled_prompt_run_slot_unique"
-        private const val SLOT_PROPERTY_A = "scheduledPromptId"
-        private const val SLOT_PROPERTY_B = "scheduledFor"
-    }
+    companion object : KLogging()
 }

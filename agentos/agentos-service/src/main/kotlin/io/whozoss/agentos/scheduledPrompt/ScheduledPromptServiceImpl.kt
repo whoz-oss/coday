@@ -230,26 +230,17 @@ class ScheduledPromptServiceImpl(
         try {
             repository.save(entity)
         } catch (e: DataIntegrityViolationException) {
-            if (!isTripleKeyConflict(e)) throw e
+            // The only UNIQUE constraint on ScheduledPrompt is tripleKey (namespaceId, userId, name).
+            // Any DataIntegrityViolationException from save is a name conflict in this scope.
             logger.warn {
                 "[ScheduledPromptService] tripleKey conflict (ns=${entity.namespaceId}, user=${entity.userId}, name='${entity.name}')"
             }
             throw ConflictException(conflictMessage(entity), e)
         }
 
-    private fun isTripleKeyConflict(e: DataIntegrityViolationException): Boolean {
-        val haystack = generateSequence<Throwable>(e) { it.cause }
-            .mapNotNull { it.message }
-            .joinToString(separator = " | ")
-        return TRIPLE_KEY_CONSTRAINT_NAME in haystack || TRIPLE_KEY_PROPERTY in haystack
-    }
-
     private fun conflictMessage(entity: ScheduledPrompt): String =
         "A ScheduledPrompt named '${entity.name}' already exists in this scope " +
             "(namespaceId=${entity.namespaceId ?: "platform"}, userId=${entity.userId})"
 
-    companion object : KLogging() {
-        private const val TRIPLE_KEY_CONSTRAINT_NAME = "scheduled_prompt_triple_key_unique"
-        private const val TRIPLE_KEY_PROPERTY = "tripleKey"
-    }
+    companion object : KLogging()
 }
