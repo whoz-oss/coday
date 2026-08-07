@@ -80,7 +80,7 @@ import java.util.UUID
  * the guard ensuring all UserRuns have been materialised before completion is evaluated.
  */
 @Component
-@ConditionalOnProperty(name = ["scheduler.enabled"], havingValue = "true")
+@ConditionalOnProperty(name = ["agentos.prompt.scheduler.enabled"], havingValue = "true")
 class ScheduledPromptExecutor(
     private val scheduledPromptRepository: ScheduledPromptRepository,
     private val runRepository: ScheduledPromptRunRepository,

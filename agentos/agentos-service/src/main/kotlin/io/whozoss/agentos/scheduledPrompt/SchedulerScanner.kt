@@ -18,7 +18,7 @@ import java.time.ZoneOffset
  *
  * ### Two-tick architecture
  *
- * **[tickClaim]** (Phase A, every `scheduler.tick-interval-ms`):
+ * **[tickClaim]** (Phase A, every `agentos.prompt.scheduler.tick-interval-ms`):
  * 1. Sweep orphaned CLAIMED runs via [recoverOrphanedClaimedRuns] — handles the crash
  *    window between Run insert and [ScheduledPromptExecutor.materialize] in [claim].
  * 2. Query [ScheduledPromptRepository.findDue] for all prompts whose `nextRunAt <= now`.
@@ -26,7 +26,7 @@ import java.time.ZoneOffset
  *    calls [ScheduledPromptExecutor.materialize] to create PENDING UserRuns.
  * 4. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
  *
- * **[tickConsume]** (Phase B, every `scheduler.consume-interval-ms`):
+ * **[tickConsume]** (Phase B, every `agentos.prompt.scheduler.consume-interval-ms`):
  * Declared `suspend` — Spring Framework 6.1+ natively supports suspend functions on
  * `@Scheduled` methods. Calls [ScheduledPromptExecutor.consumeAvailable] which suspends
  * until ALL UserRuns from ALL batches have finished executing. Spring `fixedDelay`
@@ -59,7 +59,7 @@ import java.time.ZoneOffset
  */
 
 @Component
-@ConditionalOnProperty(name = ["scheduler.enabled"], havingValue = "true")
+@ConditionalOnProperty(name = ["agentos.prompt.scheduler.enabled"], havingValue = "true")
 class SchedulerScanner(
     private val scheduledPromptRepository: ScheduledPromptRepository,
     private val runRepository: ScheduledPromptRunRepository,
@@ -80,7 +80,7 @@ class SchedulerScanner(
      * Fully blocking — materialize runs synchronously within the tick.
      * Spring fixedDelay guarantees no overlap between ticks.
      */
-    @Scheduled(fixedDelayString = "\${scheduler.tick-interval-ms:30000}")
+    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
     fun tickClaim() {
         val now = Instant.now(clock)
 
@@ -176,7 +176,7 @@ class SchedulerScanner(
      * The IO dispatcher is managed by [ScheduledPromptExecutor.consumeAvailable] itself
      * via [kotlinx.coroutines.withContext].
      */
-    @Scheduled(fixedDelayString = "\${scheduler.consume-interval-ms:10000}")
+    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.consume-interval-ms:10000}")
     suspend fun tickConsume() {
         executor.consumeAvailable()
     }

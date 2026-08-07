@@ -207,15 +207,15 @@ agentos:
     #   neo4j                    - standalone Neo4j server (requires spring.neo4j.* config)
     # Override with env var: AGENTOS_PERSISTENCE_MODE
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
-
-scheduler:
-  # Enable/disable the scheduler. Enabled by default for production.
-  # Dev profiles (embedded-neo4j, docker) disable it to prevent accidental Case creation.
-  # Override with env var: SCHEDULER_ENABLED
-  enabled: ${SCHEDULER_ENABLED:true}
-  # Interval between claim ticks in milliseconds.
-  # Override with env var: SCHEDULER_TICK_INTERVAL_MS
-  tick-interval-ms: ${SCHEDULER_TICK_INTERVAL_MS:30000}
+  prompt:
+    scheduler:
+      # Enable/disable the scheduler. Enabled by default for production.
+      # Dev profiles (embedded-neo4j, docker) disable it to prevent accidental Case creation.
+      # Override with env var: AGENTOS_PROMPT_SCHEDULER_ENABLED
+      enabled: ${AGENTOS_PROMPT_SCHEDULER_ENABLED:true}
+      # Interval between claim ticks in milliseconds.
+      # Override with env var: AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS
+      tick-interval-ms: ${AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS:30000}
 
 springdoc:
   writer-with-order-by-keys: true
