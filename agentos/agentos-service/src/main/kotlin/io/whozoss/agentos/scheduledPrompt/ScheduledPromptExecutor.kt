@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -60,9 +61,10 @@ import java.util.UUID
  *
  * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
  * each batch contains at most that many UserRuns, and all are launched as structured
- * coroutines within a single [coroutineScope]. No additional semaphore is needed.
- * Burst control is delegated to Spring AI's `RetryTemplate` on each `ChatModel`
- * (exponential backoff on 429 rate-limit responses).
+ * coroutines within a single [coroutineScope]. A short stagger delay
+ * ([SchedulerProperties.launchStaggerMs]) between each `launch` spreads the initial
+ * burst to reduce memory pressure. Further burst control is delegated to Spring AI's `RetryTemplate`
+ * on each `ChatModel` (exponential backoff on 429 rate-limit responses).
  *
  * ### Completion check
  *
@@ -171,8 +173,9 @@ class ScheduledPromptExecutor(
      *
      * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
      * each batch contains at most that many UserRuns, all launched as structured coroutines
-     * within a single [coroutineScope]. No additional semaphore is needed — the batch size
-     * IS the concurrency cap. Burst control is delegated to Spring AI's `RetryTemplate`
+     * within a single [coroutineScope]. A short [SchedulerProperties.launchStaggerMs] delay
+     * between each `launch` spreads the initial burst to reduce memory pressure (OOM observed
+     * on CI without stagger). Further burst control is delegated to Spring AI's `RetryTemplate`
      * (exponential backoff on 429 responses).
      *
      * ### Delivery guarantee: at-least-once
@@ -201,6 +204,11 @@ class ScheduledPromptExecutor(
                     launch {
                         processUserRun(userRun)
                     }
+
+                    // Stagger launches to spread the initial burst and reduce memory pressure.
+                    // Without this delay, simultaneous Case+Runtime creation for a full batch
+                    // causes OOM on CI. Once launched, coroutines run concurrently.
+                    delay(properties.launchStaggerMs)
                 }
             }
 
