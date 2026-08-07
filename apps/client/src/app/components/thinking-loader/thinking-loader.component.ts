@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core'
+import { Component, Input, OnInit, OnDestroy } from '@angular/core'
 import { CommonModule } from '@angular/common'
 
 @Component({
@@ -9,6 +9,9 @@ import { CommonModule } from '@angular/common'
   styleUrl: './thinking-loader.component.scss',
 })
 export class ThinkingLoaderComponent implements OnInit, OnDestroy {
+  /** Number of sub-tasks (delegations) currently running. 0 means no suffix is shown. */
+  @Input() runningDelegations: number = 0
+
   // Same thinking phrases as in chat-textarea
   private thinkingPhrases: string[] = ['Processing request...', 'Thinking...', 'Working on it...']
   currentThinkingPhrase: string = 'Processing request...'
