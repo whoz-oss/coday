@@ -1987,6 +1987,35 @@ paths:
       summary: List namespace exchange files
       tags:
       - exchange-controller
+  /api/namespaces/{namespaceId}/members:
+    post:
+      operationId: updateMembers
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/UserMembershipRole"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NamespaceUserListItem"
+          description: OK
+      tags:
+      - namespace-permission-endpoints
   /api/namespaces/{namespaceId}/members/{targetUserId}:
     delete:
       operationId: revokeMember
@@ -4846,6 +4875,23 @@ components:
       - name
       - userExternalIdsToAdd
       - userExternalIdsToRemove
+    UserMembershipRole:
+      type: object
+      properties:
+        role:
+          type: string
+          description: Target role for this user on the entity. Null means revoke
+            all relations.
+          enum:
+          - ADMIN
+          - MEMBER
+          pattern: ADMIN|MEMBER
+        userId:
+          type: string
+          format: uuid
+          description: Internal user id.
+      required:
+      - userId
     WarnEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"

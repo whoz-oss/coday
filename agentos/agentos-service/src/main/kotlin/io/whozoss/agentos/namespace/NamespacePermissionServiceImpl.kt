@@ -1,14 +1,18 @@
 package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 /**
  * Sync-algorithm-local role states.
@@ -157,6 +161,85 @@ class NamespacePermissionServiceImpl(
     ) {
         permissionService.demoteAdminToMember(userIdStr, EntityType.NAMESPACE, namespaceId)
         logger.info { "Demoted ADMIN to MEMBER on namespace $namespaceId for user $userIdStr" }
+    }
+
+    @Transactional
+    override fun updateMembers(
+        namespaceId: UUID,
+        members: List<UserMembershipRole>,
+        callerIsSuperAdmin: Boolean,
+    ): List<NamespaceUserListItem> {
+        namespaceService.getById(namespaceId)
+
+        // Duplicate-userId check is enforced by @NoDuplicateUserIds at the controller level.
+        val (toUpsert, toRevoke) = members.partition { it.role != null }
+        val upsertUserIds = toUpsert.map { it.userId }
+        val revokeUserIds = toRevoke.map { it.userId }
+        val involvedIds = (upsertUserIds + revokeUserIds).toSet()
+        val namespaceIdStr = namespaceId.toString()
+
+        // Single targeted query: fetch current relations only for the users in this request.
+        // Non-involved members are left untouched by delta semantics — no need to load them.
+        val currentRelationByUserId: Map<UUID, PermissionRelation> =
+            permissionService
+                .listRelationsForUsers(
+                    EntityType.NAMESPACE,
+                    namespaceIdStr,
+                    involvedIds.map { it.toString() },
+                ).mapKeys { (k, _) -> UUID.fromString(k) }
+
+        val unknownRevovals = revokeUserIds.toSet() - currentRelationByUserId.keys
+        if (unknownRevovals.isNotEmpty()) {
+            throw UnprocessableEntityException("userId(s) not currently on the namespace: $unknownRevovals")
+        }
+
+        val newUserIds = upsertUserIds.filter { it !in currentRelationByUserId }
+        if (newUserIds.isNotEmpty() && !callerIsSuperAdmin) {
+            throw AccessDeniedException("Only a super-admin may add a new user to a namespace")
+        }
+        if (newUserIds.isNotEmpty()) {
+            val found = userService.findByIds(newUserIds).map { it.metadata.id }.toSet()
+            val unknown = newUserIds.toSet() - found
+            if (unknown.isNotEmpty()) {
+                throw UnprocessableEntityException("Unknown userId(s): $unknown")
+            }
+        }
+
+        // Anti-lockout guard: load all existing admins (needed to account for admins
+        // not in this request who will still be admins after the update).
+        // Then apply the delta: remove revoked/demoted admins, add promoted ones.
+        val existingAdminIds: Set<UUID> =
+            permissionService
+                .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdStr, PermissionRelation.ADMIN)
+                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+                .toSet()
+        val hadAdminBefore = existingAdminIds.isNotEmpty()
+        val removedFromAdmin: Set<UUID> =
+            revokeUserIds.toSet() +
+                toUpsert.filter { it.role != PermissionRelation.ADMIN.name }.map { it.userId }.toSet()
+        val addedToAdmin: Set<UUID> =
+            toUpsert.filter { it.role == PermissionRelation.ADMIN.name }.map { it.userId }.toSet()
+        val hasAdminAfter = (existingAdminIds - removedFromAdmin + addedToAdmin).isNotEmpty()
+        if (hadAdminBefore && !hasAdminAfter) {
+            throw UnprocessableEntityException("This update would leave the namespace with no ADMIN")
+        }
+
+        val roleChanges: List<Pair<String, PermissionRelation?>> =
+            toUpsert.mapNotNull { entry ->
+                val targetRelation = PermissionRelation.valueOf(entry.role!!)
+                val current = currentRelationByUserId[entry.userId]
+                if (current == targetRelation) null
+                else entry.userId.toString() to targetRelation
+            }
+        val revocations: List<Pair<String, PermissionRelation?>> =
+            revokeUserIds.map { it.toString() to null }
+
+        val entries = roleChanges + revocations
+        if (entries.isNotEmpty()) {
+            permissionService.applyShareBatch(EntityType.NAMESPACE, namespaceId.toString(), entries)
+        }
+
+        return resolveNamespaceUsers(namespaceId, permissionService, userService)
     }
 
     companion object : KLogging()

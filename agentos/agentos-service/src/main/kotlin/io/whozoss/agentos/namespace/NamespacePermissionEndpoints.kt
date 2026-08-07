@@ -5,15 +5,19 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
+import io.whozoss.agentos.user.NoDuplicateUserIds
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
 import mu.KLogging
+import mu.KotlinLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -55,11 +59,14 @@ data class SyncUserRolesRequest(
  * - grant/revoke (ADMIN/MEMBER): namespace WRITE — caller must be namespace ADMIN
  * - listNamespaceUsers: namespace READ + `@HideOnAccessDenied` — 404 hides existence
  * - updateRolesByExternalId: SUPER_ADMIN only
+ * - updateMembers: SUPER_ADMIN or namespace WRITE at the route level, with a finer two-tier
+ *   check inside [NamespacePermissionService.updateMembers] — see its KDoc
  *
  * Idempotency: the Neo4j MERGE + DELETE primitives are naturally idempotent,
  * so repeated PUTs/DELETEs are safe.
  */
 @RestController
+@Validated
 @RequestMapping(
     "/api/namespaces",
     produces = [MediaType.APPLICATION_JSON_VALUE],
@@ -151,7 +158,7 @@ class NamespacePermissionEndpoints(
     ): List<NamespaceUserListItem> {
         namespaceService.findById(namespaceId)
             ?: throw ResourceNotFoundException("Namespace not found: $namespaceId")
-        return resolveNamespaceUsers(namespaceId)
+        return resolveNamespaceUsers(namespaceId, permissionService, userService)
     }
 
     /**
@@ -170,49 +177,35 @@ class NamespacePermissionEndpoints(
         return request
     }
 
-    private fun resolveNamespaceUsers(namespaceId: UUID): List<NamespaceUserListItem> {
-        val namespaceIdString = namespaceId.toString()
-        val adminUserIds =
-            permissionService
-                .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, PermissionRelation.ADMIN)
-                .toSet()
-        val memberUserIds =
-            permissionService
-                .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, PermissionRelation.MEMBER)
-                .toSet()
-        val allUserIds = adminUserIds + memberUserIds
-        if (allUserIds.isEmpty()) return emptyList()
-
-        val uuids =
-            allUserIds.mapNotNull { raw ->
-                runCatching { UUID.fromString(raw) }.getOrNull()
-                    ?: run {
-                        logger.warn { "Dropping malformed user id from permission listing on namespace $namespaceId: '$raw'" }
-                        null
-                    }
-            }
-        val users = userService.findByIds(uuids)
-
-        val missingCount = uuids.size - users.size
-        if (missingCount > 0) {
-            logger.warn {
-                "Namespace $namespaceId has $missingCount permission relation(s) pointing to " +
-                    "non-existent users — filtered from response"
-            }
-        }
-
-        return users.map { user ->
-            val userIdString = user.metadata.id.toString()
-            val role = if (userIdString in adminUserIds) ADMIN else MEMBER
-            NamespaceUserListItem(
-                id = user.metadata.id,
-                externalId = user.externalId,
-                email = user.email,
-                firstname = user.firstname,
-                lastname = user.lastname,
-                role = role,
-            )
-        }
+    /**
+     * POST /api/namespaces/{namespaceId}/members — single-call batch membership update,
+     * driving a namespace-members form (add / change role / remove) in one round-trip.
+     *
+     * Each [UserMembershipRole] entry targets one user: a non-null [UserMembershipRole.role]
+     * adds or changes their role, a null [UserMembershipRole.role] revokes all their relations.
+     * Users absent from the list are left untouched (delta semantics, not declarative replace).
+     *
+     * Input validation (400 on failure):
+     * - each entry's [UserMembershipRole.role] must be null, "ADMIN", or "MEMBER" (`@Pattern`)
+     * - the list must not contain duplicate [UserMembershipRole.userId] values (`@NoDuplicateUserIds`)
+     *
+     * Authorization is two-tier: the route-level `@PreAuthorize` only checks that the caller
+     * is a SUPER_ADMIN or holds namespace WRITE (so a namespace ADMIN can reach this endpoint
+     * at all). The finer rule — adding a genuinely new user requires SUPER_ADMIN, while editing
+     * or removing an existing member only requires WRITE — is enforced inside
+     * [NamespacePermissionService.updateMembers], because it needs to inspect the namespace's
+     * *current* membership to tell "new" from "existing", which a SpEL `@PreAuthorize` cannot
+     * express. See that method's KDoc for the full rationale.
+     */
+    @PostMapping("/{namespaceId}/members", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasRole('SUPER_ADMIN') or hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    fun updateMembers(
+        @PathVariable namespaceId: UUID,
+        @Valid @NoDuplicateUserIds @RequestBody members: List<UserMembershipRole>,
+    ): List<NamespaceUserListItem> {
+        val callerIsSuperAdmin = userService.getCurrentUser().isAdmin
+        return namespacePermissionService.updateMembers(namespaceId, members, callerIsSuperAdmin)
     }
 
     private fun requireExists(
@@ -225,8 +218,70 @@ class NamespacePermissionEndpoints(
 
     private fun currentUserId(): String = userService.getCurrentUser().id.toString()
 
-    companion object : KLogging() {
-        private const val ADMIN = "ADMIN"
-        private const val MEMBER = "MEMBER"
+    companion object : KLogging()
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+private val resolveLogger = KotlinLogging.logger {}
+
+/**
+ * Resolves the users holding a direct ADMIN or MEMBER relation on [namespaceId], with role
+ * precedence ADMIN > MEMBER for a user holding both (should not normally happen given the
+ * single-relation invariant, but defended anyway).
+ *
+ * Shared between [NamespacePermissionEndpoints.listNamespaceUsers] (read-only listing) and
+ * [NamespacePermissionServiceImpl.updateMembers] (current-state snapshot for the two-tier
+ * authorization check, the role delta, and the anti-lockout guard) — a single query shape
+ * for "who is on this namespace and with which role".
+ */
+internal fun resolveNamespaceUsers(
+    namespaceId: UUID,
+    permissionService: PermissionService,
+    userService: UserService,
+): List<NamespaceUserListItem> {
+    val namespaceIdString = namespaceId.toString()
+    val adminUserIds =
+        permissionService
+            .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, PermissionRelation.ADMIN)
+            .toSet()
+    val memberUserIds =
+        permissionService
+            .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdString, PermissionRelation.MEMBER)
+            .toSet()
+    val allUserIds = adminUserIds + memberUserIds
+    if (allUserIds.isEmpty()) return emptyList()
+
+    val uuids =
+        allUserIds.mapNotNull { raw ->
+            runCatching { UUID.fromString(raw) }.getOrNull()
+                ?: run {
+                    resolveLogger.warn { "Dropping malformed user id from permission listing on namespace $namespaceId: '$raw'" }
+                    null
+                }
+        }
+    val users = userService.findByIds(uuids)
+
+    val missingCount = uuids.size - users.size
+    if (missingCount > 0) {
+        resolveLogger.warn {
+            "Namespace $namespaceId has $missingCount permission relation(s) pointing to " +
+                "non-existent users — filtered from response"
+        }
+    }
+
+    return users.map { user ->
+        val userIdString = user.metadata.id.toString()
+        val role = if (userIdString in adminUserIds) "ADMIN" else "MEMBER"
+        NamespaceUserListItem(
+            id = user.metadata.id,
+            externalId = user.externalId,
+            email = user.email,
+            firstname = user.firstname,
+            lastname = user.lastname,
+            role = role,
+        )
     }
 }

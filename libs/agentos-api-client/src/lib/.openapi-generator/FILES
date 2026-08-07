@@ -110,6 +110,7 @@ model/user-group-member.ts
 model/user-group-search-result.ts
 model/user-group-summary.ts
 model/user-group-update-request.ts
+model/user-membership-role.ts
 model/user.ts
 model/warn-event.ts
 param.ts

@@ -154,6 +154,27 @@ interface PermissionRepository {
     ): Boolean
 
     /**
+     * Returns the current [PermissionRelation] for each of the given [userIds] on [entityId].
+     *
+     * Only direct relations are considered (no transitive namespace lookup). Users in [userIds]
+     * that hold no relation on the entity are absent from the returned map (not mapped to null).
+     * Unknown user ids are silently ignored.
+     *
+     * Designed for targeted membership lookups where only a small, known set of users is
+     * relevant — avoids loading the entire entity membership to inspect a handful of entries.
+     *
+     * @param entityType The type of entity
+     * @param entityId The ID of the entity
+     * @param userIds The user ids to look up (by internal string UUID)
+     * @return Map of userId → [PermissionRelation] for users that have any relation
+     */
+    fun listRelationsForUsers(
+        entityType: EntityType,
+        entityId: String,
+        userIds: Collection<String>,
+    ): Map<String, PermissionRelation>
+
+    /**
      * Batch-apply share entries on an entity. Each entry is a (userId, targetRole) pair:
      * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER,
      *   or create directly)
