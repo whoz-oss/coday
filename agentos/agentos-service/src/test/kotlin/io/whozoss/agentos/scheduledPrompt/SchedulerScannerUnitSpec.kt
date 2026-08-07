@@ -47,7 +47,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
     private val today = LocalDate.of(2026, 1, 1)
     private val defaultTime = LocalTime.of(8, 0)  // 08:00 UTC — before now
 
-    private val properties = SchedulerProperties(tickIntervalMs = 60_000)
+    private val properties = SchedulerProperties()
 
     private val agentId: UUID = UUID.randomUUID()
     private val promptId: UUID = UUID.randomUUID()

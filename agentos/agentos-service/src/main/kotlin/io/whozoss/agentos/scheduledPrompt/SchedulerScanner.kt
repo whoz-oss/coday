@@ -19,7 +19,7 @@ import java.time.ZoneOffset
  *
  * ### Two-tick architecture
  *
- * **[tickClaim]** (Phase A, every [SchedulerProperties.tickIntervalMs]):
+ * **[tickClaim]** (Phase A, every `scheduler.tick-interval-ms`):
  * 1. Sweep orphaned CLAIMED runs via [recoverOrphanedClaimedRuns] — handles the crash
  *    window between Run insert and [ScheduledPromptExecutor.materialize] in [claim].
  * 2. Query [ScheduledPromptRepository.findDue] for all prompts whose `nextRunAt <= now`.
@@ -27,7 +27,7 @@ import java.time.ZoneOffset
  *    calls [ScheduledPromptExecutor.materialize] to create PENDING UserRuns.
  * 4. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
  *
- * **[tickConsume]** (Phase B, every [SchedulerProperties.consumeIntervalMs]):
+ * **[tickConsume]** (Phase B, every `scheduler.consume-interval-ms`):
  * Calls [ScheduledPromptExecutor.consumeAvailable] via `runBlocking`, which suspends
  * until ALL UserRuns from ALL batches have finished executing. Spring `fixedDelay`
  * guarantees no overlap between consecutive consume ticks.
@@ -73,10 +73,7 @@ class SchedulerScanner(
 ) {
     @PostConstruct
     fun logStartup() {
-        logger.info {
-            "[SchedulerScanner] Scheduler enabled — tickClaim every ${properties.tickIntervalMs}ms, " +
-                "tickConsume every ${properties.consumeIntervalMs}ms"
-        }
+        logger.info { "[SchedulerScanner] Scheduler enabled" }
     }
 
     /**
@@ -84,7 +81,7 @@ class SchedulerScanner(
      * Fully blocking — materialize runs synchronously within the tick.
      * Spring fixedDelay guarantees no overlap between ticks.
      */
-    @Scheduled(fixedDelayString = "\${scheduler.tick-interval-ms:60000}")
+    @Scheduled(fixedDelayString = "\${scheduler.tick-interval-ms:30000}")
     fun tickClaim() {
         val now = Instant.now(clock)
 
@@ -237,6 +234,7 @@ class SchedulerScanner(
 
         // Always advance nextRunAt — auto-repairing even on duplicate or skip.
         val nextSlot = nextRunCalculatorService.nextAfter(recurrence = scheduledPrompt.recurrence, planning = scheduledPrompt.planning, after = slot)
+        logger.info { "[DEBUG] slot=$slot nextSlot=$nextSlot" }
         val advanced = scheduledPromptRepository.advanceNextRunAt(scheduledPrompt.id, slot, nextSlot)
         if (advanced) {
             logger.debug { "[SchedulerScanner] Advanced sp=${scheduledPrompt.id} nextRunAt=$nextSlot" }
