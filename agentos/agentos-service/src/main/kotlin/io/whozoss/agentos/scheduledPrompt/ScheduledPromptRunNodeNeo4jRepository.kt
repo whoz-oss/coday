@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
+import java.time.Instant
 
 /**
  * Spring Data Neo4j repository for [ScheduledPromptRunNode].
@@ -22,4 +23,63 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
         """,
     )
     fun existsActiveByScheduledPromptId(scheduledPromptId: String): Boolean
+
+    /**
+     * Update status (and optionally finishedAt + error) of a Run by id.
+     * Returns the count of updated nodes (0 if not found).
+     */
+    @Query(
+        $$"""
+        MATCH (r:ScheduledPromptRun {id: $id})
+        SET r.status = $status,
+            r.finishedAt = $finishedAt,
+            r.error = $error,
+            r.modified = $now
+        RETURN count(r)
+        """,
+    )
+    fun updateStatus(id: String, status: String, finishedAt: Instant?, error: String?, now: Instant): Int
+
+    /**
+     * Count non-SKIPPED runs for a given ScheduledPrompt.
+     */
+    @Query(
+        $$"""
+        MATCH (r:ScheduledPromptRun)
+        WHERE r.scheduledPromptId = $scheduledPromptId
+          AND r.status <> 'SKIPPED'
+          AND NOT COALESCE(r.removed, false)
+        RETURN count(r)
+        """,
+    )
+    fun countCompletedRuns(scheduledPromptId: String): Int
+
+    /**
+     * Find all runs in [status] created before [before], ordered by creation time.
+     */
+    @Query($$"MATCH (r:ScheduledPromptRun) WHERE r.status = $status AND r.created < $before RETURN r ORDER BY r.created")
+    fun findByStatusAndCreatedBefore(status: String, before: Instant): List<ScheduledPromptRunNode>
+
+    /**
+     * Find RUNNING Runs whose UserRuns are all terminal (none in PENDING or RUNNING).
+     *
+     * A Run qualifies when it is in RUNNING status, not removed, and has no UserRun
+     * in PENDING or RUNNING status. Runs with zero UserRuns never reach RUNNING status
+     * (they are transitioned directly to DONE in [ScheduledPromptExecutor.materialize]).
+     */
+    @Query(
+        """
+        MATCH (r:ScheduledPromptRun)
+        WHERE r.status = 'RUNNING'
+          AND NOT COALESCE(r.removed, false)
+          AND NOT EXISTS {
+              MATCH (ur:ScheduledPromptUserRun)
+              WHERE ur.runId = r.id AND ur.status IN ['PENDING', 'RUNNING']
+          }
+        RETURN r
+        ORDER BY r.created
+        """,
+    )
+    fun findSettledRunning(): List<ScheduledPromptRunNode>
+
 }
