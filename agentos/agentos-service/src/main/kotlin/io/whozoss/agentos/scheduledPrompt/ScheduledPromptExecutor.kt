@@ -163,9 +163,9 @@ class ScheduledPromptExecutor(
      * Claim and execute all currently available [ScheduledPromptUserRun]s.
      *
      * Suspends until ALL UserRuns from ALL batches have finished executing, so the
-     * caller ([SchedulerScanner.tickConsume] via `runBlocking`) is truly blocked for
-     * the full duration. Spring `fixedDelay` on [SchedulerScanner.tickConsume] then
-     * prevents a new consume tick from starting before this one completes.
+     * caller ([SchedulerScanner.tickConsume]) suspends for the full duration.
+     * Spring `fixedDelay` on [SchedulerScanner.tickConsume] prevents a new consume
+     * tick from starting before this one completes.
      *
      * Each batch is claimed via [ScheduledPromptUserRunRepository.claimBatch], which
      * uses SDN `@Version` optimistic locking so concurrent instances cannot double-claim

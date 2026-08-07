@@ -2,7 +2,6 @@ package io.whozoss.agentos.scheduledPrompt
 
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
-import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
@@ -28,13 +27,13 @@ import java.time.ZoneOffset
  * 4. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
  *
  * **[tickConsume]** (Phase B, every `scheduler.consume-interval-ms`):
- * Calls [ScheduledPromptExecutor.consumeAvailable] via `runBlocking`, which suspends
+ * Declared `suspend` — Spring Framework 6.1+ natively supports suspend functions on
+ * `@Scheduled` methods. Calls [ScheduledPromptExecutor.consumeAvailable] which suspends
  * until ALL UserRuns from ALL batches have finished executing. Spring `fixedDelay`
  * guarantees no overlap between consecutive consume ticks.
  *
- * Both ticks are fully blocking — Spring's `@Scheduled(fixedDelay)` ensures no tick
- * overlaps with its own successor. No fire-and-forget coroutines are used at the
- * Scanner level.
+ * Both ticks use Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
+ * own successor. No fire-and-forget coroutines are used at the Scanner level.
  *
  * ### Claim logic
  *
@@ -169,12 +168,17 @@ class SchedulerScanner(
 
     /**
      * Phase B: Consume available UserRuns.
-     * Fully blocking — returns only when all claimed UserRuns have finished executing.
+     * Declared `suspend` — Spring Framework 6.1+ natively dispatches suspend `@Scheduled`
+     * methods on the application's coroutine scheduler.
+     * Returns only when all claimed UserRuns have finished executing.
      * Spring fixedDelay guarantees no overlap between ticks.
+     *
+     * The IO dispatcher is managed by [ScheduledPromptExecutor.consumeAvailable] itself
+     * via [kotlinx.coroutines.withContext].
      */
     @Scheduled(fixedDelayString = "\${scheduler.consume-interval-ms:10000}")
-    fun tickConsume() {
-        runBlocking { executor.consumeAvailable() }
+    suspend fun tickConsume() {
+        executor.consumeAvailable()
     }
 
     private fun claim(scheduledPrompt: ScheduledPrompt) {
