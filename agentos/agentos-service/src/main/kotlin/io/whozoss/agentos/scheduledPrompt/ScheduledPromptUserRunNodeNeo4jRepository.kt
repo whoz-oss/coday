@@ -12,9 +12,20 @@ interface ScheduledPromptUserRunNodeNeo4jRepository : Neo4jRepository<ScheduledP
     /**
      * Traverses the deployment graph and materialises PENDING UserRuns in a single query.
      *
-     * Finds all non-removed Users that are MEMBER or ADMIN of any UserGroup to which
-     * [agentConfigId] is DEPLOYED_TO within [namespaceId], then MERGEs a PENDING
-     * [ScheduledPromptUserRunNode] for each distinct user.
+     * Resolves all non-removed Users that are **deployment targets** of [agentConfigId]
+     * in [namespaceId] via two paths:
+     *
+     * 1. **UserGroup deployment**: `AgentConfig -[:DEPLOYED_TO]-> UserGroup <-[:MEMBER|ADMIN]- User`,
+     *    where the UserGroup `[:BELONGS_TO]` the namespace.
+     * 2. **Namespace deployment**: `AgentConfig -[:DEPLOYED_TO]-> Namespace <-[:MEMBER|ADMIN]- User`.
+     *
+     * Super-admins are intentionally **excluded** unless they are also members of a
+     * deployed UserGroup or namespace. `isAdmin` grants the ability to *use* any agent
+     * (access control), but scheduled prompts target users who are *deployed to* the
+     * agent — being an admin is not the same as being a target audience.
+     *
+     * Both paths are resolved via OPTIONAL MATCH and collected into a single set.
+     * Then MERGEs a PENDING [ScheduledPromptUserRunNode] for each distinct eligible user.
      *
      * Safe to replay on crash — MERGE is idempotent on the UNIQUE `userRunKey` constraint.
      *
@@ -22,12 +33,23 @@ interface ScheduledPromptUserRunNodeNeo4jRepository : Neo4jRepository<ScheduledP
      */
     @Query(
         $$"""
-        MATCH (a:AgentConfig {id: $agentConfigId})-[:DEPLOYED_TO]->(g:UserGroup)
-        MATCH (g)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
-        MATCH (u:User)-[:MEMBER|ADMIN]->(g)
-        WHERE NOT COALESCE(a.removed, false)
-          AND NOT COALESCE(g.removed, false)
-          AND NOT COALESCE(u.removed, false)
+        MATCH (a:AgentConfig {id: $agentConfigId})
+          WHERE NOT COALESCE(a.removed, false) AND a.enabled = true
+        MATCH (ns:Namespace {id: $namespaceId})
+          WHERE NOT COALESCE(ns.removed, false)
+        MATCH (u:User)
+          WHERE NOT COALESCE(u.removed, false)
+            AND (
+                EXISTS {
+                    MATCH (u)-[:MEMBER|ADMIN]->(g:UserGroup)-[:BELONGS_TO]->(ns)
+                    WHERE NOT COALESCE(g.removed, false)
+                    MATCH (a)-[:DEPLOYED_TO]->(g)
+                }
+                OR (
+                    EXISTS { MATCH (a)-[:DEPLOYED_TO]->(ns) }
+                    AND EXISTS { MATCH (u)-[:MEMBER|ADMIN]->(ns) }
+                )
+            )
         WITH DISTINCT u.id AS userId
         MERGE (ur:ScheduledPromptUserRun {userRunKey: $runId + '|' + userId})
         ON CREATE SET

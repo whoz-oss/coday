@@ -99,8 +99,8 @@ class ScheduledPromptExecutor(
     /**
      * Materialise [ScheduledPromptUserRun]s for all target users of [run].
      *
-     * Delegates to a single Cypher INSERT-SELECT that traverses the deployment graph
-     * (AgentConfig -[:DEPLOYED_TO]-> UserGroup <-[:MEMBER|ADMIN]- User) and MERGEs one
+     * Delegates to a single Cypher INSERT-SELECT that resolves all deployment-target
+     * users via two paths (UserGroup deployment, Namespace deployment) and MERGEs one
      * PENDING UserRun per distinct user — entirely inside Neo4j, no JVM heap pressure.
      *
      * Safe to call multiple times for the same Run (idempotent via MERGE).

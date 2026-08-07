@@ -16,9 +16,9 @@ import java.util.UUID
  *
  * ### materialize
  *
- * Delegates to a single Cypher INSERT-SELECT `@Query` that traverses the deployment
- * graph (AgentConfig -[:DEPLOYED_TO]-> UserGroup <-[:MEMBER|ADMIN]- User) and MERGEs one
- * PENDING [ScheduledPromptUserRunNode] per distinct target user in a single transaction.
+ * Delegates to a single Cypher INSERT-SELECT `@Query` that resolves all deployment-target
+ * users via two paths (UserGroup deployment, Namespace deployment) and MERGEs one PENDING
+ * [ScheduledPromptUserRunNode] per distinct target user in a single transaction.
  *
  * ### claimBatch
  *
