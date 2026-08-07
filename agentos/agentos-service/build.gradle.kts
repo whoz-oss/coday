@@ -243,6 +243,10 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Neo4j embedded + Spring context caching across 2500+ tests requires more heap
+    // than Gradle's default 512m. 2g gives comfortable headroom for the embedded engine,
+    // cached Spring contexts, and parallel coroutine execution (Dispatchers.IO).
+    maxHeapSize = "2g"
     // Docker Engine 29.x raised its minimum API version to 1.40.
     // Testcontainers 1.x / docker-java 3.4.x defaults to API v1.32 which is
     // rejected with HTTP 400. Force a supported version until Testcontainers
