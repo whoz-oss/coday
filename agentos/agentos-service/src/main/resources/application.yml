@@ -209,12 +209,13 @@ agentos:
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
 
 scheduler:
-  # Enable/disable the scheduler. Disabled by default to prevent accidental
-  # Case creation in dev. Enable in production via env var: SCHEDULER_ENABLED=true
-  enabled: ${SCHEDULER_ENABLED:false}
-  # Interval between scanner ticks in milliseconds.
+  # Enable/disable the scheduler. Enabled by default for production.
+  # Dev profiles (embedded-neo4j, docker) disable it to prevent accidental Case creation.
+  # Override with env var: SCHEDULER_ENABLED
+  enabled: ${SCHEDULER_ENABLED:true}
+  # Interval between claim ticks in milliseconds.
   # Override with env var: SCHEDULER_TICK_INTERVAL_MS
-  tick-interval-ms: ${SCHEDULER_TICK_INTERVAL_MS:60000}
+  tick-interval-ms: ${SCHEDULER_TICK_INTERVAL_MS:30000}
 
 springdoc:
   writer-with-order-by-keys: true
