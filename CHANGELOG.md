@@ -1,3 +1,13 @@
+## 0.245.0 (2026-08-07)
+
+### 🚀 Features
+
+- #1188 manage users on namespace with roles ([#1192](https://github.com/whoz-oss/coday/pull/1192), [#1188](https://github.com/whoz-oss/coday/issues/1188))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.244.1 (2026-08-06)
 
 ### 🩹 Fixes
