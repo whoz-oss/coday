@@ -13,18 +13,20 @@ interface ScheduledPromptUserRunNodeNeo4jRepository : Neo4jRepository<ScheduledP
      * Traverses the deployment graph and materialises PENDING UserRuns in a single query.
      *
      * Resolves all non-removed Users that are **deployment targets** of [agentConfigId]
-     * in [namespaceId] via two paths:
+     * in [namespaceId] via UserGroup deployment only:
      *
-     * 1. **UserGroup deployment**: `AgentConfig -[:DEPLOYED_TO]-> UserGroup <-[:MEMBER|ADMIN]- User`,
-     *    where the UserGroup `[:BELONGS_TO]` the namespace.
-     * 2. **Namespace deployment**: `AgentConfig -[:DEPLOYED_TO]-> Namespace <-[:MEMBER|ADMIN]- User`.
+     * `AgentConfig -[:DEPLOYED_TO]-> UserGroup <-[:MEMBER|ADMIN]- User`,
+     * where the UserGroup `[:BELONGS_TO]` the namespace.
+     *
+     * Namespace-level deployment is intentionally excluded: being a member of the namespace
+     * does not mean the user is a target audience of this specific agent. Only users
+     * belonging to a UserGroup explicitly deployed to the agent are targeted.
      *
      * Super-admins are intentionally **excluded** unless they are also members of a
-     * deployed UserGroup or namespace. `isAdmin` grants the ability to *use* any agent
-     * (access control), but scheduled prompts target users who are *deployed to* the
-     * agent — being an admin is not the same as being a target audience.
+     * deployed UserGroup. `isAdmin` grants the ability to *use* any agent (access control),
+     * but scheduled prompts target users who are *deployed to* the agent — being an admin
+     * is not the same as being a target audience.
      *
-     * Both paths are resolved via OPTIONAL MATCH and collected into a single set.
      * Then MERGEs a PENDING [ScheduledPromptUserRunNode] for each distinct eligible user.
      *
      * Safe to replay on crash — MERGE is idempotent on the composite UNIQUE `(runId, userId)` constraint.
@@ -39,17 +41,11 @@ interface ScheduledPromptUserRunNodeNeo4jRepository : Neo4jRepository<ScheduledP
           WHERE NOT COALESCE(ns.removed, false)
         MATCH (u:User)
           WHERE NOT COALESCE(u.removed, false)
-            AND (
-                EXISTS {
-                    MATCH (u)-[:MEMBER|ADMIN]->(g:UserGroup)-[:BELONGS_TO]->(ns)
-                    WHERE NOT COALESCE(g.removed, false)
-                    MATCH (a)-[:DEPLOYED_TO]->(g)
-                }
-                OR (
-                    EXISTS { MATCH (a)-[:DEPLOYED_TO]->(ns) }
-                    AND EXISTS { MATCH (u)-[:MEMBER|ADMIN]->(ns) }
-                )
-            )
+            AND EXISTS {
+                MATCH (u)-[:MEMBER|ADMIN]->(g:UserGroup)-[:BELONGS_TO]->(ns)
+                WHERE NOT COALESCE(g.removed, false)
+                MATCH (a)-[:DEPLOYED_TO]->(g)
+            }
         WITH DISTINCT u.id AS userId
         MERGE (ur:ScheduledPromptUserRun {runId: $runId, userId: userId})
         ON CREATE SET

@@ -27,8 +27,10 @@ import java.util.UUID
  * Persistence contract tests for [ScheduledPromptUserRunRepository] Cypher queries.
  *
  * Covers:
- * - [ScheduledPromptUserRunRepository.materialize] — deployment graph traversal,
- *   idempotency, soft-delete filtering, ADMIN relation, multi-group deduplication
+ * - [ScheduledPromptUserRunRepository.materialize] — UserGroup deployment graph traversal only,
+ *   idempotency, soft-delete filtering, ADMIN relation, multi-group deduplication.
+ *   Namespace-level deployment is intentionally excluded — only users in UserGroups
+ *   explicitly deployed to the agent are targeted.
  * - [ScheduledPromptUserRunRepository.claimBatch] — PENDING→RUNNING transition,
  *   limit enforcement, lease-based crash recovery, terminal status exclusion
  * - [ScheduledPromptUserRunRepository.markTerminal] — DONE/FAILED transitions
@@ -248,79 +250,6 @@ abstract class AbstractScheduledPromptUserRunPersistenceSpec : StringSpec() {
             val count = userRunRepo.materialize(runId, agent.id, ns.id)
 
             count shouldBe 0
-        }
-
-        // -------------------------------------------------------------------------
-        // materialize — Namespace deployment path
-        // -------------------------------------------------------------------------
-
-        "materialize creates UserRuns for users when agent is deployed directly to namespace" {
-            val runId = UUID.randomUUID()
-            val ns = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(ns.id))
-            val alice = userRepo.save(user("alice@example.com"))
-            // Deploy agent directly to namespace (no UserGroup)
-            driver.session().use { session ->
-                session.run(
-                    "MATCH (a:AgentConfig {id: \$agentId}) MATCH (ns:Namespace {id: \$nsId}) MERGE (a)-[:DEPLOYED_TO]->(ns)",
-                    mapOf("agentId" to agent.id.toString(), "nsId" to ns.id.toString()),
-                )
-                // User is MEMBER of namespace
-                session.run(
-                    "MATCH (u:User {id: \$userId}) MATCH (ns:Namespace {id: \$nsId}) MERGE (u)-[:MEMBER]->(ns)",
-                    mapOf("userId" to alice.id.toString(), "nsId" to ns.id.toString()),
-                )
-            }
-
-            val count = userRunRepo.materialize(runId, agent.id, ns.id)
-
-            count shouldBe 1
-            val userRuns = userRunRepo.findByRunId(runId)
-            userRuns.size shouldBe 1
-            userRuns.first().userId shouldBe alice.id
-        }
-
-        "materialize via namespace deployment excludes users not member/admin of namespace" {
-            val runId = UUID.randomUUID()
-            val ns = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(ns.id))
-            userRepo.save(user("alice@example.com"))
-            // Deploy agent to namespace, but alice has NO membership edge to namespace
-            driver.session().use { session ->
-                session.run(
-                    "MATCH (a:AgentConfig {id: \$agentId}) MATCH (ns:Namespace {id: \$nsId}) MERGE (a)-[:DEPLOYED_TO]->(ns)",
-                    mapOf("agentId" to agent.id.toString(), "nsId" to ns.id.toString()),
-                )
-            }
-
-            val count = userRunRepo.materialize(runId, agent.id, ns.id)
-
-            count shouldBe 0
-        }
-
-        "materialize deduplicates users found via both UserGroup and Namespace deployment" {
-            val runId = UUID.randomUUID()
-            val ns = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(ns.id))
-            val group = userGroupRepo.save(userGroup(ns.id))
-            val alice = userRepo.save(user("alice@example.com"))
-            userGroupRepo.addAgents(group.id, listOf(agent.id))
-            userGroupRepo.addUsers(group.id, listOf("alice@example.com"))
-            // Also deploy agent directly to namespace, and alice is MEMBER of namespace
-            driver.session().use { session ->
-                session.run(
-                    "MATCH (a:AgentConfig {id: \$agentId}) MATCH (ns:Namespace {id: \$nsId}) MERGE (a)-[:DEPLOYED_TO]->(ns)",
-                    mapOf("agentId" to agent.id.toString(), "nsId" to ns.id.toString()),
-                )
-                session.run(
-                    "MATCH (u:User {id: \$userId}) MATCH (ns:Namespace {id: \$nsId}) MERGE (u)-[:MEMBER]->(ns)",
-                    mapOf("userId" to alice.id.toString(), "nsId" to ns.id.toString()),
-                )
-            }
-
-            val count = userRunRepo.materialize(runId, agent.id, ns.id)
-
-            count shouldBe 1
         }
 
         // -------------------------------------------------------------------------

@@ -39,11 +39,13 @@ interface ScheduledPromptUserRunRepository {
      * Traverses the deployment graph and materialises ALL PENDING UserRuns in one query.
      *
      * Resolves all non-removed Users that are deployment targets of [agentConfigId] in
-     * [namespaceId] via two paths:
-     * 1. UserGroup deployment (`AgentConfig -[:DEPLOYED_TO]-> UserGroup <-[:MEMBER|ADMIN]- User`)
-     * 2. Namespace deployment (`AgentConfig -[:DEPLOYED_TO]-> Namespace <-[:MEMBER|ADMIN]- User`)
+     * [namespaceId] via UserGroup deployment only:
+     * `AgentConfig -[:DEPLOYED_TO]-> UserGroup <-[:MEMBER|ADMIN]- User`
      *
-     * Super-admins are excluded unless they are also members of a deployed group/namespace.
+     * Namespace-level membership is intentionally excluded — only users belonging to a
+     * UserGroup explicitly deployed to the agent are targeted.
+     *
+     * Super-admins are excluded unless they are also members of a deployed UserGroup.
      *
      * Then MERGEs a PENDING [ScheduledPromptUserRun] for each distinct user.
      *
