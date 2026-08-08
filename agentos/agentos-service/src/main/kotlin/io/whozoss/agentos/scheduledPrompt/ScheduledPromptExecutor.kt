@@ -62,11 +62,10 @@ import java.util.UUID
  *    status (ERROR/KILLED) marks the UserRun as FAILED.
  *
  * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
- * each batch contains at most that many UserRuns, and all are launched as structured
- * coroutines within a single [coroutineScope]. A short stagger delay
- * ([SchedulerProperties.launchStaggerMs]) between each `launch` spreads the initial
- * burst to reduce memory pressure. Further burst control is delegated to Spring AI's `RetryTemplate`
- * on each `ChatModel` (exponential backoff on 429 rate-limit responses).
+ * UserRuns are grouped by their parent Run and each group is processed concurrently
+ * under a [supervisorScope] so a failure in one group does not affect the others.
+ * Further burst control is delegated to Spring AI's `RetryTemplate` on each `ChatModel`
+ * (exponential backoff on 429 rate-limit responses).
  *
  * ### Completion check
  *
@@ -181,10 +180,9 @@ class ScheduledPromptExecutor(
      * (Neo4j, CaseService, PermissionService) that would otherwise starve the coroutine dispatcher.
      *
      * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
-     * each batch contains at most that many UserRuns, all launched as structured coroutines
-     * within a single [coroutineScope]. A short [SchedulerProperties.launchStaggerMs] delay
-     * between each `launch` spreads the initial burst to reduce memory pressure (OOM observed
-     * on CI without stagger). Further burst control is delegated to Spring AI's `RetryTemplate`
+     * UserRuns are grouped by their parent Run and each group is processed concurrently
+     * under a [supervisorScope] so a failure in one group does not cancel the others.
+     * Further burst control is delegated to Spring AI's `RetryTemplate`
      * (exponential backoff on 429 responses).
      *
      * ### Delivery guarantee: at-least-once
@@ -221,10 +219,10 @@ class ScheduledPromptExecutor(
      * completion of the parent Run.
      *
      * Each UserRun is launched under a [supervisorScope] so an individual failure does
-     * not cancel its siblings. Exceptions from [processUserRun] are caught via
-     * [runCatching]: [CancellationException] is re-thrown (cooperative cancellation),
-     * all other exceptions mark the UserRun as FAILED. Once all UserRuns have settled,
-     * [checkCompletion] transitions the parent Run to DONE or FAILED.
+     * not cancel its siblings. Exceptions are caught at the launch site: [CancellationException]
+     * is re-thrown to preserve cooperative cancellation, all other exceptions mark the
+     * UserRun as FAILED. Once all UserRuns have settled, [checkCompletion] transitions
+     * the parent Run to DONE or FAILED.
      */
     private suspend fun processUserRunGroup(runId: UUID, userRuns: List<ScheduledPromptUserRun>) {
         supervisorScope {
