@@ -134,4 +134,18 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
             """,
     )
     fun advanceNextRunAt(id: String, currentSlot: Instant, nextSlot: Instant): Boolean
+
+    /**
+     * Targeted update of the enabled flag — does NOT touch any other field.
+     * Safe to call concurrently: only touches `enabled`, leaves `nextRunAt` and all
+     * other properties untouched, so it cannot overwrite a concurrent CAS advance.
+     */
+    @Query(
+        $$"""
+            MATCH (sp:ScheduledPrompt)
+            WHERE sp.id = $id AND NOT COALESCE(sp.removed, false)
+            SET sp.enabled = $enabled
+            """,
+    )
+    fun updateEnabled(id: String, enabled: Boolean)
 }

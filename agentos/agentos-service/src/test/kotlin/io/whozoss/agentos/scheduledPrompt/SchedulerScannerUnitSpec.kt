@@ -736,6 +736,178 @@ class SchedulerScannerUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // Tick isolation — one failing prompt must not block others
+        // -------------------------------------------------------------------------
+
+        "tickClaim: exception in claim() for one prompt does not block subsequent prompts" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp1 = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            val sp2 = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+
+            // Real repo for sp2's run tracking; mock that throws on insert for sp1 only.
+            val realRunRepo = makeRunRepo()
+            val throwingRunRepo = mockk<ScheduledPromptRunRepository>(relaxed = true).also {
+                every { it.insert(match { run -> run.scheduledPromptId == sp1.id }) } throws
+                    RuntimeException("Simulated Neo4j failure for sp1")
+                every { it.insert(match { run -> run.scheduledPromptId == sp2.id }) } answers {
+                    realRunRepo.insert(firstArg())
+                }
+                every { it.hasActive(any()) } returns false
+                every { it.findOrphanedClaimed(any()) } returns emptyList()
+                every { it.findSettledRunning() } returns emptyList()
+                every { it.findById(any()) } answers { realRunRepo.findById(firstArg()) }
+                every { it.updateStatus(any(), any(), any(), any()) } answers {
+                    realRunRepo.updateStatus(firstArg(), secondArg(), thirdArg(), arg(3))
+                }
+                every { it.countCompletedRuns(any()) } returns 0
+            }
+
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            val executor = ScheduledPromptExecutor(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = throwingRunRepo,
+                userRunRepository = userRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+                properties = properties,
+                clock = clock,
+            )
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = throwingRunRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = properties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = executor,
+            )
+
+            // Must not throw — sp1 fails, sp2 must still be processed
+            sc.tickClaim()
+
+            // sp2 produced a run, sp1 did not (exception on insert)
+            realRunRepo.all().any { it.scheduledPromptId == sp2.id } shouldBe true
+            realRunRepo.all().none { it.scheduledPromptId == sp1.id } shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // updateEnabled does not overwrite nextRunAt
+        // -------------------------------------------------------------------------
+
+        "tickClaim with deleted AgentConfig: nextRunAt is preserved after disable" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+
+            val agentSvc = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns null
+            }
+            scanner(scheduledPromptRepo, runRepo, agentSvc).tickClaim()
+
+            val updated = scheduledPromptRepo.findById(sp.id)!!
+            updated.enabled shouldBe false
+            // nextRunAt must be untouched — updateEnabled only writes enabled
+            updated.nextRunAt shouldBe slot
+        }
+
+        "tickClaim with ON_DATE end condition: nextRunAt is preserved after post-advance disable" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            // endDate = 2026-01-05 → next slot Jan 8 > endDate → disables after advance
+            val sp = scheduledPromptRepo.insertScheduledPrompt(
+                nextRunAt = slot,
+                endType = SchedulerEndType.ON_DATE,
+                endDate = LocalDate.of(2026, 1, 5),
+            )
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+
+            val updated = scheduledPromptRepo.findById(sp.id)!!
+            updated.enabled shouldBe false
+            // nextRunAt must have been advanced to Jan 8, not reverted to the original slot
+            updated.nextRunAt shouldBe Instant.parse("2026-01-08T08:00:00Z")
+        }
+
+        // -------------------------------------------------------------------------
+        // Startup invariant: leaseMinutes > launchTimeoutSeconds
+        // -------------------------------------------------------------------------
+
+        "SchedulerScanner startup: throws when leaseMinutes * 60 <= launchTimeoutSeconds" {
+            val badProperties = SchedulerProperties(
+                leaseMinutes = 1L,          // 60 seconds
+                launchTimeoutSeconds = 60L, // equal → not strictly greater
+            )
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            val executor = ScheduledPromptExecutor(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+                properties = badProperties,
+                clock = clock,
+            )
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = badProperties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = executor,
+            )
+            io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
+                sc.logStartup()
+            }
+        }
+
+        "SchedulerScanner startup: does not throw when leaseMinutes * 60 > launchTimeoutSeconds" {
+            val goodProperties = SchedulerProperties(
+                leaseMinutes = 2L,          // 120 seconds
+                launchTimeoutSeconds = 60L, // strictly less → valid
+            )
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            val executor = ScheduledPromptExecutor(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+                properties = goodProperties,
+                clock = clock,
+            )
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = goodProperties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = executor,
+            )
+            // Must not throw
+            sc.logStartup()
+        }
+
+        // -------------------------------------------------------------------------
         // End condition — NEVER
         // -------------------------------------------------------------------------
 

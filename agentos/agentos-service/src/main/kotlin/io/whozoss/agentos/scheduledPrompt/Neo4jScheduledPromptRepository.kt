@@ -97,6 +97,9 @@ open class Neo4jScheduledPromptRepository(
     override fun advanceNextRunAt(id: UUID, currentSlot: Instant, nextSlot: Instant): Boolean =
         neo4jRepository.advanceNextRunAt(id.toString(), currentSlot, nextSlot)
 
+    override fun updateEnabled(id: UUID, enabled: Boolean) =
+        neo4jRepository.updateEnabled(id.toString(), enabled)
+
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByNamespaceId(parentId.toString())
