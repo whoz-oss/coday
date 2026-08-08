@@ -13,11 +13,11 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.user.UserService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
@@ -170,8 +170,10 @@ class ScheduledPromptExecutor(
      * Each batch is claimed via [ScheduledPromptUserRunRepository.claimBatch], which
      * uses SDN `@Version` optimistic locking so concurrent instances cannot double-claim
      * the same UserRun. Within a batch, each UserRun is launched as a structured
-     * coroutine inside [coroutineScope]; the scope suspends until all launched children
-     * finish before the next batch is claimed.
+     * coroutine inside [supervisorScope]; the scope suspends until all launched children
+     * finish before the next batch is claimed. Using [supervisorScope] instead of
+     * [coroutineScope] ensures that a failure in one UserRun coroutine does not cancel
+     * the sibling coroutines processing other UserRuns in the same batch.
      *
      * Runs on [Dispatchers.IO] so the coroutines launched inside [coroutineScope] execute on
      * the IO thread pool (default 64 threads) rather than being serialised on the caller's
@@ -197,150 +199,150 @@ class ScheduledPromptExecutor(
     suspend fun consumeAvailable() = withContext(Dispatchers.IO) {
         val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
 
+        // Group UserRuns by their parent Run so each Run's UserRuns and completion
+        // check are handled together in one coroutine — no need for a separate sweep.
         var batch: List<ScheduledPromptUserRun>
         do {
             batch = userRunRepository.claimBatch(leaseDuration, properties.batchSize)
-            val runIds = batch.map { it.runId }.toSet()
-
-            coroutineScope {
-                for (userRun in batch) {
-                    logger.info {
-                        "[Executor] Phase B: claimed UserRun=${userRun.id} runId=${userRun.runId} userId=${userRun.userId}"
-                    }
-
-                    launch {
-                        processUserRun(userRun)
-                    }
-
-                    // Stagger launches to spread the initial burst and reduce memory pressure.
-                    // Without this delay, simultaneous Case+Runtime creation for a full batch
-                    // causes OOM on CI. Once launched, coroutines run concurrently.
-                    delay(properties.launchStaggerMs)
+            supervisorScope {
+                batch.groupBy { it.runId }.forEach { (runId, userRuns) ->
+                    launch { processUserRunGroup(runId, userRuns) }
                 }
             }
-
-            // All UserRuns in this batch have finished — check completion once per Run.
-            // The sweep recoverOrphanedRunningRuns covers crashes between markTerminal
-            // and this point.
-            runIds.forEach { checkCompletion(it) }
         } while (batch.isNotEmpty())
+    }
+
+    // -------------------------------------------------------------------------
+    // Per-Run processing
+    // -------------------------------------------------------------------------
+
+    /**
+     * Process all [userRuns] belonging to the same [runId] concurrently, then check
+     * completion of the parent Run.
+     *
+     * Each UserRun is launched under a [supervisorScope] so an individual failure does
+     * not cancel its siblings. Exceptions from [processUserRun] are caught via
+     * [runCatching]: [CancellationException] is re-thrown (cooperative cancellation),
+     * all other exceptions mark the UserRun as FAILED. Once all UserRuns have settled,
+     * [checkCompletion] transitions the parent Run to DONE or FAILED.
+     */
+    private suspend fun processUserRunGroup(runId: UUID, userRuns: List<ScheduledPromptUserRun>) {
+        supervisorScope {
+            userRuns.forEach { userRun ->
+                logger.info {
+                    "[Executor] Phase B: claimed UserRun=${userRun.id} runId=${userRun.runId} userId=${userRun.userId}"
+                }
+                launch {
+                    try {
+                        val context = resolveContext(userRun)
+                        val caseId = createAndInjectCase(userRun, context)
+                        awaitLaunch(userRun.id, caseId)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.error(e) { "[Executor] UserRun=${userRun.id} failed for user=${userRun.userId}" }
+                        markFailed(userRun.id, Instant.now(clock), e.message ?: "Unknown error")
+                    }
+                }
+            }
+        }
+        // All UserRuns for this Run have finished — check completion immediately.
+        // The sweep recoverOrphanedRunningRuns covers crashes between markTerminal and this point.
+        checkCompletion(runId)
     }
 
     // -------------------------------------------------------------------------
     // Single UserRun processing
     // -------------------------------------------------------------------------
 
-    private suspend fun processUserRun(userRun: ScheduledPromptUserRun) {
-        val now = Instant.now(clock)
-        val runId = userRun.runId
-        val userId = userRun.userId
-
-        try {
-            // --- Resolve context ---
-            // Each check is required: the resolved value is consumed below to create the Case,
-            // build the Actor, or compose the message. IllegalStateException on missing data
-            // is caught by the outer try/catch and marks the UserRun FAILED with a diagnostic.
-
-            val run = checkNotNull(runRepository.findById(runId)) {
-                "Parent Run $runId not found"
-            }
-
-            val scheduledPrompt = scheduledPromptRepository.findByIds(listOf(run.scheduledPromptId))
-                .firstOrNull()
-                ?: error("ScheduledPrompt ${run.scheduledPromptId} not found")
-
-            val namespaceId = checkNotNull(scheduledPrompt.namespaceId) {
-                "Platform-scope ScheduledPrompt cannot be executed per-user"
-            }
-
-            val user = checkNotNull(userService.findById(userId)) {
-                "User $userId not found"
-            }
-
-            // Resolve the prompt content directly — the Executor is the consumer of the prompt
-            // and has the full context (userId, namespaceId, scheduling metadata) needed to
-            // resolve it. Injecting a /slash-command would fail because addMessage's
-            // PromptCommandParser requires text to start with '/' but the @mention prefix
-            // prevents that.
-            val prompt = checkNotNull(promptService.findById(scheduledPrompt.promptTemplateId)) {
-                "PromptTemplate ${scheduledPrompt.promptTemplateId} not found"
-            }
-
-            // Mono-line content (enforced by ScheduledPromptService validation).
-            // Future: resolve {{placeholders}} here with execution context (user name, date, etc.)
-            val promptContent = prompt.content.firstOrNull()?.takeIf { it.isNotBlank() }
-                ?: error("PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content")
-
-            // Resolve the agent name — prepended as @mention so selectAgent picks it up
-            // via the normal @mention resolution path (no special-casing in the runtime).
-            val agentName = checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
-                "AgentConfig ${scheduledPrompt.agentConfigId} not found"
-            }
-
+    /**
+     * Resolve all data required to execute a [ScheduledPromptUserRun].
+     * Throws [IllegalStateException] on any missing entity — propagates to the
+     * [runCatchingNonCancelling] in [processUserRunGroup] which marks the UserRun FAILED.
+     */
+    private fun resolveContext(userRun: ScheduledPromptUserRun): UserRunContext {
+        val run = checkNotNull(runRepository.findById(userRun.runId)) {
+            "Parent Run ${userRun.runId} not found"
+        }
+        val scheduledPrompt = scheduledPromptRepository.findByIds(listOf(run.scheduledPromptId))
+            .firstOrNull()
+            ?: error("ScheduledPrompt ${run.scheduledPromptId} not found")
+        val namespaceId = checkNotNull(scheduledPrompt.namespaceId) {
+            "Platform-scope ScheduledPrompt cannot be executed per-user"
+        }
+        val user = checkNotNull(userService.findById(userRun.userId)) {
+            "User ${userRun.userId} not found"
+        }
+        val prompt = checkNotNull(promptService.findById(scheduledPrompt.promptTemplateId)) {
+            "PromptTemplate ${scheduledPrompt.promptTemplateId} not found"
+        }
+        // Mono-line content (enforced by ScheduledPromptService validation).
+        // Future: resolve {{placeholders}} here with execution context (user name, date, etc.)
+        val promptContent = prompt.content.firstOrNull()?.takeIf { it.isNotBlank() }
+            ?: error("PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content")
+        // Resolve the agent name — prepended as @mention so selectAgent picks it up
+        // via the normal @mention resolution path (no special-casing in the runtime).
+        val agentName = checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
+            "AgentConfig ${scheduledPrompt.agentConfigId} not found"
+        }
+        return UserRunContext(
+            namespaceId = namespaceId,
+            caseTitle = scheduledPrompt.name,
+            actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
             // Inject resolved content with @mention — selectAgent resolves the agent,
             // PromptCommandParser sees no /command and passes text through unchanged.
-            val message = "@$agentName $promptContent"
+            message = "@$agentName $promptContent",
+        )
+    }
 
-            // --- Execute ---
+    /**
+     * Create a [Case], grant ADMIN to the target user, and inject the prompt message.
+     * Returns the created [Case] id.
+     *
+     * No idempotence key links the Case to the UserRun — if the instance crashes after
+     * this point but before markTerminal(), the lease expires and another instance will
+     * create a second Case for the same user (at-least-once). Exactly-once would require
+     * a UNIQUE constraint on Case keyed by (runId, userId).
+     */
+    private fun createAndInjectCase(userRun: ScheduledPromptUserRun, context: UserRunContext): UUID {
+        val case = caseService.create(Case(namespaceId = context.namespaceId, title = context.caseTitle))
+        permissionService.grantPermission(
+            userRun.userId.toString(),
+            EntityType.CASE,
+            case.id.toString(),
+            PermissionRelation.ADMIN,
+        )
+        caseService.addMessage(
+            caseId = case.id,
+            actor = context.actor,
+            content = listOf(MessageContent.Text(context.message)),
+        )
+        logger.info {
+            "[Executor] UserRun=${userRun.id} — Case ${case.id} created and message injected for user=${userRun.userId}"
+        }
+        return case.id
+    }
 
-            // Step 1: Create the Case.
-            // No idempotence key links this Case to the UserRun — if the instance crashes
-            // after this point but before markTerminal(), the lease expires and another
-            // instance will create a second Case for the same user (at-least-once).
-            // Exactly-once would require a UNIQUE constraint on Case keyed by (runId, userId).
-            val case = caseService.create(
-                Case(
-                    namespaceId = namespaceId,
-                    title = scheduledPrompt.name,
-                ),
-            )
-            val caseId = case.id
-
-            // Step 2: Grant ADMIN to the target user.
-            permissionService.grantPermission(
-                userId.toString(),
-                EntityType.CASE,
-                caseId.toString(),
-                PermissionRelation.ADMIN,
-            )
-
-            // Step 3: Build Actor.
-            val actor = Actor(
-                id = userId.toString(),
-                displayName = user.displayName(),
-                role = ActorRole.USER,
-            )
-
-            // Step 4: Inject the prompt message.
-            // addMessage internally launches runtime.run() in CaseServiceImpl.scope.
-            caseService.addMessage(
-                caseId = caseId,
-                actor = actor,
-                content = listOf(MessageContent.Text(message)),
-            )
-
-            logger.info {
-                "[Executor] UserRun=${userRun.id} — Case $caseId created and message injected for user=$userId"
-            }
-
-            // Step 5: Await launch — detect immediate failures.
-            // The runtime is guaranteed to exist in activeRuntimes right after create().
-            // If the Case is still RUNNING after the timeout, it's healthy — close as DONE.
-            // Only an immediate terminal status (ERROR/KILLED) means the launch failed.
-            val runtime = caseService.findActiveRuntime(caseId)
-            if (runtime == null) {
-                // Runtime already evicted (terminal status reached before we got here)
-                closeUserRun(userRun.id, caseService.findById(caseId)?.status, caseId)
-            } else {
-                monitorLaunch(userRun.id, caseId, runtime)
-            }
-        } catch (e: Exception) {
-            logger.error(e) {
-                "[Executor] UserRun=${userRun.id} failed for user=$userId"
-            }
-            markFailed(userRun.id, now, e.message ?: "Unknown error")
+    /**
+     * Await the Case launch and close the UserRun based on the observed [CaseStatus].
+     * If no active runtime is found, the Case already reached a terminal status.
+     */
+    private suspend fun awaitLaunch(userRunId: UUID, caseId: UUID) {
+        val runtime = caseService.findActiveRuntime(caseId)
+        if (runtime == null) {
+            closeUserRun(userRunId, caseService.findById(caseId)?.status, caseId)
+        } else {
+            monitorLaunch(userRunId, caseId, runtime)
         }
     }
+
+    /** Resolved execution context for a single [ScheduledPromptUserRun]. */
+    private data class UserRunContext(
+        val namespaceId: UUID,
+        val caseTitle: String,
+        val actor: Actor,
+        val message: String,
+    )
 
     // -------------------------------------------------------------------------
     // Case completion
@@ -374,17 +376,19 @@ class ScheduledPromptExecutor(
             runtime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
         }
 
-        if (finalStatus != null && finalStatus.isTerminal()) {
-            // Immediate terminal status (ERROR/KILLED) — execution failed.
-            closeUserRun(userRunId, finalStatus, caseId)
-        } else if (finalStatus == CaseStatus.IDLE) {
-            // Agent finished its turn before the timeout — clean completion.
-            closeUserRun(userRunId, CaseStatus.IDLE, caseId)
-        } else {
-            // Timeout — Case is still RUNNING; monitoring released, Case continues independently.
-            userRunRepository.markTerminal(userRunId, UserRunStatus.TIMEOUT, Instant.now(clock))
-            logger.info {
-                "[Executor] UserRun=$userRunId timed out (caseId=$caseId still running) — monitoring released"
+        when {
+            finalStatus != null && finalStatus.isTerminal() ->
+                // Immediate terminal status (ERROR/KILLED) — execution failed.
+                closeUserRun(userRunId, finalStatus, caseId)
+            finalStatus == CaseStatus.IDLE ->
+                // Agent finished its turn before the timeout — clean completion.
+                closeUserRun(userRunId, CaseStatus.IDLE, caseId)
+            else -> {
+                // Timeout — Case is still RUNNING; monitoring released, Case continues independently.
+                userRunRepository.markTerminal(userRunId, UserRunStatus.TIMEOUT, Instant.now(clock))
+                logger.info {
+                    "[Executor] UserRun=$userRunId timed out (caseId=$caseId still running) — monitoring released"
+                }
             }
         }
     }
