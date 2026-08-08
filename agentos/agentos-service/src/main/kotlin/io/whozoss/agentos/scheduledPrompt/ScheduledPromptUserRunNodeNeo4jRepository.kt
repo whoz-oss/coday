@@ -39,13 +39,10 @@ interface ScheduledPromptUserRunNodeNeo4jRepository : Neo4jRepository<ScheduledP
           WHERE NOT COALESCE(a.removed, false) AND a.enabled = true
         MATCH (ns:Namespace {id: $namespaceId})
           WHERE NOT COALESCE(ns.removed, false)
-        MATCH (u:User)
+        MATCH (a)-[:DEPLOYED_TO]->(g:UserGroup)-[:BELONGS_TO]->(ns)
+          WHERE NOT COALESCE(g.removed, false)
+        MATCH (u:User)-[:MEMBER|ADMIN]->(g)
           WHERE NOT COALESCE(u.removed, false)
-            AND EXISTS {
-                MATCH (u)-[:MEMBER|ADMIN]->(g:UserGroup)-[:BELONGS_TO]->(ns)
-                WHERE NOT COALESCE(g.removed, false)
-                MATCH (a)-[:DEPLOYED_TO]->(g)
-            }
         WITH DISTINCT u.id AS userId
         MERGE (ur:ScheduledPromptUserRun {runId: $runId, userId: userId})
         ON CREATE SET
