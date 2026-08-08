@@ -63,9 +63,13 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
     /**
      * Find RUNNING Runs whose UserRuns are all terminal (none in PENDING or RUNNING).
      *
-     * A Run qualifies when it is in RUNNING status, not removed, and has no UserRun
-     * in PENDING or RUNNING status. Runs with zero UserRuns never reach RUNNING status
-     * (they are transitioned directly to DONE in [ScheduledPromptExecutor.materialize]).
+     * Terminal UserRun statuses: DONE, TIMEOUT, FAILED. TIMEOUT is terminal — monitoring
+     * was released, the Case continues independently, and the UserRun will not transition
+     * further. A Run settled with only TIMEOUT/DONE UserRuns closes as DONE; one with at
+     * least one FAILED closes as FAILED.
+     *
+     * Runs with zero UserRuns never reach RUNNING status (they are transitioned directly
+     * to DONE in [ScheduledPromptExecutor.materialize]).
      */
     @Query(
         """

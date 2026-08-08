@@ -63,9 +63,11 @@ interface ScheduledPromptRunRepository {
     fun findOrphanedClaimed(olderThan: Instant): List<ScheduledPromptRun>
 
     /**
-     * Find RUNNING Runs whose UserRuns are ALL in a terminal status (DONE or FAILED).
+     * Find RUNNING Runs whose UserRuns are ALL in a terminal status (DONE, TIMEOUT, or FAILED).
      *
      * A Run is "settled" when none of its UserRuns are in PENDING or RUNNING status.
+     * TIMEOUT is terminal: monitoring was released, the Case continues independently,
+     * and the UserRun will not transition further.
      * Runs with zero UserRuns (platform-scope or no target users) are directly transitioned
      * to DONE in [ScheduledPromptExecutor.materialize] and never reach RUNNING status.
      *
