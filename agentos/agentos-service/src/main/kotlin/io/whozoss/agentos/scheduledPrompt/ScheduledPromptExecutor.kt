@@ -393,6 +393,11 @@ class ScheduledPromptExecutor(
      * - Already IDLE or terminal → the turn finished before we arrived; act on it directly.
      * - PENDING or RUNNING → neither satisfies the predicate, so `.first { … }` suspends and
      *   waits for the next emission, bounded by the timeout.
+     *
+     * Contract: [CaseRuntime.statusFlow] is initialised to [CaseStatus.PENDING] at construction
+     * and transitions PENDING → RUNNING at the top of [CaseRuntime.run]. It never starts at IDLE.
+     * This invariant is asserted by `CaseRuntimeSpec: "statusFlow reflects RUNNING during run()
+     * and IDLE after normal completion"`. If that test is changed, revisit this guard.
      */
     private suspend fun monitorLaunch(
         userRunId: UUID,
@@ -408,8 +413,10 @@ class ScheduledPromptExecutor(
                 currentStatus
             }
             else -> {
-                // Status is RUNNING: drop the current value and wait for the next transition.
-                // withTimeoutOrNull returns null on timeout (Case still in flight).
+                // Status is PENDING or RUNNING — neither satisfies the predicate.
+                // .first {} evaluates the current value first (StateFlow semantics), finds it
+                // unsatisfying, then suspends until the next emission that does satisfy it.
+                // withTimeoutOrNull returns null if no satisfying emission arrives in time.
                 withTimeoutOrNull(timeoutMs) {
                     runtime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
                 }
