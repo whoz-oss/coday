@@ -200,35 +200,16 @@ abstract class AbstractScheduledPromptUserRunPersistenceSpec : StringSpec() {
             count shouldBe 0
         }
 
-        "materialize creates UserRuns for users in multiple groups deployed to the same agent" {
+        "materialize deduplicates users belonging to multiple deployed groups" {
             val runId = UUID.randomUUID()
             val ns = namespaceRepo.save(namespace())
             val agent = agentConfigRepo.save(agentConfig(ns.id))
             val group1 = userGroupRepo.save(userGroup(ns.id, "group-1"))
             val group2 = userGroupRepo.save(userGroup(ns.id, "group-2"))
-            userRepo.save(user("alice@example.com"))
-            userRepo.save(user("bob@example.com"))
             userGroupRepo.addAgents(group1.id, listOf(agent.id))
             userGroupRepo.addAgents(group2.id, listOf(agent.id))
-            userGroupRepo.addUsers(group1.id, listOf("alice@example.com"))
-            userGroupRepo.addUsers(group2.id, listOf("bob@example.com"))
-
-            val count = userRunRepo.materialize(runId, agent.id, ns.id)
-
-            count shouldBe 2
-            userRunRepo.findByRunId(runId).size shouldBe 2
-        }
-
-        "materialize deduplicates users in multiple groups deployed to the same agent" {
-            val runId = UUID.randomUUID()
-            val ns = namespaceRepo.save(namespace())
-            val agent = agentConfigRepo.save(agentConfig(ns.id))
-            val group1 = userGroupRepo.save(userGroup(ns.id, "group-1"))
-            val group2 = userGroupRepo.save(userGroup(ns.id, "group-2"))
+            // alice is in both deployed groups — must produce only one UserRun
             userRepo.save(user("alice@example.com"))
-            userGroupRepo.addAgents(group1.id, listOf(agent.id))
-            userGroupRepo.addAgents(group2.id, listOf(agent.id))
-            // alice is in BOTH groups — should produce only one UserRun
             userGroupRepo.addUsers(group1.id, listOf("alice@example.com"))
             userGroupRepo.addUsers(group2.id, listOf("alice@example.com"))
 
@@ -238,18 +219,47 @@ abstract class AbstractScheduledPromptUserRunPersistenceSpec : StringSpec() {
             userRunRepo.findByRunId(runId).size shouldBe 1
         }
 
-        "materialize does not create UserRuns for users in groups not deployed to the agent" {
+        "materialize only targets users in deployed groups, not all users of the same namespace" {
             val runId = UUID.randomUUID()
             val ns = namespaceRepo.save(namespace())
             val agent = agentConfigRepo.save(agentConfig(ns.id))
-            val undeployedGroup = userGroupRepo.save(userGroup(ns.id, "undeployed-group"))
+
+            // Group deployed to the agent — alice should be targeted
+            val deployedGroup = userGroupRepo.save(userGroup(ns.id, "deployed-group"))
+            userGroupRepo.addAgents(deployedGroup.id, listOf(agent.id))
             userRepo.save(user("alice@example.com"))
-            // alice is in a group, but the group has no DEPLOYED_TO edge to agent
-            userGroupRepo.addUsers(undeployedGroup.id, listOf("alice@example.com"))
+            userGroupRepo.addUsers(deployedGroup.id, listOf("alice@example.com"))
+
+            // Group in the same namespace but NOT deployed to the agent — bob must be excluded
+            val otherGroup = userGroupRepo.save(userGroup(ns.id, "other-group"))
+            userRepo.save(user("bob@example.com"))
+            userGroupRepo.addUsers(otherGroup.id, listOf("bob@example.com"))
+
+            val count = userRunRepo.materialize(runId, agent.id, ns.id)
+
+            count shouldBe 1
+            val userRuns = userRunRepo.findByRunId(runId)
+            userRuns.size shouldBe 1
+            userRuns.first().userId shouldBe userRepo.findByExternalId("alice@example.com")!!.id
+        }
+
+        "materialize does not create UserRuns for users who are namespace members but not in any deployed group" {
+            val runId = UUID.randomUUID()
+            val ns = namespaceRepo.save(namespace())
+            val agent = agentConfigRepo.save(agentConfig(ns.id))
+            val bob = userRepo.save(user("bob@example.com"))
+            // bob is a direct member of the namespace, but not in any UserGroup deployed to the agent
+            driver.session().use { session ->
+                session.run(
+                    "MATCH (u:User {id: \$userId}) MATCH (ns:Namespace {id: \$nsId}) MERGE (u)-[:MEMBER]->(ns)",
+                    mapOf("userId" to bob.id.toString(), "nsId" to ns.id.toString()),
+                )
+            }
 
             val count = userRunRepo.materialize(runId, agent.id, ns.id)
 
             count shouldBe 0
+            userRunRepo.findByRunId(runId).shouldBeEmpty()
         }
 
         // -------------------------------------------------------------------------
