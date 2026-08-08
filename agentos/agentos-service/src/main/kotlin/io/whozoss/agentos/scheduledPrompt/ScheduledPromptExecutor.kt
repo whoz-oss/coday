@@ -55,17 +55,18 @@ import java.util.UUID
  *    [CaseService.addMessage]. The Executor resolves content itself rather than using
  *    a `/slash-command` because PromptCommandParser requires the text to start with `/`,
  *    which is incompatible with the leading `@mention`.
- * 5. Await the Case launch: collect the runtime's [CaseRuntime.statusFlow] for up to
- *    [SchedulerProperties.launchTimeoutSeconds] seconds to detect immediate failures.
- *    If the Case reaches IDLE or is still RUNNING after the timeout, the UserRun is
- *    closed as DONE (the Case continues independently). Only an immediate terminal
- *    status (ERROR/KILLED) marks the UserRun as FAILED.
+ * 5. Await the Case launch: inspect the runtime's [CaseRuntime.statusFlow] current value,
+ *    then observe future transitions for up to [SchedulerProperties.launchTimeoutSeconds]
+ *    seconds to detect immediate failures. If the Case is IDLE (turn finished) it is closed
+ *    as DONE. If still RUNNING after the timeout, monitoring is released (Case continues
+ *    independently) and the UserRun is closed as TIMEOUT. An immediate terminal status
+ *    (ERROR/KILLED) marks the UserRun as FAILED.
  *
- * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
- * UserRuns are grouped by their parent Run and each group is processed concurrently
- * under a [supervisorScope] so a failure in one group does not affect the others.
- * Further burst control is delegated to Spring AI's `RetryTemplate` on each `ChatModel`
- * (exponential backoff on 429 rate-limit responses).
+ * Concurrency is bounded by [SchedulerProperties.batchSize]: at most that many UserRuns
+ * are claimed per batch. Within a batch, UserRuns are grouped by their parent Run and each
+ * group is processed concurrently under a [supervisorScope] so a failure in one group does
+ * not cancel the others. Further burst control is delegated to Spring AI's `RetryTemplate`
+ * on each `ChatModel` (exponential backoff on 429 rate-limit responses).
  *
  * ### Completion check
  *
@@ -113,8 +114,12 @@ class ScheduledPromptExecutor(
      * consumed) nor a RUNNING Run with no UserRuns can result.
      *
      * Note: the Run insert happens in [SchedulerScanner.claim], **outside** this transaction.
-     * A crash between the insert and this call leaves an orphaned CLAIMED Run, which
-     * [SchedulerScanner.recoverOrphanedClaimedRuns] detects and marks FAILED on the next tick.
+     * A crash between the insert and this call, or an exception thrown by
+     * [ScheduledPromptUserRunRepository.materialize], leaves an orphaned CLAIMED Run —
+     * Spring rolls back the transaction so no partial UserRuns are written.
+     * [SchedulerScanner.recoverOrphanedClaimedRuns] detects such orphans and marks them
+     * FAILED on the next tick. The caller ([SchedulerScanner.claim]) is protected by
+     * `runCatching` so one failure does not block other prompts in the same tick.
      */
     @Transactional
     fun materialize(run: ScheduledPromptRun, scheduledPrompt: ScheduledPrompt) {
@@ -123,22 +128,6 @@ class ScheduledPromptExecutor(
         }
 
         val namespaceId = scheduledPrompt.namespaceId
-        val count = when {
-            namespaceId == null -> {
-                logger.debug {
-                    "[Executor] Platform-scope sp=${scheduledPrompt.id} — no users to materialise"
-                }
-                0
-            }
-            else -> runCatching {
-                userRunRepository.materialize(run.id, scheduledPrompt.agentConfigId, namespaceId)
-            }.onFailure { e ->
-                logger.error(e) {
-                    "[Executor] materialize failed for run=${run.id} sp=${scheduledPrompt.id}"
-                }
-            }.getOrDefault(0)
-        }
-
         // Transition based on whether any UserRuns were created:
         // - RUNNING when count > 0 — Phase B will consume the UserRuns and checkCompletion
         //   will close the Run once all are terminal.
@@ -146,6 +135,21 @@ class ScheduledPromptExecutor(
         //   with no target users, or namespace with no deployed users). Transitioning to
         //   RUNNING would leave the Run stuck forever since checkCompletion requires at
         //   least one UserRun closure to trigger.
+        // - On exception from userRunRepository.materialize: the exception propagates,
+        //   Spring rolls back the transaction, and the Run stays CLAIMED. The sweep
+        //   recoverOrphanedClaimedRuns marks it FAILED on the next tick. The caller
+        //   (SchedulerScanner.claim) is protected by runCatching so one failure does
+        //   not block the other prompts in the same tick.
+        val count = when {
+            namespaceId == null -> {
+                logger.debug {
+                    "[Executor] Platform-scope sp=${scheduledPrompt.id} — no users to materialise"
+                }
+                0
+            }
+            else -> userRunRepository.materialize(run.id, scheduledPrompt.agentConfigId, namespaceId)
+        }
+
         val finalStatus = if (count > 0) RunStatus.RUNNING else RunStatus.DONE
         runRepository.updateStatus(run.id, finalStatus, if (count == 0) Instant.now(clock) else null)
 
@@ -174,16 +178,16 @@ class ScheduledPromptExecutor(
      * [coroutineScope] ensures that a failure in one UserRun coroutine does not cancel
      * the sibling coroutines processing other UserRuns in the same batch.
      *
-     * Runs on [Dispatchers.IO] so the coroutines launched inside [coroutineScope] execute on
+     * Runs on [Dispatchers.IO] so the coroutines launched inside [supervisorScope] execute on
      * the IO thread pool (default 64 threads) rather than being serialised on the caller's
      * single thread. This is required because [processUserRun] calls blocking Spring services
      * (Neo4j, CaseService, PermissionService) that would otherwise starve the coroutine dispatcher.
      *
-     * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
-     * UserRuns are grouped by their parent Run and each group is processed concurrently
-     * under a [supervisorScope] so a failure in one group does not cancel the others.
-     * Further burst control is delegated to Spring AI's `RetryTemplate`
-     * (exponential backoff on 429 responses).
+     * Concurrency is bounded by [SchedulerProperties.batchSize]: at most that many UserRuns
+     * are claimed per batch. Within a batch, UserRuns are grouped by their parent Run and
+     * each group is processed concurrently under a [supervisorScope] so a failure in one
+     * group does not cancel the others. Further burst control is delegated to Spring AI's
+     * `RetryTemplate` (exponential backoff on 429 responses).
      *
      * ### Delivery guarantee: at-least-once
      *
@@ -193,16 +197,25 @@ class ScheduledPromptExecutor(
      * This is acceptable for the scheduled-prompt use case (duplicate conversation,
      * no data corruption). Exactly-once would require an idempotence key on Case
      * creation (e.g. a UNIQUE constraint on `runId|userId` carried by the Case).
+     *
+     * ### Completion sweep
+     *
+     * UserRuns are grouped by their parent Run so the completion check fires once per Run
+     * at the end of each group. [SchedulerScanner.recoverOrphanedRunningRuns] covers the
+     * crash window between the last [markTerminal] and the completion check.
      */
     suspend fun consumeAvailable() = withContext(Dispatchers.IO) {
         val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
 
-        // Group UserRuns by their parent Run so each Run's UserRuns and completion
-        // check are handled together in one coroutine — no need for a separate sweep.
+        // Group by parent Run so the completion check fires once per Run rather than
+        // once per UserRun. Each group runs concurrently under supervisorScope.
         var batch: List<ScheduledPromptUserRun>
         do {
             batch = userRunRepository.claimBatch(leaseDuration, properties.batchSize)
             supervisorScope {
+                // Group by parent Run so the completion check fires once per Run rather than
+                // once per UserRun. Each group runs concurrently; a failure in one group does
+                // not cancel the others (supervisorScope semantics).
                 batch.groupBy { it.runId }.forEach { (runId, userRuns) ->
                     launch { processUserRunGroup(runId, userRuns) }
                 }
@@ -256,7 +269,7 @@ class ScheduledPromptExecutor(
     /**
      * Resolve all data required to execute a [ScheduledPromptUserRun].
      * Throws [IllegalStateException] on any missing entity — propagates to the
-     * [runCatchingNonCancelling] in [processUserRunGroup] which marks the UserRun FAILED.
+     * try/catch in [processUserRunGroup] which marks the UserRun FAILED.
      */
     private fun resolveContext(userRun: ScheduledPromptUserRun): UserRunContext {
         val run = checkNotNull(runRepository.findById(userRun.runId)) {
@@ -362,6 +375,24 @@ class ScheduledPromptExecutor(
      * The Case continues running independently after this method returns.
      * The lease on the UserRun is only relevant for crash recovery (instance down
      * between Case creation and this point).
+     *
+     * ### StateFlow current-value guard
+     *
+     * [CaseRuntime.statusFlow] is a [kotlinx.coroutines.flow.StateFlow]. Calling `.first { predicate }`
+     * on a StateFlow always evaluates the **current value** first: if it satisfies the predicate,
+     * it is returned immediately without suspending.
+     *
+     * The status lifecycle in [CaseRuntime.run] is: `PENDING → RUNNING → IDLE/ERROR/KILLED`.
+     * `statusFlow` is initialised to `PENDING` at construction. The only status that can cause
+     * a false early return is **IDLE**: if a very fast turn completes before `monitorLaunch` is
+     * called, `statusFlow.value` is already `IDLE`, and `.first { it == IDLE || it.isTerminal() }`
+     * returns it immediately — which is actually the correct behaviour (the turn did finish).
+     *
+     * The guard below makes the intent explicit and handles the `IDLE` case without relying on
+     * the implicit StateFlow current-value semantics:
+     * - Already IDLE or terminal → the turn finished before we arrived; act on it directly.
+     * - PENDING or RUNNING → neither satisfies the predicate, so `.first { … }` suspends and
+     *   waits for the next emission, bounded by the timeout.
      */
     private suspend fun monitorLaunch(
         userRunId: UUID,
@@ -369,18 +400,26 @@ class ScheduledPromptExecutor(
         runtime: CaseRuntime,
     ) {
         val timeoutMs = Duration.ofSeconds(properties.launchTimeoutSeconds).toMillis()
+        val currentStatus = runtime.statusFlow.value
 
-        val finalStatus = withTimeoutOrNull(timeoutMs) {
-            runtime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
+        val observedStatus = when {
+            currentStatus == CaseStatus.IDLE || currentStatus.isTerminal() -> {
+                // The turn already completed before we started monitoring — act on it directly.
+                currentStatus
+            }
+            else -> {
+                // Status is RUNNING: drop the current value and wait for the next transition.
+                // withTimeoutOrNull returns null on timeout (Case still in flight).
+                withTimeoutOrNull(timeoutMs) {
+                    runtime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
+                }
+            }
         }
 
         when {
-            finalStatus != null && finalStatus.isTerminal() ->
-                // Immediate terminal status (ERROR/KILLED) — execution failed.
-                closeUserRun(userRunId, finalStatus, caseId)
-            finalStatus == CaseStatus.IDLE ->
-                // Agent finished its turn before the timeout — clean completion.
-                closeUserRun(userRunId, CaseStatus.IDLE, caseId)
+            observedStatus != null ->
+                // Either finished quickly (IDLE) or crashed immediately (ERROR/KILLED).
+                closeUserRun(userRunId, observedStatus, caseId)
             else -> {
                 // Timeout — Case is still RUNNING; monitoring released, Case continues independently.
                 userRunRepository.markTerminal(userRunId, UserRunStatus.TIMEOUT, Instant.now(clock))
@@ -436,7 +475,7 @@ class ScheduledPromptExecutor(
      */
     private fun checkCompletion(runId: UUID) {
         val run = runRepository.findById(runId) ?: return
-        if (run.status != RunStatus.RUNNING && run.status != RunStatus.CLAIMED) return
+        if (run.status != RunStatus.RUNNING) return
 
         if (userRunRepository.hasAnyActive(runId)) return
 

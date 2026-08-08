@@ -73,6 +73,13 @@ class SchedulerScanner(
     @PostConstruct
     fun logStartup() {
         logger.info { "[SchedulerScanner] Scheduler enabled" }
+        val leaseSeconds = properties.leaseMinutes * 60
+        require(leaseSeconds > properties.launchTimeoutSeconds) {
+            "[SchedulerScanner] agentos.prompt.scheduler.lease-minutes (${properties.leaseMinutes}m = ${leaseSeconds}s) " +
+                "must be greater than launch-timeout-seconds (${properties.launchTimeoutSeconds}s). " +
+                "A shorter lease causes UserRuns to be reclaimed before monitorLaunch completes, " +
+                "leading to double execution."
+        }
     }
 
     /**
@@ -86,22 +93,30 @@ class SchedulerScanner(
 
         // Sweep: abandon orphaned CLAIMED runs that were never materialised.
         // This handles the crash window between Run insert and materialize() in claim().
-        // A CLAIMED Run older than the tick interval is presumed orphaned — materialize()
+        // A CLAIMED Run older than ORPHAN_THRESHOLD is presumed orphaned — materialize()
         // normally completes in seconds. Marking it FAILED unblocks the hasActive() overlap
         // guard so subsequent slots are not stuck in SKIPPED.
-        recoverOrphanedClaimedRuns(now)
+        runCatching { recoverOrphanedClaimedRuns(now) }.onFailure { e ->
+            logger.error(e) { "[SchedulerScanner] recoverOrphanedClaimedRuns failed — continuing tick" }
+        }
 
         // Sweep: close RUNNING runs whose UserRuns are all settled but whose completion
         // check was missed. This handles the crash window between markTerminal() and
         // checkCompletion() in ScheduledPromptExecutor.
-        recoverOrphanedRunningRuns(now)
+        runCatching { recoverOrphanedRunningRuns(now) }.onFailure { e ->
+            logger.error(e) { "[SchedulerScanner] recoverOrphanedRunningRuns failed — continuing tick" }
+        }
 
         scheduledPromptRepository.findDue(now)
             .also { due ->
                 if (due.isEmpty()) logger.debug { "[SchedulerScanner] tickClaim: no due prompts" }
                 else logger.info { "[SchedulerScanner] tickClaim: ${due.size} due prompt(s)" }
             }
-            .forEach { sp -> claim(sp) }
+            .forEach { sp ->
+                runCatching { claim(sp) }.onFailure { e ->
+                    logger.error(e) { "[SchedulerScanner] claim failed for sp=${sp.id} — skipping this prompt in this tick" }
+                }
+            }
     }
 
     /**
@@ -192,7 +207,7 @@ class SchedulerScanner(
                 "[SchedulerScanner] AgentConfig ${scheduledPrompt.agentConfigId} is ${if (agentConfig == null) "deleted" else "disabled"} " +
                     "— disabling sp=${scheduledPrompt.id} to prevent further zombie ticks"
             }
-            scheduledPromptRepository.save(scheduledPrompt.copy(enabled = false))
+            scheduledPromptRepository.updateEnabled(scheduledPrompt.id, false)
             return
         }
 
@@ -209,7 +224,7 @@ class SchedulerScanner(
                 "[SchedulerScanner] End condition already reached for sp=${scheduledPrompt.id} " +
                     "(${scheduledPrompt.planning.endType}) \u2014 disabling without execution"
             }
-            scheduledPromptRepository.save(scheduledPrompt.copy(enabled = false))
+            scheduledPromptRepository.updateEnabled(scheduledPrompt.id, false)
             return
         }
 
@@ -238,7 +253,6 @@ class SchedulerScanner(
 
         // Always advance nextRunAt — auto-repairing even on duplicate or skip.
         val nextSlot = nextRunCalculatorService.nextAfter(recurrence = scheduledPrompt.recurrence, planning = scheduledPrompt.planning, after = slot)
-        logger.info { "[DEBUG] slot=$slot nextSlot=$nextSlot" }
         val advanced = scheduledPromptRepository.advanceNextRunAt(scheduledPrompt.id, slot, nextSlot)
         if (advanced) {
             logger.debug { "[SchedulerScanner] Advanced sp=${scheduledPrompt.id} nextRunAt=$nextSlot" }
@@ -313,7 +327,9 @@ class SchedulerScanner(
                 "[SchedulerScanner] End condition reached after advance for sp=${scheduledPrompt.id} " +
                     "(${planning.endType}) \u2014 disabling"
             }
-            scheduledPromptRepository.save(scheduledPrompt.copy(enabled = false))
+            // Use targeted updateEnabled rather than save(copy(enabled=false)) to avoid
+            // overwriting the nextRunAt that was just advanced by CAS above.
+            scheduledPromptRepository.updateEnabled(scheduledPrompt.id, false)
         }
     }
 

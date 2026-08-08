@@ -22,8 +22,16 @@ data class SchedulerProperties(
     val enabled: Boolean = false,
     /** Maximum number of UserRuns claimed and executed in parallel per consume tick. */
     val batchSize: Int = 20,
-    /** Max seconds to wait for a Case to reach IDLE or terminal after launch. Beyond this the UserRun is closed as DONE (Case continues running independently). */
+    /**
+     * Max seconds to wait for a Case to reach IDLE or terminal after launch.
+     * Beyond this the UserRun is closed as TIMEOUT (Case continues running independently).
+     * Must be strictly less than [leaseMinutes] × 60 — enforced at startup by [SchedulerScanner].
+     */
     val launchTimeoutSeconds: Long = 30L,
-    /** Lease duration for RUNNING UserRuns in minutes. Expired leases are reclaimed by the next tick. */
+    /**
+     * Lease duration for RUNNING UserRuns in minutes. Expired leases are reclaimed by the next
+     * consume tick, creating a second Case for the same user (at-least-once delivery).
+     * Must be strictly greater than [launchTimeoutSeconds] ÷ 60 — enforced at startup by [SchedulerScanner].
+     */
     val leaseMinutes: Long = 30L,
 )

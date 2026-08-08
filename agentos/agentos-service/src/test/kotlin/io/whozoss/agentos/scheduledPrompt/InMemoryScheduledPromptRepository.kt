@@ -77,6 +77,12 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
         return true
     }
 
+    /** Targeted update of the enabled flag — does NOT touch any other field. */
+    override fun updateEnabled(id: UUID, enabled: Boolean) {
+        val existing = delegate.findAll().firstOrNull { it.metadata.id == id } ?: return
+        delegate.save(existing.copy(enabled = enabled))
+    }
+
     companion object {
         private const val ALL_KEY = "all"
     }
