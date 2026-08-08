@@ -43,9 +43,13 @@ interface ScheduledPromptRunRepository {
     fun findById(id: UUID): ScheduledPromptRun?
 
     /**
-     * Count completed (non-SKIPPED) runs for a given ScheduledPrompt.
-     * Counts DONE, FAILED, CLAIMED, and RUNNING — everything except SKIPPED,
-     * since SKIPPED runs are overlap-guards that never actually executed.
+     * Count attempted runs for a given ScheduledPrompt, for use against [Planning.maxOccurrenceCount].
+     *
+     * Counts every status except SKIPPED: DONE, FAILED, CLAIMED, and RUNNING.
+     * SKIPPED runs are overlap-guards that never executed — they do not consume an occurrence.
+     * FAILED runs **do** consume an occurrence: the slot was attempted (a Case was created or
+     * materialize was called), regardless of outcome. This is intentional — the quota tracks
+     * "how many times the prompt fired", not "how many times it succeeded".
      */
     fun countCompletedRuns(scheduledPromptId: UUID): Int
 

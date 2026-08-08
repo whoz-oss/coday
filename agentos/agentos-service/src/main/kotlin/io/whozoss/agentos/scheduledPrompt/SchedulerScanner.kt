@@ -265,7 +265,24 @@ class SchedulerScanner(
         checkEndConditionAfterAdvance(scheduledPrompt, nextSlot)
 
         if (status == RunStatus.CLAIMED && insertedRun != null) {
-            executor.materialize(insertedRun, scheduledPrompt)
+            runCatching { executor.materialize(insertedRun, scheduledPrompt) }
+                .onFailure { e ->
+                    logger.error(e) {
+                        "[SchedulerScanner] materialize failed for run=${insertedRun.id} sp=${scheduledPrompt.id} — marking FAILED"
+                    }
+                    runCatching {
+                        runRepository.updateStatus(
+                            id = insertedRun.id,
+                            status = RunStatus.FAILED,
+                            finishedAt = Instant.now(clock),
+                            error = e.message?.takeIf { it.isNotBlank() } ?: "materialize failed: ${e::class.simpleName}",
+                        )
+                    }.onFailure { updateError ->
+                        logger.error(updateError) {
+                            "[SchedulerScanner] Could not mark run=${insertedRun.id} as FAILED — will be swept by recoverOrphanedClaimedRuns"
+                        }
+                    }
+                }
         }
     }
 

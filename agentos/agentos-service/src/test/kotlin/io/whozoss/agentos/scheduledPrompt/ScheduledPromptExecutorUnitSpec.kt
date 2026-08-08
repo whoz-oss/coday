@@ -215,6 +215,37 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             userRunRepo.all().size shouldBe 1
         }
 
+        "Phase A: materialise propagates exception from userRunRepository — Run stays CLAIMED" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+
+            // Mock a userRunRepository whose materialize throws
+            val throwingUserRunRepo = mockk<ScheduledPromptUserRunRepository>().also {
+                every { it.materialize(run.id, agentId, namespaceId) } throws RuntimeException("Simulated Neo4j failure")
+            }
+
+            val exec = executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = throwingUserRunRepo,
+                promptService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+            )
+
+            io.kotest.assertions.throwables.shouldThrow<RuntimeException> {
+                exec.materialize(run, sp)
+            }
+
+            // Run remains CLAIMED because updateStatus is never reached (exception thrown before it).
+            // In production the @Transactional boundary also rolls back any partial writes,
+            // but that cannot be verified in a unit test without a Spring context.
+            val updatedRun = runRepo.all().first { it.id == run.id }
+            updatedRun.status shouldBe RunStatus.CLAIMED
+        }
+
         "Phase A: platform-scope ScheduledPrompt materialises zero UserRuns and transitions to DONE" {
             val sp = makeScheduledPrompt(nsId = null)
             val run = makeRun(sp)
