@@ -6,6 +6,9 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.auth.AuthServiceFactory
+import io.whozoss.agentos.auth.OAuthFlowService
+import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
@@ -14,6 +17,7 @@ import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeStorageService
+import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
@@ -23,6 +27,7 @@ import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -35,8 +40,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
 import org.springframework.stereotype.Service
-import java.nio.file.Files
-import java.nio.file.Path
 import java.util.UUID
 
 /**
@@ -60,9 +63,12 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
+    private val oAuthFlowService: OAuthFlowService,
+    private val authServiceFactory: AuthServiceFactory,
     private val idCompressorService: IdCompressorService,
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
+    private val exchangeToolGrantService: ExchangeToolGrantService,
     private val agentDocumentResolver: AgentDocumentResolver,
     private val agentConfigProperties: AgentConfigProperties,
 ) : AgentService {
@@ -232,11 +238,95 @@ class AgentServiceImpl(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
                 agentName = agentConfig.name,
             )
+        val credentialProviderFactory: (String) -> CredentialProvider? = { authSettingName ->
+            logger.debug { "CredentialProvider invoked for '$authSettingName'" }
+            context.userId?.let { userId ->
+                val scopedAuthService = authServiceFactory.create(context.namespaceId, userId)
+                val provider: CredentialProvider = {
+                    val setting = scopedAuthService.resolveAuthSetting(authSettingName)
+                    logger.debug { "CredentialProvider for '$authSettingName': resolved authType=${setting.authType}" }
+                    if (setting.authType in OAUTH_AUTH_TYPES && context.caseId != null && context.emitEvent != null) {
+                        // OAuth types: delegate to OAuthFlowService for full lifecycle
+                        // (check existing -> refresh -> interactive via QuestionEvent).
+                        logger.debug { "CredentialProvider for '$authSettingName': using OAuth flow (authType=${setting.authType})" }
+                        // NOTE — blocking thread analysis:
+                        // The `runBlocking` below is INSIDE the body of the `CredentialProvider`
+                        // lambda — not before its creation. The lambda is the trigger for the
+                        // interactive OAuth flow, not a passive carrier of an already-obtained
+                        // credential.
+                        //
+                        // Invocation timing: `CredentialProvider` is called once per run and per
+                        // MCP integration by `McpHttpToolProvider.provideTools` (via
+                        // `ToolResolverService.extractTools`) during the tool-resolution phase,
+                        // before the agent processes any message. It establishes the HTTP MCP
+                        // connection and is NOT called again on each tool invocation.
+                        //
+                        // Blocked thread: `provideTools` is non-suspend (SDK public contract), so
+                        // the call stack at this point is synchronous. The `runBlocking` therefore
+                        // blocks a thread from the Kotlin `Dispatchers.IO` pool — NOT a Tomcat/MVC
+                        // request thread — for up to `agentos.oauth.flow-timeout-minutes` (default
+                        // 2 min) while waiting for the user to complete browser authorization.
+                        // The pool ceiling (64 threads by default) implicitly caps the number of
+                        // concurrent interactive OAuth flows; see OAuthPendingRegistry for the
+                        // capacity and instance constraints.
+                        //
+                        // Why `runBlocking` cannot be removed without touching the SDK: eliminating
+                        // it requires making `suspend` the entire chain `ToolPlugin.provideTools` →
+                        // `ToolContext.credentialProvider` → `CredentialProvider` — three elements
+                        // of the SDK public contract. Tracked in #1198.
+                        val credential =
+                            kotlinx.coroutines.runBlocking {
+                                oAuthFlowService.resolveOAuthCredential(
+                                    userId = userId,
+                                    authSetting = setting,
+                                    namespaceId = context.namespaceId,
+                                    caseId = context.caseId,
+                                    agentId = UUID.nameUUIDFromBytes(agentConfig.name.toByteArray()),
+                                    agentName = agentConfig.name,
+                                    emitEvent = context.emitEvent,
+                                )
+                            }
+                        if (credential == null) {
+                            logger.warn { "CredentialProvider for '$authSettingName': OAuth flow returned null" }
+                        } else {
+                            logger.debug { "CredentialProvider for '$authSettingName': OAuth credential resolved" }
+                        }
+                        credential
+                    } else {
+                        if (setting.authType in OAUTH_AUTH_TYPES) {
+                            logger.warn {
+                                "CredentialProvider for '$authSettingName': OAuth type ${setting.authType} but " +
+                                    "missing caseId=${context.caseId != null} or emitEvent=${context.emitEvent != null}, " +
+                                    "falling back to direct lookup"
+                            }
+                        } else {
+                            logger.debug {
+                                "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, using direct credential lookup"
+                            }
+                        }
+                        val credential = scopedAuthService.resolveCredential(setting.metadata.id)
+                        if (credential == null) {
+                            logger.warn {
+                                "CredentialProvider for '$authSettingName': no credential found for authSetting ${setting.metadata.id}"
+                            }
+                        } else {
+                            logger.debug { "CredentialProvider for '$authSettingName': direct credential resolved" }
+                        }
+                        credential
+                    }
+                }
+                provider
+            } ?: run {
+                logger.debug { "CredentialProvider for '$authSettingName': no userId in context, skipping" }
+                null
+            }
+        }
         val baseTools =
             toolResolverService.resolveToolsForRun(
                 agentIntegrations = agentConfig.integrations,
                 context = toolContext,
                 allIntegrationConfigs = effectiveIntegrationConfigs,
+                credentialProviderFactory = credentialProviderFactory,
             )
         // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
         // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name
@@ -602,88 +692,100 @@ class AgentServiceImpl(
      * [io.whozoss.agentos.exchange.ExchangeController] path, which applies no deny-list (users manage
      * their own files); the two views of the same directory can therefore differ for such files.
      *
-     * Gating is fail-closed (enablement lives in [AgentConfig.integrations], not a dedicated flag):
+     * Gating: the agent's own [AgentConfig.integrations] map decides, with a platform-level fallback
+     * for agents that say nothing at all
+     * ([io.whozoss.agentos.exchange.ExchangeToolsConfigProperties.caseEnabledByDefault] /
+     * [io.whozoss.agentos.exchange.ExchangeToolsConfigProperties.namespaceEnabledByDefault], both off
+     * by default, so an upgrade changes no agent's tool set):
      * - if the file-plugin is not loaded ([ExchangeIntegrationTypes.FILE_ACCESS] absent) → no tools;
-     * - case exchange (read/write) requires the [ExchangeIntegrationTypes.CASE] key AND a live
-     *   [context.caseId];
-     * - namespace exchange requires the [ExchangeIntegrationTypes.NAMESPACE] key; the agent inherits
-     *   the invoking user's namespace right — read/write when the user holds Namespace WRITE
-     *   (admin/super-admin), read-only otherwise.
+     * - key absent → the platform default decides, and no per-tool filter applies;
+     * - key present, null → granted, all tools;
+     * - key present, non-empty → granted, filtered to the listed tools;
+     * - key present, empty → explicit opt-out: nothing is granted and no scope directory is created
+     *   (the empty list would otherwise filter every tool out *after* the grant had materialised the
+     *   root);
+     * - the case scope additionally requires a live [context.caseId]; it needs no permission gate of
+     *   its own because its root is the run's own case, which the invoking user already holds Case
+     *   WRITE on to have reached this point;
+     * - the namespace scope requires the invoking user to hold Namespace READ, the same floor every
+     *   REST namespace-file endpoint enforces via `@PreAuthorize`. A run without an identified user
+     *   is denied fail-closed, so a definition preview resolved without a user reports no namespace
+     *   exchange tools. Read/write when the user also holds Namespace WRITE (admin/super-admin),
+     *   read-only otherwise.
+     *
+     * The default is a decision local to [ExchangeToolGrantService] and never a mutation of
+     * [AgentConfig.integrations]: materialising it in the map would leak into the persisted config,
+     * the YAML export, and the peer descriptions the redirect tool puts in every agent's prompt.
      */
     private fun buildExchangeTools(
         config: AgentConfig,
         context: AgentExecutionContext,
         toolContext: ToolContext,
     ): List<StandardTool<*>> {
-        val filePlugin = toolRegistryService.findPlugin(ExchangeIntegrationTypes.FILE_ACCESS) ?: return emptyList()
-
-        // Point the file-plugin's own tools at the exchange directory for the scope, honouring
-        // the per-tool allowlist carried as the integrations-map value (null = all tools).
-        fun grant(
-            root: Path,
-            readOnly: Boolean,
-            configName: String,
-            allowedTools: List<String>?,
-        ): List<StandardTool<*>> {
-            // Materialise the root before building the plugin tools even for a read-only grant: the
-            // file-plugin's BoundaryPathResolver canonicalises rootPath (toRealPath) at construction,
-            // which throws if the directory does not exist. This is why a read-only resolution (e.g.
-            // the debug getDefinition endpoint) still creates an empty scope dir.
-            Files.createDirectories(root)
-            val cfg =
-                objectMapper
-                    .createObjectNode()
-                    .put("rootPath", root.toAbsolutePath().toString())
-                    .put("readOnly", readOnly)
-                    // Align the agent read tool's size cap with the exchange's own read limit, so an
-                    // agent can read back a file the controller read/download path serves (the plugin
-                    // otherwise falls back to its smaller built-in default). The plugin key is megabytes.
-                    .put("readMaxSizeMb", (exchangeStorageService.readMaxSizeBytes / (1024 * 1024)).coerceAtLeast(1))
-            logger.info { "Granting $configName (FILE_ACCESS, readOnly=$readOnly) to agent '${config.name}' at $root" }
-            // Honour the per-tool allowlist via the same matcher every other integration uses
-            // (accepts both bare and `configName__tool` forms); null = all tools.
-            return filePlugin
-                .provideTools(cfg, configName, toolContext)
-                .filter { toolResolverService.isToolAllowed(it.name, configName, allowedTools) }
-        }
-
-        val integrations = config.integrations ?: emptyMap()
+        val integrations = config.integrations
         val tools = mutableListOf<StandardTool<*>>()
         val caseId = context.caseId
         val caseCreatedAt = context.caseCreatedAt
-        if (integrations.containsKey(ExchangeIntegrationTypes.CASE) && caseId != null && caseCreatedAt != null) {
+
+        val caseGrant = exchangeToolGrantService.resolveCaseGrant(integrations)
+        if (caseGrant != null && caseId != null && caseCreatedAt != null) {
             // The agent gets read/write on the case exchange by design (it produces files during a run).
             // User-facing write is separately gated: the exchange upload/delete endpoints require Case
             // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
             tools +=
-                grant(
-                    exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
+                exchangeToolGrantService.grantTools(
+                    root = exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
                     readOnly = false,
                     configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
-                    allowedTools = integrations[ExchangeIntegrationTypes.CASE],
+                    allowedTools = caseGrant.allowedTools,
+                    toolContext = toolContext,
                 )
         }
-        if (integrations.containsKey(ExchangeIntegrationTypes.NAMESPACE)) {
-            // The agent inherits the invoking user's namespace right: read/write for a namespace
-            // admin (Namespace WRITE, super-admin included), read-only for a plain member.
-            val userCanWriteNamespace =
-                context.userId?.let {
-                    exchangeCapabilityService.canWrite(
-                        it.toString(),
-                        EntityType.NAMESPACE,
-                        context.namespaceId.toString(),
-                    )
-                } ?: false
-            tools +=
-                grant(
-                    exchangeStorageService.namespaceRoot(context.namespaceId),
-                    readOnly = !userCanWriteNamespace,
-                    configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
-                    allowedTools = integrations[ExchangeIntegrationTypes.NAMESPACE],
+
+        val namespaceGrant = exchangeToolGrantService.resolveNamespaceGrant(integrations)
+        // The agent inherits the invoking user's namespace rights. Namespace READ is the floor the
+        // REST namespace-file endpoints already enforce via @PreAuthorize, so the agent path must
+        // hold it too: a user with only a direct Case edge must not read the whole namespace
+        // exchange through an agent. A run without an identified user is denied fail-closed. The
+        // permission queries run only once the grant stands, so a scope nobody was granted costs
+        // no permission query.
+        val namespaceUserId = context.userId?.toString()
+        if (namespaceGrant != null && namespaceUserId != null) {
+            val userCanReadNamespace =
+                exchangeCapabilityService.canRead(
+                    userId = namespaceUserId,
+                    entityType = EntityType.NAMESPACE,
+                    entityId = context.namespaceId.toString(),
                 )
+            if (userCanReadNamespace) {
+                // Read/write for a namespace admin (Namespace WRITE, super-admin included),
+                // read-only for a plain member.
+                val userCanWriteNamespace =
+                    exchangeCapabilityService.canWrite(
+                        userId = namespaceUserId,
+                        entityType = EntityType.NAMESPACE,
+                        entityId = context.namespaceId.toString(),
+                    )
+                tools +=
+                    exchangeToolGrantService.grantTools(
+                        root = exchangeStorageService.namespaceRoot(context.namespaceId),
+                        readOnly = !userCanWriteNamespace,
+                        configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                        allowedTools = namespaceGrant.allowedTools,
+                        toolContext = toolContext,
+                    )
+            }
         }
         return tools
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        private val OAUTH_AUTH_TYPES =
+            setOf(
+                AuthType.OAUTH_DISCOVERABLE,
+                AuthType.OAUTH_REGISTERED,
+                AuthType.OAUTH_CUSTOM,
+                AuthType.OAUTH_MCP_DISCOVERABLE,
+            )
+    }
 }

@@ -1,18 +1,19 @@
 import { Location } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import { Router } from '@angular/router'
 import { combineLatest, map } from 'rxjs'
 import { AiProviderConfigStateService } from '../../services/ai-provider-config-state.service'
+import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import { THEME_PORT, ThemeMode } from '../../services/theme.service'
 import { EnterKeyBehavior, USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { UserStateService } from '../../services/user-state.service'
 
 interface UserGlobalEntry {
-  category: 'integration' | 'aiProvider'
+  category: 'integration' | 'aiProvider' | 'authSetting'
   id: string
   name: string
   subtitle: string
@@ -21,6 +22,7 @@ interface UserGlobalEntry {
 interface UserGlobalRecap {
   integrations: UserGlobalEntry[]
   aiProviders: UserGlobalEntry[]
+  authSettings: UserGlobalEntry[]
   total: number
 }
 
@@ -51,6 +53,7 @@ export class UserProfileComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly integrationState = inject(IntegrationConfigStateService)
   private readonly providerState = inject(AiProviderConfigStateService)
+  private readonly authSettingState = inject(AuthSettingConfigStateService)
   private readonly themePort = inject(THEME_PORT)
   private readonly preferencesPort = inject(USER_PREFERENCES_PORT)
   protected readonly isEditing = signal(false)
@@ -62,10 +65,19 @@ export class UserProfileComponent implements OnInit {
 
   /** Current theme mode (light / dark / system), reflected in the Appearance section. */
   protected readonly theme = this.themePort.theme
+  /** Expose only the mode part of ThemeState for the appearance selector. */
+  protected readonly themeMode = computed(() => this.themePort.theme().mode)
   protected readonly themeOptions: ReadonlyArray<{ value: ThemeMode; label: string }> = [
     { value: 'light', label: 'Light' },
     { value: 'dark', label: 'Dark' },
     { value: 'system', label: 'System' },
+  ]
+
+  /** Expose variant for the skin selector. */
+  protected readonly themeVariant = computed(() => this.themePort.theme().variant)
+  protected readonly themeVariantOptions: ReadonlyArray<{ value: string; label: string; description: string }> = [
+    { value: 'industry', label: 'Industry', description: 'Bleu acier, Barlow' },
+    { value: 'terminal', label: 'Terminal', description: 'Ambre CRT, JetBrains Mono' },
   ]
 
   /** Current ENTER-key behavior in the chat composer, reflected in the Composer section. */
@@ -87,8 +99,12 @@ export class UserProfileComponent implements OnInit {
    * delete from this view). The state services already cache via shareReplay.
    */
   protected readonly recap = toSignal(
-    combineLatest([this.integrationState.userGlobal$, this.providerState.userGlobal$]).pipe(
-      map(([integrations, providers]): UserGlobalRecap => {
+    combineLatest([
+      this.integrationState.userGlobal$,
+      this.providerState.userGlobal$,
+      this.authSettingState.userGlobal$,
+    ]).pipe(
+      map(([integrations, providers, authSettings]): UserGlobalRecap => {
         const integrationEntries = integrations.map(
           (c): UserGlobalEntry => ({
             category: 'integration',
@@ -105,10 +121,19 @@ export class UserProfileComponent implements OnInit {
             subtitle: p.apiType,
           })
         )
+        const authSettingEntries = authSettings.map(
+          (s): UserGlobalEntry => ({
+            category: 'authSetting',
+            id: s.id ?? '',
+            name: s.name,
+            subtitle: s.authType,
+          })
+        )
         return {
           integrations: integrationEntries,
           aiProviders: providerEntries,
-          total: integrationEntries.length + providerEntries.length,
+          authSettings: authSettingEntries,
+          total: integrationEntries.length + providerEntries.length + authSettingEntries.length,
         }
       })
     ),
@@ -116,6 +141,7 @@ export class UserProfileComponent implements OnInit {
       initialValue: {
         integrations: [],
         aiProviders: [],
+        authSettings: [],
         total: 0,
       } as UserGlobalRecap,
     }
@@ -149,7 +175,11 @@ export class UserProfileComponent implements OnInit {
   }
 
   protected setTheme(mode: ThemeMode): void {
-    this.themePort.setTheme(mode)
+    this.themePort.setTheme({ variant: this.themePort.theme().variant, mode })
+  }
+
+  protected setThemeVariant(variant: string): void {
+    this.themePort.setTheme({ variant: variant as any, mode: this.themePort.theme().mode })
   }
 
   protected setEnterKeyBehavior(behavior: EnterKeyBehavior): void {
@@ -208,7 +238,9 @@ export class UserProfileComponent implements OnInit {
     const call$ =
       entry.category === 'integration'
         ? this.integrationState.delete(entry.id, 'userGlobal')
-        : this.providerState.delete(entry.id, 'userGlobal')
+        : entry.category === 'authSetting'
+          ? this.authSettingState.delete(entry.id, 'userGlobal')
+          : this.providerState.delete(entry.id, 'userGlobal')
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       error: (err) => {

@@ -35,6 +35,11 @@ import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
+import { checkAgentosJars } from './lib/agentos-lifecycle'
+import { getAgentosVersion } from './lib/version'
+import { downloadAgentosJars, checkAndSwapNext, downloadAgentosJarsToNext } from './lib/agentos-download'
+import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
+import { validateAgentOsUrl } from './lib/validate-agentos-url'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -70,29 +75,56 @@ debugLog('INIT', 'Webhook service initialized (will be initialized with prompt e
 // Note: projectPath will be set after projectService is initialized
 let promptService: PromptService
 let promptExecutionService: PromptExecutionService
-// Proxy /api/agentos/* → AgentOS Spring backend
-// Registered synchronously and BEFORE express.json() to avoid body-parser
-// consuming the request body before it can be forwarded.
-const AGENTOS_PORT = process.env.AGENTOS_PORT ? parseInt(process.env.AGENTOS_PORT) : 8124
-const AGENTOS_HOSTNAME = process.env.AGENTOS_HOSTNAME ?? 'localhost'
+// ---------------------------------------------------------------------------
+// AgentOS proxy — two mutually exclusive modes, discriminated by AGENTOS_URL
+//
+// EXTERNAL mode (AGENTOS_URL defined): Coday proxies to that URL unchanged.
+//   Use this when running your own AgentOS (./gradlew bootRun) or in server
+//   deployments where AgentOS is managed externally.
+//
+// MANAGED mode (AGENTOS_URL absent): Coday downloads JARs from GitHub
+//   Releases, launches the process itself, and stops it at shutdown.
+//   Target is always http://localhost:8124 (fixed port).
+//
+// The proxy middleware is registered synchronously and BEFORE express.json()
+// to avoid body-parser consuming the request body before forwarding.
+// ---------------------------------------------------------------------------
+
 const AGENTOS_EXTERNAL_USERID = process.env.AGENTOS_EXTERNAL_USERID
-const AGENTOS_URL = `http://${AGENTOS_HOSTNAME}:${AGENTOS_PORT}`
+const AGENTOS_URL_ENV = process.env.AGENTOS_URL
+
+// Validate the env var if provided (fail fast on misconfiguration)
+if (AGENTOS_URL_ENV) {
+  validateAgentOsUrl(AGENTOS_URL_ENV)
+}
+
+// Mutable proxy target — updated to the managed URL once AgentOS is running.
+// In external mode this is set once and never changes.
+let currentAgentosUrl = AGENTOS_URL_ENV ?? `http://localhost:8124`
+
+// Track the managed AgentOS process handle (null in external mode or before startup)
+let agentosProcess: AgentosProcess | null = null
+
 app.use(
   '/api/agentos',
   (req, _res, next) => {
-    console.log(`[AGENTOS PROXY] ${req.method} ${req.path}`)
+    debugLog('AGENTOS', `[PROXY] ${req.method} ${req.path}`)
     if (AGENTOS_EXTERNAL_USERID) {
       req.headers['X-External-User-Id'] = AGENTOS_EXTERNAL_USERID
     }
     next()
   },
   createProxyMiddleware({
-    target: AGENTOS_URL,
+    // router callback reads currentAgentosUrl at request time, not at setup time
+    router: () => currentAgentosUrl,
     changeOrigin: true,
     pathRewrite: { '^/api/agentos': '' },
   })
 )
-debugLog('INIT', `AgentOS proxy configured: /api/agentos → ${AGENTOS_URL}`)
+debugLog(
+  'INIT',
+  `AgentOS proxy configured: /api/agentos → ${currentAgentosUrl} (${AGENTOS_URL_ENV ? 'external mode' : 'managed mode'})`
+)
 
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
@@ -336,7 +368,7 @@ registerThreadRoutes(
 )
 
 // Register message management routes
-registerMessageRoutes(app, threadCodayManager, getUsername)
+registerMessageRoutes(app, threadCodayManager, getUsername, threadService)
 
 // Register agent management routes
 const agentCrudService = new AgentCrudService(codayOptions.configDir, projectService)
@@ -398,6 +430,112 @@ if (process.env.BUILD_ENV !== 'development') {
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
 
+// ---------------------------------------------------------------------------
+// AgentOS provisioning entry point (managed mode only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Single entry point called after app.listen() to provision and start AgentOS.
+ *
+ * In EXTERNAL mode (AGENTOS_URL defined): logs and returns immediately.
+ * In MANAGED mode: checks JAR inventory → downloads missing → starts the process.
+ *
+ * Never throws — any error is logged and the function returns gracefully.
+ * The Express server stays up regardless of AgentOS provisioning outcome.
+ *
+ * @param expressPort The port the Express server is listening on.
+ */
+async function provisionAgentos(expressPort: number): Promise<void> {
+  if (AGENTOS_URL_ENV) {
+    debugLog('AGENTOS', `[PROVISION] External mode — target: ${AGENTOS_URL_ENV}. No provisioning performed.`)
+    return
+  }
+
+  debugLog('AGENTOS', '[PROVISION] Managed mode — starting AgentOS provisioning...')
+
+  try {
+    const agentosVersion = getAgentosVersion()
+
+    // --- 1. Apply pending update from next/ (swap before inventory check) ---
+    const swapResult = checkAndSwapNext(codayOptions.configDir, agentosVersion)
+    if (swapResult.outcome === 'swapped') {
+      debugLog('AGENTOS', `[PROVISION] Swap applied: ${swapResult.message}`)
+    }
+
+    // --- 2. Check JAR inventory ---
+    const jarStatus = checkAgentosJars(codayOptions.configDir, agentosVersion)
+
+    // Derive the version currently on disk (from the service JAR, first artifact).
+    // null means no JAR present at all — first run.
+    const activeVersion = jarStatus.artifacts[0]?.foundVersion ?? null
+    const hasUsableJars = activeVersion !== null && jarStatus.artifacts.every((a) => a.foundVersion === activeVersion)
+
+    if (!jarStatus.allPresent && hasUsableJars) {
+      // --- 3a. We have a coherent set of JARs at a different version ---
+      // Spawn immediately with what we have, pre-fetch the target version in background.
+      debugLog(
+        'AGENTOS',
+        `[PROVISION] Active version ${activeVersion} differs from target ${agentosVersion} — spawning current, pre-fetching target in background`
+      )
+
+      // --- 4a. Start with current version ---
+      debugLog('AGENTOS', '[PROVISION] Starting AgentOS process...')
+      agentosProcess = await startAgentos(codayOptions.configDir, activeVersion, expressPort)
+
+      if (!agentosProcess) {
+        debugLog(
+          'AGENTOS',
+          '[PROVISION] AgentOS did not start. The proxy will return errors until AgentOS is available.'
+        )
+        return
+      }
+
+      // --- 5a. Pre-fetch target version into next/ ---
+      downloadAgentosJarsToNext(codayOptions.configDir, agentosVersion).catch((err) =>
+        debugLog('AGENTOS', '[UPDATE] Unhandled error in background pre-fetch:', err)
+      )
+    } else {
+      // --- 3b. JARs missing or already at target version ---
+      // Download blocking only if something is actually missing.
+      const downloadResult = await downloadAgentosJars(codayOptions.configDir, agentosVersion, jarStatus.missing)
+      debugLog('AGENTOS', `[PROVISION] Download outcome: ${downloadResult.outcome} — ${downloadResult.message}`)
+
+      if (
+        downloadResult.outcome !== 'success' &&
+        downloadResult.outcome !== 'skipped:all-present' &&
+        downloadResult.outcome !== 'skipped:dev-version'
+      ) {
+        debugLog('AGENTOS', '[PROVISION] Download failed — AgentOS will not be started. The proxy will return errors.')
+        return
+      }
+
+      // --- 4b. Start with target version ---
+      debugLog('AGENTOS', '[PROVISION] Starting AgentOS process...')
+      agentosProcess = await startAgentos(codayOptions.configDir, agentosVersion, expressPort)
+
+      if (!agentosProcess) {
+        debugLog(
+          'AGENTOS',
+          '[PROVISION] AgentOS did not start. The proxy will return errors until AgentOS is available.'
+        )
+        return
+      }
+      // No background pre-fetch needed — already at target version
+    }
+
+    // Update the proxy target (always localhost:8124 in managed mode, but kept
+    // explicit so future flexibility (e.g. dynamic port) requires no refactor)
+    currentAgentosUrl = `http://localhost:${agentosProcess.port}`
+    debugLog(
+      'AGENTOS',
+      `[PROVISION] AgentOS is ready. Proxy target: ${currentAgentosUrl}` +
+        ` (${agentosProcess.spawned ? 'spawned by Coday' : 'adopted existing process'})`
+    )
+  } catch (error) {
+    debugLog('AGENTOS', '[PROVISION] Unexpected error during provisioning (non-fatal):', error)
+  }
+}
+
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
   debugLog('ERROR', `Request error on ${req.method} ${req.path}:`, err.message)
@@ -428,6 +566,11 @@ PORT_PROMISE.then(async (PORT) => {
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })
+
+  // AgentOS provisioning — fire-and-forget: runs in background so downloads
+  // (up to ~230 MB) never block server startup or other services.
+  // The proxy will return errors until AgentOS is ready, which is acceptable.
+  provisionAgentos(PORT).catch((err) => debugLog('AGENTOS', '[PROVISION] Unhandled error:', err))
 
   // Start thread cleanup service after server is running
   try {
@@ -492,6 +635,12 @@ async function gracefulShutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully...`)
 
   try {
+    // Stop AgentOS first (only if we spawned it — not if adopted or external mode)
+    if (agentosProcess?.spawned) {
+      console.log('Stopping AgentOS...')
+      await agentosProcess.shutdown()
+    }
+
     // Stop scheduler service
     console.log('Stopping scheduler service...')
     schedulerService.stop()

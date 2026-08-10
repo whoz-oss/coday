@@ -6,6 +6,15 @@ import java.util.UUID
 /**
  * Used by [PromptServiceImplSpec] to exercise business rules (parameter name uniqueness,
  * scope isolation, soft-delete) without a Neo4j dependency.
+ *
+ * [save] assigns `metadata.version = 0` on first persist when the incoming entity carries
+ * `version == null`, mirroring what Spring Data Neo4j does on initial insert (see
+ * [io.whozoss.agentos.sdk.entity.EntityMetadata] KDoc). This matters for
+ * [PromptServiceImpl.update] / [PromptServiceImpl.delete], which reject any target whose
+ * persisted copy still has `version == null` — that marker identifies a filesystem-backed
+ * prompt (built in-memory by [FilesystemPromptRepository], never saved through SDN). Without
+ * this simulation, every prompt created through this fixture would incorrectly look
+ * filesystem-only and all update/delete tests would fail.
  */
 class InMemoryPromptRepository : PromptRepository {
     private val delegate =
@@ -14,7 +23,21 @@ class InMemoryPromptRepository : PromptRepository {
             comparator = compareBy { it.name },
         )
 
-    override fun save(entity: Prompt): Prompt = delegate.save(entity)
+    override fun save(entity: Prompt): Prompt {
+        val versioned = if (entity.metadata.version == null) {
+            entity.copy(metadata = entity.metadata.copy(version = 0L))
+        } else {
+            entity
+        }
+        return delegate.save(versioned)
+    }
+
+    /**
+     * Seeds [entity] bypassing the version-assignment logic in [save] — used by tests that
+     * need to simulate a filesystem-backed prompt (`metadata.version == null` after "persist"),
+     * e.g. to exercise [PromptServiceImpl]'s update/delete rejection.
+     */
+    fun seedRaw(entity: Prompt): Prompt = delegate.save(entity)
 
     override fun findByIds(
         ids: Collection<UUID>,

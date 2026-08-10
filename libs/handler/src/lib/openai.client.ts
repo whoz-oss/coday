@@ -11,6 +11,7 @@ import {
   TextChunkEvent,
   ToolRequestEvent,
   ToolResponseEvent,
+  UsageEvent,
 } from '@coday/model'
 import { AiThread, ThreadMessage } from '@coday/model'
 import { Observable, Subject } from 'rxjs'
@@ -31,10 +32,22 @@ type AssistantThreadData = {
 
 const OPENAI_DEFAULT_MODELS: AiModel[] = [
   {
-    name: 'gpt-5.4',
-    contextWindow: 272000,
-    alias: 'BIG',
+    name: 'gpt-5.6-sol',
+    contextWindow: 1050000,
+    alias: 'BIGGEST',
     temperature: 1,
+    maxOutputTokens: 128000,
+    price: {
+      inputMTokens: 5.0,
+      cacheRead: 0.5,
+      outputMTokens: 30.0,
+    },
+  },
+  {
+    name: 'gpt-5.6-terra',
+    alias: 'BIG',
+    contextWindow: 1050000,
+    temperature: 1.0,
     maxOutputTokens: 128000,
     price: {
       inputMTokens: 2.5,
@@ -43,27 +56,15 @@ const OPENAI_DEFAULT_MODELS: AiModel[] = [
     },
   },
   {
-    name: 'gpt-5.4-mini',
+    name: 'gpt-5.6-luna',
     alias: 'SMALL',
-    contextWindow: 272000,
+    contextWindow: 1050000,
     temperature: 1.0,
     maxOutputTokens: 128000,
     price: {
-      inputMTokens: 0.75,
-      cacheRead: 0.075,
-      outputMTokens: 4.5,
-    },
-  },
-  {
-    name: 'gpt-5.4-nano',
-    alias: 'SMALLEST',
-    contextWindow: 272000,
-    temperature: 1.0,
-    maxOutputTokens: 128000,
-    price: {
-      inputMTokens: 0.2,
-      cacheRead: 0.02,
-      outputMTokens: 1.25,
+      inputMTokens: 1.0,
+      cacheRead: 0.1,
+      outputMTokens: 6.0,
     },
   },
 ]
@@ -280,6 +281,7 @@ export class OpenaiClient extends AiClient {
       tools: this.truncateToolsIfNeeded(agent.tools.getTools()),
       max_completion_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? undefined,
       temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
+      reasoning_effort: 'none' as any, // Disable reasoning when tools are present (gpt-5.6 models reject reasoning_effort with tools)
       stream: true, // Enable streaming
       stream_options: { include_usage: true }, // Include usage data in stream
     })
@@ -381,6 +383,7 @@ export class OpenaiClient extends AiClient {
       tools: this.truncateToolsIfNeeded(agent.tools.getTools()),
       max_completion_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? undefined,
       temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
+      reasoning_effort: 'none' as any, // Disable reasoning when tools are present (gpt-5.6 models reject reasoning_effort with tools)
       stream: false, // Explicitly disable streaming
     })
   }
@@ -401,6 +404,17 @@ export class OpenaiClient extends AiClient {
       cache_write: 0, // cannot deduce it as not given and not priced in documentation
       price,
     })
+    this.interactor.sendEvent(
+      new UsageEvent({
+        inputTokens: usage?.prompt_tokens ?? 0,
+        outputTokens: thread.usage.output,
+        contextWindow: model.contextWindow ?? 0,
+        price: thread.usage.price,
+        iterations: thread.usage.iterations,
+        cacheReadTokens: usage?.prompt_tokens_details?.cached_tokens ?? 0,
+        threadId: thread.id,
+      })
+    )
   }
 
   private isOpenaiReady(): OpenAI | undefined {

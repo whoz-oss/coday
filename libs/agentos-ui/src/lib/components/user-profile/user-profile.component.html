@@ -13,15 +13,35 @@
     <div class="user-profile__section">
       <h2 class="user-profile__section-title">Appearance</h2>
 
+      <!-- Skin / variant -->
       <div class="user-profile__field">
-        <span class="user-profile__label">Theme</span>
-        <div class="user-profile__segmented" role="group" aria-label="Theme">
+        <span class="user-profile__label">Skin</span>
+        <div class="user-profile__theme-variants">
+          @for (option of themeVariantOptions; track option.value) {
+            <button
+              type="button"
+              class="user-profile__theme-variant"
+              [class.user-profile__theme-variant--active]="themeVariant() === option.value"
+              [attr.aria-pressed]="themeVariant() === option.value"
+              (click)="setThemeVariant(option.value)"
+            >
+              <span class="user-profile__theme-variant-name">{{ option.label }}</span>
+              <span class="user-profile__theme-variant-desc">{{ option.description }}</span>
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- Light / Dark / System -->
+      <div class="user-profile__field">
+        <span class="user-profile__label">Mode</span>
+        <div class="user-profile__segmented" role="group" aria-label="Color mode">
           @for (option of themeOptions; track option.value) {
             <button
               type="button"
               class="user-profile__segmented-option"
-              [class.user-profile__segmented-option--active]="theme() === option.value"
-              [attr.aria-pressed]="theme() === option.value"
+              [class.user-profile__segmented-option--active]="themeMode() === option.value"
+              [attr.aria-pressed]="themeMode() === option.value"
               (click)="setTheme(option.value)"
             >
               {{ option.label }}
@@ -182,8 +202,8 @@
           @if (isOverridesExpanded()) {
             @if (recap().total === 0) {
               <p class="user-profile__overrides-empty">
-                No global configuration yet. Create one from the Integrations / AI Providers / AI Models pages of your
-                namespaces.
+                No global configuration yet. Create one from the Integrations / AI Providers / Auth Settings pages of
+                your namespaces.
               </p>
             } @else {
               @if (recap().integrations.length > 0) {
@@ -219,6 +239,35 @@
                 <h3 class="user-profile__overrides-subtitle">AI Providers</h3>
                 <ul class="user-profile__overrides-list">
                   @for (entry of recap().aiProviders; track trackEntry($index, entry)) {
+                    <li class="user-profile__overrides-row">
+                      <span class="user-profile__overrides-name">{{ entry.name }}</span>
+                      <span class="user-profile__overrides-subtitle-text">{{ entry.subtitle }}</span>
+                      @if (isPendingDelete(entry)) {
+                        <span class="user-profile__overrides-confirm-label">Delete?</span>
+                        <button
+                          class="user-profile__overrides-delete user-profile__overrides-delete--confirm"
+                          type="button"
+                          (click)="confirmDelete(entry)"
+                        >
+                          Confirm
+                        </button>
+                        <button class="user-profile__overrides-delete" type="button" (click)="cancelDelete()">
+                          Cancel
+                        </button>
+                      } @else {
+                        <button class="user-profile__overrides-delete" type="button" (click)="armDelete(entry)">
+                          Delete
+                        </button>
+                      }
+                    </li>
+                  }
+                </ul>
+              }
+
+              @if (recap().authSettings.length > 0) {
+                <h3 class="user-profile__overrides-subtitle">My global auth settings</h3>
+                <ul class="user-profile__overrides-list">
+                  @for (entry of recap().authSettings; track trackEntry($index, entry)) {
                     <li class="user-profile__overrides-row">
                       <span class="user-profile__overrides-name">{{ entry.name }}</span>
                       <span class="user-profile__overrides-subtitle-text">{{ entry.subtitle }}</span>

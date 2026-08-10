@@ -450,6 +450,40 @@ class PermissionServiceImplSpec :
             permissionService.filterVisibleIds(userId, EntityType.AGENT_CONFIG, listOf(id1), Action.READ) shouldBe emptySet()
         }
 
+        // -------------------------------------------------------------------------
+        // listRelationsForUsers
+        // -------------------------------------------------------------------------
+
+        "listRelationsForUsers returns a map of userId to PermissionRelation" {
+            val id1 = UUID.randomUUID().toString()
+            val id2 = UUID.randomUUID().toString()
+            every {
+                mockPermissionRepository.listRelationsForUsers(entityType, entityId, listOf(id1, id2))
+            } returns mapOf(id1 to PermissionRelation.ADMIN, id2 to PermissionRelation.MEMBER)
+
+            val result = permissionService.listRelationsForUsers(entityType, entityId, listOf(id1, id2))
+
+            result shouldBe mapOf(id1 to PermissionRelation.ADMIN, id2 to PermissionRelation.MEMBER)
+        }
+
+        "listRelationsForUsers returns empty map when no users have a relation" {
+            val id1 = UUID.randomUUID().toString()
+            every {
+                mockPermissionRepository.listRelationsForUsers(entityType, entityId, listOf(id1))
+            } returns emptyMap()
+
+            permissionService.listRelationsForUsers(entityType, entityId, listOf(id1)) shouldBe emptyMap()
+        }
+
+        "listRelationsForUsers returns empty map (fail-closed) when the repository throws" {
+            val id1 = UUID.randomUUID().toString()
+            every {
+                mockPermissionRepository.listRelationsForUsers(any(), any(), any())
+            } throws RuntimeException("Cypher failure")
+
+            permissionService.listRelationsForUsers(entityType, entityId, listOf(id1)) shouldBe emptyMap()
+        }
+
         "filterVisibleIds delegates to the repository for super-admin (no service-level bypass)" {
             // Super-admin access to platform entities is handled inside the Cypher query
             // (u.isAdmin = true AND checkPlatform AND e.namespaceId IS NULL), not by a

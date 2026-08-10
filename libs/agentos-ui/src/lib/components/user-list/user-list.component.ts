@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, OnInit, output } from '@angular/core'
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
-import { Namespace, NamespacePermissionEndpointsService, User } from '@whoz-oss/agentos-api-client'
+import { MemberItem, Namespace, NamespaceMembershipControllerService, User } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { catchError, map, of, switchMap } from 'rxjs'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
@@ -34,7 +34,7 @@ export class UserListComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly userAdminState = inject(UserAdminStateService)
-  private readonly namespacePermissions = inject(NamespacePermissionEndpointsService)
+  private readonly namespaceMembership = inject(NamespaceMembershipControllerService)
 
   /** Toolbar back button (hidden when the host owns navigation). */
   readonly showBackButton = input<boolean>(true)
@@ -54,8 +54,8 @@ export class UserListComponent implements OnInit {
     toObservable(this.selectedNamespaceId).pipe(
       switchMap((namespaceId) =>
         namespaceId
-          ? this.namespacePermissions.listNamespaceUsers(namespaceId).pipe(
-              map((users) => new Set(users.map((user) => user.id))),
+          ? this.namespaceMembership.getMembersNamespaceMembership(namespaceId).pipe(
+              map((members: MemberItem[]) => new Set(members.map((m) => m.id))),
               // catchError on the inner observable so a failed load does not terminate the
               // outer stream (which would freeze the signal in an error state for the session);
               // fall back to unfiltered and log so the failure stays diagnosable (#1076).

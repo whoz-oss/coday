@@ -31,6 +31,13 @@ class PromptServiceImplSpec : StringSpec() {
     private val agentConfigService = mockk<AgentConfigService>(relaxed = true)
     private fun newService(): PromptServiceImpl = PromptServiceImpl(InMemoryPromptRepository(), agentConfigService)
 
+    /** Returns both the service and its backing repository, for tests that need to seed a
+     *  filesystem-backed prompt (version == null) directly via [InMemoryPromptRepository.seedRaw]. */
+    private fun newServiceWithRepo(): Pair<PromptServiceImpl, InMemoryPromptRepository> {
+        val repo = InMemoryPromptRepository()
+        return PromptServiceImpl(repo, agentConfigService) to repo
+    }
+
     private fun prompt(
         namespaceId: UUID? = UUID.randomUUID(),
         userId: UUID? = null,
@@ -283,6 +290,24 @@ class PromptServiceImplSpec : StringSpec() {
             service.findById(saved.id)?.name shouldBe "Renamed"
         }
 
+        "update on a filesystem-backed prompt (version == null) throws UnprocessableEntityException" {
+            val (service, repo) = newServiceWithRepo()
+            val fsPrompt = repo.seedRaw(prompt(name = "fs-prompt"))
+
+            shouldThrow<UnprocessableEntityException> {
+                service.update(fsPrompt.copy(description = "attempted edit"))
+            }
+        }
+
+        "update on a normal persisted prompt is unaffected by the filesystem guard" {
+            val service = newService()
+            val saved = service.create(prompt(name = "Persisted"))
+
+            val updated = service.update(saved.copy(description = "edited"))
+
+            updated.description shouldBe "edited"
+        }
+
         // -------------------------------------------------------------------------
         // Delete
         // -------------------------------------------------------------------------
@@ -301,6 +326,23 @@ class PromptServiceImplSpec : StringSpec() {
         "delete returns false for unknown id" {
             val service = newService()
             service.delete(UUID.randomUUID()) shouldBe false
+        }
+
+        "delete on a filesystem-backed prompt (version == null) throws UnprocessableEntityException" {
+            val (service, repo) = newServiceWithRepo()
+            val fsPrompt = repo.seedRaw(prompt(name = "fs-prompt-to-delete"))
+
+            shouldThrow<UnprocessableEntityException> {
+                service.delete(fsPrompt.id)
+            }
+        }
+
+        "delete on a normal persisted prompt is unaffected by the filesystem guard" {
+            val service = newService()
+            val saved = service.create(prompt(name = "Persisted"))
+
+            service.delete(saved.id) shouldBe true
+            service.findById(saved.id).shouldBeNull()
         }
 
         "deleteByParent removes all prompts for a namespace" {
@@ -462,6 +504,78 @@ class PromptServiceImplSpec : StringSpec() {
             val byName = effective.associateBy { it.name }
             byName["shared"]!!.content shouldBe listOf("user-ns override")
             byName["only-platform"]!!.content shouldBe listOf("stays")
+        }
+
+        // -------------------------------------------------------------------------
+        // findEffective — agentConfigId post-merge filter
+        // -------------------------------------------------------------------------
+
+        "findEffective with agentConfigId returns only prompts linked to that agent" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = null,
+                name = "agent",
+            )
+
+            service.create(prompt(namespaceId = ns, userId = null, name = "linked", agentConfigId = agentId))
+            service.create(prompt(namespaceId = ns, userId = null, name = "autonomous", agentConfigId = null))
+
+            val effective = service.findEffective(ns, user, agentConfigId = agentId)
+            effective shouldHaveSize 1
+            effective.first().name shouldBe "linked"
+        }
+
+        "findEffective with null agentConfigId returns both agent-linked and autonomous prompts" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = null,
+                name = "agent",
+            )
+
+            service.create(prompt(namespaceId = ns, userId = null, name = "linked", agentConfigId = agentId))
+            service.create(prompt(namespaceId = ns, userId = null, name = "autonomous", agentConfigId = null))
+
+            val effective = service.findEffective(ns, user, agentConfigId = null)
+            effective shouldHaveSize 2
+        }
+
+        "findEffective with agentConfigId matching no prompt returns empty" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = ns, userId = null, name = "autonomous", agentConfigId = null))
+
+            val effective = service.findEffective(ns, user, agentConfigId = UUID.randomUUID())
+            effective.shouldBeEmpty()
+        }
+
+        "findEffective agentConfigId filter is applied after the layer merge, not before" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = null,
+                name = "agent",
+            )
+
+            // Platform layer is agent-linked, namespace layer (higher priority, same name) is autonomous.
+            service.create(prompt(namespaceId = null, userId = null, name = "deploy", agentConfigId = agentId))
+            service.create(prompt(namespaceId = ns, userId = null, name = "deploy", agentConfigId = null))
+
+            // The winning (namespace) layer has no agentConfigId, so filtering by agentId excludes it
+            // even though a lower-priority layer with that name was agent-linked.
+            service.findEffective(ns, user, agentConfigId = agentId).shouldBeEmpty()
         }
     }
 }

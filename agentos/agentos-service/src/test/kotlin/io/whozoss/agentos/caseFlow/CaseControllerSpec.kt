@@ -129,14 +129,6 @@ class CaseControllerSpec :
             val r = caseResource(id = null)
             val saved = caseEntity()
             every { userService.getCurrentUser() } returns caller
-            every {
-                permissionService.hasPermission(
-                    callerId.toString(),
-                    EntityType.NAMESPACE,
-                    namespaceId.toString(),
-                    Action.READ,
-                )
-            } returns true
             every { caseService.create(any()) } returns saved
             every {
                 permissionService.grantPermission(
@@ -153,7 +145,10 @@ class CaseControllerSpec :
             result.namespaceId shouldBe namespaceId
             // The creator holds a fresh direct ADMIN edge — surface it so the drawer enables delete at once.
             result.role shouldBe "ADMIN"
+            // No messages exist at create time — lastMessageAt is always null, no round-trip needed.
+            result.lastMessageAt shouldBe null
             verify(exactly = 1) { caseService.create(any()) }
+            verify(exactly = 0) { caseEventService.findLastMessageTimestamps(any()) }
             verify(exactly = 1) {
                 permissionService.grantPermission(
                     callerId.toString(),
@@ -183,7 +178,9 @@ class CaseControllerSpec :
             result.id shouldBe saved.metadata.id
             // Grant failed → no direct edge yet, so role is left null (not a misleading ADMIN).
             result.role shouldBe null
+            result.lastMessageAt shouldBe null
             verify(exactly = 1) { caseService.create(any()) }
+            verify(exactly = 0) { caseEventService.findLastMessageTimestamps(any()) }
         }
 
         "create auto-grants ADMIN on the new case to the creator" {
@@ -203,6 +200,7 @@ class CaseControllerSpec :
                     PermissionRelation.ADMIN,
                 )
             }
+            verify(exactly = 0) { caseEventService.findLastMessageTimestamps(any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -741,5 +739,65 @@ class CaseControllerSpec :
             shouldThrow<io.whozoss.agentos.exception.ResourceNotFoundException> {
                 controller.update(id, caseResource(id = id))
             }
+        }
+
+        "update populates lastMessageAt from caseEventService" {
+            val existing = caseEntity()
+            val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
+            every { caseService.findById(existing.metadata.id) } returns existing
+            every { caseService.update(any()) } returns existing
+            every {
+                caseEventService.findLastMessageTimestamps(listOf(existing.id))
+            } returns mapOf(existing.id to msgTimestamp)
+
+            val result = controller.update(existing.metadata.id, caseResource(id = existing.metadata.id))
+
+            result.lastMessageAt shouldBe msgTimestamp
+        }
+
+        // -------------------------------------------------------------------------
+        // getById
+        // -------------------------------------------------------------------------
+
+        "getById populates lastMessageAt from caseEventService" {
+            val entity = caseEntity()
+            val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
+            every { caseService.getById(entity.metadata.id) } returns entity
+            every {
+                caseEventService.findLastMessageTimestamps(listOf(entity.id))
+            } returns mapOf(entity.id to msgTimestamp)
+
+            val result = controller.getById(entity.metadata.id)
+
+            result.id shouldBe entity.metadata.id
+            result.lastMessageAt shouldBe msgTimestamp
+        }
+
+        "getById returns null lastMessageAt when case has no messages" {
+            val entity = caseEntity()
+            every { caseService.getById(entity.metadata.id) } returns entity
+
+            val result = controller.getById(entity.metadata.id)
+
+            result.lastMessageAt shouldBe null
+        }
+
+        // -------------------------------------------------------------------------
+        // getByIds
+        // -------------------------------------------------------------------------
+
+        "getByIds populates lastMessageAt for cases that have messages" {
+            val withMsg = caseEntity(title = "has messages")
+            val noMsg = caseEntity(title = "no messages")
+            val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
+            every { caseService.findByIds(any(), any()) } returns listOf(withMsg, noMsg)
+            every {
+                caseEventService.findLastMessageTimestamps(listOf(withMsg.id, noMsg.id))
+            } returns mapOf(withMsg.id to msgTimestamp)
+
+            val result = controller.getByIds(io.whozoss.agentos.sdk.api.common.GetByIdsRequest(listOf(withMsg.metadata.id, noMsg.metadata.id)))
+
+            result.single { it.id == withMsg.metadata.id }.lastMessageAt shouldBe msgTimestamp
+            result.single { it.id == noMsg.metadata.id }.lastMessageAt shouldBe null
         }
     })

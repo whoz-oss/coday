@@ -8,18 +8,18 @@
  * Do not edit the class manually.
  */
 
-export interface NamespaceUserListItem {
+export interface MemberItem {
   email: string
   externalId: string
   firstname?: string
   id: string
   lastname?: string
   /**
-   * The user\'s direct role on this namespace
+   * The user\'s direct role on this entity.
    */
-  role: NamespaceUserListItemRoleEnum
+  role: MemberItemRoleEnum
 }
-export enum NamespaceUserListItemRoleEnum {
+export enum MemberItemRoleEnum {
   ADMIN = 'ADMIN',
   MEMBER = 'MEMBER',
 }

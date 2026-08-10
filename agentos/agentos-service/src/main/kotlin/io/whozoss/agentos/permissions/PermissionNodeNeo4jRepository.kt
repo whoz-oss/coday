@@ -423,6 +423,29 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     ): List<String>
 
     /**
+     * Returns `(userId, relation)` pairs for the given [userIds] on an entity.
+     *
+     * Only direct [:ADMIN] and [:MEMBER] edges are considered — no transitive namespace
+     * traversal. Users in [userIds] with no relation on the entity are simply absent
+     * from the result.
+     *
+     * Returns a list of two-element string arrays `[userId, relationType]`.
+     */
+    @Query(
+        $$"""
+        UNWIND $userIds AS uid
+        MATCH (u:User {id: uid})-[r:ADMIN|MEMBER]->(e {id: $entityId})
+        WHERE $entityLabel IN labels(e)
+        RETURN u.id AS userId, type(r) AS relation
+        """,
+    )
+    fun findRelationsForUsers(
+        @Param("userIds") userIds: Collection<String>,
+        @Param("entityId") entityId: String,
+        @Param("entityLabel") entityLabel: String,
+    ): List<UserRelationRow>
+
+    /**
      * Batch-revoke all relations ([:ADMIN] and [:MEMBER]) from users on an entity.
      *
      * Silently skips non-existent User nodes and users without any relation.

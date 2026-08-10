@@ -4,6 +4,8 @@ spring:
   jackson:
     mapper:
       sort-properties-alphabetically: true
+    serialization:
+      write-dates-as-timestamps: false
   servlet:
     multipart:
       # Global upload limits (file-exchange uploads + plugin jars), raised from Spring's 1MB
@@ -111,6 +113,59 @@ agentos:
     # covers text/doc/data/image/code; empty allows any. Expected to differ per AgentOS instance.
     # Override with env var: AGENTOS_EXCHANGE_ALLOWED_UPLOAD_EXTENSIONS
     # allowed-upload-extensions: txt,md,pdf,png,csv,json
+    # Max size (bytes) the read/download endpoints load into memory. Also caps the agent read tools
+    # on the same directories, converted to whole megabytes with a floor of 1 MB.
+    # Override with env var: AGENTOS_EXCHANGE_READ_MAX_SIZE_BYTES
+    # read-max-size-bytes: 104857600
+    # File tools granted to agents on the case / namespace exchange. One set of values is shared by
+    # both scopes; rootPath and readOnly are computed per run, and readMaxSizeMb derives from
+    # read-max-size-bytes above.
+    tools:
+      # Grant the case exchange to every agent that does not mention CASE_FILE_EXCHANGE in its
+      # integrations map. An agent that lists the key decides for itself; an empty list opts out.
+      # Override with env var: AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT
+      # case-enabled-by-default: false
+      # Same platform default for NAMESPACE_FILE_EXCHANGE. Every namespace grant, default or
+      # declared, also requires the invoking user to hold Namespace READ; a run without an
+      # identified user is denied. Write access follows the user's Namespace WRITE right.
+      # Override with env var: AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT
+      # namespace-enabled-by-default: false
+      # Comma-separated extra patterns blocked for the agent file tools, on top of the plugin's
+      # built-in sensitive-file list (.env, *.key, *.pem). Additive only, built-ins always apply.
+      # A pattern matches the file or directory NAME only, never the path: *suffix, prefix*,
+      # *contains* or an exact name. A path-shaped pattern like "secrets/*" matches nothing, and a
+      # prefix pattern denies a matching directory entry without denying the files inside it.
+      # Override with env var: AGENTOS_EXCHANGE_TOOLS_EXTRA_DENY_PATTERNS
+      # extra-deny-patterns: "*.bak,*confidential*"
+      # Longest edge (px) of the images readAsImage/readDocument hand to the LLM; larger ones are
+      # downscaled. Track the vision model in use.
+      # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_DIMENSION
+      # image-max-dimension: 1024
+      # JPEG re-encoding quality between 0 and 1: prompt bytes against the legibility of screenshots
+      # and scans. Out-of-range values are clamped.
+      # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_JPEG_QUALITY
+      # image-jpeg-quality: 0.80
+      # Decode-bomb guard: a source or embedded image above this pixel count is refused before being
+      # decoded. Raise it only if the heap can absorb the larger raster.
+      # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_SOURCE_PIXELS
+      # image-max-source-pixels: 50000000
+      # Originals at or below this byte size that already fit the max dimension are forwarded
+      # untouched instead of re-encoded, preserving text sharpness.
+      # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_PASS_THROUGH_MAX_BYTES
+      # image-pass-through-max-bytes: 1048576
+      # Markdown character budget of one readDocument call; a longer document is paged via
+      # startElement. Scales with the context window of the models this instance runs.
+      # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_OUTPUT_CHARS
+      # document-max-output-chars: 100000
+      # Maximum embedded pictures readDocument attaches per call — the image half of that budget.
+      # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_ATTACHED_IMAGES
+      # document-max-attached-images: 10
+      # Table columns beyond this are dropped when readDocument renders a .docx table to Markdown.
+      # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_TABLE_COLUMNS
+      # document-max-table-columns: 64
+      # A single table cell longer than this is truncated by readDocument.
+      # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_CELL_CHARS
+      # document-max-cell-chars: 5000
   defaults:
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.
@@ -131,6 +186,17 @@ agentos:
     #        to x-forwarded-email; requires the User to be pre-registered.
     # Override with env var: AGENTOS_SECURITY_MODE
     mode: local
+  oauth:
+    # Absolute redirect URI sent to the OAuth provider as redirect_uri.
+    # Must match the frontend OAuth callback page URL exactly.
+    # In production, set to the deployed frontend callback URL (e.g. https://app.example.com/oauth/callback).
+    # Override with env var: AGENTOS_OAUTH_REDIRECT_URI
+    redirect-uri: ${AGENTOS_OAUTH_REDIRECT_URI:http://localhost:4100/agentos/oauth/callback}
+    # Maximum time in minutes to wait for the user to complete browser authorization.
+    # Each pending flow holds one Dispatchers.IO thread for this duration; lower values
+    # reduce the maximum blocking window. Default: 2 minutes.
+    # Override with env var: AGENTOS_OAUTH_FLOW_TIMEOUT_MINUTES
+    # flow-timeout-minutes: 2
   bootstrap:
     # Enable bootstrap service to run on startup
     # Override with env var: AGENTOS_BOOTSTRAP_ENABLED
@@ -152,6 +218,15 @@ agentos:
     #   neo4j                    - standalone Neo4j server (requires spring.neo4j.* config)
     # Override with env var: AGENTOS_PERSISTENCE_MODE
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
+  prompt:
+    scheduler:
+      # Enable/disable the scheduler. Enabled by default for production.
+      # Dev profiles (embedded-neo4j, docker) disable it to prevent accidental Case creation.
+      # Override with env var: AGENTOS_PROMPT_SCHEDULER_ENABLED
+      enabled: ${AGENTOS_PROMPT_SCHEDULER_ENABLED:true}
+      # Interval between claim ticks in milliseconds.
+      # Override with env var: AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS
+      tick-interval-ms: ${AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS:30000}
 
 springdoc:
   writer-with-order-by-keys: true

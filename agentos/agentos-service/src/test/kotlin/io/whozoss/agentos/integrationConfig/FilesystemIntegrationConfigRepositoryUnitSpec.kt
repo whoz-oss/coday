@@ -304,6 +304,168 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
         }
 
         // -------------------------------------------------------------------------
+        // {{NAMESPACE_CONFIG_PATH}} token substitution in parameters
+        // -------------------------------------------------------------------------
+
+        "findByNamespaceId substitutes the NAMESPACE_CONFIG_PATH token in parameters" {
+            val root = tempDir()
+            writeYaml(
+                integrationsDir(root),
+                "bash.yaml",
+                integrationYaml(
+                    name = "BASH_repo",
+                    integrationType = "BASH",
+                    parameters = "  workingDirectory: \"{{NAMESPACE_CONFIG_PATH}}/../..\"",
+                ),
+            )
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId).single()
+
+            result.parameters?.get("workingDirectory")?.textValue() shouldBe "${root}/../.."
+        }
+
+        "findByNamespaceId does not normalize the substituted path -- '..' is left literal" {
+            val root = tempDir()
+            writeYaml(
+                integrationsDir(root),
+                "bash.yaml",
+                integrationYaml(
+                    name = "BASH_repo",
+                    integrationType = "BASH",
+                    parameters = "  script: \"{{NAMESPACE_CONFIG_PATH}}/../scripts/build.sh\"",
+                ),
+            )
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId).single()
+
+            result.parameters?.get("script")?.textValue() shouldBe "$root/../scripts/build.sh"
+        }
+
+        "findByNamespaceId substitutes the token embedded in an array element (MCP args case)" {
+            val root = tempDir()
+            writeYaml(
+                integrationsDir(root),
+                "mcp.yaml",
+                buildString {
+                    appendLine("name: MCP_repo")
+                    appendLine("integrationType: MCP_STDIO")
+                    appendLine("parameters:")
+                    appendLine("  args:")
+                    appendLine("    - --flag")
+                    appendLine("    - \"--config={{NAMESPACE_CONFIG_PATH}}/settings.json\"")
+                },
+            )
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId).single()
+
+            result.parameters?.get("args")?.get(1)?.textValue() shouldBe "--config=$root/settings.json"
+        }
+
+        "findByNamespaceId substitutes the token nested in an array of objects (BASH tools[].command case)" {
+            val root = tempDir()
+            writeYaml(
+                integrationsDir(root),
+                "bash.yaml",
+                buildString {
+                    appendLine("name: BASH_repo")
+                    appendLine("integrationType: BASH")
+                    appendLine("parameters:")
+                    appendLine("  tools:")
+                    appendLine("    - name: build")
+                    appendLine("      description: Builds the project")
+                    appendLine("      command: \"{{NAMESPACE_CONFIG_PATH}}/../scripts/build.sh\"")
+                },
+            )
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId).single()
+
+            result.parameters?.get("tools")?.get(0)?.get("command")?.textValue() shouldBe "$root/../scripts/build.sh"
+            result.parameters?.get("tools")?.get(0)?.get("name")?.textValue() shouldBe "build"
+        }
+
+        "findByNamespaceId does not substitute the token in name, integrationType, or description" {
+            val root = tempDir()
+            writeYaml(
+                integrationsDir(root),
+                "weird.yaml",
+                buildString {
+                    appendLine("name: \"{{NAMESPACE_CONFIG_PATH}}\"")
+                    appendLine("integrationType: BASH")
+                    appendLine("description: \"{{NAMESPACE_CONFIG_PATH}}\"")
+                },
+            )
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId).single()
+
+            result.name shouldBe "{{NAMESPACE_CONFIG_PATH}}"
+            result.description shouldBe "{{NAMESPACE_CONFIG_PATH}}"
+        }
+
+        "findByNamespaceId resolves configPath from the cache root, not from a nested file's parent directory" {
+            val root = tempDir()
+            val nested = integrationsDir(root).resolve("team-a").also { Files.createDirectories(it) }
+            writeYaml(
+                nested,
+                "jira.yaml",
+                integrationYaml(
+                    name = "JIRA_nested",
+                    integrationType = "JIRA",
+                    parameters = "  path: \"{{NAMESPACE_CONFIG_PATH}}/x\"",
+                ),
+            )
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId).single()
+
+            // must resolve to the namespace configPath (root), NOT to integrations/ or integrations/team-a/
+            result.parameters?.get("path")?.textValue() shouldBe "$root/x"
+        }
+
+        "findByNamespaceId leaves parameters without the token unchanged" {
+            val root = tempDir()
+            writeYaml(
+                integrationsDir(root),
+                "jira.yaml",
+                integrationYaml(
+                    name = "JIRA",
+                    integrationType = "JIRA",
+                    parameters = "  baseUrl: https://company.atlassian.net",
+                ),
+            )
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId).single()
+
+            result.parameters?.get("baseUrl")?.textValue() shouldBe "https://company.atlassian.net"
+        }
+
+        // -------------------------------------------------------------------------
         // findByParent — delegates to findByNamespaceId
         // -------------------------------------------------------------------------
 

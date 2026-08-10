@@ -52,6 +52,12 @@ mandatoryDocs:
   - ./agentos/agentos-sdk/README.md
   - ./agentos/docs/*
 
+docs:
+  - ../docs/to-rework/DEV_WORKFLOW.md
+  - ../agentos/README.md
+  - ../agentos/agentos-sdk/README.md
+  - ../agentos/docs/*
+
 subAgents:
   - Gradlay
   - Daemonay

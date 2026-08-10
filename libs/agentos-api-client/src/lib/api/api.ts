@@ -4,10 +4,14 @@ export * from './ai-model-controller.service'
 import { AiModelControllerService } from './ai-model-controller.service'
 export * from './ai-provider-controller.service'
 import { AiProviderControllerService } from './ai-provider-controller.service'
+export * from './auth-setting-controller.service'
+import { AuthSettingControllerService } from './auth-setting-controller.service'
 export * from './case-controller.service'
 import { CaseControllerService } from './case-controller.service'
 export * from './case-event-rest-controller.service'
 import { CaseEventRestControllerService } from './case-event-rest-controller.service'
+export * from './case-membership-controller.service'
+import { CaseMembershipControllerService } from './case-membership-controller.service'
 export * from './exchange-controller.service'
 import { ExchangeControllerService } from './exchange-controller.service'
 export * from './feedback-controller.service'
@@ -18,12 +22,18 @@ export * from './integration-type-controller.service'
 import { IntegrationTypeControllerService } from './integration-type-controller.service'
 export * from './namespace-controller.service'
 import { NamespaceControllerService } from './namespace-controller.service'
+export * from './namespace-membership-controller.service'
+import { NamespaceMembershipControllerService } from './namespace-membership-controller.service'
 export * from './namespace-permission-endpoints.service'
 import { NamespacePermissionEndpointsService } from './namespace-permission-endpoints.service'
+export * from './o-auth-callback-controller.service'
+import { OAuthCallbackControllerService } from './o-auth-callback-controller.service'
 export * from './plugin-controller.service'
 import { PluginControllerService } from './plugin-controller.service'
 export * from './prompt-controller.service'
 import { PromptControllerService } from './prompt-controller.service'
+export * from './scheduled-prompt-controller.service'
+import { ScheduledPromptControllerService } from './scheduled-prompt-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
 export * from './user-controller.service'
@@ -34,16 +44,21 @@ export const APIS = [
   AgentConfigControllerService,
   AiModelControllerService,
   AiProviderControllerService,
+  AuthSettingControllerService,
   CaseControllerService,
   CaseEventRestControllerService,
+  CaseMembershipControllerService,
   ExchangeControllerService,
   FeedbackControllerService,
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,
   NamespaceControllerService,
+  NamespaceMembershipControllerService,
   NamespacePermissionEndpointsService,
+  OAuthCallbackControllerService,
   PluginControllerService,
   PromptControllerService,
+  ScheduledPromptControllerService,
   SseService,
   UserControllerService,
   UserGroupControllerService,

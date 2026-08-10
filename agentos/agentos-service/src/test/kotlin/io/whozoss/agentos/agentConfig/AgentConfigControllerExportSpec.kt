@@ -10,6 +10,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
@@ -29,7 +30,7 @@ class AgentConfigControllerExportSpec : StringSpec({
     val agentService = mockk<AgentService>()
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
-    val controller = AgentConfigController(service, agentService, userService, permissionService)
+    val controller = AgentConfigController(service, agentService, userService, permissionService, yamlExportMapper())
 
     val namespaceId = UUID.randomUUID()
 
@@ -170,6 +171,48 @@ class AgentConfigControllerExportSpec : StringSpec({
 
         body shouldContain "docs:"
         body shouldContain "/path/to/guide.md"
+    }
+
+    // -------------------------------------------------------------------------
+    // YAML body — built-in exchange states inside integrations are preserved
+    // -------------------------------------------------------------------------
+
+    "export YAML preserves a null integration value (all tools enabled)" {
+        val c = config(integrations = mapOf("NAMESPACE_FILE_EXCHANGE" to null))
+        every { service.findById(c.metadata.id) } returns c
+
+        val body = controller.export(c.metadata.id).body!!
+
+        body shouldContain "integrations:"
+        body shouldContain "NAMESPACE_FILE_EXCHANGE: null"
+    }
+
+    "export YAML preserves an empty-list integration value (explicit opt-out)" {
+        val c = config(integrations = mapOf("CASE_FILE_EXCHANGE" to emptyList()))
+        every { service.findById(c.metadata.id) } returns c
+
+        val body = controller.export(c.metadata.id).body!!
+
+        body shouldContain "integrations:"
+        body shouldContain "CASE_FILE_EXCHANGE: []"
+    }
+
+    "export YAML preserves null and empty-list integration values alongside a regular integration" {
+        val c = config(
+            integrations = mapOf(
+                "JIRA" to listOf("GetIssue"),
+                "NAMESPACE_FILE_EXCHANGE" to null,
+                "CASE_FILE_EXCHANGE" to emptyList(),
+            ),
+        )
+        every { service.findById(c.metadata.id) } returns c
+
+        val body = controller.export(c.metadata.id).body!!
+
+        body shouldContain "JIRA:"
+        body shouldContain "GetIssue"
+        body shouldContain "NAMESPACE_FILE_EXCHANGE: null"
+        body shouldContain "CASE_FILE_EXCHANGE: []"
     }
 
     // -------------------------------------------------------------------------

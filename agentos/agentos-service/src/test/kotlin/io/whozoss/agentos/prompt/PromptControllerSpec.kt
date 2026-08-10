@@ -10,11 +10,14 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.prompt.PromptDto
 import io.whozoss.agentos.sdk.api.prompt.PromptParameterDto
@@ -43,7 +46,14 @@ class PromptControllerSpec : StringSpec({
     val namespaceService = mockk<NamespaceService>(relaxed = true)
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
-    val controller = PromptController(service, namespaceService, userService, permissionService)
+    // Real instances (not mocked): preserve the id-vs-externalId resolution and scope
+    // authorization behaviour that used to be inlined in the controller, backed by the
+    // same namespaceService/userService/permissionService mocks.
+    val externalIdentifierResolver = ExternalIdentifierResolver(namespaceService, userService)
+    val overlayScopeAuthorizer = OverlayScopeAuthorizer(permissionService, userService, externalIdentifierResolver)
+    val controller = PromptController(
+        service, namespaceService, userService, permissionService, overlayScopeAuthorizer, yamlExportMapper(),
+    )
 
     val namespaceId = UUID.randomUUID()
     val callerId = UUID.randomUUID()
@@ -158,38 +168,6 @@ class PromptControllerSpec : StringSpec({
         val p = prompt(parameters = emptyList())
         val result = toDto(p)
         result.parameters shouldBe emptyList()
-    }
-
-    // -------------------------------------------------------------------------
-    // toDomain mapping
-    // -------------------------------------------------------------------------
-
-    "toDomain maps all fields" {
-        val id = UUID.randomUUID()
-        val r = resource(
-            id = id,
-            nsId = namespaceId,
-            name = "Summary",
-            description = "Summarise input",
-            content = listOf("Summarise: {{text}}"),
-            parameters = listOf(PromptParameterDto(name = "text", description = "Input text", defaultValue = "default")),
-        )
-
-        val result = toDomain(r)
-
-        result.id shouldBe id
-        result.namespaceId shouldBe namespaceId
-        result.name shouldBe "Summary"
-        result.description shouldBe "Summarise input"
-        result.content shouldBe listOf("Summarise: {{text}}")
-        result.parameters shouldHaveSize 1
-        result.parameters[0].name shouldBe "text"
-    }
-
-    "toDomain generates a fresh UUID when id is null" {
-        val first = toDomain(resource(id = null))
-        val second = toDomain(resource(id = null))
-        (first.id == second.id) shouldBe false
     }
 
     // -------------------------------------------------------------------------

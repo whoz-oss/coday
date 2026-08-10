@@ -1,11 +1,6 @@
 package io.whozoss.agentos.agentConfig
 
-import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.entity.EntityCrudDelegate
@@ -69,6 +64,7 @@ class AgentConfigController(
     private val agentService: AgentService,
     private val userService: UserService,
     permissionService: PermissionService,
+    private val yamlExportMapper: ObjectMapper,
 ) : AgentConfigApi {
     private val crud =
         EntityCrudDelegate(
@@ -203,7 +199,7 @@ class AgentConfigController(
         val entity =
             agentConfigService.findById(id)
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
-        val yaml = YAML_MAPPER.writeValueAsString(toExportModel(entity))
+        val yaml = yamlExportMapper.writeValueAsString(toExportModel(entity))
         val filename = entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-") + ".yaml"
         return ResponseEntity
             .ok()
@@ -257,23 +253,7 @@ class AgentConfigController(
         )
     }
 
-    companion object : KLogging() {
-        /**
-         * YAML mapper configured for clean, human-readable output:
-         * - No `---` document start marker
-         * - No Jackson type tags
-         * - Null and empty values omitted (via [toExportModel] filtering + NON_EMPTY inclusion)
-         */
-        private val YAML_MAPPER: ObjectMapper =
-            ObjectMapper(
-                YAMLFactory
-                    .builder()
-                    .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
-                    .build(),
-            ).registerModule(KotlinModule.Builder().build())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-                .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
-    }
+    companion object : KLogging()
 }
 
 internal fun toDomain(resource: AgentConfigDto): AgentConfig {
@@ -320,16 +300,18 @@ internal fun toDto(entity: AgentConfig) =
  * Only the fields that [FilesystemAgentConfigRepository] reads are included, so the exported
  * file can be dropped directly into the namespace `agents/` directory.
  *
- * The map is built explicitly rather than via a data class so that null/empty values can be
- * omitted without a per-field `@JsonInclude` annotation. The YAML_MAPPER's
- * `NON_EMPTY` inclusion policy then handles the rest.
+ * The map is built explicitly rather than via a data class so that null, blank and empty top-level
+ * values can be omitted without a per-field `@JsonInclude` annotation. Doing it here rather than
+ * with a mapper-level inclusion policy is what keeps the filtering out of the `integrations` map,
+ * whose entries are kept verbatim: a null value (all tools of the integration) and an empty list
+ * (explicit opt-out) are distinct states the re-import must see unchanged.
  */
 private fun toExportModel(entity: AgentConfig): Map<String, Any?> =
     buildMap {
         put("name", entity.name)
-        entity.description?.let { put("description", it) }
-        entity.instructions?.let { put("instructions", it) }
-        entity.modelName?.let { put("modelName", it) }
+        entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
+        entity.instructions?.takeIf { it.isNotBlank() }?.let { put("instructions", it) }
+        entity.modelName?.takeIf { it.isNotBlank() }?.let { put("modelName", it) }
         entity.integrations?.takeIf { it.isNotEmpty() }?.let { put("integrations", it) }
         entity.subAgents?.takeIf { it.isNotEmpty() }?.let { put("subAgents", it) }
         entity.docs?.takeIf { it.isNotEmpty() }?.let { put("docs", it) }

@@ -6,6 +6,9 @@ modelSize: BIG
 mandatoryDocs:
   - ./docs/nxpert/01-coday-nx-knowledge.md
 
+docs:
+  - ../docs/nxpert/01-coday-nx-knowledge.md
+
 integrations:
   FILES:
   MEMORY:

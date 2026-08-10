@@ -35,9 +35,7 @@ class PromptServiceImpl(
         if (entity.agentConfigId != null) {
             val agentConfig = agentConfigService.findById(entity.agentConfigId)
                 ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
-            if (agentConfig.metadata.version == null) {
-                // version is null for entities that have never been persisted in Neo4j
-                // (filesystem agents are built in-memory and never go through SDN save).
+            if (agentConfig.isFilesystemOnly) {
                 throw UnprocessableEntityException(
                     "AgentConfig id=${entity.agentConfigId} is a filesystem-only agent and cannot be linked to a prompt",
                 )
@@ -52,6 +50,7 @@ class PromptServiceImpl(
 
     override fun update(entity: Prompt): Prompt {
         validate(entity)
+        rejectIfFilesystemBacked(entity.id, "updated")
         repository
             .findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
@@ -75,15 +74,27 @@ class PromptServiceImpl(
 
     override fun findByUserId(userId: UUID): List<Prompt> = repository.findByUserId(userId)
 
+    // The agentConfigId filter is intentionally applied here, in memory, and not pushed into
+    // the repository query. findEffective fetches raw candidates across all four overlay
+    // layers (platform / user-global / namespace-shared / user×namespace) for a given prompt
+    // name; which layer "wins" is only known after the groupBy+priority fold below. A layer
+    // that does NOT match agentConfigId can still be the eventual winner for its name, while a
+    // lower-priority layer that DOES match loses — filtering in the Cypher query (i.e. on the
+    // raw, pre-merge rows) would silently drop the winning row whenever its non-matching layer
+    // outranks a matching one, or spuriously keep a name whose only matching layer isn't the
+    // effective one. The filter must therefore run after the merge, on the already-resolved
+    // per-name winners — never before.
     override fun findEffective(
         namespaceId: UUID,
         callerId: UUID,
+        agentConfigId: UUID?,
     ): List<Prompt> =
         repository
             .findEffective(namespaceId, callerId)
             .sortedBy { layerPriority(it) }
             .groupBy { it.name }
             .map { (_, layers) -> layers.last() }
+            .filter { agentConfigId == null || it.agentConfigId == agentConfigId }
             .sortedBy { it.name }
 
     override fun findByScope(
@@ -106,7 +117,10 @@ class PromptServiceImpl(
             else -> 3 // user×namespace
         }
 
-    override fun delete(id: UUID): Boolean = repository.delete(id)
+    override fun delete(id: UUID): Boolean {
+        rejectIfFilesystemBacked(id, "deleted")
+        return repository.delete(id)
+    }
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
 
@@ -172,6 +186,26 @@ class PromptServiceImpl(
     private fun conflictMessage(entity: Prompt): String =
         "A prompt named '${entity.name}' already exists in this scope " +
             "(namespaceId=${entity.namespaceId ?: "platform"}, userId=${entity.userId})"
+
+    /**
+     * Rejects [update] / [delete] when [id] resolves to a filesystem-backed prompt.
+     *
+     * A filesystem prompt (loaded by [FilesystemPromptRepository] from YAML, never saved
+     * through SDN) carries `metadata.version == null` — the same idiom used in [create] to
+     * detect filesystem-only AgentConfigs. Since [FilesystemPromptRepository.findByIds] now
+     * resolves the synthetic filesystem id, a naive PUT/DELETE on that id would otherwise
+     * create (resp. attempt to soft-delete) a phantom Neo4j node sharing the id — the
+     * persisted copy would then silently shadow the file-backed prompt it was meant to edit,
+     * defeating the collision rule documented on [FilesystemPromptRepository].
+     */
+    private fun rejectIfFilesystemBacked(id: UUID, action: String) {
+        val existing = repository.findByIds(listOf(id)).firstOrNull() ?: return
+        if (existing.metadata.version == null) {
+            throw UnprocessableEntityException(
+                "Prompt id=$id is backed by a filesystem YAML file and cannot be $action via the API",
+            )
+        }
+    }
 
     companion object : KLogging() {
         private const val TRIPLE_KEY_CONSTRAINT_NAME = "prompt_triple_key_unique"

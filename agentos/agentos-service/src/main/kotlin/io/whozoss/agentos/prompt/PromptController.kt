@@ -1,13 +1,14 @@
 package io.whozoss.agentos.prompt
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.prompt.PromptApi
 import io.whozoss.agentos.sdk.api.prompt.PromptDto
@@ -19,9 +20,10 @@ import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.security.access.AccessDeniedException
+import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -54,7 +56,18 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * Mutable fields: name, description, content, parameters, externalMetadata.
  *
  * **[search]** returns prompts at an exact scope level — no merge, no inheritance.
- * **[effective]** returns the merged set across the four overlay layers.
+ * **[resolveEffective]** returns the merged set across the four overlay layers.
+ *
+ * **Why [search]/[resolveEffective]/[create] use [OverlayScopeAuthorizer] instead of `@PreAuthorize`**:
+ * these three endpoints have no target id to evaluate a permission against — the request
+ * body itself carries the `(namespaceId, userId)` scope that determines which check applies.
+ * A `@PreAuthorize` SpEL expression can only ever produce 403 on refusal, but the
+ * mass-assignment guard on `body.userId` must produce 400 (malformed request); and the
+ * external-id resolution ([io.whozoss.agentos.entity.ExternalIdentifierResolver], a Neo4j
+ * lookup) would have to run twice — once in SpEL to authorize, once in the method body to
+ * use the resolved value.
+ * [OverlayScopeAuthorizer] resolves once and throws the correctly-typed exception, so
+ * `@PreAuthorize("isAuthenticated()")` remains only as the declarative floor on these three.
  */
 @RestController
 @RequestMapping(
@@ -66,6 +79,8 @@ class PromptController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
+    private val overlayScopeAuthorizer: OverlayScopeAuthorizer,
+    private val yamlExportMapper: ObjectMapper,
 ) : PromptApi {
     private val crud =
         EntityCrudDelegate(
@@ -118,38 +133,27 @@ class PromptController(
     override fun search(
         @Valid @RequestBody request: PromptSearchRequest,
     ): List<PromptDto> {
-        val currentUser = userService.getCurrentUser()
-        val resolvedNamespaceId = resolveOptionalNamespaceId(request.namespaceId, request.namespaceExternalId)
-
-        // Mass-assignment guard: userId must match the authenticated user unless super-admin
-        if (request.userId != null && request.userId != currentUser.id && !currentUser.isAdmin) {
-            throw AccessDeniedException("Cannot search prompts for another user")
-        }
-
-        // Namespace-scoped levels require READ on the namespace
-        if (resolvedNamespaceId != null) {
-            val granted =
-                permissionService.hasPermission(
-                    userId = currentUser.id.toString(),
-                    entityType = EntityType.NAMESPACE,
-                    entityId = resolvedNamespaceId.toString(),
-                    action = Action.READ,
-                )
-            if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $resolvedNamespaceId")
-        }
-
+        val scope =
+            overlayScopeAuthorizer.authorizeSearchOrThrow(
+                pluralLabel = "prompts",
+                namespaceId = request.namespaceId,
+                namespaceExternalId = request.namespaceExternalId,
+                userId = request.userId,
+                userExternalId = request.userExternalId,
+            )
         return promptService
             .findByScope(
-                namespaceId = resolvedNamespaceId,
-                userId = request.userId,
+                namespaceId = scope.namespaceId,
+                userId = scope.userId,
                 agentConfigIds = request.agentConfigIds,
             ).map(::toDto)
     }
 
     @Operation(
-        summary = "Effective prompts for a user in a namespace",
+        summary = "Effective prompts for the authenticated user in a namespace",
         description =
-            "Returns the resolved set of prompts accessible in the given namespace context. " +
+            "Returns the resolved set of prompts accessible in the given namespace context, " +
+                "scoped to the authenticated caller. " +
                 "Merges platform, namespace-shared, user-global and user×namespace layers by name, " +
                 "highest-priority layer wins. Optional `agentConfigId` filter applied post-resolution. " +
                 "Requires READ on the namespace.",
@@ -159,35 +163,18 @@ class PromptController(
         consumes = [MediaType.APPLICATION_JSON_VALUE],
     )
     @PreAuthorize("isAuthenticated()")
-    override fun effective(
+    override fun resolveEffective(
         @Valid @RequestBody request: PromptEffectiveRequest,
     ): List<PromptDto> {
-        val nsId = resolveNamespaceId(request.namespaceId, request.namespaceExternalId)
-        val uId = resolveUserId(request.userId, request.userExternalId)
-
-        val currentUser = userService.getCurrentUser()
-        if (uId != currentUser.id) {
-            throw BadRequestException("userId must match authenticated user")
-        }
-
-        val granted =
-            permissionService.hasPermission(
-                userId = currentUser.id.toString(),
-                entityType = EntityType.NAMESPACE,
-                entityId = nsId.toString(),
-                action = Action.READ,
+        val scope =
+            overlayScopeAuthorizer.authorizeEffectiveOrThrow(
+                pluralLabel = "prompts",
+                namespaceId = request.namespaceId,
+                namespaceExternalId = request.namespaceExternalId,
             )
-        if (!granted) throw AccessDeniedException("Cannot read prompts in namespace $nsId")
-
         return promptService
-            .findEffective(nsId, currentUser.id)
-            .let { prompts ->
-                if (request.agentConfigId != null) {
-                    prompts.filter { it.agentConfigId == request.agentConfigId }
-                } else {
-                    prompts
-                }
-            }.map(::toDto)
+            .findEffective(scope.namespaceId!!, scope.userId!!, request.agentConfigId)
+            .map(::toDto)
     }
 
     // -------------------------------------------------------------------------
@@ -213,57 +200,29 @@ class PromptController(
     override fun create(
         @Valid @RequestBody resource: PromptDto,
     ): PromptDto {
-        val currentUser = userService.getCurrentUser()
-        val me = currentUser.id
-
-        // Phase 1 — validation
-        if (resource.userId != null && resource.userId != me) {
-            throw BadRequestException("userId in body must match authenticated user or be omitted")
-        }
+        // Phase 1 — validation local to Prompt (unrelated to scope authorization)
         if (resource.content.any { it.isBlank() }) {
             throw BadRequestException("content elements must not be blank")
         }
 
-        // Phase 2 — scope determination
-        val resolvedNs: UUID? = resource.namespaceId
-        val resolvedUser: UUID? = if (resource.userId != null) me else null
-        val isPlatform = resolvedNs == null && resolvedUser == null
+        // Phase 2 — mass-assignment guard + scope dispatch + authorization
+        val scope =
+            overlayScopeAuthorizer.authorizeCreateOrThrow(
+                entityLabel = "Prompt",
+                requestedNamespaceId = resource.namespaceId,
+                requestedUserId = resource.userId,
+            )
 
-        // Phase 3 — per-scope authorization
-        when {
-            isPlatform -> {
-                if (!currentUser.isAdmin) {
-                    throw AccessDeniedException("Platform-level Prompt requires Super Admin")
-                }
-            }
-            resolvedNs != null -> {
-                val authzAction = if (resolvedUser != null) Action.READ else Action.WRITE
-                val granted =
-                    permissionService.hasPermission(
-                        userId = me.toString(),
-                        entityType = EntityType.NAMESPACE,
-                        entityId = resolvedNs.toString(),
-                        action = authzAction,
-                    )
-                if (!granted) {
-                    throw AccessDeniedException(
-                        "Cannot create Prompt in namespace $resolvedNs (${authzAction.name} required)",
-                    )
-                }
-            }
-            // user-global: isAuthenticated() from @PreAuthorize is sufficient
-        }
-
-        // Phase 4 — namespace existence check (deferred after authz)
-        if (resolvedNs != null && namespaceService.findById(resolvedNs) == null) {
-            throw ResourceNotFoundException("Namespace not found: $resolvedNs")
+        // Phase 3 — namespace existence check (deferred after authz, anti-enumeration)
+        if (scope.namespaceId != null && namespaceService.findById(scope.namespaceId) == null) {
+            throw ResourceNotFoundException("Namespace not found: ${scope.namespaceId}")
         }
 
         val target =
             Prompt(
-                metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-                namespaceId = resolvedNs,
-                userId = resolvedUser,
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = scope.namespaceId,
+                userId = scope.userId,
                 agentConfigId = resource.agentConfigId,
                 name = resource.name,
                 description = resource.description,
@@ -299,68 +258,37 @@ class PromptController(
         crud.delete(id)
     }
 
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-
-    // -------------------------------------------------------------------------
-    // ExternalId resolution helpers
-    // -------------------------------------------------------------------------
-
-    /**
-     * Resolves a namespace UUID from either a direct UUID or an externalId.
-     * Exactly one must be provided.
-     */
-    private fun resolveNamespaceId(
-        id: UUID?,
-        externalId: String?,
-    ): UUID {
-        if (id != null && externalId != null) {
-            throw BadRequestException("Provide namespaceId or namespaceExternalId, not both")
-        }
-        return id
-            ?: externalId?.let {
-                namespaceService.findByExternalId(it)?.metadata?.id
-                    ?: throw ResourceNotFoundException("Namespace not found for externalId: $it")
-            }
-            ?: throw BadRequestException("namespaceId or namespaceExternalId is required")
-    }
-
-    /**
-     * Resolves a namespace UUID from either a direct UUID or an externalId.
-     * Both can be null (for platform-level scope).
-     */
-    private fun resolveOptionalNamespaceId(
-        id: UUID?,
-        externalId: String?,
-    ): UUID? {
-        if (id != null && externalId != null) {
-            throw BadRequestException("Provide namespaceId or namespaceExternalId, not both")
-        }
-        return id
-            ?: externalId?.let {
-                namespaceService.findByExternalId(it)?.metadata?.id
-                    ?: throw ResourceNotFoundException("Namespace not found for externalId: $it")
-            }
-    }
-
-    /**
-     * Resolves a user UUID from either a direct UUID or an externalId.
-     * Exactly one must be provided.
-     */
-    private fun resolveUserId(
-        id: UUID?,
-        externalId: String?,
-    ): UUID {
-        if (id != null && externalId != null) {
-            throw BadRequestException("Provide userId or userExternalId, not both")
-        }
-        return id
-            ?: externalId?.let {
-                userService.findByExternalId(it)?.metadata?.id
-                    ?: throw ResourceNotFoundException("User not found for externalId: $it")
-            }
-            ?: throw BadRequestException("userId or userExternalId is required")
+    @Operation(
+        summary = "Export a Prompt as a YAML file",
+        description =
+            "Returns the prompt as a downloadable YAML file, ready to be placed in " +
+                "the namespace `prompts/` directory under `configPath`. " +
+                "Only the fields meaningful in a filesystem prompt are included: " +
+                "`name`, `description`, `content`, `parameters`. " +
+                "Scope metadata (`id`, `namespaceId`, `userId`, `externalMetadata`) and audit fields " +
+                "are intentionally omitted. " +
+                "**`agentConfigId` is also omitted and, if set, this is a real loss of information**: " +
+                "`FilesystemPromptRepository` deliberately does not support linking a file-backed prompt " +
+                "to an AgentConfig (YAGNI \u2014 a file can only carry a name, and the need is already covered " +
+                "by an `@agentName` prefix in the prompt's own `content`). If the exported prompt targets " +
+                "an agent, add `@agentName` at the start of the content to preserve that targeting in the file.",
+    )
+    @GetMapping("/{id}/export", produces = [MediaType.APPLICATION_YAML_VALUE])
+    @PreAuthorize("hasPermission(#id, 'Prompt', 'WRITE')")
+    @HideOnAccessDenied
+    fun export(
+        @PathVariable id: UUID,
+    ): ResponseEntity<String> {
+        val entity =
+            promptService.findById(id)
+                ?: throw ResourceNotFoundException("Prompt not found: $id")
+        val yaml = yamlExportMapper.writeValueAsString(toExportModel(entity))
+        val filename = entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-") + ".yaml"
+        return ResponseEntity
+            .ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
+            .contentType(MediaType.parseMediaType(MediaType.APPLICATION_YAML_VALUE))
+            .body(yaml)
     }
 
     private fun toDomainForUpdate(
@@ -410,22 +338,41 @@ internal fun toDto(entity: Prompt): PromptDto =
         updatedOn = entity.metadata.modified,
     )
 
-internal fun toDomain(resource: PromptDto): Prompt =
-    Prompt(
-        metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-        namespaceId = resource.namespaceId,
-        userId = resource.userId,
-        agentConfigId = resource.agentConfigId,
-        name = resource.name,
-        description = resource.description,
-        content = resource.content,
-        parameters =
-            resource.parameters.map { p ->
-                PromptParameter(
-                    name = p.name,
-                    description = p.description,
-                    defaultValue = p.defaultValue,
-                )
-            },
-        externalMetadata = resource.externalMetadata,
-    )
+/**
+ * Produces the filesystem-ready export model from a persisted [Prompt].
+ *
+ * Only the fields [FilesystemPromptRepository.parseYamlFile] reads are included: `name`,
+ * `description`, `content`, `parameters`. Scope and persistence artefacts (`id`, `namespaceId`,
+ * `userId`, `externalMetadata`, all audit fields) are intentionally excluded — they have no
+ * meaning in a standalone YAML file.
+ *
+ * **`agentConfigId` is deliberately excluded, even when set.** [FilesystemPromptRepository] does
+ * not support a filesystem prompt linking to an [io.whozoss.agentos.agentConfig.AgentConfig] (see
+ * its KDoc: YAGNI — a file can only declare a name, and the loader would silently ignore an
+ * `agentConfigId` field since [FilesystemPromptRepository]'s `PromptYamlModel` has no such
+ * property). Exporting the raw UUID would therefore be worse than omitting it: a value with no
+ * meaning outside this database, silently dropped on import. The targeting this field expresses
+ * can be preserved manually by the user, prefixing the exported `content` with `@agentName`,
+ * which [io.whozoss.agentos.caseFlow.CaseServiceImpl] already resolves at prompt-expansion time.
+ *
+ * The model is built explicitly via `buildMap` rather than through a mapper-level inclusion
+ * policy (`NON_EMPTY`/`NON_NULL`) so that [PromptParameter.defaultValue] survives export even
+ * when it is the empty string — a legitimate, meaningful value (a free-form optional parameter)
+ * that a global `NON_EMPTY` policy would strip. See [PromptController.YAML_MAPPER] KDoc.
+ */
+private fun toExportModel(entity: Prompt): Map<String, Any?> =
+    buildMap {
+        put("name", entity.name)
+        entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
+        put("content", entity.content)
+        entity.parameters.takeIf { it.isNotEmpty() }?.let { params ->
+            put("parameters", params.map { it.toExportModel() })
+        }
+    }
+
+private fun PromptParameter.toExportModel(): Map<String, Any?> =
+    buildMap {
+        put("name", name)
+        description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
+        put("defaultValue", defaultValue)
+    }

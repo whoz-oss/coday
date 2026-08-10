@@ -1,11 +1,6 @@
 package io.whozoss.agentos.integrationConfig
 
-import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.swagger.v3.oas.annotations.Hidden
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
@@ -76,6 +71,7 @@ class IntegrationConfigController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
+    private val yamlExportMapper: ObjectMapper,
 ) : IntegrationConfigApi {
     private val scopedOwnershipCrudDelegate =
         ScopedOwnershipCrudDelegate(
@@ -95,6 +91,7 @@ class IntegrationConfigController(
                     integrationType = resource.integrationType,
                     description = resource.description,
                     parameters = resource.parameters,
+                    authSettingName = resource.authSettingName,
                 )
             },
             crud =
@@ -214,6 +211,7 @@ class IntegrationConfigController(
                     integrationType = resource.integrationType,
                     description = resource.description,
                     parameters = resource.parameters,
+                    authSettingName = resource.authSettingName,
                 )
             return toDto(integrationConfigService.create(entity))
         }
@@ -241,6 +239,7 @@ class IntegrationConfigController(
                     integrationType = existing.integrationType,
                     description = resource.description,
                     parameters = resource.parameters,
+                    authSettingName = resource.authSettingName,
                 ),
             ),
         )
@@ -279,7 +278,7 @@ class IntegrationConfigController(
         val entity =
             integrationConfigService.findById(id)
                 ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
-        val yaml = YAML_MAPPER.writeValueAsString(toExportModel(entity))
+        val yaml = PORTABILITY_COMMENT + yamlExportMapper.writeValueAsString(toExportModel(entity))
         val filename = "${entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-")}.yaml"
         return ResponseEntity
             .ok()
@@ -313,20 +312,36 @@ class IntegrationConfigController(
 
     companion object : KLogging() {
         /**
-         * YAML mapper configured for clean, human-readable output:
-         * - No `---` document start marker
-         * - No Jackson type tags
-         * - Null and empty values omitted (via [toExportModel] filtering + NON_EMPTY inclusion)
+         * Comment block prefixed to every exported YAML file, explaining how to make the
+         * exported `parameters` paths portable across developer machines.
+         *
+         * Paths written through the UI/API are absolute and specific to the machine that
+         * entered them — there is no reverse substitution of `{{NAMESPACE_CONFIG_PATH}}` on
+         * export (the token is a one-way, load-time replacement performed by
+         * [io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository] for files
+         * placed under `<namespace.configPath>/integrations/`; configs created via the API are
+         * not resolved through that path). Each line is a valid YAML comment, so the file remains
+         * directly reloadable without edits.
          */
-        private val YAML_MAPPER: ObjectMapper =
-            ObjectMapper(
-                YAMLFactory
-                    .builder()
-                    .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
-                    .build(),
-            ).registerModule(KotlinModule.Builder().build())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-                .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
+        private val PORTABILITY_COMMENT: String =
+            """
+            |# This file was exported from a persisted IntegrationConfig. Paths under `parameters`
+            |# (e.g. workingDirectory, rootPath, cwd, args) are absolute and specific to the machine
+            |# that entered them.
+            |#
+            |# To make this file portable across developer machines, replace the part of each path
+            |# that matches the namespace's configPath with the token {{NAMESPACE_CONFIG_PATH}}.
+            |# It is resolved automatically at load time, only for files placed in
+            |# {configPath}/integrations/ (configs created through the API are not affected).
+            |#
+            |# Example: workingDirectory: /home/alice/repos/myproject
+            |#       -> workingDirectory: "{{NAMESPACE_CONFIG_PATH}}/.."
+            |#
+            |# Relative path segments following the token are kept as-is, not normalised:
+            |# "{{NAMESPACE_CONFIG_PATH}}/../scripts" works.
+            |
+            """.trimMargin()
+
     }
 }
 
@@ -339,27 +354,21 @@ private fun toDto(entity: IntegrationConfig) =
         integrationType = entity.integrationType,
         description = entity.description,
         parameters = entity.parameters,
+        authSettingName = entity.authSettingName,
     )
 
 /**
  * Produces the filesystem-ready export model from a persisted [IntegrationConfig].
  *
- * Scope fields (`id`, `namespaceId`, `userId`) are intentionally excluded — they are
- * persistence artefacts with no meaning in a YAML file. Only the fields that
- * [io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository] reads
- * are included, so the exported file can be dropped directly into `integrations/`.
+ * Built explicitly via `buildMap` so that null/empty values are omitted without a
+ * mapper-level inclusion policy — consistent with [AgentConfigController] and
+ * [PromptController]. The [parameters] field is a [JsonNode] that Jackson serialises
+ * verbatim; a null value means no parameters were set, so the key is omitted entirely.
  */
-private fun toExportModel(entity: IntegrationConfig) =
-    IntegrationConfigExportModel(
-        name = entity.name,
-        integrationType = entity.integrationType,
-        description = entity.description,
-        parameters = entity.parameters,
-    )
-
-private data class IntegrationConfigExportModel(
-    val name: String,
-    val integrationType: String,
-    val description: String?,
-    val parameters: com.fasterxml.jackson.databind.JsonNode?,
-)
+private fun toExportModel(entity: IntegrationConfig): Map<String, Any?> =
+    buildMap {
+        put("name", entity.name)
+        put("integrationType", entity.integrationType)
+        entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
+        entity.parameters?.let { put("parameters", it) }
+    }

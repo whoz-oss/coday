@@ -3,6 +3,13 @@ import { agentosReadyGuard } from './guards/agentos-ready.guard'
 
 export const AGENTOS_ROUTES: Route[] = [
   {
+    // OAuth popup callback — standalone route outside the AgentOS shell.
+    // The popup window does not need the full layout; it bootstraps, sends postMessage, and closes.
+    path: 'oauth/callback',
+    loadComponent: () =>
+      import('./components/oauth-callback/oauth-callback.component').then((m) => m.OAuthCallbackComponent),
+  },
+  {
     path: '',
     loadComponent: () =>
       import('./components/agentos-shell/agentos-shell.component').then((m) => m.AgentosShellComponent),
@@ -92,6 +99,31 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformIntegrationConfigsComponent
               ),
           },
+          // --- Admin: Platform Scheduled Prompts ---
+          {
+            path: 'admin/scheduled-prompts/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
+              ),
+          },
+          {
+            path: 'admin/scheduled-prompts/:scheduledPromptId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
+              ),
+          },
+          {
+            path: 'admin/scheduled-prompts',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-scheduled-prompts/platform-scheduled-prompts.component').then(
+                (m) => m.PlatformScheduledPromptsComponent
+              ),
+          },
           // --- Admin: Platform Prompts ---
           {
             path: 'admin/prompts/new',
@@ -132,6 +164,31 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/platform-ai-providers/platform-ai-providers.component').then(
                 (m) => m.PlatformAiProvidersComponent
+              ),
+          },
+          // --- Admin: Platform Auth Settings ---
+          {
+            path: 'admin/auth-settings/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/auth-setting-form/auth-setting-form.component').then(
+                (m) => m.AuthSettingFormComponent
+              ),
+          },
+          {
+            path: 'admin/auth-settings/:authSettingId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/auth-setting-form/auth-setting-form.component').then(
+                (m) => m.AuthSettingFormComponent
+              ),
+          },
+          {
+            path: 'admin/auth-settings',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-auth-settings/platform-auth-settings.component').then(
+                (m) => m.PlatformAuthSettingsComponent
               ),
           },
           // --- Admin: Platform AI Models ---
@@ -201,6 +258,31 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/user-profile/user-profile.component').then((m) => m.UserProfileComponent),
           },
+          // --- Auth Settings ---
+          {
+            path: ':namespaceId/auth-settings/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/auth-setting-form/auth-setting-form.component').then(
+                (m) => m.AuthSettingFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/auth-settings/:authSettingId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/auth-setting-form/auth-setting-form.component').then(
+                (m) => m.AuthSettingFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/auth-settings',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/auth-settings-all-scopes/auth-settings-all-scopes.component').then(
+                (m) => m.AuthSettingsAllScopesComponent
+              ),
+          },
           // --- Integrations ---
           {
             path: ':namespaceId/integrations/new',
@@ -266,6 +348,31 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/namespace-ai-models/namespace-ai-models.component').then(
                 (m) => m.NamespaceAiModelsComponent
+              ),
+          },
+          // --- Scheduled Prompts ---
+          {
+            path: ':namespaceId/scheduled-prompts/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/scheduled-prompts/:scheduledPromptId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/scheduled-prompt-form/scheduled-prompt-form.component').then(
+                (m) => m.ScheduledPromptFormComponent
+              ),
+          },
+          {
+            path: ':namespaceId/scheduled-prompts',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/scheduled-prompt-list/scheduled-prompt-list.component').then(
+                (m) => m.ScheduledPromptListComponent
               ),
           },
           // --- Prompts ---
@@ -341,6 +448,15 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/namespace-user-groups/namespace-user-groups.component').then(
                 (m) => m.NamespaceUserGroupsComponent
+              ),
+          },
+          // --- Members ---
+          {
+            path: ':namespaceId/members',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-members/namespace-members.component').then(
+                (m) => m.NamespaceMembersComponent
               ),
           },
           {

@@ -256,7 +256,7 @@ mcp:
         - --rm
         - -e
         - GITHUB_PERSONAL_ACCESS_TOKEN
-        - ghcr.io/github/github-mcp-server
+        - ghcr.io/github/github-mcp-server:v1.8.0
     # IMPORTANT, add through mcp config of GITHUB at user level the env variable holding your access token, and the command
     #    env:
     #      GITHUB_PERSONAL_ACCESS_TOKEN: your_github_access_token

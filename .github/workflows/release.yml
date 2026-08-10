@@ -219,7 +219,74 @@ jobs:
             echo "Warning: Coday Twin PKG not found"
           fi
 
-  # Job 3: Resolve the list of JVM projects to publish from the platform:jvm tag
+  # Job 3: Build and upload AgentOS JARs as GitHub Release assets
+  upload-agentos-jars:
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.new_version
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.release.outputs.release_sha }}
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        working-directory: agentos
+        run: chmod +x gradlew
+
+      - name: Build AgentOS JARs
+        working-directory: agentos
+        run: |
+          ./gradlew :agentos-service:bootJar :agentos-bash-plugin:jar :agentos-file-plugin:jar :agentos-mcp-plugin:jar :agentos-tmux-plugin:jar --no-daemon
+
+      - name: Upload JARs to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="release/${{ needs.release.outputs.new_version }}"
+          VERSION="${{ needs.release.outputs.new_version }}"
+
+          # Collect all JARs into a staging directory with versioned names.
+          # Naming contract: "<artifactId>-<version>.jar" — same convention as deployPlugins
+          # in agentos/build.gradle.kts, which identifies artifacts by splitting on the first
+          # "-<digit>" boundary. Consumers MUST use this same split to derive the artifactId
+          # and version from the filename, never by version-prefix glob matching.
+          #
+          # agentos-service: bootJar forces archiveFileName="agentos-service.jar" (no version).
+          # We rename it explicitly here using the release version from needs.release.outputs.
+          # Plugins already produce versioned names from Gradle (e.g. agentos-bash-plugin-0.239.0.jar);
+          # we copy them as-is without renaming.
+          mkdir -p /tmp/agentos-jars
+          cp agentos/agentos-service/build/libs/agentos-service.jar "/tmp/agentos-jars/agentos-service-${VERSION}.jar"
+          cp agentos/agentos-bash-plugin/build/libs/agentos-bash-plugin-*.jar /tmp/agentos-jars/
+          cp agentos/agentos-file-plugin/build/libs/agentos-file-plugin-*.jar /tmp/agentos-jars/
+          cp agentos/agentos-mcp-plugin/build/libs/agentos-mcp-plugin-*.jar /tmp/agentos-jars/
+          cp agentos/agentos-tmux-plugin/build/libs/agentos-tmux-plugin-*.jar /tmp/agentos-jars/
+
+          # Generate checksums manifest keyed by the versioned filenames above
+          cd /tmp/agentos-jars
+          sha256sum *.jar > checksums.sha256
+          cat checksums.sha256
+          cd -
+
+          gh release upload "$TAG" \
+            "/tmp/agentos-jars/agentos-service-${VERSION}.jar" \
+            /tmp/agentos-jars/agentos-bash-plugin-*.jar \
+            /tmp/agentos-jars/agentos-file-plugin-*.jar \
+            /tmp/agentos-jars/agentos-mcp-plugin-*.jar \
+            /tmp/agentos-jars/agentos-tmux-plugin-*.jar \
+            /tmp/agentos-jars/checksums.sha256 \
+            --clobber
+
+  # Job 4: Resolve the list of JVM projects to publish from the platform:jvm tag
   compute-jvm-projects:
     runs-on: ubuntu-latest
     needs: release
@@ -250,7 +317,7 @@ jobs:
           PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -c '.' || echo '[]')
           echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
 
-  # Job 4: Publish all JVM artifacts to GitHub Packages
+  # Job 5: Publish all JVM artifacts to GitHub Packages
   publish-agentos-artifacts:
     name: publish ${{ matrix.project }} to github packages
     runs-on: ubuntu-latest
