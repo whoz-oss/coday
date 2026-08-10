@@ -43,10 +43,11 @@ import java.util.UUID
  * URL structure:
  * - `GET  /api/a2a/{namespaceId}/{agentName}/.well-known/agent-card.json` → discovery
  * - `POST /api/a2a/{namespaceId}/{agentName}`                             → JSON-RPC endpoint
- *   - method `message/send`
- *   - method `tasks/get`
- *   - method `tasks/cancel`
- * - `POST /api/a2a/{namespaceId}/{agentName}/stream`                      → SSE for `message/stream`
+ *   - method `message/send`, `tasks/get`, `tasks/cancel` → JSON response (`Accept: application/json`)
+ *   - method `message/stream`                            → SSE response (`Accept: text/event-stream`)
+ *     Per spec §9 there is a single JSON-RPC URL; streaming is negotiated via the
+ *     `Accept` header on that same URL, not a separate path. `/stream` is also
+ *     accepted as a convenience alias — see [stream].
  *
  * See [docs/a2a.md](../../../../../../../../../docs/a2a.md) for the full picture
  * (mapping, limitations, and what's needed for a production-ready implementation).
@@ -116,7 +117,15 @@ class A2AController(
             "is either an A2ATask, a TaskStatusUpdateEvent or a TaskArtifactUpdateEvent.",
     )
     @PostMapping(
-        "/{namespaceId}/{agentName}/stream",
+        // Per spec §9, JSON-RPC exposes a *single* endpoint (the Agent Card's
+        // `url`) for every method, including `message/stream`. A compliant
+        // client POSTs to that one URL with `Accept: text/event-stream` to
+        // request the SSE variant — it never learns about a separate path.
+        // Spring dispatches here vs. [jsonRpc] purely by `produces`/`Accept`
+        // content negotiation, since both mappings share the same base path.
+        // The `/stream` suffix is kept as a non-spec convenience alias for
+        // clients that were pointed at it directly (e.g. earlier docs/tests).
+        path = ["/{namespaceId}/{agentName}", "/{namespaceId}/{agentName}/stream"],
         consumes = [MediaType.APPLICATION_JSON_VALUE],
         produces = ["text/event-stream"],
     )
