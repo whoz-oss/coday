@@ -448,10 +448,11 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 endType = SchedulerEndType.OCCURRENCES,
                 maxOccurrenceCount = 1,
             )
-            // Pre-insert 1 completed run → already at max
+            // Pre-insert 1 completed run within the planning window (startDate = 2026-01-01)
+            // → already at max
             runRepo.insert(ScheduledPromptRun(
                 scheduledPromptId = sp.id,
-                scheduledFor = slot.minusSeconds(86400),
+                scheduledFor = Instant.parse("2026-01-01T07:00:00Z"),
                 status = RunStatus.DONE,
                 correlationId = "prev-done",
             ))
@@ -526,16 +527,72 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 endType = SchedulerEndType.OCCURRENCES,
                 maxOccurrenceCount = 2,
             )
-            // Pre-insert 1 completed run
+            // Pre-insert 1 completed run within the planning window (startDate = 2026-01-01)
             runRepo.insert(ScheduledPromptRun(
                 scheduledPromptId = sp.id,
-                scheduledFor = slot.minusSeconds(86400),
+                scheduledFor = Instant.parse("2026-01-01T07:00:00Z"),
                 status = RunStatus.DONE,
                 correlationId = "prev-1",
             ))
             // tickClaim inserts run #2 → total completed = 2 (prev + this one) ≥ maxOccurrenceCount = 2
             scanner(scheduledPromptRepo, runRepo).tickClaim()
             scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe false
+        }
+
+        "tickClaim with OCCURRENCES: runs before startDate do NOT count toward maxOccurrenceCount" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            // startDate = today (2026-01-01), maxOccurrenceCount = 1
+            val sp = scheduledPromptRepo.insertScheduledPrompt(
+                nextRunAt = slot,
+                endType = SchedulerEndType.OCCURRENCES,
+                maxOccurrenceCount = 1,
+            )
+            // Pre-insert 1 completed run BEFORE startDate (from the old planning window)
+            // This run must NOT count toward the quota
+            runRepo.insert(ScheduledPromptRun(
+                scheduledPromptId = sp.id,
+                scheduledFor = Instant.parse("2025-12-31T08:00:00Z"), // before 2026-01-01
+                status = RunStatus.DONE,
+                correlationId = "old-window-run",
+            ))
+            // tickClaim runs the due slot → quota count = 1 (only the new run counts)
+            // → disables after (count reaches maxOccurrenceCount = 1)
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            // The new run was inserted (old-window run does not block it)
+            runRepo.all().filter { it.correlationId != "old-window-run" } shouldHaveSize 1
+            // After inserting run #1 in the window, count = 1 >= max = 1 → disabled
+            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe false
+        }
+
+        "tickClaim with OCCURRENCES: runs before startDate do NOT block pre-check (quota not consumed)" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            // startDate = today (2026-01-01), maxOccurrenceCount = 1
+            val sp = scheduledPromptRepo.insertScheduledPrompt(
+                nextRunAt = slot,
+                endType = SchedulerEndType.OCCURRENCES,
+                maxOccurrenceCount = 1,
+            )
+            // Pre-insert 2 completed runs BEFORE startDate
+            // Neither should count — the pre-check must NOT disable the prompt
+            runRepo.insert(ScheduledPromptRun(
+                scheduledPromptId = sp.id,
+                scheduledFor = Instant.parse("2025-12-30T08:00:00Z"),
+                status = RunStatus.DONE,
+                correlationId = "old-1",
+            ))
+            runRepo.insert(ScheduledPromptRun(
+                scheduledPromptId = sp.id,
+                scheduledFor = Instant.parse("2025-12-31T08:00:00Z"),
+                status = RunStatus.DONE,
+                correlationId = "old-2",
+            ))
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            // The due slot must have been executed (old-window runs did not consume the quota)
+            runRepo.all().filter { it.correlationId !in listOf("old-1", "old-2") } shouldHaveSize 1
         }
 
         "tickClaim with OCCURRENCES: does NOT disable when completed runs are below maxOccurrenceCount" {
@@ -560,10 +617,11 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 endType = SchedulerEndType.OCCURRENCES,
                 maxOccurrenceCount = 2,
             )
-            // Pre-insert 1 SKIPPED run — slots count, not just executions
+            // Pre-insert 1 SKIPPED run within the planning window (startDate = 2026-01-01)
+            // Slots count, not just successful executions
             runRepo.insert(ScheduledPromptRun(
                 scheduledPromptId = sp.id,
-                scheduledFor = slot.minusSeconds(86400),
+                scheduledFor = Instant.parse("2026-01-01T07:00:00Z"),
                 status = RunStatus.SKIPPED,
                 correlationId = "skipped",
             ))
@@ -760,7 +818,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 every { it.updateStatus(any(), any(), any(), any()) } answers {
                     realRunRepo.updateStatus(firstArg(), secondArg(), thirdArg(), arg(3))
                 }
-                every { it.countCompletedRuns(any()) } returns 0
+                every { it.countCompletedRuns(any(), any()) } returns 0
             }
 
             val userRunRepo = InMemoryScheduledPromptUserRunRepository()

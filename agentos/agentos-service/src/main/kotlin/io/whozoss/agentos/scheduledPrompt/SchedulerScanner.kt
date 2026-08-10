@@ -306,7 +306,8 @@ class SchedulerScanner(
             }
             SchedulerEndType.OCCURRENCES -> {
                 val max = planning.maxOccurrenceCount ?: return false
-                val completed = runRepository.countCompletedRuns(scheduledPrompt.id)
+                val startInstant = planning.startDate.atStartOfDay(ZoneOffset.UTC).toInstant()
+                val completed = runRepository.countCompletedRuns(scheduledPrompt.id, startInstant)
                 completed >= max
             }
         }
@@ -334,7 +335,8 @@ class SchedulerScanner(
             }
             SchedulerEndType.OCCURRENCES -> {
                 val max = planning.maxOccurrenceCount ?: return
-                val completed = runRepository.countCompletedRuns(scheduledPrompt.id)
+                val startInstant = planning.startDate.atStartOfDay(ZoneOffset.UTC).toInstant()
+                val completed = runRepository.countCompletedRuns(scheduledPrompt.id, startInstant)
                 completed >= max
             }
         }

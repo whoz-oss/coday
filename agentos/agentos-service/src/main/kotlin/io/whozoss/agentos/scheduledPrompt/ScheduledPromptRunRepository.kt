@@ -43,7 +43,12 @@ interface ScheduledPromptRunRepository {
     fun findById(id: UUID): ScheduledPromptRun?
 
     /**
-     * Count all runs for a given ScheduledPrompt, for use against [Planning.maxOccurrenceCount].
+     * Count all runs for a given ScheduledPrompt within the current planning window,
+     * for use against [Planning.maxOccurrenceCount].
+     *
+     * Only runs whose [ScheduledPromptRun.scheduledFor] is >= [startInstant] are counted.
+     * This ensures that runs from a previous planning window (before the user moved
+     * [Planning.startDate] forward) do not consume quota in the new window.
      *
      * Counts every status including SKIPPED: the quota tracks **slots**, not executions.
      * A SKIPPED slot means a créneau fired but overlapped with an active run — the slot
@@ -52,7 +57,7 @@ interface ScheduledPromptRunRepository {
      * FAILED runs also count: the quota tracks "how many times the slot fired",
      * not "how many times it succeeded".
      */
-    fun countCompletedRuns(scheduledPromptId: UUID): Int
+    fun countCompletedRuns(scheduledPromptId: UUID, startInstant: Instant): Int
 
     /**
      * Find all Runs in CLAIMED status created before [olderThan].

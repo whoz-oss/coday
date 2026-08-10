@@ -41,7 +41,11 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
     fun updateStatus(id: String, status: String, finishedAt: Instant?, error: String?, now: Instant): Int
 
     /**
-     * Count all non-removed runs for a given ScheduledPrompt, including SKIPPED.
+     * Count all non-removed runs for a given ScheduledPrompt within the current planning window,
+     * including SKIPPED. Only runs with [scheduledFor] >= [startInstant] are counted so that
+     * runs from a previous planning window (before the user moved [startDate] forward) do not
+     * consume quota in the new window.
+     *
      * SKIPPED runs represent slots that fired but overlapped with an active run —
      * the slot still occurred and counts toward the occurrence quota.
      */
@@ -49,10 +53,11 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
         $$"""
         MATCH (r:ScheduledPromptRun)
         WHERE r.scheduledPromptId = $scheduledPromptId
+        AND r.scheduledFor >= $startInstant
         RETURN count(r)
         """,
     )
-    fun countCompletedRuns(scheduledPromptId: String): Int
+    fun countCompletedRuns(scheduledPromptId: String, startInstant: Instant): Int
 
     /**
      * Find all runs in [status] created before [before], ordered by creation time.
