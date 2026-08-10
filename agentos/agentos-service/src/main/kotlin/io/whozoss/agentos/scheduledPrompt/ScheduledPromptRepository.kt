@@ -61,7 +61,7 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
      *
      * Prefer this over [save] when the only intent is to disable a prompt, to avoid
      * overwriting fields (e.g. [ScheduledPrompt.nextRunAt]) that may have been advanced
-     * by a concurrent CAS since the caller loaded the aggregate.
+     * by the scheduler between the time the caller loaded the aggregate and the time it saves it.
      */
     fun updateEnabled(id: UUID, enabled: Boolean)
 }
