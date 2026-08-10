@@ -551,7 +551,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe true
         }
 
-        "tickClaim with OCCURRENCES: SKIPPED runs do not count toward maxOccurrenceCount" {
+        "tickClaim with OCCURRENCES: SKIPPED runs count toward maxOccurrenceCount" {
             val scheduledPromptRepo = makeScheduledPromptRepo()
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
@@ -560,16 +560,16 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 endType = SchedulerEndType.OCCURRENCES,
                 maxOccurrenceCount = 2,
             )
-            // Pre-insert 1 SKIPPED run (should not count)
+            // Pre-insert 1 SKIPPED run — slots count, not just executions
             runRepo.insert(ScheduledPromptRun(
                 scheduledPromptId = sp.id,
                 scheduledFor = slot.minusSeconds(86400),
                 status = RunStatus.SKIPPED,
                 correlationId = "skipped",
             ))
-            // tickClaim inserts run #1 (non-skipped) → total completed = 1 < maxOccurrenceCount = 2
+            // tickClaim inserts run #2 (SKIPPED + this one) → total = 2 ≥ maxOccurrenceCount = 2 → disables
             scanner(scheduledPromptRepo, runRepo).tickClaim()
-            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe true
+            scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe false
         }
 
         // -------------------------------------------------------------------------

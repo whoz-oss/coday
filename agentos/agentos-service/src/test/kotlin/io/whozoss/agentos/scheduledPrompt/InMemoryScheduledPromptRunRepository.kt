@@ -50,7 +50,7 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
 
     override fun countCompletedRuns(scheduledPromptId: UUID): Int =
         store.values.count {
-            it.scheduledPromptId == scheduledPromptId && it.status != RunStatus.SKIPPED
+            it.scheduledPromptId == scheduledPromptId
         }
 
     override fun findOrphanedClaimed(olderThan: Instant): List<ScheduledPromptRun> =
