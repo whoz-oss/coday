@@ -26,11 +26,14 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
 
     /**
      * Update status (and optionally finishedAt + error) of a Run by id.
-     * Returns the count of updated nodes (0 if not found).
+     * Only updates if the Run is not already in a terminal status (DONE or FAILED) —
+     * prevents the orphan sweep from overwriting finishedAt already set by checkCompletion.
+     * Returns the count of updated nodes (0 if not found or already terminal).
      */
     @Query(
         $$"""
         MATCH (r:ScheduledPromptRun {id: $id})
+        WHERE r.status NOT IN ['DONE', 'FAILED']
         SET r.status = $status,
             r.finishedAt = $finishedAt,
             r.error = $error,

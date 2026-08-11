@@ -41,6 +41,8 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
         error: String?,
     ): Boolean {
         val entry = store.entries.firstOrNull { it.value.id == id } ?: return false
+        // Mirror the Cypher guard: do not overwrite a terminal status
+        if (entry.value.status == RunStatus.DONE || entry.value.status == RunStatus.FAILED) return false
         store[entry.key] = entry.value.copy(status = status, finishedAt = finishedAt, error = error)
         return true
     }
