@@ -1,6 +1,9 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="AgentOSApplication - sprint-rc" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
     <option name="ACTIVE_PROFILES" value="priv,development,transient,neo4j-sprint-rc,neo4j-sprint-rc_transient" />
+    <envs>
+      <env name="AGENTOS_PROMPT_SCHEDULER_ENABLED" value="false" />
+    </envs>
     <module name="agentos-service.main" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="io.whozoss.agentos.AgentOSApplication" />
     <option name="WORKING_DIRECTORY" value="file://agentos" />
