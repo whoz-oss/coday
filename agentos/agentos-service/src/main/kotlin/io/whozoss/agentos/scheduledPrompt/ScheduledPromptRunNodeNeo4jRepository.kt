@@ -33,7 +33,7 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
     @Query(
         $$"""
         MATCH (r:ScheduledPromptRun {id: $id})
-        WHERE r.status NOT IN ['DONE', 'FAILED']
+        WHERE NOT r.status IN ['DONE', 'FAILED']
         SET r.status = $status,
             r.finishedAt = $finishedAt,
             r.error = $error,
