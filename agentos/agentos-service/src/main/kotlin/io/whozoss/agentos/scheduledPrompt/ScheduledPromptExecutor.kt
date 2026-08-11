@@ -298,6 +298,7 @@ class ScheduledPromptExecutor(
         }
         return UserRunContext(
             namespaceId = namespaceId,
+            caseTitle = "${scheduledPrompt.name} ${run.scheduledFor}",
             actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
             // Inject resolved content with @mention — selectAgent resolves the agent,
             // PromptCommandParser sees no /command and passes text through unchanged.
@@ -315,7 +316,7 @@ class ScheduledPromptExecutor(
      * a UNIQUE constraint on Case keyed by (runId, userId).
      */
     private fun createAndInjectCase(userRun: ScheduledPromptUserRun, context: UserRunContext): UUID {
-        val case = caseService.create(Case(namespaceId = context.namespaceId))
+        val case = caseService.create(Case(namespaceId = context.namespaceId, title = context.caseTitle))
         permissionService.grantPermission(
             userRun.userId.toString(),
             EntityType.CASE,
@@ -349,6 +350,7 @@ class ScheduledPromptExecutor(
     /** Resolved execution context for a single [ScheduledPromptUserRun]. */
     private data class UserRunContext(
         val namespaceId: UUID,
+        val caseTitle: String,
         val actor: Actor,
         val message: String,
     )

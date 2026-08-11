@@ -346,8 +346,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
 
             val caseSlot = slot<Case>()
             verify(exactly = 1) { caseService.create(capture(caseSlot)) }
-            // Title is left as the default "Case <uuid>" so CaseNamingService can auto-name it via LLM
-            caseSlot.captured.title shouldBe "Case ${caseSlot.captured.id}"
+            caseSlot.captured.title shouldBe "Weekly Digest ${nowInstant}"
             verify(exactly = 1) {
                 permissionService.grantPermission(
                     userId1.toString(),
