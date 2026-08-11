@@ -56,6 +56,8 @@ import java.time.ZoneOffset
  * and [ScheduledPromptExecutor.checkCompletion].
  *
  * The [clock] is injected so tests can freeze time.
+ *
+ * See `docs/scheduled-prompt.md` for the full crash recovery matrix.
  */
 
 @Component
