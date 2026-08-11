@@ -259,7 +259,9 @@ class ScheduledPromptExecutor(
         }
         // All UserRuns for this Run have finished — check completion immediately.
         // The sweep recoverOrphanedRunningRuns covers crashes between markTerminal and this point.
-        checkCompletion(runId)
+        runCatching { checkCompletion(runId) }.onFailure { e ->
+            logger.error(e) { "[Executor] checkCompletion failed for run=$runId" }
+        }
     }
 
     // -------------------------------------------------------------------------
