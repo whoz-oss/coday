@@ -4,7 +4,7 @@
     <envs>
       <env name="AGENTOS_ENCRYPTION_KEY" value="NONE" />
       <env name="AGENTOS_ENCRYPTION_SALT" value="NONE" />
-      <env name="AGENTOS_PROMPT_SCHEDULER_ENABLED" value="false" />
+      <env name="AGENTOS_PROMPT_SCHEDULER_ENABLED" value="true" />
     </envs>
     <module name="agentos-service.main" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="io.whozoss.agentos.AgentOSApplication" />
