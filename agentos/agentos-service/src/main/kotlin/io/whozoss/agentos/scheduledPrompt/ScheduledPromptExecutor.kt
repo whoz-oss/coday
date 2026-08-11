@@ -202,7 +202,8 @@ class ScheduledPromptExecutor(
      *
      * UserRuns are grouped by their parent Run so the completion check fires once per Run
      * at the end of each group. [SchedulerScanner.recoverOrphanedRunningRuns] covers the
-     * crash window between the last [markTerminal] and the completion check.
+     * crash window between the last [markTerminal] and the completion check, as well as
+     * any failure thrown by [checkCompletion] itself.
      */
     suspend fun consumeAvailable() = withContext(Dispatchers.IO) {
         val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
@@ -235,7 +236,8 @@ class ScheduledPromptExecutor(
      * not cancel its siblings. Exceptions are caught at the launch site: [CancellationException]
      * is re-thrown to preserve cooperative cancellation, all other exceptions mark the
      * UserRun as FAILED. Once all UserRuns have settled, [checkCompletion] transitions
-     * the parent Run to DONE or FAILED.
+     * the parent Run to DONE or FAILED. A failure in [checkCompletion] is caught and logged;
+     * the Run is recovered by [SchedulerScanner.recoverOrphanedRunningRuns] on the next tick.
      */
     private suspend fun processUserRunGroup(runId: UUID, userRuns: List<ScheduledPromptUserRun>) {
         supervisorScope {
@@ -478,9 +480,10 @@ class ScheduledPromptExecutor(
      * ### Crash window
      *
      * If the instance crashes after the last [ScheduledPromptUserRunRepository.markTerminal]
-     * but before this method runs, the Run stays RUNNING forever — no subsequent UserRun
-     * closure will re-trigger this check. [SchedulerScanner.recoverOrphanedRunningRuns]
-     * handles this by re-evaluating the completion condition on every tick.
+     * but before this method runs, or if this method throws, the Run stays RUNNING forever —
+     * no subsequent UserRun closure will re-trigger this check.
+     * [SchedulerScanner.recoverOrphanedRunningRuns] handles both cases by re-evaluating
+     * the completion condition on every tick.
      */
     private fun checkCompletion(runId: UUID) {
         val run = runRepository.findById(runId) ?: return
