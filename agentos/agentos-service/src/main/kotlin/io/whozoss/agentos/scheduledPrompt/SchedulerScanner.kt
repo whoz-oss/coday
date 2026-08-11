@@ -42,7 +42,7 @@ import java.time.ZoneOffset
  * - Otherwise → insert a CLAIMED Run, then call [ScheduledPromptExecutor.materialize]
  *   (MERGE + RUNNING transition in a single `@Transactional` boundary).
  * - Catch [DuplicateRunException] for both SKIPPED and CLAIMED (concurrent tick won the race).
- * - After the insert (or on duplicate), advance `nextRunAt` via CAS.
+ * - After the insert (or on duplicate), advance `nextRunAt` optimistically.
  *
  * ### Orphan recovery
  *
@@ -257,7 +257,7 @@ class SchedulerScanner(
         if (advanced) {
             logger.debug { "[SchedulerScanner] Advanced sp=${scheduledPrompt.id} nextRunAt=$nextSlot" }
         } else {
-            logger.debug { "[SchedulerScanner] CAS miss for sp=${scheduledPrompt.id} (another tick advanced first)" }
+            logger.debug { "[SchedulerScanner] Optimistic advance miss for sp=${scheduledPrompt.id} (another tick advanced first)" }
         }
 
         // Check if the end condition will be reached after this run.
@@ -347,7 +347,7 @@ class SchedulerScanner(
                     "(${planning.endType}) \u2014 disabling"
             }
             // Use targeted updateEnabled rather than save(copy(enabled=false)) to avoid
-            // overwriting the nextRunAt that was just advanced by CAS above.
+            // overwriting the nextRunAt that was just advanced above.
             scheduledPromptRepository.updateEnabled(scheduledPrompt.id, false)
         }
     }
