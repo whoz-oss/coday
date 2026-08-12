@@ -1,3 +1,13 @@
+## 0.247.1 (2026-08-12)
+
+### 🩹 Fixes
+
+- wz-33220 stop agent redirection ping-pong loops in CaseRuntime ([#1209](https://github.com/whoz-oss/coday/pull/1209))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.247.0 (2026-08-07)
 
 ### 🚀 Features
