@@ -12,7 +12,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * | `agentos.prompt.scheduler.enabled` | `AGENTOS_PROMPT_SCHEDULER_ENABLED` | false | Enable/disable the scheduler |
  * | `agentos.prompt.scheduler.tick-interval-ms` | `AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS` | 30000 | Interval between claim ticks (ms) — read directly by `@Scheduled`, not via this class |
  * | `agentos.prompt.scheduler.consume-interval-ms` | `AGENTOS_PROMPT_SCHEDULER_CONSUME_INTERVAL_MS` | 10000 | Interval between consume ticks (ms) — read directly by `@Scheduled`, not via this class |
- * | `agentos.prompt.scheduler.batch-size` | `AGENTOS_PROMPT_SCHEDULER_BATCH_SIZE` | 20 | Max UserRuns claimed and executed in parallel per consume tick |
+ * | `agentos.prompt.scheduler.batch-size` | `AGENTOS_PROMPT_SCHEDULER_BATCH_SIZE` | 5 | Max UserRuns claimed and executed in parallel per consume tick |
  * | `agentos.prompt.scheduler.launch-timeout-seconds` | `AGENTOS_PROMPT_SCHEDULER_LAUNCH_TIMEOUT_SECONDS` | 30 | Max seconds to wait for a Case to reach IDLE or terminal after launch |
  * | `agentos.prompt.scheduler.lease-minutes` | `AGENTOS_PROMPT_SCHEDULER_LEASE_MINUTES` | 30 | Lease duration for RUNNING UserRuns (minutes) |
  */
@@ -21,7 +21,7 @@ data class SchedulerProperties(
     /** Disabled by default; enable in production via env var AGENTOS_PROMPT_SCHEDULER_ENABLED=true. */
     val enabled: Boolean = false,
     /** Maximum number of UserRuns claimed and executed in parallel per consume tick. */
-    val batchSize: Int = 20,
+    val batchSize: Int = 5,
     /**
      * Max seconds to wait for a Case to reach IDLE or terminal after launch.
      * Beyond this the UserRun is closed as TIMEOUT (Case continues running independently).
