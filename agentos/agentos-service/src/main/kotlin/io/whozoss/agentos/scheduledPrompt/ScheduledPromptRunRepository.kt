@@ -43,11 +43,21 @@ interface ScheduledPromptRunRepository {
     fun findById(id: UUID): ScheduledPromptRun?
 
     /**
-     * Count completed (non-SKIPPED) runs for a given ScheduledPrompt.
-     * Counts DONE, FAILED, CLAIMED, and RUNNING — everything except SKIPPED,
-     * since SKIPPED runs are overlap-guards that never actually executed.
+     * Count all runs for a given ScheduledPrompt within the current planning window,
+     * for use against [Planning.maxOccurrenceCount].
+     *
+     * Only runs whose [ScheduledPromptRun.scheduledFor] is >= [startInstant] are counted.
+     * This ensures that runs from a previous planning window (before the user moved
+     * [Planning.startDate] forward) do not consume quota in the new window.
+     *
+     * Counts every status including SKIPPED: the quota tracks **slots**, not executions.
+     * A SKIPPED slot means a créneau fired but overlapped with an active run — the slot
+     * still occurred and must count toward the stop condition. Without this, overlapping
+     * slots would allow the prompt to execute beyond its intended temporal window.
+     * FAILED runs also count: the quota tracks "how many times the slot fired",
+     * not "how many times it succeeded".
      */
-    fun countCompletedRuns(scheduledPromptId: UUID): Int
+    fun countCompletedRuns(scheduledPromptId: UUID, startInstant: Instant): Int
 
     /**
      * Find all Runs in CLAIMED status created before [olderThan].
@@ -59,9 +69,11 @@ interface ScheduledPromptRunRepository {
     fun findOrphanedClaimed(olderThan: Instant): List<ScheduledPromptRun>
 
     /**
-     * Find RUNNING Runs whose UserRuns are ALL in a terminal status (DONE or FAILED).
+     * Find RUNNING Runs whose UserRuns are ALL in a terminal status (DONE, TIMEOUT, or FAILED).
      *
      * A Run is "settled" when none of its UserRuns are in PENDING or RUNNING status.
+     * TIMEOUT is terminal: monitoring was released, the Case continues independently,
+     * and the UserRun will not transition further.
      * Runs with zero UserRuns (platform-scope or no target users) are directly transitioned
      * to DONE in [ScheduledPromptExecutor.materialize] and never reach RUNNING status.
      *

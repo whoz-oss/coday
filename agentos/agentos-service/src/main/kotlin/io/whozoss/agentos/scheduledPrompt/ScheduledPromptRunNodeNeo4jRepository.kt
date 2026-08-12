@@ -26,11 +26,14 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
 
     /**
      * Update status (and optionally finishedAt + error) of a Run by id.
-     * Returns the count of updated nodes (0 if not found).
+     * Only updates if the Run is not already in a terminal status (DONE or FAILED) —
+     * prevents the orphan sweep from overwriting finishedAt already set by checkCompletion.
+     * Returns the count of updated nodes (0 if not found or already terminal).
      */
     @Query(
         $$"""
         MATCH (r:ScheduledPromptRun {id: $id})
+        WHERE NOT r.status IN ['DONE', 'FAILED']
         SET r.status = $status,
             r.finishedAt = $finishedAt,
             r.error = $error,
@@ -41,18 +44,23 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
     fun updateStatus(id: String, status: String, finishedAt: Instant?, error: String?, now: Instant): Int
 
     /**
-     * Count non-SKIPPED runs for a given ScheduledPrompt.
+     * Count all non-removed runs for a given ScheduledPrompt within the current planning window,
+     * including SKIPPED. Only runs with [scheduledFor] >= [startInstant] are counted so that
+     * runs from a previous planning window (before the user moved [startDate] forward) do not
+     * consume quota in the new window.
+     *
+     * SKIPPED runs represent slots that fired but overlapped with an active run —
+     * the slot still occurred and counts toward the occurrence quota.
      */
     @Query(
         $$"""
         MATCH (r:ScheduledPromptRun)
         WHERE r.scheduledPromptId = $scheduledPromptId
-          AND r.status <> 'SKIPPED'
-          AND NOT COALESCE(r.removed, false)
+        AND r.scheduledFor >= $startInstant
         RETURN count(r)
         """,
     )
-    fun countCompletedRuns(scheduledPromptId: String): Int
+    fun countCompletedRuns(scheduledPromptId: String, startInstant: Instant): Int
 
     /**
      * Find all runs in [status] created before [before], ordered by creation time.
@@ -63,9 +71,13 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
     /**
      * Find RUNNING Runs whose UserRuns are all terminal (none in PENDING or RUNNING).
      *
-     * A Run qualifies when it is in RUNNING status, not removed, and has no UserRun
-     * in PENDING or RUNNING status. Runs with zero UserRuns never reach RUNNING status
-     * (they are transitioned directly to DONE in [ScheduledPromptExecutor.materialize]).
+     * Terminal UserRun statuses: DONE, TIMEOUT, FAILED. TIMEOUT is terminal — monitoring
+     * was released, the Case continues independently, and the UserRun will not transition
+     * further. A Run settled with only TIMEOUT/DONE UserRuns closes as DONE; one with at
+     * least one FAILED closes as FAILED.
+     *
+     * Runs with zero UserRuns never reach RUNNING status (they are transitioned directly
+     * to DONE in [ScheduledPromptExecutor.materialize]).
      */
     @Query(
         """
