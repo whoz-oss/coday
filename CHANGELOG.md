@@ -1,3 +1,13 @@
+## 0.247.2 (2026-08-12)
+
+### 🩹 Fixes
+
+- wz-33620 improve coroutine handling in scheduled prompt UserRun consumption + other fixes ([#1230](https://github.com/whoz-oss/coday/pull/1230))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.247.1 (2026-08-12)
 
 ### 🩹 Fixes
