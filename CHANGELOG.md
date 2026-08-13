@@ -1,3 +1,13 @@
+## 0.247.3 (2026-08-13)
+
+### 🚀 Features
+
+- **agentos:** add star endpoints and list my cases by parent on SDK #33653 ([#1232](https://github.com/whoz-oss/coday/pull/1232), [#33653](https://github.com/whoz-oss/coday/issues/33653))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.247.2 (2026-08-12)
 
 ### 🩹 Fixes
