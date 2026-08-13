@@ -114,6 +114,7 @@ class A2ARestController(
     ): RestTask {
         // Resolving the agent ensures the URL scope is valid; the task itself
         // is identified by its UUID and is not otherwise agent-scoped.
+        // requireCase enforces the caller's READ permission on it (404 if denied).
         a2aService.resolveAgent(namespaceId, agentName)
         val case = a2aService.requireCase(taskId)
         return snapshotWithArtifacts(case)

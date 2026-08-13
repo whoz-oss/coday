@@ -1,10 +1,15 @@
 # A2A (Agent2Agent) — Prototype
 
 This document describes the **prototype A2A protocol exposure** shipped in
-`io.whozoss.agentos.a2a`. It is **not production-ready**: it has no
+`io.whozoss.agentos.a2a`. It is **not production-ready**: it has no A2A-specific
 authentication, no push notifications, and several protocol shortcuts. It exists
 to prove interoperability with A2A-compliant clients on a local dev setup, and
 to serve as the foundation for a full implementation.
+
+Note the distinction, detailed in [§2.3](#23-task-ownership-and-access-control):
+there is no *authentication* (the endpoints accept any caller), but tasks **are**
+*authorized* — each one is owned by the identity that created it and is invisible
+to everybody else.
 
 - Spec reference: <https://a2a-protocol.org/latest/specification/> (v1.0.0).
 - Prototype scope:
@@ -116,6 +121,46 @@ Alternative (not implemented): add a `forceAgentName: String?` parameter to
 `CaseService.addMessage()`, and emit an explicit `AgentSelectedEvent` before
 the message. Cleaner semantically, requires editing the case flow.
 
+### 2.3. Task ownership and access control
+
+A2A itself carries no credentials here (see §4), so the caller's identity is
+whatever the ambient request resolves to through the standard AgentOS chain —
+`SecurityService.resolveCurrentIdentity()` → `UserService.getCurrentUser()`:
+the OS username in `local` security mode, the `X-External-User-Id` / JWT
+identity in `auth` mode.
+
+That identity **owns** the task:
+
+- `A2AService.createCase` grants it `[:ADMIN]` on the freshly created case, the
+  same edge `CaseController.create` and `CaseServiceImpl.startSubCase` create.
+  Without it the task is invisible in the AgentOS drawer, because
+  `GET /api/cases/by-parentId/{ns}/mine` resolves through a **direct** user↔case
+  relation, and it cannot be opened, starred or deleted.
+  The grant is **not** best-effort: if it fails, the orphaned case is killed and
+  the call fails with `A2ATaskProvisioningException` (JSON-RPC `-32603`, HTTP 500)
+  rather than handing back a task id nobody can see.
+- Every later touch of an existing task re-checks that identity via
+  `A2AService.requireCaseWithAccess`:
+
+  | Operation | Required action on the case |
+  |---|---|
+  | `tasks/get`, REST `GET tasks/{id}` | `READ` |
+  | `message/send` / `message:send` / `*:stream` with a `taskId` | `WRITE` |
+  | `tasks/cancel` | `DELETE` |
+
+  Denials are reported as **`TASK_NOT_FOUND` (-32001) / HTTP 404**, not 403, so a
+  caller cannot probe which task UUIDs exist — the same "hide on access denied"
+  policy the case REST controllers apply through `@HideOnAccessDenied`.
+
+The streaming endpoints inherit the check: both open their SSE pump only after
+the initial send has been authorized on the request thread.
+
+This is *authorization*, not *authentication* — it stops one identity from
+reaching another's tasks, but it does not establish that the caller is who they
+claim to be. In `local` mode every caller collapses onto the single OS user, so
+it is effectively a no-op there; it only bites once identities are distinct
+(`auth` mode). Real authentication is still §5.1.
+
 ## 3. Flows
 
 ### 3.1. Non-streaming send (`message/send`)
@@ -167,13 +212,12 @@ the Agent Card) but a full A2A server would eventually need them:
 
 | Feature | Spec ref | State |
 |---|---|---|
-| Authentication (API key, OAuth2, mTLS…) | §7, §4.5 | None. Anyone can call anything. |
+| Authentication (API key, OAuth2, mTLS…) | §7, §4.5 | None — the card declares no `securitySchemes`, so any caller is accepted. Tasks are still *authorized* per identity, see §2.3. |
 | `tasks/list` | §3.1.4, §9.4.4 | Not implemented. |
 | `tasks/resubscribe` | §9.4.6 | Not implemented — clients must reopen `message/stream`. |
 | Push notifications | §3.5.3, §9.4.7 | Declared `false` in Agent Card, no config endpoints. |
 | `agent/getAuthenticatedExtendedCard` | §3.1.11 | Not implemented (public card only). |
-| gRPC binding | §10 | Not exposed. Only JSON-RPC. |
-| HTTP+JSON/REST binding | §11 | Not exposed. Only JSON-RPC. |
+| gRPC binding | §10 | Not exposed. |
 | Agent Card signing (JWS) | §8.4 | Not implemented. |
 | File / rich Data parts round-trip | §4.1.6 | Text only. Image content in AgentOS is dropped to a placeholder text. |
 | Distinct `contextId` (multi-task grouping) | §3.4 | Prototype uses `contextId == taskId`. |
@@ -192,8 +236,10 @@ Ordered by dependency, roughly:
 - Populate the Agent Card `securitySchemes` + `security` fields
   (`APIKeySecurityScheme`, spec §4.5.2). Currently the card omits them,
   which per spec §7 implies no auth.
-- Enforce per-agent access (a caller for agent A shouldn't see task events
-  for agent B in the same namespace).
+- Enforce per-**agent** access. Task-level ownership is already enforced
+  (§2.3), but scoping is per user, not per agent: an identity that owns a task
+  created against agent A can still read it through agent B's URL in the same
+  namespace, since tasks are addressed by UUID and are not agent-scoped.
 - Rate-limiting per key.
 
 ### 5.2. Explicit "task completed" semantics
