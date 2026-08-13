@@ -38,7 +38,12 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * A2A (Agent2Agent) protocol endpoints — prototype, unauthenticated.
+ * A2A (Agent2Agent) protocol endpoints — prototype.
+ *
+ * There is no A2A-specific *authentication* (no API key / OAuth2 in the Agent Card),
+ * but tasks are *authorized*: [A2AService] owns every task it creates with the ambient
+ * caller identity and checks that identity on `tasks/get`, `tasks/cancel` and follow-up
+ * sends, so a caller cannot read or cancel another user's task by guessing its UUID.
  *
  * URL structure:
  * - `GET  /api/a2a/{namespaceId}/{agentName}/.well-known/agent-card.json` → discovery

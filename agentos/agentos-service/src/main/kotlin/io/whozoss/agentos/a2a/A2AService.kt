@@ -16,6 +16,10 @@ import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionRelation
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -34,8 +38,13 @@ import java.util.UUID
  * - Agent targeting                → `@AgentName` prefix injected in the message text,
  *                                    picked up by [io.whozoss.agentos.caseFlow.CaseServiceImpl.selectAgent]
  *
- * Prototype: no authentication. All exposed agents are those with `enabled = true`
- * in their namespace. See docs/a2a.md for the full limitations list.
+ * Prototype: there is no A2A-*specific* authentication (no API key, no OAuth2 — see
+ * docs/a2a.md). All exposed agents are those with `enabled = true` in their namespace.
+ *
+ * Task-level access control *is* enforced, however: every task created here is granted to
+ * the ambient caller identity ([createCase]) and every task read/write/cancel is checked
+ * against that identity ([requireCaseWithAccess]). This keeps A2A tasks visible to their
+ * owner and prevents a caller from touching another user's case by guessing its UUID.
  */
 @Service
 class A2AService(
@@ -44,6 +53,7 @@ class A2AService(
     private val namespaceService: NamespaceService,
     private val caseEventService: CaseEventService,
     private val userService: UserService,
+    private val permissionService: PermissionService,
 ) {
     /**
      * Resolve an [AgentConfig] published in [namespaceId] under [agentName].
@@ -134,8 +144,7 @@ class A2AService(
 
         val case: Case = when (val existingId = message.taskId?.let(::parseUuidOrNull)) {
             null -> createCase(namespaceId, text)
-            else -> caseService.findById(existingId)
-                ?: throw ResourceNotFoundException("Task $existingId (case) not found")
+            else -> requireCaseWithAccess(existingId, Action.WRITE)
         }
 
         // Force agent selection via @mention. This piggy-backs on the existing
@@ -161,22 +170,21 @@ class A2AService(
     }
 
     /**
-     * Build an [A2ATask] snapshot for an existing case.
+     * Build an [A2ATask] snapshot for an existing case the caller can READ.
      * Prototype: history and artifacts are not populated — see docs/a2a.md.
      */
     fun getTask(caseId: UUID): A2ATask {
-        val case = caseService.findById(caseId)
-            ?: throw ResourceNotFoundException("Task $caseId (case) not found")
+        val case = requireCaseWithAccess(caseId, Action.READ)
         return buildTaskSnapshot(case, includeHistory = false)
     }
 
     /**
-     * Cancel a task = kill its case.
+     * Cancel a task = kill its case. Requires DELETE on the case, mirroring
+     * `CaseController.killCase`.
      * Rejects the call when the case is already in a terminal state (spec §9.4.5).
      */
     fun cancelTask(caseId: UUID): A2ATask {
-        val case = caseService.findById(caseId)
-            ?: throw ResourceNotFoundException("Task $caseId (case) not found")
+        val case = requireCaseWithAccess(caseId, Action.DELETE)
         if (case.status == CaseStatus.KILLED || case.status == CaseStatus.ERROR) {
             error("Task ${case.id} is already in terminal state ${case.status}") // handler maps to TASK_NOT_CANCELABLE
         }
@@ -189,15 +197,77 @@ class A2AService(
     // Helpers
     // -----------------------------------------------------------------
 
+    /**
+     * Create the [Case] backing a new A2A task and grant its owner `[:ADMIN]` on it.
+     *
+     * The grant is **not** optional: `GET /api/cases/by-parentId/{ns}/mine` (the AgentOS
+     * drawer) resolves through a direct user↔case edge, so a case created without it is
+     * invisible to the very user who triggered the A2A call, and cannot be opened, starred
+     * or deleted. This mirrors what `CaseController.create` does for UI-created cases and
+     * `CaseServiceImpl.startSubCase` for delegated ones.
+     *
+     * Failure is strict (unlike `CaseController.create`, which is best-effort): the grant
+     * runs outside the Neo4j transaction that persisted the case, so on failure we kill the
+     * orphan and surface [A2ATaskProvisioningException] instead of returning a task id the
+     * caller owns but nobody can see.
+     */
     internal fun createCase(namespaceId: UUID, seedText: String): Case {
-        val title = seedText.take(80).replace("\n", " ").ifBlank { "A2A task" }
-        return caseService.create(
+        val title = seedText.take(MAX_TITLE_LENGTH).replace("\n", " ").ifBlank { "A2A task" }
+        val userId = userService.getCurrentUser().id.toString()
+        val case = caseService.create(
             Case(
                 namespaceId = namespaceId,
                 status = CaseStatus.PENDING,
                 title = title,
             ),
         )
+        try {
+            permissionService.grantPermission(
+                userId = userId,
+                entityType = EntityType.CASE,
+                entityId = case.id.toString(),
+                relation = PermissionRelation.ADMIN,
+            )
+        } catch (e: Exception) {
+            logger.error(e) {
+                "A2A: auto-ADMIN grant failed for case ${case.id} (user $userId) — killing orphaned task"
+            }
+            runCatching { caseService.killCase(case.id) }
+                .onFailure { killErr ->
+                    logger.warn(killErr) { "A2A: failed to kill orphaned case ${case.id} after grant failure" }
+                }
+            throw A2ATaskProvisioningException(
+                "Failed to grant permissions on task ${case.id}: ${e.message}",
+                e,
+            )
+        }
+        logger.info { "A2A: user $userId created task ${case.id} in namespace $namespaceId with auto-ADMIN grant" }
+        return case
+    }
+
+    /**
+     * Load a case and assert the caller may perform [action] on it.
+     *
+     * A denial is reported as [ResourceNotFoundException] — i.e. `TASK_NOT_FOUND` (-32001)
+     * over JSON-RPC, HTTP 404 over REST — rather than a 403, so that a caller cannot probe
+     * which task UUIDs exist in a namespace. This is the same "hide on access denied" policy
+     * the case REST controllers apply through `@HideOnAccessDenied`.
+     */
+    private fun requireCaseWithAccess(caseId: UUID, action: Action): Case {
+        val case = caseService.findById(caseId)
+            ?: throw ResourceNotFoundException("Task $caseId (case) not found")
+        val userId = userService.getCurrentUser().id.toString()
+        val allowed = permissionService.hasPermission(
+            userId = userId,
+            entityType = EntityType.CASE,
+            entityId = caseId.toString(),
+            action = action,
+        )
+        if (!allowed) {
+            logger.warn { "A2A: user $userId denied $action on task $caseId — reported as not found" }
+            throw ResourceNotFoundException("Task $caseId (case) not found")
+        }
+        return case
     }
 
     private fun extractText(message: A2AMessage): String =
@@ -262,6 +332,9 @@ class A2AService(
      * caller identity in `auth` mode. This is required because
      * [io.whozoss.agentos.caseFlow.CaseServiceImpl.runAgent] rejects any case
      * whose last user message doesn't carry a resolvable [UUID] actor id.
+     *
+     * The same identity owns the task: [createCase] grants it `[:ADMIN]`, and
+     * [requireCaseWithAccess] checks against it on every later call.
      */
     private fun currentActor(): Actor {
         val user = userService.getCurrentUser()
@@ -272,10 +345,8 @@ class A2AService(
         )
     }
 
-    /** Load a case or throw. */
-    fun requireCase(caseId: UUID): Case =
-        caseService.findById(caseId)
-            ?: throw ResourceNotFoundException("Task $caseId (case) not found")
+    /** Load a case the caller can READ, or throw [ResourceNotFoundException]. */
+    fun requireCase(caseId: UUID): Case = requireCaseWithAccess(caseId, Action.READ)
 
     /**
      * Return the persisted agent [MessageEvent]s for a case, ordered by
@@ -295,11 +366,11 @@ class A2AService(
     fun getOrCreateCase(namespaceId: UUID, taskId: String?, seedTitle: String): Pair<Case, Boolean> =
         when (val existing = taskId?.let(::parseUuidOrNull)) {
             null -> createCase(namespaceId, seedTitle) to true
-            else -> (
-                caseService.findById(existing)
-                    ?: throw ResourceNotFoundException("Task $existing (case) not found")
-            ) to false
+            else -> requireCaseWithAccess(existing, Action.WRITE) to false
         }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /** Cap on the case title derived from the first message's text. */
+        private const val MAX_TITLE_LENGTH = 80
+    }
 }
