@@ -4,6 +4,24 @@ packages:
   - 'libs/*'
   - 'libs/**/*'
   - 'plugins/*'
+blockExoticSubdeps: false
+shamefullyHoist: true
+strictPeerDependencies: false
+allowBuilds:
+  '@nestjs/core': true
+  '@openapitools/openapi-generator-cli': true
+  '@parcel/watcher': true
+  '@swc/core': true
+  '@vscode/ripgrep': true
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+  less: true
+  lmdb: true
+  msgpackr-extract: true
+  nx: true
+  sharp: true
+  unrs-resolver: true
 catalog:
   '@angular/animations': '21.2.6'
   '@angular/cdk': '21.2.4'
