@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -62,15 +63,18 @@ class ObjectMapperConfiguration {
      * - [io.whozoss.agentos.prompt.FilesystemPromptRepository]
      */
     @Bean
-    fun yamlMapper(): ObjectMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
+    fun yamlMapper(): ObjectMapper =
+        ObjectMapper(YAMLFactory())
+            .registerModule(KotlinModule.Builder().build())
+            .registerModule(JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
     /**
      * YAML mapper for exporting entities as downloadable YAML files.
      *
      * Configured for clean, human-readable output:
-     * - No `---` document start marker
-     * - No Jackson type tags
-     * - No timestamps (dates as ISO strings)
+     * - No `---` document start marker ([YAMLGenerator.Feature.WRITE_DOC_START_MARKER] disabled)
+     * - Dates as ISO-8601 strings, not numeric arrays ([SerializationFeature.WRITE_DATES_AS_TIMESTAMPS] disabled, [JavaTimeModule] registered)
      * - No inclusion policy: each controller's [toExportModel] filters fields
      *   explicitly via `buildMap`, so nulls and empty values are never handed
      *   to Jackson in the first place.
@@ -83,5 +87,6 @@ class ObjectMapperConfiguration {
     @Bean
     fun yamlExportMapper(): ObjectMapper =
         ObjectMapper(YAMLFactory.builder().disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER).build())
+            .registerModule(JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 }
