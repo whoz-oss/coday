@@ -855,6 +855,8 @@ export class CaseControllerService extends BaseService {
   }
 
   /**
+   * List my cases by namespace
+   * GET /api/cases/by-parentId/{parentId}/mine — list only the cases in the namespace the current user has a direct relation with. Unlike listByParent, admin transitivity is excluded: every returned case is one the caller can star.
    * @param parentId
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
@@ -924,6 +926,8 @@ export class CaseControllerService extends BaseService {
   }
 
   /**
+   * Star a case
+   * PUT /api/cases/{id}/star — mark the case as favorite for the current user. Requires a direct user↔case relation, otherwise the call is rejected.
    * @param id
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
@@ -993,6 +997,8 @@ export class CaseControllerService extends BaseService {
   }
 
   /**
+   * Unstar a case
+   * DELETE /api/cases/{id}/star — remove the case from the current user\&#39;s favorites. Requires a direct user↔case relation, otherwise the call is rejected.
    * @param id
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
