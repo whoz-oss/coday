@@ -23,6 +23,7 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.plugin.UserContextProviderResolver
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -689,6 +690,142 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             // for audit visibility; the Case continues running independently.
             val userRun = userRunRepo.all().first()
             userRun.status shouldBe UserRunStatus.TIMEOUT
+        }
+
+        // -------------------------------------------------------------------------
+        // Phase B: prompt or agent not found — UserRun marked FAILED
+        // -------------------------------------------------------------------------
+
+        // -------------------------------------------------------------------------
+        // Phase B — UserContextProvider enrichment
+        // -------------------------------------------------------------------------
+
+        "Phase B: sessionContext from UserContextProvider is forwarded to addMessage" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            val expectedContext = mapOf("userContext" to mapOf("talentId" to "t1"))
+            val provider = mockk<io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider>().also {
+                every { it.provideUserContext(user1.externalId, namespaceId) } returns expectedContext
+            }
+            val pluginManager = mockk<org.pf4j.PluginManager>(relaxed = true).also {
+                every { it.getExtensions(io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider::class.java) } returns listOf(provider)
+            }
+            val resolver = UserContextProviderResolver(pluginManager)
+
+            val exec = executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            )
+            // Inject resolver via reflection — field is @Autowired(required = false)
+            ScheduledPromptExecutor::class.java
+                .getDeclaredField("userContextProviderResolver")
+                .also { it.isAccessible = true }
+                .set(exec, resolver)
+
+            exec.consumeAvailable()
+
+            val sessionContextSlot = slot<Map<String, Any?>>()
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = any(),
+                    sessionContext = capture(sessionContextSlot),
+                )
+            }
+            sessionContextSlot.captured shouldBe expectedContext
+        }
+
+        "Phase B: addMessage is called with null sessionContext when UserContextProvider throws" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            val provider = mockk<io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider>().also {
+                every { it.provideUserContext(any(), any()) } throws RuntimeException("Copilot unreachable")
+            }
+            val pluginManager = mockk<org.pf4j.PluginManager>(relaxed = true).also {
+                every { it.getExtensions(io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider::class.java) } returns listOf(provider)
+            }
+            val resolver = UserContextProviderResolver(pluginManager)
+
+            val exec = executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            )
+            ScheduledPromptExecutor::class.java
+                .getDeclaredField("userContextProviderResolver")
+                .also { it.isAccessible = true }
+                .set(exec, resolver)
+
+            exec.consumeAvailable()
+
+            // UserRun must not be FAILED — the exception is non-fatal
+            val userRun = userRunRepo.all().first()
+            userRun.status shouldBe UserRunStatus.DONE
+            // addMessage must still be called, but with null sessionContext
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = any(),
+                    sessionContext = null,
+                )
+            }
         }
 
         // -------------------------------------------------------------------------
