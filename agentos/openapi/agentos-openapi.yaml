@@ -939,6 +939,10 @@ paths:
       - case-controller
   /api/cases/by-parentId/{parentId}/mine:
     get:
+      description: "GET /api/cases/by-parentId/{parentId}/mine — list only the cases\
+        \ in the namespace the current user has a direct relation with. Unlike listByParent,\
+        \ admin transitivity is excluded: every returned case is one the caller can\
+        \ star."
       operationId: listMineByParentCase
       parameters:
       - in: path
@@ -956,6 +960,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/Case"
           description: OK
+      summary: List my cases by namespace
       tags:
       - case-controller
   /api/cases/by-user/external/{externalId}:
@@ -1359,6 +1364,9 @@ paths:
       - case-controller
   /api/cases/{id}/star:
     delete:
+      description: "DELETE /api/cases/{id}/star — remove the case from the current\
+        \ user's favorites. Requires a direct user↔case relation, otherwise the call\
+        \ is rejected."
       operationId: unstarCase
       parameters:
       - in: path
@@ -1370,9 +1378,12 @@ paths:
       responses:
         "204":
           description: No Content
+      summary: Unstar a case
       tags:
       - case-controller
     put:
+      description: "PUT /api/cases/{id}/star — mark the case as favorite for the current\
+        \ user. Requires a direct user↔case relation, otherwise the call is rejected."
       operationId: starCase
       parameters:
       - in: path
@@ -1384,6 +1395,7 @@ paths:
       responses:
         "200":
           description: OK
+      summary: Star a case
       tags:
       - case-controller
   /api/feedbacks:

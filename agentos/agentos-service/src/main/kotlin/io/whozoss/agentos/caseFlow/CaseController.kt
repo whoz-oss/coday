@@ -123,7 +123,7 @@ class CaseController(
      */
     @GetMapping("/by-parentId/{parentId}/mine")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
-    fun listMineByParent(
+    override fun listMineByParent(
         @PathVariable parentId: UUID,
     ): List<CaseDto> {
         val user = userService.getCurrentUser()
@@ -316,7 +316,7 @@ class CaseController(
     @PutMapping("/{id}/star")
     @ResponseStatus(HttpStatus.OK)
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
-    fun starCase(
+    override fun starCase(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
@@ -328,7 +328,7 @@ class CaseController(
     @DeleteMapping("/{id}/star")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
-    fun unstarCase(
+    override fun unstarCase(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
