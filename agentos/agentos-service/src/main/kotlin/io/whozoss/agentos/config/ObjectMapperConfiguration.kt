@@ -8,33 +8,49 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder
 
 /**
  * Jackson configuration for AgentOS.
  *
- * Provides centralized [ObjectMapper] beans for JSON and YAML serialization/deserialization.
+ * Spring Boot's [org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration]
+ * would normally auto-configure a single `jacksonObjectMapper` bean via
+ * [Jackson2ObjectMapperBuilder], applying `spring.jackson.*` properties automatically.
+ * However, its `@ConditionalOnMissingBean(ObjectMapper)` guard fires as soon as ANY
+ * `ObjectMapper` bean is present — which [yamlMapper] and [yamlExportMapper] already
+ * satisfy. As a result the auto-configured JSON bean is never created, leaving
+ * only the two YAML beans in the context and causing `NoUniqueBeanDefinitionException`
+ * on every injection site that expects the primary JSON mapper.
  *
- * Three beans are declared explicitly so that [org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration]
- * does not need to run — its `jacksonObjectMapper` factory method is `@ConditionalOnMissingBean(ObjectMapper)`, so
- * it is skipped as soon as any [ObjectMapper] bean exists. Rather than relying on Boot auto-config, we declare
- * `jacksonObjectMapper` ourselves with a `@Primary` marker, which is the name used by `@Qualifier("jacksonObjectMapper")`
- * throughout the persistence configuration.
+ * **Fix**: declare [jacksonObjectMapper] explicitly here, using the same
+ * [Jackson2ObjectMapperBuilder] that Spring Boot's auto-configuration would use.
+ * This ensures `spring.jackson.*` properties (e.g. `write-dates-as-timestamps: false`,
+ * `sort-properties-alphabetically: true`) are applied. The [KotlinModule] is registered
+ * automatically by the `kotlin-spring` Gradle plugin via its own
+ * [org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer].
+ *
+ * Two additional YAML mappers are declared as separate beans for filesystem I/O.
  */
 @Configuration
 class ObjectMapperConfiguration {
+
     /**
-     * Primary JSON mapper — equivalent to the bean Spring Boot would auto-configure.
+     * The primary JSON [ObjectMapper] for HTTP serialization.
      *
-     * Named `jacksonObjectMapper` so that `@Qualifier("jacksonObjectMapper")` in
-     * [io.whozoss.agentos.config.Neo4jPersistenceConfiguration] resolves correctly
-     * even when Boot's own auto-configuration is skipped.
+     * Declared explicitly because [yamlMapper] and [yamlExportMapper] satisfy Spring Boot's
+     * `@ConditionalOnMissingBean(ObjectMapper)` guard, preventing the auto-configured bean
+     * from being created. Using [Jackson2ObjectMapperBuilder] ensures all `spring.jackson.*`
+     * properties and registered [org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer]s
+     * are applied — identical behaviour to what auto-configuration would produce.
+     *
+     * Marked `@Primary` so that injection sites that expect the JSON mapper resolve
+     * by type without needing a `@Qualifier`. The two YAML mappers ([yamlMapper] and
+     * [yamlExportMapper]) are the special cases and carry `@Qualifier` at their
+     * injection sites.
      */
     @Bean
     @Primary
-    fun jacksonObjectMapper(): ObjectMapper =
-        ObjectMapper()
-            .findAndRegisterModules()
-            .registerModule(KotlinModule.Builder().build())
+    fun jacksonObjectMapper(builder: Jackson2ObjectMapperBuilder): ObjectMapper = builder.build()
 
     /**
      * YAML mapper for reading YAML files from the filesystem.
