@@ -1,10 +1,12 @@
 package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -105,6 +107,30 @@ data class AgentAdvancedContext(
 
                 is IntentionGeneratedEvent -> {
                     toIntentionMessage(event)
+                }
+
+                // QuestionEvent: the agent asked the user a question and terminated its run.
+                // Rendered as AssistantMessage (the agent's own voice) so the LLM sees its
+                // own question in the history when it resumes after the answer.
+                // No XML balisage is applied — the question is plain agent speech, not a
+                // "foreign" message, so the same convention as other AssistantMessages holds.
+                is QuestionEvent -> {
+                    val text = buildString {
+                        append(event.question)
+                        val opts = event.options
+                        if (!opts.isNullOrEmpty()) {
+                            append("\nOptions: ")
+                            append(opts.joinToString(", ") { "\"$it\"" })
+                        }
+                    }
+                    listOf(AssistantMessage(text))
+                }
+
+                // AnswerEvent: the user's reply to a QuestionEvent.
+                // Rendered as UserMessage so the LLM sees it as the user speaking,
+                // consistent with MessageEvent USER rendering in toSpringAiMessage.
+                is AnswerEvent -> {
+                    listOf(UserMessage(event.answer))
                 }
 
                 else -> {
