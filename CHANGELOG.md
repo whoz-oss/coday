@@ -1,3 +1,13 @@
+## 0.247.4 (2026-08-14)
+
+### 🩹 Fixes
+
+- override Spring Boot's ObjectMapper auto-configuration ([#1234](https://github.com/whoz-oss/coday/pull/1234))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.247.3 (2026-08-13)
 
 ### 🚀 Features
