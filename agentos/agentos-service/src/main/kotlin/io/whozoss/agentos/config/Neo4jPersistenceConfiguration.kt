@@ -147,7 +147,7 @@ class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jCaseEventRepository(
         caseEventNodeNeo4jRepository: CaseEventNodeNeo4jRepository,
-        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
+        objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
     ): CaseEventRepository {
         logger.info { "[Persistence] Neo4jCaseEventRepository active" }
@@ -185,7 +185,7 @@ class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jIntegrationConfigRepositoryDelegate(
         integrationConfigNodeNeo4jRepository: IntegrationConfigNodeNeo4jRepository,
-        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
+        objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
     ): Neo4jIntegrationConfigRepository {
         return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
@@ -210,7 +210,7 @@ class Neo4jPersistenceConfiguration {
     fun neo4jCredentialRepository(
         credentialNodeNeo4jRepository: CredentialNodeNeo4jRepository,
         fieldEncryptor: FieldEncryptor,
-        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
+        objectMapper: ObjectMapper,
     ): CredentialRepository {
         logger.info { "[Persistence] Neo4jCredentialRepository active" }
         return Neo4jCredentialRepository(credentialNodeNeo4jRepository, fieldEncryptor, objectMapper)
@@ -269,7 +269,7 @@ class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jPromptRepositoryDelegate(
         promptNodeNeo4jRepository: PromptNodeNeo4jRepository,
-        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
+        objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
     ): Neo4jPromptRepository = Neo4jPromptRepository(promptNodeNeo4jRepository, objectMapper, childLinkService)
 
