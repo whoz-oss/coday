@@ -12,6 +12,7 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -92,6 +93,7 @@ class ScheduledPromptExecutor(
     private val userService: UserService,
     private val properties: SchedulerProperties,
     private val clock: Clock,
+    private val userContextProvider: UserContextProvider? = null,
 ) {
 
     // -------------------------------------------------------------------------
@@ -300,6 +302,16 @@ class ScheduledPromptExecutor(
         val agentName = checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
             "AgentConfig ${scheduledPrompt.agentConfigId} not found"
         }
+        val sessionContext = runCatching {
+            userContextProvider?.provideUserContext(
+                userExternalId = user.externalId,
+                namespaceId = namespaceId,
+            )
+        }.onFailure { e ->
+            logger.warn(e) {
+                "[Executor] Context enrichment failed for UserRun=${userRun.id} userId=${userRun.userId} — continuing without sessionContext"
+            }
+        }.getOrNull()
         return UserRunContext(
             namespaceId = namespaceId,
             caseTitle = "${scheduledPrompt.name} ${run.scheduledFor}",
@@ -307,6 +319,7 @@ class ScheduledPromptExecutor(
             // Inject resolved content with @mention — selectAgent resolves the agent,
             // PromptCommandParser sees no /command and passes text through unchanged.
             message = "@$agentName $promptContent",
+            sessionContext = sessionContext,
         )
     }
 
@@ -331,6 +344,7 @@ class ScheduledPromptExecutor(
             caseId = case.id,
             actor = context.actor,
             content = listOf(MessageContent.Text(context.message)),
+            sessionContext = context.sessionContext,
         )
         logger.info {
             "[Executor] UserRun=${userRun.id} — Case ${case.id} created and message injected for user=${userRun.userId}"
@@ -357,6 +371,7 @@ class ScheduledPromptExecutor(
         val caseTitle: String,
         val actor: Actor,
         val message: String,
+        val sessionContext: Map<String, Any?>? = null,
     )
 
     // -------------------------------------------------------------------------
