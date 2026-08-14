@@ -150,9 +150,12 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
         return mockk<CaseService>(relaxed = true).also { svc ->
             every { svc.create(any()) } answers {
                 val id = UUID.randomUUID()
-                // Start directly at IDLE so monitorLaunch resolves immediately after addMessage.
-                // The relaxed mock's addMessage does nothing (returns Unit), and the executor
-                // observes the statusFlow which is already IDLE.
+                // statusFlow starts at IDLE rather than transitioning via addMessage callback.
+                // Reason: addMessage's sessionContext parameter is Map<String, Any?>? (nullable).
+                // MockK 1.13.x any<T>() requires T : Any, so there is no matcher for nullable
+                // types usable in every {}. Starting at IDLE avoids needing to mock addMessage
+                // at all — monitorLaunch sees the terminal state immediately, which is
+                // equivalent for what these scenario tests verify (end-to-end UserRunStatus).
                 val flow = MutableStateFlow(CaseStatus.IDLE)
                 val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
                 runtimeMap[id] = rt

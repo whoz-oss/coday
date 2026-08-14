@@ -549,9 +549,12 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 namespaceId = namespaceId,
             )
 
-            // Runtime starts at IDLE so monitorLaunch resolves immediately.
-            // The relaxed mock's addMessage does nothing; the executor observes
-            // the statusFlow which is already IDLE after create.
+            // statusFlow starts at IDLE rather than transitioning via addMessage callback.
+            // Reason: addMessage's sessionContext parameter is Map<String, Any?>? (nullable).
+            // MockK 1.13.x any<T>() requires T : Any, so there is no matcher for nullable
+            // types that can be used in every {}. Starting at IDLE avoids needing to mock
+            // addMessage at all — monitorLaunch sees the terminal state immediately,
+            // which is equivalent for what this test verifies (UserRunStatus outcome).
             val runtime = mockk<CaseRuntime>(relaxed = true).also {
                 every { it.statusFlow } returns MutableStateFlow(CaseStatus.IDLE)
             }
@@ -599,6 +602,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 namespaceId = namespaceId,
             )
 
+            // Same rationale as the IDLE test above: statusFlow starts at ERROR directly
+            // instead of transitioning via addMessage, to avoid the MockK nullable matcher
+            // limitation on sessionContext.
             val runtime = mockk<CaseRuntime>(relaxed = true).also {
                 every { it.statusFlow } returns MutableStateFlow(CaseStatus.ERROR)
             }
