@@ -146,19 +146,19 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
      * and `addMessage` can look up the correct flow. All state is local to the returned mock.
      */
     private fun eventuallyIdleCaseService(): CaseService {
-        val runtimeMap = mutableMapOf<UUID, Pair<CaseRuntime, MutableStateFlow<CaseStatus>>>()
+        val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
         return mockk<CaseService>(relaxed = true).also { svc ->
             every { svc.create(any()) } answers {
                 val id = UUID.randomUUID()
-                val flow = MutableStateFlow(CaseStatus.RUNNING)
+                // Start directly at IDLE so monitorLaunch resolves immediately after addMessage.
+                // The relaxed mock's addMessage does nothing (returns Unit), and the executor
+                // observes the statusFlow which is already IDLE.
+                val flow = MutableStateFlow(CaseStatus.IDLE)
                 val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
-                runtimeMap[id] = rt to flow
+                runtimeMap[id] = rt
                 Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
             }
-            every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()]?.first }
-            every { svc.addMessage(caseId = any(), actor = any(), content = any()) } answers {
-                runtimeMap[firstArg<UUID>()]?.second?.value = CaseStatus.IDLE
-            }
+            every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
         }
     }
 

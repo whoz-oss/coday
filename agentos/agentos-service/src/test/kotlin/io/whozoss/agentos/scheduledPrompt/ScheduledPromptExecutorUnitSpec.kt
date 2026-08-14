@@ -23,7 +23,7 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.plugin.UserContextProviderResolver
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -134,6 +134,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         caseService: CaseService,
         permissionService: PermissionService,
         userService: UserService,
+        userContextProvider: UserContextProvider? = null,
     ) = ScheduledPromptExecutor(
         scheduledPromptRepository = spRepo,
         runRepository = runRepo,
@@ -145,6 +146,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         userService = userService,
         properties = properties,
         clock = clock,
+        userContextProvider = userContextProvider,
     )
 
     init {
@@ -547,21 +549,16 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 namespaceId = namespaceId,
             )
 
-            // Simulate a runtime whose statusFlow starts as RUNNING then transitions to IDLE
-            // after addMessage is called (mimicking the real CaseRuntime lifecycle).
-            val statusFlow = MutableStateFlow(CaseStatus.RUNNING)
+            // Runtime starts at IDLE so monitorLaunch resolves immediately.
+            // The relaxed mock's addMessage does nothing; the executor observes
+            // the statusFlow which is already IDLE after create.
             val runtime = mockk<CaseRuntime>(relaxed = true).also {
-                every { it.statusFlow } returns statusFlow
+                every { it.statusFlow } returns MutableStateFlow(CaseStatus.IDLE)
             }
 
             val caseService = mockk<CaseService>(relaxed = true).also {
                 every { it.create(any()) } returns createdCase
                 every { it.findActiveRuntime(caseId) } returns runtime
-                // When addMessage is called, transition the statusFlow to IDLE
-                // (simulates the async agent execution completing).
-                every { it.addMessage(caseId = caseId, actor = any(), content = any()) } answers {
-                    statusFlow.value = CaseStatus.IDLE
-                }
             }
 
             executor(
@@ -602,17 +599,13 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 namespaceId = namespaceId,
             )
 
-            val statusFlow = MutableStateFlow(CaseStatus.RUNNING)
             val runtime = mockk<CaseRuntime>(relaxed = true).also {
-                every { it.statusFlow } returns statusFlow
+                every { it.statusFlow } returns MutableStateFlow(CaseStatus.ERROR)
             }
 
             val caseService = mockk<CaseService>(relaxed = true).also {
                 every { it.create(any()) } returns createdCase
                 every { it.findActiveRuntime(caseId) } returns runtime
-                every { it.addMessage(caseId = caseId, actor = any(), content = any()) } answers {
-                    statusFlow.value = CaseStatus.ERROR
-                }
             }
 
             executor(
@@ -726,15 +719,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
 
             val expectedContext = mapOf("userContext" to mapOf("talentId" to "t1"))
-            val provider = mockk<io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider>().also {
+            val provider = mockk<UserContextProvider>().also {
                 every { it.provideUserContext(user1.externalId, namespaceId) } returns expectedContext
             }
-            val pluginManager = mockk<org.pf4j.PluginManager>(relaxed = true).also {
-                every { it.getExtensions(io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider::class.java) } returns listOf(provider)
-            }
-            val resolver = UserContextProviderResolver(pluginManager)
 
-            val exec = executor(
+            executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
                 userRunRepo = userRunRepo,
@@ -743,14 +732,8 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = caseService,
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-            )
-            // Inject resolver via reflection — field is @Autowired(required = false)
-            ScheduledPromptExecutor::class.java
-                .getDeclaredField("userContextProviderResolver")
-                .also { it.isAccessible = true }
-                .set(exec, resolver)
-
-            exec.consumeAvailable()
+                userContextProvider = provider,
+            ).consumeAvailable()
 
             val sessionContextSlot = slot<Map<String, Any?>>()
             verify(exactly = 1) {
@@ -789,15 +772,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
             }
 
-            val provider = mockk<io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider>().also {
+            val provider = mockk<UserContextProvider>().also {
                 every { it.provideUserContext(any(), any()) } throws RuntimeException("Copilot unreachable")
             }
-            val pluginManager = mockk<org.pf4j.PluginManager>(relaxed = true).also {
-                every { it.getExtensions(io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider::class.java) } returns listOf(provider)
-            }
-            val resolver = UserContextProviderResolver(pluginManager)
 
-            val exec = executor(
+            executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
                 userRunRepo = userRunRepo,
@@ -806,13 +785,8 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = caseService,
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-            )
-            ScheduledPromptExecutor::class.java
-                .getDeclaredField("userContextProviderResolver")
-                .also { it.isAccessible = true }
-                .set(exec, resolver)
-
-            exec.consumeAvailable()
+                userContextProvider = provider,
+            ).consumeAvailable()
 
             // UserRun must not be FAILED — the exception is non-fatal
             val userRun = userRunRepo.all().first()

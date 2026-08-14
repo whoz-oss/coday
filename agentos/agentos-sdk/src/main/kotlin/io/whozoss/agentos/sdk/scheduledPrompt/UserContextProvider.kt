@@ -6,9 +6,9 @@ import java.util.UUID
 /**
  * SPI for plugins that provide user context injected into a scheduled case.
  *
- * Implementations are discovered via PF4J and called by [UserContextProviderResolver]
- * before the case is initiated. If absent or if context provisioning fails, execution continues
- * without sessionContext (non-fatal degradation).
+ * Implementations are discovered via PF4J at startup and exposed as an optional Spring bean
+ * injected into [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor].
+ * If absent or if context provisioning fails, execution continues without sessionContext (non-fatal degradation).
  */
 interface UserContextProvider : ExtensionPoint {
     /**
