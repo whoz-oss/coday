@@ -1,3 +1,13 @@
+## 0.248.0 (2026-08-14)
+
+### 🚀 Features
+
+- add UserContextProvider SPI and resolver for scheduled case context enrichment ([#1233](https://github.com/whoz-oss/coday/pull/1233))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
 ## 0.247.4 (2026-08-14)
 
 ### 🩹 Fixes
