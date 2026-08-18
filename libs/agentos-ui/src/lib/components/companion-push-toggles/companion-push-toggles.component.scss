@@ -1,0 +1,54 @@
+// Rendered inside ShellUserMenuComponent's overlay. Angular's style encapsulation means
+// its .shell-user-menu__item styles don't cascade to this separate component, so the
+// relevant declarations are duplicated here — kept in sync manually, small surface.
+@use 'libs/design-system/src/styles' as ds;
+
+// The host custom element shouldn't introduce its own box — its buttons must lay out
+// as if they were direct children of ShellUserMenuComponent's overlay.
+:host {
+  display: contents;
+}
+
+.shell-user-menu__item {
+  @include ds.button-reset;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13.5px;
+  color: var(--color-text);
+  text-align: left;
+  transition: background 100ms;
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  }
+
+  svg {
+    color: var(--color-neutral-600);
+    flex-shrink: 0;
+  }
+
+  &--active {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    color: var(--color-accent-700);
+
+    svg {
+      color: var(--color-accent-700);
+    }
+  }
+
+  &-badge {
+    margin-left: auto;
+    font-size: 10px;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent-700);
+    border: 1px solid var(--color-accent-300);
+    padding: 1px 5px;
+  }
+}

@@ -131,7 +131,9 @@ class CaseServiceImpl(
         namespaceId: UUID,
     ): List<Case> = caseRepository.findAccessibleByUserInNamespace(userId, namespaceId)
 
-    @PreAuthorize("hasRole('SUPER_ADMIN') or #userId.toString() == authentication.name")
+    // No @PreAuthorize here: findConcerningUser is called from the SSE reconciliation loop
+    // running in a Dispatchers.IO coroutine that has no Spring SecurityContext.
+    // The userId is already resolved from the authenticated SSE connection upstream.
     override fun findConcerningUser(userId: UUID): List<Case> = caseRepository.findConcerningUser(userId)
 
     @PreAuthorize("hasRole('SUPER_ADMIN') or #userId.toString() == authentication.name")
