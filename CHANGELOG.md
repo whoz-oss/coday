@@ -1,3 +1,14 @@
+## 0.248.1 (2026-08-19)
+
+### 🩹 Fixes
+
+- optimize findFilesByName to prevent TimeoutError on large projects ([14d69846](https://github.com/whoz-oss/coday/commit/14d69846))
+- optimize findFilesByName to prevent TimeoutError on large projects ([#1238](https://github.com/whoz-oss/coday/pull/1238))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+
 ## 0.248.0 (2026-08-14)
 
 ### 🚀 Features
