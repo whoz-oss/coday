@@ -55,4 +55,13 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
      * @return true if the update was applied (the CAS matched), false if another tick beat us
      */
     fun advanceNextRunAt(id: UUID, currentSlot: Instant, nextSlot: Instant): Boolean
+
+    /**
+     * Targeted update of the [ScheduledPrompt.enabled] flag — does NOT touch any other field.
+     *
+     * Prefer this over [save] when the only intent is to disable a prompt, to avoid
+     * overwriting fields (e.g. [ScheduledPrompt.nextRunAt]) that may have been advanced
+     * by the scheduler between the time the caller loaded the aggregate and the time it saves it.
+     */
+    fun updateEnabled(id: UUID, enabled: Boolean)
 }

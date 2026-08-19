@@ -227,6 +227,18 @@ class PermissionServiceImpl(
         }
     }
 
+    override fun listRelationsForUsers(
+        entityType: EntityType,
+        entityId: String,
+        userIds: Collection<String>,
+    ): Map<String, PermissionRelation> =
+        try {
+            permissionRepository.listRelationsForUsers(entityType, entityId, userIds)
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to list relations for users on $entityType:$entityId" }
+            emptyMap() // Fail-closed: return empty map on error
+        }
+
     override fun applyShareBatch(
         entityType: EntityType,
         entityId: String,
@@ -250,8 +262,7 @@ class PermissionServiceImpl(
             permissionCache.invalidateUser(userId)
             logger.info { "Cleared permission cache for user: $userId" }
         } catch (e: Exception) {
-            logger.error(e) { "Failed to clear cache for user: $userId" }
-            // Don't throw - cache clearing failure shouldn't break the flow
+            logger.warn(e) { "Failed to clear cache for user: $userId — cache clearing is best-effort, not rethrowing" }
         }
     }
 }

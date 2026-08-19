@@ -1,3 +1,137 @@
+## 0.248.1 (2026-08-19)
+
+### 🩹 Fixes
+
+- optimize findFilesByName to prevent TimeoutError on large projects ([14d69846](https://github.com/whoz-oss/coday/commit/14d69846))
+- optimize findFilesByName to prevent TimeoutError on large projects ([#1238](https://github.com/whoz-oss/coday/pull/1238))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+
+## 0.248.0 (2026-08-14)
+
+### 🚀 Features
+
+- add UserContextProvider SPI and resolver for scheduled case context enrichment ([#1233](https://github.com/whoz-oss/coday/pull/1233))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.247.4 (2026-08-14)
+
+### 🩹 Fixes
+
+- override Spring Boot's ObjectMapper auto-configuration ([#1234](https://github.com/whoz-oss/coday/pull/1234))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.247.3 (2026-08-13)
+
+### 🚀 Features
+
+- **agentos:** add star endpoints and list my cases by parent on SDK #33653 ([#1232](https://github.com/whoz-oss/coday/pull/1232), [#33653](https://github.com/whoz-oss/coday/issues/33653))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.247.2 (2026-08-12)
+
+### 🩹 Fixes
+
+- wz-33620 improve coroutine handling in scheduled prompt UserRun consumption + other fixes ([#1230](https://github.com/whoz-oss/coday/pull/1230))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.247.1 (2026-08-12)
+
+### 🩹 Fixes
+
+- wz-33220 stop agent redirection ping-pong loops in CaseRuntime ([#1209](https://github.com/whoz-oss/coday/pull/1209))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.247.0 (2026-08-07)
+
+### 🚀 Features
+
+- wz-330620 scheduler initiate cases ([#1214](https://github.com/whoz-oss/coday/pull/1214))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.246.0 (2026-08-07)
+
+### 🚀 Features
+
+- agentos background update ([#1225](https://github.com/whoz-oss/coday/pull/1225))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.245.0 (2026-08-07)
+
+### 🚀 Features
+
+- #1188 manage users on namespace with roles ([#1192](https://github.com/whoz-oss/coday/pull/1192), [#1188](https://github.com/whoz-oss/coday/issues/1188))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.244.1 (2026-08-06)
+
+### 🩹 Fixes
+
+- sort by agent name first ([22bd9d12](https://github.com/whoz-oss/coday/commit/22bd9d12))
+- sort by agent name first ([#1223](https://github.com/whoz-oss/coday/pull/1223))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+
+## 0.244.0 (2026-08-06)
+
+### 🚀 Features
+
+- #1189 prompts as files ([#1191](https://github.com/whoz-oss/coday/pull/1191), [#1189](https://github.com/whoz-oss/coday/issues/1189))
+- #1174 check AgentOS JAR availability and probe download chain ([#1210](https://github.com/whoz-oss/coday/pull/1210), [#1174](https://github.com/whoz-oss/coday/issues/1174), [#1206](https://github.com/whoz-oss/coday/issues/1206), [#1207](https://github.com/whoz-oss/coday/issues/1207))
+
+### 🩹 Fixes
+
+- git.yaml missing closing braces on NAMESPACE_CONFIG_PATH token ([#1222](https://github.com/whoz-oss/coday/pull/1222))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.243.0 (2026-08-06)
+
+### 🚀 Features
+
+- context tube ([7266d9ec](https://github.com/whoz-oss/coday/commit/7266d9ec))
+- context gauge ([1bcd9b66](https://github.com/whoz-oss/coday/commit/1bcd9b66))
+
+### 🩹 Fixes
+
+- set Github MCP version and fix Coday agents ([19aa86f9](https://github.com/whoz-oss/coday/commit/19aa86f9))
+- set Github MCP version and fix Coday agents ([#1221](https://github.com/whoz-oss/coday/pull/1221))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+- Romain Petit
+
 ## 0.242.0 (2026-08-06)
 
 ### 🚀 Features

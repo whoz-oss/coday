@@ -21,6 +21,14 @@ interface CaseApi : EntityCrudApi<CaseDto> {
     @Operation(summary = "List cases by namespace", description = "GET /api/cases/by-parentId/{parentId} — list all cases belonging to a namespace.")
     fun listByParent(parentId: UUID): List<CaseDto>
 
+    @Operation(
+        summary = "List my cases by namespace",
+        description = "GET /api/cases/by-parentId/{parentId}/mine — list only the cases in the namespace the " +
+            "current user has a direct relation with. Unlike listByParent, admin transitivity is excluded: " +
+            "every returned case is one the caller can star.",
+    )
+    fun listMineByParent(parentId: UUID): List<CaseDto>
+
     @Operation(summary = "List cases by user", description = "GET /api/cases/by-user/{userId} — list all cases concerning a specific user.")
     fun listByUser(userId: UUID): List<CaseDto>
 
@@ -41,4 +49,18 @@ interface CaseApi : EntityCrudApi<CaseDto> {
 
     @Operation(summary = "Kill a case", description = "POST /api/cases/{caseId}/kill — permanently terminate a case.")
     fun killCase(caseId: UUID)
+
+    @Operation(
+        summary = "Star a case",
+        description = "PUT /api/cases/{id}/star — mark the case as favorite for the current user. " +
+            "Requires a direct user↔case relation, otherwise the call is rejected.",
+    )
+    fun starCase(id: UUID)
+
+    @Operation(
+        summary = "Unstar a case",
+        description = "DELETE /api/cases/{id}/star — remove the case from the current user's favorites. " +
+            "Requires a direct user↔case relation, otherwise the call is rejected.",
+    )
+    fun unstarCase(id: UUID)
 }

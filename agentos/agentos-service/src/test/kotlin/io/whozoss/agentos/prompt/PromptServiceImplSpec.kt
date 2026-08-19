@@ -31,6 +31,13 @@ class PromptServiceImplSpec : StringSpec() {
     private val agentConfigService = mockk<AgentConfigService>(relaxed = true)
     private fun newService(): PromptServiceImpl = PromptServiceImpl(InMemoryPromptRepository(), agentConfigService)
 
+    /** Returns both the service and its backing repository, for tests that need to seed a
+     *  filesystem-backed prompt (version == null) directly via [InMemoryPromptRepository.seedRaw]. */
+    private fun newServiceWithRepo(): Pair<PromptServiceImpl, InMemoryPromptRepository> {
+        val repo = InMemoryPromptRepository()
+        return PromptServiceImpl(repo, agentConfigService) to repo
+    }
+
     private fun prompt(
         namespaceId: UUID? = UUID.randomUUID(),
         userId: UUID? = null,
@@ -283,6 +290,24 @@ class PromptServiceImplSpec : StringSpec() {
             service.findById(saved.id)?.name shouldBe "Renamed"
         }
 
+        "update on a filesystem-backed prompt (version == null) throws UnprocessableEntityException" {
+            val (service, repo) = newServiceWithRepo()
+            val fsPrompt = repo.seedRaw(prompt(name = "fs-prompt"))
+
+            shouldThrow<UnprocessableEntityException> {
+                service.update(fsPrompt.copy(description = "attempted edit"))
+            }
+        }
+
+        "update on a normal persisted prompt is unaffected by the filesystem guard" {
+            val service = newService()
+            val saved = service.create(prompt(name = "Persisted"))
+
+            val updated = service.update(saved.copy(description = "edited"))
+
+            updated.description shouldBe "edited"
+        }
+
         // -------------------------------------------------------------------------
         // Delete
         // -------------------------------------------------------------------------
@@ -301,6 +326,23 @@ class PromptServiceImplSpec : StringSpec() {
         "delete returns false for unknown id" {
             val service = newService()
             service.delete(UUID.randomUUID()) shouldBe false
+        }
+
+        "delete on a filesystem-backed prompt (version == null) throws UnprocessableEntityException" {
+            val (service, repo) = newServiceWithRepo()
+            val fsPrompt = repo.seedRaw(prompt(name = "fs-prompt-to-delete"))
+
+            shouldThrow<UnprocessableEntityException> {
+                service.delete(fsPrompt.id)
+            }
+        }
+
+        "delete on a normal persisted prompt is unaffected by the filesystem guard" {
+            val service = newService()
+            val saved = service.create(prompt(name = "Persisted"))
+
+            service.delete(saved.id) shouldBe true
+            service.findById(saved.id).shouldBeNull()
         }
 
         "deleteByParent removes all prompts for a namespace" {

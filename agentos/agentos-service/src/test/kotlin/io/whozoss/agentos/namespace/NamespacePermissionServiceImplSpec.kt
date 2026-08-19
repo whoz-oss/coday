@@ -9,10 +9,12 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.user.UserMembershipRole
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -301,5 +303,247 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         verify(exactly = 1) { permissionService.grantPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN) }
         verify(exactly = 1) { permissionService.grantPermission(userId.toString(), EntityType.NAMESPACE, ns2Id.toString(), PermissionRelation.MEMBER) }
         verify(exactly = 0) { permissionService.revokePermission(any(), any(), any(), any()) }
+    }
+
+    // -------------------------------------------------------------------------
+    // updateMembers
+    // -------------------------------------------------------------------------
+
+    "updateMembers throws 404 when namespace does not exist" {
+        every { namespaceService.getById(namespaceId) } throws ResourceNotFoundException("Namespace not found: $namespaceId")
+
+        shouldThrow<ResourceNotFoundException> {
+            service.updateMembers(namespaceId, emptyList(), callerIsSuperAdmin = true)
+        }
+    }
+
+    // Duplicate userId is enforced by @NoDuplicateUserIds at the controller level — not tested here.
+
+    "updateMembers throws 422 when removing a userId not currently on the namespace" {
+        every { namespaceService.getById(namespaceId) } returns namespace
+        every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns emptyMap()
+
+        shouldThrow<UnprocessableEntityException> {
+            service.updateMembers(
+                namespaceId,
+                listOf(UserMembershipRole(userId, null)),
+                callerIsSuperAdmin = true,
+            )
+        }
+    }
+
+    "updateMembers throws AccessDenied when a non-super-admin caller adds a genuinely new user" {
+        every { namespaceService.getById(namespaceId) } returns namespace
+        every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns emptyMap()
+
+        shouldThrow<org.springframework.security.access.AccessDeniedException> {
+            service.updateMembers(
+                namespaceId,
+                listOf(UserMembershipRole(userId, "MEMBER")),
+                callerIsSuperAdmin = false,
+            )
+        }
+        verify(exactly = 0) { permissionService.applyShareBatch(any(), any(), any()) }
+    }
+
+    "updateMembers throws 422 when a new user's userId is unknown" {
+        every { namespaceService.getById(namespaceId) } returns namespace
+        every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns emptyMap()
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
+        } returns emptyList()
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
+        } returns emptyList()
+        every { userService.findByIds(listOf(userId)) } returns emptyList()
+
+        shouldThrow<UnprocessableEntityException> {
+            service.updateMembers(
+                namespaceId,
+                listOf(UserMembershipRole(userId, "MEMBER")),
+                callerIsSuperAdmin = true,
+            )
+        }
+        verify(exactly = 0) { permissionService.applyShareBatch(any(), any(), any()) }
+    }
+
+    "updateMembers grants MEMBER to a new user when the caller is super-admin" {
+        every { namespaceService.getById(namespaceId) } returns namespace
+        every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns emptyMap()
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
+        } returns emptyList()
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
+        } returns emptyList()
+        every { userService.findByIds(any()) } returns listOf(user)
+        every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(userId.toString())
+
+        service.updateMembers(
+            namespaceId,
+            listOf(UserMembershipRole(userId, "MEMBER")),
+            callerIsSuperAdmin = true,
+        )
+
+        verify(exactly = 1) {
+            permissionService.applyShareBatch(
+                EntityType.NAMESPACE,
+                namespaceId.toString(),
+                listOf(userId.toString() to PermissionRelation.MEMBER),
+            )
+        }
+    }
+
+    "updateMembers allows a namespace-write (non-super-admin) caller to change an existing member's role" {
+        every { namespaceService.getById(namespaceId) } returns namespace
+        every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns mapOf(userId.toString() to PermissionRelation.MEMBER)
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
+        } returns emptyList()
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
+        } returns emptyList()
+        every { userService.findByIds(any()) } returns listOf(user)
+        every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(userId.toString())
+
+        service.updateMembers(
+            namespaceId,
+            listOf(UserMembershipRole(userId, "ADMIN")),
+            callerIsSuperAdmin = false,
+        )
+
+        verify(exactly = 1) {
+            permissionService.applyShareBatch(
+                EntityType.NAMESPACE,
+                namespaceId.toString(),
+                listOf(userId.toString() to PermissionRelation.ADMIN),
+            )
+        }
+    }
+
+    "updateMembers skips the share batch when no role actually changes" {
+        every { namespaceService.getById(namespaceId) } returns namespace
+        every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns mapOf(userId.toString() to PermissionRelation.ADMIN)
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
+        } returns listOf(userId.toString())
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
+        } returns emptyList()
+        every { userService.findByIds(any()) } returns listOf(user)
+
+        service.updateMembers(
+            namespaceId,
+            listOf(UserMembershipRole(userId, "ADMIN")),
+            callerIsSuperAdmin = false,
+        )
+
+        verify(exactly = 0) { permissionService.applyShareBatch(any(), any(), any()) }
+    }
+
+    "updateMembers revokes an existing member without requiring super-admin" {
+        every { namespaceService.getById(namespaceId) } returns namespace
+        every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns mapOf(userId.toString() to PermissionRelation.MEMBER)
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
+        } returns emptyList()
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
+        } returns emptyList()
+        every { userService.findByIds(any()) } returns emptyList()
+        every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(userId.toString())
+
+        service.updateMembers(
+            namespaceId,
+            listOf(UserMembershipRole(userId, null)),
+            callerIsSuperAdmin = false,
+        )
+
+        verify(exactly = 1) {
+            permissionService.applyShareBatch(
+                EntityType.NAMESPACE,
+                namespaceId.toString(),
+                listOf(userId.toString() to null),
+            )
+        }
+    }
+
+    "updateMembers throws 422 when the update would leave the namespace with no ADMIN" {
+        every { namespaceService.getById(namespaceId) } returns namespace
+        every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns mapOf(userId.toString() to PermissionRelation.ADMIN)
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
+        } returns listOf(userId.toString())
+
+        shouldThrow<UnprocessableEntityException> {
+            service.updateMembers(
+                namespaceId,
+                listOf(UserMembershipRole(userId, null)),
+                callerIsSuperAdmin = true,
+            )
+        }
+        verify(exactly = 0) { permissionService.applyShareBatch(any(), any(), any()) }
+    }
+
+    "updateMembers allows demoting the sole ADMIN when another user is promoted to ADMIN in the same call" {
+        val otherUserId = UUID.randomUUID()
+        val otherUser = User(
+            metadata = EntityMetadata(id = otherUserId),
+            externalId = "other@example.com",
+            email = "other@example.com",
+            isAdmin = false,
+        )
+        every { namespaceService.getById(namespaceId) } returns namespace
+        every {
+            permissionService.listRelationsForUsers(
+                EntityType.NAMESPACE,
+                namespaceId.toString(),
+                match { it.containsAll(listOf(userId.toString(), otherUserId.toString())) },
+            )
+        } returns mapOf(
+            userId.toString() to PermissionRelation.ADMIN,
+            otherUserId.toString() to PermissionRelation.MEMBER,
+        )
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
+        } returns listOf(userId.toString())
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
+        } returns emptyList()
+        every { userService.findByIds(any()) } returns listOf(user, otherUser)
+        every { permissionService.applyShareBatch(any(), any(), any()) } returns emptyList()
+
+        service.updateMembers(
+            namespaceId,
+            listOf(UserMembershipRole(userId, "MEMBER"), UserMembershipRole(otherUserId, "ADMIN")),
+            callerIsSuperAdmin = true,
+        )
+
+        verify(exactly = 1) {
+            permissionService.applyShareBatch(
+                EntityType.NAMESPACE,
+                namespaceId.toString(),
+                listOf(
+                    userId.toString() to PermissionRelation.MEMBER,
+                    otherUserId.toString() to PermissionRelation.ADMIN,
+                ),
+            )
+        }
     }
 })

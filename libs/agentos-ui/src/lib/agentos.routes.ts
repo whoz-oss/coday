@@ -450,6 +450,15 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceUserGroupsComponent
               ),
           },
+          // --- Members ---
+          {
+            path: ':namespaceId/members',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-members/namespace-members.component').then(
+                (m) => m.NamespaceMembersComponent
+              ),
+          },
           {
             path: '',
             redirectTo: 'namespaces',

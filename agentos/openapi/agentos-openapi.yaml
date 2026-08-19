@@ -939,6 +939,10 @@ paths:
       - case-controller
   /api/cases/by-parentId/{parentId}/mine:
     get:
+      description: "GET /api/cases/by-parentId/{parentId}/mine — list only the cases\
+        \ in the namespace the current user has a direct relation with. Unlike listByParent,\
+        \ admin transitivity is excluded: every returned case is one the caller can\
+        \ star."
       operationId: listMineByParentCase
       parameters:
       - in: path
@@ -956,6 +960,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/Case"
           description: OK
+      summary: List my cases by namespace
       tags:
       - case-controller
   /api/cases/by-user/external/{externalId}:
@@ -1245,12 +1250,37 @@ paths:
       summary: Add a message
       tags:
       - case-controller
-  /api/cases/{caseId}/share:
-    put:
-      operationId: shareCase
+  /api/cases/{entityId}/members:
+    get:
+      description: Returns all users holding a direct ADMIN or MEMBER relation on
+        the entity.
+      operationId: getMembersCaseMembership
       parameters:
       - in: path
-        name: caseId
+        name: entityId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MemberItem"
+          description: OK
+      summary: List members
+      tags:
+      - case-membership-controller
+    patch:
+      description: "Delta update: add, change role, or revoke users. Users absent\
+        \ from the list are untouched."
+      operationId: updateMembersCaseMembership
+      parameters:
+      - in: path
+        name: entityId
         required: true
         schema:
           type: string
@@ -1259,7 +1289,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CaseShareRequest"
+              type: array
+              items:
+                $ref: "#/components/schemas/UserMembershipRole"
         required: true
       responses:
         "200":
@@ -1268,32 +1300,11 @@ paths:
               schema:
                 type: array
                 items:
-                  type: string
-                  format: uuid
+                  $ref: "#/components/schemas/MemberItem"
           description: OK
+      summary: Update members
       tags:
-      - case-controller
-  /api/cases/{caseId}/users:
-    get:
-      operationId: listCaseUsers
-      parameters:
-      - in: path
-        name: caseId
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/CaseUserListItem"
-          description: OK
-      tags:
-      - case-controller
+      - case-membership-controller
   /api/cases/{id}:
     delete:
       operationId: deleteCase
@@ -1353,6 +1364,9 @@ paths:
       - case-controller
   /api/cases/{id}/star:
     delete:
+      description: "DELETE /api/cases/{id}/star — remove the case from the current\
+        \ user's favorites. Requires a direct user↔case relation, otherwise the call\
+        \ is rejected."
       operationId: unstarCase
       parameters:
       - in: path
@@ -1364,9 +1378,12 @@ paths:
       responses:
         "204":
           description: No Content
+      summary: Unstar a case
       tags:
       - case-controller
     put:
+      description: "PUT /api/cases/{id}/star — mark the case as favorite for the current\
+        \ user. Requires a direct user↔case relation, otherwise the call is rejected."
       operationId: starCase
       parameters:
       - in: path
@@ -1378,6 +1395,7 @@ paths:
       responses:
         "200":
           description: OK
+      summary: Star a case
       tags:
       - case-controller
   /api/feedbacks:
@@ -1738,6 +1756,61 @@ paths:
           description: OK
       tags:
       - namespace-permission-endpoints
+  /api/namespaces/{entityId}/members:
+    get:
+      description: Returns all users holding a direct ADMIN or MEMBER relation on
+        the entity.
+      operationId: getMembersNamespaceMembership
+      parameters:
+      - in: path
+        name: entityId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MemberItem"
+          description: OK
+      summary: List members
+      tags:
+      - namespace-membership-controller
+    patch:
+      description: "Delta update: add, change role, or revoke users. Users absent\
+        \ from the list are untouched."
+      operationId: updateMembersNamespaceMembership
+      parameters:
+      - in: path
+        name: entityId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/UserMembershipRole"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MemberItem"
+          description: OK
+      summary: Update members
+      tags:
+      - namespace-membership-controller
   /api/namespaces/{id}:
     delete:
       operationId: deleteNamespace
@@ -2049,27 +2122,6 @@ paths:
           description: No Content
       tags:
       - namespace-controller
-  /api/namespaces/{namespaceId}/users:
-    get:
-      operationId: listNamespaceUsers
-      parameters:
-      - in: path
-        name: namespaceId
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/NamespaceUserListItem"
-          description: OK
-      tags:
-      - namespace-permission-endpoints
   /api/oauth/callback:
     post:
       description: "Called by the frontend popup after the OAuth provider redirects\
@@ -2418,6 +2470,40 @@ paths:
               schema:
                 $ref: "#/components/schemas/Prompt"
           description: OK
+      tags:
+      - prompt-controller
+  /api/prompts/{id}/export:
+    get:
+      description: "Returns the prompt as a downloadable YAML file, ready to be placed\
+        \ in the namespace `prompts/` directory under `configPath`. Only the fields\
+        \ meaningful in a filesystem prompt are included: `name`, `description`, `content`,\
+        \ `parameters`. Scope metadata (`id`, `namespaceId`, `userId`, `externalMetadata`)\
+        \ and audit fields are intentionally omitted. **`agentConfigId` is also omitted\
+        \ and, if set, this is a real loss of information**: `FilesystemPromptRepository`\
+        \ deliberately does not support linking a file-backed prompt to an AgentConfig\
+        \ (YAGNI — a file can only carry a name, and the need is already covered by\
+        \ an `@agentName` prefix in the prompt's own `content`). If the exported prompt\
+        \ targets an agent, add `@agentName` at the start of the content to preserve\
+        \ that targeting in the file."
+      operationId: exportPrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: string
+            application/yaml:
+              schema:
+                type: string
+          description: OK
+      summary: Export a Prompt as a YAML file
       tags:
       - prompt-controller
   /api/scheduled-prompts:
@@ -3439,28 +3525,6 @@ components:
       - namespaceId
       - timestamp
       - type
-    CaseShareEntry:
-      type: object
-      properties:
-        role:
-          type: string
-          enum:
-          - ADMIN
-          - MEMBER
-        userId:
-          type: string
-          format: uuid
-      required:
-      - userId
-    CaseShareRequest:
-      type: object
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/CaseShareEntry"
-      required:
-      - entries
     CaseStatusEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3496,31 +3560,6 @@ components:
       - namespaceId
       - timestamp
       - type
-    CaseUserListItem:
-      type: object
-      properties:
-        email:
-          type: string
-        externalId:
-          type: string
-        firstname:
-          type: string
-        id:
-          type: string
-          format: uuid
-        lastname:
-          type: string
-        role:
-          type: string
-          description: The user's direct role on this case.
-          enum:
-          - ADMIN
-          - MEMBER
-      required:
-      - email
-      - externalId
-      - id
-      - role
     ConfirmationResolvedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -3882,6 +3921,31 @@ components:
       required:
       - namespaceExternalId
       - userExternalId
+    MemberItem:
+      type: object
+      properties:
+        email:
+          type: string
+        externalId:
+          type: string
+        firstname:
+          type: string
+        id:
+          type: string
+          format: uuid
+        lastname:
+          type: string
+        role:
+          type: string
+          description: The user's direct role on this entity.
+          enum:
+          - ADMIN
+          - MEMBER
+      required:
+      - email
+      - externalId
+      - id
+      - role
     MessageContent:
       discriminator:
         propertyName: type
@@ -3989,31 +4053,6 @@ components:
           pattern: ADMIN|MEMBER
       required:
       - namespaceExternalId
-      - role
-    NamespaceUserListItem:
-      type: object
-      properties:
-        email:
-          type: string
-        externalId:
-          type: string
-        firstname:
-          type: string
-        id:
-          type: string
-          format: uuid
-        lastname:
-          type: string
-        role:
-          type: string
-          description: The user's direct role on this namespace
-          enum:
-          - ADMIN
-          - MEMBER
-      required:
-      - email
-      - externalId
-      - id
       - role
     OAuthCallbackRequest:
       type: object
@@ -4812,6 +4851,23 @@ components:
       - name
       - userExternalIdsToAdd
       - userExternalIdsToRemove
+    UserMembershipRole:
+      type: object
+      properties:
+        role:
+          type: string
+          description: Target role for this user on the entity. Null means revoke
+            all relations.
+          enum:
+          - ADMIN
+          - MEMBER
+          pattern: ADMIN|MEMBER
+        userId:
+          type: string
+          format: uuid
+          description: Internal user id.
+      required:
+      - userId
     WarnEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"

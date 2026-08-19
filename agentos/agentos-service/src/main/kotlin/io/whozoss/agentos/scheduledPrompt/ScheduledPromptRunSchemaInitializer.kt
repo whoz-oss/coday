@@ -11,8 +11,8 @@ import org.springframework.stereotype.Component
  * Idempotent Neo4j schema initialiser for [ScheduledPromptRun].
  *
  * Creates:
- * - A UNIQUE constraint on [ScheduledPromptRunNode.slotKey] to prevent double-firing for the
- *   same `(scheduledPromptId, scheduledFor)` slot.
+ * - A composite UNIQUE constraint on `(scheduledPromptId, scheduledFor)` to prevent
+ *   double-firing for the same slot.
  * - Auxiliary indexes on [ScheduledPromptRunNode.scheduledPromptId] and
  *   [ScheduledPromptRunNode.status] to back the [ScheduledPromptRunNodeNeo4jRepository.existsActiveByScheduledPromptId]
  *   query.
@@ -26,18 +26,18 @@ class ScheduledPromptRunSchemaInitializer(
     private val neo4jClient: Neo4jClient,
 ) : ApplicationRunner {
     override fun run(args: ApplicationArguments) {
-        ensureSlotKeyUniqueConstraint()
+        ensureSlotUniqueConstraint()
         ensureScheduledPromptIdIndex()
         ensureStatusIndex()
     }
 
-    private fun ensureSlotKeyUniqueConstraint() {
+    private fun ensureSlotUniqueConstraint() {
         neo4jClient
             .query(
-                "CREATE CONSTRAINT scheduled_prompt_run_slot_key_unique IF NOT EXISTS " +
-                    "FOR (r:ScheduledPromptRun) REQUIRE r.slotKey IS UNIQUE",
+                "CREATE CONSTRAINT scheduled_prompt_run_slot_unique IF NOT EXISTS " +
+                    "FOR (r:ScheduledPromptRun) REQUIRE (r.scheduledPromptId, r.scheduledFor) IS UNIQUE",
             ).run()
-        logger.info { "[ScheduledPromptRunSchema] constraint 'scheduled_prompt_run_slot_key_unique' ensured" }
+        logger.info { "[ScheduledPromptRunSchema] constraint 'scheduled_prompt_run_slot_unique' ensured" }
     }
 
     private fun ensureScheduledPromptIdIndex() {

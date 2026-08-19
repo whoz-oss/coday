@@ -14,11 +14,11 @@ import java.util.UUID
 /**
  * Spring Data Neo4j projection for [ScheduledPromptRun].
  *
- * ### slotKey
+ * ### Uniqueness
  *
- * Denormalised unique discriminator: `"$scheduledPromptId|$scheduledForEpochMilli"`. The UNIQUE
- * constraint on [slotKey] acts as the distributed lock preventing double-firing for the same slot.
- * Inserting a duplicate throws a [DuplicateRunException] in [Neo4jScheduledPromptRunRepository].
+ * A composite UNIQUE constraint on `(scheduledPromptId, scheduledFor)` acts as the
+ * distributed lock preventing double-firing for the same slot. Inserting a duplicate
+ * throws a [DuplicateRunException] in [Neo4jScheduledPromptRunRepository].
  *
  * ### Soft-delete
  *
@@ -35,8 +35,6 @@ data class ScheduledPromptRunNode(
     val attempt: Int = 0,
     val finishedAt: Instant? = null,
     val error: String? = null,
-    /** Unique slot key: "$scheduledPromptId|$scheduledForEpochMilli" */
-    val slotKey: String,
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
     @CreatedBy val createdBy: String? = null,
@@ -65,9 +63,6 @@ data class ScheduledPromptRunNode(
         )
 
     companion object {
-        fun slotKey(scheduledPromptId: UUID, scheduledFor: Instant): String =
-            "$scheduledPromptId|${scheduledFor.toEpochMilli()}"
-
         fun fromDomain(run: ScheduledPromptRun): ScheduledPromptRunNode =
             ScheduledPromptRunNode(
                 id = run.id.toString(),
@@ -78,7 +73,6 @@ data class ScheduledPromptRunNode(
                 attempt = run.attempt,
                 finishedAt = run.finishedAt,
                 error = run.error,
-                slotKey = slotKey(run.scheduledPromptId, run.scheduledFor),
                 version = run.metadata.version,
                 created = run.metadata.created,
                 createdBy = run.metadata.createdBy,

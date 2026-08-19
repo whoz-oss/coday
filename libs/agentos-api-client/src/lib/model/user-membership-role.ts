@@ -8,18 +8,17 @@
  * Do not edit the class manually.
  */
 
-export interface CaseUserListItem {
-  email: string
-  externalId: string
-  firstname?: string
-  id: string
-  lastname?: string
+export interface UserMembershipRole {
   /**
-   * The user\'s direct role on this case.
+   * Target role for this user on the entity. Null means revoke all relations.
    */
-  role: CaseUserListItemRoleEnum
+  role?: UserMembershipRoleRoleEnum
+  /**
+   * Internal user id.
+   */
+  userId: string
 }
-export enum CaseUserListItemRoleEnum {
+export enum UserMembershipRoleRoleEnum {
   ADMIN = 'ADMIN',
   MEMBER = 'MEMBER',
 }

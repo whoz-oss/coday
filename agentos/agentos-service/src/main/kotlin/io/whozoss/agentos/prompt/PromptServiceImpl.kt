@@ -50,6 +50,7 @@ class PromptServiceImpl(
 
     override fun update(entity: Prompt): Prompt {
         validate(entity)
+        rejectIfFilesystemBacked(entity.id, "updated")
         repository
             .findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
@@ -116,7 +117,10 @@ class PromptServiceImpl(
             else -> 3 // user×namespace
         }
 
-    override fun delete(id: UUID): Boolean = repository.delete(id)
+    override fun delete(id: UUID): Boolean {
+        rejectIfFilesystemBacked(id, "deleted")
+        return repository.delete(id)
+    }
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
 
@@ -182,6 +186,26 @@ class PromptServiceImpl(
     private fun conflictMessage(entity: Prompt): String =
         "A prompt named '${entity.name}' already exists in this scope " +
             "(namespaceId=${entity.namespaceId ?: "platform"}, userId=${entity.userId})"
+
+    /**
+     * Rejects [update] / [delete] when [id] resolves to a filesystem-backed prompt.
+     *
+     * A filesystem prompt (loaded by [FilesystemPromptRepository] from YAML, never saved
+     * through SDN) carries `metadata.version == null` — the same idiom used in [create] to
+     * detect filesystem-only AgentConfigs. Since [FilesystemPromptRepository.findByIds] now
+     * resolves the synthetic filesystem id, a naive PUT/DELETE on that id would otherwise
+     * create (resp. attempt to soft-delete) a phantom Neo4j node sharing the id — the
+     * persisted copy would then silently shadow the file-backed prompt it was meant to edit,
+     * defeating the collision rule documented on [FilesystemPromptRepository].
+     */
+    private fun rejectIfFilesystemBacked(id: UUID, action: String) {
+        val existing = repository.findByIds(listOf(id)).firstOrNull() ?: return
+        if (existing.metadata.version == null) {
+            throw UnprocessableEntityException(
+                "Prompt id=$id is backed by a filesystem YAML file and cannot be $action via the API",
+            )
+        }
+    }
 
     companion object : KLogging() {
         private const val TRIPLE_KEY_CONSTRAINT_NAME = "prompt_triple_key_unique"

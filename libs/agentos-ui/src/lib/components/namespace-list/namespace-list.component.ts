@@ -104,6 +104,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'auth-settings'])
   }
 
+  protected openMembers(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'members'])
+  }
+
   // --- Delete ---
 
   protected deleteNamespace(ns: Namespace): void {

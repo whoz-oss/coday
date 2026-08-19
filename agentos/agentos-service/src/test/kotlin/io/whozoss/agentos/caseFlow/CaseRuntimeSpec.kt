@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
@@ -764,6 +765,332 @@ class CaseRuntimeSpec : StringSpec() {
 
             runtime.statusFlow.value shouldBe CaseStatus.ERROR
         }
+
+        // -------------------------------------------------------------------------
+        // Anti-redirect-loop guard
+        // -------------------------------------------------------------------------
+
+        "redirect loop guard triggers at MAX_SAME_AGENT_SELECTIONS_PER_TURN" {
+            // Build a history with 1 user MessageEvent followed by exactly
+            // MAX_SAME_AGENT_SELECTIONS_PER_TURN AgentSelectedEvents for "AgentA".
+            // The guard must fire: WarnEvent + AgentFinishedEvent emitted, runAgent never called.
+            val agentName = "AgentA"
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val userMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = userMessage,
+            )
+            val selections = (1..CaseRuntime.MAX_SAME_AGENT_SELECTIONS_PER_TURN).map {
+                AgentSelectedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                )
+            }
+            val inputEvents: List<CaseEvent> = listOf(userMsg) + selections
+
+            lateinit var runtime: CaseRuntime
+            val runAgentCalled = mutableListOf<String>()
+            val isAgentAuthorizedCalled = mutableListOf<String>()
+
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = java.time.Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = { name, _ -> isAgentAuthorizedCalled.add(name); true },
+                runAgent = { name, _, _, _, _ -> runAgentCalled.add(name) },
+                inputEvents = inputEvents,
+            )
+
+            runtime.run()
+
+            // Guard must have fired: WarnEvent mentioning agentName
+            val warns = savedEvents.filterIsInstance<WarnEvent>()
+            warns.size shouldBe 1
+            warns[0].message shouldContain agentName
+            warns[0].message shouldContain "could not complete the task"
+
+            // AgentFinishedEvent must have been emitted for durability
+            val finished = savedEvents.filterIsInstance<AgentFinishedEvent>()
+            finished.size shouldBe 1
+            finished[0].agentName shouldBe agentName
+
+            // runAgent must never have been called
+            runAgentCalled shouldBe emptyList()
+
+            // isAgentAuthorized must never have been called (guard fires before authorization)
+            isAgentAuthorizedCalled shouldBe emptyList()
+
+            // Status must be IDLE, not ERROR
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "redirect loop guard does not trigger below MAX_SAME_AGENT_SELECTIONS_PER_TURN" {
+            // MAX_SAME_AGENT_SELECTIONS_PER_TURN - 1 occurrences: runAgent must be called normally.
+            val agentName = "AgentA"
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val userMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = userMessage,
+            )
+            // MAX - 1 prior selections (the guard counts the current one too, so
+            // the slice will have MAX - 1 entries when processNextStep runs, which is
+            // strictly below the threshold).
+            val priorSelections = (1 until CaseRuntime.MAX_SAME_AGENT_SELECTIONS_PER_TURN).map {
+                AgentSelectedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                )
+            }
+            val inputEvents: List<CaseEvent> = listOf(userMsg) + priorSelections
+
+            val runAgentCalled = mutableListOf<String>()
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = java.time.Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = { _, _ -> true },
+                runAgent = { name, _, _, _, _ ->
+                    runAgentCalled.add(name)
+                    // Push AgentFinishedEvent so the loop exits cleanly
+                    runtime.pushEvents(listOf(
+                        AgentFinishedEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            agentId = agentId,
+                            agentName = agentName,
+                        ),
+                    ))
+                },
+                inputEvents = inputEvents,
+            )
+
+            runtime.run()
+
+            // runAgent must have been called (no guard triggered)
+            runAgentCalled shouldBe listOf(agentName)
+
+            // No WarnEvent from the guard
+            savedEvents.filterIsInstance<WarnEvent>() shouldBe emptyList()
+
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "redirect loop guard does not produce cross-turn false positives" {
+            // MAX_SAME_AGENT_SELECTIONS_PER_TURN prior selections of AgentA in turn 1,
+            // then a new user MessageEvent, then 1 AgentSelectedEvent for AgentA in turn 2.
+            // The guard must NOT fire in turn 2 because the counter is scoped to the current turn.
+            val agentName = "AgentA"
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val firstUserMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = userMessage,
+            )
+            val previousTurnSelections = (1..CaseRuntime.MAX_SAME_AGENT_SELECTIONS_PER_TURN).map {
+                AgentSelectedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                )
+            }
+            val secondUserMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = listOf(MessageContent.Text("second turn")),
+            )
+            // One selection in the new turn
+            val newTurnSelection = AgentSelectedEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                agentName = agentName,
+            )
+            val inputEvents: List<CaseEvent> =
+                listOf(firstUserMsg) + previousTurnSelections + listOf(secondUserMsg, newTurnSelection)
+
+            val runAgentCalled = mutableListOf<String>()
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = java.time.Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = { _, _ -> true },
+                runAgent = { name, _, _, _, _ ->
+                    runAgentCalled.add(name)
+                    runtime.pushEvents(listOf(
+                        AgentFinishedEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            agentId = agentId,
+                            agentName = agentName,
+                        ),
+                    ))
+                },
+                inputEvents = inputEvents,
+            )
+
+            runtime.run()
+
+            // No guard triggered: only 1 selection in the current turn
+            runAgentCalled shouldBe listOf(agentName)
+            savedEvents.filterIsInstance<WarnEvent>() shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "redirect loop guard counts per agent name, not globally" {
+            // MAX_SAME_AGENT_SELECTIONS_PER_TURN selections of AgentA interleaved with
+            // fewer-than-threshold selections of AgentB. Guard must fire for AgentA (the
+            // last event in the scan), not for AgentB.
+            val agentA = "AgentA"
+            val agentB = "AgentB"
+            val caseId = UUID.randomUUID()
+            val agentAId = UUID.nameUUIDFromBytes(agentA.toByteArray())
+            val agentBId = UUID.nameUUIDFromBytes(agentB.toByteArray())
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val userMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = userMessage,
+            )
+
+            // Build interleaved list: A, B, A, B, ..., A (AgentA appears MAX times, AgentB fewer)
+            val maxA = CaseRuntime.MAX_SAME_AGENT_SELECTIONS_PER_TURN
+            val interleaved = mutableListOf<CaseEvent>()
+            for (i in 0 until maxA) {
+                interleaved.add(AgentSelectedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentAId,
+                    agentName = agentA,
+                ))
+                if (i < maxA - 1) { // AgentB appears maxA - 1 times, safely below threshold
+                    interleaved.add(AgentSelectedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentBId,
+                        agentName = agentB,
+                    ))
+                }
+            }
+            val inputEvents: List<CaseEvent> = listOf(userMsg) + interleaved
+
+            val runAgentCalled = mutableListOf<String>()
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = java.time.Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = { _, _ -> true },
+                runAgent = { name, _, _, _, _ -> runAgentCalled.add(name) },
+                inputEvents = inputEvents,
+            )
+
+            runtime.run()
+
+            // Guard must have fired for AgentA
+            val warns = savedEvents.filterIsInstance<WarnEvent>()
+            warns.size shouldBe 1
+            warns[0].message shouldContain agentA
+
+            // runAgent never called
+            runAgentCalled shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "redirect loop guard: cut is durable without a new user message" {
+            // After the guard fires and emits AgentFinishedEvent, re-running the same
+            // runtime without a new user message must not call runAgent.
+            // The newly emitted AgentFinishedEvent is now the last event; processNextStep
+            // finds it first and returns AGENT_FINISHED without launching the agent.
+            val agentName = "AgentA"
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val userMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = userMessage,
+            )
+            val selections = (1..CaseRuntime.MAX_SAME_AGENT_SELECTIONS_PER_TURN).map {
+                AgentSelectedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                )
+            }
+            val inputEvents: List<CaseEvent> = listOf(userMsg) + selections
+
+            val runAgentCalled = mutableListOf<String>()
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = java.time.Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = { _, _ -> true },
+                runAgent = { name, _, _, _, _ -> runAgentCalled.add(name) },
+                inputEvents = inputEvents,
+            )
+
+            // First run: guard fires, emits WarnEvent + AgentFinishedEvent
+            runtime.run()
+            runAgentCalled shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+
+            // Second run without a new user message: the AgentFinishedEvent is now last,
+            // processNextStep returns AGENT_FINISHED immediately — runAgent still not called.
+            runtime.run()
+            runAgentCalled shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        // -------------------------------------------------------------------------
+        // Rehydration from AgentRunningEvent
+        // -------------------------------------------------------------------------
 
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {
             val agentName = "gemini-flash"

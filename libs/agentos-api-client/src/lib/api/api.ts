@@ -10,6 +10,8 @@ export * from './case-controller.service'
 import { CaseControllerService } from './case-controller.service'
 export * from './case-event-rest-controller.service'
 import { CaseEventRestControllerService } from './case-event-rest-controller.service'
+export * from './case-membership-controller.service'
+import { CaseMembershipControllerService } from './case-membership-controller.service'
 export * from './exchange-controller.service'
 import { ExchangeControllerService } from './exchange-controller.service'
 export * from './feedback-controller.service'
@@ -20,6 +22,8 @@ export * from './integration-type-controller.service'
 import { IntegrationTypeControllerService } from './integration-type-controller.service'
 export * from './namespace-controller.service'
 import { NamespaceControllerService } from './namespace-controller.service'
+export * from './namespace-membership-controller.service'
+import { NamespaceMembershipControllerService } from './namespace-membership-controller.service'
 export * from './namespace-permission-endpoints.service'
 import { NamespacePermissionEndpointsService } from './namespace-permission-endpoints.service'
 export * from './o-auth-callback-controller.service'
@@ -43,11 +47,13 @@ export const APIS = [
   AuthSettingControllerService,
   CaseControllerService,
   CaseEventRestControllerService,
+  CaseMembershipControllerService,
   ExchangeControllerService,
   FeedbackControllerService,
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,
   NamespaceControllerService,
+  NamespaceMembershipControllerService,
   NamespacePermissionEndpointsService,
   OAuthCallbackControllerService,
   PluginControllerService,
