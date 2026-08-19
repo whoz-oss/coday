@@ -22,7 +22,27 @@ export const findFilesByName = async ({ text, path, root, timeout, limit }: Find
     dotRelative: false,
     follow: false,
     signal: AbortSignal.timeout(timeout || defaultTimeout),
-    ignore: ['**/node_modules/**', '**/build/**'],
+    maxDepth: 5,
+    ignore: [
+      '**/node_modules',
+      '**/node_modules/**',
+      '**/build',
+      '**/build/**',
+      '**/dist',
+      '**/dist/**',
+      '**/.git',
+      '**/.git/**',
+      '**/.nx',
+      '**/.nx/**',
+      '**/.angular',
+      '**/.angular/**',
+      '**/coverage',
+      '**/coverage/**',
+      '**/tmp',
+      '**/tmp/**',
+      '**/out-tsc',
+      '**/out-tsc/**',
+    ],
   })
 
   return !limit || results.length < limit
