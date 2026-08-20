@@ -711,6 +711,14 @@ export class McpToolsFactory extends AssistantToolFactory {
   }
 
   /**
+   * Sanitize a tool name to match the pattern required by AI providers: ^[a-zA-Z0-9_-]{1,128}$
+   * Replaces any invalid character with '_' and truncates to 128 characters.
+   */
+  private sanitizeToolName(name: string): string {
+    return name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128)
+  }
+
+  /**
    * Create a Coday tool for an MCP resource
    *
    * @param serverConfig The MCP server configuration
@@ -718,7 +726,7 @@ export class McpToolsFactory extends AssistantToolFactory {
    * @param resource The MCP resource definition
    */
   private createResourceTool(serverConfig: McpServerConfig, client: Client, resource: ResourceTemplate): CodayTool {
-    const resourceName = `mcp__${serverConfig.id}__${resource.name}`
+    const resourceName = this.sanitizeToolName(`mcp__${serverConfig.id}__${resource.name}`)
 
     const getResource = async (args: Record<string, any>) => {
       try {
@@ -794,7 +802,7 @@ export class McpToolsFactory extends AssistantToolFactory {
    * @param tool The MCP tool definition
    */
   private createFunctionTool(serverConfig: McpServerConfig, client: Client, tool: ToolInfo): CodayTool {
-    const toolName = `${serverConfig.name}__${tool.name}`
+    const toolName = this.sanitizeToolName(`${serverConfig.name}__${tool.name}`)
 
     const callFunction = async (args: Record<string, any>) => {
       // Update last used timestamp
