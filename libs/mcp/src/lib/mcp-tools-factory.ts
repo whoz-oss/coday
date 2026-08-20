@@ -1,5 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import { fetch as undiciFetch } from 'undici'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
@@ -583,7 +584,10 @@ export class McpToolsFactory extends AssistantToolFactory {
       console.log(
         `[MCP] ${this.serverConfig.name}: McpOAuthProvider created for mcpId=${this.serverConfig.id}${this.serverConfig.oauthClientId ? ` (static client_id=${this.serverConfig.oauthClientId})` : ' (dynamic registration)'}`
       )
-      const transport = new StreamableHTTPClientTransport(url, { authProvider: this.oauthProvider })
+      const transport = new StreamableHTTPClientTransport(url, {
+        authProvider: this.oauthProvider,
+        fetch: undiciFetch as any,
+      })
       // Wire finishAuth so handleCallback() can complete the code exchange
       this.oauthProvider.setFinishAuth((code) => transport.finishAuth(code))
       console.log(`[MCP] ${this.serverConfig.name}: OAuth transport ready`)
@@ -595,11 +599,11 @@ export class McpToolsFactory extends AssistantToolFactory {
         headers: { Authorization: `Bearer ${this.serverConfig.authToken}` },
       }
       console.log(`[MCP] ${this.serverConfig.name}: using static Bearer token`)
-      return new StreamableHTTPClientTransport(url, { requestInit })
+      return new StreamableHTTPClientTransport(url, { requestInit, fetch: undiciFetch as any })
     }
 
     console.log(`[MCP] ${this.serverConfig.name}: connecting without authentication`)
-    return new StreamableHTTPClientTransport(url)
+    return new StreamableHTTPClientTransport(url, { fetch: undiciFetch as any })
   }
 
   /**
