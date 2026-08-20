@@ -1,3 +1,13 @@
+## 0.248.2 (2026-08-20)
+
+### 🩹 Fixes
+
+- sanitize MCP tool names to comply with Anthropic name pattern ([8b39346f](https://github.com/whoz-oss/coday/commit/8b39346f))
+
+### ❤️ Thank You
+
+- Marc Bouteiller @marc-bouteiller-whoz
+
 ## 0.248.1 (2026-08-19)
 
 ### 🩹 Fixes
