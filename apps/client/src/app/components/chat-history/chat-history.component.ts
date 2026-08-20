@@ -18,6 +18,7 @@ import { UnreadMessagesService } from '../../services/unread-messages.service'
 import { VoiceSynthesisService } from '../../services/voice-synthesis.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { CodayService } from '../../core/services/coday.service'
+import { DelegationTrackerService } from '../../core/services/delegation-tracker.service'
 import { Subject } from 'rxjs'
 import { MatIcon } from '@angular/material/icon'
 import { ThinkingLoaderComponent } from '../thinking-loader/thinking-loader.component'
@@ -65,6 +66,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private voiceSynthesisService = inject(VoiceSynthesisService)
   private preferencesService = inject(PreferencesService)
   private codayService = inject(CodayService)
+  readonly delegationTracker = inject(DelegationTrackerService)
   private markdownService = inject(MarkdownService)
   private sanitizer = inject(DomSanitizer)
 

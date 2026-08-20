@@ -23,7 +23,7 @@
 
   <!-- Thinking Loader -->
   @if (isThinking) {
-    <app-thinking-loader></app-thinking-loader>
+    <app-thinking-loader [runningDelegations]="delegationTracker.runningCount()"></app-thinking-loader>
   }
 
   <!-- Go to Bottom Button -->
