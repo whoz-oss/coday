@@ -34,6 +34,7 @@
   "dependencies": {
     "@angular/core": "catalog:",
     "glob": "catalog:",
+    "undici": "catalog:",
     "yargs": "catalog:"
   },
   "devDependencies": {
