@@ -19,6 +19,7 @@ import { MatButtonModule } from '@angular/material/button'
 import { MatTooltipModule } from '@angular/material/tooltip'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
 import { MatMenuModule } from '@angular/material/menu'
+import { MatCheckboxModule } from '@angular/material/checkbox'
 import { MatDividerModule } from '@angular/material/divider'
 import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatInputModule } from '@angular/material/input'
@@ -79,6 +80,7 @@ const FILTERS: { key: FilterKey; label: string; icon: string }[] = [
   imports: [
     TaskCardComponent,
     ThreadComponent,
+    MatCheckboxModule,
     MatIconModule,
     MatButtonModule,
     MatTooltipModule,
@@ -138,6 +140,31 @@ export class GlobalTaskControlComponent implements OnInit {
 
   protected readonly isLoading = this.globalTaskService.isLoading
   protected readonly allTasks = this.globalTaskService.tasks
+
+  // ── Batch selection (paused group only) ───────────────────────────────────
+  /** Whether the user has explicitly entered multi-select mode on the paused group */
+  protected readonly isSelectMode = signal(false)
+  /** IDs of paused tasks currently selected for batch close */
+  protected readonly selectedPausedIds = signal<Set<string>>(new Set())
+
+  /** All paused tasks visible in the current filtered view */
+  protected readonly pausedTasks = computed(() => this.displayedTasks().filter((t) => t.status === 'paused'))
+
+  protected readonly allPausedSelected = computed(() => {
+    const paused = this.pausedTasks()
+    const selected = this.selectedPausedIds()
+    return paused.length > 0 && paused.every((t) => selected.has(t.id))
+  })
+
+  protected readonly somePausedSelected = computed(() => {
+    const selected = this.selectedPausedIds()
+    return this.pausedTasks().some((t) => selected.has(t.id))
+  })
+
+  protected readonly selectedPausedCount = computed(() => {
+    const selected = this.selectedPausedIds()
+    return this.pausedTasks().filter((t) => selected.has(t.id)).length
+  })
 
   /** Unique project names with their task counts */
   protected readonly projectSummaries = computed(() => {
@@ -350,6 +377,51 @@ export class GlobalTaskControlComponent implements OnInit {
 
   protected onMarkActiveRequested(threadId: string, projectId: string): void {
     this.globalTaskService.markTaskActive(projectId, threadId)
+  }
+
+  // ── Batch selection handlers ────────────────────────────────────────────────
+
+  protected toggleSelectMode(): void {
+    const entering = !this.isSelectMode()
+    this.isSelectMode.set(entering)
+    if (!entering) {
+      // Exiting select mode: clear selection
+      this.selectedPausedIds.set(new Set())
+    }
+  }
+
+  protected onPausedSelectionChanged(id: string, selected: boolean): void {
+    this.selectedPausedIds.update((prev) => {
+      const next = new Set(prev)
+      if (selected) {
+        next.add(id)
+      } else {
+        next.delete(id)
+      }
+      return next
+    })
+  }
+
+  protected toggleSelectAllPaused(): void {
+    const paused = this.pausedTasks()
+    if (this.allPausedSelected()) {
+      this.selectedPausedIds.set(new Set())
+    } else {
+      this.selectedPausedIds.set(new Set(paused.map((t) => t.id)))
+    }
+  }
+
+  protected markSelectedPausedDone(): void {
+    const selected = this.selectedPausedIds()
+    const tasks = this.pausedTasks()
+      .filter((t) => selected.has(t.id))
+      .map((t) => ({ id: t.id, projectId: t.projectId }))
+
+    if (tasks.length === 0) return
+
+    this.selectedPausedIds.set(new Set())
+    this.isSelectMode.set(false)
+    this.globalTaskService.markTasksBatchDone(tasks)
   }
 
   // ── Preview panel handlers ──────────────────────────────────────────────────
