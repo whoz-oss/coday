@@ -496,6 +496,8 @@ class AgentServiceImpl(
                 llmProvider = providerConfig.name,
                 llmModel = modelConfig.apiModelName,
                 toolMetricsService = toolMetricsService,
+                imageCharCost = agentConfigProperties.imageCharCost,
+                maxAttachedImages = agentConfigProperties.maxAttachedImages,
             )
         }
     }

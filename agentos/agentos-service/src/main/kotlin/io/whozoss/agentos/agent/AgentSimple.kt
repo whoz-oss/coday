@@ -45,11 +45,16 @@ import kotlin.time.measureTime
  * Simple agent implementation with single LLM call.
  *
  * This agent delegates tool orchestration to the LLM itself:
- * 1. Converts events to messages (including tool calls/responses)
+ * 1. Converts events to messages (including tool calls/responses and image attachments)
  * 2. Makes a single LLM call with available tools
  * 3. LLM decides which tools to call and when
  * 4. Tools are wrapped to emit ToolRequestEvent and ToolResponseEvent
  * 5. Streams text progressively with TextChunkEvent
+ *
+ * Image handling mirrors AgentAdvanced: tool responses that produced images are injected
+ * as follow-up [UserMessage] with [org.springframework.ai.content.Media] attachments in
+ * [convertEventsToMessages]. Budget management (newest-first selection) is governed by
+ * [imageCharCost] and [maxAttachedImages].
  *
  * This is simpler but gives less control over the orchestration loop
  * compared to AgentAdvanced.
@@ -74,6 +79,16 @@ class AgentSimple(
     override val llmModel: String,
     /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
     private val toolMetricsService: ToolMetricsService? = null,
+    /**
+     * Char-equivalent cost of one attached image against the image budget.
+     * Mirrors [AgentConfigProperties.imageCharCost] (default 6 000).
+     */
+    val imageCharCost: Int = 6_000,
+    /**
+     * Maximum images attached as Media across the whole prompt, newest first.
+     * Mirrors [AgentConfigProperties.maxAttachedImages] (default 20).
+     */
+    val maxAttachedImages: Int = 20,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -278,8 +293,14 @@ class AgentSimple(
      * it is injected as an extra [UserMessage] immediately before that message.
      * Session context on earlier messages is ignored — only the current turn's context
      * is relevant to the LLM.
+     *
+     * Image handling: tool responses that include images are replayed with a follow-up
+     * [UserMessage] carrying [org.springframework.ai.content.Media] attachments, mirroring
+     * the pattern used by AgentAdvancedContext. Budget management (newest-first) is governed
+     * by [maxAttachedImages] and [imageCharCost]. Tool responses whose images exceed the budget
+     * receive a text marker instead.
      */
-    private fun convertEventsToMessages(events: List<CaseEvent>): List<Message> {
+    internal fun convertEventsToMessages(events: List<CaseEvent>): List<Message> {
         val messages = mutableListOf<Message>()
         val toolCallsForCurrentMessage = mutableListOf<AssistantMessage.ToolCall>()
         val toolResponses = mutableMapOf<String, ToolResponseEvent>()
@@ -288,6 +309,9 @@ class AgentSimple(
         events.filterIsInstance<ToolResponseEvent>().forEach { toolResponse ->
             toolResponses[toolResponse.toolRequestId] = toolResponse
         }
+
+        // Determine which tool responses get image Media attachments (newest-first budget walk)
+        val mediaRequestIds = selectImageRequestIds(events, toolResponses)
 
         val lastUserMessageIndex =
             events.indexOfLast {
@@ -315,14 +339,23 @@ class AgentSimple(
                         // Every AssistantMessage with tool_calls MUST be followed by a
                         // ToolResponseMessage for each tool_call_id — OpenAI returns 400
                         // otherwise. Use the real response when available, or a placeholder.
+                        // Images within budget are injected as follow-up UserMessage with Media.
                         val toolResponseMessages =
                             toolCallsForCurrentMessage.map { toolCall ->
                                 val response = toolResponses[toolCall.id()]
-                                val output = response?.let { toolResponseText(it) } ?: "[No response recorded]"
+                                val output = response?.let { toolResponseText(it, mediaRequestIds) } ?: "[No response recorded]"
                                 ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
                             }
 
                         messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
+
+                        // Inject image Media messages for tool calls within the image budget
+                        toolCallsForCurrentMessage.forEach { toolCall ->
+                            val response = toolResponses[toolCall.id()]
+                            if (response != null && response.images.isNotEmpty() && toolCall.id() in mediaRequestIds) {
+                                messages.add(toolImagesUserMessage(toolCall.name(), response.images))
+                            }
+                        }
 
                         toolCallsForCurrentMessage.clear()
                     }
@@ -369,31 +402,73 @@ class AgentSimple(
             val toolResponseMessages =
                 toolCallsForCurrentMessage.map { toolCall ->
                     val response = toolResponses[toolCall.id()]
-                    val output = response?.let { toolResponseText(it) } ?: "[No response recorded]"
+                    val output = response?.let { toolResponseText(it, mediaRequestIds) } ?: "[No response recorded]"
                     ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
                 }
 
             messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
+
+            // Inject image Media messages for tool calls within the image budget
+            toolCallsForCurrentMessage.forEach { toolCall ->
+                val response = toolResponses[toolCall.id()]
+                if (response != null && response.images.isNotEmpty() && toolCall.id() in mediaRequestIds) {
+                    messages.add(toolImagesUserMessage(toolCall.name(), response.images))
+                }
+            }
         }
 
         return messages
     }
 
     /**
-     * Textual rendering of a tool response for the LLM prompt. Never stringifies
-     * non-text content (a raw data-class toString would dump base64 payloads).
+     * Newest-first walk over events to decide which tool responses get image [Media] attachments.
      *
-     * AgentSimple does not support image attachments (its Spring AI tool loop is
-     * text-only), so when the response carries images the model is explicitly told
-     * they are not viewable here instead of being led to believe they are attached.
+     * Mirrors AgentAdvancedContext's budget logic: walks events in reverse, attaches images
+     * for a response when the [maxAttachedImages] cap allows, and stops when a response would
+     * push the total over the cap. Returns the set of toolRequestIds whose images are attached.
      */
-    private fun toolResponseText(response: ToolResponseEvent): String {
+    private fun selectImageRequestIds(
+        events: List<CaseEvent>,
+        toolResponses: Map<String, ToolResponseEvent>,
+    ): Set<String> {
+        val withMedia = mutableSetOf<String>()
+        var imagesAttached = 0
+
+        for (event in events.reversed()) {
+            if (event !is ToolRequestEvent) continue
+            val response = toolResponses[event.toolRequestId] ?: continue
+            val images = response.images
+            if (images.isEmpty()) continue
+            if (imagesAttached + images.size <= maxAttachedImages) {
+                withMedia.add(event.toolRequestId)
+                imagesAttached += images.size
+            }
+            // Do not break: a later (older) response that fits under the cap after a larger one
+            // was skipped should still be considered. (Consistent with AgentAdvanced behavior.)
+        }
+        return withMedia
+    }
+
+    /**
+     * Textual rendering of a tool response for the ToolResponseMessage.
+     *
+     * When a response has images within the [mediaRequestIds] budget, the text is left
+     * plain — the LLM will see them via the follow-up UserMessage with Media attachments.
+     * When a response has images that are outside the budget (oldest, evicted), a marker
+     * is appended telling the LLM the images are no longer attached and it should re-call
+     * the tool if needed.
+     */
+    private fun toolResponseText(response: ToolResponseEvent, mediaRequestIds: Set<String>): String {
         val text =
             when (val content = response.output) {
                 is MessageContent.Text -> content.content
                 is MessageContent.Image -> "[image ${content.mimeType} ${content.width}x${content.height}]"
             }
-        return if (response.images.isEmpty()) text else text + "\n" + imagesNotSupportedNote(response.images.size)
+        return when {
+            response.images.isEmpty() -> text
+            response.toolRequestId in mediaRequestIds -> text  // images come via follow-up UserMessage
+            else -> text + "\n[${response.images.size} image(s) no longer attached, call the tool again if needed]"
+        }
     }
 
     /**
@@ -564,28 +639,18 @@ class AgentSimple(
                         success = executionResult.success,
                         durationMs = toolDuration.inWholeMilliseconds,
                         toolMetadata = executionResult.metadata,
-                        // Preserved on the event (persistence, SSE) even though this
-                        // runtime cannot deliver them to the LLM.
+                        // Images are preserved on the event (persistence, SSE).
+                        // They will be delivered to the LLM via the conversation history
+                        // on subsequent turns (convertEventsToMessages injects UserMessage+Media).
                         images = executionResult.images,
                     ),
                 )
 
-                return if (executionResult.images.isEmpty()) {
-                    executionResult.output
-                } else {
-                    executionResult.output + "\n" + imagesNotSupportedNote(executionResult.images.size)
-                }
+                // ToolCallback.call() returns text only — images reach the LLM via the
+                // rebuilt conversation context in convertEventsToMessages(), not here.
+                return executionResult.output
             }
         }
 
-    companion object : KLogging() {
-        /**
-         * Appended to a tool response whose result carries images: AgentSimple's
-         * Spring AI tool loop is text-only, so the model must not be led to believe
-         * the images are attached (image delivery is an AgentAdvanced feature).
-         */
-        internal fun imagesNotSupportedNote(count: Int): String =
-            "[Note: $count image(s) were produced but this agent runtime does not support image attachments;" +
-                " only this text summary is available. Image viewing requires an advanced-execution agent.]"
-    }
+    companion object : KLogging()
 }
