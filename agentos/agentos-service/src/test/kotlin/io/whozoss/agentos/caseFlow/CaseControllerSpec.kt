@@ -507,6 +507,7 @@ class CaseControllerSpec :
             val ns2 = UUID.randomUUID()
             val case1 = caseEntity(title = "in ns1")
             val case2 = caseEntity(title = "in ns2").copy(namespaceId = ns2)
+            every { userService.getCurrentUser() } returns caller
             every { caseService.findConcerningUser(callerId) } returns listOf(case1, case2)
 
             val result = controller.listByUser(callerId)
@@ -516,6 +517,7 @@ class CaseControllerSpec :
         }
 
         "listByUser returns empty list when no cases concern the requested user" {
+            every { userService.getCurrentUser() } returns caller
             every { caseService.findConcerningUser(callerId) } returns emptyList()
 
             controller.listByUser(callerId) shouldBe emptyList()
@@ -525,6 +527,7 @@ class CaseControllerSpec :
             val withMsg = caseEntity(title = "has messages")
             val noMsg = caseEntity(title = "no messages")
             val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
+            every { userService.getCurrentUser() } returns caller
             every { caseService.findConcerningUser(callerId) } returns listOf(withMsg, noMsg)
             every {
                 caseEventService.findLastMessageTimestamps(listOf(withMsg.id, noMsg.id))
@@ -536,6 +539,31 @@ class CaseControllerSpec :
             result.single { it.id == noMsg.metadata.id }.lastMessageAt shouldBe null
         }
 
+        "listByUser enriches with favorite when caller is the target user" {
+            val starredCase = caseEntity(title = "starred")
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.findConcerningUser(callerId) } returns listOf(starredCase)
+            every {
+                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
+
+            val result = controller.listByUser(callerId)
+
+            result.single().favorite shouldBe true
+        }
+
+        "listByUser skips enrichment when caller is not the target user" {
+            val otherId = UUID.randomUUID()
+            val otherCase = caseEntity(title = "other user case")
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.findConcerningUser(otherId) } returns listOf(otherCase)
+
+            val result = controller.listByUser(otherId)
+
+            result.single().favorite shouldBe false
+            verify(exactly = 0) { starredService.listDirectRelations(any(), any()) }
+        }
+
         // -------------------------------------------------------------------------
         // listByUserExternalId — GET /api/cases/by-user/external/{externalId}
         // -------------------------------------------------------------------------
@@ -545,6 +573,7 @@ class CaseControllerSpec :
             val noMsg = caseEntity(title = "no messages")
             val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
             every { userService.findByExternalId(caller.externalId) } returns caller
+            every { userService.getCurrentUser() } returns caller
             every { caseService.findConcerningUser(callerId) } returns listOf(withMsg, noMsg)
             every {
                 caseEventService.findLastMessageTimestamps(listOf(withMsg.id, noMsg.id))
@@ -561,6 +590,7 @@ class CaseControllerSpec :
             val case1 = caseEntity(title = "in ns1")
             val case2 = caseEntity(title = "in ns2").copy(namespaceId = ns2)
             every { userService.findByExternalId(caller.externalId) } returns caller
+            every { userService.getCurrentUser() } returns caller
             every { caseService.findConcerningUser(callerId) } returns listOf(case1, case2)
 
             val result = controller.listByUserExternalId(caller.externalId)
@@ -579,9 +609,42 @@ class CaseControllerSpec :
 
         "listByUserExternalId returns empty list when the resolved user has no cases" {
             every { userService.findByExternalId(caller.externalId) } returns caller
+            every { userService.getCurrentUser() } returns caller
             every { caseService.findConcerningUser(callerId) } returns emptyList()
 
             controller.listByUserExternalId(caller.externalId) shouldBe emptyList()
+        }
+
+        "listByUserExternalId enriches with favorite when caller is the target user" {
+            val starredCase = caseEntity(title = "starred")
+            every { userService.findByExternalId(caller.externalId) } returns caller
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.findConcerningUser(callerId) } returns listOf(starredCase)
+            every {
+                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
+
+            val result = controller.listByUserExternalId(caller.externalId)
+
+            result.single().favorite shouldBe true
+        }
+
+        "listByUserExternalId skips enrichment when caller is not the target user" {
+            val otherUser =
+                caller.copy(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    externalId = "other@example.com",
+                    email = "other@example.com",
+                )
+            val otherCase = caseEntity(title = "other user case")
+            every { userService.findByExternalId(otherUser.externalId) } returns otherUser
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.findConcerningUser(otherUser.id) } returns listOf(otherCase)
+
+            val result = controller.listByUserExternalId(otherUser.externalId)
+
+            result.single().favorite shouldBe false
+            verify(exactly = 0) { starredService.listDirectRelations(any(), any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -600,6 +663,7 @@ class CaseControllerSpec :
                     externalId = namespaceExternalId,
                 )
             every { userService.findByExternalId(caller.externalId) } returns caller
+            every { userService.getCurrentUser() } returns caller
             every { namespaceService.findByExternalId(namespaceExternalId) } returns namespace
             every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(withMsg, noMsg)
             every {
@@ -628,6 +692,7 @@ class CaseControllerSpec :
                     externalId = namespaceExternalId,
                 )
             every { userService.findByExternalId(caller.externalId) } returns caller
+            every { userService.getCurrentUser() } returns caller
             every { namespaceService.findByExternalId(namespaceExternalId) } returns namespace
             every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(caseInNs)
 
@@ -644,6 +709,36 @@ class CaseControllerSpec :
             verify(exactly = 0) { caseService.findConcerningUser(any()) }
         }
 
+        "listByUserInNamespace enriches with favorite when caller is the target user" {
+            val starredCase = caseEntity(title = "starred")
+            val plainCase = caseEntity(title = "plain")
+            val namespaceExternalId = "ext-ns-fav"
+            val namespace =
+                io.whozoss.agentos.namespace.Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-ns",
+                    externalId = namespaceExternalId,
+                )
+            every { userService.findByExternalId(caller.externalId) } returns caller
+            every { userService.getCurrentUser() } returns caller
+            every { namespaceService.findByExternalId(namespaceExternalId) } returns namespace
+            every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(starredCase, plainCase)
+            every {
+                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
+
+            val result =
+                controller.listByUserInNamespace(
+                    ListByUserInNamespaceRequest(
+                        userExternalId = caller.externalId,
+                        namespaceExternalId = namespaceExternalId,
+                    ),
+                )
+
+            result.single { it.id == starredCase.metadata.id }.favorite shouldBe true
+            result.single { it.id == plainCase.metadata.id }.favorite shouldBe false
+        }
+
         "listByUserInNamespace returns empty list when user has no cases in the namespace" {
             val namespaceExternalId = "ext-ns-empty"
             val namespace =
@@ -653,6 +748,7 @@ class CaseControllerSpec :
                     externalId = namespaceExternalId,
                 )
             every { userService.findByExternalId(caller.externalId) } returns caller
+            every { userService.getCurrentUser() } returns caller
             every { namespaceService.findByExternalId(namespaceExternalId) } returns namespace
             every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns emptyList()
 
@@ -662,6 +758,38 @@ class CaseControllerSpec :
                     namespaceExternalId = namespaceExternalId,
                 ),
             ) shouldBe emptyList()
+        }
+
+        "listByUserInNamespace skips enrichment when caller is not the target user" {
+            val otherUser =
+                caller.copy(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    externalId = "other@example.com",
+                    email = "other@example.com",
+                )
+            val namespaceExternalId = "ext-ns-other"
+            val namespace =
+                io.whozoss.agentos.namespace.Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-ns",
+                    externalId = namespaceExternalId,
+                )
+            val otherCase = caseEntity(title = "other user case")
+            every { userService.findByExternalId(otherUser.externalId) } returns otherUser
+            every { userService.getCurrentUser() } returns caller
+            every { namespaceService.findByExternalId(namespaceExternalId) } returns namespace
+            every { caseService.findConcerningUserInNamespace(otherUser.id, namespaceId) } returns listOf(otherCase)
+
+            val result =
+                controller.listByUserInNamespace(
+                    ListByUserInNamespaceRequest(
+                        userExternalId = otherUser.externalId,
+                        namespaceExternalId = namespaceExternalId,
+                    ),
+                )
+
+            result.single().favorite shouldBe false
+            verify(exactly = 0) { starredService.listDirectRelations(any(), any()) }
         }
 
         "listByUserInNamespace throws 404 when no user matches the external id" {
@@ -718,6 +846,7 @@ class CaseControllerSpec :
             val payload =
                 caseResource(id = existing.metadata.id, title = "renamed")
                     .copy(namespaceId = otherNs, status = CaseStatus.RUNNING)
+            every { userService.getCurrentUser() } returns caller
             every { caseService.findById(existing.metadata.id) } returns existing
             every { caseService.update(any()) } answers {
                 val saved = firstArg<Case>()
@@ -744,6 +873,7 @@ class CaseControllerSpec :
         "update populates lastMessageAt from caseEventService" {
             val existing = caseEntity()
             val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
+            every { userService.getCurrentUser() } returns caller
             every { caseService.findById(existing.metadata.id) } returns existing
             every { caseService.update(any()) } returns existing
             every {
@@ -755,6 +885,21 @@ class CaseControllerSpec :
             result.lastMessageAt shouldBe msgTimestamp
         }
 
+        "update populates favorite and role from starredService" {
+            val existing = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.findById(existing.metadata.id) } returns existing
+            every { caseService.update(any()) } returns existing
+            every {
+                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+            } returns mapOf(existing.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
+
+            val result = controller.update(existing.metadata.id, caseResource(id = existing.metadata.id))
+
+            result.favorite shouldBe true
+            result.role shouldBe "MEMBER"
+        }
+
         // -------------------------------------------------------------------------
         // getById
         // -------------------------------------------------------------------------
@@ -762,6 +907,7 @@ class CaseControllerSpec :
         "getById populates lastMessageAt from caseEventService" {
             val entity = caseEntity()
             val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
+            every { userService.getCurrentUser() } returns caller
             every { caseService.getById(entity.metadata.id) } returns entity
             every {
                 caseEventService.findLastMessageTimestamps(listOf(entity.id))
@@ -775,11 +921,38 @@ class CaseControllerSpec :
 
         "getById returns null lastMessageAt when case has no messages" {
             val entity = caseEntity()
+            every { userService.getCurrentUser() } returns caller
             every { caseService.getById(entity.metadata.id) } returns entity
 
             val result = controller.getById(entity.metadata.id)
 
             result.lastMessageAt shouldBe null
+        }
+
+        "getById sets favorite=true when the caller has starred the case" {
+            val entity = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.getById(entity.metadata.id) } returns entity
+            every {
+                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+            } returns mapOf(entity.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = true))
+
+            val result = controller.getById(entity.metadata.id)
+
+            result.favorite shouldBe true
+            result.role shouldBe "ADMIN"
+        }
+
+        "getById sets favorite=false and role=null when the caller has no direct relation" {
+            val entity = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.getById(entity.metadata.id) } returns entity
+            // default mock: emptyMap()
+
+            val result = controller.getById(entity.metadata.id)
+
+            result.favorite shouldBe false
+            result.role shouldBe null
         }
 
         // -------------------------------------------------------------------------
@@ -790,14 +963,38 @@ class CaseControllerSpec :
             val withMsg = caseEntity(title = "has messages")
             val noMsg = caseEntity(title = "no messages")
             val msgTimestamp = Instant.parse("2025-06-01T10:00:00Z")
+            every { userService.getCurrentUser() } returns caller
             every { caseService.findByIds(any(), any()) } returns listOf(withMsg, noMsg)
             every {
                 caseEventService.findLastMessageTimestamps(listOf(withMsg.id, noMsg.id))
             } returns mapOf(withMsg.id to msgTimestamp)
 
-            val result = controller.getByIds(io.whozoss.agentos.sdk.api.common.GetByIdsRequest(listOf(withMsg.metadata.id, noMsg.metadata.id)))
+            val result =
+                controller.getByIds(
+                    io.whozoss.agentos.sdk.api.common
+                        .GetByIdsRequest(listOf(withMsg.metadata.id, noMsg.metadata.id)),
+                )
 
             result.single { it.id == withMsg.metadata.id }.lastMessageAt shouldBe msgTimestamp
             result.single { it.id == noMsg.metadata.id }.lastMessageAt shouldBe null
+        }
+
+        "getByIds populates favorite from starredService for the current user" {
+            val starred = caseEntity(title = "starred")
+            val plain = caseEntity(title = "plain")
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.findByIds(any(), any()) } returns listOf(starred, plain)
+            every {
+                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = true))
+
+            val result =
+                controller.getByIds(
+                    io.whozoss.agentos.sdk.api.common
+                        .GetByIdsRequest(listOf(starred.metadata.id, plain.metadata.id)),
+                )
+
+            result.single { it.id == starred.metadata.id }.favorite shouldBe true
+            result.single { it.id == plain.metadata.id }.favorite shouldBe false
         }
     })
