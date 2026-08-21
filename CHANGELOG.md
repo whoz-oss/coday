@@ -1,3 +1,34 @@
+## 0.248.3 (2026-08-21)
+
+### 🩹 Fixes
+
+- **agentos:** fix missed favorite and role enrichment in case read and list endpoints #33653 ([#1241](https://github.com/whoz-oss/coday/pull/1241), [#33653](https://github.com/whoz-oss/coday/issues/33653))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.248.2 (2026-08-20)
+
+### 🩹 Fixes
+
+- sanitize MCP tool names to comply with Anthropic name pattern ([8b39346f](https://github.com/whoz-oss/coday/commit/8b39346f))
+
+### ❤️ Thank You
+
+- Marc Bouteiller @marc-bouteiller-whoz
+
+## 0.248.1 (2026-08-19)
+
+### 🩹 Fixes
+
+- optimize findFilesByName to prevent TimeoutError on large projects ([14d69846](https://github.com/whoz-oss/coday/commit/14d69846))
+- optimize findFilesByName to prevent TimeoutError on large projects ([#1238](https://github.com/whoz-oss/coday/pull/1238))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+
 ## 0.248.0 (2026-08-14)
 
 ### 🚀 Features
