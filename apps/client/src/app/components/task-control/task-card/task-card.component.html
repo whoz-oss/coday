@@ -2,6 +2,7 @@
   class="task-card"
   [class]="'status-' + task().status"
   [class.is-active]="task().isActive"
+  [class.is-selected]="selected()"
   (click)="navigate()"
   role="button"
   tabindex="0"
@@ -9,6 +10,17 @@
   (keydown.space)="navigate(); $event.preventDefault()"
   [attr.aria-label]="'Open task: ' + task().name"
 >
+  <!-- Batch selection checkbox (visible when selectable mode is active) -->
+  @if (selectable()) {
+    <div class="selection-checkbox" (click)="$event.stopPropagation()">
+      <mat-checkbox
+        [checked]="selected()"
+        (change)="selectionChanged.emit({ id: task().id, selected: $event.checked })"
+        [attr.aria-label]="'Select task: ' + task().name"
+      />
+    </div>
+  }
+
   <!-- Persistent star indicator (always visible when starred) -->
   @if (task().starring.length > 0) {
     <mat-icon class="starred-indicator" aria-label="Starred">star</mat-icon>
