@@ -115,15 +115,7 @@ data class AgentAdvancedContext(
                 // No XML balisage is applied — the question is plain agent speech, not a
                 // "foreign" message, so the same convention as other AssistantMessages holds.
                 is QuestionEvent -> {
-                    val text = buildString {
-                        append(event.question)
-                        val opts = event.options
-                        if (!opts.isNullOrEmpty()) {
-                            append("\nOptions: ")
-                            append(opts.joinToString(", ") { "\"$it\"" })
-                        }
-                    }
-                    listOf(AssistantMessage(text))
+                    listOf(AssistantMessage(event.toPromptText()))
                 }
 
                 // AnswerEvent: the user's reply to a QuestionEvent.

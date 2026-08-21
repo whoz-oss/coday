@@ -330,15 +330,7 @@ class AgentSimple(
                 // AssistantMessage with tool_calls must be followed by a ToolResponseMessage).
                 is QuestionEvent -> {
                     flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses)
-                    val text = buildString {
-                        append(event.question)
-                        val opts = event.options
-                        if (!opts.isNullOrEmpty()) {
-                            append("\nOptions: ")
-                            append(opts.joinToString(", ") { "\"$it\"" })
-                        }
-                    }
-                    messages.add(AssistantMessage(text))
+                    messages.add(AssistantMessage(event.toPromptText()))
                 }
 
                 // AnswerEvent: the user's reply to a QuestionEvent.

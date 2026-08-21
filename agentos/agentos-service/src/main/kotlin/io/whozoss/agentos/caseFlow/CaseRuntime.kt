@@ -516,6 +516,22 @@ class CaseRuntime(
      * For [io.whozoss.agentos.agent.AgentInterrupt.AwaitAnswer], the run terminated
      * BEFORE the answer arrived, so no [AgentFinishedEvent] follows the legitimate answer.
      * The guard therefore lets exactly the right cases through.
+     *
+     * ## Known limitation — only the LAST question is considered
+     *
+     * Only the most recent [QuestionEvent] in the history is examined. An earlier question
+     * left unanswered is invisible to this pre-flight and its agent will never be woken up.
+     *
+     * This holds today because a case can only ever have one question outstanding: a
+     * [io.whozoss.agentos.agent.AgentInterrupt.AwaitAnswer] terminates the run that raised
+     * it, and [run] admits a single turn at a time via [runInFlight] — so no second agent
+     * can ask anything while the first is waiting.
+     *
+     * The assumption breaks as soon as two agents can be in flight on the same case (e.g.
+     * concurrent delegation). At that point the search must iterate over all unanswered
+     * questions rather than only the last one, and the wake-up must emit one
+     * [AgentSelectedEvent] per resolved question. Revisit this method — and the recipient
+     * check below, whose `indexOfFirst` anchoring assumes a single candidate question.
      */
     private fun findUnresolvedQuestion(events: List<CaseEvent>): QuestionEvent? {
         val lastQuestion = events.filterIsInstance<QuestionEvent>().lastOrNull() ?: return null
