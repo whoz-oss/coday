@@ -12,9 +12,10 @@
 >
   <!-- Batch selection checkbox (visible when selectable mode is active) -->
   @if (selectable()) {
-    <div class="selection-checkbox" (click)="$event.stopPropagation()">
+    <div class="selection-checkbox">
       <mat-checkbox
         [checked]="selected()"
+        (click)="$event.stopPropagation()"
         (change)="selectionChanged.emit({ id: task().id, selected: $event.checked })"
         [attr.aria-label]="'Select task: ' + task().name"
       />
