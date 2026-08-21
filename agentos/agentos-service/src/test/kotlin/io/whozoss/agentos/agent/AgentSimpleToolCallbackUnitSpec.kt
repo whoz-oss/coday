@@ -3,6 +3,7 @@ package io.whozoss.agentos.agent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldHaveSize as mediaHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -27,6 +28,7 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.tool.ToolCallback
@@ -60,6 +62,8 @@ class AgentSimpleToolCallbackUnitSpec :
             agentId: UUID,
             chatClient: ChatClient,
             tools: Collection<StandardTool<*>>,
+            maxAttachedImages: Int = 20,
+            imageCharCost: Int = 6_000,
         ): AgentSimple =
             AgentSimple(
                 metadata = EntityMetadata(id = agentId),
@@ -68,6 +72,8 @@ class AgentSimpleToolCallbackUnitSpec :
                 tools = tools,
                 llmProvider = "test-provider",
                 llmModel = "test-model",
+                maxAttachedImages = maxAttachedImages,
+                imageCharCost = imageCharCost,
             )
 
         fun userMessage(
@@ -356,11 +362,11 @@ class AgentSimpleToolCallbackUnitSpec :
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
         }
 
-        "image-producing tool: images are kept on the event and the LLM sees the not-supported note" {
-            // AgentSimple cannot deliver image attachments to the LLM. The images must
-            // still be preserved on the ToolResponseEvent (persistence, SSE), and the
-            // text handed back to the LLM must say the images are NOT viewable here,
-            // instead of letting the tool summary claim they are attached.
+        "image-producing tool: images are kept on the event and the callback returns plain text (images go via history)" {
+            // AgentSimple now supports image delivery via the conversation history.
+            // The ToolCallback.call() return value must be plain text only — images reach
+            // the LLM on subsequent turns via convertEventsToMessages() injecting UserMessage+Media.
+            // The images must still be preserved on the ToolResponseEvent (persistence, SSE).
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
@@ -400,12 +406,18 @@ class AgentSimpleToolCallbackUnitSpec :
             toolResponse.images shouldBe images
             (toolResponse.output as MessageContent.Text).content shouldBe "Rendered PDF cv.pdf: page(s) 1 of 1"
 
+            // The callback returns only the text output — no "not supported" note
             callbackReturn shouldNotBe null
-            callbackReturn!! shouldContain "does not support image attachments"
-            callbackReturn!! shouldContain "Rendered PDF cv.pdf"
+            callbackReturn!! shouldBe "Rendered PDF cv.pdf: page(s) 1 of 1"
+            callbackReturn!! shouldNotContain "does not support image attachments"
         }
 
-        "history replay renders image tool responses as text with the note, never base64" {
+        "history replay injects UserMessage with Media for image tool responses, never base64 in ToolResponseMessage" {
+            // When the conversation history contains a ToolResponseEvent with images,
+            // convertEventsToMessages() must:
+            // 1. Put plain text (no note) in the ToolResponseMessage
+            // 2. Inject a follow-up UserMessage with Media attachments (base64 decoded)
+            // 3. Never put raw base64 directly in the ToolResponseMessage text
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
@@ -443,14 +455,28 @@ class AgentSimpleToolCallbackUnitSpec :
 
             agent.run(history).toList()
 
+            val promptMessages = promptSlot.captured.instructions
+
+            // ToolResponseMessage must have plain text only — no base64, no "not supported" note
             val toolResponseMessage =
-                promptSlot.captured.instructions
+                promptMessages
                     .filterIsInstance<org.springframework.ai.chat.messages.ToolResponseMessage>()
                     .single()
             val responseData = toolResponseMessage.responses.single().responseData()
             responseData shouldContain "Rendered PDF cv.pdf"
-            responseData shouldContain "does not support image attachments"
             responseData shouldNotContain "aGVsbG8="
+            responseData shouldNotContain "does not support image attachments"
+            responseData shouldNotContain "no longer attached"
+
+            // A follow-up UserMessage with Media must have been injected after the ToolResponseMessage
+            val toolResponseIdx = promptMessages.indexOf(toolResponseMessage)
+            val imageUserMsg = promptMessages
+                .drop(toolResponseIdx + 1)
+                .filterIsInstance<UserMessage>()
+                .firstOrNull { it.text.contains("FILES__readAsImage") }
+            imageUserMsg shouldNotBe null
+            imageUserMsg!!.text shouldContain "Attached"
+            imageUserMsg.media shouldHaveSize 1
         }
 
         "NonTransientAiException from LLM provider surfaces as ErrorEvent + AgentFinishedEvent, no generic error" {
