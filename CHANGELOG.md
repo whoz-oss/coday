@@ -1,3 +1,13 @@
+## 0.248.3 (2026-08-21)
+
+### 🩹 Fixes
+
+- **agentos:** fix missed favorite and role enrichment in case read and list endpoints #33653 ([#1241](https://github.com/whoz-oss/coday/pull/1241), [#33653](https://github.com/whoz-oss/coday/issues/33653))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.248.2 (2026-08-20)
 
 ### 🩹 Fixes
