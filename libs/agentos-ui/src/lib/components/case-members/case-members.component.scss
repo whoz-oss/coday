@@ -104,20 +104,27 @@
 }
 
 .case-members__member-info {
+  flex-direction: column;
   flex: 1;
   min-width: 0;
 }
 
 .case-members__member-name {
+  display: block;
   font-size: 0.875rem;
   color: var(--color-text);
-  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .case-members__member-email {
+  display: block;
   font-size: 0.75rem;
   color: var(--color-text-secondary);
-  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .case-members__member-role {
