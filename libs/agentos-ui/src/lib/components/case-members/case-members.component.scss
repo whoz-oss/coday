@@ -5,14 +5,12 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  overflow: hidden;
 }
 
 .case-members {
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: hidden;
 }
 
 .case-members__header {
@@ -104,6 +102,7 @@
 }
 
 .case-members__member-info {
+  display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
