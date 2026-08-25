@@ -1,3 +1,19 @@
+## 0.249.0 (2026-08-25)
+
+### 🚀 Features
+
+- #1246 Add batch mark-done for paused tasks and auto-close stale threads ([#1246](https://github.com/whoz-oss/coday/issues/1246))
+- #1246 Add batch mark-done for paused tasks and auto-close stale… ([#1247](https://github.com/whoz-oss/coday/pull/1247), [#1246](https://github.com/whoz-oss/coday/issues/1246))
+
+### 🩹 Fixes
+
+- #1246 Stop propagation on task checkbox click ([#1246](https://github.com/whoz-oss/coday/issues/1246))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.248.3 (2026-08-21)
 
 ### 🩹 Fixes
