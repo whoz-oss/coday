@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http'
+import { LowerCasePipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, OnChanges, output, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { MemberItem, MemberItemRoleEnum, User, UserMembershipRoleRoleEnum } from '@whoz-oss/agentos-api-client'
@@ -34,7 +35,7 @@ interface SelectedMember {
  */
 @Component({
   selector: 'agentos-case-members',
-  imports: [AutocompleteInputComponent],
+  imports: [AutocompleteInputComponent, LowerCasePipe],
   templateUrl: './case-members.component.html',
   styleUrl: './case-members.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -48,6 +49,9 @@ export class CaseMembersComponent implements OnChanges {
 
   /** Emitted when the user saves or cancels — the parent closes the panel. */
   readonly closeRequested = output<void>()
+
+  /** Id of the currently authenticated user — their row is read-only (no role change, no remove). */
+  protected readonly currentUserId = this.userState.currentUser
 
   protected readonly isLoading = signal(false)
   protected readonly isSubmitting = signal(false)

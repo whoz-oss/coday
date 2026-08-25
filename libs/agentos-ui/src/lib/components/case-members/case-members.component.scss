@@ -113,6 +113,23 @@
     padding: 6px 8px;
     border-radius: 4px;
     background: var(--color-neutral-100);
+
+    &--self {
+      background: color-mix(in srgb, var(--color-accent) 6%, var(--color-neutral-100));
+    }
+  }
+
+  &__member-role-badge {
+    font-size: 0.7rem;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-neutral-600);
+    flex: none;
+    padding: 2px 6px;
+    border: 1px solid var(--color-divider);
+    border-radius: 4px;
   }
 
   &__member-info {

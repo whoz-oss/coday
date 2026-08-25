@@ -27,30 +27,37 @@
         } @else {
           <ul class="case-members__members">
             @for (member of selectedMembers(); track member.userId) {
-              <li class="case-members__member">
+              <li
+                class="case-members__member"
+                [class.case-members__member--self]="member.userId === currentUserId()?.id"
+              >
                 <div class="case-members__member-info">
                   <span class="case-members__member-name">{{ member.label }}</span>
                   @if (member.email && member.email !== member.label) {
                     <span class="case-members__member-email">{{ member.email }}</span>
                   }
                 </div>
-                <select
-                  class="case-members__member-role"
-                  [value]="member.role"
-                  [attr.aria-label]="'Role of ' + member.label"
-                  (change)="setMemberRole(member.userId, $any($event.target).value)"
-                >
-                  <option value="MEMBER">Member</option>
-                  <option value="ADMIN">Admin</option>
-                </select>
-                <button
-                  class="case-members__member-remove"
-                  type="button"
-                  [title]="'Remove ' + member.label"
-                  (click)="removeMember(member.userId)"
-                >
-                  &#215;
-                </button>
+                @if (member.userId === currentUserId()?.id) {
+                  <span class="case-members__member-role-badge">{{ member.role | lowercase }}</span>
+                } @else {
+                  <select
+                    class="case-members__member-role"
+                    [value]="member.role"
+                    [attr.aria-label]="'Role of ' + member.label"
+                    (change)="setMemberRole(member.userId, $any($event.target).value)"
+                  >
+                    <option value="MEMBER">Member</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
+                  <button
+                    class="case-members__member-remove"
+                    type="button"
+                    [title]="'Remove ' + member.label"
+                    (click)="removeMember(member.userId)"
+                  >
+                    &#215;
+                  </button>
+                }
               </li>
             }
           </ul>
