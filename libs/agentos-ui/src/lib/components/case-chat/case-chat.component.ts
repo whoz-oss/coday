@@ -55,6 +55,7 @@ import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
+import { CaseMembersComponent } from '../case-members/case-members.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
@@ -119,6 +120,7 @@ function hasActiveSelection(): boolean {
     JsonPipe,
     DrawerComponent,
     ExchangeShellComponent,
+    CaseMembersComponent,
     PromptAutocompleteComponent,
     AgentAutocompleteComponent,
     BlueprintDirective,
@@ -232,6 +234,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Whether the delete confirmation inline is showing. */
   protected readonly confirmingDelete = signal(false)
+
+  /** Which panel is active in the right drawer: files exchange or case members. */
+  protected readonly drawerPanel = signal<'files' | 'members'>('files')
+
+  protected openFilesPanel(): void {
+    this.drawerPanel.set('files')
+    this.exchangeOpen.set(true)
+  }
+
+  protected openMembersPanel(): void {
+    this.drawerPanel.set('members')
+    this.exchangeOpen.set(true)
+  }
 
   // Header action outputs — handled by CaseShellComponent
   readonly starToggled = output<{ id: string; starred: boolean }>()

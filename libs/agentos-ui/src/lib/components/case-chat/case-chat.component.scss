@@ -8,6 +8,14 @@
   overflow: hidden;
 }
 
+// Wrapper for the right-side drawer side panel — fills the sidenav height
+.case-chat__drawer-side {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
 // Main content slot of the right-side exchange drawer
 .case-chat__host {
   position: relative;
