@@ -96,7 +96,7 @@ export function getCodayVersion(): string {
  * Override with AGENTOS_VERSION env var for local dev or testing:
  *   AGENTOS_VERSION=0.244.1 pnpm web
  */
-const AGENTOS_BUNDLED_VERSION = '0.244.1'
+const AGENTOS_BUNDLED_VERSION = '0.249.0'
 
 export function getAgentosVersion(): string {
   const override = process.env.AGENTOS_VERSION
