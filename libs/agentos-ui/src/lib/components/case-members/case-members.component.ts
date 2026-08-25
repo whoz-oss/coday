@@ -10,6 +10,7 @@ import {
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { MemberItem, MemberItemRoleEnum, User, UserMembershipRoleRoleEnum } from '@whoz-oss/agentos-api-client'
@@ -83,9 +84,8 @@ export class CaseMembersComponent {
 
   constructor() {
     effect(() => {
-      // Re-load whenever caseId changes (replaces ngOnChanges).
-      this.caseId()
-      this.loadData()
+      const id = this.caseId() // tracked — re-runs when caseId changes
+      untracked(() => this.loadData()) // untracked — signal writes inside are permitted
     })
   }
 
