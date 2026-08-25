@@ -25,6 +25,7 @@
   }
 
   &__sidenav {
+    overflow: hidden;
     background: var(--glass-bg, rgba(255, 255, 255, 0.92));
     backdrop-filter: var(--glass-backdrop-blur, blur(20px));
     -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
