@@ -771,6 +771,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.streamingText.set('')
     this.collapsedTools.set(new Set())
     this.isAtBottom.set(true)
+    this.drawerPanel.set('files')
     this.autocomplete.reset()
     this.attachments.reset()
     this.connectSse()

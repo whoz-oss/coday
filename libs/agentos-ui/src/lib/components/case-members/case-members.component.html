@@ -44,7 +44,7 @@
                     class="case-members__member-role"
                     [value]="member.role"
                     [attr.aria-label]="'Role of ' + member.label"
-                    (change)="setMemberRole(member.userId, $any($event.target).value)"
+                    (change)="setMemberRole(member.userId, $event)"
                   >
                     <option value="MEMBER">Member</option>
                     <option value="ADMIN">Admin</option>

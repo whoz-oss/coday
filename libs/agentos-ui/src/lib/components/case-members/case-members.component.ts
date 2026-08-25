@@ -1,6 +1,16 @@
 import { HttpErrorResponse } from '@angular/common/http'
 import { LowerCasePipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, OnChanges, output, signal } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { MemberItem, MemberItemRoleEnum, User, UserMembershipRoleRoleEnum } from '@whoz-oss/agentos-api-client'
 import { AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-system'
@@ -40,7 +50,7 @@ interface SelectedMember {
   styleUrl: './case-members.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CaseMembersComponent implements OnChanges {
+export class CaseMembersComponent {
   private readonly destroyRef = inject(DestroyRef)
   private readonly memberState = inject(CaseMemberStateService)
   private readonly userState = inject(UserStateService)
@@ -71,15 +81,20 @@ export class CaseMembersComponent implements OnChanges {
     () => new Set(this.selectedMembers().map((m) => m.userId))
   )
 
-  ngOnChanges(): void {
-    this.loadData()
+  constructor() {
+    effect(() => {
+      // Re-load whenever caseId changes (replaces ngOnChanges).
+      this.caseId()
+      this.loadData()
+    })
   }
 
   private loadData(): void {
     this.isLoading.set(true)
     this.errorMessage.set(null)
 
-    const currentUser$ = this.userState.currentUser() ? of(this.userState.currentUser()) : this.userState.loadMe()
+    const currentUser = this.userState.currentUser()
+    const currentUser$ = currentUser ? of(currentUser) : this.userState.loadMe()
 
     currentUser$
       .pipe(
@@ -145,13 +160,14 @@ export class CaseMembersComponent implements OnChanges {
     this.selectedMembers.update((members) => members.filter((m) => m.userId !== userId))
   }
 
-  protected setMemberRole(userId: string, role: string): void {
+  protected setMemberRole(userId: string, event: Event): void {
+    const role = (event.target as HTMLSelectElement).value
     const nextRole = role === MemberItemRoleEnum.ADMIN ? MemberItemRoleEnum.ADMIN : MemberItemRoleEnum.MEMBER
     this.selectedMembers.update((members) => members.map((m) => (m.userId === userId ? { ...m, role: nextRole } : m)))
   }
 
   /** True when the edited roster would leave the case with zero ADMIN — blocks submit. */
-  protected readonly wouldLockOutAdmins = () => !hasAtLeastOneAdmin(this.selectedMembers())
+  protected readonly wouldLockOutAdmins = computed(() => !hasAtLeastOneAdmin(this.selectedMembers()))
 
   // ---------------------------------------------------------------------------
   // Submit / cancel
