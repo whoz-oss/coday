@@ -111,17 +111,13 @@
 .case-members__member-name {
   font-size: 0.875rem;
   color: var(--color-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-all;
 }
 
 .case-members__member-email {
   font-size: 0.75rem;
   color: var(--color-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-all;
 }
 
 .case-members__member-role {
