@@ -13,7 +13,8 @@
     "moduleResolution": "bundler",
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
-    "target": "es2022"
+    "target": "es2022",
+    "ignoreDeprecations": "6.0"
   },
   "extends": "../../tsconfig.base.json",
   "files": [],

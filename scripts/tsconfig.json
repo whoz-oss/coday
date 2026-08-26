@@ -2,7 +2,8 @@
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "node",
-    "types": ["node"]
+    "types": ["node"],
+    "ignoreDeprecations": "6.0"
   },
   "exclude": ["node_modules"],
   "extends": "../tsconfig.base.json",
