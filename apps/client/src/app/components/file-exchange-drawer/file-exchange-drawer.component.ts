@@ -1,4 +1,4 @@
-import { Component, Output, EventEmitter, Input, inject } from '@angular/core'
+import { Component, Output, EventEmitter, Input, inject, ChangeDetectionStrategy } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
@@ -25,6 +25,7 @@ type ViewerState = 'list' | 'content'
   standalone: true,
   imports: [CommonModule, MatIconModule, MatButtonModule, ContentViewerComponent],
   templateUrl: './file-exchange-drawer.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './file-exchange-drawer.component.scss',
 })
 export class FileExchangeDrawerComponent {

@@ -1,4 +1,15 @@
-import { Component, DestroyRef, effect, EventEmitter, inject, Input, OnInit, Output, input } from '@angular/core'
+import {
+  Component,
+  DestroyRef,
+  effect,
+  EventEmitter,
+  inject,
+  Input,
+  OnInit,
+  Output,
+  input,
+  ChangeDetectionStrategy,
+} from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatIconModule } from '@angular/material/icon'
@@ -50,6 +61,7 @@ export interface ThreadNode extends SubThreadNode {
     MatTooltipModule,
   ],
   templateUrl: './thread-selector.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './thread-selector.component.scss',
 })
 export class ThreadSelectorComponent implements OnInit {

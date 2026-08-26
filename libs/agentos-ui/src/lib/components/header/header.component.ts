@@ -1,4 +1,4 @@
-import { Component, DestroyRef, computed, inject, OnInit } from '@angular/core'
+import { Component, DestroyRef, computed, inject, OnInit, ChangeDetectionStrategy } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { BackendStatusComponent } from '../backend-status/backend-status.component'
@@ -20,6 +20,7 @@ import { UserStateService } from '../../services/user-state.service'
   selector: 'agentos-header',
   imports: [BackendStatusComponent],
   templateUrl: './header.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './header.component.scss',
 })
 export class HeaderComponent implements OnInit {

@@ -8,6 +8,7 @@ import {
   signal,
   TemplateRef,
   ViewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
 import { MatExpansionModule } from '@angular/material/expansion'
@@ -42,6 +43,7 @@ export interface GroupedItems {
   },
   imports: [MatExpansionModule, EntityCardComponent, NgTemplateOutlet],
   templateUrl: './entity-list.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './entity-list.component.scss',
 })
 export class EntityListComponent implements AfterViewInit {

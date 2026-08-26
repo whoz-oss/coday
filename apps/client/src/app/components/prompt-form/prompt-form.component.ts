@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core'
+import { Component, inject, OnInit, ChangeDetectionStrategy } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog'
@@ -29,6 +29,7 @@ export interface PromptFormData {
     MatSnackBarModule,
   ],
   templateUrl: './prompt-form.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrls: ['./prompt-form.component.scss'],
 })
 export class PromptFormComponent implements OnInit {

@@ -16,6 +16,7 @@ import {
   output,
   signal,
   viewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
@@ -129,6 +130,7 @@ function hasActiveSelection(): boolean {
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-chat.component.scss',
 })
 export class CaseChatComponent implements OnInit, OnDestroy {
