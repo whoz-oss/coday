@@ -1,4 +1,7 @@
 {
+  "angularCompilerOptions": {
+    "strictTemplates": false
+  },
   "compilerOptions": {
     "declaration": true,
     "outDir": "../../dist/out-tsc",

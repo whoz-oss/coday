@@ -1,4 +1,7 @@
 {
+  "angularCompilerOptions": {
+    "strictTemplates": false
+  },
   "compilerOptions": {
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
