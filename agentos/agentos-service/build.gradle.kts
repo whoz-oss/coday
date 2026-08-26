@@ -90,6 +90,11 @@ dependencies {
     // Also used by Feign when the whoz profile activates feign.okhttp.enabled=true.
     implementation(libs.bundles.okhttp)
 
+    // Jolokia — HTTP/JSON bridge over JMX so Spring Boot Admin can invoke JMX operations
+    // (e.g. SchedulerEndpoint pause/resume) via its Jolokia integration.
+    // Version kept in sync with libs.versions.toml jolokia entry.
+    implementation(libs.jolokia.spring)
+
     // Spring Boot dependencies
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
@@ -315,7 +320,9 @@ configurations.all {
         // plugin is loaded under PF4J. Pin coroutines to the compiled-against version.
         if (requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-coroutines")) {
             useVersion(libs.versions.kotlinCoroutines.get())
-            because("code compiles against coroutines ${libs.versions.kotlinCoroutines.get()}; Spring Boot BOM downgrades it to 1.8.x at runtime")
+            because(
+                "code compiles against coroutines ${libs.versions.kotlinCoroutines.get()}; Spring Boot BOM downgrades it to 1.8.x at runtime",
+            )
         }
     }
 }

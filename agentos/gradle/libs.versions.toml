@@ -49,6 +49,10 @@ logstashLogbackEncoder = "8.1"
 # and the transitive version pulled by com.google.genai:google-genai (Spring AI Gemini).
 okhttp = "4.12.0"
 
+# Jolokia 2.x — HTTP/JSON bridge over JMX for Spring Boot Admin.
+# jolokia-support-spring is the Spring Boot 3.x (Jakarta EE) native artifact.
+jolokia = "2.6.1"
+
 # MCP Java SDK 2.0 — uses mcp-core + mcp-json-jackson2 for Jackson 2.x compatibility.
 # The parent artifact 'mcp' pulls mcp-json-jackson3 by default — use mcp-core + mcp-json-jackson2 instead.
 mcpSdk = "2.0.0"
@@ -68,6 +72,10 @@ agentosService = "0.249.0"
 [libraries]
 # Jakarta Validation API — annotation-only, for compileOnly use in agentos-sdk
 jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api", version = "3.0.2" }
+
+# Jolokia — HTTP/JSON bridge over JMX, used by Spring Boot Admin to invoke JMX operations.
+jolokia-spring = { module = "org.jolokia:jolokia-support-springboot3", version.ref = "jolokia" }
+
 # Swagger / OpenAPI annotations — annotation-only, for compileOnly use in agentos-sdk.
 # swagger-annotations 2.x is the transitive dependency of springdoc-openapi-starter 2.x.
 # Must stay in sync with the springdoc version used in agentos-service.
