@@ -1,3 +1,13 @@
+## 0.249.1 (2026-08-26)
+
+### 🚀 Features
+
+- **agentos:** add actuator endpoint to disable / enable agentos schedulers #34024 ([#1250](https://github.com/whoz-oss/coday/pull/1250), [#34024](https://github.com/whoz-oss/coday/issues/34024))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.249.0 (2026-08-25)
 
 ### 🚀 Features
