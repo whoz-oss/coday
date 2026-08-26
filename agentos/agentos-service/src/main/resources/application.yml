@@ -6,6 +6,8 @@ spring:
       sort-properties-alphabetically: true
     serialization:
       write-dates-as-timestamps: false
+  jmx:
+    enabled: true
   servlet:
     multipart:
       # Global upload limits (file-exchange uploads + plugin jars), raised from Spring's 1MB
@@ -82,7 +84,10 @@ management:
       # Eureka health check URL is configured accordingly in application-whoz.yml.
       base-path: /management
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,info,metrics,prometheus,scheduler,jolokia
+    jmx:
+      exposure:
+        include: health,info,metrics,scheduler
   endpoint:
     health:
       # 'always' so that Eureka can read the health status without credentials.

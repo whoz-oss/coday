@@ -11,6 +11,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them,
@@ -72,6 +73,35 @@ class SchedulerScanner(
     private val nextRunCalculatorService: NextRunCalculatorService,
     private val executor: ScheduledPromptExecutor,
 ) {
+    /** When true, tickClaim() exits immediately without processing. */
+    private val claimPaused = AtomicBoolean(false)
+
+    /** When true, tickConsume() exits immediately without processing. */
+    private val consumePaused = AtomicBoolean(false)
+
+    fun isClaimPaused(): Boolean = claimPaused.get()
+    fun isConsumePaused(): Boolean = consumePaused.get()
+
+    fun pauseClaim() {
+        claimPaused.set(true)
+        logger.warn { "[SchedulerScanner] tickClaim PAUSED by operator" }
+    }
+
+    fun resumeClaim() {
+        claimPaused.set(false)
+        logger.warn { "[SchedulerScanner] tickClaim RESUMED by operator" }
+    }
+
+    fun pauseConsume() {
+        consumePaused.set(true)
+        logger.warn { "[SchedulerScanner] tickConsume PAUSED by operator" }
+    }
+
+    fun resumeConsume() {
+        consumePaused.set(false)
+        logger.warn { "[SchedulerScanner] tickConsume RESUMED by operator" }
+    }
+
     @PostConstruct
     fun logStartup() {
         logger.info { "[SchedulerScanner] Scheduler enabled" }
@@ -88,9 +118,23 @@ class SchedulerScanner(
      * Phase A: Discover due ScheduledPrompts, claim them, and materialize UserRuns.
      * Fully blocking — materialize runs synchronously within the tick.
      * Spring fixedDelay guarantees no overlap between ticks.
+     *
+     * When [claimPaused] the tick is a no-op — the scheduling thread still fires
+     * but [processClaim] is not called.
      */
     @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
     fun tickClaim() {
+        when {
+            claimPaused.get() -> logger.debug { "[SchedulerScanner] tickClaim PAUSED — skipping" }
+            else -> processClaim()
+        }
+    }
+
+    /**
+     * Core claim logic, extracted from [tickClaim] so the scheduled entry point
+     * remains a pure activation guard.
+     */
+    private fun processClaim() {
         val now = Instant.now(clock)
 
         // Sweep: abandon orphaned CLAIMED runs that were never materialised.
@@ -190,12 +234,18 @@ class SchedulerScanner(
      * Returns only when all claimed UserRuns have finished executing.
      * Spring fixedDelay guarantees no overlap between ticks.
      *
+     * When [consumePaused] the tick is a no-op — the scheduling thread still fires
+     * but [ScheduledPromptExecutor.consumeAvailable] is not called.
+     *
      * The IO dispatcher is managed by [ScheduledPromptExecutor.consumeAvailable] itself
      * via [kotlinx.coroutines.withContext].
      */
     @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.consume-interval-ms:10000}")
     suspend fun tickConsume() {
-        executor.consumeAvailable()
+        when {
+            consumePaused.get() -> logger.debug { "[SchedulerScanner] tickConsume PAUSED — skipping" }
+            else -> executor.consumeAvailable()
+        }
     }
 
     private fun claim(scheduledPrompt: ScheduledPrompt) {
