@@ -5,7 +5,8 @@
     "module": "commonjs",
     "outDir": "../../dist/out-tsc",
     "target": "es2016",
-    "types": ["jest", "node"]
+    "types": ["jest", "node"],
+    "rootDir": ".."
   },
   "extends": "./tsconfig.json",
   "files": ["src/test-setup.ts"],

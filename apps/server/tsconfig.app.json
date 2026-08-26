@@ -5,7 +5,8 @@
   "compilerOptions": {
     "module": "esnext",
     "outDir": "../../dist/out-tsc",
-    "types": ["node"]
+    "types": ["node"],
+    "rootDir": "../.."
   },
   "exclude": [
     "jest.config.ts",
