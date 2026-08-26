@@ -21,7 +21,7 @@
               [class.shell-sidebar__ns-trigger--open]="nsMenuOpen()"
               (click)="nsMenuToggled.emit()"
             >
-              <span class="shell-sidebar__ns-mark">{{ nsInitial($safeNavigationMigration(selectedNamespace()?.name)) }}</span>
+              <span class="shell-sidebar__ns-mark">{{ nsInitial(selectedNamespace()?.name) }}</span>
               <span class="shell-sidebar__ns-name">{{ selectedNamespace()?.name ?? 'Select namespace' }}</span>
               <svg
                 width="12"
