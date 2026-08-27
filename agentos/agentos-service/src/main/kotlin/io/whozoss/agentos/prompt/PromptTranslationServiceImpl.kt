@@ -22,11 +22,6 @@ import java.util.UUID
  * Each content element is translated individually in a separate LLM call so that
  * index alignment between source and translated lists is guaranteed regardless of
  * how the model formats multi-item responses.
- *
- * The prompt treats every translatable string as a "conversation starter" -- a short,
- * action-oriented label shown on a clickable button. This framing matches both
- * [Prompt.content] elements (which are exactly that) and [Prompt.title] (which is also
- * a brief action label naming the prompt).
  */
 @Service
 class PromptTranslationServiceImpl(
@@ -45,7 +40,7 @@ class PromptTranslationServiceImpl(
     ): List<String> {
         val (model, provider) = resolveModelAndProvider(namespaceId, namespaceExternalId)
         val chatClient = chatClientProvider.getChatClient(model, provider)
-        return content.map { element -> translateText(element, sourceLanguage, targetLanguage, chatClient) }
+        return content.map { element -> translateText(element, sourceLanguage, targetLanguage, chatClient, TextKind.CONTENT) }
     }
 
     override fun translateTitle(
@@ -57,12 +52,23 @@ class PromptTranslationServiceImpl(
     ): String {
         val (model, provider) = resolveModelAndProvider(namespaceId, namespaceExternalId)
         val chatClient = chatClientProvider.getChatClient(model, provider)
-        return translateText(title, sourceLanguage, targetLanguage, chatClient)
+        return translateText(title, sourceLanguage, targetLanguage, chatClient, TextKind.TITLE)
     }
 
     // -------------------------------------------------------------------------
     // Internals
     // -------------------------------------------------------------------------
+
+    /**
+     * Distinguishes the two kinds of text a [Prompt] exposes, so the LLM receives
+     * accurate context about what it is translating.
+     *
+     * - [TITLE] -- a short user-facing label shown on a button that starts a case.
+     *   It summarises the prompt's purpose for the user, not for the agent.
+     * - [CONTENT] -- one instruction element sent to the agent when the case starts.
+     *   It is directive in tone and may be technical or detailed.
+     */
+    private enum class TextKind { TITLE, CONTENT }
 
     private fun resolveModelAndProvider(
         namespaceId: UUID?,
@@ -91,38 +97,47 @@ class PromptTranslationServiceImpl(
     /**
      * Calls the LLM to translate [text] from [sourceLanguage] into [targetLanguage].
      *
-     * The prompt treats the text as a conversation starter -- a short, action-oriented
-     * label -- and instructs the model to output only the translated string with no
-     * surrounding markup. Falls back to the original [text] when the LLM returns blank
-     * or throws, so a translation failure never breaks the caller.
+     * [kind] drives the context paragraph so the model understands what it is
+     * translating: a user-facing button label ([TextKind.TITLE]) or an agent
+     * instruction ([TextKind.CONTENT]).
      *
-     * [sourceLanguage] is included explicitly in the prompt to remove ambiguity for
-     * short strings that could plausibly belong to multiple languages.
+     * Falls back to the original [text] when the LLM returns blank or throws.
+     * [sourceLanguage] is included explicitly to remove ambiguity for short strings
+     * that could plausibly belong to multiple languages.
      */
     private fun translateText(
         text: String,
         sourceLanguage: String,
         targetLanguage: String,
         chatClient: org.springframework.ai.chat.client.ChatClient,
+        kind: TextKind,
     ): String {
+        val context = when (kind) {
+            TextKind.TITLE ->
+                """A prompt title is a short label shown on a button that users click to start a conversation with an AI agent.
+                |It summarises the prompt's purpose for the user in a few words.""".trimMargin()
+            TextKind.CONTENT ->
+                """A prompt content element is an instruction sent to an AI agent when a user starts a conversation.
+                |It is directive in tone and tells the agent what to do.""".trimMargin()
+        }
+
         val promptText = """
-            A conversation starter is a short action label shown on a clickable button in a chat interface.
-            It represents an action the user can trigger, phrased as a brief, natural action phrase.
+            $context
 
-            Your goal is to translate the following starter text from $sourceLanguage to $targetLanguage.
+            Your goal is to translate the following text from $sourceLanguage to $targetLanguage.
 
-            Starter text:
-            <starter>
+            Text:
+            <text>
             $text
-            </starter>
+            </text>
 
             ### Translation Guidelines
-            - Translate the starter text naturally to the target language
-            - Keep the meaning and intent of the action
+            - Translate the text naturally to the target language
+            - Keep the meaning and intent
             - Use appropriate terminology for the target language
-            - Be concise and action-oriented
+            - Be concise and preserve the tone (action-oriented for titles, directive for content)
 
-            Now give me the starter text translated to the specified target language.
+            Now give me the text translated to the specified target language.
             Output only the translated string, with no XML tags or formatting.
         """.trimIndent()
 
