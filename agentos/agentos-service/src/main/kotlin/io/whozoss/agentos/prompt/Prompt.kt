@@ -21,14 +21,23 @@ import java.util.UUID
  * must declare a default so the prompt can be rendered without caller-supplied
  * values. An empty string is a valid default for optional free-form parameters.
  *
- * [sourceLanguage] is the BCP-47 code of the language [content] was authored in.
- * Defaults to `"en"`. The translation endpoint uses it to short-circuit when the
- * requested language matches the source (no LLM call needed).
+ * [title] is the optional user-facing display label for this prompt (e.g. the
+ * button text shown in a starter UI). Distinct from [content], which is the
+ * message sent to the LLM. Null when no explicit title has been set — consumers
+ * fall back to their own display logic (e.g. `content[0]`).
  *
- * [translations] stores lazily-generated translations of [content] keyed by
- * BCP-47 language code. Each value is a `List<String>` mirroring [content] by
- * index. Populated by `PromptTranslationService` and cleared automatically by
- * `PromptServiceImpl.update` whenever [content] changes.
+ * [sourceLanguage] is the BCP-47 code of the language [content] and [title]
+ * were authored in. Defaults to `"en"`. The translation endpoint uses it to
+ * short-circuit when the requested language matches the source.
+ *
+ * [translatedTitles] stores lazily-generated translations of [title] keyed by
+ * BCP-47 language code. Each value is a single translated string.
+ * Null when [title] is null or no translations have been generated yet.
+ * Cleared automatically when [title] or [sourceLanguage] changes.
+ *
+ * [translatedContent] stores lazily-generated translations of [content] keyed
+ * by BCP-47 language code. Each value mirrors [content] by index.
+ * Cleared automatically when [content] or [sourceLanguage] changes.
  */
 data class PromptParameter(
     val name: String,
@@ -56,6 +65,8 @@ data class Prompt(
      * AgentOS persists this field as-is without interpreting its content.
      */
     val externalMetadata: Map<String, Any?>? = null,
+    val title: String? = null,
     val sourceLanguage: String = "en",
-    val translations: Map<String, List<String>>? = null,
+    val translatedTitles: Map<String, String>? = null,
+    val translatedContent: Map<String, List<String>>? = null,
 ) : Entity

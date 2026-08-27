@@ -230,8 +230,9 @@ class PromptController(
                 content = resource.content,
                 parameters = resource.parameters.map { it.toDomain() },
                 externalMetadata = resource.externalMetadata,
+                title = resource.title,
                 sourceLanguage = resource.sourceLanguage,
-                // translations are never accepted from the caller on create
+                // translatedTitles and translatedContent are never accepted from the caller
             )
         return toDto(promptService.create(target))
     }
@@ -305,9 +306,10 @@ class PromptController(
             content = resource.content,
             parameters = resource.parameters.map { it.toDomain() },
             externalMetadata = resource.externalMetadata,
+            title = resource.title,
             sourceLanguage = resource.sourceLanguage,
-            // translations are never accepted from the caller — managed by the translation endpoint
-            // PromptServiceImpl.update clears them when content changes
+            // translatedTitles and translatedContent are never accepted from the caller
+            // PromptServiceImpl.update clears them when their source fields change
         )
 
     @Operation(
@@ -358,8 +360,10 @@ internal fun toDto(entity: Prompt): PromptDto =
                 )
             },
         externalMetadata = entity.externalMetadata,
+        title = entity.title,
         sourceLanguage = entity.sourceLanguage,
-        translations = entity.translations,
+        translatedTitles = entity.translatedTitles,
+        translatedContent = entity.translatedContent,
         createdBy = entity.metadata.createdBy,
         createdOn = entity.metadata.created,
         updatedBy = entity.metadata.modifiedBy,

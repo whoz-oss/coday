@@ -126,18 +126,25 @@ class PromptServiceImpl(
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
 
     /**
-     * Clears [Prompt.translations] when either [Prompt.content] or [Prompt.sourceLanguage]
-     * has changed relative to [existing].
+     * Clears [Prompt.translatedTitles] and/or [Prompt.translatedContent] when their
+     * respective source fields have changed relative to [existing].
      *
-     * Translations are generated from a specific (content, sourceLanguage) pair. Either
-     * changing means every stored translation is now stale and must be regenerated on the
-     * next translation request. When [existing] is null (entity not yet persisted) or
-     * translations are already null, the entity is returned unchanged.
+     * - [Prompt.translatedTitles] is cleared when [Prompt.title] or [Prompt.sourceLanguage] changes.
+     * - [Prompt.translatedContent] is cleared when [Prompt.content] or [Prompt.sourceLanguage] changes.
+     *
+     * Each map is evaluated independently — a content change does not clear title translations
+     * and vice versa, unless sourceLanguage also changed (which invalidates both).
+     * When [existing] is null the entity is returned unchanged (nothing to compare against).
      */
     private fun clearTranslationsIfStale(entity: Prompt, existing: Prompt?): Prompt {
-        if (existing == null || entity.translations == null) return entity
-        val stale = entity.content != existing.content || entity.sourceLanguage != existing.sourceLanguage
-        return if (stale) entity.copy(translations = null) else entity
+        if (existing == null) return entity
+        val sourceLanguageChanged = entity.sourceLanguage != existing.sourceLanguage
+        val titleStale = sourceLanguageChanged || entity.title != existing.title
+        val contentStale = sourceLanguageChanged || entity.content != existing.content
+        return entity.copy(
+            translatedTitles = if (titleStale) null else entity.translatedTitles,
+            translatedContent = if (contentStale) null else entity.translatedContent,
+        )
     }
 
     /**

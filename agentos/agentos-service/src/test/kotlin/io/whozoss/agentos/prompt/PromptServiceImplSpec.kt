@@ -46,8 +46,10 @@ class PromptServiceImplSpec : StringSpec() {
         content: List<String> = listOf("Hello {{name}}"),
         parameters: List<PromptParameter> = emptyList(),
         description: String? = null,
+        title: String? = null,
         sourceLanguage: String = "en",
-        translations: Map<String, List<String>>? = null,
+        translatedTitles: Map<String, String>? = null,
+        translatedContent: Map<String, List<String>>? = null,
     ) = Prompt(
         metadata = EntityMetadata(),
         namespaceId = namespaceId,
@@ -57,8 +59,10 @@ class PromptServiceImplSpec : StringSpec() {
         description = description,
         content = content,
         parameters = parameters,
+        title = title,
         sourceLanguage = sourceLanguage,
-        translations = translations,
+        translatedTitles = translatedTitles,
+        translatedContent = translatedContent,
     )
 
     init {
@@ -563,6 +567,36 @@ class PromptServiceImplSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // title
+        // -------------------------------------------------------------------------
+
+        "create persists title when set" {
+            val service = newService()
+            val saved = service.create(prompt(title = "Review my profile"))
+            saved.title shouldBe "Review my profile"
+        }
+
+        "create persists null title when not set" {
+            val service = newService()
+            val saved = service.create(prompt(title = null))
+            saved.title shouldBe null
+        }
+
+        "update persists new title" {
+            val service = newService()
+            val saved = service.create(prompt(title = "Old title"))
+            val updated = service.update(saved.copy(title = "New title"))
+            updated.title shouldBe "New title"
+        }
+
+        "update can clear title to null" {
+            val service = newService()
+            val saved = service.create(prompt(title = "Had a title"))
+            val updated = service.update(saved.copy(title = null))
+            updated.title shouldBe null
+        }
+
+        // -------------------------------------------------------------------------
         // sourceLanguage
         // -------------------------------------------------------------------------
 
@@ -586,75 +620,147 @@ class PromptServiceImplSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // clearTranslationsIfStale
+        // clearTranslationsIfStale — translatedContent
         // -------------------------------------------------------------------------
 
-        "update clears translations when content changes" {
+        "update clears translatedContent when content changes" {
             val service = newService()
             val saved = service.create(
                 prompt(
                     content = listOf("Original"),
-                    translations = mapOf("fr" to listOf("Original en français")),
+                    translatedContent = mapOf("fr" to listOf("Original en français")),
                 ),
             )
-
             val updated = service.update(saved.copy(content = listOf("Updated")))
-
-            updated.translations shouldBe null
+            updated.translatedContent shouldBe null
         }
 
-        "update clears translations when sourceLanguage changes" {
+        "update clears translatedContent when sourceLanguage changes" {
             val service = newService()
             val saved = service.create(
                 prompt(
                     sourceLanguage = "en",
-                    translations = mapOf("fr" to listOf("Bonjour")),
+                    translatedContent = mapOf("fr" to listOf("Bonjour")),
                 ),
             )
-
             val updated = service.update(saved.copy(sourceLanguage = "de"))
-
-            updated.translations shouldBe null
+            updated.translatedContent shouldBe null
         }
 
-        "update clears translations when both content and sourceLanguage change" {
+        "update preserves translatedContent when content and sourceLanguage are unchanged" {
             val service = newService()
+            val existingContent = mapOf("fr" to listOf("Bonjour"), "de" to listOf("Hallo"))
             val saved = service.create(
                 prompt(
                     content = listOf("Hello"),
                     sourceLanguage = "en",
-                    translations = mapOf("fr" to listOf("Bonjour"), "de" to listOf("Hallo")),
+                    translatedContent = existingContent,
                 ),
             )
-
-            val updated = service.update(saved.copy(content = listOf("Hi"), sourceLanguage = "es"))
-
-            updated.translations shouldBe null
-        }
-
-        "update preserves translations when content and sourceLanguage are unchanged" {
-            val service = newService()
-            val existingTranslations = mapOf("fr" to listOf("Bonjour"), "de" to listOf("Hallo"))
-            val saved = service.create(
-                prompt(
-                    content = listOf("Hello"),
-                    sourceLanguage = "en",
-                    translations = existingTranslations,
-                ),
-            )
-
             val updated = service.update(saved.copy(description = "touched"))
-
-            updated.translations shouldBe existingTranslations
+            updated.translatedContent shouldBe existingContent
         }
 
-        "update with no existing translations stays null when content changes" {
+        "update with null translatedContent stays null when content changes" {
             val service = newService()
-            val saved = service.create(prompt(content = listOf("Original"), translations = null))
-
+            val saved = service.create(prompt(content = listOf("Original"), translatedContent = null))
             val updated = service.update(saved.copy(content = listOf("Updated")))
+            updated.translatedContent shouldBe null
+        }
 
-            updated.translations shouldBe null
+        // -------------------------------------------------------------------------
+        // clearTranslationsIfStale — translatedTitles
+        // -------------------------------------------------------------------------
+
+        "update clears translatedTitles when title changes" {
+            val service = newService()
+            val saved = service.create(
+                prompt(
+                    title = "Review profile",
+                    translatedTitles = mapOf("fr" to "Revoir le profil"),
+                ),
+            )
+            val updated = service.update(saved.copy(title = "Analyse profile"))
+            updated.translatedTitles shouldBe null
+        }
+
+        "update clears translatedTitles when sourceLanguage changes" {
+            val service = newService()
+            val saved = service.create(
+                prompt(
+                    title = "Review profile",
+                    sourceLanguage = "en",
+                    translatedTitles = mapOf("fr" to "Revoir le profil"),
+                ),
+            )
+            val updated = service.update(saved.copy(sourceLanguage = "de"))
+            updated.translatedTitles shouldBe null
+        }
+
+        "update preserves translatedTitles when title and sourceLanguage are unchanged" {
+            val service = newService()
+            val existingTitles = mapOf("fr" to "Revoir le profil", "de" to "Profil überprüfen")
+            val saved = service.create(
+                prompt(
+                    title = "Review profile",
+                    sourceLanguage = "en",
+                    translatedTitles = existingTitles,
+                ),
+            )
+            val updated = service.update(saved.copy(description = "touched"))
+            updated.translatedTitles shouldBe existingTitles
+        }
+
+        // -------------------------------------------------------------------------
+        // clearTranslationsIfStale — independence of the two maps
+        // -------------------------------------------------------------------------
+
+        "update clears only translatedContent when content changes but title is unchanged" {
+            val service = newService()
+            val existingTitles = mapOf("fr" to "Revoir le profil")
+            val saved = service.create(
+                prompt(
+                    title = "Review profile",
+                    content = listOf("Original"),
+                    translatedTitles = existingTitles,
+                    translatedContent = mapOf("fr" to listOf("Original en français")),
+                ),
+            )
+            val updated = service.update(saved.copy(content = listOf("Updated")))
+            updated.translatedContent shouldBe null
+            updated.translatedTitles shouldBe existingTitles
+        }
+
+        "update clears only translatedTitles when title changes but content is unchanged" {
+            val service = newService()
+            val existingContent = mapOf("fr" to listOf("Bonjour"))
+            val saved = service.create(
+                prompt(
+                    title = "Old title",
+                    content = listOf("Hello"),
+                    translatedTitles = mapOf("fr" to "Ancien titre"),
+                    translatedContent = existingContent,
+                ),
+            )
+            val updated = service.update(saved.copy(title = "New title"))
+            updated.translatedTitles shouldBe null
+            updated.translatedContent shouldBe existingContent
+        }
+
+        "update clears both maps when sourceLanguage changes" {
+            val service = newService()
+            val saved = service.create(
+                prompt(
+                    title = "Review profile",
+                    content = listOf("Hello"),
+                    sourceLanguage = "en",
+                    translatedTitles = mapOf("fr" to "Revoir le profil"),
+                    translatedContent = mapOf("fr" to listOf("Bonjour")),
+                ),
+            )
+            val updated = service.update(saved.copy(sourceLanguage = "es"))
+            updated.translatedTitles shouldBe null
+            updated.translatedContent shouldBe null
         }
 
         "findEffective agentConfigId filter is applied after the layer merge, not before" {
