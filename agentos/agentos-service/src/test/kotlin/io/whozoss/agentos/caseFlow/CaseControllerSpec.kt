@@ -16,6 +16,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.permissions.StarredService
+import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -49,6 +50,7 @@ class CaseControllerSpec :
         val userService = mockk<UserService>()
         val permissionService = mockk<PermissionService>()
         val starredService = mockk<StarredService>()
+        val caseReadService = mockk<CaseReadService>()
         val controller =
             CaseController(
                 caseService,
@@ -57,6 +59,7 @@ class CaseControllerSpec :
                 userService,
                 permissionService,
                 starredService,
+                caseReadService,
             )
 
         val callerId = UUID.randomUUID()
@@ -93,7 +96,7 @@ class CaseControllerSpec :
         beforeTest {
             clearAllMocks()
             // Default: the caller has no starred entries (empty enrichment). Listing tests that
-            // assert `favorite`/`role` override this with a specific map.
+            // assert `favorite`/`role`/`readAt` override this with a specific map.
             every { starredService.listDirectRelations(any(), EntityType.CASE) } returns emptyMap()
             // Default: no messages in any case. Tests that assert lastMessageAt override this.
             every { caseEventService.findLastMessageTimestamps(any()) } returns emptyMap()
@@ -287,7 +290,7 @@ class CaseControllerSpec :
             every { userService.getCurrentUser() } returns caller
             every {
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = true))
+            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()))
             every {
                 permissionService.hasPermission(
                     callerId.toString(),
@@ -334,7 +337,7 @@ class CaseControllerSpec :
             every { userService.getCurrentUser() } returns caller
             every {
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
+            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
             every {
                 permissionService.hasPermission(
                     callerId.toString(),
@@ -457,8 +460,8 @@ class CaseControllerSpec :
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns
                 mapOf(
-                    starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = true),
-                    plain.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = false),
+                    starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()),
+                    plain.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = null),
                 )
             every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(starred, plain)
 
@@ -476,8 +479,8 @@ class CaseControllerSpec :
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns
                 mapOf(
-                    adminCase.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = false),
-                    memberCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = false),
+                    adminCase.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN),
+                    memberCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER),
                 )
             every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns
                 listOf(
@@ -545,7 +548,7 @@ class CaseControllerSpec :
             every { caseService.findConcerningUser(callerId) } returns listOf(starredCase)
             every {
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
+            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
 
             val result = controller.listByUser(callerId)
 
@@ -622,7 +625,7 @@ class CaseControllerSpec :
             every { caseService.findConcerningUser(callerId) } returns listOf(starredCase)
             every {
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
+            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
 
             val result = controller.listByUserExternalId(caller.externalId)
 
@@ -725,7 +728,7 @@ class CaseControllerSpec :
             every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(starredCase, plainCase)
             every {
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
+            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
 
             val result =
                 controller.listByUserInNamespace(
@@ -892,7 +895,7 @@ class CaseControllerSpec :
             every { caseService.update(any()) } returns existing
             every {
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(existing.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, starred = true))
+            } returns mapOf(existing.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
 
             val result = controller.update(existing.metadata.id, caseResource(id = existing.metadata.id))
 
@@ -935,7 +938,7 @@ class CaseControllerSpec :
             every { caseService.getById(entity.metadata.id) } returns entity
             every {
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(entity.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = true))
+            } returns mapOf(entity.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()))
 
             val result = controller.getById(entity.metadata.id)
 
@@ -986,7 +989,7 @@ class CaseControllerSpec :
             every { caseService.findByIds(any(), any()) } returns listOf(starred, plain)
             every {
                 starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, starred = true))
+            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()))
 
             val result =
                 controller.getByIds(
@@ -996,5 +999,71 @@ class CaseControllerSpec :
 
             result.single { it.id == starred.metadata.id }.favorite shouldBe true
             result.single { it.id == plain.metadata.id }.favorite shouldBe false
+        }
+
+        // -------------------------------------------------------------------------
+        // markCaseRead — POST /api/cases/{caseId}/read
+        // -------------------------------------------------------------------------
+
+        "markCaseRead delegates to caseReadService for the current user" {
+            val caseId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns caller
+            every { caseReadService.markRead(callerId.toString(), caseId) } returns Unit
+
+            controller.markCaseRead(caseId)
+
+            verify(exactly = 1) { caseReadService.markRead(callerId.toString(), caseId) }
+        }
+
+        // -------------------------------------------------------------------------
+        // countUnread — GET /api/cases/unread-count?namespaceId=
+        // -------------------------------------------------------------------------
+
+        "countUnread delegates to caseReadService and returns the count" {
+            every { userService.getCurrentUser() } returns caller
+            every { caseReadService.countUnread(callerId.toString(), namespaceId) } returns 3L
+
+            val result = controller.countUnread(namespaceId)
+
+            result shouldBe UnreadCountResponse(unreadCount = 3L)
+            verify(exactly = 1) { caseReadService.countUnread(callerId.toString(), namespaceId) }
+        }
+
+        "countUnread returns zero when all cases are read" {
+            every { userService.getCurrentUser() } returns caller
+            every { caseReadService.countUnread(callerId.toString(), namespaceId) } returns 0L
+
+            val result = controller.countUnread(namespaceId)
+
+            result shouldBe UnreadCountResponse(unreadCount = 0L)
+        }
+
+        // -------------------------------------------------------------------------
+        // readAt — populated via withCallerMeta
+        // -------------------------------------------------------------------------
+
+        "getById populates readAt from the user's HAS_USER_CASE_STATE edge" {
+            val entity = caseEntity()
+            val readTimestamp = Instant.parse("2025-06-01T12:00:00Z")
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.getById(entity.metadata.id) } returns entity
+            every {
+                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+            } returns mapOf(entity.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, readAt = readTimestamp))
+
+            val result = controller.getById(entity.metadata.id)
+
+            result.readAt shouldBe readTimestamp
+        }
+
+        "getById returns null readAt when case has never been read" {
+            val entity = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.getById(entity.metadata.id) } returns entity
+            // default mock: emptyMap() — no DirectRelation entry
+
+            val result = controller.getById(entity.metadata.id)
+
+            result.readAt shouldBe null
         }
     })

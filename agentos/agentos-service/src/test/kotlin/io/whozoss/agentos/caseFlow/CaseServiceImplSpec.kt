@@ -16,7 +16,6 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
-import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionService
@@ -213,18 +212,20 @@ class CaseServiceImplSpec :
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val caseReadService = mockk<CaseReadService> {}
             return CaseServiceImpl(
-                agentService,
-                agentConfigService,
-                AgentConfigProperties(agentName = environmentAgentName),
-                caseRepository,
-                caseEventService,
-                userService,
-                namespaceService,
+                agentService = agentService,
+                agentConfigService = agentConfigService,
+                agentConfigProperties = AgentConfigProperties(agentName = environmentAgentName),
+                caseRepository = caseRepository,
+                caseEventService = caseEventService,
+                userService = userService,
+                namespaceService = namespaceService,
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
                 permissionService = permissionService,
                 promptService = promptService,
                 caseNamingService = noOpCaseNamingService,
+                caseReadService = caseReadService,
             )
         }
 
@@ -284,7 +285,13 @@ class CaseServiceImplSpec :
             runCallCount shouldBe 1
             service.getById(case.id).status shouldBe CaseStatus.IDLE
             // isAgentAuthorized must have been called once with the agent name to authorize the redirect
-            verify(exactly = 1) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, agentName) }
+            verify(exactly = 1) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    agentName,
+                )
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -309,12 +316,19 @@ class CaseServiceImplSpec :
 
             service.getById(case.id).status shouldBe CaseStatus.ERROR
             // userId is not a valid UUID so isAgentAuthorized is never reached (userId is null)
-            verify(exactly = 0) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) }
+            verify(exactly = 0) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    any(),
+                    any(),
+                    any(),
+                )
+            }
         }
 
         "case transitions to ERROR when userId does not resolve to a known user" {
             val unknownUserId = UUID.randomUUID()
-            val actorWithUnknownUser = Actor(id = unknownUserId.toString(), displayName = "Ghost", role = ActorRole.USER)
+            val actorWithUnknownUser =
+                Actor(id = unknownUserId.toString(), displayName = "Ghost", role = ActorRole.USER)
             val userService = mockk<UserService> { every { findById(any()) } returns null }
             val service = buildService(userService = userService)
             val case = service.create(Case(namespaceId = namespaceId))
@@ -332,7 +346,13 @@ class CaseServiceImplSpec :
 
             service.getById(case.id).status shouldBe CaseStatus.ERROR
             // isAgentAuthorized is called before runAgent fails on user lookup
-            verify(exactly = 1) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), agentName) }
+            verify(exactly = 1) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    any(),
+                    any(),
+                    agentName,
+                )
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -356,17 +376,18 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
                 CaseServiceImpl(
-                    agentService,
-                    allowAllAgentConfigService,
-                    AgentConfigProperties(),
-                    InMemoryCaseRepository(),
-                    caseEventService,
-                    userService,
-                    namespaceService,
+                    agentService = agentService,
+                    agentConfigService = allowAllAgentConfigService,
+                    agentConfigProperties = AgentConfigProperties(),
+                    caseRepository = InMemoryCaseRepository(),
+                    caseEventService = caseEventService,
+                    userService = userService,
+                    namespaceService = namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -398,7 +419,13 @@ class CaseServiceImplSpec :
             agentEvents[2].shouldBeInstanceOf<AgentRunningEvent>()
             agentEvents[3].shouldBeInstanceOf<AgentFinishedEvent>()
             // isAgentAuthorized called once for the AgentSelectedEvent -> AgentRunningEvent transition
-            verify(exactly = 1) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, agentName) }
+            verify(exactly = 1) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    agentName,
+                )
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -561,7 +588,14 @@ class CaseServiceImplSpec :
                             emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
                             emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = "Hello"))
                             emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = " world"))
-                            emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName))
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = agentId,
+                                    agentName = agentName,
+                                ),
+                            )
                         }
                     }
                 }
@@ -592,6 +626,7 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -692,6 +727,7 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -710,7 +746,13 @@ class CaseServiceImplSpec :
             val persistedEvents = caseEventService.findByParent(case.id)
             persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe agentName
             persistedEvents.filterIsInstance<WarnEvent>() shouldBe emptyList()
-            verify(exactly = 1) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, agentName) }
+            verify(exactly = 1) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    agentName,
+                )
+            }
         }
 
         "namespace default agent takes precedence over environment default agent" {
@@ -765,6 +807,7 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -785,7 +828,13 @@ class CaseServiceImplSpec :
             persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe namespaceDefaultName
             verify(
                 exactly = 1,
-            ) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, namespaceDefaultName) }
+            ) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    namespaceDefaultName,
+                )
+            }
         }
 
         "no default agent at any level produces WarnEvent and stops" {
@@ -801,17 +850,18 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
                 CaseServiceImpl(
-                    agentService,
-                    allowAllAgentConfigService,
-                    AgentConfigProperties(agentName = null), // no environment default either
-                    InMemoryCaseRepository(),
-                    caseEventService,
-                    userService,
-                    namespaceService,
+                    agentService = agentService,
+                    agentConfigService = allowAllAgentConfigService,
+                    agentConfigProperties = AgentConfigProperties(agentName = null), // no environment default either
+                    caseRepository = InMemoryCaseRepository(),
+                    caseEventService = caseEventService,
+                    userService = userService,
+                    namespaceService = namespaceService,
                     caseConfig = CaseConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -831,7 +881,13 @@ class CaseServiceImplSpec :
             persistedEvents.filterIsInstance<WarnEvent>() shouldHaveAtLeastSize 1
             persistedEvents.filterIsInstance<AgentSelectedEvent>() shouldBe emptyList()
             // no AgentSelectedEvent means isAgentAuthorized is never reached
-            verify(exactly = 0) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) }
+            verify(exactly = 0) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    any(),
+                    any(),
+                    any(),
+                )
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -854,7 +910,13 @@ class CaseServiceImplSpec :
             awaiter.join()
 
             service.getById(case.id).status shouldBe CaseStatus.IDLE
-            verify(exactly = 1) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, agentName) }
+            verify(exactly = 1) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    agentName,
+                )
+            }
         }
 
         "first message without @mention produces WarnEvent and stops when namespace has no default agent" {
@@ -883,6 +945,7 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -905,7 +968,13 @@ class CaseServiceImplSpec :
             // No AgentSelectedEvent: routing stopped at the WarnEvent
             persistedEvents.filterIsInstance<AgentSelectedEvent>() shouldBe emptyList()
             // no AgentSelectedEvent means isAgentAuthorized is never reached
-            verify(exactly = 0) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) }
+            verify(exactly = 0) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    any(),
+                    any(),
+                    any(),
+                )
+            }
         }
 
         "last active agent unavailable falls back to namespace default" {
@@ -952,6 +1021,7 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -987,8 +1057,20 @@ class CaseServiceImplSpec :
             // turn 1: authorized for unavailableAgentName, turn 2: authorized for agentName (fallback)
             verify(
                 exactly = 1,
-            ) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, unavailableAgentName) }
-            verify(exactly = 1) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, agentName) }
+            ) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    unavailableAgentName,
+                )
+            }
+            verify(exactly = 1) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    agentName,
+                )
+            }
         }
 
         "second message without @mention uses the same agent as the first" {
@@ -1059,6 +1141,7 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1091,7 +1174,13 @@ class CaseServiceImplSpec :
             // called once per message for the same agent
             verify(
                 exactly = 2,
-            ) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, selectedAgentName) }
+            ) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    selectedAgentName,
+                )
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -1158,6 +1247,7 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1178,7 +1268,13 @@ class CaseServiceImplSpec :
             val persistedEvents = caseEventService.findByParent(case.id)
             // The selected agent must be `inspector`, not `inspector https://...`
             persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe inspectorName
-            verify(exactly = 1) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, inspectorName) }
+            verify(exactly = 1) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    inspectorName,
+                )
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -1447,6 +1543,7 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
             val parentCase = service.create(Case(namespaceId = namespaceId))
 
@@ -1582,6 +1679,7 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1602,7 +1700,13 @@ class CaseServiceImplSpec :
             service.getById(case.id).status shouldBe CaseStatus.IDLE
             val persistedEvents = caseEventService.findByParent(case.id)
             persistedEvents.filterIsInstance<AgentSelectedEvent>().last().agentName shouldBe inspectorName
-            verify(exactly = 1) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, inspectorName) }
+            verify(exactly = 1) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    inspectorName,
+                )
+            }
         }
 
         "agent runs once per message when two messages are sent sequentially" {
@@ -1664,7 +1768,13 @@ class CaseServiceImplSpec :
 
             runCallCount shouldBe 2
             service.getById(case.id).status shouldBe CaseStatus.IDLE
-            verify(exactly = 2) { allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, agentName) }
+            verify(exactly = 2) {
+                allowAllAgentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    agentName,
+                )
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -1677,85 +1787,96 @@ class CaseServiceImplSpec :
 
         "multi-command prompt resolution executes each command as a separate sequential agent turn" {
             // Override the default promptService mock to return a real prompt with 3 content lines
-            val multiPromptService = mockk<PromptService>(relaxed = true) {
-                every { findEffective(any(), any()) } returns listOf(
-                    Prompt(
-                        metadata = EntityMetadata(),
-                        name = "multi-prompt",
-                        content = listOf("resolved-1", "resolved-2", "resolved-3"),
-                    ),
-                )
-            }
-
-            var runCallCount = 0
-            val countingAgent = mockk<Agent> {
-                every { metadata } returns EntityMetadata(id = agentId)
-                every { name } returns agentName
-                every { id } returns agentId
-                every { llmProvider } returns "test-provider"
-                every { llmModel } returns "test-model"
-                every { run(any<List<CaseEvent>>(), any()) } answers {
-                    runCallCount++
-                    val caseId = firstArg<List<CaseEvent>>().first().caseId
-                    flow {
-                        emit(
-                            AgentFinishedEvent(
-                                namespaceId = namespaceId,
-                                caseId = caseId,
-                                agentId = agentId,
-                                agentName = agentName,
+            val multiPromptService =
+                mockk<PromptService>(relaxed = true) {
+                    every { findEffective(any(), any()) } returns
+                        listOf(
+                            Prompt(
+                                metadata = EntityMetadata(),
+                                name = "multi-prompt",
+                                content = listOf("resolved-1", "resolved-2", "resolved-3"),
                             ),
                         )
+                }
+
+            var runCallCount = 0
+            val countingAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = agentId)
+                    every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        runCallCount++
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow {
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    agentId = agentId,
+                                    agentName = agentName,
+                                ),
+                            )
+                        }
                     }
                 }
-            }
 
-            val namespace = Namespace(
-                metadata = EntityMetadata(id = namespaceId),
-                name = "test-namespace",
-                defaultAgentName = agentName,
-            )
+            val namespace =
+                Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-namespace",
+                    defaultAgentName = agentName,
+                )
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
-            val agentService = mockk<AgentService> {
-                every { resolveAgentName(any(), any(), any()) } returns agentName
-                coEvery { findAgentByName(agentName, any(), any()) } returns countingAgent
-            }
-            val userService = mockk<UserService> {
-                every { findById(userId) } returns activeUser
-                every { getById(userId) } returns activeUser
-            }
-            val service = CaseServiceImpl(
-                agentService,
-                allowAllAgentConfigService,
-                AgentConfigProperties(),
-                InMemoryCaseRepository(),
-                CaseEventServiceImpl(InMemoryCaseEventRepository()),
-                userService,
-                namespaceService,
-                caseConfig = CaseConfigProperties(),
-                permissionService = permissionService,
-                promptService = multiPromptService,
-                caseNamingService = noOpCaseNamingService,
-            )
+            val agentService =
+                mockk<AgentService> {
+                    every { resolveAgentName(any(), any(), any()) } returns agentName
+                    coEvery { findAgentByName(agentName, any(), any()) } returns countingAgent
+                }
+            val userService =
+                mockk<UserService> {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                }
+            val service =
+                CaseServiceImpl(
+                    agentService,
+                    allowAllAgentConfigService,
+                    AgentConfigProperties(),
+                    InMemoryCaseRepository(),
+                    CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                    userService,
+                    namespaceService,
+                    caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
+                    promptService = multiPromptService,
+                    caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
+                )
 
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
             val scope = CoroutineScope(Dispatchers.IO)
 
-            val idleCount = java.util.concurrent.atomic.AtomicInteger(0)
-            val awaiter = scope.launch {
-                withTimeout(8_000) {
-                    runtime.events
-                        .filterIsInstance<CaseStatusEvent>()
-                        .first { event ->
-                            when {
-                                event.status == CaseStatus.ERROR -> true
-                                event.status == CaseStatus.IDLE -> idleCount.incrementAndGet() >= 3
-                                else -> false
+            val idleCount =
+                java.util.concurrent.atomic
+                    .AtomicInteger(0)
+            val awaiter =
+                scope.launch {
+                    withTimeout(8_000) {
+                        runtime.events
+                            .filterIsInstance<CaseStatusEvent>()
+                            .first { event ->
+                                when {
+                                    event.status == CaseStatus.ERROR -> true
+                                    event.status == CaseStatus.IDLE -> idleCount.incrementAndGet() >= 3
+                                    else -> false
+                                }
                             }
-                        }
+                    }
                 }
-            }
             awaitSubscribers(runtime)
             service.addMessage(
                 caseId = case.id,
@@ -1785,39 +1906,46 @@ class CaseServiceImplSpec :
             // After the fix, run() is launched even when prompt resolution fails,
             // and the runtime processes the AgentSelectedEvent normally.
 
-            val throwingPromptService = mockk<PromptService>(relaxed = true) {
-                every { findEffective(any(), any()) } throws
-                    io.whozoss.agentos.exception.PromptResolutionException("cycle detected")
-            }
+            val throwingPromptService =
+                mockk<PromptService>(relaxed = true) {
+                    every { findEffective(any(), any()) } throws
+                        io.whozoss.agentos.exception
+                            .PromptResolutionException("cycle detected")
+                }
 
-            val namespace = Namespace(
-                metadata = EntityMetadata(id = namespaceId),
-                name = "test-namespace",
-                defaultAgentName = agentName,
-            )
+            val namespace =
+                Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-namespace",
+                    defaultAgentName = agentName,
+                )
             val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
-            val agentService = mockk<AgentService> {
-                every { resolveAgentName(any(), any(), any()) } returns agentName
-                coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
-            }
-            val userService = mockk<UserService> {
-                every { findById(userId) } returns activeUser
-                every { getById(userId) } returns activeUser
-            }
+            val agentService =
+                mockk<AgentService> {
+                    every { resolveAgentName(any(), any(), any()) } returns agentName
+                    coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
+                }
+            val userService =
+                mockk<UserService> {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                }
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
-            val service = CaseServiceImpl(
-                agentService,
-                allowAllAgentConfigService,
-                AgentConfigProperties(),
-                InMemoryCaseRepository(),
-                caseEventService,
-                userService,
-                namespaceService,
-                caseConfig = CaseConfigProperties(),
-                permissionService = permissionService,
-                promptService = throwingPromptService,
-                caseNamingService = noOpCaseNamingService,
-            )
+            val service =
+                CaseServiceImpl(
+                    agentService,
+                    allowAllAgentConfigService,
+                    AgentConfigProperties(),
+                    InMemoryCaseRepository(),
+                    caseEventService,
+                    userService,
+                    namespaceService,
+                    caseConfig = CaseConfigProperties(),
+                    permissionService = permissionService,
+                    promptService = throwingPromptService,
+                    caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
+                )
 
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1907,6 +2035,7 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    caseReadService = mockk(relaxed = true),
                 )
 
             // Insert the case directly into the repository so no runtime is created in

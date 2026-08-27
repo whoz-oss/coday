@@ -2,15 +2,19 @@ package io.whozoss.agentos.permissions
 
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import mu.KLogging
+import java.time.Instant
+import java.time.ZonedDateTime
 
 /**
  * Neo4j implementation of [StarredRepository].
  *
  * Delegates to [CaseNodeNeo4jRepository] which owns all Cypher queries
- * for the `[:STARRED]` relationship on Case nodes.
+ * for the `[:HAS_USER_CASE_STATE]` relationship on Case nodes.
  *
- * If starred is ever needed on another entity type, introduce a dedicated
- * `*NodeNeo4jRepository` for that type rather than making this generic.
+ * The legacy `[:STARRED]` plain edge has been replaced by the
+ * `[:HAS_USER_CASE_STATE]` relationship-with-properties, which consolidates
+ * both the favorite flag ([DirectRelation.favoriteAt]) and the read timestamp
+ * ([DirectRelation.readAt]) on a single edge.
  */
 class Neo4jStarredRepository(
     private val caseNodeNeo4jRepository: CaseNodeNeo4jRepository,
@@ -21,8 +25,15 @@ class Neo4jStarredRepository(
         try {
             when (entityType) {
                 EntityType.CASE -> when (starred) {
-                    true -> caseNodeNeo4jRepository.mergeStarred(userId, entityId) > 0
-                    false -> caseNodeNeo4jRepository.deleteStarred(userId, entityId) > 0
+                    true -> caseNodeNeo4jRepository.mergeStarred(
+                        userId = userId,
+                        caseId = entityId,
+                        favoriteAt = Instant.now(),
+                    ) > 0
+                    false -> caseNodeNeo4jRepository.deleteStarred(
+                        userId = userId,
+                        caseId = entityId,
+                    ) > 0
                 }
                 else -> {
                     logger.warn { "setStarred not supported for entityType=$entityType" }
@@ -43,14 +54,16 @@ class Neo4jStarredRepository(
                     caseNodeNeo4jRepository.findDirectRelations(userId).associate { row ->
                         val caseId = row["caseId"] as String
                         val relations = (row["relations"] as List<*>).map { it.toString() }
-                        val starred = row["starred"] as Boolean
+                        // Temporal values come back from the Neo4j driver as ZonedDateTime in raw Map projections.
+                        val favoriteAt = (row["favoriteAt"] as? ZonedDateTime)?.toInstant()
+                        val readAt = (row["readAt"] as? ZonedDateTime)?.toInstant()
                         val relation =
                             if (PermissionRelation.ADMIN.name in relations) {
                                 PermissionRelation.ADMIN
                             } else {
                                 PermissionRelation.MEMBER
                             }
-                        caseId to DirectRelation(relation, starred)
+                        caseId to DirectRelation(relation = relation, favoriteAt = favoriteAt, readAt = readAt)
                     }
                 else -> {
                     logger.warn { "listDirectRelations not supported for entityType=$entityType" }

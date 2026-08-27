@@ -62,6 +62,7 @@ class CaseServiceImpl(
     private val permissionService: PermissionService,
     private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
+    private val caseReadService: CaseReadService,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -645,11 +646,25 @@ class CaseServiceImpl(
      * that are superseded by the final [io.whozoss.agentos.sdk.caseEvent.MessageEvent].
      * Persisting them would bloat the event store without adding any replay value,
      * so they are returned as-is without being written to the repository.
+     *
+     * When at least one SSE subscriber is connected to the case (i.e. the user is actively
+     * viewing it), `readAt` is advanced to now so the case stays marked as read even as
+     * new events arrive. This uses [CaseRuntime.subscriptionCount] as a proxy for
+     * "user is viewing". The userId is resolved from the last user actor in the event history.
      */
     private fun storeEvent(event: CaseEvent): CaseEvent =
         when (event) {
             is TransientCaseEvent -> event
-            else -> caseEventService.create(event)
+            else -> caseEventService.create(event).also { saved ->
+                val runtime = activeRuntimes[saved.caseId]
+                if (runtime != null && runtime.subscriptionCount.value > 0) {
+                    val userId = caseEventService.findByParent(saved.caseId).lastUserIdOrNull()
+                    if (userId != null) {
+                        runCatching { caseReadService.markRead(userId.toString(), saved.caseId) }
+                            .onFailure { e -> logger.warn(e) { "Failed to auto-advance readAt for case ${saved.caseId}" } }
+                    }
+                }
+            }
         }
 
     // ======================================================

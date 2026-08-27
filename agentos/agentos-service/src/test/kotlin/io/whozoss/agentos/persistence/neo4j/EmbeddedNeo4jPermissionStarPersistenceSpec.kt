@@ -25,22 +25,22 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
+import java.time.Instant
 import java.util.UUID
 
 /**
- * Persistence contract for the per-user "starred" (favorite) flag, exercised
- * against the embedded Neo4j harness.
+ * Persistence contract for per-user case state (starred flag + read timestamp),
+ * exercised against the embedded Neo4j harness.
  *
- * Since issue #1140, starred is stored as a dedicated `[:STARRED]` relationship
- * — orthogonal to `[:ADMIN]`/`[:MEMBER]`. Role transitions (promote/demote) no
- * longer need to preserve properties; the `[:STARRED]` edge simply survives.
- *
- * Mirrors the embedded-neo4j spec infrastructure used by
- * [EmbeddedNeo4jCasePersistenceSpec] (`embedded-neo4j` profile +
- * [EmbeddedNeo4jTestConfiguration] harness driver — no Docker).
+ * Since issue #1140 (and the read-tracking feature), state is stored on a
+ * `[:HAS_USER_CASE_STATE]` relationship-with-properties (replacing the legacy
+ * `[:STARRED]` plain edge). The edge carries:
+ * - `favoriteAt: Instant?` — non-null when the user has starred (favorited) the case.
+ * - `readAt: Instant?` — timestamp of the user's last read; null = never read.
  *
  * Verifies both layers of the plumbing:
- * - the raw Cypher on [CaseNodeNeo4jRepository] (`mergeStarred` / `deleteStarred` / `findDirectRelations`)
+ * - raw Cypher on [CaseNodeNeo4jRepository] (`mergeStarred` / `deleteStarred` /
+ *   `markRead` / `countUnread` / `findDirectRelations`)
  * - the typed delegation through [StarredService] (`setStarred` / `listDirectRelations`)
  */
 @SpringBootTest
@@ -100,12 +100,12 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
 
-        "mergeStarred creates a [:STARRED] edge; deleteStarred removes it" {
+        "mergeStarred creates a [:HAS_USER_CASE_STATE] edge with favoriteAt; deleteStarred clears it" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
 
-            // A direct ADMIN relation is required: mergeStarred guards against orphaned [:STARRED] edges.
+            // A direct ADMIN relation is required: mergeStarred guards against orphaned edges.
             permissionNodeRepository.createAdminPermission(
                 userId = user.id.toString(),
                 entityId = case.id.toString(),
@@ -115,6 +115,7 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             caseNodeRepository.mergeStarred(
                 userId = user.id.toString(),
                 caseId = case.id.toString(),
+                favoriteAt = Instant.now(),
             )
             starredIds(user.id.toString()) shouldContain case.id.toString()
 
@@ -138,24 +139,24 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             val namespace = createNamespace()
             val case = createCase(namespace.id)
 
-            // No ADMIN/MEMBER edge — the MATCH guard prevents orphaned [:STARRED] edges.
+            // No ADMIN/MEMBER edge — the MATCH guard prevents orphaned [:HAS_USER_CASE_STATE] edges.
             caseNodeRepository.mergeStarred(
                 userId = user.id.toString(),
                 caseId = case.id.toString(),
+                favoriteAt = Instant.now(),
             )
 
             starredIds(user.id.toString()).shouldBeEmpty()
         }
 
-        "starred is per-user: it is scoped to the caller's [:STARRED] edge and never leaks across users" {
+        "starred is per-user: it is scoped to the caller's edge and never leaks across users" {
             val userA = createUser("a@example.com")
             val userB = createUser("b@example.com")
             val namespace = createNamespace()
             val case = createCase(namespace.id)
             val caseId = case.id.toString()
 
-            // Two distinct users, each with their OWN direct permission edge to the same case:
-            // A via ADMIN, B via MEMBER (exercises the MEMBER branch of the mergeStarred guard).
+            // Two distinct users, each with their OWN direct permission edge to the same case.
             permissionNodeRepository.createAdminPermission(
                 userId = userA.id.toString(),
                 entityId = caseId,
@@ -167,23 +168,25 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityLabel = "Case",
             )
 
-            // A stars the case: only A has a [:STARRED] edge, B does not.
+            // A stars the case: only A has a [:HAS_USER_CASE_STATE] edge with favoriteAt, B does not.
             caseNodeRepository.mergeStarred(
                 userId = userA.id.toString(),
                 caseId = caseId,
+                favoriteAt = Instant.now(),
             )
             starredIds(userA.id.toString()) shouldContain caseId
             starredIds(userB.id.toString()) shouldNotContain caseId
 
-            // B stars it: B now has its own [:STARRED] edge, A is unaffected.
+            // B stars it: B now has its own edge, A is unaffected.
             caseNodeRepository.mergeStarred(
                 userId = userB.id.toString(),
                 caseId = caseId,
+                favoriteAt = Instant.now(),
             )
             starredIds(userB.id.toString()) shouldContain caseId
             starredIds(userA.id.toString()) shouldContain caseId
 
-            // B un-stars: only B's [:STARRED] edge is removed, A's survives.
+            // B un-stars: only B's favoriteAt is cleared, A's survives.
             caseNodeRepository.deleteStarred(
                 userId = userB.id.toString(),
                 caseId = caseId,
@@ -199,9 +202,8 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             val caseId = case.id.toString()
             val userId = user.id.toString()
 
-            // Dual edges can no longer be produced through the permission API (single-relation
-            // invariant, see PermissionRelation) but may exist as legacy data in deployed
-            // databases — build the state with raw Cypher to verify the defensive collapse.
+            // Dual edges can no longer be produced through the permission API but may exist as
+            // legacy data — build the state with raw Cypher to verify the defensive collapse.
             permissionNodeRepository.createAdminPermission(userId = userId, entityId = caseId, entityLabel = "Case")
             driver.session().use { session ->
                 session.run(
@@ -210,18 +212,20 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 )
             }
 
-            // mergeStarred's MATCH yields two rows; MERGE is idempotent → a single [:STARRED] edge.
-            caseNodeRepository.mergeStarred(userId = userId, caseId = caseId)
+            // mergeStarred's MATCH yields two rows; MERGE is idempotent → a single [:HAS_USER_CASE_STATE] edge.
+            caseNodeRepository.mergeStarred(userId = userId, caseId = caseId, favoriteAt = Instant.now())
 
             // findDirectRelations emits two rows for the same case id; the decode collapses them (ADMIN wins).
             val starred = starredService.listDirectRelations(userId, EntityType.CASE)
             starred.size shouldBe 1
-            starred[caseId] shouldBe DirectRelation(PermissionRelation.ADMIN, starred = true)
+            starred[caseId]?.starred shouldBe true
+            starred[caseId]?.relation shouldBe PermissionRelation.ADMIN
 
             // deleteStarred clears the single edge despite the two matching rows.
             caseNodeRepository.deleteStarred(userId = userId, caseId = caseId)
             val cleared = starredService.listDirectRelations(userId, EntityType.CASE)
-            cleared[caseId] shouldBe DirectRelation(PermissionRelation.ADMIN, starred = false)
+            cleared[caseId]?.starred shouldBe false
+            cleared[caseId]?.relation shouldBe PermissionRelation.ADMIN
         }
 
         "StarredService.setStarred round-trip visible via listDirectRelations" {
@@ -247,7 +251,7 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             val namespace = createNamespace()
             val case = createCase(namespace.id)
 
-            // No direct edge yet — the MATCH guard prevents orphaned [:STARRED] edges.
+            // No direct edge yet — the MATCH guard prevents orphaned edges.
             starredService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), true) shouldBe false
 
             permissionNodeRepository.createAdminPermission(
@@ -260,7 +264,7 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             starredService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), true) shouldBe true
         }
 
-        "[:STARRED] edge survives a MEMBER-to-ADMIN promotion" {
+        "[:HAS_USER_CASE_STATE] favoriteAt survives a MEMBER-to-ADMIN promotion" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
@@ -276,17 +280,19 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             caseNodeRepository.mergeStarred(
                 userId = userId,
                 caseId = caseId,
+                favoriteAt = Instant.now(),
             )
             starredIds(userId) shouldContain caseId
 
-            // Promote: [:MEMBER] is replaced by [:ADMIN]; [:STARRED] is a separate edge and untouched.
+            // Promote: [:MEMBER] is replaced by [:ADMIN]; the state edge is a separate edge and untouched.
             permissionService.promoteMemberToAdmin(userId, EntityType.CASE, caseId)
 
             val relations = starredService.listDirectRelations(userId, EntityType.CASE)
-            relations[caseId] shouldBe DirectRelation(PermissionRelation.ADMIN, starred = true)
+            relations[caseId]?.starred shouldBe true
+            relations[caseId]?.relation shouldBe PermissionRelation.ADMIN
         }
 
-        "[:STARRED] edge survives an ADMIN-to-MEMBER demotion" {
+        "[:HAS_USER_CASE_STATE] favoriteAt survives an ADMIN-to-MEMBER demotion" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
@@ -302,17 +308,19 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             caseNodeRepository.mergeStarred(
                 userId = userId,
                 caseId = caseId,
+                favoriteAt = Instant.now(),
             )
             starredIds(userId) shouldContain caseId
 
-            // Demote: [:ADMIN] is replaced by [:MEMBER]; [:STARRED] is a separate edge and untouched.
+            // Demote: [:ADMIN] is replaced by [:MEMBER]; the state edge is untouched.
             permissionService.demoteAdminToMember(userId, EntityType.CASE, caseId)
 
             val relations = starredService.listDirectRelations(userId, EntityType.CASE)
-            relations[caseId] shouldBe DirectRelation(PermissionRelation.MEMBER, starred = true)
+            relations[caseId]?.starred shouldBe true
+            relations[caseId]?.relation shouldBe PermissionRelation.MEMBER
         }
 
-        "listDirectRelations returns the caller's relation and [:STARRED] flag per entity (and omits un-related ones)" {
+        "listDirectRelations returns the caller's relation and starred flag per entity (and omits un-related ones)" {
             val user = createUser()
             val namespace = createNamespace()
             val adminCase = createCase(namespace.id)
@@ -333,9 +341,87 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
 
             val relations = starredService.listDirectRelations(user.id.toString(), EntityType.CASE)
 
-            relations[adminCase.id.toString()] shouldBe DirectRelation(PermissionRelation.ADMIN, starred = true)
-            relations[memberCase.id.toString()] shouldBe DirectRelation(PermissionRelation.MEMBER, starred = false)
+            relations[adminCase.id.toString()]?.starred shouldBe true
+            relations[adminCase.id.toString()]?.relation shouldBe PermissionRelation.ADMIN
+            relations[memberCase.id.toString()]?.starred shouldBe false
+            relations[memberCase.id.toString()]?.relation shouldBe PermissionRelation.MEMBER
             relations.containsKey(unrelatedCase.id.toString()) shouldBe false
+        }
+
+        // -------------------------------------------------------------------------
+        // markRead / countUnread
+        // -------------------------------------------------------------------------
+
+        "markRead sets readAt on the HAS_USER_CASE_STATE edge; countUnread decrements" {
+            val user = createUser()
+            val namespace = createNamespace()
+            val case = createCase(namespace.id)
+            val userId = user.id.toString()
+            val caseId = case.id.toString()
+            val namespaceId = namespace.id.toString()
+
+            permissionNodeRepository.createAdminPermission(
+                userId = userId,
+                entityId = caseId,
+                entityLabel = "Case",
+            )
+
+            // Before any read: case is unread.
+            caseNodeRepository.countUnread(userId = userId, namespaceId = namespaceId) shouldBe 1L
+
+            caseNodeRepository.markRead(userId = userId, caseId = caseId, readAt = Instant.now())
+
+            // After markRead: case with no events since readAt is considered read.
+            caseNodeRepository.countUnread(userId = userId, namespaceId = namespaceId) shouldBe 0L
+        }
+
+        "countUnread counts only cases the user has a direct edge on" {
+            val user = createUser()
+            val otherUser = createUser("other@example.com")
+            val namespace = createNamespace()
+            val myCase = createCase(namespace.id)
+            val theirCase = createCase(namespace.id)
+            val userId = user.id.toString()
+            val namespaceId = namespace.id.toString()
+
+            permissionNodeRepository.createAdminPermission(
+                userId = userId,
+                entityId = myCase.id.toString(),
+                entityLabel = "Case",
+            )
+            permissionNodeRepository.createAdminPermission(
+                userId = otherUser.id.toString(),
+                entityId = theirCase.id.toString(),
+                entityLabel = "Case",
+            )
+
+            // user has access only to myCase, not theirCase.
+            caseNodeRepository.countUnread(userId = userId, namespaceId = namespaceId) shouldBe 1L
+        }
+
+        "readAt is preserved when favoriteAt is also set on the same edge" {
+            val user = createUser()
+            val namespace = createNamespace()
+            val case = createCase(namespace.id)
+            val userId = user.id.toString()
+            val caseId = case.id.toString()
+
+            permissionNodeRepository.createAdminPermission(
+                userId = userId,
+                entityId = caseId,
+                entityLabel = "Case",
+            )
+
+            val readTime = Instant.parse("2025-06-01T10:00:00Z")
+            caseNodeRepository.markRead(userId = userId, caseId = caseId, readAt = readTime)
+            // Now also star the case — should not clear readAt.
+            caseNodeRepository.mergeStarred(userId = userId, caseId = caseId, favoriteAt = Instant.now())
+
+            val relations = starredService.listDirectRelations(userId, EntityType.CASE)
+            relations[caseId]?.starred shouldBe true
+            // readAt must still be present (not cleared by the subsequent mergeStarred).
+            relations[caseId]?.readAt shouldBe readTime
+
         }
     }
 }

@@ -63,6 +63,7 @@ import io.whozoss.agentos.userGroup.UserGroupNodeNeo4jRepository
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -320,6 +321,38 @@ class Neo4jPersistenceConfiguration {
     ): ScheduledPromptUserRunRepository {
         logger.info { "[Persistence] Neo4jScheduledPromptUserRunRepository active" }
         return Neo4jScheduledPromptUserRunRepository(scheduledPromptUserRunNodeNeo4jRepository)
+    }
+
+    /**
+     * One-time migration: converts legacy `[:STARRED]` plain edges to
+     * `[:HAS_USER_CASE_STATE]` relationship-with-properties edges.
+     *
+     * Sets `favoriteAt = datetime()` on the new edge (the original edge carried no
+     * timestamp). The migration is idempotent: `MERGE` on `[:HAS_USER_CASE_STATE]`
+     * ensures that if the edge already exists (from a previous partial migration),
+     * only `favoriteAt` is SET — `readAt` is left untouched via `ON CREATE SET`.
+     * The legacy `[:STARRED]` edge is deleted after the merge.
+     *
+     * Runs once at startup and is a no-op when no `[:STARRED]` edges remain.
+     */
+    @Bean
+    fun migrateStarredEdges(neo4jClient: Neo4jClient): CommandLineRunner = CommandLineRunner {
+        val result = neo4jClient.query(
+            """
+            MATCH (u:User)-[s:STARRED]->(c:Case)
+            MERGE (u)-[state:HAS_USER_CASE_STATE]->(c)
+            ON CREATE SET state.favoriteAt = datetime()
+            ON MATCH SET state.favoriteAt = datetime()
+            DELETE s
+            RETURN count(s) AS migrated
+            """.trimIndent(),
+        ).fetch().one()
+        val count = result.map { it["migrated"] as Long }.orElse(0L)
+        if (count > 0L) {
+            logger.info { "[Migration] Converted $count [:STARRED] edges to [:HAS_USER_CASE_STATE]" }
+        } else {
+            logger.debug { "[Migration] No legacy [:STARRED] edges found — nothing to migrate" }
+        }
     }
 
     companion object : KLogging()

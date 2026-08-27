@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.api.case.AddMessageRequest
 import io.whozoss.agentos.sdk.api.case.CaseApi
 import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
+import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
@@ -62,6 +64,7 @@ class CaseController(
     private val userService: UserService,
     private val permissionService: PermissionService,
     private val starredService: StarredService,
+    private val caseReadService: CaseReadService,
 ) : CaseApi {
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
@@ -134,15 +137,15 @@ class CaseController(
 
     /**
      * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
-     * relation (`role`), favorite flag, and [CaseDto.lastMessageAt].
+     * relation (`role`), favorite flag, [CaseDto.readAt], and [CaseDto.lastMessageAt].
      *
      * Two batch queries resolve the whole set (no per-case round-trips):
-     * - [StarredService.listDirectRelations] for role/favorite metadata
+     * - [StarredService.listDirectRelations] for role/favorite/readAt metadata
      * - [CaseEventService.findLastMessageTimestamps] for the last-message timestamp
      *   used by the frontend to sort and group conversations.
      *
-     * Cases the user has no direct edge on get `role = null` and `favorite = false`
-     * (e.g. the namespace-admin fast path in [listByParent]).
+     * Cases the user has no direct edge on get `role = null`, `favorite = false`,
+     * and `readAt = null` (e.g. the namespace-admin fast path in [listByParent]).
      */
     private fun List<Case>.withCallerMeta(userId: String): List<CaseDto> {
         val starred = starredService.listDirectRelations(userId, EntityType.CASE)
@@ -152,6 +155,7 @@ class CaseController(
             toDto(it).copy(
                 favorite = meta?.starred ?: false,
                 role = meta?.relation?.name,
+                readAt = meta?.readAt,
                 lastMessageAt = lastMessageTimestamps[it.id],
             )
         }
@@ -320,6 +324,28 @@ class CaseController(
         logger.info { "Killing case: $caseId" }
         caseService.killCase(caseId)
         logger.info { "Case killed: $caseId" }
+    }
+
+    /** POST /api/cases/{caseId}/read — record that the current user has read this case. */
+    @PostMapping("/{caseId}/read")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    override fun markCaseRead(
+        @PathVariable caseId: UUID,
+    ) {
+        val userId = userService.getCurrentUser().id.toString()
+        caseReadService.markRead(userId, caseId)
+        logger.debug { "User $userId marked case $caseId as read" }
+    }
+
+    /** GET /api/cases/unread-count?namespaceId= — count of unread cases for the current user. */
+    @GetMapping("/unread-count")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    override fun countUnread(
+        @RequestParam namespaceId: UUID,
+    ): UnreadCountResponse {
+        val userId = userService.getCurrentUser().id.toString()
+        return UnreadCountResponse(unreadCount = caseReadService.countUnread(userId, namespaceId))
     }
 
     /** PUT /api/cases/{id}/star — mark the case as favorite for the current user. */

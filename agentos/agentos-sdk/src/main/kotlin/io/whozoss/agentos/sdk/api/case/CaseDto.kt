@@ -29,6 +29,10 @@ import java.util.UUID
  *   `listByUserExternalId` where the target user may differ from the caller. Defaults to false on create.
  * @property role The caller's direct relation on this case (`ADMIN` or `MEMBER`), or null when the
  *   caller has no direct edge (e.g. transitive namespace-admin access). Same population rules as `favorite`.
+ * @property readAt Timestamp of the caller's last read of this case, or null when the case has never
+ *   been opened by this user (meaning it is unread). Same population rules as `favorite`.
+ * @property unreadCount Number of unread cases in the namespace for the current user. Only populated
+ *   by the dedicated [io.whozoss.agentos.sdk.api.case.CaseApi.countUnread] endpoint; null everywhere else.
  */
 @Schema(name = "Case")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -59,4 +63,12 @@ data class CaseDto(
      */
     @field:Schema(description = "The caller's direct relation on this case", allowableValues = ["ADMIN", "MEMBER"])
     val role: String? = null,
+    /**
+     * Timestamp of the caller's last read of this case. Null means the case has never been
+     * opened by this user (i.e. it is unread). Populated by all read endpoints that include
+     * caller metadata (same rules as `favorite`). Not populated on create or on "list by
+     * target user" endpoints where the target may differ from the caller.
+     */
+    @field:Schema(description = "Timestamp of the caller's last read. Null = never read (unread).")
+    val readAt: Instant? = null,
 )
