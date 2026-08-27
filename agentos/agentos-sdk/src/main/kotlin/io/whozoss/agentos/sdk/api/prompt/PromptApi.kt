@@ -45,20 +45,22 @@ interface PromptApi : EntityCrudApi<PromptDto> {
 
     /**
      * POST /api/prompts/{id}/translations/{languageCode} — resolve a translation of [content]
-     * into the requested language, using the namespace's AI model.
+     * and [title] into the requested language, using the namespace's AI model.
      *
-     * - If [languageCode] matches the prompt's [PromptDto.sourceLanguage], returns [content] as-is.
-     * - If a cached translation exists, returns it without calling the LLM.
-     * - Otherwise translates via LLM, persists the result, and returns it.
+     * - If [languageCode] matches the prompt's [PromptDto.sourceLanguage], returns the source
+     *   fields as-is without an LLM call.
+     * - Returns cached translations when available without an LLM call.
+     * - Otherwise translates via LLM, persists the results, and returns them.
      *
      * [namespaceId] or [namespaceExternalId] is required for AI model resolution.
      * At least one must be provided.
      *
-     * Returns the translated content list (same indices as [PromptDto.content]).
+     * Returns a [PromptTranslationDto] with the resolved [title] (null when the prompt has
+     * no title) and [content] (same indices as [PromptDto.content]).
      */
     fun translate(
         id: UUID,
         languageCode: String,
         request: PromptTranslateRequest,
-    ): List<String>
+    ): PromptTranslationDto
 }

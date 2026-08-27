@@ -50,4 +50,34 @@ interface PromptService : EntityService<Prompt, UUID>, OwnershipAware {
      * [agentConfigIds] is an optional filter; null or empty means no filter.
      */
     fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<Prompt>
+
+    /**
+     * Resolves a translation of [Prompt.content] and/or [Prompt.title] into [targetLanguage].
+     *
+     * Short-circuits when [targetLanguage] matches [Prompt.sourceLanguage] — returns the
+     * source fields as-is without an LLM call. Returns cached translations when available.
+     * Otherwise calls [PromptTranslationService], persists the results, and returns them.
+     *
+     * [namespaceId] or [namespaceExternalId] is required for AI model resolution.
+     *
+     * Returns a [PromptTranslation] carrying the resolved title and content for the
+     * requested language.
+     */
+    fun translate(
+        id: UUID,
+        targetLanguage: String,
+        namespaceId: UUID?,
+        namespaceExternalId: String?,
+    ): PromptTranslation
 }
+
+/**
+ * Resolved translation for a single language, returned by [PromptService.translate].
+ *
+ * [title] is null when the prompt has no [Prompt.title].
+ * [content] always has the same size as [Prompt.content].
+ */
+data class PromptTranslation(
+    val title: String?,
+    val content: List<String>,
+)

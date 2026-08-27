@@ -29,6 +29,7 @@ import java.util.UUID
 class PromptServiceImpl(
     private val repository: PromptRepository,
     private val agentConfigService: AgentConfigService,
+    private val translationService: PromptTranslationService,
 ) : PromptService {
     override fun create(entity: Prompt): Prompt {
         validate(entity)
@@ -104,6 +105,89 @@ class PromptServiceImpl(
         agentConfigIds: List<UUID>?,
     ): List<Prompt> = repository.findByScope(namespaceId, userId, agentConfigIds)
 
+    override fun translate(
+        id: UUID,
+        targetLanguage: String,
+        namespaceId: UUID?,
+        namespaceExternalId: String?,
+    ): PromptTranslation {
+        val prompt = repository.findByIds(listOf(id)).firstOrNull()
+            ?: throw NoSuchElementException("Prompt $id not found")
+
+        return when {
+            // Short-circuit: requested language is the source — return originals as-is
+            targetLanguage == prompt.sourceLanguage ->
+                PromptTranslation(title = prompt.title, content = prompt.content)
+
+            else -> translateToForeignLanguage(prompt, targetLanguage, namespaceId, namespaceExternalId)
+        }
+    }
+
+    private fun translateToForeignLanguage(
+        prompt: Prompt,
+        targetLanguage: String,
+        namespaceId: UUID?,
+        namespaceExternalId: String?,
+    ): PromptTranslation {
+        val cachedTitle = prompt.title?.let { prompt.translatedTitles?.get(targetLanguage) }
+        val cachedContent = prompt.translatedContent?.get(targetLanguage)
+
+        return when {
+            // Full cache hit — no LLM call needed
+            cachedContent != null && (prompt.title == null || cachedTitle != null) ->
+                PromptTranslation(title = cachedTitle, content = cachedContent)
+
+            else -> translateAndPersist(prompt, targetLanguage, namespaceId, namespaceExternalId, cachedTitle, cachedContent)
+        }
+    }
+
+    private fun translateAndPersist(
+        prompt: Prompt,
+        targetLanguage: String,
+        namespaceId: UUID?,
+        namespaceExternalId: String?,
+        cachedTitle: String?,
+        cachedContent: List<String>?,
+    ): PromptTranslation {
+        // Translate only what is missing
+        val resolvedTitle: String? = when {
+            prompt.title == null -> null
+            cachedTitle != null -> cachedTitle
+            else -> translationService.translateTitle(
+                title = prompt.title,
+                sourceLanguage = prompt.sourceLanguage,
+                targetLanguage = targetLanguage,
+                namespaceId = namespaceId,
+                namespaceExternalId = namespaceExternalId,
+            )
+        }
+
+        val resolvedContent: List<String> = cachedContent ?: translationService.translateContent(
+            content = prompt.content,
+            sourceLanguage = prompt.sourceLanguage,
+            targetLanguage = targetLanguage,
+            namespaceId = namespaceId,
+            namespaceExternalId = namespaceExternalId,
+        )
+
+        // Persist the newly generated translations
+        val updatedTitles = if (resolvedTitle != null) {
+            (prompt.translatedTitles ?: emptyMap()) + (targetLanguage to resolvedTitle)
+        } else {
+            prompt.translatedTitles
+        }
+        val updatedContent = (prompt.translatedContent ?: emptyMap()) + (targetLanguage to resolvedContent)
+
+        repository.save(
+            prompt.copy(
+                translatedTitles = updatedTitles,
+                translatedContent = updatedContent,
+            ),
+        )
+
+        return PromptTranslation(title = resolvedTitle, content = resolvedContent)
+    }
+
     private fun layerPriority(p: Prompt): Int =
         when {
             p.namespaceId == null && p.userId == null -> 0
@@ -163,7 +247,7 @@ class PromptServiceImpl(
                 ?.key
         if (duplicateName != null) {
             throw BadRequestException(
-                "Duplicate parameter name '$duplicateName' \u2014 parameter names must be unique within a prompt",
+                "Duplicate parameter name '$duplicateName' — parameter names must be unique within a prompt",
             )
         }
     }
@@ -222,12 +306,13 @@ class PromptServiceImpl(
      * defeating the collision rule documented on [FilesystemPromptRepository].
      */
     private fun rejectIfFilesystemBacked(id: UUID, action: String) {
-        val existing = repository.findByIds(listOf(id)).firstOrNull() ?: return
-        if (existing.metadata.version == null) {
-            throw UnprocessableEntityException(
-                "Prompt id=$id is backed by a filesystem YAML file and cannot be $action via the API",
-            )
-        }
+        repository.findByIds(listOf(id)).firstOrNull()
+            ?.takeIf { it.metadata.version == null }
+            ?.let {
+                throw UnprocessableEntityException(
+                    "Prompt id=$id is backed by a filesystem YAML file and cannot be $action via the API",
+                )
+            }
     }
 
     companion object : KLogging() {

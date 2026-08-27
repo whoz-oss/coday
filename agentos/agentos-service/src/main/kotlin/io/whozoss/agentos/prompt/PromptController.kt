@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.api.prompt.PromptEffectiveRequest
 import io.whozoss.agentos.sdk.api.prompt.PromptParameterDto
 import io.whozoss.agentos.sdk.api.prompt.PromptSearchRequest
 import io.whozoss.agentos.sdk.api.prompt.PromptTranslateRequest
+import io.whozoss.agentos.sdk.api.prompt.PromptTranslationDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -328,8 +329,14 @@ class PromptController(
         @PathVariable id: UUID,
         @PathVariable languageCode: String,
         @Valid @RequestBody request: PromptTranslateRequest,
-    ): List<String> {
-        TODO("PromptTranslationService not yet implemented")
+    ): PromptTranslationDto {
+        val translation = promptService.translate(
+            id = id,
+            targetLanguage = languageCode,
+            namespaceId = request.namespaceId,
+            namespaceExternalId = request.namespaceExternalId,
+        )
+        return PromptTranslationDto(title = translation.title, content = translation.content)
     }
 
     private fun PromptParameterDto.toDomain(): PromptParameter =
