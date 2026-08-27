@@ -1,3 +1,13 @@
+## 0.249.2 (2026-08-27)
+
+### 🚀 Features
+
+- nx23 angular22 ([#1252](https://github.com/whoz-oss/coday/pull/1252), [#1251](https://github.com/whoz-oss/coday/issues/1251))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.249.1 (2026-08-26)
 
 ### 🚀 Features
