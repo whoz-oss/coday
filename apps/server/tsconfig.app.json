@@ -1,9 +1,12 @@
 {
-  "extends": "./tsconfig.json",
+  "angularCompilerOptions": {
+    "strictTemplates": false
+  },
   "compilerOptions": {
     "module": "esnext",
     "outDir": "../../dist/out-tsc",
-    "types": ["node"]
+    "types": ["node"],
+    "rootDir": "../.."
   },
   "exclude": [
     "jest.config.ts",
@@ -16,5 +19,6 @@
     "libs/**/*.test.jsx",
     "libs/**/*.spec.jsx"
   ],
+  "extends": "./tsconfig.json",
   "include": ["**/*.ts", "../shared/*.ts"]
 }

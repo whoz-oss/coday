@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core'
+import { Component, OnInit, OnDestroy, inject, ChangeDetectionStrategy } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
@@ -19,6 +19,7 @@ interface VoiceLanguageOption {
   standalone: true,
   imports: [FormsModule, MatIcon, MatSlideToggle],
   templateUrl: './options-panel.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './options-panel.component.scss',
 })
 export class OptionsPanelComponent implements OnInit, OnDestroy {

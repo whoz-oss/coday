@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core'
+import { Component, computed, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog'
@@ -32,6 +32,7 @@ import { ProjectStateService } from '../../core/services/project-state.service'
     MatIconModule,
   ],
   templateUrl: './new-task-dialog.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './new-task-dialog.component.scss',
 })
 export class NewTaskDialogComponent implements OnInit {

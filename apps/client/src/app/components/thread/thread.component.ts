@@ -11,6 +11,7 @@ import {
   ElementRef,
   ViewChild,
   inject,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 
 import { Subject } from 'rxjs'
@@ -75,6 +76,7 @@ import { Router } from '@angular/router'
     MatBadgeModule,
   ],
   templateUrl: './thread.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './thread.component.scss',
 })
 export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewChecked {

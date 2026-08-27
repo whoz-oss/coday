@@ -1,10 +1,11 @@
-import { Component, OnDestroy, OnInit } from '@angular/core'
+import { Component, OnDestroy, OnInit, ChangeDetectionStrategy } from '@angular/core'
 
 @Component({
   selector: 'app-welcome-message',
   standalone: true,
   imports: [],
   templateUrl: './welcome-message.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './welcome-message.component.scss',
 })
 export class WelcomeMessageComponent implements OnInit, OnDestroy {

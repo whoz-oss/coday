@@ -3,7 +3,8 @@
     "module": "commonjs",
     "moduleResolution": "node10",
     "outDir": "../../../dist/out-tsc",
-    "types": ["jest", "node"]
+    "types": ["jest", "node"],
+    "rootDir": "."
   },
   "extends": "./tsconfig.json",
   "include": ["jest.config.ts", "src/**/*.test.ts", "src/**/*.spec.ts", "src/**/*.d.ts"]

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core'
+import { Component, OnInit, OnDestroy, inject, ChangeDetectionStrategy } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
@@ -29,6 +29,7 @@ import { ThemeService, ThemeMode, ThemeState } from '../../core/services/theme.s
       </label>
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       .theme-radio-group {

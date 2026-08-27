@@ -7,7 +7,9 @@
     "noImplicitReturns": true,
     "outDir": "../../dist/out-tsc",
     "sourceMap": false,
-    "strict": true
+    "strict": true,
+    "ignoreDeprecations": "6.0",
+    "rootDir": "."
   },
   "extends": "../../tsconfig.base.json",
   "include": [

@@ -1,4 +1,13 @@
-import { AfterViewInit, Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  inject,
+  OnDestroy,
+  OnInit,
+  ViewChild,
+  ChangeDetectionStrategy,
+} from '@angular/core'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
@@ -22,6 +31,7 @@ import { FirstMessageStateService, PendingVoiceMessage } from '../../core/servic
   imports: [ChatTextareaComponent, ThreadComponent, WelcomeMessageComponent, SidenavComponent],
   templateUrl: './main-app.component.html',
   styleUrl: './main-app.component.scss',
+  changeDetection: ChangeDetectionStrategy.Eager,
   animations: [
     trigger('slideIn', [
       transition(':enter', [
