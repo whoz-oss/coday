@@ -30,6 +30,15 @@ import java.util.UUID
  * External consumers (Copilot, Studio) store their own metadata here
  * (label, triggers, sections, etc.).
  *
+ * [sourceLanguage] is the BCP-47 language code of [content] as authored.
+ * Defaults to `"en"`. Used by the translation endpoint to skip an LLM call
+ * when the requested language matches the source.
+ *
+ * [translations] stores on-demand translations of [content] keyed by BCP-47
+ * language code. Each value mirrors the shape of [content] (same indices).
+ * Populated lazily via `POST /api/prompts/{id}/translations/{languageCode}`.
+ * Cleared automatically when [content] is updated.
+ *
  * [createdBy], [createdOn], [updatedBy], [updatedOn] are read-only audit fields
  * present in GET responses; ignored on write.
  */
@@ -50,6 +59,19 @@ data class PromptDto(
     val content: List<String>,
     @field:Valid val parameters: List<PromptParameterDto> = emptyList(),
     val externalMetadata: Map<String, Any?>? = null,
+    @field:Schema(
+        description = "BCP-47 language code of the authored content. Defaults to 'en'.",
+        example = "en",
+    )
+    val sourceLanguage: String = "en",
+    @field:Schema(
+        description = "On-demand translations of content, keyed by BCP-47 language code. " +
+            "Each value is a list mirroring the indices of content. " +
+            "Populated lazily via POST /api/prompts/{id}/translations/{languageCode}. " +
+            "Cleared automatically when content is updated.",
+        nullable = true,
+    )
+    val translations: Map<String, List<String>>? = null,
     val createdBy: String? = null,
     val createdOn: Instant? = null,
     val updatedBy: String? = null,

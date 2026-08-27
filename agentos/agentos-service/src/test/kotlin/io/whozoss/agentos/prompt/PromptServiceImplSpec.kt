@@ -46,6 +46,8 @@ class PromptServiceImplSpec : StringSpec() {
         content: List<String> = listOf("Hello {{name}}"),
         parameters: List<PromptParameter> = emptyList(),
         description: String? = null,
+        sourceLanguage: String = "en",
+        translations: Map<String, List<String>>? = null,
     ) = Prompt(
         metadata = EntityMetadata(),
         namespaceId = namespaceId,
@@ -55,6 +57,8 @@ class PromptServiceImplSpec : StringSpec() {
         description = description,
         content = content,
         parameters = parameters,
+        sourceLanguage = sourceLanguage,
+        translations = translations,
     )
 
     init {
@@ -556,6 +560,101 @@ class PromptServiceImplSpec : StringSpec() {
 
             val effective = service.findEffective(ns, user, agentConfigId = UUID.randomUUID())
             effective.shouldBeEmpty()
+        }
+
+        // -------------------------------------------------------------------------
+        // sourceLanguage
+        // -------------------------------------------------------------------------
+
+        "create persists sourceLanguage and defaults to en" {
+            val service = newService()
+            val saved = service.create(prompt())
+            saved.sourceLanguage shouldBe "en"
+        }
+
+        "create persists non-default sourceLanguage" {
+            val service = newService()
+            val saved = service.create(prompt(sourceLanguage = "fr"))
+            saved.sourceLanguage shouldBe "fr"
+        }
+
+        "update preserves sourceLanguage when not changed" {
+            val service = newService()
+            val saved = service.create(prompt(sourceLanguage = "de"))
+            val updated = service.update(saved.copy(description = "touched"))
+            updated.sourceLanguage shouldBe "de"
+        }
+
+        // -------------------------------------------------------------------------
+        // clearTranslationsIfStale
+        // -------------------------------------------------------------------------
+
+        "update clears translations when content changes" {
+            val service = newService()
+            val saved = service.create(
+                prompt(
+                    content = listOf("Original"),
+                    translations = mapOf("fr" to listOf("Original en français")),
+                ),
+            )
+
+            val updated = service.update(saved.copy(content = listOf("Updated")))
+
+            updated.translations shouldBe null
+        }
+
+        "update clears translations when sourceLanguage changes" {
+            val service = newService()
+            val saved = service.create(
+                prompt(
+                    sourceLanguage = "en",
+                    translations = mapOf("fr" to listOf("Bonjour")),
+                ),
+            )
+
+            val updated = service.update(saved.copy(sourceLanguage = "de"))
+
+            updated.translations shouldBe null
+        }
+
+        "update clears translations when both content and sourceLanguage change" {
+            val service = newService()
+            val saved = service.create(
+                prompt(
+                    content = listOf("Hello"),
+                    sourceLanguage = "en",
+                    translations = mapOf("fr" to listOf("Bonjour"), "de" to listOf("Hallo")),
+                ),
+            )
+
+            val updated = service.update(saved.copy(content = listOf("Hi"), sourceLanguage = "es"))
+
+            updated.translations shouldBe null
+        }
+
+        "update preserves translations when content and sourceLanguage are unchanged" {
+            val service = newService()
+            val existingTranslations = mapOf("fr" to listOf("Bonjour"), "de" to listOf("Hallo"))
+            val saved = service.create(
+                prompt(
+                    content = listOf("Hello"),
+                    sourceLanguage = "en",
+                    translations = existingTranslations,
+                ),
+            )
+
+            val updated = service.update(saved.copy(description = "touched"))
+
+            updated.translations shouldBe existingTranslations
+        }
+
+        "update with no existing translations stays null when content changes" {
+            val service = newService()
+            val saved = service.create(prompt(content = listOf("Original"), translations = null))
+
+            val updated = service.update(saved.copy(content = listOf("Updated")))
+
+            updated.translations shouldBe null
         }
 
         "findEffective agentConfigId filter is applied after the layer merge, not before" {

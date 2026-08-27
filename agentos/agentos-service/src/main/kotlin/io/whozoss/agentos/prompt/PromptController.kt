@@ -15,6 +15,7 @@ import io.whozoss.agentos.sdk.api.prompt.PromptDto
 import io.whozoss.agentos.sdk.api.prompt.PromptEffectiveRequest
 import io.whozoss.agentos.sdk.api.prompt.PromptParameterDto
 import io.whozoss.agentos.sdk.api.prompt.PromptSearchRequest
+import io.whozoss.agentos.sdk.api.prompt.PromptTranslateRequest
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -229,6 +230,8 @@ class PromptController(
                 content = resource.content,
                 parameters = resource.parameters.map { it.toDomain() },
                 externalMetadata = resource.externalMetadata,
+                sourceLanguage = resource.sourceLanguage,
+                // translations are never accepted from the caller on create
             )
         return toDto(promptService.create(target))
     }
@@ -302,7 +305,30 @@ class PromptController(
             content = resource.content,
             parameters = resource.parameters.map { it.toDomain() },
             externalMetadata = resource.externalMetadata,
+            sourceLanguage = resource.sourceLanguage,
+            // translations are never accepted from the caller — managed by the translation endpoint
+            // PromptServiceImpl.update clears them when content changes
         )
+
+    @Operation(
+        summary = "Translate prompt content into a target language",
+        description =
+            "Returns the translated content list (same indices as `content`). " +
+                "If the requested language matches `sourceLanguage`, returns `content` as-is. " +
+                "If a cached translation exists it is returned without an LLM call. " +
+                "Otherwise the content is translated via the namespace's AI model, persisted, and returned. " +
+                "At least one of `namespaceId` / `namespaceExternalId` is required for model resolution.",
+    )
+    @PostMapping("/{id}/translations/{languageCode}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#id, 'Prompt', 'READ')")
+    @HideOnAccessDenied
+    override fun translate(
+        @PathVariable id: UUID,
+        @PathVariable languageCode: String,
+        @Valid @RequestBody request: PromptTranslateRequest,
+    ): List<String> {
+        TODO("PromptTranslationService not yet implemented")
+    }
 
     private fun PromptParameterDto.toDomain(): PromptParameter =
         PromptParameter(
@@ -332,6 +358,8 @@ internal fun toDto(entity: Prompt): PromptDto =
                 )
             },
         externalMetadata = entity.externalMetadata,
+        sourceLanguage = entity.sourceLanguage,
+        translations = entity.translations,
         createdBy = entity.metadata.createdBy,
         createdOn = entity.metadata.created,
         updatedBy = entity.metadata.modifiedBy,

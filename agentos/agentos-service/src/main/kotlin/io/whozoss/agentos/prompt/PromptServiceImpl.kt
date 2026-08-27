@@ -55,7 +55,8 @@ class PromptServiceImpl(
             .findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let { throw ConflictException(conflictMessage(entity)) }
-        return saveOrConflict(entity)
+        val existing = repository.findByIds(listOf(entity.id)).firstOrNull()
+        return saveOrConflict(clearTranslationsIfStale(entity, existing))
     }
 
     override fun findById(
@@ -123,6 +124,21 @@ class PromptServiceImpl(
     }
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
+
+    /**
+     * Clears [Prompt.translations] when either [Prompt.content] or [Prompt.sourceLanguage]
+     * has changed relative to [existing].
+     *
+     * Translations are generated from a specific (content, sourceLanguage) pair. Either
+     * changing means every stored translation is now stale and must be regenerated on the
+     * next translation request. When [existing] is null (entity not yet persisted) or
+     * translations are already null, the entity is returned unchanged.
+     */
+    private fun clearTranslationsIfStale(entity: Prompt, existing: Prompt?): Prompt {
+        if (existing == null || entity.translations == null) return entity
+        val stale = entity.content != existing.content || entity.sourceLanguage != existing.sourceLanguage
+        return if (stale) entity.copy(translations = null) else entity
+    }
 
     /**
      * Validates business rules that apply after Bean Validation:

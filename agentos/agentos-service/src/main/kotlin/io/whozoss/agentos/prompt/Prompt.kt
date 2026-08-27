@@ -20,6 +20,15 @@ import java.util.UUID
  * [PromptParameter.defaultValue] is required (non-nullable) — every parameter
  * must declare a default so the prompt can be rendered without caller-supplied
  * values. An empty string is a valid default for optional free-form parameters.
+ *
+ * [sourceLanguage] is the BCP-47 code of the language [content] was authored in.
+ * Defaults to `"en"`. The translation endpoint uses it to short-circuit when the
+ * requested language matches the source (no LLM call needed).
+ *
+ * [translations] stores lazily-generated translations of [content] keyed by
+ * BCP-47 language code. Each value is a `List<String>` mirroring [content] by
+ * index. Populated by `PromptTranslationService` and cleared automatically by
+ * `PromptServiceImpl.update` whenever [content] changes.
  */
 data class PromptParameter(
     val name: String,
@@ -47,4 +56,6 @@ data class Prompt(
      * AgentOS persists this field as-is without interpreting its content.
      */
     val externalMetadata: Map<String, Any?>? = null,
+    val sourceLanguage: String = "en",
+    val translations: Map<String, List<String>>? = null,
 ) : Entity
