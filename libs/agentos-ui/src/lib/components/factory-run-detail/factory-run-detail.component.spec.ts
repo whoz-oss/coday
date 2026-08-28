@@ -1,7 +1,8 @@
-import { ComponentRef } from '@angular/core'
+import { ComponentRef, signal } from '@angular/core'
 import { TestBed, ComponentFixture, fakeAsync, tick, discardPeriodicTasks } from '@angular/core/testing'
 import { By } from '@angular/platform-browser'
 import { FactoryRunDetail } from '../../services/factory-api.service'
+import { FactoryStateService } from '../../services/factory-state.service'
 import { FactoryRunDetailComponent } from './factory-run-detail.component'
 
 const STARTED_AT = '2025-01-01T00:00:00.000Z'
@@ -21,17 +22,142 @@ const BASE_RUN: FactoryRunDetail = {
 
 const RUNNING_RUN: FactoryRunDetail = { ...BASE_RUN, status: 'running', durationMs: null }
 
-function setup(run: FactoryRunDetail): {
+/** Minimal FactoryStateService stub for stop-button tests. */
+function makeStateSpy(
+  overrides: {
+    stopping?: boolean
+    stopError?: string | null
+    stopSelectedRun?: () => void
+  } = {}
+) {
+  return {
+    stopping: signal(overrides.stopping ?? false),
+    stopError: signal(overrides.stopError ?? null),
+    stopSelectedRun: overrides.stopSelectedRun ?? jest.fn(),
+  }
+}
+
+function setup(
+  run: FactoryRunDetail,
+  stateSpy = makeStateSpy()
+): {
   fixture: ComponentFixture<FactoryRunDetailComponent>
   ref: ComponentRef<FactoryRunDetailComponent>
 } {
-  TestBed.configureTestingModule({ imports: [FactoryRunDetailComponent] })
+  TestBed.configureTestingModule({
+    imports: [FactoryRunDetailComponent],
+    providers: [{ provide: FactoryStateService, useValue: stateSpy }],
+  })
   const fixture = TestBed.createComponent(FactoryRunDetailComponent)
   const ref = fixture.componentRef
   ref.setInput('run', run)
   ref.setInput('selectedPhaseIndex', 0)
   return { fixture, ref }
 }
+
+// ---------------------------------------------------------------------------
+// Stop button
+// ---------------------------------------------------------------------------
+
+describe('FactoryRunDetailComponent — stop button', () => {
+  afterEach(() => TestBed.resetTestingModule())
+
+  it('stop button is visible when run is running', fakeAsync(() => {
+    const { fixture } = setup(RUNNING_RUN)
+    fixture.detectChanges()
+
+    const btn = fixture.debugElement.query(By.css('.factory-run-detail__stop-btn'))
+    expect(btn).not.toBeNull()
+    discardPeriodicTasks()
+  }))
+
+  it('stop button is NOT rendered when run is finished', fakeAsync(() => {
+    const { fixture } = setup(BASE_RUN) // status: 'pass'
+    fixture.detectChanges()
+
+    const btn = fixture.debugElement.query(By.css('.factory-run-detail__stop-btn'))
+    expect(btn).toBeNull()
+    discardPeriodicTasks()
+  }))
+
+  it('stop button is disabled when stopping signal is true', fakeAsync(() => {
+    const spy = makeStateSpy({ stopping: true })
+    const { fixture } = setup(RUNNING_RUN, spy)
+    fixture.detectChanges()
+
+    const btn: HTMLButtonElement = fixture.debugElement.query(By.css('.factory-run-detail__stop-btn')).nativeElement
+    expect(btn.disabled).toBe(true)
+    discardPeriodicTasks()
+  }))
+
+  it('stop button is enabled when stopping signal is false', fakeAsync(() => {
+    const spy = makeStateSpy({ stopping: false })
+    const { fixture } = setup(RUNNING_RUN, spy)
+    fixture.detectChanges()
+
+    const btn: HTMLButtonElement = fixture.debugElement.query(By.css('.factory-run-detail__stop-btn')).nativeElement
+    expect(btn.disabled).toBe(false)
+    discardPeriodicTasks()
+  }))
+
+  it('clicking stop button calls factoryState.stopSelectedRun()', fakeAsync(() => {
+    const stopFn = jest.fn()
+    const spy = makeStateSpy({ stopSelectedRun: stopFn })
+    const { fixture } = setup(RUNNING_RUN, spy)
+    fixture.detectChanges()
+
+    const btn: HTMLButtonElement = fixture.debugElement.query(By.css('.factory-run-detail__stop-btn')).nativeElement
+    btn.click()
+
+    expect(stopFn).toHaveBeenCalledTimes(1)
+    discardPeriodicTasks()
+  }))
+
+  it('stop error message is rendered when stopError is set', fakeAsync(() => {
+    const spy = makeStateSpy({ stopping: false, stopError: 'Could not stop the run.' })
+    const { fixture } = setup(RUNNING_RUN, spy)
+    fixture.detectChanges()
+
+    const errEl = fixture.debugElement.query(By.css('.factory-run-detail__stop-error'))
+    expect(errEl).not.toBeNull()
+    expect(errEl.nativeElement.textContent).toContain('Could not stop the run.')
+    discardPeriodicTasks()
+  }))
+
+  it('stop error is NOT rendered when stopError is null', fakeAsync(() => {
+    const spy = makeStateSpy({ stopping: false, stopError: null })
+    const { fixture } = setup(RUNNING_RUN, spy)
+    fixture.detectChanges()
+
+    const errEl = fixture.debugElement.query(By.css('.factory-run-detail__stop-error'))
+    expect(errEl).toBeNull()
+    discardPeriodicTasks()
+  }))
+
+  it('button label shows “Stopping…” when stopping is true', fakeAsync(() => {
+    const spy = makeStateSpy({ stopping: true })
+    const { fixture } = setup(RUNNING_RUN, spy)
+    fixture.detectChanges()
+
+    const btn: HTMLButtonElement = fixture.debugElement.query(By.css('.factory-run-detail__stop-btn')).nativeElement
+    expect(btn.textContent).toContain('Stopping')
+    discardPeriodicTasks()
+  }))
+
+  it('button label shows “Stop” when stopping is false', fakeAsync(() => {
+    const spy = makeStateSpy({ stopping: false })
+    const { fixture } = setup(RUNNING_RUN, spy)
+    fixture.detectChanges()
+
+    const btn: HTMLButtonElement = fixture.debugElement.query(By.css('.factory-run-detail__stop-btn')).nativeElement
+    expect(btn.textContent).toContain('Stop')
+    discardPeriodicTasks()
+  }))
+})
+
+// ---------------------------------------------------------------------------
+// Wall-clock tick
+// ---------------------------------------------------------------------------
 
 describe('FactoryRunDetailComponent — wall-clock tick', () => {
   afterEach(() => TestBed.resetTestingModule())

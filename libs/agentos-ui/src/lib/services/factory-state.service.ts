@@ -1,5 +1,5 @@
 import { inject, Injectable, OnDestroy, signal } from '@angular/core'
-import { interval, Subscription } from 'rxjs'
+import { catchError, EMPTY, interval, Subscription } from 'rxjs'
 import { switchMap, take } from 'rxjs/operators'
 import { FactoryApiService, FactoryRunDetail, FactoryRunSummary } from './factory-api.service'
 
@@ -19,6 +19,8 @@ export class FactoryStateService implements OnDestroy {
   readonly detailLoading = signal(false)
   readonly detailError = signal<string | null>(null)
   readonly namespaceMismatch = signal(false)
+  readonly stopError = signal<string | null>(null)
+  readonly stopping = signal(false)
   private detailRequestId = 0
   private streamSubscription: Subscription | null = null
   private streamedRunId: string | null = null
@@ -92,6 +94,44 @@ export class FactoryStateService implements OnDestroy {
     this.detailLoading.set(false)
     this.detailError.set(null)
     this.namespaceMismatch.set(false)
+    this.stopping.set(false)
+    this.stopError.set(null)
+  }
+
+  /**
+   * Sends a stop signal to the running child process for the selected run.
+   * Idempotent: subsequent calls while already stopping are no-ops.
+   * The run status transitions to terminal via normal polling/SSE —
+   * this method does NOT finalize the run itself.
+   */
+  stopSelectedRun(): void {
+    const run = this.selectedRun()
+    if (!run || run.status !== 'running') return
+    if (this.stopping()) return
+
+    this.stopping.set(true)
+    this.stopError.set(null)
+
+    this.api
+      .stopRun(run.runId)
+      .pipe(
+        catchError((err: { status?: number }) => {
+          const msg =
+            err.status === 409
+              ? 'Stop already requested.'
+              : err.status === 410
+                ? 'Run already finished.'
+                : err.status === 404
+                  ? 'Run not found on server.'
+                  : 'Could not stop the run. Please try again.'
+          this.stopError.set(msg)
+          this.stopping.set(false)
+          return EMPTY
+        })
+      )
+      .subscribe(() => {
+        // 202 received — stopping flag stays true; run will reach terminal state via polling/SSE.
+      })
   }
 
   // ---------------------------------------------------------------------------

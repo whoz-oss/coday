@@ -501,8 +501,20 @@ export async function run(log) {
     try {
       const result = await fetchJiraTicket(ticketId, jiraBaseUrl, jiraEmail, jiraApiToken)
       ticketContent = result.ticketContent
-      passPhase(fetchTicketPhase, { ticketId, summary: result.summary, fieldCount: result.fieldCount })
-      log.phaseEnd('fetch-ticket', 'pass', { ticketId, fieldCount: result.fieldCount })
+      passPhase(fetchTicketPhase, {
+        ticketId,
+        summary: result.summary,
+        fieldCount: result.fieldCount,
+        commentCount: result.commentCount,
+        commentsIncluded: result.commentsIncluded,
+        commentsTruncated: result.commentsTruncated,
+      })
+      log.phaseEnd('fetch-ticket', 'pass', {
+        ticketId,
+        fieldCount: result.fieldCount,
+        commentCount: result.commentCount,
+        commentsIncluded: result.commentsIncluded,
+      })
     } catch (err) {
       failPhase(fetchTicketPhase, { ticketId, reason: String(err) })
       log.phaseEnd('fetch-ticket', 'fail', { ticketId })

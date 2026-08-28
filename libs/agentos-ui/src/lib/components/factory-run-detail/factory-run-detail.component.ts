@@ -1,19 +1,9 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  DestroyRef,
-  inject,
-  input,
-  OnInit,
-  output,
-  signal,
-} from '@angular/core'
-import { toObservable } from '@angular/core/rxjs-interop'
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core'
+import { toObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { interval, EMPTY, switchMap } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { FactoryRunDetail } from '../../services/factory-api.service'
+import { FactoryStateService } from '../../services/factory-state.service'
 import { FactoryRunTimelineComponent } from '../factory-run-timeline/factory-run-timeline.component'
 import { formatTimelineDuration, timelineStatus } from '../factory-run-timeline/factory-run-timeline.models'
 import { FactoryPhasePanelComponent } from '../factory-phase-panel/factory-phase-panel.component'
@@ -25,24 +15,25 @@ import { FactoryPhasePanelComponent } from '../factory-phase-panel/factory-phase
   styleUrl: './factory-run-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class FactoryRunDetailComponent implements OnInit {
+export class FactoryRunDetailComponent {
   readonly run = input.required<FactoryRunDetail>()
   readonly selectedPhaseIndex = input.required<number>()
   readonly phaseSelected = output<number>()
 
   /** Reactive wall-clock tick — incremented ~once per second ONLY while run is active. */
   private readonly clockTick = signal(0)
-  private readonly destroyRef = inject(DestroyRef)
+  protected readonly factoryState = inject(FactoryStateService)
 
-  ngOnInit(): void {
+  constructor() {
     /**
-     * switchMap stoppe l'interval dès que le run n'est plus en cours.
-     * Évite de continuer à tick toutes les secondes sur un run terminé.
+     * Field initializers and constructors run inside the injection context,
+     * so toObservable() is safe here. switchMap stops the interval as soon as
+     * the run leaves 'running' state, avoiding a leaked interval on finished runs.
      */
     toObservable(this.run)
       .pipe(
         switchMap((run) => (run.status === 'running' ? interval(1000).pipe(map(() => run)) : EMPTY)),
-        takeUntilDestroyed(this.destroyRef)
+        takeUntilDestroyed()
       )
       .subscribe(() => this.clockTick.update((n) => n + 1))
   }
@@ -74,5 +65,9 @@ export class FactoryRunDetailComponent implements OnInit {
 
   protected formatDuration(durationMs: number | null): string {
     return durationMs == null ? '—' : formatTimelineDuration(durationMs)
+  }
+
+  protected onStopClick(): void {
+    this.factoryState.stopSelectedRun()
   }
 }

@@ -68,6 +68,11 @@ export interface FactoryLaunchResponse {
   runId: string | null
 }
 
+export interface FactoryStopResponse {
+  runId: string
+  stopping: boolean
+}
+
 export interface FactoryAgentConfig {
   name: string
   enabled?: boolean
@@ -104,5 +109,14 @@ export class FactoryApiService {
 
   getRun(runId: string): Observable<FactoryRunDetail> {
     return this.http.get<FactoryRunDetail>(`/api/factory/runs/${encodeURIComponent(runId)}`)
+  }
+
+  /**
+   * Sends a stop signal (SIGTERM) to the tracked child process for the given run.
+   * Returns 202 on success, 409 if already stopping, 410 if already finished, 404 if unknown.
+   * Does NOT finalize the registry — the child's shutdown handler owns that.
+   */
+  stopRun(runId: string): Observable<FactoryStopResponse> {
+    return this.http.post<FactoryStopResponse>(`/api/factory/runs/${encodeURIComponent(runId)}/stop`, {})
   }
 }

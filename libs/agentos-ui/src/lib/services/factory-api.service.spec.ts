@@ -1,7 +1,12 @@
 import { TestBed } from '@angular/core/testing'
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing'
 import { provideHttpClient } from '@angular/common/http'
-import { FactoryApiService, FactoryLaunchRequest, FactoryLaunchResponse } from './factory-api.service'
+import {
+  FactoryApiService,
+  FactoryLaunchRequest,
+  FactoryLaunchResponse,
+  FactoryStopResponse,
+} from './factory-api.service'
 
 describe('FactoryApiService', () => {
   let service: FactoryApiService
@@ -18,6 +23,33 @@ describe('FactoryApiService', () => {
   afterEach(() => {
     http.verify()
     TestBed.resetTestingModule()
+  })
+
+  describe('stopRun', () => {
+    it('POSTs to /api/factory/runs/:id/stop', () => {
+      service.stopRun('run-abc').subscribe()
+
+      const req = http.expectOne('/api/factory/runs/run-abc/stop')
+      expect(req.request.method).toBe('POST')
+      req.flush({ runId: 'run-abc', stopping: true } satisfies FactoryStopResponse)
+    })
+
+    it('returns the stop response from the server', () => {
+      let result: FactoryStopResponse | undefined
+      service.stopRun('run-xyz').subscribe((r) => (result = r))
+
+      http.expectOne('/api/factory/runs/run-xyz/stop').flush({ runId: 'run-xyz', stopping: true })
+
+      expect(result).toEqual({ runId: 'run-xyz', stopping: true })
+    })
+
+    it('encodes the runId in the URL', () => {
+      service.stopRun('run/with/slashes').subscribe()
+
+      const req = http.expectOne('/api/factory/runs/run%2Fwith%2Fslashes/stop')
+      expect(req.request.method).toBe('POST')
+      req.flush({ runId: 'run/with/slashes', stopping: true })
+    })
   })
 
   describe('launchRun', () => {

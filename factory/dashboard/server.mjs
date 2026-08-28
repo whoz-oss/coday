@@ -30,67 +30,32 @@
 
 import { createServer } from 'node:http'
 import { readFileSync, readdirSync, existsSync, watchFile, unwatchFile } from 'node:fs'
-import { join, dirname, resolve } from 'node:path'
-import { homedir } from 'node:os'
+import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { fetchJiraTicket } from '../lib/jira.mjs'
+import { discoverJiraCredentials } from '../lib/coday-config.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
 const RUN_ENTRY = join(__dirname, '..', 'run.mjs')
 const PORT = parseInt(process.env.PORT ?? '3141', 10)
-const AGENTOS_URL = process.env.AGENTOS_URL ?? 'http://localhost:8124'
-const FACTORY_USER = process.env.FACTORY_USER ?? 'benjamin.valdes'
+const AGENTOS_URL = process.env.AGENTOS_URL ?? 'http://localhost:8123'
+
+// FACTORY_USER: used only to identify the AgentOS user for proxy headers.
+// No hardcoded personal username — resolved from Coday config or left undefined.
+const FACTORY_USER = process.env.FACTORY_USER
 
 // ---------------------------------------------------------------------------
-// Lecture des credentials Jira depuis user.yaml Coday (fallback env)
+// Jira credentials — env vars take priority; Coday user.yaml is the fallback.
+//
+// discoverJiraCredentials() reads ~/.coday/users/<sanitized-dir>/user.yaml.
+// When FACTORY_USER is set, it targets that specific user directory.
+// When absent, it auto-discovers from all user directories (requires exactly one
+// to have Jira credentials; zero or multiple keeps Jira unavailable).
 // ---------------------------------------------------------------------------
-
-/**
- * Lit le user.yaml Coday pour l'utilisateur courant et extrait les credentials
- * Jira du premier projet qui en possède.
- *
- * Structure attendue dans user.yaml :
- *   projects:
- *     <nom>:
- *       integration:
- *         JIRA:
- *           apiUrl: https://xxx.atlassian.net
- *           username: user@example.com
- *           apiKey: xxx
- *
- * Retourne { apiUrl, username, apiKey } ou null si introuvable / malformé.
- * Pas de dépendance externe : on cherche le bloc JIRA: par regex puis on lit
- * les trois clés qui le suivent — suffisant pour le format généré par Coday.
- */
-function readJiraFromCodayConfig() {
-  try {
-    // Coday sanitizes usernames by replacing ALL non-alphanumeric chars with '_'
-    // (see libs/utils/src/lib/username-utils.ts). 'benjamin.valdes' → 'benjamin_valdes'.
-    const safeUser = FACTORY_USER.replace(/[^a-zA-Z0-9]/g, '_')
-    const configPath = resolve(homedir(), '.coday', 'users', safeUser, 'user.yaml')
-    const content = readFileSync(configPath, 'utf8')
-
-    // Trouver le bloc "JIRA:" dans le YAML
-    const jiraBlockMatch = content.match(/^(\s+)JIRA:\s*$/m)
-    if (!jiraBlockMatch) return null
-
-    const jiraStart = content.indexOf(jiraBlockMatch[0])
-    const afterJira = content.slice(jiraStart + jiraBlockMatch[0].length)
-
-    const apiUrl = afterJira.match(/apiUrl:\s*(.+)/)?.[1]?.trim()
-    const username = afterJira.match(/username:\s*(.+)/)?.[1]?.trim()
-    const apiKey = afterJira.match(/apiKey:\s*(.+)/)?.[1]?.trim()
-
-    if (!apiUrl || !username || !apiKey) return null
-    return { apiUrl, username, apiKey }
-  } catch {
-    return null
-  }
-}
-
-const _codayJira = readJiraFromCodayConfig()
+const _codayDiscovery = discoverJiraCredentials(FACTORY_USER)
+const _codayJira = _codayDiscovery.credentials
 
 // ---------------------------------------------------------------------------
 // Credentials Jira — lus depuis l'environnement du dashboard, pas du formulaire.
@@ -121,13 +86,17 @@ const _codayJira = readJiraFromCodayConfig()
 // Priorité : variable d'environnement > user.yaml Coday.
 // Le fallback sur user.yaml évite de devoir passer les credentials à chaque
 // démarrage quand ils sont déjà configurés dans Coday.
+// Note: _codayJira.username is the Jira API email, distinct from codayUsername.
 const JIRA_BASE_URL = process.env.JIRA_BASE_URL ?? _codayJira?.apiUrl ?? null
-const JIRA_EMAIL = process.env.JIRA_EMAIL ?? _codayJira?.username ?? null
+const JIRA_EMAIL = process.env.JIRA_EMAIL ?? _codayJira?.jiraUsername ?? null
 const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN ?? _codayJira?.apiKey ?? null
+
+// Resolved Coday username for AgentOS proxy headers (may be undefined)
+const RESOLVED_FACTORY_USER = FACTORY_USER ?? _codayJira?.codayUsername ?? undefined
 
 // ---------------------------------------------------------------------------
 // Registre en mémoire des process en cours
-// { runId → { child: ChildProcess|null, listeners: Set<ServerResponse>, lines: string[] } }
+// { runId → { child: ChildProcess|null, listeners: Set<ServerResponse>, lines: string[], stopping: boolean } }
 // ---------------------------------------------------------------------------
 const activeRuns = new Map()
 
@@ -353,7 +322,7 @@ function launchRun(params) {
     FACTORY_NAMESPACE_ID,
     FACTORY_TASK,
     AGENTOS_URL: agentosUrl ?? AGENTOS_URL,
-    FACTORY_USER: factoryUser ?? FACTORY_USER,
+    FACTORY_USER: factoryUser ?? RESOLVED_FACTORY_USER,
   }
   if (FACTORY_AGENT) env.FACTORY_AGENT = FACTORY_AGENT
   if (FACTORY_AGENT_ANALYST) env.FACTORY_AGENT_ANALYST = FACTORY_AGENT_ANALYST
@@ -402,7 +371,7 @@ function launchRun(params) {
 
   // Entrée provisoire indexée par PID le temps de trouver le runId
   const pidKey = `pid:${child.pid}`
-  activeRuns.set(pidKey, { child, listeners: new Set(), lines: [] })
+  activeRuns.set(pidKey, { child, listeners: new Set(), lines: [], stopping: false })
 
   let runId = null
   const entry = () => activeRuns.get(runId ?? pidKey)
@@ -476,7 +445,9 @@ function launchRun(params) {
 
 async function fetchAgents(namespaceId) {
   const url = `${AGENTOS_URL}/api/agent-configs/by-parentId/${namespaceId}`
-  const res = await fetch(url, { headers: { 'X-External-User-Id': FACTORY_USER } })
+  const headers = {}
+  if (RESOLVED_FACTORY_USER) headers['X-External-User-Id'] = RESOLVED_FACTORY_USER
+  const res = await fetch(url, { headers })
   if (!res.ok) throw new Error(`AgentOS ${res.status}`)
   return res.json()
 }
@@ -493,7 +464,9 @@ async function fetchAgents(namespaceId) {
  */
 async function fetchCaseEvents(caseId) {
   const url = `${AGENTOS_URL}/api/case-events/by-parentId/${caseId}`
-  const res = await fetch(url, { headers: { 'X-External-User-Id': FACTORY_USER } })
+  const headers = {}
+  if (RESOLVED_FACTORY_USER) headers['X-External-User-Id'] = RESOLVED_FACTORY_USER
+  const res = await fetch(url, { headers })
   if (!res.ok) throw new Error(`AgentOS ${res.status}`)
   return res.json()
 }
@@ -550,7 +523,7 @@ const server = createServer(async (req, res) => {
   // HTTP serait contraire à la raison d'être de cette architecture.
   if (method === 'GET' && path === '/api/config') {
     const jiraConfigured = !!(JIRA_BASE_URL && JIRA_EMAIL && JIRA_API_TOKEN)
-    return send(res, 200, { agentosUrl: AGENTOS_URL, factoryUser: FACTORY_USER, jiraConfigured })
+    return send(res, 200, { agentosUrl: AGENTOS_URL, factoryUser: RESOLVED_FACTORY_USER, jiraConfigured })
   }
 
   // GET /api/runs
@@ -719,6 +692,55 @@ const server = createServer(async (req, res) => {
     return send(res, 200, detail)
   }
 
+  // POST /api/factory/runs/:id/stop — signal SIGTERM to the tracked child.
+  //
+  // DESIGN CONTRACT
+  // ───────────────
+  // - Sends SIGTERM to the child process; does NOT call endRun/write run_end.
+  // - The child's own SIGTERM handler (shutdown.mjs) owns active-case cleanup
+  //   and registry finalization. Duplicating that here would cause concurrent
+  //   run_end writes and corrupt the JSONL.
+  // - Idempotent: a second POST while already stopping returns 409.
+  // - Returns 202 on a newly requested stop.
+  // - Returns 409 if already stopping (guard against races).
+  // - Returns 404 if the runId is unknown to this server instance.
+  // - Returns 410 if the run has already finished (child is null).
+  const factoryStopMatch = path.match(/^\/api\/factory\/runs\/([^/]+)\/stop$/)
+  if (method === 'POST' && factoryStopMatch) {
+    const runId = factoryStopMatch[1]
+    const entry = activeRuns.get(runId)
+
+    if (!entry) {
+      // Unknown to this server instance — could be a finished/historical run.
+      // Distinguish: if the JSONL exists and has a run_end, it's finished (410).
+      // Otherwise genuinely unknown (404).
+      const jsonlPath = join(RUNS_DIR, `${runId}.jsonl`)
+      if (existsSync(jsonlPath)) {
+        const lines = parseJsonl(jsonlPath)
+        const hasEnd = lines.some((l) => l.kind === 'run_end')
+        if (hasEnd) return send(res, 410, { error: 'Run already finished.' })
+      }
+      return send(res, 404, { error: 'Run not found.' })
+    }
+
+    if (!entry.child) {
+      // Child already exited but entry still in map (cleanup pending).
+      return send(res, 410, { error: 'Run already finished.' })
+    }
+
+    if (entry.stopping) {
+      return send(res, 409, { error: 'Stop already requested.' })
+    }
+
+    entry.stopping = true
+    try {
+      entry.child.kill('SIGTERM')
+    } catch {
+      // Child may have exited between the check and the kill — not an error.
+    }
+    return send(res, 202, { runId, stopping: true })
+  }
+
   // GET /api/factory/runs/:id/stream — SSE alias
   const factoryStreamMatch = path.match(/^\/api\/factory\/runs\/([^/]+)\/stream$/)
   if (method === 'GET' && factoryStreamMatch) {
@@ -763,6 +785,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   server.listen(PORT, () => {
     console.log(`Factory dashboard → http://localhost:${PORT}`)
     console.log(`AgentOS           : ${AGENTOS_URL}`)
+    // Report Coday config discovery diagnostics (no secrets)
+    for (const msg of _codayDiscovery.diagnostics) console.log(`Coday config      : ${msg}`)
     if (JIRA_BASE_URL) {
       const src = process.env.JIRA_BASE_URL ? 'env' : 'user.yaml Coday'
       console.log(`Jira              : ${JIRA_BASE_URL} (${src})`)

@@ -1,24 +1,21 @@
 /**
  * Utilitaires Jira — factory/lib/jira.mjs
  *
- * Ce module regroupe les trois fonctions liées à Jira qui vivaient dans
- * factory/workflows/us-loop.mjs. Elles en ont été extraites pour deux raisons
- * indépendantes :
+ * Ce module regroupe les fonctions liées à Jira extraites de factory/workflows/us-loop.mjs.
  *
- *   1. Le serveur du dashboard (dashboard/server.mjs) a besoin de fetchJiraTicket
- *      pour afficher le contenu d'un ticket dans le panneau de phase fetch-ticket.
- *      Or server.mjs ne peut pas importer un workflow : un workflow a des effets de
- *      bord au chargement (il lit process.env immédiatement) et introduit des
- *      dépendances transitives non souhaitées dans le process du dashboard.
- *
- *   2. Ces fonctions n'avaient aucun test parce qu'elles étaient enfouies dans un
- *      workflow que l'on ne peut tester qu'en run réel. Extraites ici, elles peuvent
- *      être couvertes par factory/tests/test-jira.mjs sans aucun appel réseau.
+ * Exports :
+ *   extractTicketId  — extrait et normalise l'identifiant Jira
+ *   extractAdfText   — aplatit un noeud ADF en texte brut
+ *   fetchJiraTicket  — récupère ticket + commentaires, construit le contenu markdown
  *
  * Aucune dépendance externe — uniquement le fetch global et Buffer de Node.
- * C'est l'invariant de factory/ : l'instrument ne dépend pas de la santé de ce
- * qu'il mesure.
  */
+
+/**
+ * Budget de caractères pour les commentaires inclus dans ticketContent.
+ * Au-delà de ce budget, les commentaires les plus anciens sont tronqués.
+ */
+const COMMENTS_CHAR_BUDGET = 8000
 
 /**
  * Extrait l'identifiant Jira depuis un identifiant brut ou une URL complète.
@@ -69,22 +66,150 @@ export function extractAdfText(node) {
 }
 
 /**
- * Récupère un ticket Jira et retourne son contenu en markdown.
+ * Récupère tous les commentaires d'un ticket Jira avec pagination.
  *
- * Appelle GET /rest/api/3/issue/<ticketId> en Basic auth (email + token API).
+ * Appelle GET /rest/api/3/issue/{ticketId}/comment?orderBy=-created&maxResults=50
+ * en itérant sur les pages jusqu'à épuisement.
+ *
+ * Retourne les commentaires ordonnés du plus récent au plus ancien (l'ordre
+ * retourné par l'API avec orderBy=-created).
+ *
+ * @param {string} ticketId
+ * @param {string} jiraBaseUrl
+ * @param {string} jiraEmail
+ * @param {string} jiraApiToken
+ * @returns {Promise<Array<{author: string, created: string, body: string}>>}
+ */
+export async function fetchJiraComments(ticketId, jiraBaseUrl, jiraEmail, jiraApiToken) {
+  const credentials = Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString('base64')
+  const base = jiraBaseUrl.replace(/\/$/, '')
+  const PAGE_SIZE = 50
+
+  const allComments = []
+  let startAt = 0
+
+  while (true) {
+    const url = `${base}/rest/api/3/issue/${encodeURIComponent(ticketId)}/comment` +
+      `?orderBy=-created&maxResults=${PAGE_SIZE}&startAt=${startAt}`
+
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        Accept: 'application/json',
+      },
+    })
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`Jira comments API ${res.status} pour ${ticketId} : ${body.slice(0, 200)}`)
+    }
+
+    const data = await res.json()
+    const comments = data.comments ?? []
+    const total = data.total ?? 0
+
+    for (const c of comments) {
+      const authorName =
+        c.author?.displayName ??
+        c.author?.emailAddress ??
+        c.author?.accountId ??
+        'Unknown'
+      const created = c.created ?? ''
+      let body = ''
+      if (c.body) {
+        if (typeof c.body === 'string') {
+          body = c.body
+        } else {
+          body = extractAdfText(c.body).trim()
+        }
+      }
+      allComments.push({ author: authorName, created, body })
+    }
+
+    startAt += comments.length
+    if (startAt >= total || comments.length === 0) break
+  }
+
+  // allComments is already ordered newest-first (orderBy=-created)
+  return allComments
+}
+
+/**
+ * Applique le budget de caractères aux commentaires (ordonnés newest-first).
+ *
+ * Inclut les commentaires du plus récent au plus ancien jusqu'à épuisement
+ * du budget. Retourne les commentaires inclus et le nombre omis.
+ *
+ * @param {Array<{author: string, created: string, body: string}>} comments  Newest-first.
+ * @param {number} budget
+ * @returns {{ included: Array<{author: string, created: string, body: string}>, omitted: number }}
+ */
+export function applyCommentBudget(comments, budget) {
+  let remaining = budget
+  const included = []
+
+  for (const c of comments) {
+    const size = c.author.length + c.created.length + c.body.length + 50 // overhead per comment
+    if (remaining <= 0) break
+    included.push(c)
+    remaining -= size
+  }
+
+  const omitted = comments.length - included.length
+  return { included, omitted }
+}
+
+/**
+ * Formate les commentaires en bloc markdown.
+ *
+ * @param {Array<{author: string, created: string, body: string}>} comments
+ * @param {number} omitted
+ * @returns {string}
+ */
+function formatCommentsSection(comments, omitted) {
+  const parts = comments.map((c) => {
+    const date = c.created ? new Date(c.created).toISOString().slice(0, 10) : ''
+    return `**${c.author}** (${date}):\n${c.body}`
+  })
+
+  let section = parts.join('\n\n---\n\n')
+
+  if (omitted > 0) {
+    section += `\n\n*(${omitted} older comment${omitted === 1 ? '' : 's'} omitted — budget exceeded)*`
+  }
+
+  return section
+}
+
+/**
+ * Récupère un ticket Jira (et ses commentaires) et retourne le contenu en markdown.
+ *
+ * Appelle GET /rest/api/3/issue/<ticketId> et GET /rest/api/3/issue/<ticketId>/comment
+ * en Basic auth (email + token API).
+ *
  * Retourne un objet avec :
- *   - ticketContent : le markdown construit depuis summary + description + AC
- *   - summary       : le titre du ticket (fait factuel)
- *   - fieldCount    : nombre de champs non vides parmi les trois (fait factuel)
+ *   - ticketContent    : le markdown construit depuis summary + description + AC + comments
+ *   - summary          : le titre du ticket (fait factuel)
+ *   - fieldCount       : nombre de champs non vides parmi les trois (fait factuel)
+ *   - commentCount     : nombre total de commentaires sur le ticket
+ *   - commentsIncluded : nombre de commentaires inclus dans ticketContent
+ *   - commentsTruncated: true si au moins un commentaire a été omis
  *
- * En cas d'erreur HTTP, lève une Error avec le statut et les premiers caractères
- * du corps — suffisant pour diagnostiquer un 401, un 404 ou un 429.
+ * En cas d'erreur HTTP (ticket ou commentaires), lève une Error.
  *
  * @param {string} ticketId       Identifiant Jira, ex. 'PROJ-1234'.
  * @param {string} jiraBaseUrl    ex. 'https://monentreprise.atlassian.net'
  * @param {string} jiraEmail
  * @param {string} jiraApiToken
- * @returns {Promise<{ ticketContent: string, summary: string, fieldCount: number }>}
+ * @returns {Promise<{
+ *   ticketContent: string,
+ *   summary: string,
+ *   fieldCount: number,
+ *   commentCount: number,
+ *   commentsIncluded: number,
+ *   commentsTruncated: boolean
+ * }>}
  */
 export async function fetchJiraTicket(ticketId, jiraBaseUrl, jiraEmail, jiraApiToken) {
   const url = `${jiraBaseUrl.replace(/\/$/, '')}/rest/api/3/issue/${encodeURIComponent(ticketId)}`
@@ -119,8 +244,6 @@ export async function fetchJiraTicket(ticketId, jiraBaseUrl, jiraEmail, jiraApiT
   }
 
   // Acceptance criteria : champ custom courant (customfield_10016 ou similar)
-  // On cherche les clés contenant 'acceptance' (insensible à la casse) en premier,
-  // puis le champ standard 'customfield_10016' si présent.
   let acceptanceCriteria = ''
   for (const [key, value] of Object.entries(fields)) {
     if (!value) continue
@@ -135,13 +258,33 @@ export async function fetchJiraTicket(ticketId, jiraBaseUrl, jiraEmail, jiraApiT
     }
   }
 
+  // Commentaires — erreur fatale si l'appel échoue (contrat du fetch-ticket)
+  const allComments = await fetchJiraComments(ticketId, jiraBaseUrl, jiraEmail, jiraApiToken)
+  const commentCount = allComments.length
+
+  const { included, omitted } = applyCommentBudget(allComments, COMMENTS_CHAR_BUDGET)
+  const commentsIncluded = included.length
+  const commentsTruncated = omitted > 0
+
   // Construire le markdown
   const sections = [`## Summary\n${summary}`]
   if (description) sections.push(`## Description\n${description}`)
   if (acceptanceCriteria) sections.push(`## Acceptance criteria\n${acceptanceCriteria}`)
+
+  if (included.length > 0) {
+    sections.push(`## Comments\n${formatCommentsSection(included, omitted)}`)
+  }
+
   const ticketContent = sections.join('\n\n')
 
   const fieldCount = [summary, description, acceptanceCriteria].filter(Boolean).length
 
-  return { ticketContent, summary, fieldCount }
+  return {
+    ticketContent,
+    summary,
+    fieldCount,
+    commentCount,
+    commentsIncluded,
+    commentsTruncated,
+  }
 }

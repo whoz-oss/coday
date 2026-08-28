@@ -9,12 +9,33 @@
           <p class="factory-run-detail__summary">{{ run().context?.ticketSummary }}</p>
         }
       </div>
-      <div class="factory-run-detail__stats">
-        @for (stat of stats(); track stat.label) {
-          <div>
-            <span>{{ stat.label }}</span
-            ><strong [class.factory-run-detail__stat--alert]="stat.alert">{{ stat.value }}</strong>
-          </div>
+      <div class="factory-run-detail__header-right">
+        <div class="factory-run-detail__stats">
+          @for (stat of stats(); track stat.label) {
+            <div>
+              <span>{{ stat.label }}</span
+              ><strong [class.factory-run-detail__stat--alert]="stat.alert">{{ stat.value }}</strong>
+            </div>
+          }
+        </div>
+        @if (run().status === 'running') {
+          <button
+            type="button"
+            class="factory-run-detail__stop-btn"
+            title="Stop this run"
+            aria-label="Stop this run"
+            [disabled]="factoryState.stopping()"
+            (click)="onStopClick()"
+          >
+            <!-- Stop square icon (standard media control) -->
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+            </svg>
+            {{ factoryState.stopping() ? 'Stopping…' : 'Stop' }}
+          </button>
+          @if (factoryState.stopError()) {
+            <p class="factory-run-detail__stop-error" role="alert">{{ factoryState.stopError() }}</p>
+          }
         }
       </div>
     </header>

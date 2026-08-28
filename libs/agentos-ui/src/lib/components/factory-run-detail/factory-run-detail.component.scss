@@ -32,6 +32,14 @@
   border-bottom: 1px solid var(--color-divider);
 }
 
+.factory-run-detail__header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
 .factory-run-detail__kicker {
   margin: 0 0 0.3rem;
   font: 600 0.7rem var(--font-heading, monospace);
@@ -80,6 +88,39 @@
 
 .factory-run-detail__stat--alert {
   color: var(--red);
+}
+
+.factory-run-detail__stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--red, #e53e3e);
+  background: transparent;
+  color: var(--red, #e53e3e);
+  font: 600 0.72rem var(--font-heading, monospace);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+
+  &:hover:not(:disabled) {
+    background: var(--red, #e53e3e);
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.factory-run-detail__stop-error {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--red, #e53e3e);
 }
 
 .factory-run-detail__toolbar {
