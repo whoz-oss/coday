@@ -2506,6 +2506,43 @@ paths:
       summary: Export a Prompt as a YAML file
       tags:
       - prompt-controller
+  /api/prompts/{id}/translations/{languageCode}:
+    post:
+      description: "Returns the translated content list (same indices as `content`).\
+        \ If the requested language matches `sourceLanguage`, returns `content` as-is.\
+        \ If a cached translation exists it is returned without an LLM call. Otherwise\
+        \ the content is translated via the namespace's AI model, persisted, and returned.\
+        \ At least one of `namespaceId` / `namespaceExternalId` is required for model\
+        \ resolution."
+      operationId: translatePrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: languageCode
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptTranslateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptTranslation"
+          description: OK
+      summary: Translate prompt content into a target language
+      tags:
+      - prompt-controller
   /api/scheduled-prompts:
     post:
       operationId: createScheduledPrompt
@@ -4320,6 +4357,33 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PromptParameter"
+        sourceLanguage:
+          type: string
+          description: BCP-47 language code of the authored content and title. Defaults
+            to 'en'.
+          example: en
+        title:
+          type: string
+          description: "Optional user-facing display label (e.g. starter button text).\
+            \ Distinct from content, which is the message sent to the LLM. Null when\
+            \ no explicit title has been set."
+        translatedContent:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: "On-demand translations of content, keyed by BCP-47 language\
+            \ code. Each value is a list mirroring the indices of content. Cleared\
+            \ automatically when content or sourceLanguage is updated."
+        translatedTitles:
+          type: object
+          additionalProperties:
+            type: string
+          description: "On-demand translations of title, keyed by BCP-47 language\
+            \ code. Each value is a single translated string. Null when title is null\
+            \ or no title translations have been generated. Cleared automatically\
+            \ when title or sourceLanguage is updated."
         updatedBy:
           type: string
         updatedOn:
@@ -4334,6 +4398,7 @@ components:
       - content
       - name
       - parameters
+      - sourceLanguage
     PromptEffectiveRequest:
       type: object
       properties:
@@ -4391,6 +4456,31 @@ components:
           - string
           - "null"
           format: uuid
+    PromptTranslateRequest:
+      type: object
+      properties:
+        namespaceExternalId:
+          type: string
+          description: Namespace external ID for AI model resolution (resolved server-side).
+            Mutually exclusive with namespaceId; at least one is required.
+        namespaceId:
+          type: string
+          format: uuid
+          description: Namespace UUID for AI model resolution. Mutually exclusive
+            with namespaceExternalId; at least one is required.
+    PromptTranslation:
+      type: object
+      properties:
+        content:
+          type: array
+          description: Translated content list. Same indices as the source content.
+          items:
+            type: string
+        title:
+          type: string
+          description: Translated display label. Null when the prompt has no title.
+      required:
+      - content
     QuestionEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
