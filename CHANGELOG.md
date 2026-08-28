@@ -1,3 +1,13 @@
+## 0.249.8 (2026-08-28)
+
+### 🚀 Features
+
+- #33829 share a case with other users (multi-user case) ([#1248](https://github.com/whoz-oss/coday/pull/1248), [#33829](https://github.com/whoz-oss/coday/issues/33829))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.249.7 (2026-08-28)
 
 ### 🚀 Features
