@@ -3,10 +3,11 @@ import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Case, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
 import { EMPTY, of, Subject, throwError } from 'rxjs'
-import { CaseShellComponent } from './case-shell.component'
+import { CaseShellComponent, ShellView } from './case-shell.component'
 import { CaseStateService } from '../../services/case-state.service'
 import { UserStateService } from '../../services/user-state.service'
 import { THEME_PORT } from '../../services/theme.service'
+import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 
 describe('CaseShellComponent', () => {
   const NS_ID = 'ns-1'
@@ -26,6 +27,7 @@ describe('CaseShellComponent', () => {
   let userStateMock: { currentUser: jest.Mock; loadMe: jest.Mock }
   let namespaceControllerMock: { listAllNamespace: jest.Mock }
   let themeMock: { theme: jest.Mock; setTheme: jest.Mock }
+  let namespaceStateMock: { selectNamespace: jest.Mock; namespaces$: any; initialized$: any }
 
   function makeComponent(queryParams: Record<string, string> = {}, cases: Case[] = []): CaseShellComponent {
     queryParams$ = new Subject()
@@ -49,6 +51,11 @@ describe('CaseShellComponent', () => {
       theme: jest.fn().mockReturnValue('light'),
       setTheme: jest.fn(),
     }
+    namespaceStateMock = {
+      selectNamespace: jest.fn(),
+      namespaces$: of([]),
+      initialized$: of(false),
+    }
 
     TestBed.configureTestingModule({
       providers: [
@@ -65,6 +72,7 @@ describe('CaseShellComponent', () => {
         { provide: NamespaceControllerService, useValue: namespaceControllerMock },
         { provide: THEME_PORT, useValue: themeMock },
         { provide: ElementRef, useValue: { nativeElement: document.createElement('div') } },
+        { provide: NamespaceStateService, useValue: namespaceStateMock },
       ],
     })
 
@@ -177,6 +185,92 @@ describe('CaseShellComponent', () => {
 
       expect(errorSpy).toHaveBeenCalled()
       expect(alertSpy).toHaveBeenCalled()
+    })
+  })
+
+  // ── View / tab navigation ──────────────────────────────────────────────────
+
+  describe('activeView', () => {
+    it('defaults to cases when ?view is absent', () => {
+      const component = makeComponent({ ns: NS_ID })
+      expect(component['activeView']()).toBe<ShellView>('cases')
+    })
+
+    it('returns factory when ?view=factory', () => {
+      const component = makeComponent({ ns: NS_ID, view: 'factory' })
+      expect(component['activeView']()).toBe<ShellView>('factory')
+    })
+
+    it('returns cases for unknown view values (backward compat)', () => {
+      const component = makeComponent({ ns: NS_ID, view: 'unknown-garbage' })
+      expect(component['activeView']()).toBe<ShellView>('cases')
+    })
+
+    it('is reactive: emitting ?view=factory updates the signal', () => {
+      const component = makeComponent({ ns: NS_ID })
+      expect(component['activeView']()).toBe('cases')
+
+      queryParams$.next({ ns: NS_ID, view: 'factory' })
+      expect(component['activeView']()).toBe('factory')
+
+      queryParams$.next({ ns: NS_ID })
+      expect(component['activeView']()).toBe('cases')
+    })
+  })
+
+  describe('switchView', () => {
+    it('navigates to factory with ?view=factory and preserves ?ns', () => {
+      const component = makeComponent({ ns: NS_ID })
+      routerMock.navigate.mockClear()
+
+      component['switchView']('factory')
+
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos/home'], {
+        queryParams: { ns: NS_ID, view: 'factory' },
+      })
+    })
+
+    it('navigates to cases without a view param (clean URL)', () => {
+      const component = makeComponent({ ns: NS_ID, view: 'factory' })
+      routerMock.navigate.mockClear()
+
+      component['switchView']('cases')
+
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos/home'], {
+        queryParams: expect.not.objectContaining({ view: 'cases' }),
+      })
+    })
+
+    it('preserves ?ns when switching to factory and ?ns is present', () => {
+      const component = makeComponent({ ns: 'special-ns' })
+      routerMock.navigate.mockClear()
+
+      component['switchView']('factory')
+
+      const call = routerMock.navigate.mock.calls[0]
+      expect(call[1].queryParams.ns).toBe('special-ns')
+    })
+  })
+
+  describe('onNamespaceSelected', () => {
+    it('preserves ?view=factory when switching namespace while in factory view', () => {
+      const component = makeComponent({ ns: NS_ID, view: 'factory' })
+      routerMock.navigate.mockClear()
+
+      component['onNamespaceSelected']({ id: 'ns-2', name: 'NS2' } as any)
+
+      const call = routerMock.navigate.mock.calls[0]
+      expect(call[1].queryParams.view).toBe('factory')
+    })
+
+    it('does NOT include ?view when switching namespace from cases view', () => {
+      const component = makeComponent({ ns: NS_ID })
+      routerMock.navigate.mockClear()
+
+      component['onNamespaceSelected']({ id: 'ns-2', name: 'NS2' } as any)
+
+      const call = routerMock.navigate.mock.calls[0]
+      expect(call[1].queryParams['view']).toBeUndefined()
     })
   })
 })

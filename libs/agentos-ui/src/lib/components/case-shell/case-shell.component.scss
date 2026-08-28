@@ -1,3 +1,5 @@
+@use 'libs/design-system/src/styles' as ds;
+
 :host {
   display: flex;
   flex-direction: column;
@@ -24,6 +26,50 @@
     }
   }
 
+  // ── Tab strip ──
+  &__tabs {
+    display: flex;
+    flex-shrink: 0;
+    gap: 0;
+    border-bottom: 1px solid var(--color-divider);
+    // Match the sidebar/topbar band background, not the lighter surface tone.
+    background: var(--color-bg);
+    padding: 0 1rem;
+  }
+
+  &__tab {
+    // Strip all native button chrome: background, border, padding, font.
+    @include ds.button-reset;
+
+    display: inline-flex;
+    align-items: center;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    // Reserve the 2px bottom slot so layout doesn't shift on activation.
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition:
+      color 140ms,
+      border-color 140ms;
+    white-space: nowrap;
+
+    &:hover {
+      color: var(--color-text);
+    }
+
+    &:focus-visible {
+      @include ds.focus-ring;
+    }
+
+    &--active {
+      color: var(--color-accent);
+      border-bottom-color: var(--color-accent);
+    }
+  }
+
   // ── Main ──
   &__main {
     flex: 1;
@@ -33,7 +79,8 @@
     flex-direction: column;
     overflow: hidden;
 
-    > * {
+    // Tab strip is flex-shrink: 0; remaining children fill the rest.
+    > *:not(.case-shell__tabs) {
       flex: 1;
       min-height: 0;
     }

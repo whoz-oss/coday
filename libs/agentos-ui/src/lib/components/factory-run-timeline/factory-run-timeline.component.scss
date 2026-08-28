@@ -1,0 +1,263 @@
+:host {
+  display: block;
+  overflow-x: hidden;
+}
+.timeline {
+  border-block: 1px solid var(--color-divider, #d4d4d8);
+}
+.timeline__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  font: 600 0.72rem var(--font-heading, monospace);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary, #52525b);
+}
+.timeline__legend {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.timeline__legend-line {
+  width: 1px;
+  height: 0.8rem;
+  background: var(--color-warning, #b7791f);
+}
+.timeline__canvas {
+}
+.timeline__row {
+  display: grid;
+  grid-template-columns: 14rem 1fr;
+  min-height: var(--lane-height, 0);
+  border-top: 1px solid var(--color-divider, #d4d4d8);
+}
+.timeline__row--axis {
+  background: var(--color-surface-secondary, #f4f4f5);
+}
+.timeline__gutter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  border-right: 1px solid var(--color-divider, #d4d4d8);
+  font: 600 0.7rem var(--font-heading, monospace);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary, #52525b);
+}
+.timeline__gutter--lane {
+  min-height: var(--lane-height, 0);
+  flex-wrap: wrap;
+  align-content: center;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.timeline__gutter--lane strong {
+  font: 600 0.9rem var(--font-heading, monospace);
+  color: var(--color-text, #171717);
+}
+.timeline__gutter--lane small {
+  width: 100%;
+  color: var(--color-text-tertiary, #737373);
+}
+.timeline__kind {
+  padding: 0.12rem 0.35rem;
+  background: var(--color-accent-100, #dbeafe);
+  color: var(--color-accent-800, #1e40af);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+}
+.timeline__kind--agent {
+  background: var(--color-surface-muted, #e5e5e5);
+  color: var(--color-neutral-700, #404040);
+}
+/* --plot-pad reserves visual breathing room between bars and the track borders.
+   IMPORTANT: padding-inline must NOT be on the positioning ancestor (.timeline__plot)
+   because percentage left/width on absolutely-positioned children resolve against the
+   padding edge, not the content edge. Bars at left+width=100% would land inside the
+   gutter and be clipped by overflow:hidden on .timeline__track.
+   The gutter is applied via margin-inline on the non-positioned .timeline__track wrapper
+   so that .timeline__plot (the coordinate origin) has zero padding and its 100% === the
+   full visible content width. barGeometry already clamps right edges to 100% so no bar
+   can ever exceed the plot width. */
+.timeline__track {
+  --plot-pad: 8px;
+  position: relative;
+  overflow: hidden;
+}
+.timeline__track--axis {
+  height: 2rem;
+}
+.timeline__plot {
+  position: relative;
+  height: 100%;
+  margin-inline: var(--plot-pad);
+}
+.timeline__tick-label {
+  position: absolute;
+  top: 0.5rem;
+  padding-left: 0.35rem;
+  border-left: 1px solid var(--color-divider, #d4d4d8);
+  white-space: nowrap;
+  font: 0.67rem var(--font-heading, monospace);
+  color: var(--color-text-tertiary, #737373);
+}
+.timeline__tick-label--last {
+  transform: translateX(-100%);
+  padding-left: 0;
+  padding-right: 0.35rem;
+  border-left: 0;
+  border-right: 1px solid var(--color-divider, #d4d4d8);
+}
+.timeline__grid-line {
+  position: absolute;
+  inset-block: 0;
+  width: 1px;
+  background: var(--color-divider, #d4d4d8);
+  opacity: 0.45;
+}
+.timeline__spine {
+  position: absolute;
+  inset-inline: 0;
+  height: 1px;
+  background: var(--color-divider, #d4d4d8);
+}
+.timeline__playhead,
+.timeline__playhead-caret {
+  position: absolute;
+  z-index: 3;
+  width: 1px;
+  background: var(--color-warning, #b7791f);
+}
+.timeline__playhead {
+  inset-block: 0;
+}
+.timeline__playhead-caret {
+  top: 0;
+  width: 0;
+  height: 0;
+  transform: translateX(-4px);
+  border-inline: 4px solid transparent;
+  border-top: 6px solid var(--color-warning, #b7791f);
+  background: transparent;
+}
+.timeline__bar {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0 0.45rem;
+  border: 1px solid var(--color-success, #15803d);
+  background: var(--color-success-bg, #dcfce7);
+  color: var(--color-text, #171717);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.timeline__bar > i {
+  flex: none;
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.timeline__bar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.timeline__bar small {
+  margin-left: auto;
+  opacity: 0.7;
+}
+.timeline__bar--failed {
+  border-color: var(--color-error, #b91c1c);
+  background: var(--red-bg, #fee2e2);
+  color: var(--color-error, #b91c1c);
+}
+.timeline__bar--running {
+  border-color: var(--color-warning, #b7791f);
+  background: var(--color-surface-secondary, #f4f4f5);
+  color: var(--color-warning, #b7791f);
+  background-image: repeating-linear-gradient(
+    115deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--color-warning, #b7791f) 24%, transparent) 6px 12px
+  );
+}
+.timeline__bar.is-selected,
+.timeline__bar:focus-visible {
+  outline: 2px solid var(--color-accent, #2563eb);
+  outline-offset: 2px;
+}
+/* Compact markers: fixed 8px pixel width, no percentage width, positioned by anchor.
+   padding is removed so the border+content fits exactly in 8px.
+   transform anchors the physical marker to the correct side of the temporal position.
+   overflow:visible ensures the dot is never clipped by the bar's own box. */
+.timeline__bar--compact {
+  padding: 0;
+  width: 8px;
+  min-width: 8px;
+  overflow: visible;
+}
+.timeline__bar--compact-right {
+  transform: none;
+}
+.timeline__bar--compact-center {
+  transform: translateX(-50%);
+}
+.timeline__bar--compact-left {
+  transform: translateX(-100%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .timeline__bar--compact-center,
+  .timeline__bar--compact-left {
+    transform: none;
+  }
+}
+.timeline__callout {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  height: 0.8rem;
+  white-space: nowrap;
+  pointer-events: none;
+  font-size: 0.68rem;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.timeline__callout > i {
+  flex: none;
+  width: 0.45rem;
+  height: 1px;
+  margin-right: 0.3rem;
+  background: currentColor;
+}
+.timeline__callout--flipped {
+  flex-direction: row-reverse;
+}
+.timeline__callout--flipped > i {
+  margin: 0 0 0 0.3rem;
+}
+.timeline__callout--failed {
+  color: var(--color-error, #b91c1c);
+}
+.timeline__callout--running {
+  color: var(--color-warning, #b7791f);
+}
+.timeline__empty {
+  padding: 1rem;
+  color: var(--color-text-secondary, #52525b);
+}
+@media (prefers-reduced-motion: reduce) {
+  .timeline__bar--running {
+    background-image: none;
+  }
+}

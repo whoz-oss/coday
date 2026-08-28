@@ -86,15 +86,48 @@
 
   <!-- ═══ MAIN ═══ -->
   <main class="case-shell__main">
-    @if (activeCaseId()) {
-      <agentos-case-chat
-        [showTechnicalOverride]="showTechnical()"
-        (starToggled)="onStarToggled($event)"
-        (deleteRequested)="onDeleteRequested($event)"
-        (logsToggled)="onMenuToggleLogs()"
-      />
-    } @else {
-      <agentos-case-home [namespaceName]="selectedNamespace()?.name ?? null" />
+    <!-- Tab strip — persistent, above main content.
+         Uses nav + button for correct semantics: links that update the URL
+         but don't cause a full navigation. aria-current='page' marks the
+         active tab. -->
+    <nav class="case-shell__tabs" aria-label="Main views">
+      <button
+        type="button"
+        class="case-shell__tab"
+        [class.case-shell__tab--active]="activeView() === 'cases'"
+        [attr.aria-current]="activeView() === 'cases' ? 'page' : null"
+        (click)="switchView('cases')"
+      >
+        Cases
+      </button>
+      <button
+        type="button"
+        class="case-shell__tab"
+        [class.case-shell__tab--active]="activeView() === 'factory'"
+        [attr.aria-current]="activeView() === 'factory' ? 'page' : null"
+        (click)="switchView('factory')"
+      >
+        Factory
+      </button>
+    </nav>
+
+    <!-- Cases view -->
+    @if (activeView() === 'cases') {
+      @if (activeCaseId()) {
+        <agentos-case-chat
+          [showTechnicalOverride]="showTechnical()"
+          (starToggled)="onStarToggled($event)"
+          (deleteRequested)="onDeleteRequested($event)"
+          (logsToggled)="onMenuToggleLogs()"
+        />
+      } @else {
+        <agentos-case-home [namespaceName]="selectedNamespace()?.name ?? null" />
+      }
+    }
+
+    <!-- Factory view (embedded) -->
+    @if (activeView() === 'factory') {
+      <agentos-factory-runs [embeddedNamespaceId]="namespaceId() ?? undefined" />
     }
   </main>
 </div>

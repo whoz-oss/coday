@@ -21,6 +21,9 @@ import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
 import { ShellTopbarMobileComponent } from './shell-topbar-mobile/shell-topbar-mobile.component'
 import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/shell-case-switcher-mobile.component'
+import { FactoryRunsComponent } from '../factory-runs/factory-runs.component'
+
+export type ShellView = 'cases' | 'factory'
 
 /**
  * CaseShellComponent — smart layout orchestrator for the case section.
@@ -35,6 +38,7 @@ import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/s
  * Active namespace and case are read from query params:
  *   ?ns=<namespaceId>   → active namespace
  *   ?case=<caseId>      → active case (renders CaseChatComponent when present)
+ *   ?view=cases|factory → active tab; absence means 'cases' (backward-compatible)
  *
  * When no ?ns is present, auto-selects the first available namespace.
  */
@@ -43,6 +47,7 @@ import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/s
   imports: [
     CaseChatComponent,
     CaseHomeComponent,
+    FactoryRunsComponent,
     ShellSidebarComponent,
     ShellTopbarMobileComponent,
     ShellCaseSwitcherMobileComponent,
@@ -135,6 +140,13 @@ export class CaseShellComponent {
   private readonly _activeCaseIdRaw = toSignal(this.route.queryParams.pipe(map((p) => (p['case'] as string) ?? null)))
   protected readonly activeCaseId = computed(() => this._activeCaseIdRaw() ?? null)
 
+  private readonly _activeViewRaw = toSignal(this.route.queryParams.pipe(map((p) => (p['view'] as string) ?? null)))
+  /** Active tab: 'factory' | 'cases' (default, backward-compatible). */
+  protected readonly activeView = computed<ShellView>(() => {
+    const v = this._activeViewRaw()
+    return v === 'factory' ? 'factory' : 'cases'
+  })
+
   // ---------------------------------------------------------------------------
   // Data
   // ---------------------------------------------------------------------------
@@ -197,7 +209,11 @@ export class CaseShellComponent {
   protected onNamespaceSelected(ns: NamespaceListItem): void {
     this.selectedNamespace.set(ns)
     this.nsMenuOpen.set(false)
-    this.router.navigate(['/agentos/home'], { queryParams: { ns: ns.id } })
+    // Preserve the active view when switching namespaces.
+    const view = this.activeView()
+    const queryParams: Record<string, string> = { ns: ns.id }
+    if (view === 'factory') queryParams['view'] = 'factory'
+    this.router.navigate(['/agentos/home'], { queryParams })
   }
 
   protected toggleNsMenu(event?: Event): void {
@@ -270,6 +286,18 @@ export class CaseShellComponent {
           alert('Could not rename the case. Please try again.')
         },
       })
+  }
+
+  // ---------------------------------------------------------------------------
+  // View / tab navigation
+  // ---------------------------------------------------------------------------
+
+  protected switchView(view: ShellView): void {
+    const nsId = this.namespaceId()
+    const queryParams: Record<string, string | undefined> = { ns: nsId ?? undefined }
+    if (view === 'factory') queryParams['view'] = 'factory'
+    // 'cases' is default — omit the param to keep URLs clean.
+    this.router.navigate(['/agentos/home'], { queryParams })
   }
 
   // ---------------------------------------------------------------------------

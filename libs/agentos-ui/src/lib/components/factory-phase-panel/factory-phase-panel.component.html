@@ -1,0 +1,170 @@
+<aside class="phase-panel" aria-labelledby="factory-phase-title">
+  <!-- ── Phase header: name, kind/status, timing ── -->
+  <header class="phase-panel__header">
+    <div class="phase-panel__header-identity">
+      <p class="phase-panel__kicker">Selected phase</p>
+      <h3 id="factory-phase-title">{{ phase().name }}</h3>
+    </div>
+    <div class="phase-panel__header-meta">
+      <span class="phase-panel__chip phase-panel__chip--kind">{{ phase().phaseKind }}</span>
+      <span class="phase-panel__chip">{{ phase().status }}</span>
+      <span class="phase-panel__chip phase-panel__chip--dim">
+        @if (phase().startedAt) {
+          {{ phase().startedAt | slice: 11 : 19 }}
+        } @else {
+          —
+        }
+        &nbsp;&middot;&nbsp;
+        @if (phase().durationMs !== null) {
+          {{ phase().durationMs }}ms
+        } @else {
+          running
+        }
+      </span>
+    </div>
+  </header>
+
+  <!-- ── Body: two-column (Facts | Conversation) + Events below ── -->
+  <div class="phase-panel__body">
+    <!-- LEFT: Facts / Evidence -->
+    <section class="phase-panel__facts" aria-label="Phase facts">
+      <h4 class="phase-panel__section-title">Facts</h4>
+      <div class="phase-panel__facts-scroll">
+        @let ev = evidence();
+        @if (ev.command; as command) {
+          <div>
+            <h5 class="phase-panel__field-title">Command</h5>
+            <code class="phase-panel__code">{{ command }}</code>
+          </div>
+        }
+        @if (ev.tools; as tools) {
+          <div>
+            <h5 class="phase-panel__field-title">Tools</h5>
+            <p class="phase-panel__text">{{ tools }}</p>
+          </div>
+        }
+        @if (ev.files; as files) {
+          <div>
+            <h5 class="phase-panel__field-title">Files</h5>
+            <p class="phase-panel__text">{{ files }}</p>
+          </div>
+        }
+        @if (ev.log; as log) {
+          <div>
+            <h5 class="phase-panel__field-title">Log</h5>
+            <pre class="phase-panel__code">{{ log }}</pre>
+          </div>
+        }
+        @for (section of sections(); track section.title) {
+          <div>
+            <h5 class="phase-panel__field-title">{{ section.title }}</h5>
+            <dl class="phase-panel__dl">
+              @for (fact of section.entries; track fact.key) {
+                <dt>{{ fact.key }}</dt>
+                <dd>
+                  @if (fact.chips?.length) {
+                    <span class="phase-panel__chips">
+                      @for (chip of fact.chips; track chip) {
+                        <span>{{ chip }}</span>
+                      }
+                    </span>
+                  } @else {
+                    {{ fact.value }}
+                  }
+                </dd>
+              }
+            </dl>
+          </div>
+        }
+        @if (!sections().length && !ev.command && !ev.tools && !ev.files && !ev.log) {
+          <p class="phase-panel__empty">No recorded facts for this phase.</p>
+        }
+      </div>
+    </section>
+
+    <!-- RIGHT: Conversation — BRIEF + AGENT RESPONSE -->
+    <section class="phase-panel__conversation" aria-label="Phase conversation">
+      <h4 class="phase-panel__section-title">Conversation</h4>
+      @let state = eventsState();
+      @let br = briefResponse();
+      <div class="phase-panel__convo-blocks">
+        <!-- Brief -->
+        <div class="phase-panel__convo-block">
+          <p class="phase-panel__convo-label">Brief</p>
+          <div class="phase-panel__convo-scroll phase-panel__convo-scroll--brief">
+            @if (br.brief; as brief) {
+              <pre class="phase-panel__convo-pre">{{ brief }}</pre>
+            } @else {
+              <p class="phase-panel__empty">
+                @if (state.status === 'loading') {
+                  Loading…
+                } @else if (state.status === 'no-case-id') {
+                  No case ID — brief unavailable.
+                } @else {
+                  No brief recorded for this phase.
+                }
+              </p>
+            }
+          </div>
+        </div>
+
+        <!-- Agent response -->
+        <div class="phase-panel__convo-block">
+          <p class="phase-panel__convo-label">Agent response</p>
+          <div class="phase-panel__convo-scroll phase-panel__convo-scroll--response">
+            @if (br.agentResponse; as resp) {
+              <pre class="phase-panel__convo-pre">{{ resp }}</pre>
+            } @else {
+              <p class="phase-panel__empty">
+                @if (state.status === 'loading') {
+                  Loading…
+                } @else if (state.status === 'no-case-id') {
+                  No case ID — response unavailable.
+                } @else {
+                  No agent response recorded for this phase.
+                }
+              </p>
+            }
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- EVENTS: full-width row below the two columns -->
+    <section class="phase-panel__events" aria-label="Phase events">
+      <h4 class="phase-panel__section-title">
+        Events
+        @if (eventCount(); as count) {
+          <span class="phase-panel__count">({{ count }})</span>
+        }
+      </h4>
+
+      @let evState = eventsState();
+      <div class="phase-panel__events-scroll">
+        @if (evState.status === 'loading') {
+          <p class="phase-panel__empty phase-panel__events-loading">Loading events…</p>
+        } @else if (evState.status === 'no-case-id') {
+          <p class="phase-panel__empty">No case ID recorded for this phase — events unavailable.</p>
+        } @else if (evState.status === 'empty') {
+          <p class="phase-panel__empty">No events recorded for this case.</p>
+        } @else if (evState.status === 'error') {
+          <p class="phase-panel__empty phase-panel__events-error">{{ errorMessage(evState) }}</p>
+        } @else if (evState.status === 'loaded') {
+          <ol class="phase-panel__event-list">
+            @for (row of loadedRows(evState); track row.id) {
+              <li class="phase-panel__event-row phase-panel__event-row--{{ row.kind }}">
+                <span class="phase-panel__event-time">{{ row.timestamp | slice: 11 : 19 }}</span>
+                <span class="phase-panel__event-badge">{{ eventKindLabel(row.kind) }}</span>
+                <span class="phase-panel__event-detail">
+                  <agentos-factory-phase-event-row [row]="row" />
+                </span>
+              </li>
+            }
+          </ol>
+        } @else {
+          <p class="phase-panel__empty">Select a phase with an associated case to view events.</p>
+        }
+      </div>
+    </section>
+  </div>
+</aside>

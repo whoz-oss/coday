@@ -1,0 +1,46 @@
+<section class="factory-run-detail" aria-label="Factory run detail">
+  <!-- Fixed top: run header + toolbar + Gantt -->
+  <div class="factory-run-detail__top">
+    <header class="factory-run-detail__header">
+      <div>
+        <p class="factory-run-detail__kicker">Factory run</p>
+        <h2>{{ run().context?.ticketId || run().workflow }}</h2>
+        @if (run().context?.ticketSummary) {
+          <p class="factory-run-detail__summary">{{ run().context?.ticketSummary }}</p>
+        }
+      </div>
+      <div class="factory-run-detail__stats">
+        @for (stat of stats(); track stat.label) {
+          <div>
+            <span>{{ stat.label }}</span
+            ><strong [class.factory-run-detail__stat--alert]="stat.alert">{{ stat.value }}</strong>
+          </div>
+        }
+      </div>
+    </header>
+    <div class="factory-run-detail__toolbar">
+      <div class="factory-run-detail__chips">
+        <span>{{ run().workflow }}</span
+        ><span>{{ run().status }}</span>
+        @for (role of run().context?.roles || []; track role) {
+          <span>{{ role }}</span>
+        }
+      </div>
+    </div>
+    <agentos-factory-run-timeline
+      [phases]="run().phases"
+      [selectedPhaseIndex]="selectedPhaseIndex()"
+      [runningElapsedMs]="runningElapsedMs()"
+      (phaseSelected)="phaseSelected.emit($event)"
+    />
+  </div>
+
+  <!-- Scrollable bottom: selected-phase detail -->
+  <div class="factory-run-detail__body">
+    @if (run().phases[selectedPhaseIndex()]; as phase) {
+      <agentos-factory-phase-panel [phase]="phase" />
+    } @else {
+      <p class="factory-run-detail__empty">Select a phase to inspect its recorded facts.</p>
+    }
+  </div>
+</section>

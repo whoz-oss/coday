@@ -1,0 +1,81 @@
+/*
+ * FactoryPhaseEventRowComponent styles
+ * Styles propres au contenu d'une ligne d'événement.
+ * Le layout grid (time | badge | detail) reste dans le parent.
+ */
+
+.event-row__status {
+  display: inline-block;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font: 600 0.67rem var(--font-heading, monospace);
+  text-transform: uppercase;
+
+  &--running {
+    color: var(--color-accent);
+  }
+  &--pending {
+    color: var(--status-pending-color);
+  }
+  &--idle {
+    color: var(--status-idle-color);
+  }
+  &--error {
+    color: var(--red);
+  }
+  &--killed {
+    color: var(--status-killed-color);
+  }
+}
+
+.event-row__tool-name {
+  font: 600 0.74rem var(--font-heading, monospace);
+}
+
+.event-row__tool-result {
+  margin-left: 0.3rem;
+  font-weight: 700;
+  &--ok {
+    color: var(--color-success, #059669);
+  }
+  &--fail {
+    color: var(--red);
+  }
+}
+
+.event-row__tool-duration {
+  margin-left: 0.3rem;
+  color: var(--color-text-secondary);
+  font-size: 0.67rem;
+}
+
+.event-row__tool-args {
+  display: block;
+  margin-top: 0.2rem;
+  font: 0.68rem/1.4 var(--font-heading, monospace);
+  background: var(--color-code-bg, var(--color-surface-secondary));
+  padding: 0.25rem 0.45rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.event-row__tool-output {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--color-text-secondary);
+  font-size: 0.68rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.event-row__failed {
+  color: var(--red);
+  font-size: 0.67rem;
+  margin-left: 0.3rem;
+}
+
+.event-row__type {
+  font: 600 0.67rem var(--font-heading, monospace);
+  color: var(--color-text-secondary);
+  margin-right: 0.3rem;
+}

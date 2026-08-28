@@ -1,0 +1,55 @@
+@let r = row();
+
+@if (asMessage(r); as msg) {
+  <strong>{{ msg.speaker }}</strong
+  >: {{ msg.text | slice: 0 : 200 }}{{ msg.text.length > 200 ? '…' : '' }}
+} @else if (asAgentSelected(r); as ev) {
+  Agent selected: {{ ev.agentName }}
+} @else if (asAgentRunning(r); as ev) {
+  Agent running: {{ ev.agentName }}
+  @if (ev.llmModel) {
+    ({{ ev.llmModel }})
+  }
+} @else if (asAgentFinished(r); as ev) {
+  Agent finished: {{ ev.agentName }}
+} @else if (asCaseStatus(r); as ev) {
+  <span class="event-row__status event-row__status--{{ ev.status.toLowerCase() }}">{{ ev.status }}</span>
+} @else if (asTool(r); as ev) {
+  <span class="event-row__tool-name">{{ ev.call.toolName }}</span>
+  @if (ev.call.success !== null) {
+    <span
+      class="event-row__tool-result"
+      [class.event-row__tool-result--ok]="ev.call.success"
+      [class.event-row__tool-result--fail]="!ev.call.success"
+      >{{ ev.call.success ? '✓' : '✗' }}</span
+    >
+  }
+  @if (ev.call.durationMs !== null) {
+    <span class="event-row__tool-duration">{{ ev.call.durationMs }}ms</span>
+  }
+  @if (ev.call.args) {
+    <code class="event-row__tool-args"
+      >{{ ev.call.args | slice: 0 : 120 }}{{ ev.call.args.length > 120 ? '…' : '' }}</code
+    >
+  }
+  @if (ev.call.outputPreview) {
+    <span class="event-row__tool-output"
+      >{{ ev.call.outputPreview | slice: 0 : 200 }}{{ ev.call.outputPreview.length > 200 ? '…' : '' }}</span
+    >
+  }
+} @else if (asWarn(r); as ev) {
+  ⚠️ {{ ev.message }}
+} @else if (asError(r); as ev) {
+  ❌ {{ ev.message }}
+} @else if (asIntention(r); as ev) {
+  🧠 {{ ev.toolName }}: {{ ev.intention | slice: 0 : 160 }}{{ ev.intention.length > 160 ? '…' : '' }}
+  @if (ev.failed) {
+    <span class="event-row__failed">(failed)</span>
+  }
+} @else if (asQuestion(r); as ev) {
+  Q [{{ ev.agentName }}]: {{ ev.question }}
+} @else if (asAnswer(r); as ev) {
+  A: {{ ev.answer | slice: 0 : 200 }}{{ ev.answer.length > 200 ? '…' : '' }}
+} @else if (asUnknown(r); as ev) {
+  <span class="event-row__type">{{ ev.type }}</span> {{ ev.payload }}
+}

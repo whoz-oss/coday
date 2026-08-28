@@ -18,7 +18,7 @@
           class="namespace-form__input"
           type="text"
           placeholder="Namespace name"
-          [formControl]="nameControl"
+          formControlName="name"
           autocomplete="off"
         />
       </div>
@@ -30,7 +30,7 @@
           class="namespace-form__textarea"
           rows="4"
           placeholder="Optional description"
-          [formControl]="descriptionControl"
+          formControlName="description"
         ></textarea>
       </div>
 
@@ -41,7 +41,7 @@
           class="namespace-form__input"
           type="text"
           placeholder="Optional federation ID from an external system"
-          [formControl]="externalIdControl"
+          formControlName="externalId"
           autocomplete="off"
         />
       </div>
@@ -53,7 +53,7 @@
           class="namespace-form__input"
           type="text"
           placeholder="Logical name of the default agent (e.g. coday)"
-          [formControl]="defaultAgentNameControl"
+          formControlName="defaultAgentName"
           autocomplete="off"
         />
       </div>
@@ -65,7 +65,7 @@
           class="namespace-form__input"
           type="text"
           placeholder="Optional path to base configuration directory"
-          [formControl]="configPathControl"
+          formControlName="configPath"
           autocomplete="off"
         />
       </div>
@@ -74,7 +74,7 @@
         <button
           class="namespace-form__btn namespace-form__btn--primary"
           type="submit"
-          [disabled]="nameControl.invalid || isSubmitting()"
+          [disabled]="form.controls.name.invalid || isSubmitting()"
         >
           {{ isEditMode() ? 'Save changes' : 'Create' }}
         </button>

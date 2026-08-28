@@ -1,0 +1,108 @@
+<section class="factory-runs" aria-labelledby="factory-runs-title">
+  @if (showLaunchForm() && namespaceId()) {
+    <agentos-factory-launch
+      [namespaceId]="namespaceId()!"
+      [namespace]="selectedNamespace()"
+      (launched)="onLaunched($event)"
+      (cancelled)="onLaunchCancelled()"
+    />
+  } @else {
+    <header class="factory-runs__header">
+      @if (!isEmbedded()) {
+        <div>
+          <h1 id="factory-runs-title">Factory runs</h1>
+          @if (namespaceName(); as name) {
+            <p>Runs for {{ name }}.</p>
+          }
+        </div>
+      } @else {
+        <!-- Spacer so actions stay right-aligned when the heading is hidden -->
+        <div aria-hidden="true"></div>
+      }
+      <div class="factory-runs__actions">
+        @if (namespaceAvailable()) {
+          <button type="button" class="factory-runs__btn factory-runs__btn--primary" (click)="openLaunchForm()">
+            New run
+          </button>
+          <button type="button" class="factory-runs__refresh" (click)="state.refresh()" [disabled]="state.loading()">
+            Refresh
+          </button>
+        }
+      </div>
+    </header>
+
+    @if (!namespaceId()) {
+      <p class="factory-runs__notice" role="status">Choose a namespace to view its Factory runs.</p>
+    } @else if (namespacesLoading()) {
+      <p class="factory-runs__notice" role="status">Loading namespaces&hellip;</p>
+    } @else if (!namespaceAvailable()) {
+      <p class="factory-runs__notice" role="alert">This namespace is unavailable or you do not have access to it.</p>
+    } @else if (state.loading()) {
+      <p class="factory-runs__notice" role="status">Loading Factory runs&hellip;</p>
+    } @else if (state.error(); as error) {
+      <div class="factory-runs__notice" role="alert">
+        <p>{{ error }}</p>
+        <button type="button" class="factory-runs__refresh" (click)="state.refresh()">Try again</button>
+      </div>
+    } @else if (state.runs().length === 0) {
+      <p class="factory-runs__notice" role="status">No Factory runs exist for this namespace.</p>
+    } @else {
+      <div class="factory-runs__table-wrap">
+        <table>
+          <caption class="sr-only">
+            Factory runs for
+            {{
+              namespaceName()
+            }}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Run</th>
+              <th scope="col">Status</th>
+              <th scope="col">Started</th>
+              <th scope="col">Ended</th>
+              <th scope="col">Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (run of state.runs(); track run.runId) {
+              <tr [class.factory-runs__row--selected]="selectedRunId() === run.runId">
+                <th scope="row">
+                  <a
+                    href="javascript:void(0)"
+                    (click)="selectRun(run.runId)"
+                    [attr.aria-current]="selectedRunId() === run.runId ? 'true' : null"
+                    >{{ runTitle(run) }}</a
+                  >
+                  <span class="factory-runs__context">{{ runContext(run) }}</span>
+                </th>
+                <td>
+                  <span [class]="'factory-runs__status ' + statusClass(run.status)">{{ run.status }}</span>
+                </td>
+                <td>{{ formatDate(run.startedAt) }}</td>
+                <td>{{ formatDate(run.endedAt) }}</td>
+                <td>{{ formatDuration(run.durationMs) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    @if (selectedRunId() && namespaceAvailable()) {
+      @if (state.detailLoading()) {
+        <p class="factory-runs__notice" role="status">Loading Factory run detail&hellip;</p>
+      } @else if (state.namespaceMismatch()) {
+        <p class="factory-runs__notice" role="alert">This run does not belong to the selected namespace.</p>
+      } @else if (state.detailError(); as detailError) {
+        <p class="factory-runs__notice" role="alert">{{ detailError }}</p>
+      } @else if (state.selectedRun(); as run) {
+        <agentos-factory-run-detail
+          [run]="run"
+          [selectedPhaseIndex]="selectedPhaseIndex()"
+          (phaseSelected)="selectPhase($event)"
+        />
+      }
+    }
+  }
+</section>

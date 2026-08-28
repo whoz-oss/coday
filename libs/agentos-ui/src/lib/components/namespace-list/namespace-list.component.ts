@@ -96,6 +96,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'scheduled-prompts'])
   }
 
+  protected openFactoryRuns(ns: Namespace): void {
+    this.router.navigate(['/agentos/factory'], { queryParams: { ns: ns.id } })
+  }
+
   protected openUserGroups(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'user-groups'])
   }

@@ -1,0 +1,118 @@
+/*
+ * FactoryRunDetailComponent styles
+ *
+ * Layout contract:
+ *   :host contributes to the natural document height inside .factory-runs (the
+ *   single scroll container for the Factory view).
+ *   .factory-run-detail is NOT a scroll container — it expands with its content
+ *   so the Gantt and the phase panel below it all flow into one scrollable area.
+ */
+
+:host {
+  display: block;
+}
+
+.factory-run-detail {
+  margin-top: 1.5rem;
+  border: 1px solid var(--color-divider);
+  background: var(--color-surface);
+}
+
+/* ── Top: header + toolbar + Gantt (not scrolled) ── */
+.factory-run-detail__top {
+  flex-shrink: 0;
+}
+
+.factory-run-detail__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: end;
+  padding: 1rem;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.factory-run-detail__kicker {
+  margin: 0 0 0.3rem;
+  font: 600 0.7rem var(--font-heading, monospace);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.factory-run-detail h2 {
+  margin: 0;
+  font: 600 1.35rem var(--font-heading, monospace);
+}
+
+.factory-run-detail__summary {
+  margin: 0.35rem 0 0;
+  color: var(--color-text-secondary);
+}
+
+.factory-run-detail__stats {
+  display: flex;
+  border: 1px solid var(--color-divider);
+  flex-shrink: 0;
+
+  div {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 5.5rem;
+    padding: 0.55rem 0.8rem;
+    border-left: 1px solid var(--color-divider);
+    &:first-child {
+      border-left: 0;
+    }
+  }
+
+  span {
+    font: 600 0.62rem var(--font-heading, monospace);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+  }
+
+  strong {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.factory-run-detail__stat--alert {
+  color: var(--red);
+}
+
+.factory-run-detail__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.factory-run-detail__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+
+  span {
+    padding: 0.22rem 0.45rem;
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface-secondary);
+    color: var(--color-text-secondary);
+    font: 600 0.65rem var(--font-heading, monospace);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+}
+
+/* ── Body: selected-phase detail — no scroll, expands naturally with its content ── */
+.factory-run-detail__body {
+  border-top: 1px solid var(--color-divider);
+}
+
+.factory-run-detail__empty {
+  padding: 1rem;
+  color: var(--color-text-secondary);
+}
