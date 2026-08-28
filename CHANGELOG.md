@@ -1,3 +1,15 @@
+## 0.249.6 (2026-08-28)
+
+### 🩹 Fixes
+
+- **agentos-ui:** add infinite scroll to ds-entity-list to prevent freeze on large user lists ([35a8c9fc](https://github.com/whoz-oss/coday/commit/35a8c9fc))
+- **agentos-ui:** add infinite scroll to ds-entity-list to prevent freeze on large user lists ([#1259](https://github.com/whoz-oss/coday/pull/1259), [#1258](https://github.com/whoz-oss/coday/issues/1258))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.249.5 (2026-08-28)
 
 ### 🩹 Fixes
