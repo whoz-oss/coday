@@ -1,3 +1,49 @@
+## 0.249.6 (2026-08-28)
+
+### 🩹 Fixes
+
+- **agentos-ui:** add infinite scroll to ds-entity-list to prevent freeze on large user lists ([35a8c9fc](https://github.com/whoz-oss/coday/commit/35a8c9fc))
+- **agentos-ui:** add infinite scroll to ds-entity-list to prevent freeze on large user lists ([#1259](https://github.com/whoz-oss/coday/pull/1259), [#1258](https://github.com/whoz-oss/coday/issues/1258))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.5 (2026-08-28)
+
+### 🩹 Fixes
+
+- remove $safeNavigationMigration (remaining from ng migration) ([1fd5b3a1](https://github.com/whoz-oss/coday/commit/1fd5b3a1))
+- remove $safeNavigationMigration (remaining from ng migration) ([#1257](https://github.com/whoz-oss/coday/pull/1257))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.4 (2026-08-28)
+
+### 🩹 Fixes
+
+- disable prompt select while loading in scheduler form ([56f5f10d](https://github.com/whoz-oss/coday/commit/56f5f10d))
+- disable prompt select while loading in scheduler form ([#1256](https://github.com/whoz-oss/coday/pull/1256), [#1255](https://github.com/whoz-oss/coday/issues/1255))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.3 (2026-08-28)
+
+### 🩹 Fixes
+
+- **agentos:** fix advancedExecution attribut mapping in case of yml agent config #1244 ([#1245](https://github.com/whoz-oss/coday/pull/1245), [#1244](https://github.com/whoz-oss/coday/issues/1244))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.249.2 (2026-08-27)
 
 ### 🚀 Features
