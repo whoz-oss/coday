@@ -1,3 +1,15 @@
+## 0.249.5 (2026-08-28)
+
+### 🩹 Fixes
+
+- remove $safeNavigationMigration (remaining from ng migration) ([1fd5b3a1](https://github.com/whoz-oss/coday/commit/1fd5b3a1))
+- remove $safeNavigationMigration (remaining from ng migration) ([#1257](https://github.com/whoz-oss/coday/pull/1257))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.249.4 (2026-08-28)
 
 ### 🩹 Fixes
