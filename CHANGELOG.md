@@ -1,3 +1,13 @@
+## 0.249.3 (2026-08-28)
+
+### 🩹 Fixes
+
+- **agentos:** fix advancedExecution attribut mapping in case of yml agent config #1244 ([#1245](https://github.com/whoz-oss/coday/pull/1245), [#1244](https://github.com/whoz-oss/coday/issues/1244))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.249.2 (2026-08-27)
 
 ### 🚀 Features
