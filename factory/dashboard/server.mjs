@@ -30,7 +30,8 @@
 
 import { createServer } from 'node:http'
 import { readFileSync, readdirSync, existsSync, watchFile, unwatchFile } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
+import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { fetchJiraTicket } from '../lib/jira.mjs'
@@ -41,6 +42,55 @@ const RUN_ENTRY = join(__dirname, '..', 'run.mjs')
 const PORT = parseInt(process.env.PORT ?? '3141', 10)
 const AGENTOS_URL = process.env.AGENTOS_URL ?? 'http://localhost:8124'
 const FACTORY_USER = process.env.FACTORY_USER ?? 'benjamin.valdes'
+
+// ---------------------------------------------------------------------------
+// Lecture des credentials Jira depuis user.yaml Coday (fallback env)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lit le user.yaml Coday pour l'utilisateur courant et extrait les credentials
+ * Jira du premier projet qui en possède.
+ *
+ * Structure attendue dans user.yaml :
+ *   projects:
+ *     <nom>:
+ *       integration:
+ *         JIRA:
+ *           apiUrl: https://xxx.atlassian.net
+ *           username: user@example.com
+ *           apiKey: xxx
+ *
+ * Retourne { apiUrl, username, apiKey } ou null si introuvable / malformé.
+ * Pas de dépendance externe : on cherche le bloc JIRA: par regex puis on lit
+ * les trois clés qui le suivent — suffisant pour le format généré par Coday.
+ */
+function readJiraFromCodayConfig() {
+  try {
+    // Coday sanitizes usernames by replacing ALL non-alphanumeric chars with '_'
+    // (see libs/utils/src/lib/username-utils.ts). 'benjamin.valdes' → 'benjamin_valdes'.
+    const safeUser = FACTORY_USER.replace(/[^a-zA-Z0-9]/g, '_')
+    const configPath = resolve(homedir(), '.coday', 'users', safeUser, 'user.yaml')
+    const content = readFileSync(configPath, 'utf8')
+
+    // Trouver le bloc "JIRA:" dans le YAML
+    const jiraBlockMatch = content.match(/^(\s+)JIRA:\s*$/m)
+    if (!jiraBlockMatch) return null
+
+    const jiraStart = content.indexOf(jiraBlockMatch[0])
+    const afterJira = content.slice(jiraStart + jiraBlockMatch[0].length)
+
+    const apiUrl = afterJira.match(/apiUrl:\s*(.+)/)?.[1]?.trim()
+    const username = afterJira.match(/username:\s*(.+)/)?.[1]?.trim()
+    const apiKey = afterJira.match(/apiKey:\s*(.+)/)?.[1]?.trim()
+
+    if (!apiUrl || !username || !apiKey) return null
+    return { apiUrl, username, apiKey }
+  } catch {
+    return null
+  }
+}
+
+const _codayJira = readJiraFromCodayConfig()
 
 // ---------------------------------------------------------------------------
 // Credentials Jira — lus depuis l'environnement du dashboard, pas du formulaire.
@@ -68,9 +118,12 @@ const FACTORY_USER = process.env.FACTORY_USER ?? 'benjamin.valdes'
 // l'environnement du serveur alimentait l'endpoint d'affichage, et aucun
 // mécanisme ne garantissait qu'elles étaient identiques.
 // ---------------------------------------------------------------------------
-const JIRA_BASE_URL = process.env.JIRA_BASE_URL ?? null
-const JIRA_EMAIL = process.env.JIRA_EMAIL ?? null
-const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN ?? null
+// Priorité : variable d'environnement > user.yaml Coday.
+// Le fallback sur user.yaml évite de devoir passer les credentials à chaque
+// démarrage quand ils sont déjà configurés dans Coday.
+const JIRA_BASE_URL = process.env.JIRA_BASE_URL ?? _codayJira?.apiUrl ?? null
+const JIRA_EMAIL = process.env.JIRA_EMAIL ?? _codayJira?.username ?? null
+const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN ?? _codayJira?.apiKey ?? null
 
 // ---------------------------------------------------------------------------
 // Registre en mémoire des process en cours
@@ -710,6 +763,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   server.listen(PORT, () => {
     console.log(`Factory dashboard → http://localhost:${PORT}`)
     console.log(`AgentOS           : ${AGENTOS_URL}`)
+    if (JIRA_BASE_URL) {
+      const src = process.env.JIRA_BASE_URL ? 'env' : 'user.yaml Coday'
+      console.log(`Jira              : ${JIRA_BASE_URL} (${src})`)
+    } else {
+      console.log(`Jira              : non configuré (tickets Jira indisponibles)`)
+    }
   })
 }
 
