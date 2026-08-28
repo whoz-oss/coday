@@ -184,7 +184,7 @@
         [class.shell-sidebar__compact-ns-btn--open]="compactNsMenuOpen()"
         (click)="onCompactNsBtnClick($event)"
       >
-        {{ nsInitial($safeNavigationMigration(selectedNamespace()?.name)) }}
+        {{ nsInitial(selectedNamespace()?.name) }}
       </button>
 
       <!-- Namespace menu en position fixed -->
