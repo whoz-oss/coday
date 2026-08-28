@@ -1,3 +1,13 @@
+## 0.249.7 (2026-08-28)
+
+### 🚀 Features
+
+- bump bundled version to 0.249.0 ([#1249](https://github.com/whoz-oss/coday/pull/1249))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.249.6 (2026-08-28)
 
 ### 🩹 Fixes
