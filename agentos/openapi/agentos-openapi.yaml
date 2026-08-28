@@ -1033,6 +1033,29 @@ paths:
       summary: List cases by user
       tags:
       - case-controller
+  /api/cases/unread-count:
+    get:
+      description: GET /api/cases/unread-count?namespaceId= — number of unread cases
+        in the namespace for the current user. A case is unread when no readAt relation
+        exists or the most recent event timestamp is after the user's readAt.
+      operationId: countUnreadCase
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCountResponse"
+          description: OK
+      summary: Count unread cases
+      tags:
+      - case-controller
   /api/cases/{caseId}/events:
     get:
       description: "Server-Sent Events stream emitting all events generated during\
@@ -1248,6 +1271,25 @@ paths:
         "200":
           description: OK
       summary: Add a message
+      tags:
+      - case-controller
+  /api/cases/{caseId}/read:
+    post:
+      description: "POST /api/cases/{caseId}/read — record that the current user has\
+        \ read this case. Sets readAt = now() on the User↔Case relation. Idempotent.\
+        \ Returns 200 with no body."
+      operationId: markCaseRead
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+      summary: Mark case as read
       tags:
       - case-controller
   /api/cases/{entityId}/members:
@@ -3455,6 +3497,10 @@ components:
         parentCaseId:
           type: string
           format: uuid
+        readAt:
+          type: string
+          format: date-time
+          description: Timestamp of the caller's last read. Null = never read (unread).
         removed:
           type: boolean
         role:
@@ -4681,6 +4727,14 @@ components:
       - timestamp
       - toolName
       - type
+    UnreadCountResponse:
+      type: object
+      properties:
+        unreadCount:
+          type: integer
+          format: int64
+      required:
+      - unreadCount
     User:
       type: object
       properties:
