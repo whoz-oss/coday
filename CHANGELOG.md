@@ -1,3 +1,15 @@
+## 0.249.4 (2026-08-28)
+
+### 🩹 Fixes
+
+- disable prompt select while loading in scheduler form ([56f5f10d](https://github.com/whoz-oss/coday/commit/56f5f10d))
+- disable prompt select while loading in scheduler form ([#1256](https://github.com/whoz-oss/coday/pull/1256), [#1255](https://github.com/whoz-oss/coday/issues/1255))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.249.3 (2026-08-28)
 
 ### 🩹 Fixes
