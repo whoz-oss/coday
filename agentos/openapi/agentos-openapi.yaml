@@ -3463,6 +3463,9 @@ components:
           enum:
           - ADMIN
           - MEMBER
+        scheduledPromptId:
+          type: string
+          format: uuid
         status:
           type: string
           enum:
