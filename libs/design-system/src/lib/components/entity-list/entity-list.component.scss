@@ -179,6 +179,15 @@
   color: var(--color-neutral-500);
 }
 
+// ── Infinite scroll sentinel ──────────────────────────────────────────────
+
+.entity-list__sentinel {
+  height: 40px;
+  width: 100%;
+  // Present in DOM always (when paged) so IntersectionObserver can attach on init.
+  // Acts as a trigger only when more items exist.
+}
+
 // ── Grid ───────────────────────────────────────────────────────────────────
 
 .entity-list__grid {
