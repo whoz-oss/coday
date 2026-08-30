@@ -273,7 +273,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     isNamespaceTargeted(this.inputValue(), this.exchangeState.canWriteNamespace())
   )
 
-  /** Collapsed state per toolRequestId */
+  /**
+   * Explicitly expanded tool calls (toggled by the user).
+   * Pending tool calls are always expanded unless the user has explicitly collapsed them.
+   */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
 
   /**
@@ -880,9 +883,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     })
   }
 
-  /** Collapsed by default: a tool call is expanded only when its id is in the set */
-  protected isToolCallExpanded(requestId: string): boolean {
-    return this.collapsedTools().has(requestId)
+  /**
+   * Pending tool calls (no response yet) are expanded by default so the args are immediately
+   * visible. The user can still collapse them explicitly via toggleToolCall().
+   * Completed tool calls follow the standard toggle: collapsed by default, expanded on click.
+   *
+   * Implementation: collapsedTools holds ids that are explicitly toggled by the user.
+   * - pending + NOT in set → expanded (default open)
+   * - pending + IN set     → collapsed (user closed it)
+   * - done   + NOT in set → collapsed (default closed)
+   * - done   + IN set     → expanded (user opened it)
+   */
+  protected isToolCallExpanded(requestId: string, isPending: boolean): boolean {
+    const toggled = this.collapsedTools().has(requestId)
+    return isPending ? !toggled : toggled
   }
 
   protected toggleShowTechnical(): void {
