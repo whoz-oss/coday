@@ -15,8 +15,7 @@
     "noImplicitReturns": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "target": "es2022",
-    "ignoreDeprecations": "6.0"
+    "target": "es2022"
   },
   "extends": "../../tsconfig.base.json",
   "files": [],
