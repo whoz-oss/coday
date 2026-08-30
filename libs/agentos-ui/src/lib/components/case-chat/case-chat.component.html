@@ -170,7 +170,7 @@
                   type="button"
                   class="case-chat__tool-call-header"
                   (click)="toggleToolCall(item.call.requestId)"
-                  [attr.aria-expanded]="isToolCallExpanded(item.call.requestId, !item.call.response)"
+                  [attr.aria-expanded]="isToolCallExpanded(item.call.requestId)"
                 >
                   <span class="case-chat__tool-call-icon">
                     @if (!item.call.response) {
@@ -183,11 +183,11 @@
                   </span>
                   <span class="case-chat__tool-call-name">{{ item.call.toolName }}</span>
                   <span class="case-chat__tool-call-chevron">{{
-                    isToolCallExpanded(item.call.requestId, !item.call.response) ? '▼' : '▶'
+                    isToolCallExpanded(item.call.requestId) ? '▼' : '▶'
                   }}</span>
                 </button>
 
-                @if (isToolCallExpanded(item.call.requestId, !item.call.response)) {
+                @if (isToolCallExpanded(item.call.requestId)) {
                   <div class="case-chat__tool-call-output">
                     @if (showTechnical() && item.call.enrichmentPhases?.length) {
                       <div class="case-chat__tool-call-section case-chat__enrichment-section">
