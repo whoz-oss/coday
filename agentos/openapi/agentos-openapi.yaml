@@ -4367,23 +4367,6 @@ components:
           description: "Optional user-facing display label (e.g. starter button text).\
             \ Distinct from content, which is the message sent to the LLM. Null when\
             \ no explicit title has been set."
-        translatedContent:
-          type: object
-          additionalProperties:
-            type: array
-            items:
-              type: string
-          description: "On-demand translations of content, keyed by BCP-47 language\
-            \ code. Each value is a list mirroring the indices of content. Cleared\
-            \ automatically when content or sourceLanguage is updated."
-        translatedTitles:
-          type: object
-          additionalProperties:
-            type: string
-          description: "On-demand translations of title, keyed by BCP-47 language\
-            \ code. Each value is a single translated string. Null when title is null\
-            \ or no title translations have been generated. Cleared automatically\
-            \ when title or sourceLanguage is updated."
         updatedBy:
           type: string
         updatedOn:
