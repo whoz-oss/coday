@@ -1,3 +1,13 @@
+## 0.249.9 (2026-08-31)
+
+### 🩹 Fixes
+
+- build front ([#1262](https://github.com/whoz-oss/coday/pull/1262))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.249.8 (2026-08-28)
 
 ### 🚀 Features

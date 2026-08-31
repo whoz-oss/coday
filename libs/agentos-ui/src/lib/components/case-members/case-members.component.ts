@@ -84,6 +84,7 @@ export class CaseMembersComponent {
 
   constructor() {
     effect(() => {
+      this.caseId() // tracked — re-runs when caseId changes
       untracked(() => this.loadData()) // untracked — signal writes inside are permitted
     })
   }
