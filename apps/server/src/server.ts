@@ -39,7 +39,6 @@ import { checkAgentosJars } from './lib/agentos-lifecycle'
 import { getAgentosVersion } from './lib/version'
 import { downloadAgentosJars, checkAndSwapNext, downloadAgentosJarsToNext } from './lib/agentos-download'
 import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
-import { validateAgentOsUrl } from './lib/validate-agentos-url'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -92,11 +91,6 @@ let promptExecutionService: PromptExecutionService
 
 const AGENTOS_EXTERNAL_USERID = process.env.AGENTOS_EXTERNAL_USERID
 const AGENTOS_URL_ENV = process.env.AGENTOS_URL
-
-// Validate the env var if provided (fail fast on misconfiguration)
-if (AGENTOS_URL_ENV) {
-  validateAgentOsUrl(AGENTOS_URL_ENV)
-}
 
 // Mutable proxy target — updated to the managed URL once AgentOS is running.
 // In external mode this is set once and never changes.
