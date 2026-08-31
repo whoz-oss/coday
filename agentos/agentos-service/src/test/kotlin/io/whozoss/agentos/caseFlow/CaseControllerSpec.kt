@@ -15,7 +15,7 @@ import io.whozoss.agentos.permissions.DirectRelation
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.permissions.StarredService
+import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
@@ -49,7 +49,7 @@ class CaseControllerSpec :
         val namespaceService = mockk<io.whozoss.agentos.namespace.NamespaceService>()
         val userService = mockk<UserService>()
         val permissionService = mockk<PermissionService>()
-        val starredService = mockk<StarredService>()
+        val favoriteService = mockk<FavoriteService>()
         val caseReadService = mockk<CaseReadService>()
         val controller =
             CaseController(
@@ -58,7 +58,7 @@ class CaseControllerSpec :
                 namespaceService,
                 userService,
                 permissionService,
-                starredService,
+                favoriteService,
                 caseReadService,
             )
 
@@ -95,9 +95,9 @@ class CaseControllerSpec :
 
         beforeTest {
             clearAllMocks()
-            // Default: the caller has no starred entries (empty enrichment). Listing tests that
+            // Default: the caller has no favorite entries (empty enrichment). Listing tests that
             // assert `favorite`/`role`/`readAt` override this with a specific map.
-            every { starredService.listDirectRelations(any(), EntityType.CASE) } returns emptyMap()
+            every { favoriteService.listDirectRelations(any(), EntityType.CASE) } returns emptyMap()
             // Default: no messages in any case. Tests that assert lastMessageAt override this.
             every { caseEventService.findLastMessageTimestamps(any()) } returns emptyMap()
         }
@@ -284,12 +284,12 @@ class CaseControllerSpec :
         // listByParent — favorite enrichment (per-user starred flag)
         // -------------------------------------------------------------------------
 
-        "listByParent (namespace-admin branch) sets favorite=true only for starred cases" {
+        "listByParent (namespace-admin branch) sets favorite=true only for favorited cases" {
             val starred = caseEntity(title = "starred")
             val plain = caseEntity(title = "plain")
             every { userService.getCurrentUser() } returns caller
             every {
-                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()))
             every {
                 permissionService.hasPermission(
@@ -331,12 +331,12 @@ class CaseControllerSpec :
             result.single { it.id == noMsg.metadata.id }.lastMessageAt shouldBe null
         }
 
-        "listByParent (permission-filtered branch) sets favorite=true only for starred cases" {
+        "listByParent (permission-filtered branch) sets favorite=true only for favorited cases" {
             val starred = caseEntity(title = "starred")
             val plain = caseEntity(title = "plain")
             every { userService.getCurrentUser() } returns caller
             every {
-                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
             every {
                 permissionService.hasPermission(
@@ -360,11 +360,11 @@ class CaseControllerSpec :
         // starCase / unstarCase — per-user favorite toggling (PUT/DELETE /{id}/star)
         // -------------------------------------------------------------------------
 
-        "starCase delegates to starredService.setStarred with starred=true for the current user" {
+        "starCase delegates to favoriteService.setFavorite with favorite=true for the current user" {
             val caseId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns caller
             every {
-                starredService.setStarred(
+                favoriteService.setFavorite(
                     callerId.toString(),
                     EntityType.CASE,
                     caseId.toString(),
@@ -375,15 +375,15 @@ class CaseControllerSpec :
             controller.starCase(caseId)
 
             verify(exactly = 1) {
-                starredService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), true)
+                favoriteService.setFavorite(callerId.toString(), EntityType.CASE, caseId.toString(), true)
             }
         }
 
-        "starCase throws 409 when the caller has no direct relation (setStarred wrote nothing)" {
+        "starCase throws 409 when the caller has no direct relation (setFavorite wrote nothing)" {
             val caseId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns caller
             every {
-                starredService.setStarred(
+                favoriteService.setFavorite(
                     callerId.toString(),
                     EntityType.CASE,
                     caseId.toString(),
@@ -395,11 +395,11 @@ class CaseControllerSpec :
             ex.statusCode shouldBe HttpStatus.CONFLICT
         }
 
-        "unstarCase delegates to starredService.setStarred with starred=false for the current user" {
+        "unstarCase delegates to favoriteService.setFavorite with favorite=false for the current user" {
             val caseId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns caller
             every {
-                starredService.setStarred(
+                favoriteService.setFavorite(
                     callerId.toString(),
                     EntityType.CASE,
                     caseId.toString(),
@@ -410,15 +410,15 @@ class CaseControllerSpec :
             controller.unstarCase(caseId)
 
             verify(exactly = 1) {
-                starredService.setStarred(callerId.toString(), EntityType.CASE, caseId.toString(), false)
+                favoriteService.setFavorite(callerId.toString(), EntityType.CASE, caseId.toString(), false)
             }
         }
 
-        "unstarCase throws 409 when the caller has no direct relation (setStarred wrote nothing)" {
+        "unstarCase throws 409 when the caller has no direct relation (setFavorite wrote nothing)" {
             val caseId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns caller
             every {
-                starredService.setStarred(
+                favoriteService.setFavorite(
                     callerId.toString(),
                     EntityType.CASE,
                     caseId.toString(),
@@ -452,12 +452,12 @@ class CaseControllerSpec :
             verify(exactly = 0) { permissionService.hasPermission(any(), EntityType.NAMESPACE, any(), any()) }
         }
 
-        "listMineByParent sets favorite=true only for starred cases" {
+        "listMineByParent sets favorite=true only for favorited cases" {
             val starred = caseEntity(title = "starred")
             val plain = caseEntity(title = "plain")
             every { userService.getCurrentUser() } returns caller
             every {
-                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns
                 mapOf(
                     starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()),
@@ -476,7 +476,7 @@ class CaseControllerSpec :
             val memberCase = caseEntity(title = "member case")
             every { userService.getCurrentUser() } returns caller
             every {
-                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns
                 mapOf(
                     adminCase.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN),
@@ -543,11 +543,11 @@ class CaseControllerSpec :
         }
 
         "listByUser enriches with favorite when caller is the target user" {
-            val starredCase = caseEntity(title = "starred")
+            val starredCase = caseEntity(title = "favorited")
             every { userService.getCurrentUser() } returns caller
             every { caseService.findConcerningUser(callerId) } returns listOf(starredCase)
             every {
-                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
 
             val result = controller.listByUser(callerId)
@@ -564,7 +564,7 @@ class CaseControllerSpec :
             val result = controller.listByUser(otherId)
 
             result.single().favorite shouldBe false
-            verify(exactly = 0) { starredService.listDirectRelations(any(), any()) }
+            verify(exactly = 0) { favoriteService.listDirectRelations(any(), any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -619,12 +619,12 @@ class CaseControllerSpec :
         }
 
         "listByUserExternalId enriches with favorite when caller is the target user" {
-            val starredCase = caseEntity(title = "starred")
+            val starredCase = caseEntity(title = "favorited")
             every { userService.findByExternalId(caller.externalId) } returns caller
             every { userService.getCurrentUser() } returns caller
             every { caseService.findConcerningUser(callerId) } returns listOf(starredCase)
             every {
-                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
 
             val result = controller.listByUserExternalId(caller.externalId)
@@ -647,7 +647,7 @@ class CaseControllerSpec :
             val result = controller.listByUserExternalId(otherUser.externalId)
 
             result.single().favorite shouldBe false
-            verify(exactly = 0) { starredService.listDirectRelations(any(), any()) }
+            verify(exactly = 0) { favoriteService.listDirectRelations(any(), any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -713,7 +713,7 @@ class CaseControllerSpec :
         }
 
         "listByUserInNamespace enriches with favorite when caller is the target user" {
-            val starredCase = caseEntity(title = "starred")
+            val starredCase = caseEntity(title = "favorited")
             val plainCase = caseEntity(title = "plain")
             val namespaceExternalId = "ext-ns-fav"
             val namespace =
@@ -727,7 +727,7 @@ class CaseControllerSpec :
             every { namespaceService.findByExternalId(namespaceExternalId) } returns namespace
             every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(starredCase, plainCase)
             every {
-                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
 
             val result =
@@ -792,7 +792,7 @@ class CaseControllerSpec :
                 )
 
             result.single().favorite shouldBe false
-            verify(exactly = 0) { starredService.listDirectRelations(any(), any()) }
+            verify(exactly = 0) { favoriteService.listDirectRelations(any(), any()) }
         }
 
         "listByUserInNamespace throws 404 when no user matches the external id" {
@@ -888,13 +888,13 @@ class CaseControllerSpec :
             result.lastMessageAt shouldBe msgTimestamp
         }
 
-        "update populates favorite and role from starredService" {
+        "update populates favorite and role from favoriteService" {
             val existing = caseEntity()
             every { userService.getCurrentUser() } returns caller
             every { caseService.findById(existing.metadata.id) } returns existing
             every { caseService.update(any()) } returns existing
             every {
-                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns mapOf(existing.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
 
             val result = controller.update(existing.metadata.id, caseResource(id = existing.metadata.id))
@@ -932,12 +932,12 @@ class CaseControllerSpec :
             result.lastMessageAt shouldBe null
         }
 
-        "getById sets favorite=true when the caller has starred the case" {
+        "getById sets favorite=true when the caller has favorited the case" {
             val entity = caseEntity()
             every { userService.getCurrentUser() } returns caller
             every { caseService.getById(entity.metadata.id) } returns entity
             every {
-                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns mapOf(entity.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()))
 
             val result = controller.getById(entity.metadata.id)
@@ -982,13 +982,13 @@ class CaseControllerSpec :
             result.single { it.id == noMsg.metadata.id }.lastMessageAt shouldBe null
         }
 
-        "getByIds populates favorite from starredService for the current user" {
-            val starred = caseEntity(title = "starred")
+        "getByIds populates favorite from favoriteService for the current user" {
+            val starred = caseEntity(title = "favorited")
             val plain = caseEntity(title = "plain")
             every { userService.getCurrentUser() } returns caller
             every { caseService.findByIds(any(), any()) } returns listOf(starred, plain)
             every {
-                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()))
 
             val result =
@@ -1048,7 +1048,7 @@ class CaseControllerSpec :
             every { userService.getCurrentUser() } returns caller
             every { caseService.getById(entity.metadata.id) } returns entity
             every {
-                starredService.listDirectRelations(callerId.toString(), EntityType.CASE)
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns mapOf(entity.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, readAt = readTimestamp))
 
             val result = controller.getById(entity.metadata.id)

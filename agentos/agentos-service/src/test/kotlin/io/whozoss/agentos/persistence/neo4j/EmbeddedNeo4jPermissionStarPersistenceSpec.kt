@@ -7,16 +7,15 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
-import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
-import io.whozoss.agentos.permissions.DirectRelation
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.permissions.StarredService
+import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
@@ -29,19 +28,19 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Persistence contract for per-user case state (starred flag + read timestamp),
+ * Persistence contract for per-user case state (favorite flag + read timestamp),
  * exercised against the embedded Neo4j harness.
  *
  * Since issue #1140 (and the read-tracking feature), state is stored on a
  * `[:HAS_USER_CASE_STATE]` relationship-with-properties (replacing the legacy
  * `[:STARRED]` plain edge). The edge carries:
- * - `favoriteAt: Instant?` — non-null when the user has starred (favorited) the case.
+ * - `favoriteAt: Instant?` — non-null when the user has favorited the case.
  * - `readAt: Instant?` — timestamp of the user's last read; null = never read.
  *
  * Verifies both layers of the plumbing:
- * - raw Cypher on [CaseNodeNeo4jRepository] (`mergeStarred` / `deleteStarred` /
+ * - raw Cypher on [CaseNodeNeo4jRepository] (`mergeFavorite` / `clearFavorite` /
  *   `markRead` / `countUnread` / `findDirectRelations`)
- * - the typed delegation through [StarredService] (`setStarred` / `listDirectRelations`)
+ * - the typed delegation through [FavoriteService] (`setFavorite` / `listDirectRelations`)
  */
 @SpringBootTest
 @ActiveProfiles("test", "embedded-neo4j")
@@ -59,7 +58,7 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
     lateinit var permissionService: PermissionService
 
     @Autowired
-    lateinit var starredService: StarredService
+    lateinit var favoriteService: FavoriteService
 
     @Autowired
     lateinit var userRepository: UserRepository
@@ -93,63 +92,63 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             Case(metadata = EntityMetadata(), namespaceId = namespaceId),
         )
 
-    /** Case ids the user has starred, resolved via the [StarredService.listDirectRelations] API. */
-    private fun starredIds(userId: String): Set<String> =
-        starredService.listDirectRelations(userId, EntityType.CASE).filterValues { it.starred }.keys
+    /** Case ids the user has favorited, resolved via the [FavoriteService.listDirectRelations] API. */
+    private fun favoriteIds(userId: String): Set<String> =
+        favoriteService.listDirectRelations(userId, EntityType.CASE).filterValues { it.isFavorite }.keys
 
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
 
-        "mergeStarred creates a [:HAS_USER_CASE_STATE] edge with favoriteAt; deleteStarred clears it" {
+        "mergeFavorite creates a [:HAS_USER_CASE_STATE] edge with favoriteAt; clearFavorite clears it" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
 
-            // A direct ADMIN relation is required: mergeStarred guards against orphaned edges.
+            // A direct ADMIN relation is required: mergeFavorite guards against orphaned edges.
             permissionNodeRepository.createAdminPermission(
                 userId = user.id.toString(),
                 entityId = case.id.toString(),
                 entityLabel = "Case",
             )
 
-            caseNodeRepository.mergeStarred(
+            caseNodeRepository.mergeFavorite(
                 userId = user.id.toString(),
                 caseId = case.id.toString(),
                 favoriteAt = Instant.now(),
             )
-            starredIds(user.id.toString()) shouldContain case.id.toString()
+            favoriteIds(user.id.toString()) shouldContain case.id.toString()
 
-            caseNodeRepository.deleteStarred(
+            caseNodeRepository.clearFavorite(
                 userId = user.id.toString(),
                 caseId = case.id.toString(),
             )
-            starredIds(user.id.toString()) shouldNotContain case.id.toString()
+            favoriteIds(user.id.toString()) shouldNotContain case.id.toString()
         }
 
-        "no starred ids are returned for a user with no relation on the entity" {
+        "no favorite ids are returned for a user with no relation on the entity" {
             val user = createUser()
             val namespace = createNamespace()
             createCase(namespace.id) // a case exists but the user has no edge to it
 
-            starredIds(user.id.toString()).shouldBeEmpty()
+            favoriteIds(user.id.toString()).shouldBeEmpty()
         }
 
-        "mergeStarred is a no-op when the user has no direct relation on the entity" {
+        "mergeFavorite is a no-op when the user has no direct relation on the entity" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
 
             // No ADMIN/MEMBER edge — the MATCH guard prevents orphaned [:HAS_USER_CASE_STATE] edges.
-            caseNodeRepository.mergeStarred(
+            caseNodeRepository.mergeFavorite(
                 userId = user.id.toString(),
                 caseId = case.id.toString(),
                 favoriteAt = Instant.now(),
             )
 
-            starredIds(user.id.toString()).shouldBeEmpty()
+            favoriteIds(user.id.toString()).shouldBeEmpty()
         }
 
-        "starred is per-user: it is scoped to the caller's edge and never leaks across users" {
+        "favorite is per-user: it is scoped to the caller's edge and never leaks across users" {
             val userA = createUser("a@example.com")
             val userB = createUser("b@example.com")
             val namespace = createNamespace()
@@ -168,31 +167,31 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityLabel = "Case",
             )
 
-            // A stars the case: only A has a [:HAS_USER_CASE_STATE] edge with favoriteAt, B does not.
-            caseNodeRepository.mergeStarred(
+            // A favorites the case: only A has a [:HAS_USER_CASE_STATE] edge with favoriteAt, B does not.
+            caseNodeRepository.mergeFavorite(
                 userId = userA.id.toString(),
                 caseId = caseId,
                 favoriteAt = Instant.now(),
             )
-            starredIds(userA.id.toString()) shouldContain caseId
-            starredIds(userB.id.toString()) shouldNotContain caseId
+            favoriteIds(userA.id.toString()) shouldContain caseId
+            favoriteIds(userB.id.toString()) shouldNotContain caseId
 
-            // B stars it: B now has its own edge, A is unaffected.
-            caseNodeRepository.mergeStarred(
+            // B favorites it: B now has its own edge, A is unaffected.
+            caseNodeRepository.mergeFavorite(
                 userId = userB.id.toString(),
                 caseId = caseId,
                 favoriteAt = Instant.now(),
             )
-            starredIds(userB.id.toString()) shouldContain caseId
-            starredIds(userA.id.toString()) shouldContain caseId
+            favoriteIds(userB.id.toString()) shouldContain caseId
+            favoriteIds(userA.id.toString()) shouldContain caseId
 
-            // B un-stars: only B's favoriteAt is cleared, A's survives.
-            caseNodeRepository.deleteStarred(
+            // B unfavorites: only B's favoriteAt is cleared, A's survives.
+            caseNodeRepository.clearFavorite(
                 userId = userB.id.toString(),
                 caseId = caseId,
             )
-            starredIds(userB.id.toString()) shouldNotContain caseId
-            starredIds(userA.id.toString()) shouldContain caseId
+            favoriteIds(userB.id.toString()) shouldNotContain caseId
+            favoriteIds(userA.id.toString()) shouldContain caseId
         }
 
         "a user holding both [:ADMIN] and [:MEMBER] on one case collapses to a single ADMIN entry" {
@@ -212,23 +211,23 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 )
             }
 
-            // mergeStarred's MATCH yields two rows; MERGE is idempotent → a single [:HAS_USER_CASE_STATE] edge.
-            caseNodeRepository.mergeStarred(userId = userId, caseId = caseId, favoriteAt = Instant.now())
+            // mergeFavorite's MATCH yields two rows; MERGE is idempotent → a single [:HAS_USER_CASE_STATE] edge.
+            caseNodeRepository.mergeFavorite(userId = userId, caseId = caseId, favoriteAt = Instant.now())
 
             // findDirectRelations emits two rows for the same case id; the decode collapses them (ADMIN wins).
-            val starred = starredService.listDirectRelations(userId, EntityType.CASE)
+            val starred = favoriteService.listDirectRelations(userId, EntityType.CASE)
             starred.size shouldBe 1
-            starred[caseId]?.starred shouldBe true
+            starred[caseId]?.isFavorite shouldBe true
             starred[caseId]?.relation shouldBe PermissionRelation.ADMIN
 
-            // deleteStarred clears the single edge despite the two matching rows.
-            caseNodeRepository.deleteStarred(userId = userId, caseId = caseId)
-            val cleared = starredService.listDirectRelations(userId, EntityType.CASE)
-            cleared[caseId]?.starred shouldBe false
+            // clearFavorite clears the single edge despite the two matching rows.
+            caseNodeRepository.clearFavorite(userId = userId, caseId = caseId)
+            val cleared = favoriteService.listDirectRelations(userId, EntityType.CASE)
+            cleared[caseId]?.isFavorite shouldBe false
             cleared[caseId]?.relation shouldBe PermissionRelation.ADMIN
         }
 
-        "StarredService.setStarred round-trip visible via listDirectRelations" {
+        "FavoriteService.setFavorite round-trip visible via listDirectRelations" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
@@ -239,20 +238,20 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityLabel = "Case",
             )
 
-            starredService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), true)
-            starredIds(user.id.toString()) shouldContain case.id.toString()
+            favoriteService.setFavorite(user.id.toString(), EntityType.CASE, case.id.toString(), true)
+            favoriteIds(user.id.toString()) shouldContain case.id.toString()
 
-            starredService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), false)
-            starredIds(user.id.toString()) shouldNotContain case.id.toString()
+            favoriteService.setFavorite(user.id.toString(), EntityType.CASE, case.id.toString(), false)
+            favoriteIds(user.id.toString()) shouldNotContain case.id.toString()
         }
 
-        "setStarred returns true when a direct edge exists and false when the user has none" {
+        "setFavorite returns true when a direct edge exists and false when the user has none" {
             val user = createUser()
             val namespace = createNamespace()
             val case = createCase(namespace.id)
 
             // No direct edge yet — the MATCH guard prevents orphaned edges.
-            starredService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), true) shouldBe false
+            favoriteService.setFavorite(user.id.toString(), EntityType.CASE, case.id.toString(), true) shouldBe false
 
             permissionNodeRepository.createAdminPermission(
                 userId = user.id.toString(),
@@ -260,8 +259,8 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityLabel = "Case",
             )
 
-            // Direct edge present — the star lands.
-            starredService.setStarred(user.id.toString(), EntityType.CASE, case.id.toString(), true) shouldBe true
+            // Direct edge present — the favorite lands.
+            favoriteService.setFavorite(user.id.toString(), EntityType.CASE, case.id.toString(), true) shouldBe true
         }
 
         "[:HAS_USER_CASE_STATE] favoriteAt survives a MEMBER-to-ADMIN promotion" {
@@ -271,24 +270,24 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             val caseId = case.id.toString()
             val userId = user.id.toString()
 
-            // User starts as MEMBER and stars the case.
+            // User starts as MEMBER and favorites the case.
             permissionNodeRepository.createMemberPermission(
                 userId = userId,
                 entityId = caseId,
                 entityLabel = "Case",
             )
-            caseNodeRepository.mergeStarred(
+            caseNodeRepository.mergeFavorite(
                 userId = userId,
                 caseId = caseId,
                 favoriteAt = Instant.now(),
             )
-            starredIds(userId) shouldContain caseId
+            favoriteIds(userId) shouldContain caseId
 
             // Promote: [:MEMBER] is replaced by [:ADMIN]; the state edge is a separate edge and untouched.
             permissionService.promoteMemberToAdmin(userId, EntityType.CASE, caseId)
 
-            val relations = starredService.listDirectRelations(userId, EntityType.CASE)
-            relations[caseId]?.starred shouldBe true
+            val relations = favoriteService.listDirectRelations(userId, EntityType.CASE)
+            relations[caseId]?.isFavorite shouldBe true
             relations[caseId]?.relation shouldBe PermissionRelation.ADMIN
         }
 
@@ -299,24 +298,24 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
             val caseId = case.id.toString()
             val userId = user.id.toString()
 
-            // User starts as ADMIN and stars the case.
+            // User starts as ADMIN and favorites the case.
             permissionNodeRepository.createAdminPermission(
                 userId = userId,
                 entityId = caseId,
                 entityLabel = "Case",
             )
-            caseNodeRepository.mergeStarred(
+            caseNodeRepository.mergeFavorite(
                 userId = userId,
                 caseId = caseId,
                 favoriteAt = Instant.now(),
             )
-            starredIds(userId) shouldContain caseId
+            favoriteIds(userId) shouldContain caseId
 
             // Demote: [:ADMIN] is replaced by [:MEMBER]; the state edge is untouched.
             permissionService.demoteAdminToMember(userId, EntityType.CASE, caseId)
 
-            val relations = starredService.listDirectRelations(userId, EntityType.CASE)
-            relations[caseId]?.starred shouldBe true
+            val relations = favoriteService.listDirectRelations(userId, EntityType.CASE)
+            relations[caseId]?.isFavorite shouldBe true
             relations[caseId]?.relation shouldBe PermissionRelation.MEMBER
         }
 
@@ -337,13 +336,13 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
                 entityId = memberCase.id.toString(),
                 entityLabel = "Case",
             )
-            starredService.setStarred(user.id.toString(), EntityType.CASE, adminCase.id.toString(), true)
+            favoriteService.setFavorite(user.id.toString(), EntityType.CASE, adminCase.id.toString(), true)
 
-            val relations = starredService.listDirectRelations(user.id.toString(), EntityType.CASE)
+            val relations = favoriteService.listDirectRelations(user.id.toString(), EntityType.CASE)
 
-            relations[adminCase.id.toString()]?.starred shouldBe true
+            relations[adminCase.id.toString()]?.isFavorite shouldBe true
             relations[adminCase.id.toString()]?.relation shouldBe PermissionRelation.ADMIN
-            relations[memberCase.id.toString()]?.starred shouldBe false
+            relations[memberCase.id.toString()]?.isFavorite shouldBe false
             relations[memberCase.id.toString()]?.relation shouldBe PermissionRelation.MEMBER
             relations.containsKey(unrelatedCase.id.toString()) shouldBe false
         }
@@ -414,14 +413,13 @@ class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
 
             val readTime = Instant.parse("2025-06-01T10:00:00Z")
             caseNodeRepository.markRead(userId = userId, caseId = caseId, readAt = readTime)
-            // Now also star the case — should not clear readAt.
-            caseNodeRepository.mergeStarred(userId = userId, caseId = caseId, favoriteAt = Instant.now())
+            // Now also favorite the case — should not clear readAt.
+            caseNodeRepository.mergeFavorite(userId = userId, caseId = caseId, favoriteAt = Instant.now())
 
-            val relations = starredService.listDirectRelations(userId, EntityType.CASE)
-            relations[caseId]?.starred shouldBe true
+            val relations = favoriteService.listDirectRelations(userId, EntityType.CASE)
+            relations[caseId]?.isFavorite shouldBe true
             // readAt must still be present (not cleared by the subsequent mergeStarred).
             relations[caseId]?.readAt shouldBe readTime
-
         }
     }
 }

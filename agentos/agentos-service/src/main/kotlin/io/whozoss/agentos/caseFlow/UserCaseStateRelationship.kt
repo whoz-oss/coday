@@ -10,8 +10,7 @@ import java.time.Instant
  * Properties on the `(User)-[:HAS_USER_CASE_STATE]->(Case)` relationship.
  *
  * This single edge consolidates all per-user, per-case state:
- * - [favoriteAt] — non-null when the user has starred (favorited) the case.
- *   Replaces the legacy `[:STARRED]` plain edge (issue #374 alignment).
+ * - [favoriteAt] — non-null when the user has favorited the case.
  * - [readAt] — timestamp of the user's last read; null means never read (unread).
  *
  * The edge is created lazily on first write (star or markRead). A missing edge
@@ -28,9 +27,9 @@ class UserCaseStateRelationship(
     @RelationshipId
     val id: Long? = null,
     /**
-     * Non-null when the user has starred (favorited) this case. The value is the
-     * timestamp of the last star action — set to `now()` on star, cleared to `null`
-     * on unstar. Replaces the legacy `[:STARRED]` plain edge.
+     * Non-null when the user has favorited this case. The value is the timestamp of
+     * the last favorite action — set to `now()` on favorite, cleared to `null` on
+     * unfavorite.
      * Named `favoriteAt` to align with [io.whozoss.agentos.sdk.api.case.CaseDto.favorite].
      */
     val favoriteAt: Instant? = null,

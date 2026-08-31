@@ -7,7 +7,7 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.permissions.StarredService
+import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
@@ -63,7 +63,7 @@ class CaseController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
-    private val starredService: StarredService,
+    private val favoriteService: FavoriteService,
     private val caseReadService: CaseReadService,
 ) : CaseApi {
     @GetMapping("/{id}")
@@ -77,7 +77,10 @@ class CaseController(
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(
         @RequestBody request: SdkGetByIdsRequest,
-    ): List<CaseDto> = caseService.findByIds(request.ids, request.withRemoved).withCallerMeta(userService.getCurrentUser().id.toString())
+    ): List<CaseDto> =
+        caseService
+            .findByIds(request.ids, request.withRemoved)
+            .withCallerMeta(userService.getCurrentUser().id.toString())
 
     /**
      * GET /api/cases/by-parentId/{parentId} — list cases in a namespace.
@@ -140,7 +143,7 @@ class CaseController(
      * relation (`role`), favorite flag, [CaseDto.readAt], and [CaseDto.lastMessageAt].
      *
      * Two batch queries resolve the whole set (no per-case round-trips):
-     * - [StarredService.listDirectRelations] for role/favorite/readAt metadata
+     * - [FavoriteService.listDirectRelations] for role/favorite/readAt metadata
      * - [CaseEventService.findLastMessageTimestamps] for the last-message timestamp
      *   used by the frontend to sort and group conversations.
      *
@@ -148,12 +151,12 @@ class CaseController(
      * and `readAt = null` (e.g. the namespace-admin fast path in [listByParent]).
      */
     private fun List<Case>.withCallerMeta(userId: String): List<CaseDto> {
-        val starred = starredService.listDirectRelations(userId, EntityType.CASE)
+        val starred = favoriteService.listDirectRelations(userId, EntityType.CASE)
         val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(this.map { it.id })
         return this.map {
             val meta = starred[it.metadata.id.toString()]
             toDto(it).copy(
-                favorite = meta?.starred ?: false,
+                favorite = meta?.isFavorite ?: false,
                 role = meta?.relation?.name,
                 readAt = meta?.readAt,
                 lastMessageAt = lastMessageTimestamps[it.id],
@@ -356,8 +359,8 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        callStarredService(userId = userId, id = id, starred = true)
-        logger.info { "User $userId starred case $id" }
+        callFavoriteService(userId = userId, id = id, favorite = true)
+        logger.info { "User $userId favorited case $id" }
     }
 
     /** DELETE /api/cases/{id}/star — remove the case from the current user's favorites. */
@@ -368,25 +371,25 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        callStarredService(userId = userId, id = id, starred = false)
-        logger.info { "User $userId unstarred case $id" }
+        callFavoriteService(userId = userId, id = id, favorite = false)
+        logger.info { "User $userId unfavorited case $id" }
     }
 
-    private fun callStarredService(
+    private fun callFavoriteService(
         userId: String,
         id: UUID,
-        starred: Boolean,
+        favorite: Boolean,
     ) {
-        if (!starredService.setStarred(
+        if (!favoriteService.setFavorite(
                 userId = userId,
                 entityType = EntityType.CASE,
                 entityId = id.toString(),
-                starred = starred,
+                favorite = favorite,
             )
         ) {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
-                "Cannot unstar case $id: the caller has no direct relation on it",
+                "Cannot unfavorite case $id: the caller has no direct relation on it",
             )
         }
     }

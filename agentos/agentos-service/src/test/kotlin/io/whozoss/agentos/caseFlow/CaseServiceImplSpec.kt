@@ -212,7 +212,6 @@ class CaseServiceImplSpec :
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
-            val caseReadService = mockk<CaseReadService> {}
             return CaseServiceImpl(
                 agentService = agentService,
                 agentConfigService = agentConfigService,
@@ -225,7 +224,6 @@ class CaseServiceImplSpec :
                 permissionService = permissionService,
                 promptService = promptService,
                 caseNamingService = noOpCaseNamingService,
-                caseReadService = caseReadService,
             )
         }
 
@@ -387,7 +385,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -626,7 +623,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -727,7 +723,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -807,7 +802,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -861,7 +855,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -945,7 +938,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1021,7 +1013,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1141,7 +1132,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1247,7 +1237,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1543,7 +1532,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
             val parentCase = service.create(Case(namespaceId = namespaceId))
 
@@ -1679,7 +1667,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1853,7 +1840,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = multiPromptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
 
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1944,7 +1930,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = throwingPromptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
 
             val case = service.create(Case(namespaceId = namespaceId))
@@ -2035,7 +2020,6 @@ class CaseServiceImplSpec :
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
-                    caseReadService = mockk(relaxed = true),
                 )
 
             // Insert the case directly into the repository so no runtime is created in

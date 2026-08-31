@@ -37,10 +37,10 @@ import io.whozoss.agentos.namespace.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
 import io.whozoss.agentos.permissions.Neo4jPermissionRepository
-import io.whozoss.agentos.permissions.Neo4jStarredRepository
+import io.whozoss.agentos.permissions.Neo4jFavoriteRepository
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRepository
-import io.whozoss.agentos.permissions.StarredRepository
+import io.whozoss.agentos.permissions.FavoriteRepository
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.prompt.FilesystemPromptRepository
 import io.whozoss.agentos.prompt.Neo4jPromptRepository
@@ -169,9 +169,9 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
-    fun neo4jStarredRepository(caseNodeNeo4jRepository: CaseNodeNeo4jRepository): StarredRepository {
-        logger.info { "[Persistence] Neo4jStarredRepository active" }
-        return Neo4jStarredRepository(caseNodeNeo4jRepository)
+    fun neo4jFavoriteRepository(caseNodeNeo4jRepository: CaseNodeNeo4jRepository): FavoriteRepository {
+        logger.info { "[Persistence] Neo4jFavoriteRepository active" }
+        return Neo4jFavoriteRepository(caseNodeNeo4jRepository)
     }
 
     /**

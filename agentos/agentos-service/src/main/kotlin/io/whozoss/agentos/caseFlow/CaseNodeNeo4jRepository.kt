@@ -171,11 +171,11 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     )
 
     // -------------------------------------------------------------------------
-    // HAS_USER_CASE_STATE — consolidated per-user case state (starred + read).
+    // HAS_USER_CASE_STATE — consolidated per-user case state (favorite + read).
     //
-    // Replaces the legacy `[:STARRED]` plain edge. The MATCH guard on
-    // [:ADMIN|MEMBER] prevents orphaned state edges for users with no direct
-    // permission. Role transitions (promote/demote) leave the state edge untouched.
+    // The MATCH guard on [:ADMIN|MEMBER] prevents orphaned state edges for users
+    // with no direct permission. Role transitions (promote/demote) leave the state
+    // edge untouched.
     // -------------------------------------------------------------------------
 
     /**
@@ -193,7 +193,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
             RETURN count(c)
             """,
     )
-    fun mergeStarred(
+    fun mergeFavorite(
         @Param("userId") userId: String,
         @Param("caseId") caseId: String,
         @Param("favoriteAt") favoriteAt: Instant?,
@@ -214,7 +214,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
             RETURN count(c)
             """,
     )
-    fun deleteStarred(
+    fun clearFavorite(
         @Param("userId") userId: String,
         @Param("caseId") caseId: String,
     ): Long
@@ -270,7 +270,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      * Each map holds:
      * - `caseId` (String) — the case id
      * - `relations` (List<String>) — distinct edge types (`["ADMIN"]`, `["MEMBER"]`, or both)
-     * - `favoriteAt` (ZonedDateTime?) — non-null when the user has starred (favorited) the case
+     * - `favoriteAt` (ZonedDateTime?) — non-null when the user has favorited the case
      * - `readAt` (ZonedDateTime?) — timestamp of the user's last read; null = never read
      *
      * Built as a single-column `collect` of maps: Spring Data Neo4j rejects a multi-column
