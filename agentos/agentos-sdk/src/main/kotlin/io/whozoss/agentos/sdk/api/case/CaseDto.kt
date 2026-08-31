@@ -41,10 +41,6 @@ data class CaseDto(
     val status: CaseStatus = CaseStatus.PENDING,
     val title: String? = null,
     val parentCaseId: UUID? = null,
-    /**
-     * Id of the ScheduledPrompt that triggered this case.
-     * Null for cases started by a human user or a delegation tool.
-     */
     val scheduledPromptId: UUID? = null,
     val created: Instant? = null,
     val modified: Instant? = null,

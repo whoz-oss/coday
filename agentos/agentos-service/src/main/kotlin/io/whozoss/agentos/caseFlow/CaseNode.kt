@@ -21,7 +21,6 @@ data class CaseNode(
     val status: String,
     val title: String,
     val parentCaseId: String? = null,
-    /** Id of the ScheduledPrompt that triggered this case. Null for user-initiated cases. */
     val scheduledPromptId: String? = null,
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
