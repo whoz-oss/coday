@@ -15,10 +15,10 @@ import java.util.UUID
  * [namespaceId] is null for platform-level prompts and non-null for namespace-scoped prompts.
  *
  * On POST, scope is inferred from [namespaceId] and [userId]:
- * - (null, null)  → platform (Super Admin only)
- * - (ns, null)    → namespace-scoped (WRITE on namespace)
- * - (null, me)    → user-global (authenticated)
- * - (ns, me)      → user × namespace (READ on namespace)
+ * - (null, null)  -> platform (Super Admin only)
+ * - (ns, null)    -> namespace-scoped (WRITE on namespace)
+ * - (null, me)    -> user-global (authenticated)
+ * - (ns, me)      -> user x namespace (READ on namespace)
  *
  * On PUT, [namespaceId], [userId] and [agentConfigId] are immutable
  * (preserved from the persisted entity).
@@ -38,14 +38,8 @@ import java.util.UUID
  * Defaults to `"en"`. Used by the translation endpoint to skip an LLM call
  * when the requested language matches the source.
  *
- * [translatedTitles] stores on-demand translations of [title] keyed by BCP-47
- * language code. Each value is a single translated string.
- * Null when [title] is null or no title translations have been generated.
- * Cleared automatically when [title] or [sourceLanguage] is updated.
- *
- * [translatedContent] stores on-demand translations of [content] keyed by BCP-47
- * language code. Each value mirrors the shape of [content] (same indices).
- * Cleared automatically when [content] or [sourceLanguage] is updated.
+ * Translations of [title] and [content] are not exposed on this DTO. Use
+ * `POST /api/prompts/{id}/translations/{languageCode}` to retrieve translated text.
  *
  * [createdBy], [createdOn], [updatedBy], [updatedOn] are read-only audit fields
  * present in GET responses; ignored on write.
@@ -79,21 +73,6 @@ data class PromptDto(
         example = "en",
     )
     val sourceLanguage: String = "en",
-    @field:Schema(
-        description = "On-demand translations of title, keyed by BCP-47 language code. " +
-            "Each value is a single translated string. " +
-            "Null when title is null or no title translations have been generated. " +
-            "Cleared automatically when title or sourceLanguage is updated.",
-        nullable = true,
-    )
-    val translatedTitles: Map<String, String>? = null,
-    @field:Schema(
-        description = "On-demand translations of content, keyed by BCP-47 language code. " +
-            "Each value is a list mirroring the indices of content. " +
-            "Cleared automatically when content or sourceLanguage is updated.",
-        nullable = true,
-    )
-    val translatedContent: Map<String, List<String>>? = null,
     val createdBy: String? = null,
     val createdOn: Instant? = null,
     val updatedBy: String? = null,

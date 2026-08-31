@@ -51,12 +51,13 @@ class PromptServiceImpl(
 
     override fun update(entity: Prompt): Prompt {
         validate(entity)
-        rejectIfFilesystemBacked(entity.id, "updated")
+        val existing = repository.findByIds(listOf(entity.id)).firstOrNull()
+            ?: throw ResourceNotFoundException("Prompt not found: ${entity.id}")
+        rejectIfFilesystemBacked(existing, "updated")
         repository
             .findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let { throw ConflictException(conflictMessage(entity)) }
-        val existing = repository.findByIds(listOf(entity.id)).firstOrNull()
         return saveOrConflict(clearTranslationsIfStale(entity, existing))
     }
 
@@ -305,14 +306,17 @@ class PromptServiceImpl(
      * persisted copy would then silently shadow the file-backed prompt it was meant to edit,
      * defeating the collision rule documented on [FilesystemPromptRepository].
      */
+    private fun rejectIfFilesystemBacked(existing: Prompt, action: String) {
+        if (existing.metadata.version == null) {
+            throw UnprocessableEntityException(
+                "Prompt id=${existing.id} is backed by a filesystem YAML file and cannot be $action via the API",
+            )
+        }
+    }
+
     private fun rejectIfFilesystemBacked(id: UUID, action: String) {
-        repository.findByIds(listOf(id)).firstOrNull()
-            ?.takeIf { it.metadata.version == null }
-            ?.let {
-                throw UnprocessableEntityException(
-                    "Prompt id=$id is backed by a filesystem YAML file and cannot be $action via the API",
-                )
-            }
+        val existing = repository.findByIds(listOf(id)).firstOrNull() ?: return
+        rejectIfFilesystemBacked(existing, action)
     }
 
     companion object : KLogging() {
