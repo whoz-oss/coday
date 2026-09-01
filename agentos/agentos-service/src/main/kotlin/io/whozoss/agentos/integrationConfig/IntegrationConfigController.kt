@@ -371,4 +371,5 @@ private fun toExportModel(entity: IntegrationConfig): Map<String, Any?> =
         put("integrationType", entity.integrationType)
         entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
         entity.parameters?.let { put("parameters", it) }
+        entity.authSettingName?.takeIf { it.isNotBlank() }?.let { put("authSettingName", it) }
     }

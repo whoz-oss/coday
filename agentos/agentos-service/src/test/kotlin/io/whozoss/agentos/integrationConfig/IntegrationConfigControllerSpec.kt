@@ -480,6 +480,27 @@ class IntegrationConfigControllerSpec : StringSpec({
         tree.get("parameters").get("workingDirectory").asText() shouldBe "/home/alice/repos/myproject"
     }
 
+    "export includes authSettingName when present" {
+        val cfg = config(name = "JIRA_PROD", integrationType = "JIRA").copy(authSettingName = "my-oauth")
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val response = controller.export(cfg.metadata.id)
+        val body = response.body!!
+
+        body shouldContain "authSettingName"
+        body shouldContain "my-oauth"
+    }
+
+    "export omits authSettingName when null" {
+        val cfg = config(name = "JIRA_PROD", integrationType = "JIRA").copy(authSettingName = null)
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val response = controller.export(cfg.metadata.id)
+        val body = response.body!!
+
+        (body.contains("authSettingName")) shouldBe false
+    }
+
     "export keeps the existing Content-Disposition header and application/yaml content type" {
         val cfg = config(name = "BASH_LOCAL", integrationType = "BASH")
         every { service.findById(cfg.metadata.id) } returns cfg
