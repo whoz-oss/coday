@@ -480,6 +480,24 @@ class IntegrationConfigControllerSpec : StringSpec({
         tree.get("parameters").get("workingDirectory").asText() shouldBe "/home/alice/repos/myproject"
     }
 
+    "export serialises parameters as indented YAML, not as a JSON blob on a single line" {
+        val exportParams = JsonNodeFactory.instance.objectNode()
+            .put("url", "https://mcp.example.com/mcp")
+            .put("timeoutSeconds", 30)
+        val cfg = config(name = "MCP_HTTP", integrationType = "MCP_HTTP").let {
+            it.copy(parameters = exportParams)
+        }
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val body = controller.export(cfg.metadata.id).body!!
+
+        // Parameters must appear as separate YAML keys, not as a single-line JSON blob.
+        body shouldContain "url:"
+        body shouldContain "timeoutSeconds:"
+        // A JSON blob would look like: parameters: {"url":"...","timeoutSeconds":30}
+        body.lines().none { it.trim().startsWith("parameters:") && it.contains("{") } shouldBe true
+    }
+
     "export includes authSettingName when present" {
         val cfg = config(name = "JIRA_PROD", integrationType = "JIRA").copy(authSettingName = "my-oauth")
         every { service.findById(cfg.metadata.id) } returns cfg
