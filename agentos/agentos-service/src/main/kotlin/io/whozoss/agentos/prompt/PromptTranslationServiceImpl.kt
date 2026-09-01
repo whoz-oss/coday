@@ -3,13 +3,13 @@ package io.whozoss.agentos.prompt
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.exception.BadRequestException
-import io.whozoss.agentos.namespace.NamespaceService
 import mu.KLogging
 import org.springframework.ai.chat.messages.UserMessage
-import org.springframework.ai.chat.prompt.Prompt as AiPrompt
 import org.springframework.stereotype.Service
 import java.util.UUID
+import org.springframework.ai.chat.prompt.Prompt as AiPrompt
 
 /**
  * Translates [Prompt.content] and [Prompt.title] via the namespace's default AI model.
@@ -28,9 +28,8 @@ class PromptTranslationServiceImpl(
     private val aiModelService: AiModelService,
     private val aiProviderService: AiProviderService,
     private val chatClientProvider: ChatClientProvider,
-    private val namespaceService: NamespaceService,
+    private val externalIdentifierResolver: ExternalIdentifierResolver,
 ) : PromptTranslationService {
-
     override fun translateContent(
         content: List<String>,
         sourceLanguage: String,
@@ -40,7 +39,15 @@ class PromptTranslationServiceImpl(
     ): List<String> {
         val (model, provider) = resolveModelAndProvider(namespaceId, namespaceExternalId)
         val chatClient = chatClientProvider.getChatClient(model, provider)
-        return content.map { element -> translateText(element, sourceLanguage, targetLanguage, chatClient, TextKind.CONTENT) }
+        return content.map { element ->
+            translateText(
+                element,
+                sourceLanguage,
+                targetLanguage,
+                chatClient,
+                TextKind.CONTENT,
+            )
+        }
     }
 
     override fun translateTitle(
@@ -74,25 +81,15 @@ class PromptTranslationServiceImpl(
         namespaceId: UUID?,
         namespaceExternalId: String?,
     ): Pair<io.whozoss.agentos.sdk.aiProvider.AiModel, io.whozoss.agentos.sdk.aiProvider.AiProvider> {
-        val resolvedNamespaceId = resolveNamespaceId(namespaceId, namespaceExternalId)
-        val model = aiModelService.findAiModel(resolvedNamespaceId)
-            ?: throw BadRequestException(
-                "No default AI model configured for namespace $resolvedNamespaceId -- cannot translate prompt",
-            )
+        val resolvedNamespaceId = externalIdentifierResolver.resolveNamespaceId(namespaceId, namespaceExternalId)
+        val model =
+            aiModelService.findAiModel(resolvedNamespaceId)
+                ?: throw BadRequestException(
+                    "No default AI model configured for namespace $resolvedNamespaceId -- cannot translate prompt",
+                )
         val provider = aiProviderService.getById(model.aiProviderId)
         return model to provider
     }
-
-    private fun resolveNamespaceId(namespaceId: UUID?, namespaceExternalId: String?): UUID =
-        when {
-            namespaceId != null -> namespaceId
-            namespaceExternalId != null ->
-                namespaceService.findByExternalId(namespaceExternalId)?.metadata?.id
-                    ?: throw BadRequestException("Namespace not found for externalId '$namespaceExternalId'")
-            else -> throw BadRequestException(
-                "At least one of namespaceId or namespaceExternalId must be provided for prompt translation",
-            )
-        }
 
     /**
      * Calls the LLM to translate [text] from [sourceLanguage] into [targetLanguage].
@@ -112,16 +109,23 @@ class PromptTranslationServiceImpl(
         chatClient: org.springframework.ai.chat.client.ChatClient,
         kind: TextKind,
     ): String {
-        val context = when (kind) {
-            TextKind.TITLE ->
-                """A prompt title is a short label shown on a button that users click to start a conversation with an AI agent.
-                |It summarises the prompt's purpose for the user in a few words.""".trimMargin()
-            TextKind.CONTENT ->
-                """A prompt content element is an instruction sent to an AI agent when a user starts a conversation.
-                |It is directive in tone and tells the agent what to do.""".trimMargin()
-        }
+        val context =
+            when (kind) {
+                TextKind.TITLE -> {
+                    """A prompt title is a short label shown on a button that users click to start a conversation with an AI agent.
+It summarises the prompt's purpose for the user in a few words.
+                    """.trimMargin()
+                }
 
-        val promptText = """
+                TextKind.CONTENT -> {
+                    """A prompt content element is an instruction sent to an AI agent when a user starts a conversation.
+It is directive in tone and tells the agent what to do.
+                    """.trimMargin()
+                }
+            }
+
+        val promptText =
+            """
             $context
 
             Your goal is to translate the following text from $sourceLanguage to $targetLanguage.
@@ -139,7 +143,7 @@ class PromptTranslationServiceImpl(
 
             Now give me the text translated to the specified target language.
             Output only the translated string, with no XML tags or formatting.
-        """.trimIndent()
+            """.trimIndent()
 
         return runCatching {
             chatClient

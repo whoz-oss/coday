@@ -5,16 +5,13 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.exception.BadRequestException
-import io.whozoss.agentos.namespace.Namespace
-import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
-import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata
@@ -35,14 +32,15 @@ class PromptTranslationServiceImplSpec : StringSpec() {
     private val aiModelService = mockk<AiModelService>()
     private val aiProviderService = mockk<AiProviderService>()
     private val chatClientProvider = mockk<ChatClientProvider>()
-    private val namespaceService = mockk<NamespaceService>()
+    private val externalIdentifierResolver = mockk<ExternalIdentifierResolver>()
 
-    private val service = PromptTranslationServiceImpl(
-        aiModelService = aiModelService,
-        aiProviderService = aiProviderService,
-        chatClientProvider = chatClientProvider,
-        namespaceService = namespaceService,
-    )
+    private val service =
+        PromptTranslationServiceImpl(
+            aiModelService = aiModelService,
+            aiProviderService = aiProviderService,
+            chatClientProvider = chatClientProvider,
+            externalIdentifierResolver = externalIdentifierResolver,
+        )
 
     private val namespaceId = UUID.randomUUID()
     private val model = mockk<AiModel>(relaxed = true)
@@ -62,13 +60,14 @@ class PromptTranslationServiceImplSpec : StringSpec() {
         "translateContent returns translated list with one entry per source element" {
             every { chatClientProvider.getChatClient(model, provider) } returns chatClientReturning("Bonjour")
 
-            val result = service.translateContent(
-                content = listOf("Hello"),
-                sourceLanguage = "en",
-                targetLanguage = "fr",
-                namespaceId = namespaceId,
-                namespaceExternalId = null,
-            )
+            val result =
+                service.translateContent(
+                    content = listOf("Hello"),
+                    sourceLanguage = "en",
+                    targetLanguage = "fr",
+                    namespaceId = namespaceId,
+                    namespaceExternalId = null,
+                )
 
             result shouldBe listOf("Bonjour")
         }
@@ -77,13 +76,14 @@ class PromptTranslationServiceImplSpec : StringSpec() {
             val responses = mutableListOf("Bonjour", "Au revoir")
             every { chatClientProvider.getChatClient(model, provider) } returns chatClientReturningSequence(responses)
 
-            val result = service.translateContent(
-                content = listOf("Hello", "Goodbye"),
-                sourceLanguage = "en",
-                targetLanguage = "fr",
-                namespaceId = namespaceId,
-                namespaceExternalId = null,
-            )
+            val result =
+                service.translateContent(
+                    content = listOf("Hello", "Goodbye"),
+                    sourceLanguage = "en",
+                    targetLanguage = "fr",
+                    namespaceId = namespaceId,
+                    namespaceExternalId = null,
+                )
 
             result shouldBe listOf("Bonjour", "Au revoir")
         }
@@ -91,27 +91,34 @@ class PromptTranslationServiceImplSpec : StringSpec() {
         "translateContent falls back to original element when LLM returns blank" {
             every { chatClientProvider.getChatClient(model, provider) } returns chatClientReturning("")
 
-            val result = service.translateContent(
-                content = listOf("Hello"),
-                sourceLanguage = "en",
-                targetLanguage = "fr",
-                namespaceId = namespaceId,
-                namespaceExternalId = null,
-            )
+            val result =
+                service.translateContent(
+                    content = listOf("Hello"),
+                    sourceLanguage = "en",
+                    targetLanguage = "fr",
+                    namespaceId = namespaceId,
+                    namespaceExternalId = null,
+                )
 
             result shouldBe listOf("Hello")
         }
 
         "translateContent falls back to original element when LLM call throws" {
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClientThrowing(RuntimeException("LLM unavailable"))
+            every {
+                chatClientProvider.getChatClient(
+                    model,
+                    provider,
+                )
+            } returns chatClientThrowing(RuntimeException("LLM unavailable"))
 
-            val result = service.translateContent(
-                content = listOf("Hello"),
-                sourceLanguage = "en",
-                targetLanguage = "fr",
-                namespaceId = namespaceId,
-                namespaceExternalId = null,
-            )
+            val result =
+                service.translateContent(
+                    content = listOf("Hello"),
+                    sourceLanguage = "en",
+                    targetLanguage = "fr",
+                    namespaceId = namespaceId,
+                    namespaceExternalId = null,
+                )
 
             result shouldBe listOf("Hello")
         }
@@ -123,13 +130,14 @@ class PromptTranslationServiceImplSpec : StringSpec() {
         "translateTitle returns translated string" {
             every { chatClientProvider.getChatClient(model, provider) } returns chatClientReturning("Revoir le profil")
 
-            val result = service.translateTitle(
-                title = "Review profile",
-                sourceLanguage = "en",
-                targetLanguage = "fr",
-                namespaceId = namespaceId,
-                namespaceExternalId = null,
-            )
+            val result =
+                service.translateTitle(
+                    title = "Review profile",
+                    sourceLanguage = "en",
+                    targetLanguage = "fr",
+                    namespaceId = namespaceId,
+                    namespaceExternalId = null,
+                )
 
             result shouldBe "Revoir le profil"
         }
@@ -137,27 +145,34 @@ class PromptTranslationServiceImplSpec : StringSpec() {
         "translateTitle falls back to original when LLM returns blank" {
             every { chatClientProvider.getChatClient(model, provider) } returns chatClientReturning("  ")
 
-            val result = service.translateTitle(
-                title = "Review profile",
-                sourceLanguage = "en",
-                targetLanguage = "fr",
-                namespaceId = namespaceId,
-                namespaceExternalId = null,
-            )
+            val result =
+                service.translateTitle(
+                    title = "Review profile",
+                    sourceLanguage = "en",
+                    targetLanguage = "fr",
+                    namespaceId = namespaceId,
+                    namespaceExternalId = null,
+                )
 
             result shouldBe "Review profile"
         }
 
         "translateTitle falls back to original when LLM call throws" {
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClientThrowing(RuntimeException("timeout"))
+            every {
+                chatClientProvider.getChatClient(
+                    model,
+                    provider,
+                )
+            } returns chatClientThrowing(RuntimeException("timeout"))
 
-            val result = service.translateTitle(
-                title = "Review profile",
-                sourceLanguage = "en",
-                targetLanguage = "fr",
-                namespaceId = namespaceId,
-                namespaceExternalId = null,
-            )
+            val result =
+                service.translateTitle(
+                    title = "Review profile",
+                    sourceLanguage = "en",
+                    targetLanguage = "fr",
+                    namespaceId = namespaceId,
+                    namespaceExternalId = null,
+                )
 
             result shouldBe "Review profile"
         }
@@ -174,38 +189,6 @@ class PromptTranslationServiceImplSpec : StringSpec() {
                     targetLanguage = "fr",
                     namespaceId = null,
                     namespaceExternalId = null,
-                )
-            }
-        }
-
-        "resolves namespace by externalId when namespaceId is null" {
-            val ns = mockk<Namespace>(relaxed = true)
-            every { ns.metadata } returns EntityMetadata(id = namespaceId)
-            every { namespaceService.findByExternalId("ext-123") } returns ns
-            every { chatClientProvider.getChatClient(model, provider) } returns chatClientReturning("Bonjour")
-
-            val result = service.translateContent(
-                content = listOf("Hello"),
-                sourceLanguage = "en",
-                targetLanguage = "fr",
-                namespaceId = null,
-                namespaceExternalId = "ext-123",
-            )
-
-            result shouldBe listOf("Bonjour")
-            verify { aiModelService.findAiModel(namespaceId) }
-        }
-
-        "throws BadRequestException when externalId resolves to no namespace" {
-            every { namespaceService.findByExternalId("unknown") } returns null
-
-            shouldThrow<BadRequestException> {
-                service.translateContent(
-                    content = listOf("Hello"),
-                    sourceLanguage = "en",
-                    targetLanguage = "fr",
-                    namespaceId = null,
-                    namespaceExternalId = "unknown",
                 )
             }
         }
@@ -234,36 +217,35 @@ class PromptTranslationServiceImplSpec : StringSpec() {
     // -------------------------------------------------------------------------
 
     /** Builds a [Generation] from a plain text string using the Spring AI 1.1.x constructor. */
-    private fun generation(text: String): Generation =
-        Generation(AssistantMessage(text), ChatGenerationMetadata.NULL)
+    private fun generation(text: String): Generation = Generation(AssistantMessage(text), ChatGenerationMetadata.NULL)
 
     /**
      * A [ChatModel] that always returns a [ChatResponse] containing [text].
      */
-    private fun fakeChatModel(text: String): ChatModel = ChatModel { _ ->
-        ChatResponse(listOf(generation(text)))
-    }
+    private fun fakeChatModel(text: String): ChatModel =
+        ChatModel { _ ->
+            ChatResponse(listOf(generation(text)))
+        }
 
     /**
      * A [ChatModel] that returns each string in [responses] in order, then repeats
      * the last entry.
      */
-    private fun fakeChatModelSequence(responses: MutableList<String>): ChatModel = ChatModel { _ ->
-        val text = if (responses.size == 1) responses[0] else responses.removeFirst()
-        ChatResponse(listOf(generation(text)))
-    }
+    private fun fakeChatModelSequence(responses: MutableList<String>): ChatModel =
+        ChatModel { _ ->
+            val text = if (responses.size == 1) responses[0] else responses.removeFirst()
+            ChatResponse(listOf(generation(text)))
+        }
 
     /**
      * A [ChatModel] that always throws [ex].
      */
     private fun fakeChatModelThrowing(ex: Throwable): ChatModel = ChatModel { _ -> throw ex }
 
-    private fun chatClientReturning(text: String): ChatClient =
-        ChatClient.builder(fakeChatModel(text)).build()
+    private fun chatClientReturning(text: String): ChatClient = ChatClient.builder(fakeChatModel(text)).build()
 
     private fun chatClientReturningSequence(responses: MutableList<String>): ChatClient =
         ChatClient.builder(fakeChatModelSequence(responses)).build()
 
-    private fun chatClientThrowing(ex: Throwable): ChatClient =
-        ChatClient.builder(fakeChatModelThrowing(ex)).build()
+    private fun chatClientThrowing(ex: Throwable): ChatClient = ChatClient.builder(fakeChatModelThrowing(ex)).build()
 }
