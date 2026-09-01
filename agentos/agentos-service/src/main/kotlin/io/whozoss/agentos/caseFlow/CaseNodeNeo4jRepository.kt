@@ -220,11 +220,13 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
 
     /**
      * Sets `readAt = $readAt` on the `(u)-[:WATCHES]->(c)` edge, creating
-     * it if it does not exist. No permission guard: the controller already checks
-     * Case READ before calling this.
+     * it if it does not exist. Guarded: only runs when the user already holds a
+     * direct `[:ADMIN]` or `[:MEMBER]` edge on the case. The controller's
+     * `@PreAuthorize` is the primary gate, but the query-level guard prevents
+     * stale or forged calls from creating orphaned state edges.
      */
     @Query(
-        $$"""MATCH (u:User {id: $userId}), (c:Case {id: $caseId})
+        $$"""MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(c:Case {id: $caseId})
             MERGE (u)-[s:WATCHES]->(c)
             SET s.readAt = $readAt
             """,

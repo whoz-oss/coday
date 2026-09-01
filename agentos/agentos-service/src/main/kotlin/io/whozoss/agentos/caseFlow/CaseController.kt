@@ -387,9 +387,10 @@ class CaseController(
                 favorite = favorite,
             )
         ) {
+            val action = if (favorite) "favorite" else "unfavorite"
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
-                "Cannot unfavorite case $id: the caller has no direct relation on it",
+                "Cannot $action case $id: the caller has no direct relation on it",
             )
         }
     }
