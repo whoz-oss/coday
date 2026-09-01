@@ -6,11 +6,14 @@
  *
  * ## Séquence
  *
+ *   fetch-ticket  code  — récupération du ticket Jira (optionnel)
  *   préflight     code  — deux rôles + colocalisation de l'éditeur
  *     ↓
  *   ┌─ révision R ─────────────────────────────────────────────────────────┐
- *   │ analyse-R     agent  — l'analyste (LECTURE SEULE) rend un plan JSON   │
- *   │ plan-gate-R   code   — les fichiers cités dans le plan existent-ils ? │
+ *   │ analyse-R        agent  — l'analyste (LECTURE SEULE) rend un plan    │
+ *   │ plan-gate-R      code   — les fichiers du plan existent-ils ?         │
+ *   │ baseline-types-R code   — baseline ciblé sur plan.files (avant edit)  │
+ *   │ baseline-tests-R code   — baseline ciblé sur plan.files (avant edit)  │
  *   │                                                                        │
  *   │ ┌─ tentative T ──────────────────────────────────────────────────┐    │
  *   │ │ edit-R-T    agent  — l'éditeur reçoit le plan et implémente    │    │
@@ -28,13 +31,20 @@
  * le second est la tentative de correction (boucle interne, éditeur seul).
  * Les phases de vérification portent en plus le nom de l'oracle :
  *
- *   analyse-1, plan-gate-1, edit-1-1,
- *   verify-types-1-1, verify-tests-1-1,
+ *   analyse-1, plan-gate-1,
+ *   baseline-types-1, baseline-tests-1,
+ *   edit-1-1, verify-types-1-1, verify-tests-1-1,
  *   edit-1-2, verify-types-1-2, verify-tests-1-2 ...
  *   claims-gate-1
- *   analyse-2, plan-gate-2, edit-2-1,
- *   verify-types-2-1, verify-tests-2-1 ...
+ *   analyse-2, plan-gate-2,
+ *   baseline-types-2, baseline-tests-2,
+ *   edit-2-1, verify-types-2-1, verify-tests-2-1 ...
  *   claims-gate-2
+ *
+ * IMPORTANT: No global baseline phases before analysis. Baselines are
+ * per-revision, scoped to plan.files, run after plan-gate and before the
+ * first editor attempt. A baseline before plan would have no scope to
+ * target and would fall back to raw `nx affected`, reproducing incident F21.
  *
  * Si le type-check échoue, la phase `verify-tests-R-T` n'existe pas dans le
  * registre pour cette tentative : une phase non exécutée n'est ni pass ni fail.
@@ -892,73 +902,18 @@ export async function run(log) {
   const quarantinedOracles = []
 
   // -------------------------------------------------------------------------
-  // Baseline oracle phases (code) — before any agent edits files
+  // Baseline oracle results — populated per-revision after plan-gate.
   //
-  // Run each oracle against the current repo state BEFORE the analyst/editor
-  // modifies anything. This gives us a baseline to classify post-edit failures.
+  // Keyed by oracle name. Reset at the start of each revision so that a new
+  // plan (different files) gets a fresh, comparably-scoped baseline.
   //
-  // Rules:
-  //   - Same command, cwd, project resolution, cache policy, timeout, and
-  //     result parsing as post-edit verification.
-  //   - Baseline is OBSERVATION ONLY — never a reason to ask an editor to fix.
-  //   - Baseline failure is recorded as a durable fact.
-  //   - If baseline itself cannot run (timeout, empty), the corresponding
-  //     post-edit classification defaults to ORACLE_INFRASTRUCTURE.
+  // For scope-expanded diagnostics (files referenced in errors but not in the
+  // original plan), a supplemental baseline is run before editing those files.
+  // Projects not covered by any baseline are routed to INDETERMINATE.
   // -------------------------------------------------------------------------
 
   /** @type {Map<string, import('../lib/oracle-baseline.mjs').BaselineOracleResult>} */
-  const baselineResults = new Map()
-
-  for (const oracle of domain.oracles) {
-    const baselinePhaseName = `baseline-${oracle.name}`
-    const baselinePhase = startPhase(theRun, baselinePhaseName, 'code')
-    log.phaseStart(baselinePhaseName, 'code')
-    log.info(`[${baselinePhaseName}] Running baseline oracle: ${oracle.name}`)
-    log.info(`[${baselinePhaseName}] Command: ${oracle.command}`)
-    log.info(`[${baselinePhaseName}] CWD: ${oracle.cwd}`)
-
-    const baseline = runBaselineOracle({ oracle, repoRoot: REPO_ROOT, timeoutMs: ORACLE_TIMEOUT_MS })
-    baselineResults.set(oracle.name, baseline)
-
-    const baselineFacts = {
-      oracle: oracle.name,
-      command: baseline.command,
-      cwd: baseline.cwd,
-      exitCode: baseline.exitCode,
-      timedOut: baseline.timedOut,
-      emptySuccess: baseline.emptySuccess,
-      durationMs: baseline.durationMs,
-      tasks: baseline.tasks,
-      diagnosticCount: baseline.diagnosticIdentities.length,
-      executionEvidence: baseline.executionEvidence,
-      ranAt: baseline.ranAt,
-    }
-
-    if (baseline.exitCode === 0 && !baseline.timedOut && !baseline.emptySuccess) {
-      passPhase(baselinePhase, baselineFacts)
-      log.phaseEnd(baselinePhaseName, 'pass', { oracle: oracle.name, exitCode: baseline.exitCode })
-    } else {
-      // Baseline failed: record as fail, but DO NOT stop the run.
-      // This is observation; the workflow continues to the analyst.
-      failPhase(baselinePhase, {
-        ...baselineFacts,
-        rawDiagnosticLines: baseline.rawDiagnosticLines,
-        diagnosticIdentities: baseline.diagnosticIdentities,
-      })
-      log.phaseEnd(baselinePhaseName, 'fail', {
-        oracle: oracle.name,
-        exitCode: baseline.exitCode,
-        timedOut: baseline.timedOut,
-        emptySuccess: baseline.emptySuccess,
-        diagnosticCount: baseline.diagnosticIdentities.length,
-      })
-      log.error(
-        `[${baselinePhaseName}] Baseline oracle failed (exitCode=${baseline.exitCode}, ` +
-        `timedOut=${baseline.timedOut}, emptySuccess=${baseline.emptySuccess}). ` +
-        `This is OBSERVATION only — the run continues. Classification will use this as baseline evidence.`
-      )
-    }
-  }
+  let baselineResults = new Map()
 
   // -------------------------------------------------------------------------
   // Boucle externe : révisions (analyste)
@@ -1140,12 +1095,160 @@ export async function run(log) {
           `Le plan cite ${missingFiles.length} fichier(s) inexistant(s) : ${missingFiles.join(', ')}. ` +
             'Le run s\'arrête avant de dépenser des tokens d\'implémentation.'
         )
-        endRun(theRun, 'fail')
+        endRun(theRun, 'fail');
         return { allPass: false, filePath: theRun.filePath }
       }
 
       passPhase(planGatePhase, planGateFacts)
       log.phaseEnd(planGateName, 'pass', { fileCount })
+    }
+
+    // -----------------------------------------------------------------------
+    // Baseline oracle phases (code) — after plan-gate, before any editor mutation
+    //
+    // Run each oracle against the current repo state BEFORE the editor modifies
+    // anything. Scoped to plan.files — same file list that post-edit verification
+    // will use — so baseline and post-edit resolve the same owner project set.
+    //
+    // Phase order per revision:
+    //   fetch-ticket → preflight → analyse-R → plan-gate-R
+    //   → baseline-types-R → baseline-tests-R   ← here, after plan, before edit
+    //   → edit-R-1 → verify-types-R-1 → verify-tests-R-1 → ...
+    //   → claims-gate-R
+    //
+    // Rules:
+    //   - Command built via buildOracleCommand(oracle, plan.files, REPO_ROOT).
+    //     For filesArg oracles (tests), this produces run-many --projects=<owners
+    //     of plan.files> --skip-nx-cache. shared-ui-feedback and other unrelated
+    //     projects are excluded unless a planned file resolves to them.
+    //   - For fixed-scope oracles (types, build), buildOracleCommand returns the
+    //     template unchanged — no scope injection needed.
+    //   - Baseline is OBSERVATION ONLY — a baseline failure never stops the run.
+    //   - A failed targeted baseline is evidence, not an editor task. The
+    //     existing classification/human oracle gate handles it post-edit.
+    //   - baselineResults is reset each revision so a revised plan gets a fresh
+    //     baseline scoped to its own files.
+    //   - For diagnostics that reference additional files (scope expansion via
+    //     extractReferencedFiles), the expanded projects may not be covered by
+    //     this baseline. Those projects are conservatively routed to
+    //     INDETERMINATE_OUT_OF_SCOPE by classifyOracleResult (new diagnostics
+    //     reference files outside plannedFiles ∪ changedFiles).
+    // -----------------------------------------------------------------------
+
+    baselineResults = new Map()
+
+    for (const oracle of domain.oracles) {
+      const baselinePhaseName = `baseline-${oracle.name}-${revision}`
+      const baselinePhase = startPhase(theRun, baselinePhaseName, 'code')
+      log.phaseStart(baselinePhaseName, 'code')
+
+      const baselineCommandOrSentinel = buildOracleCommand(oracle, plan.files, REPO_ROOT)
+      const baselineProjects = oracle.filesArg ? resolveOwnerProjects(plan.files, REPO_ROOT) : []
+
+      // Si buildHostArg oracle et aucun hôte trouvé : enregistrer un baseline factice
+      // et continuer. Le gate humain sera ouvert lors de la vérification post-édit.
+      if (typeof baselineCommandOrSentinel !== 'string') {
+        const sentinel = baselineCommandOrSentinel
+        const noHostBaseline = {
+          oracle: oracle.name,
+          command: oracle.command,
+          cwd: oracle.cwd,
+          projects: sentinel.ownerProjects,
+          exitCode: -1,
+          timedOut: false,
+          emptySuccess: false,
+          durationMs: 0,
+          tasks: { executed: 0, fromCache: 0, upToDate: 0, skipped: 0, summaryFound: false, summaryAbsenceReason: 'no-host', summaryFromCache: null, summaryTotal: null, countMismatch: false },
+          diagnosticIdentities: [],
+          rawDiagnosticLines: [],
+          executionEvidence: `noHost: ${sentinel.reason}`,
+          ranAt: new Date().toISOString(),
+        }
+        baselineResults.set(oracle.name, noHostBaseline)
+        failPhase(baselinePhase, {
+          oracle: oracle.name,
+          noHost: true,
+          reason: sentinel.reason,
+          ownerProjects: sentinel.ownerProjects,
+          revision,
+          scopeSource: 'plan.files',
+        })
+        log.phaseEnd(baselinePhaseName, 'fail', {
+          oracle: oracle.name,
+          noHost: true,
+          reason: sentinel.reason.slice(0, 120),
+        })
+        log.error(
+          `[${baselinePhaseName}] buildHostArg oracle sans hôte : baseline enregistré comme noHost. ` +
+          `Le gate humain sera ouvert lors de verify-${oracle.name}-${revision}-1.`
+        )
+        continue
+      }
+
+      const baselineCommand = baselineCommandOrSentinel
+
+      log.info(`[${baselinePhaseName}] Running targeted baseline oracle: ${oracle.name}`)
+      log.info(`[${baselinePhaseName}] Command: ${baselineCommand}`)
+      log.info(`[${baselinePhaseName}] CWD: ${oracle.cwd}`)
+      if (baselineProjects.length > 0) {
+        log.info(`[${baselinePhaseName}] Projects (plan.files scope): ${baselineProjects.join(', ')}`)
+      }
+
+      const baseline = runBaselineOracle({
+        oracle,
+        planFiles: plan.files,
+        repoRoot: REPO_ROOT,
+        timeoutMs: ORACLE_TIMEOUT_MS,
+      })
+      baselineResults.set(oracle.name, baseline)
+
+      const baselineFacts = {
+        oracle: oracle.name,
+        command: baseline.command,
+        cwd: baseline.cwd,
+        projects: baseline.projects,
+        exitCode: baseline.exitCode,
+        timedOut: baseline.timedOut,
+        emptySuccess: baseline.emptySuccess,
+        durationMs: baseline.durationMs,
+        tasks: baseline.tasks,
+        diagnosticCount: baseline.diagnosticIdentities.length,
+        executionEvidence: baseline.executionEvidence,
+        ranAt: baseline.ranAt,
+        revision,
+        scopeSource: 'plan.files',
+      }
+
+      if (baseline.exitCode === 0 && !baseline.timedOut && !baseline.emptySuccess) {
+        passPhase(baselinePhase, baselineFacts)
+        log.phaseEnd(baselinePhaseName, 'pass', {
+          oracle: oracle.name,
+          exitCode: baseline.exitCode,
+          projects: baseline.projects,
+        })
+      } else {
+        // Baseline failed: record as fail, but DO NOT stop the run.
+        // This is observation; the workflow continues to the first editor attempt.
+        failPhase(baselinePhase, {
+          ...baselineFacts,
+          rawDiagnosticLines: baseline.rawDiagnosticLines,
+          diagnosticIdentities: baseline.diagnosticIdentities,
+        })
+        log.phaseEnd(baselinePhaseName, 'fail', {
+          oracle: oracle.name,
+          exitCode: baseline.exitCode,
+          timedOut: baseline.timedOut,
+          emptySuccess: baseline.emptySuccess,
+          diagnosticCount: baseline.diagnosticIdentities.length,
+          projects: baseline.projects,
+        })
+        log.error(
+          `[${baselinePhaseName}] Baseline oracle failed (exitCode=${baseline.exitCode}, ` +
+          `timedOut=${baseline.timedOut}, emptySuccess=${baseline.emptySuccess}). ` +
+          `This is OBSERVATION only — the run continues to edit-${revision}-1. ` +
+          `Classification will use this as baseline evidence.`
+        )
+      }
     }
 
     // Snapshot de référence pour claims-gate (accumulé sur toute la boucle d'édition)
@@ -1342,20 +1445,80 @@ export async function run(log) {
 
         // Construction de la commande effective.
         //
-        // Si l'oracle porte `filesArg: true`, on injecte `--files=<liste>` à
-        // partir des fichiers modifiés par l'éditeur lors de ce tour
-        // (`agentChanged.modified`). Cette liste est stable pendant toute la
-        // boucle des oracles : elle a été calculée par `diffSince(beforeAgent,
-        // REPO_ROOT)` avant d'entrer dans la boucle, et aucun oracle ne modifie
-        // l'arbre (vérifié par le snapshot `beforeOracle`/`oracleChanged`).
-        //
-        // Un oracle sans `filesArg` (comme `types`) reçoit sa commande telle
+        // Si l'oracle porte `filesArg: true`, on injecte les projets propriétaires
+        // des fichiers modifiés par l'éditeur (`agentChanged.modified`).
+        // Si l'oracle porte `buildHostArg: true`, on mappe les propriétaires vers
+        // des apps hôtes buildables via FACTORY_FRONT_BUILD_HOST_MAP.
+        // Un oracle sans `filesArg` ni `buildHostArg` reçoit sa commande telle
         // quelle — périmètre fixe, indépendant du diff.
         //
-        // C'est la commande EFFECTIVE (avec `--files`) qui est enregistrée dans
-        // le registre, pas la commande template. Le registre doit dire ce qui a
-        // réellement tourné.
-        const effectiveCommand = buildOracleCommand(oracle, agentChanged.modified, REPO_ROOT)
+        // buildOracleCommand peut retourner un sentinel NoHostResult si buildHostArg
+        // est true et qu'aucun hôte n'est trouvé. Dans ce cas, on ouvre le gate humain
+        // ORACLE_INFRASTRUCTURE au lieu de lancer une commande invalide.
+        const effectiveCommandOrSentinel = buildOracleCommand(oracle, agentChanged.modified, REPO_ROOT)
+
+        // Vérifier le sentinel NoHostResult (buildHostArg oracle sans hôte trouvé).
+        if (typeof effectiveCommandOrSentinel !== 'string') {
+          const sentinel = effectiveCommandOrSentinel
+          failPhase(verifyPhase, {
+            revision,
+            attempt,
+            oracle: oracle.name,
+            command: oracle.command,
+            domain: domainName,
+            noHost: true,
+            reason: sentinel.reason,
+            ownerProjects: sentinel.ownerProjects,
+            classification: 'ORACLE_INFRASTRUCTURE',
+          })
+          log.phaseEnd(verifyPhaseName, 'fail', {
+            oracle: oracle.name,
+            noHost: true,
+            classification: 'ORACLE_INFRASTRUCTURE',
+          })
+          log.error(
+            `[${verifyPhaseName}] Oracle [${oracle.name}] : aucun hôte buildable trouvé. ` +
+            `Classification : ORACLE_INFRASTRUCTURE. Raison : ${sentinel.reason}`
+          )
+
+          const oracleGateInfo = {
+            oracleName: oracle.name,
+            classification: 'ORACLE_INFRASTRUCTURE',
+            reason: sentinel.reason,
+            command: oracle.command,
+            cwd: oracle.cwd,
+            projects: sentinel.ownerProjects,
+            baselineDiagnostics: baselineResults.get(oracle.name)?.diagnosticIdentities ?? [],
+            postEditDiagnostics: [],
+            newDiagnostics: [],
+            preExistingDiagnostics: [],
+            newDiagnosticLines: [],
+            baselineEvidence: baselineResults.get(oracle.name)?.executionEvidence ?? 'no baseline',
+          }
+          emitOracleGateOpen(theRun.runId, oracleGateInfo)
+          const { decision: oracleDecision, message: oracleMessage } = await waitForHumanDecision(theRun.runId, log, 'oracle')
+
+          if (oracleDecision === 'continue') {
+            const quarantine = buildQuarantineRecord({
+              oracleName: oracle.name,
+              classification: 'ORACLE_INFRASTRUCTURE',
+              reason: sentinel.reason,
+              baseline: baselineResults.get(oracle.name) ?? null,
+              postEdit: { exitCode: -1, timedOut: false, emptySuccess: false, durationMs: 0 },
+              classificationResult: { baselineIdentities: [], postEditIdentities: [], newDiagnostics: [], preExistingDiagnostics: [], newDiagnosticLines: [], baselinePassed: false, postEditPassed: false },
+              humanDecision: 'continue',
+              humanMessage: oracleMessage,
+            })
+            quarantinedOracles.push(quarantine)
+            log.error(`Oracle [${oracle.name}] quarantined (noHost, human: continue). Proceeding.`)
+            continue
+          } else {
+            endRun(theRun, 'fail')
+            return { allPass: false, filePath: theRun.filePath }
+          }
+        }
+
+        const effectiveCommand = effectiveCommandOrSentinel
 
         // Résoudre les projets pour les logger au démarrage (observabilité : diagnosable depuis l'UI AgentOS).
         const resolvedProjectsForLog = oracle.filesArg
@@ -1574,7 +1737,7 @@ export async function run(log) {
           // Send only NEW diagnostics to the editor retry.
           oracleErrorLines = classResult.newDiagnosticLines.length > 0
             ? classResult.newDiagnosticLines
-            : (oracle.name === 'types'
+            : (oracle.name === 'types' || oracle.name === 'build'
                 ? extractTypeDiagnostics(result.stdout, result.stderr, ERROR_LINES_FOR_AGENT)
                 : oracle.name === 'tests'
                   ? extractTestDiagnostics(result.stdout, result.stderr, ERROR_LINES_FOR_AGENT)
@@ -2050,8 +2213,8 @@ export async function run(log) {
                 commandDurationMs: result.durationMs,
               })
               // Même logique d'extraction que la boucle principale :
-              // diagnostics Jest actionnables pour 'tests', TS pour 'types', tailLines sinon.
-              retryOracleErrorLines = oracle.name === 'types'
+              // diagnostics Angular/TS pour 'build' et 'types', Jest pour 'tests', tailLines sinon.
+              retryOracleErrorLines = oracle.name === 'types' || oracle.name === 'build'
                 ? extractTypeDiagnostics(result.stdout, result.stderr, ERROR_LINES_FOR_AGENT)
                 : oracle.name === 'tests'
                   ? extractTestDiagnostics(result.stdout, result.stderr, ERROR_LINES_FOR_AGENT)

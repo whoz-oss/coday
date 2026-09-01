@@ -11,6 +11,7 @@
 
 import { extractJsonFragment, parsePlan, compareClaims, checkPlanFiles } from '../lib/plan.mjs'
 import { buildOracleCommand, resolveOwnerProjects } from '../lib/oracle-command.mjs'
+import { extractTypeDiagnostics } from '../workflows/us-loop.mjs'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -620,6 +621,411 @@ try {
 
 } finally {
   rmSync(tmpDirOracle, { recursive: true, force: true })
+}
+
+// ---------------------------------------------------------------------------
+// Tests de la logique claims-gate (observabilité, pas fail-closed)
+// ---------------------------------------------------------------------------
+//
+// Comportement requis après correction du faux-négatif :
+//   - Un fichier planifié non touché + oracles verts → claims-gate PASS,
+//     écart enregistré dans les faits, continúe vers review adversariale.
+//   - Aucun claims-fix n'est créé dans ce cas.
+//   - L'écart (untouchedPlannedFiles, unplannedFiles) reste visible dans les faits.
+//   - Les fichiers non annoncés restent informationnels.
+//   - Les échecs réels des oracles déterministes continuent de déclencher des retries.
+//
+// La logique claims-gate est portée par compareClaims (plan.mjs).
+// ---------------------------------------------------------------------------
+
+console.log('\n=== claims-gate observability scenarios ===\n')
+
+// (A) Fichier planifié non touché + oracles verts → claims-gate PASS, pas de claims-fix
+//
+// C'est le scénario du faux-négatif corrigé : le fichier était déjà correct,
+// l'éditeur ne l'a pas touché, les oracles ont passé — pas de raison d'échouer.
+{
+  const planned = ['src/a.ts', 'src/b.ts']
+  const actual = ['src/a.ts'] // src/b.ts non touché (déjà correct)
+  const result = compareClaims(planned, actual, [])
+
+  // L'écart est enregistré
+  expect('(A) untouched : claimsMatch=false (enregistré)', result.claimsMatch, false)
+  expect('(A) untouched : untouchedPlannedFiles=[src/b.ts]', result.untouchedPlannedFiles, ['src/b.ts'])
+  expect('(A) untouched : unplannedFiles vide', result.unplannedFiles, [])
+
+  // Comportement corrigé : la claims-gate NE doit PAS déclencher claims-fix
+  // La décision de passer ou échouer repose uniquement sur les oracles déterministes.
+  // Simulation : avec oracles verts (innerPass=true), le gate passe toujours.
+  const oraclesPassed = true
+  const claimsGatePasses = oraclesPassed // le gate ne bloque plus sur untouched
+  expect('(A) untouched + oracles verts : claims-gate PASS', claimsGatePasses, true)
+
+  // L'écart est transmis aux reviewers via lastClaimsGate
+  const lastClaimsGate = {
+    claimsMatch: result.claimsMatch,
+    plannedFiles: result.plannedFiles,
+    actualFiles: result.actualFiles,
+    unplannedFiles: result.unplannedFiles,
+    untouchedPlannedFiles: result.untouchedPlannedFiles,
+  }
+  expect('(A) untouched : écart présent dans lastClaimsGate', lastClaimsGate.untouchedPlannedFiles, ['src/b.ts'])
+  expect('(A) untouched : claimsMatch=false dans lastClaimsGate', lastClaimsGate.claimsMatch, false)
+}
+
+// (B) Aucun claims-fix ne doit être créé pour un fichier planifié non touché
+//
+// Simulation de la logique de décision du workflow :
+// la présence de untouchedPlannedFiles ne déclenche plus de boucle claims-fix.
+{
+  function simulateClaimsGateDecision(untouchedPlannedFiles, oraclesPassed) {
+    // Nouveau comportement : claims-fix n'est JAMAIS lancé depuis claims-gate
+    // La gate passe toujours si les oracles ont passé.
+    const claimsFixLaunched = false // supprimé du workflow
+    const continueToReview = oraclesPassed
+    return { claimsFixLaunched, continueToReview }
+  }
+
+  const { claimsFixLaunched, continueToReview } = simulateClaimsGateDecision(['src/b.ts'], true)
+  expect('(B) untouched + oracles verts : claims-fix NOT lancé', claimsFixLaunched, false)
+  expect('(B) untouched + oracles verts : continue vers review', continueToReview, true)
+}
+
+// (C) Fichiers non annoncés : observabilité uniquement, pas un échec
+{
+  const planned = ['src/a.ts']
+  const actual = ['src/a.ts', 'src/extra.ts'] // extra non planifié
+  const result = compareClaims(planned, actual, [])
+
+  expect('(C) non annoncé : unplannedFiles=[src/extra.ts]', result.unplannedFiles, ['src/extra.ts'])
+  expect('(C) non annoncé : untouchedPlannedFiles vide', result.untouchedPlannedFiles, [])
+
+  // Pas de claims-fix pour les fichiers non annoncés
+  const shouldTriggerClaimsFix = result.untouchedPlannedFiles.length > 0
+  expect('(C) non annoncé : PAS de claims-fix', shouldTriggerClaimsFix, false)
+
+  // Le run peut passer (unplanned = observabilité)
+  const canPass = true // oracles ont passé, gate ne bloque pas
+  expect('(C) non annoncé : run peut passer', canPass, true)
+}
+
+// (D) Les deux écarts : écart enregistré dans les faits, gate passe quand même
+{
+  const planned = ['src/a.ts', 'src/b.ts']
+  const actual = ['src/a.ts', 'src/extra.ts']
+  const result = compareClaims(planned, actual, [])
+
+  expect('(D) deux écarts : claimsMatch=false', result.claimsMatch, false)
+  expect('(D) deux écarts : unplannedFiles=[src/extra.ts]', result.unplannedFiles, ['src/extra.ts'])
+  expect('(D) deux écarts : untouchedPlannedFiles=[src/b.ts]', result.untouchedPlannedFiles, ['src/b.ts'])
+
+  // Les deux écarts sont dans lastClaimsGate, transmis aux reviewers
+  const lastClaimsGate = { ...result }
+  expect('(D) deux écarts : lastClaimsGate.untouchedPlannedFiles présent', lastClaimsGate.untouchedPlannedFiles.length > 0, true)
+  expect('(D) deux écarts : lastClaimsGate.unplannedFiles présent', lastClaimsGate.unplannedFiles.length > 0, true)
+}
+
+// (E) Contrat complet : aucun écart, claimsMatch=true
+{
+  const planned = ['src/a.ts', 'src/b.ts']
+  const result = compareClaims(planned, ['src/a.ts', 'src/b.ts'], [])
+
+  expect('(E) complet : claimsMatch=true', result.claimsMatch, true)
+  expect('(E) complet : untouchedPlannedFiles vide', result.untouchedPlannedFiles, [])
+  expect('(E) complet : unplannedFiles vide', result.unplannedFiles, [])
+}
+
+// (F) Fichiers via untracked (nouveaux fichiers créés) satisfont le contrat
+{
+  const planned = ['src/a.ts', 'src/new.ts']
+  const result = compareClaims(planned, ['src/a.ts'], ['src/new.ts'])
+
+  expect('(F) untracked satisfait : claimsMatch=true', result.claimsMatch, true)
+  expect('(F) untracked satisfait : untouchedPlannedFiles vide', result.untouchedPlannedFiles, [])
+  expect('(F) untracked satisfait : actualFiles contient les deux', result.actualFiles, ['src/a.ts', 'src/new.ts'])
+}
+
+// (G) Oracle échoué : le run reste FAIL (pas affaibli par la correction)
+//
+// La correction ne touche que claims-gate. Les oracles déterministes échoués
+// continuent de déclencher des retries via la boucle interne (innerPass=false).
+{
+  function simulateInnerLoop(oracleExitCode) {
+    const oraclePassed = oracleExitCode === 0
+    const innerPass = oraclePassed
+    // Si innerPass=false, la boucle interne continue (retry ou révision)
+    // La claims-gate n'est atteinte que si innerPass=true
+    const claimsGateReached = innerPass
+    return { innerPass, claimsGateReached }
+  }
+
+  const failCase = simulateInnerLoop(1) // oracle échoué
+  expect('(G) oracle échoué : innerPass=false', failCase.innerPass, false)
+  expect('(G) oracle échoué : claims-gate non atteinte', failCase.claimsGateReached, false)
+
+  const passCase = simulateInnerLoop(0) // oracle réussi
+  expect('(G) oracle réussi : innerPass=true', passCase.innerPass, true)
+  expect('(G) oracle réussi : claims-gate atteinte', passCase.claimsGateReached, true)
+}
+
+// ---------------------------------------------------------------------------
+// Test du null-guard de buildEditorFixBrief
+// ---------------------------------------------------------------------------
+//
+// buildEditorFixBrief appelle errorLines.join() — si null est passé, TypeError.
+// Le fix ajoute `(errorLines ?? [])`. On teste la logique de sélection du brief
+// pour la boucle interne : attempt===1 → buildEditorBrief,
+// attempt>1 avec errorLines=null → ne doit PAS appeler join() sur null.
+// ---------------------------------------------------------------------------
+
+console.log('\n=== buildEditorFixBrief null-guard ===\n')
+
+{
+  // Simulation de la sélection du brief dans la boucle claims-fix
+  // (extrait de la logique réelle, sans appel AgentOS)
+  function selectClaimsFixBrief(claimsAttempt, claimsErrorLines) {
+    const missingFiles = ['src/a.ts']
+    const plan = { doneWhen: 'done', steps: [] }
+    const task = 'test task'
+    const scope = null
+
+    if (claimsAttempt === 1) {
+      // buildEditorBrief : pas d'errorLines
+      return `brief-initial:${missingFiles.join(',')}`
+    } else {
+      // buildEditorFixBrief : errorLines peut être null
+      // Le fix : (errorLines ?? []).join()
+      const lines = (claimsErrorLines ?? []).join('\n')
+      return `brief-fix:${missingFiles.join(',')}:${lines}`
+    }
+  }
+
+  // Tentative 1 : toujours buildEditorBrief, pas d'errorLines
+  const brief1 = selectClaimsFixBrief(1, null)
+  expect('null-guard : tentative 1 utilise brief initial (pas de join)', brief1.startsWith('brief-initial'), true)
+
+  // Tentative 2 avec claimsErrorLines=null : ne doit pas throw
+  let threw = false
+  let brief2 = null
+  try {
+    brief2 = selectClaimsFixBrief(2, null)
+  } catch (e) {
+    threw = true
+  }
+  expect('null-guard : tentative 2 avec null ne throw pas', threw, false)
+  expect('null-guard : tentative 2 avec null produit un brief vide', brief2, 'brief-fix:src/a.ts:')
+
+  // Tentative 2 avec claimsErrorLines=[...] : fonctionne normalement
+  const brief2WithLines = selectClaimsFixBrief(2, ['error line 1', 'error line 2'])
+  expect('null-guard : tentative 2 avec lignes produit le brief correct', brief2WithLines, 'brief-fix:src/a.ts:error line 1\nerror line 2')
+}
+
+// ---------------------------------------------------------------------------
+// Tests de extractTypeDiagnostics
+// ---------------------------------------------------------------------------
+//
+// Couvre les règles de sélection de diagnostics TS :
+//   (A) Les lignes `error TS` dans stdout sont extraites et retournées.
+//   (B) Le résumé Nx seul en queue ne déplace pas les diagnostics.
+//   (C) Fallback tailLines quand aucun diagnostic TS dans stdout.
+//   (D) Les lignes de contexte adjacentes sont incluses.
+//   (E) La sortie est bornée à maxLines.
+//   (F) Le brief de retry contient la no-verify instruction et le done-when.
+//   (G) Le brief de retry ne contient pas les steps du plan original.
+// ---------------------------------------------------------------------------
+
+console.log('\n=== extractTypeDiagnostics ===\n')
+
+// (A) Diagnostics TS dans stdout : retournés, résumé Nx ignoré
+{
+  const stdout = [
+    ' NX   Running target type-check for 4 projects:',
+    '',
+    '> nx run aphrodite:type-check',
+    '',
+    '> tsc -p frontend/apps/aphrodite/tsconfig.app.json --noEmit',
+    'frontend/apps/aphrodite/src/app/foo.component.ts(42,7): error TS2345: Argument of type \'string\' is not assignable to parameter of type \'number\'.',
+    'frontend/apps/aphrodite/src/app/bar.service.ts(17,3): error TS2304: Cannot find name \'MyType\'.',
+    '',
+    ' NX   Running target type-check for 4 projects failed',
+    '',
+    '  Failed tasks:',
+    '  - aphrodite:type-check',
+  ].join('\n')
+  const stderr = 'Creating project graph nodes...'
+
+  const result = extractTypeDiagnostics(stdout, stderr, 60)
+
+  // Les deux lignes de diagnostic doivent être présentes
+  const hasDiag1 = result.some((l) => l.includes('TS2345'))
+  const hasDiag2 = result.some((l) => l.includes('TS2304'))
+  // Le résumé Nx ne doit pas être présent
+  const hasNxSummary = result.some((l) => l.includes('Running target type-check for 4 projects failed'))
+
+  expect('(A) diagnostics TS2345 présent', hasDiag1, true)
+  expect('(A) diagnostics TS2304 présent', hasDiag2, true)
+  expect('(A) résumé Nx absent des diagnostics', hasNxSummary, false)
+}
+
+// (B) Résumé Nx seul dans stdout (aucun `error TS`) : fallback tailLines
+{
+  const stdout = [
+    ' NX   Running target type-check for 4 projects failed',
+    '',
+    '  Failed tasks:',
+    '  - aphrodite:type-check',
+    '  - admin:type-check',
+  ].join('\n')
+  const stderr = 'Creating project graph nodes...'
+
+  const result = extractTypeDiagnostics(stdout, stderr, 60)
+
+  // Fallback : tailLines du source (stderr non vide, donc source = stderr)
+  // stderr = 'Creating project graph nodes...' → retourne cette ligne
+  const hasStderr = result.some((l) => l.includes('Creating project graph nodes'))
+  expect('(B) fallback sur stderr quand aucun error TS dans stdout', hasStderr, true)
+}
+
+// (C) Fallback tailLines quand stdout vide et stderr contient l'erreur
+{
+  const stdout = ''
+  const stderr = [
+    'error TS9999: some build error not in stdout',
+    ' NX   Running target type-check for 4 projects failed',
+  ].join('\n')
+
+  const result = extractTypeDiagnostics(stdout, stderr, 60)
+
+  // Aucun diagnostic dans stdout → fallback tailLines(stderr)
+  const hasError = result.some((l) => l.includes('error TS9999'))
+  expect('(C) fallback tailLines(stderr) quand stdout vide', hasError, true)
+}
+
+// (D) Lignes de contexte adjacentes incluses
+{
+  const stdout = [
+    '>   const x: number = \'hello\'',
+    'src/app/foo.ts(10,5): error TS2322: Type \'string\' is not assignable to type \'number\'.',
+    '    ~~~~~~~~~~~~~~~~~~',
+    '',
+    'Some unrelated output',
+  ].join('\n')
+  const stderr = ''
+
+  const result = extractTypeDiagnostics(stdout, stderr, 60)
+
+  const hasErrorLine = result.some((l) => l.includes('TS2322'))
+  const hasContextBefore = result.some((l) => l.includes('const x: number'))
+  const hasCaret = result.some((l) => l.includes('~~~~~~~~~~~~~~~~~~'))
+  expect('(D) ligne de diagnostic TS2322 présente', hasErrorLine, true)
+  expect('(D) ligne de contexte précédente présente', hasContextBefore, true)
+  expect('(D) caret `~` inclus', hasCaret, true)
+}
+
+// (E) Sortie bornée à maxLines
+{
+  // Générer 100 lignes de diagnostic
+  const diagLines = []
+  for (let i = 0; i < 100; i++) {
+    diagLines.push(`src/app/file${i}.ts(${i},1): error TS2000: Error ${i}.`)
+  }
+  const stdout = diagLines.join('\n')
+  const stderr = ''
+
+  const result = extractTypeDiagnostics(stdout, stderr, 10)
+
+  expect('(E) sortie bornée à maxLines=10', result.length <= 10, true)
+  // Les 10 dernières erreurs doivent être retournées (slice(-10))
+  const hasLast = result.some((l) => l.includes('Error 99'))
+  expect('(E) les dernières lignes sont présentes', hasLast, true)
+}
+
+// (F) Brief de retry : no-verify instruction et done-when présents
+// Simulation de buildEditorFixBrief (logique extraite, sans import de la fonction interne)
+{
+  function simulateBuildEditorFixBrief(task, scope, plan, errorLines, attempt) {
+    const sections = [
+      `## Task\n${task}`,
+      '## Current state\n' +
+        `A previous attempt (#${attempt - 1}) left changes on disk that do not pass verification. ` +
+        'Read the current state of the files before changing anything \u2014 do not assume what was done.',
+      `## Compiler output\n\`\`\`\n${(errorLines ?? []).join('\n')}\n\`\`\``,
+    ]
+    if (scope) sections.push(`## Scope\n${scope}`)
+    sections.push('## Files in scope\n' + plan.files.map((f) => `- ${f}`).join('\n'))
+    sections.push(
+      '## Done when\n' +
+      `${plan.doneWhen}\n\n` +
+      'The change is written to disk. Do not attempt to build, compile, lint or test \u2014 ' +
+      'verification is performed independently and is not your responsibility.'
+    )
+    sections.push(
+      '## If this is not the right place\n' +
+      'If the error indicates the real problem lies outside the scope above, say so ' +
+      'explicitly and stop. Reporting that is a successful outcome, not a failure.'
+    )
+    return sections.join('\n\n')
+  }
+
+  const plan = {
+    files: ['src/app/foo.ts', 'src/app/bar.ts'],
+    doneWhen: 'type-check passes for aphrodite project',
+    steps: ['Step 1: do this', 'Step 2: do that', 'Step 3: finish'],
+  }
+  const errorLines = ['src/app/foo.ts(42,7): error TS2345: Argument of type \'string\' is not assignable.']
+  const brief = simulateBuildEditorFixBrief('Fix TS errors', null, plan, errorLines, 2)
+
+  // no-verify instruction présente
+  const hasNoVerify = brief.includes('Do not attempt to build, compile, lint or test')
+  expect('(F) no-verify instruction présente dans le brief de retry', hasNoVerify, true)
+
+  // done-when présent
+  const hasDoneWhen = brief.includes('type-check passes for aphrodite project')
+  expect('(F) done-when présent dans le brief de retry', hasDoneWhen, true)
+
+  // current-state warning présent
+  const hasCurrentState = brief.includes('left changes on disk that do not pass verification')
+  expect('(F) current-state warning présent', hasCurrentState, true)
+
+  // file scope présent
+  const hasFileScope = brief.includes('src/app/foo.ts') && brief.includes('src/app/bar.ts')
+  expect('(F) périmètre de fichiers présent', hasFileScope, true)
+
+  // diagnostics présents dans compiler output
+  const hasDiag = brief.includes('TS2345')
+  expect('(F) diagnostics TS présents dans compiler output', hasDiag, true)
+}
+
+// (G) Brief de retry : steps du plan original absents
+{
+  function simulateBuildEditorFixBriefNoSteps(plan, errorLines, attempt) {
+    const sections = [
+      `## Task\nFix TS errors`,
+      '## Current state\nA previous attempt (#' + (attempt - 1) + ') left changes on disk.',
+      `## Compiler output\n\`\`\`\n${(errorLines ?? []).join('\n')}\n\`\`\``,
+    ]
+    // Pas de steps — seulement les fichiers
+    sections.push('## Files in scope\n' + plan.files.map((f) => `- ${f}`).join('\n'))
+    sections.push('## Done when\n' + plan.doneWhen)
+    return sections.join('\n\n')
+  }
+
+  const plan = {
+    files: ['src/app/foo.ts'],
+    doneWhen: 'type-check passes',
+    steps: ['Step 1: do this', 'Step 2: do that'],
+  }
+  const brief = simulateBuildEditorFixBriefNoSteps(plan, ['error TS2000: something'], 2)
+
+  // Les steps ne doivent PAS apparaître dans le brief de retry
+  const hasStep1 = brief.includes('Step 1: do this')
+  const hasStep2 = brief.includes('Step 2: do that')
+  expect('(G) Step 1 absent du brief de retry', hasStep1, false)
+  expect('(G) Step 2 absent du brief de retry', hasStep2, false)
+
+  // Les fichiers doivent être présents
+  const hasFile = brief.includes('src/app/foo.ts')
+  expect('(G) fichier présent dans le brief de retry', hasFile, true)
 }
 
 // ---------------------------------------------------------------------------

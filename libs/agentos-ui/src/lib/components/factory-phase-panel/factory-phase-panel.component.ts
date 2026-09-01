@@ -5,13 +5,17 @@ import { switchMap, of, timer, EMPTY } from 'rxjs'
 import { catchError } from 'rxjs/operators'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { CaseEventRestControllerService } from '@whoz-oss/agentos-api-client'
-import { FactoryRunPhase } from '../../services/factory-api.service'
+import { FactoryApiService, FactoryRunPhase, JiraTicketResponse } from '../../services/factory-api.service'
 import {
   projectPhaseEvidence,
   projectPhaseFacts,
   projectPhaseBriefFromFacts,
   projectBriefResponseFromEvents,
+  projectReviewOutcomes,
+  projectFetchTicketInfo,
   PhaseBriefResponse,
+  ReviewOutcomesProjection,
+  FetchTicketInfo,
 } from './factory-phase-panel.models'
 import {
   extractPhaseCaseId,
@@ -30,6 +34,19 @@ export type PhaseEventsState =
   | { status: 'loading' }
   | { status: 'loaded'; rows: PhaseEventRow[] }
   | { status: 'empty' }
+  | { status: 'error'; message: string }
+
+/**
+ * State for the live Jira ticket fetch.
+ *
+ * no-credentials: server returned 501 — Jira not configured on the server.
+ * error: fetch failed for another reason.
+ */
+export type JiraState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'loaded'; ticket: JiraTicketResponse }
+  | { status: 'no-credentials' }
   | { status: 'error'; message: string }
 
 const KIND_LABELS: Record<PhaseEventRowKind, string> = {
@@ -59,6 +76,13 @@ export class FactoryPhasePanelComponent {
 
   protected readonly sections = computed(() => projectPhaseFacts(this.phase()))
   protected readonly evidence = computed(() => projectPhaseEvidence(this.phase()))
+  protected readonly reviewOutcomes = computed((): ReviewOutcomesProjection => projectReviewOutcomes(this.phase()))
+
+  /** Fetch-ticket metadata projected from facts. null when not a fetch-ticket phase. */
+  protected readonly fetchTicketInfo = computed((): FetchTicketInfo | null => projectFetchTicketInfo(this.phase()))
+
+  /** Jira live-fetch state. Only active when fetchTicketInfo is non-null. */
+  protected readonly jiraState = signal<JiraState>({ status: 'idle' })
 
   /**
    * Brief + agent-response, resolved in priority order:
@@ -86,9 +110,40 @@ export class FactoryPhasePanelComponent {
   protected readonly eventsState = signal<PhaseEventsState>({ status: 'idle' })
 
   private readonly caseEventRest = inject(CaseEventRestControllerService)
+  private readonly factoryApi = inject(FactoryApiService)
   private readonly destroyRef = inject(DestroyRef)
 
   constructor() {
+    // When the phase carries a ticketId, load the Jira content live.
+    // switchMap automatically cancels any prior in-flight request on phase change.
+    toObservable(this.phase)
+      .pipe(
+        switchMap((phase) => {
+          const info = projectFetchTicketInfo(phase)
+          if (!info) {
+            this.jiraState.set({ status: 'idle' })
+            return EMPTY
+          }
+          this.jiraState.set({ status: 'loading' })
+          return this.factoryApi.getJiraTicket(info.ticketId).pipe(
+            catchError((err: unknown) => {
+              const httpErr = err as { status?: number; error?: { error?: string } }
+              if (httpErr?.status === 501) {
+                this.jiraState.set({ status: 'no-credentials' })
+              } else {
+                const msg = httpErr?.error?.error ?? (err instanceof Error ? err.message : 'Failed to load Jira ticket')
+                this.jiraState.set({ status: 'error', message: msg })
+              }
+              return EMPTY
+            })
+          )
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((ticket: JiraTicketResponse) => {
+        this.jiraState.set({ status: 'loaded', ticket })
+      })
+
     /**
      * toObservable() remplace le pattern Subject + effect().
      * switchMap cancels automatiquement le load/poll précédent à chaque
@@ -142,6 +197,16 @@ export class FactoryPhasePanelComponent {
 
   /** Type-safe accessor for the error message — used in the template with @let. */
   protected errorMessage(state: PhaseEventsState): string {
+    return state.status === 'error' ? state.message : ''
+  }
+
+  /** Type-safe accessor for the loaded Jira ticket — used in the template with @let. */
+  protected loadedTicket(state: JiraState): JiraTicketResponse | null {
+    return state.status === 'loaded' ? state.ticket : null
+  }
+
+  /** Type-safe accessor for the Jira error message. */
+  protected jiraErrorMessage(state: JiraState): string {
     return state.status === 'error' ? state.message : ''
   }
 }

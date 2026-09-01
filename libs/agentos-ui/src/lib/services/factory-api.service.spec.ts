@@ -6,6 +6,7 @@ import {
   FactoryLaunchRequest,
   FactoryLaunchResponse,
   FactoryStopResponse,
+  JiraTicketResponse,
 } from './factory-api.service'
 
 describe('FactoryApiService', () => {
@@ -86,6 +87,47 @@ describe('FactoryApiService', () => {
       http.expectOne('/api/factory/runs').flush({ pid: 777, runId: null })
 
       expect(result?.runId).toBeNull()
+    })
+  })
+
+  describe('getJiraTicket', () => {
+    const mockTicket: JiraTicketResponse = {
+      ticketId: 'PROJ-1234',
+      ticketContent: '## Summary\nFix login timeout',
+      summary: 'Fix login timeout',
+      fieldCount: 2,
+      commentCount: 3,
+      commentsIncluded: 3,
+      commentsTruncated: false,
+      fetchedAt: '2025-01-01T10:00:00.000Z',
+    }
+
+    it('GETs /api/factory/jira/:ticketId — not /api/jira/', () => {
+      // Regression guard: the URL MUST be under /api/factory/ so the Angular
+      // dev-server proxy rule (proxy.conf.json) forwards it to port 3141.
+      // /api/jira/* has no proxy rule and falls through to the SPA index.
+      service.getJiraTicket('PROJ-1234').subscribe()
+
+      const req = http.expectOne('/api/factory/jira/PROJ-1234')
+      expect(req.request.method).toBe('GET')
+      req.flush(mockTicket)
+    })
+
+    it('returns the JiraTicketResponse from the server', () => {
+      let result: JiraTicketResponse | undefined
+      service.getJiraTicket('PROJ-1234').subscribe((r) => (result = r))
+
+      http.expectOne('/api/factory/jira/PROJ-1234').flush(mockTicket)
+
+      expect(result).toEqual(mockTicket)
+    })
+
+    it('percent-encodes special characters in ticketId', () => {
+      service.getJiraTicket('PROJ/99').subscribe()
+
+      const req = http.expectOne('/api/factory/jira/PROJ%2F99')
+      expect(req.request.method).toBe('GET')
+      req.flush(mockTicket)
     })
   })
 })

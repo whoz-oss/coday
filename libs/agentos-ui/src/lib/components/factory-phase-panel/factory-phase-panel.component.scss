@@ -83,6 +83,93 @@
   }
 }
 
+/* ── Fetch-ticket / Jira ticket section ── */
+.phase-panel__ticket {
+  padding: 1rem;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.phase-panel__ticket-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 0.75rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+
+  dt {
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+
+    code {
+      font: 0.78rem var(--font-heading, monospace);
+      background: var(--color-code-bg, var(--color-surface-secondary));
+      padding: 0.05rem 0.3rem;
+    }
+  }
+}
+
+.phase-panel__ticket-truncated {
+  color: var(--status-pending-text, #b45309);
+  font-size: 0.7rem;
+  margin-left: 0.3rem;
+}
+
+/**
+ * Provenance warning — intentionally styled to draw attention.
+ * This content is NOT what the analyst received; it is live Jira state.
+ */
+.phase-panel__ticket-warning {
+  margin: 0 0 0.65rem;
+  padding: 0.45rem 0.65rem;
+  background: var(--status-pending-bg, #fef3c7);
+  color: var(--status-pending-text, #92400e);
+  border-left: 3px solid var(--status-pending-text, #b45309);
+  font-size: 0.76rem;
+  line-height: 1.5;
+
+  strong {
+    font-weight: 700;
+  }
+  em {
+    font-style: italic;
+  }
+  code {
+    font: 0.72rem var(--font-heading, monospace);
+    background: color-mix(in srgb, var(--status-pending-text, #b45309) 12%, transparent);
+    padding: 0.05rem 0.3rem;
+  }
+}
+
+.phase-panel__ticket-scroll {
+  overflow-y: auto;
+  max-height: 20rem;
+  border: 1px solid var(--color-divider);
+  border-radius: 4px;
+  background: var(--color-surface-secondary);
+}
+
+.phase-panel__ticket-pre {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  font: 0.75rem/1.55 var(--font-heading, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+}
+
+.phase-panel__chip--source {
+  background: var(--color-accent-100);
+  color: var(--color-accent-700);
+  border-color: transparent;
+  margin-left: 0.4rem;
+  font-size: 0.6rem;
+  vertical-align: middle;
+}
+
 /* ── Body: grid, expands naturally — outer .factory-runs provides the scroll ── */
 .phase-panel__body {
   display: grid;
@@ -363,6 +450,136 @@
   overflow-wrap: anywhere;
   color: var(--color-text);
   min-width: 0;
+}
+
+/* ── Review outcomes ── */
+.phase-panel__outcomes {
+  margin-top: 0.75rem;
+}
+
+.phase-panel__outcomes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.phase-panel__outcome {
+  border: 1px solid var(--color-divider);
+  border-radius: 4px;
+  background: var(--color-surface-secondary);
+  padding: 0.5rem 0.65rem;
+  border-left-width: 3px;
+
+  &--pass {
+    border-left-color: var(--color-success, #4caf50);
+  }
+  &--fail {
+    border-left-color: var(--red, #e53935);
+  }
+  &--skip {
+    border-left-color: var(--color-text-secondary);
+  }
+}
+
+.phase-panel__outcome-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.phase-panel__outcome-reviewer {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.phase-panel__outcome-verdict {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font: 600 0.63rem var(--font-heading, monospace);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-divider);
+
+  .phase-panel__outcome--pass & {
+    background: var(--color-success-bg, var(--color-accent-100));
+    color: var(--color-success, var(--color-accent-700));
+    border-color: transparent;
+  }
+  .phase-panel__outcome--fail & {
+    background: var(--red-bg);
+    color: var(--red);
+    border-color: transparent;
+  }
+}
+
+.phase-panel__outcome-critical {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  font: 600 0.63rem var(--font-heading, monospace);
+  letter-spacing: 0.04em;
+  background: var(--status-pending-bg);
+  color: var(--status-pending-text);
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.phase-panel__outcome-case-link {
+  font-size: 0.7rem;
+  color: var(--color-accent, #1976d2);
+  text-decoration: none;
+  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.phase-panel__outcome-details {
+  margin-top: 0.35rem;
+}
+
+.phase-panel__outcome-summary-toggle {
+  cursor: pointer;
+  font: 600 0.65rem var(--font-heading, monospace);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  user-select: none;
+
+  &::-webkit-details-marker {
+    color: var(--color-text-secondary);
+  }
+
+  &::marker {
+    color: var(--color-text-secondary);
+  }
+}
+
+.phase-panel__outcome-summary-text {
+  margin: 0.35rem 0 0;
+  padding: 0.45rem 0.6rem;
+  background: var(--color-code-bg, var(--color-surface-secondary));
+  color: var(--color-code-text, var(--color-text));
+  font: 0.72rem/1.5 var(--font-heading, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 12rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-divider);
+  border-radius: 3px;
 }
 
 /* ── Responsive: stack columns below 48rem ── */

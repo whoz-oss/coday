@@ -24,6 +24,69 @@
     </div>
   </header>
 
+  <!-- ── Fetch-ticket specific section: shown only for fetch-ticket phase ── -->
+  @let fti = fetchTicketInfo();
+  @if (fti) {
+    <section class="phase-panel__ticket" aria-label="Ticket content">
+      <h4 class="phase-panel__section-title">
+        Ticket content
+        <span class="phase-panel__chip phase-panel__chip--source">Jira</span>
+      </h4>
+
+      <!-- Recorded metadata row -->
+      <dl class="phase-panel__ticket-meta">
+        <dt>Ticket ID</dt>
+        <dd>
+          <code>{{ fti.ticketId }}</code>
+        </dd>
+        @if (fti.summary) {
+          <dt>Summary</dt>
+          <dd>{{ fti.summary }}</dd>
+        }
+        @if (fti.fieldCount !== null) {
+          <dt>Fields</dt>
+          <dd>{{ fti.fieldCount }}</dd>
+        }
+        @if (fti.commentCount !== null) {
+          <dt>Comments</dt>
+          <dd>
+            {{ fti.commentsIncluded }} / {{ fti.commentCount }} included
+            @if (fti.commentsTruncated) {
+              <span class="phase-panel__ticket-truncated">(truncated)</span>
+            }
+          </dd>
+        }
+      </dl>
+
+      <!-- Provenance warning -->
+      @let js = jiraState();
+      @let ticket = loadedTicket(js);
+      @if (ticket) {
+        <p class="phase-panel__ticket-warning" role="note">
+          ⚠️ Fetched from Jira at <strong>{{ ticket.fetchedAt | slice: 0 : 19 }}</strong>
+          @if (phase().startedAt) {
+            &mdash; run phase started <strong>{{ phase().startedAt | slice: 0 : 19 }}</strong
+            >.
+          }
+          This is the <em>current</em> ticket state and may differ from what the analyst received.
+        </p>
+        <div class="phase-panel__ticket-scroll" aria-label="Jira ticket content">
+          <pre class="phase-panel__ticket-pre">{{ ticket.ticketContent }}</pre>
+        </div>
+      } @else if (js.status === 'loading') {
+        <p class="phase-panel__empty">Loading Jira ticket&hellip;</p>
+      } @else if (js.status === 'no-credentials') {
+        <p class="phase-panel__ticket-warning" role="note">
+          ⚠️ Jira credentials are not configured on the dashboard server. Restart the server with
+          <code>JIRA_BASE_URL</code>, <code>JIRA_EMAIL</code>, and <code>JIRA_API_TOKEN</code> to enable live ticket
+          display.
+        </p>
+      } @else if (js.status === 'error') {
+        <p class="phase-panel__empty phase-panel__events-error">{{ jiraErrorMessage(js) }}</p>
+      }
+    </section>
+  }
+
   <!-- ── Body: two-column (Facts | Conversation) + Events below ── -->
   <div class="phase-panel__body">
     <!-- LEFT: Facts / Evidence -->
@@ -76,7 +139,58 @@
             </dl>
           </div>
         }
-        @if (!sections().length && !ev.command && !ev.tools && !ev.files && !ev.log) {
+        <!-- ── Review outcomes: dedicated typed section ── -->
+        @let ro = reviewOutcomes();
+        @if (ro.kind === 'valid') {
+          <div class="phase-panel__outcomes">
+            <h5 class="phase-panel__field-title">Review outcomes</h5>
+            <ul class="phase-panel__outcomes-list" aria-label="Reviewer outcomes">
+              @for (outcome of ro.outcomes; track outcome.reviewerName) {
+                <li class="phase-panel__outcome phase-panel__outcome--{{ outcome.verdict.toLowerCase() }}">
+                  <div class="phase-panel__outcome-header">
+                    <span class="phase-panel__outcome-reviewer">{{ outcome.reviewerName }}</span>
+                    <span class="phase-panel__outcome-verdict" [attr.aria-label]="'Verdict: ' + outcome.verdict">{{
+                      outcome.verdict
+                    }}</span>
+                    @if (outcome.hasCritical) {
+                      <span class="phase-panel__outcome-critical" aria-label="Has critical findings">
+                        &#9888; Critical
+                      </span>
+                    }
+                    @if (outcome.caseId) {
+                      <a
+                        class="phase-panel__outcome-case-link"
+                        [href]="'/agentos/home?case=' + outcome.caseId"
+                        target="_self"
+                        [attr.aria-label]="'Open AgentOS case for ' + outcome.reviewerName"
+                        >Open case &#8599;</a
+                      >
+                    }
+                  </div>
+                  @if (outcome.summary) {
+                    <details class="phase-panel__outcome-details">
+                      <summary class="phase-panel__outcome-summary-toggle">Summary</summary>
+                      <pre class="phase-panel__outcome-summary-text">{{ outcome.summary }}</pre>
+                    </details>
+                  }
+                  @if (outcome.extra) {
+                    <details class="phase-panel__outcome-details">
+                      <summary class="phase-panel__outcome-summary-toggle">Additional fields</summary>
+                      <pre class="phase-panel__outcome-summary-text">{{ outcome.extra }}</pre>
+                    </details>
+                  }
+                </li>
+              }
+            </ul>
+          </div>
+        } @else if (ro.kind === 'malformed') {
+          <div class="phase-panel__outcomes">
+            <h5 class="phase-panel__field-title">Review outcomes (unrecognised format)</h5>
+            <pre class="phase-panel__code">{{ ro.raw }}</pre>
+          </div>
+        }
+
+        @if (!sections().length && !ev.command && !ev.tools && !ev.files && !ev.log && ro.kind === 'absent') {
           <p class="phase-panel__empty">No recorded facts for this phase.</p>
         }
       </div>

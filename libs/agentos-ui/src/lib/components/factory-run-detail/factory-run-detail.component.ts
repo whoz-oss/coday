@@ -20,7 +20,6 @@ import {
   FactoryReviewGateService,
   ReviewGateDecision,
   ReviewGateState,
-  OracleGateInfo,
 } from '../../services/factory-review-gate.service'
 import { FactoryRunTimelineComponent } from '../factory-run-timeline/factory-run-timeline.component'
 import { formatTimelineDuration, timelineStatus } from '../factory-run-timeline/factory-run-timeline.models'

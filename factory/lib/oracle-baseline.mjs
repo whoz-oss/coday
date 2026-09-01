@@ -57,7 +57,7 @@
 
 import { runCommand, countTaskOutcomes } from './oracle.mjs'
 import { extractTypeDiagnostics, extractTestDiagnostics } from '../workflows/us-loop.mjs'
-import { buildOracleCommand } from './oracle-command.mjs'
+import { buildOracleCommand, resolveOwnerProjects } from './oracle-command.mjs'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -262,22 +262,49 @@ export function isInfrastructureIdentity(identity) {
 /**
  * Run a single oracle as a baseline observation (before editing).
  *
- * This uses exactly the same command, cwd, project resolution, and result
- * parsing as post-edit verification. The baseline is observation only —
- * it never causes the workflow to skip or pass anything.
+ * The baseline command is built through the same `buildOracleCommand` path
+ * as post-edit verification, using `planFiles` as the scope input. This
+ * ensures baseline and post-edit verification are comparable: both resolve
+ * the same owner project set from the same file list.
+ *
+ * For oracles without `filesArg` (e.g. `types`, `build`), the command is
+ * fixed and independent of `planFiles` — baseline and post-edit are always
+ * comparable for those.
+ *
+ * For oracles with `filesArg: true` (e.g. `tests`), the baseline runs
+ * `run-many --projects=<owners of planFiles> --skip-nx-cache`, which is
+ * exactly what post-edit verification will run for the same `planFiles`.
+ * This guarantees that `shared-ui-feedback` and other unrelated projects
+ * never enter baseline scope unless a planned file resolves to them.
+ *
+ * The baseline is OBSERVATION ONLY — it never causes the workflow to skip
+ * an oracle or pass a failing check. A baseline run failure is recorded as
+ * a durable fact. If the baseline itself cannot run (timeout, empty), the
+ * classification for the corresponding post-edit oracle defaults to
+ * ORACLE_INFRASTRUCTURE.
  *
  * @param {{
  *   oracle: { name: string, command: string, cwd: string, filesArg?: boolean },
+ *   planFiles: string[],
  *   repoRoot: string,
  *   timeoutMs: number,
  * }} params
  * @returns {BaselineOracleResult}
  */
-export function runBaselineOracle({ oracle, repoRoot, timeoutMs }) {
-  // Baseline always uses the oracle's fixed command (no files arg —
-  // there are no modified files yet before editing).
-  const command = oracle.command
+export function runBaselineOracle({ oracle, planFiles, repoRoot, timeoutMs }) {
+  // Build the command through buildOracleCommand with planFiles as scope.
+  // For fixed-scope oracles (filesArg absent/false), this returns oracle.command
+  // unchanged. For filesArg oracles, this builds run-many --projects=<owners>
+  // --skip-nx-cache — identical to what post-edit verification will build for
+  // the same planFiles.
+  const command = buildOracleCommand(oracle, planFiles, repoRoot)
   const cwd = oracle.cwd
+
+  // Resolve and record the projects that this baseline covers (for durable facts
+  // and comparability assertion in tests).
+  const projects = oracle.filesArg
+    ? resolveOwnerProjects(planFiles, repoRoot)
+    : []
 
   const result = runCommand(command, { cwd, timeoutMs })
   const tasks = countTaskOutcomes(result.stdout + '\n' + result.stderr)
@@ -297,12 +324,13 @@ export function runBaselineOracle({ oracle, repoRoot, timeoutMs }) {
     emptySuccess ? 'EMPTY_SUCCESS' : null,
     `tasks.executed=${tasks.executed}`,
     `tasks.fromCache=${tasks.fromCache}`,
+    projects.length > 0 ? `projects=${projects.join(',')}` : null,
   ].filter(Boolean)
 
   return {
     command,
     cwd,
-    projects: [],  // baseline uses fixed command, no project resolution
+    projects,
     exitCode: result.exitCode,
     timedOut,
     emptySuccess,

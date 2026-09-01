@@ -79,6 +79,26 @@ export interface FactoryAgentConfig {
   subAgents?: string[]
 }
 
+/**
+ * Response from GET /api/jira/:ticketId — Jira ticket fetched live at display time.
+ *
+ * PROVENANCE CONTRACT: this content is NOT proof of what the analyst received.
+ * Jira tickets are mutable. `fetchedAt` records when this request was made;
+ * compare with the phase `startedAt` to understand the temporal gap.
+ * Never present this as authoritative input to the analyst.
+ */
+export interface JiraTicketResponse {
+  ticketId: string
+  ticketContent: string
+  summary: string
+  fieldCount: number
+  commentCount: number
+  commentsIncluded: number
+  commentsTruncated: boolean
+  /** ISO timestamp of when this fetch occurred (display-time, not run-time). */
+  fetchedAt: string
+}
+
 /** HTTP boundary for the Factory run endpoints. */
 @Injectable({ providedIn: 'root' })
 export class FactoryApiService {
@@ -118,5 +138,20 @@ export class FactoryApiService {
    */
   stopRun(runId: string): Observable<FactoryStopResponse> {
     return this.http.post<FactoryStopResponse>(`/api/factory/runs/${encodeURIComponent(runId)}/stop`, {})
+  }
+
+  /**
+   * Fetch a Jira ticket's current content from the dashboard server.
+   *
+   * This is a live fetch — the ticket may have changed since the run.
+   * Returns 501 when Jira credentials are not configured on the server.
+   * The caller is responsible for displaying the provenance warning.
+   */
+  getJiraTicket(ticketId: string): Observable<JiraTicketResponse> {
+    // Path must be under /api/factory/ so the Angular dev-server proxy
+    // (proxy.conf.json) forwards it to the factory dashboard on port 3141.
+    // The raw /api/jira/ prefix has no proxy rule and falls through to the
+    // SPA index — see proxy.conf.json and factory/dashboard/server.mjs.
+    return this.http.get<JiraTicketResponse>(`/api/factory/jira/${encodeURIComponent(ticketId)}`)
   }
 }

@@ -66,6 +66,7 @@
 import { endRun, getCurrentRun } from './registry.mjs'
 import { killCase } from './agentos.mjs'
 import { getActiveCaseIds } from './active-case.mjs'
+import { rejectAllPendingGates } from './review-gate.mjs'
 
 // ---------------------------------------------------------------------------
 // État interne
@@ -127,6 +128,14 @@ async function handleSignal(signal, log) {
   }
 
   warn(`[shutdown] ${signal} reçu — arrêt gracieux en cours.`)
+
+  // --- 0. Resolve any pending human review gates immediately ---
+  //
+  // waitForHumanDecision() holds a Promise resolver. On SIGTERM, we resolve it
+  // to { decision: 'fail' } so the workflow unblocks and endRun can be called
+  // cleanly. This must happen BEFORE killing cases, so the workflow's finally
+  // blocks can run if it was not in the middle of a case turn.
+  rejectAllPendingGates()
 
   // --- 1. Tuer tous les cases actifs en best-effort ---
   //
