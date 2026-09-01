@@ -1,3 +1,13 @@
+## 0.249.12 (2026-09-01)
+
+### 🩹 Fixes
+
+- kill AgentOS child process on Node.js unclean exit to prevent Neo4j store_lock orphan ([#1266](https://github.com/whoz-oss/coday/pull/1266))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.249.11 (2026-09-01)
 
 ### 🩹 Fixes
