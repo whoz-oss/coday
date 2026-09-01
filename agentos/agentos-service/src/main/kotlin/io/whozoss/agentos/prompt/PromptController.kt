@@ -3,6 +3,7 @@ package io.whozoss.agentos.prompt
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
+import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -82,6 +83,7 @@ class PromptController(
     private val userService: UserService,
     private val permissionService: PermissionService,
     private val overlayScopeAuthorizer: OverlayScopeAuthorizer,
+    private val externalIdentifierResolver: ExternalIdentifierResolver,
     private val yamlExportMapper: ObjectMapper,
 ) : PromptApi {
     private val crud =
@@ -330,11 +332,14 @@ class PromptController(
         @PathVariable languageCode: String,
         @Valid @RequestBody request: PromptTranslateRequest,
     ): PromptTranslationDto {
+        val namespaceId = externalIdentifierResolver.resolveNamespaceId(
+            id = request.namespaceId,
+            externalId = request.namespaceExternalId,
+        )
         val translation = promptService.translate(
             id = id,
             targetLanguage = languageCode,
-            namespaceId = request.namespaceId,
-            namespaceExternalId = request.namespaceExternalId,
+            namespaceId = namespaceId,
         )
         return PromptTranslationDto(title = translation.title, content = translation.content)
     }

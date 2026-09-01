@@ -37,6 +37,29 @@ class PromptServiceImplSpec : StringSpec() {
 
     /** Returns both the service and its backing repository, for tests that need to seed a
      *  filesystem-backed prompt (version == null) directly via [InMemoryPromptRepository.seedRaw]. */
+    private data class StaleCaseFixture(
+        val service: PromptServiceImpl,
+        val saved: Prompt,
+        val existingTitles: Map<String, String>,
+        val existingContent: Map<String, List<String>>,
+    )
+
+    private fun staleCaseSetup(): StaleCaseFixture {
+        val service = newService()
+        val existingTitles = mapOf("fr" to "Revoir le profil")
+        val existingContent = mapOf("fr" to listOf("Bonjour"))
+        val saved = service.create(
+            prompt(
+                title = "Review profile",
+                content = listOf("Hello"),
+                sourceLanguage = "en",
+                translatedTitles = existingTitles,
+                translatedContent = existingContent,
+            ),
+        )
+        return StaleCaseFixture(service, saved, existingTitles, existingContent)
+    }
+
     private fun newServiceWithRepo(): Pair<PromptServiceImpl, InMemoryPromptRepository> {
         val repo = InMemoryPromptRepository()
         return PromptServiceImpl(repo, agentConfigService, translationService) to repo
@@ -719,52 +742,32 @@ class PromptServiceImplSpec : StringSpec() {
         // clearTranslationsIfStale — independence of the two maps
         // -------------------------------------------------------------------------
 
-        "update clears only translatedContent when content changes but title is unchanged" {
-            val service = newService()
-            val existingTitles = mapOf("fr" to "Revoir le profil")
-            val saved = service.create(
-                prompt(
-                    title = "Review profile",
-                    content = listOf("Original"),
-                    translatedTitles = existingTitles,
-                    translatedContent = mapOf("fr" to listOf("Original en français")),
-                ),
-            )
+        "update clears translatedContent but preserves translatedTitles when only content changes" {
+            val (service, saved, existingTitles, existingContent) = staleCaseSetup()
             val updated = service.update(saved.copy(content = listOf("Updated")))
-            updated.translatedContent shouldBe null
             updated.translatedTitles shouldBe existingTitles
+            updated.translatedContent shouldBe null
         }
 
-        "update clears only translatedTitles when title changes but content is unchanged" {
-            val service = newService()
-            val existingContent = mapOf("fr" to listOf("Bonjour"))
-            val saved = service.create(
-                prompt(
-                    title = "Old title",
-                    content = listOf("Hello"),
-                    translatedTitles = mapOf("fr" to "Ancien titre"),
-                    translatedContent = existingContent,
-                ),
-            )
+        "update clears translatedTitles but preserves translatedContent when only title changes" {
+            val (service, saved, existingTitles, existingContent) = staleCaseSetup()
             val updated = service.update(saved.copy(title = "New title"))
             updated.translatedTitles shouldBe null
             updated.translatedContent shouldBe existingContent
         }
 
         "update clears both maps when sourceLanguage changes" {
-            val service = newService()
-            val saved = service.create(
-                prompt(
-                    title = "Review profile",
-                    content = listOf("Hello"),
-                    sourceLanguage = "en",
-                    translatedTitles = mapOf("fr" to "Revoir le profil"),
-                    translatedContent = mapOf("fr" to listOf("Bonjour")),
-                ),
-            )
+            val (service, saved) = staleCaseSetup()
             val updated = service.update(saved.copy(sourceLanguage = "es"))
             updated.translatedTitles shouldBe null
             updated.translatedContent shouldBe null
+        }
+
+        "update preserves both maps when only description changes" {
+            val (service, saved, existingTitles, existingContent) = staleCaseSetup()
+            val updated = service.update(saved.copy(description = "touched"))
+            updated.translatedTitles shouldBe existingTitles
+            updated.translatedContent shouldBe existingContent
         }
 
         // -------------------------------------------------------------------------
@@ -777,20 +780,20 @@ class PromptServiceImplSpec : StringSpec() {
                 prompt(title = "Review profile", content = listOf("Hello"), sourceLanguage = "en"),
             )
 
-            val result = service.translate(saved.id, "en", namespaceId = UUID.randomUUID(), namespaceExternalId = null)
+            val result = service.translate(saved.id, "en", namespaceId = UUID.randomUUID())
 
             result.title shouldBe "Review profile"
             result.content shouldBe listOf("Hello")
             // No LLM call should have been made
-            verify(exactly = 0) { translationService.translateContent(any(), any(), any(), any(), any()) }
-            verify(exactly = 0) { translationService.translateTitle(any(), any(), any(), any(), any()) }
+            verify(exactly = 0) { translationService.translateContent(any(), any(), any(), any()) }
+            verify(exactly = 0) { translationService.translateTitle(any(), any(), any(), any()) }
         }
 
         "translate returns null title when prompt has no title (source language match)" {
             val service = newService()
             val saved = service.create(prompt(title = null, content = listOf("Hello"), sourceLanguage = "en"))
 
-            val result = service.translate(saved.id, "en", namespaceId = UUID.randomUUID(), namespaceExternalId = null)
+            val result = service.translate(saved.id, "en", namespaceId = UUID.randomUUID())
 
             result.title shouldBe null
             result.content shouldBe listOf("Hello")
@@ -803,13 +806,13 @@ class PromptServiceImplSpec : StringSpec() {
                 prompt(title = "Review profile", content = listOf("Hello"), sourceLanguage = "en"),
             )
             every {
-                translationService.translateContent(listOf("Hello"), "en", "fr", nsId, null)
+                translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
             } returns listOf("Bonjour")
             every {
-                translationService.translateTitle("Review profile", "en", "fr", nsId, null)
+                translationService.translateTitle("Review profile", "en", "fr", nsId)
             } returns "Revoir le profil"
 
-            val result = service.translate(saved.id, "fr", namespaceId = nsId, namespaceExternalId = null)
+            val result = service.translate(saved.id, "fr", namespaceId = nsId)
 
             result.content shouldBe listOf("Bonjour")
             result.title shouldBe "Revoir le profil"
@@ -823,23 +826,23 @@ class PromptServiceImplSpec : StringSpec() {
                 prompt(title = "Review profile", content = listOf("Hello"), sourceLanguage = "en"),
             )
             every {
-                translationService.translateContent(listOf("Hello"), "en", "fr", nsId, null)
+                translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
             } returns listOf("Bonjour")
             every {
-                translationService.translateTitle("Review profile", "en", "fr", nsId, null)
+                translationService.translateTitle("Review profile", "en", "fr", nsId)
             } returns "Revoir le profil"
 
             // First call — cache miss, LLM called
-            service.translate(saved.id, "fr", namespaceId = nsId, namespaceExternalId = null)
+            service.translate(saved.id, "fr", namespaceId = nsId)
 
             // Second call — should be a full cache hit
-            val result = service.translate(saved.id, "fr", namespaceId = nsId, namespaceExternalId = null)
+            val result = service.translate(saved.id, "fr", namespaceId = nsId)
 
             result.content shouldBe listOf("Bonjour")
             result.title shouldBe "Revoir le profil"
             // LLM called exactly once total (first call only)
-            verify(exactly = 1) { translationService.translateContent(any(), any(), any(), any(), any()) }
-            verify(exactly = 1) { translationService.translateTitle(any(), any(), any(), any(), any()) }
+            verify(exactly = 1) { translationService.translateContent(any(), any(), any(), any()) }
+            verify(exactly = 1) { translationService.translateTitle(any(), any(), any(), any()) }
         }
 
         "translate returns null title without calling translateTitle when prompt has no title" {
@@ -847,14 +850,14 @@ class PromptServiceImplSpec : StringSpec() {
             val nsId = UUID.randomUUID()
             val saved = service.create(prompt(title = null, content = listOf("Hello"), sourceLanguage = "en"))
             every {
-                translationService.translateContent(listOf("Hello"), "en", "fr", nsId, null)
+                translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
             } returns listOf("Bonjour")
 
-            val result = service.translate(saved.id, "fr", namespaceId = nsId, namespaceExternalId = null)
+            val result = service.translate(saved.id, "fr", namespaceId = nsId)
 
             result.title shouldBe null
             result.content shouldBe listOf("Bonjour")
-            verify(exactly = 0) { translationService.translateTitle(any(), any(), any(), any(), any()) }
+            verify(exactly = 0) { translationService.translateTitle(any(), any(), any(), any()) }
         }
 
         "translate uses cached content and only calls LLM for title when content is already cached" {
@@ -872,15 +875,15 @@ class PromptServiceImplSpec : StringSpec() {
                 ),
             )
             every {
-                translationService.translateTitle("Review profile", "en", "fr", nsId, null)
+                translationService.translateTitle("Review profile", "en", "fr", nsId)
             } returns "Revoir le profil"
 
-            val result = service.translate(saved.id, "fr", namespaceId = nsId, namespaceExternalId = null)
+            val result = service.translate(saved.id, "fr", namespaceId = nsId)
 
             result.content shouldBe listOf("Bonjour")
             result.title shouldBe "Revoir le profil"
-            verify(exactly = 0) { translationService.translateContent(any(), any(), any(), any(), any()) }
-            verify(exactly = 1) { translationService.translateTitle(any(), any(), any(), any(), any()) }
+            verify(exactly = 0) { translationService.translateContent(any(), any(), any(), any()) }
+            verify(exactly = 1) { translationService.translateTitle(any(), any(), any(), any()) }
         }
 
         "translate accumulates translations for multiple languages" {
@@ -891,14 +894,14 @@ class PromptServiceImplSpec : StringSpec() {
                 prompt(title = null, content = listOf("Hello"), sourceLanguage = "en"),
             )
             every {
-                translationService.translateContent(listOf("Hello"), "en", "fr", nsId, null)
+                translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
             } returns listOf("Bonjour")
             every {
-                translationService.translateContent(listOf("Hello"), "en", "de", nsId, null)
+                translationService.translateContent(listOf("Hello"), "en", "de", nsId)
             } returns listOf("Hallo")
 
-            service.translate(saved.id, "fr", namespaceId = nsId, namespaceExternalId = null)
-            service.translate(saved.id, "de", namespaceId = nsId, namespaceExternalId = null)
+            service.translate(saved.id, "fr", namespaceId = nsId)
+            service.translate(saved.id, "de", namespaceId = nsId)
 
             val persisted = service.findById(saved.id)!!
             persisted.translatedContent shouldBe mapOf("fr" to listOf("Bonjour"), "de" to listOf("Hallo"))

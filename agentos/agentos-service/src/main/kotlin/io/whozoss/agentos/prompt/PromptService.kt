@@ -58,7 +58,8 @@ interface PromptService : EntityService<Prompt, UUID>, OwnershipAware {
      * source fields as-is without an LLM call. Returns cached translations when available.
      * Otherwise calls [PromptTranslationService], persists the results, and returns them.
      *
-     * [namespaceId] or [namespaceExternalId] is required for AI model resolution.
+     * [namespaceId] must be a resolved UUID — callers are responsible for resolving any
+     * external identifier before invoking this method.
      *
      * Returns a [PromptTranslation] carrying the resolved title and content for the
      * requested language.
@@ -66,8 +67,7 @@ interface PromptService : EntityService<Prompt, UUID>, OwnershipAware {
     fun translate(
         id: UUID,
         targetLanguage: String,
-        namespaceId: UUID?,
-        namespaceExternalId: String?,
+        namespaceId: UUID,
     ): PromptTranslation
 }
 

@@ -1,9 +1,10 @@
 package io.whozoss.agentos.prompt
 
+import com.github.benmanes.caffeine.cache.Cache
+import com.github.benmanes.caffeine.cache.Caffeine
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
-import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.exception.BadRequestException
 import mu.KLogging
 import org.springframework.ai.chat.messages.UserMessage
@@ -15,37 +16,60 @@ import org.springframework.ai.chat.prompt.Prompt as AiPrompt
  * Translates [Prompt.content] and [Prompt.title] via the namespace's default AI model.
  *
  * Model resolution follows the same pattern as [io.whozoss.agentos.caseFlow.CaseNamingService]:
- * [AiModelService.findAiModel] with the namespace's default model. When neither [namespaceId]
- * nor [namespaceExternalId] resolves to a namespace, or when no model is configured, a
- * [BadRequestException] is thrown -- translation is impossible without an AI model.
+ * [AiModelService.findAiModel] with the namespace's default model. When no model is configured
+ * for the namespace, a [BadRequestException] is thrown -- translation is impossible without
+ * an AI model.
  *
- * Each content element is translated individually in a separate LLM call so that
- * index alignment between source and translated lists is guaranteed regardless of
- * how the model formats multi-item responses.
+ * Each content element is translated individually in a separate LLM call so that index
+ * alignment between source and translated lists is guaranteed regardless of how the model
+ * formats multi-item responses.
+ *
+ * **Cross-namespace LLM cache**: identical text translated with the same model is cached
+ * in-memory by `(text, sourceLanguage, targetLanguage, modelId)`. This avoids redundant
+ * LLM calls when the same platform-level prompt is translated for multiple federations
+ * that share the same AI model. The cache is process-scoped and unbounded; it is
+ * appropriate here because the key space is naturally small (number of distinct prompt
+ * texts × language pairs × distinct models).
  */
 @Service
 class PromptTranslationServiceImpl(
     private val aiModelService: AiModelService,
     private val aiProviderService: AiProviderService,
     private val chatClientProvider: ChatClientProvider,
-    private val externalIdentifierResolver: ExternalIdentifierResolver,
+    private val cacheProperties: PromptTranslationCacheProperties,
 ) : PromptTranslationService {
+    /** Cache key: model-agnostic translation unit. */
+    private data class CacheKey(
+        val text: String,
+        val sourceLanguage: String,
+        val targetLanguage: String,
+        val modelId: UUID,
+        val kind: TextKind,
+    )
+
+    private val translationCache: Cache<CacheKey, String> =
+        Caffeine
+            .newBuilder()
+            .maximumSize(cacheProperties.maxSize)
+            .expireAfterWrite(cacheProperties.ttl)
+            .build()
+
     override fun translateContent(
         content: List<String>,
         sourceLanguage: String,
         targetLanguage: String,
-        namespaceId: UUID?,
-        namespaceExternalId: String?,
+        namespaceId: UUID,
     ): List<String> {
-        val (model, provider) = resolveModelAndProvider(namespaceId, namespaceExternalId)
+        val (model, provider) = resolveModelAndProvider(namespaceId)
         val chatClient = chatClientProvider.getChatClient(model, provider)
         return content.map { element ->
             translateText(
-                element,
-                sourceLanguage,
-                targetLanguage,
-                chatClient,
-                TextKind.CONTENT,
+                text = element,
+                sourceLanguage = sourceLanguage,
+                targetLanguage = targetLanguage,
+                chatClient = chatClient,
+                kind = TextKind.CONTENT,
+                modelId = model.metadata.id,
             )
         }
     }
@@ -54,45 +78,40 @@ class PromptTranslationServiceImpl(
         title: String,
         sourceLanguage: String,
         targetLanguage: String,
-        namespaceId: UUID?,
-        namespaceExternalId: String?,
+        namespaceId: UUID,
     ): String {
-        val (model, provider) = resolveModelAndProvider(namespaceId, namespaceExternalId)
+        val (model, provider) = resolveModelAndProvider(namespaceId)
         val chatClient = chatClientProvider.getChatClient(model, provider)
-        return translateText(title, sourceLanguage, targetLanguage, chatClient, TextKind.TITLE)
+        return translateText(
+            text = title,
+            sourceLanguage = sourceLanguage,
+            targetLanguage = targetLanguage,
+            chatClient = chatClient,
+            kind = TextKind.TITLE,
+            modelId = model.metadata.id,
+        )
     }
 
     // -------------------------------------------------------------------------
     // Internals
     // -------------------------------------------------------------------------
 
-    /**
-     * Distinguishes the two kinds of text a [Prompt] exposes, so the LLM receives
-     * accurate context about what it is translating.
-     *
-     * - [TITLE] -- a short user-facing label shown on a button that starts a case.
-     *   It summarises the prompt's purpose for the user, not for the agent.
-     * - [CONTENT] -- one instruction element sent to the agent when the case starts.
-     *   It is directive in tone and may be technical or detailed.
-     */
-    private enum class TextKind { TITLE, CONTENT }
-
     private fun resolveModelAndProvider(
-        namespaceId: UUID?,
-        namespaceExternalId: String?,
+        namespaceId: UUID,
     ): Pair<io.whozoss.agentos.sdk.aiProvider.AiModel, io.whozoss.agentos.sdk.aiProvider.AiProvider> {
-        val resolvedNamespaceId = externalIdentifierResolver.resolveNamespaceId(namespaceId, namespaceExternalId)
         val model =
-            aiModelService.findAiModel(resolvedNamespaceId)
+            aiModelService.findAiModel(namespaceId)
                 ?: throw BadRequestException(
-                    "No default AI model configured for namespace $resolvedNamespaceId -- cannot translate prompt",
+                    "No default AI model configured for namespace $namespaceId -- cannot translate prompt",
                 )
         val provider = aiProviderService.getById(model.aiProviderId)
         return model to provider
     }
 
     /**
-     * Calls the LLM to translate [text] from [sourceLanguage] into [targetLanguage].
+     * Calls the LLM to translate [text] from [sourceLanguage] into [targetLanguage],
+     * returning a cached result when the same `(text, sourceLanguage, targetLanguage,
+     * modelId, kind)` tuple has been translated before.
      *
      * [kind] drives the context paragraph so the model understands what it is
      * translating: a user-facing button label ([TextKind.TITLE]) or an agent
@@ -108,25 +127,14 @@ class PromptTranslationServiceImpl(
         targetLanguage: String,
         chatClient: org.springframework.ai.chat.client.ChatClient,
         kind: TextKind,
+        modelId: UUID,
     ): String {
-        val context =
-            when (kind) {
-                TextKind.TITLE -> {
-                    """A prompt title is a short label shown on a button that users click to start a conversation with an AI agent.
-It summarises the prompt's purpose for the user in a few words.
-                    """.trimMargin()
-                }
-
-                TextKind.CONTENT -> {
-                    """A prompt content element is an instruction sent to an AI agent when a user starts a conversation.
-It is directive in tone and tells the agent what to do.
-                    """.trimMargin()
-                }
-            }
+        val key = CacheKey(text, sourceLanguage, targetLanguage, modelId, kind)
+        translationCache.getIfPresent(key)?.let { return it }
 
         val promptText =
             """
-            $context
+            ${kind.context}
 
             Your goal is to translate the following text from $sourceLanguage to $targetLanguage.
 
@@ -145,20 +153,24 @@ It is directive in tone and tells the agent what to do.
             Output only the translated string, with no XML tags or formatting.
             """.trimIndent()
 
-        return runCatching {
-            chatClient
-                .prompt(AiPrompt(UserMessage(promptText)))
-                .call()
-                .content()
-                ?.trim()
-                ?.takeUnless { it.isBlank() }
-                ?: run {
-                    logger.warn { "[PromptTranslation] LLM returned blank for text: ${text.take(80)}" }
-                    text
-                }
-        }.onFailure { e ->
-            logger.error(e) { "[PromptTranslation] LLM call failed translating text: ${text.take(80)}" }
-        }.getOrElse { text }
+        val translated =
+            runCatching {
+                chatClient
+                    .prompt(AiPrompt(UserMessage(promptText)))
+                    .call()
+                    .content()
+                    ?.trim()
+                    ?.takeUnless { it.isBlank() }
+                    ?: run {
+                        logger.warn { "[PromptTranslation] LLM returned blank for text: ${text.take(80)}" }
+                        text
+                    }
+            }.onFailure { e ->
+                logger.error(e) { "[PromptTranslation] LLM call failed translating text: ${text.take(80)}" }
+            }.getOrElse { text }
+
+        translationCache.put(key, translated)
+        return translated
     }
 
     companion object : KLogging()

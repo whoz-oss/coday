@@ -109,8 +109,7 @@ class PromptServiceImpl(
     override fun translate(
         id: UUID,
         targetLanguage: String,
-        namespaceId: UUID?,
-        namespaceExternalId: String?,
+        namespaceId: UUID,
     ): PromptTranslation {
         val prompt = repository.findByIds(listOf(id)).firstOrNull()
             ?: throw NoSuchElementException("Prompt $id not found")
@@ -120,15 +119,14 @@ class PromptServiceImpl(
             targetLanguage == prompt.sourceLanguage ->
                 PromptTranslation(title = prompt.title, content = prompt.content)
 
-            else -> translateToForeignLanguage(prompt, targetLanguage, namespaceId, namespaceExternalId)
+            else -> translateToForeignLanguage(prompt, targetLanguage, namespaceId)
         }
     }
 
     private fun translateToForeignLanguage(
         prompt: Prompt,
         targetLanguage: String,
-        namespaceId: UUID?,
-        namespaceExternalId: String?,
+        namespaceId: UUID,
     ): PromptTranslation {
         val cachedTitle = prompt.title?.let { prompt.translatedTitles?.get(targetLanguage) }
         val cachedContent = prompt.translatedContent?.get(targetLanguage)
@@ -138,15 +136,14 @@ class PromptServiceImpl(
             cachedContent != null && (prompt.title == null || cachedTitle != null) ->
                 PromptTranslation(title = cachedTitle, content = cachedContent)
 
-            else -> translateAndPersist(prompt, targetLanguage, namespaceId, namespaceExternalId, cachedTitle, cachedContent)
+            else -> translateAndPersist(prompt, targetLanguage, namespaceId, cachedTitle, cachedContent)
         }
     }
 
     private fun translateAndPersist(
         prompt: Prompt,
         targetLanguage: String,
-        namespaceId: UUID?,
-        namespaceExternalId: String?,
+        namespaceId: UUID,
         cachedTitle: String?,
         cachedContent: List<String>?,
     ): PromptTranslation {
@@ -159,7 +156,6 @@ class PromptServiceImpl(
                 sourceLanguage = prompt.sourceLanguage,
                 targetLanguage = targetLanguage,
                 namespaceId = namespaceId,
-                namespaceExternalId = namespaceExternalId,
             )
         }
 
@@ -168,7 +164,6 @@ class PromptServiceImpl(
             sourceLanguage = prompt.sourceLanguage,
             targetLanguage = targetLanguage,
             namespaceId = namespaceId,
-            namespaceExternalId = namespaceExternalId,
         )
 
         // Persist the newly generated translations
