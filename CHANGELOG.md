@@ -1,3 +1,13 @@
+## 0.249.10 (2026-09-01)
+
+### 🩹 Fixes
+
+- avoid openapi gen port collision ([#1264](https://github.com/whoz-oss/coday/pull/1264))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.249.9 (2026-08-31)
 
 ### 🩹 Fixes
