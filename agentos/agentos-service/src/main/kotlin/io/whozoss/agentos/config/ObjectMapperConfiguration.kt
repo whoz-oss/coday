@@ -6,6 +6,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
@@ -63,6 +64,7 @@ class ObjectMapperConfiguration {
      * - [io.whozoss.agentos.prompt.FilesystemPromptRepository]
      */
     @Bean
+    @Qualifier("yamlMapper")
     fun yamlMapper(): ObjectMapper =
         ObjectMapper(YAMLFactory())
             .registerModule(KotlinModule.Builder().build())
@@ -85,6 +87,7 @@ class ObjectMapperConfiguration {
      * - [io.whozoss.agentos.prompt.PromptController]
      */
     @Bean
+    @Qualifier("yamlExportMapper")
     fun yamlExportMapper(): ObjectMapper =
         ObjectMapper(YAMLFactory.builder().disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER).build())
             .registerModule(JavaTimeModule())

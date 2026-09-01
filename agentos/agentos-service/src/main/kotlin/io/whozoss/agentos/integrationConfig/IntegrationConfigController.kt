@@ -2,6 +2,7 @@ package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Hidden
+import org.springframework.beans.factory.annotation.Qualifier
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
@@ -71,7 +72,7 @@ class IntegrationConfigController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
-    private val yamlExportMapper: ObjectMapper,
+    @Qualifier("yamlExportMapper") private val yamlExportMapper: ObjectMapper,
 ) : IntegrationConfigApi {
     private val scopedOwnershipCrudDelegate =
         ScopedOwnershipCrudDelegate(
@@ -278,7 +279,7 @@ class IntegrationConfigController(
         val entity =
             integrationConfigService.findById(id)
                 ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
-        val yaml = PORTABILITY_COMMENT + yamlExportMapper.writeValueAsString(toExportModel(entity, yamlExportMapper))
+        val yaml = PORTABILITY_COMMENT + yamlExportMapper.writeValueAsString(toExportModel(entity))
         val filename = "${entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-")}.yaml"
         return ResponseEntity
             .ok()
@@ -362,22 +363,14 @@ private fun toDto(entity: IntegrationConfig) =
  *
  * Built explicitly via `buildMap` so that null/empty values are omitted without a
  * mapper-level inclusion policy — consistent with [AgentConfigController] and
- * [PromptController].
- *
- * [parameters] is converted from [JsonNode] to a plain Java structure (Map/List/primitives)
- * via [mapper].convertValue before being handed to the YAML serialiser. Passing a [JsonNode]
- * directly would cause Jackson to delegate to the node's own serialiser, which writes JSON
- * tokens into the [com.fasterxml.jackson.dataformat.yaml.YAMLGenerator] and produces a
- * single-line JSON blob instead of properly indented YAML.
+ * [PromptController]. The [parameters] field is a [JsonNode] that the YAML mapper
+ * serialises natively; a null value means no parameters were set, so the key is omitted.
  */
-private fun toExportModel(
-    entity: IntegrationConfig,
-    mapper: ObjectMapper,
-): Map<String, Any?> =
+private fun toExportModel(entity: IntegrationConfig): Map<String, Any?> =
     buildMap {
         put("name", entity.name)
         put("integrationType", entity.integrationType)
         entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
-        entity.parameters?.let { put("parameters", mapper.convertValue(it, Any::class.java)) }
+        entity.parameters?.let { put("parameters", it) }
         entity.authSettingName?.takeIf { it.isNotBlank() }?.let { put("authSettingName", it) }
     }
