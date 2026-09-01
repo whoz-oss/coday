@@ -29,18 +29,19 @@
  */
 
 import { createServer } from 'node:http'
-import { readFileSync, readdirSync, existsSync, watchFile, unwatchFile } from 'node:fs'
+import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { fetchJiraTicket } from '../lib/jira.mjs'
 import { discoverJiraCredentials } from '../lib/coday-config.mjs'
+import { registerGate, unregisterGate, getGate, writeGateReply } from '../lib/review-gate.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
 const RUN_ENTRY = join(__dirname, '..', 'run.mjs')
 const PORT = parseInt(process.env.PORT ?? '3141', 10)
-const AGENTOS_URL = process.env.AGENTOS_URL ?? 'http://localhost:8123'
+const AGENTOS_URL = process.env.AGENTOS_URL ?? 'http://localhost:8124'
 
 // FACTORY_USER: used only to identify the AgentOS user for proxy headers.
 // No hardcoded personal username — resolved from Coday config or left undefined.
@@ -409,7 +410,33 @@ function launchRun(params) {
     stdoutBuf += chunk.toString()
     const parts = stdoutBuf.split('\n')
     stdoutBuf = parts.pop()
-    for (const line of parts) broadcast(line)
+    for (const line of parts) {
+      // Intercept run-scoped review gate IPC signal before broadcasting.
+      // The workflow emits a JSON line with __factory_gate:'open' on stdout
+      // when it reaches the human decision gate. We parse it here and store
+      // the gate in the server's in-process registry keyed by runId.
+      // The line is NOT forwarded to SSE listeners (it is internal IPC).
+      if (line.startsWith('{"__factory_gate":"open"')) {
+        try {
+          const signal = JSON.parse(line)
+          if (signal.__factory_gate === 'open' && signal.runId) {
+            registerGate({
+              runId: signal.runId,
+              gateType: signal.gateType ?? 'adversarial-review',
+              findings: signal.findings ?? '',
+              outcomes: signal.outcomes ?? [],
+              oracleGate: signal.oracleGate ?? undefined,
+              allowedDecisions: signal.allowedDecisions ?? ['retry', 'ignore', 'fail'],
+              openedAt: signal.openedAt ?? new Date().toISOString(),
+            })
+            // Also broadcast a notification line so SSE listeners can react.
+            broadcast(`[gate:open] runId=${signal.runId}`)
+            continue
+          }
+        } catch { /* not a valid gate signal, fall through to broadcast */ }
+      }
+      broadcast(line)
+    }
   })
 
   let stderrBuf = ''
@@ -424,6 +451,11 @@ function launchRun(params) {
     clearInterval(pollInterval)
     if (stdoutBuf) broadcast(stdoutBuf)
     if (stderrBuf) broadcast(`[stderr] ${stderrBuf}`)
+
+    // Clean up any pending gate for this run when the child exits.
+    // The workflow's shutdown handler resolves the Promise via rejectAllPendingGates(),
+    // but the server's registry must also be cleared so GET /review-gate returns terminal.
+    if (runId) unregisterGate(runId)
 
     const e = entry()
     if (e) {
@@ -584,12 +616,14 @@ const server = createServer(async (req, res) => {
     }
   }
 
-  // GET /api/jira/:ticketId — contenu d'un ticket Jira récupéré maintenant.
+  // GET /api/jira/:ticketId (standalone dashboard) and
+  // GET /api/factory/jira/:ticketId (Angular client via /api/factory proxy)
   //
-  // Cet endpoint est appelé par le dashboard lorsque l'utilisateur déplie la
-  // phase fetch-ticket. Il récupère le ticket au moment de l'affichage, pas
-  // au moment du run — voir l'avertissement de mutabilité dans index.html.
-  const jiraMatch = path.match(/^\/api\/jira\/([^/]+)$/)
+  // The Angular dev-server proxies /api/factory/* to this server (port 3141).
+  // /api/jira/* has no matching proxy rule and falls through to the SPA index,
+  // so the Angular FactoryApiService uses /api/factory/jira/:ticketId instead.
+  // Both paths are handled here; the standalone dashboard uses the short form.
+  const jiraMatch = path.match(/^\/api\/(?:factory\/)?jira\/([^/]+)$/)
   if (method === 'GET' && jiraMatch) {
     // Si les credentials Jira ne sont pas configurés dans l'environnement du
     // dashboard, on répond 501 (Not Implemented) avec un message actionnable.
@@ -741,6 +775,118 @@ const server = createServer(async (req, res) => {
     return send(res, 202, { runId, stopping: true })
   }
 
+  // GET /api/factory/runs/:id/review-gate
+  //
+  // Returns the current state of the human review gate for a run.
+  //
+  // Response shapes:
+  //
+  //   { status: 'pending', findings, outcomes, allowedDecisions }
+  //     The gate is open and waiting for a human decision. Angular must show
+  //     decision actions. outcomes is an array of structured reviewer results
+  //     (no markdown parsing required). allowedDecisions is the authoritative
+  //     list of valid decision values.
+  //
+  //   { status: 'terminal', humanDecision, reason }
+  //     The gate is closed (run finished, no gate active, or completed run).
+  //     humanDecision is the decision that was made (if any), or null.
+  //     reason explains why the gate is terminal. Angular must NOT offer
+  //     decision actions. This is the correct response for completed historical
+  //     runs — a terminated Node process cannot resume.
+  //
+  // Completed historical runs with humanDecision:fail in their JSONL:
+  //   These runs are permanently terminal. The GET endpoint returns
+  //   { status:'terminal', humanDecision:'fail', reason:'Run completed. ...' }.
+  //   No fake resumption is attempted. Only future pending gates (from live
+  //   workflow processes) can receive decisions.
+  const factoryGateMatch = path.match(/^\/api\/factory\/runs\/([^/]+)\/review-gate$/)
+  if (method === 'GET' && factoryGateMatch) {
+    const runId = factoryGateMatch[1]
+
+    // Check live in-process registry first.
+    const pendingGate = getGate(runId)
+    if (pendingGate) {
+      const pendingResp = {
+        status: 'pending',
+        gateType: pendingGate.gateType ?? 'adversarial-review',
+        findings: pendingGate.findings,
+        outcomes: pendingGate.outcomes,
+        allowedDecisions: pendingGate.allowedDecisions,
+        openedAt: pendingGate.openedAt,
+      }
+      if (pendingGate.oracleGate) pendingResp.oracleGate = pendingGate.oracleGate
+      return send(res, 200, pendingResp)
+    }
+
+    // No live gate. Check JSONL for completed run with a humanDecision.
+    const jsonlPath = join(RUNS_DIR, `${runId}.jsonl`)
+    if (existsSync(jsonlPath)) {
+      const lines = parseJsonl(jsonlPath)
+      const runEnd = lines.find((l) => l.kind === 'run_end')
+
+      // Look for humanDecision in any phase_end facts (adversarial-review phase).
+      let humanDecision = null
+      for (const l of lines) {
+        if (l.kind === 'phase_end' && l.facts?.humanDecision) {
+          humanDecision = l.facts.humanDecision
+          break
+        }
+      }
+
+      if (runEnd) {
+        // Run is completed. Terminal state — no actions possible.
+        return send(res, 200, {
+          status: 'terminal',
+          humanDecision,
+          reason: 'Run completed. A terminated process cannot resume. Only future pending gates can receive decisions.',
+        })
+      }
+
+      // Run exists but has no run_end (crashed or still running but gate not open).
+      return send(res, 200, {
+        status: 'terminal',
+        humanDecision: null,
+        reason: 'No active review gate for this run.',
+      })
+    }
+
+    // Unknown run.
+    return send(res, 404, { error: 'Run not found.' })
+  }
+
+  // POST /api/factory/runs/:id/review-gate/reply
+  //
+  // Deliver a human decision to the pending review gate.
+  //
+  // Body: { decision: 'retry'|'ignore'|'fail', message?: string }
+  //
+  // 'ignore' : the run continues as PASS despite the review FAIL
+  // 'fail'   : the run fails (confirms the review FAIL)
+  // 'retry'  : re-run the editor with the review findings as brief
+  //
+  // Returns 404 if no pending gate exists for this runId.
+  // The workflow polls factory/runs/<runId>.gate-reply for this file.
+  const factoryGateReplyMatch = path.match(/^\/api\/factory\/runs\/([^/]+)\/review-gate\/reply$/)
+  if (method === 'POST' && factoryGateReplyMatch) {
+    const runId = factoryGateReplyMatch[1]
+
+    // Validate that a live gate exists for this run.
+    // We allow writing the reply even if the in-process registry was just cleared
+    // (race between SIGTERM and the POST) — the workflow's poll will pick it up
+    // if the process is still alive, or ignore it if not.
+    const body = await readBody(req)
+    const rawDecision = body.decision ?? 'fail'
+    // Accept both adversarial-review decisions (ignore/retry/fail) and oracle gate decisions (continue/fail).
+    const decision = ['ignore', 'retry', 'continue', 'fail'].includes(rawDecision) ? rawDecision : 'fail'
+    const message = (body.message ?? '').trim()
+
+    const result = writeGateReply(runId, decision, message)
+    if (!result.ok) {
+      return send(res, 500, { error: result.error })
+    }
+    return send(res, 200, { ok: true, decision })
+  }
+
   // GET /api/factory/runs/:id/stream — SSE alias
   const factoryStreamMatch = path.match(/^\/api\/factory\/runs\/([^/]+)\/stream$/)
   if (method === 'GET' && factoryStreamMatch) {
@@ -776,6 +922,26 @@ const server = createServer(async (req, res) => {
     } catch (err) {
       return send(res, 502, { error: String(err) })
     }
+  }
+
+  // GET /api/review-gate — DEPRECATED global endpoint.
+  //
+  // The global singleton gate is replaced by run-scoped gates.
+  // Use GET /api/factory/runs/:runId/review-gate instead.
+  // This stub returns 410 Gone with a migration message.
+  if (method === 'GET' && path === '/api/review-gate') {
+    return send(res, 410, {
+      error: 'DEPRECATED: global /api/review-gate removed. Use GET /api/factory/runs/:runId/review-gate instead.',
+    })
+  }
+
+  // POST /api/review-gate/reply — DEPRECATED global endpoint.
+  //
+  // Use POST /api/factory/runs/:runId/review-gate/reply instead.
+  if (method === 'POST' && path === '/api/review-gate/reply') {
+    return send(res, 410, {
+      error: 'DEPRECATED: global /api/review-gate/reply removed. Use POST /api/factory/runs/:runId/review-gate/reply instead.',
+    })
   }
 
   send(res, 404, { error: 'Not found' })
