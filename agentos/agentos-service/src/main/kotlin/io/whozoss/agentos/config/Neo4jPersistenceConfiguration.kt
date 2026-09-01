@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfigNodeNeo4jRepository
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository
+import io.whozoss.agentos.agentConfig.FilesystemAgentConfigSyncService
 import io.whozoss.agentos.agentConfig.Neo4jAgentConfigRepository
 import io.whozoss.agentos.aiModel.AiModelNodeNeo4jRepository
 import io.whozoss.agentos.aiModel.AiModelRepository
@@ -114,18 +115,33 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
     ],
 )
 class Neo4jPersistenceConfiguration {
+    /**
+     * Inner Neo4j-backed bean, declared explicitly so that Spring AOP can proxy it and honour
+     * the [org.springframework.transaction.annotation.Transactional] boundaries declared on
+     * [Neo4jAgentConfigRepository.deleteByParent].
+     */
     @Bean
-    fun neo4jAgentConfigRepository(
+    fun neo4jAgentConfigRepositoryDelegate(
         agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
+    ): Neo4jAgentConfigRepository {
+        return Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository, childLinkService)
+    }
+
+    @Bean
+    @Primary
+    fun neo4jAgentConfigRepository(
+        neo4jAgentConfigRepositoryDelegate: Neo4jAgentConfigRepository,
         namespaceRepository: NamespaceRepository,
+        syncService: FilesystemAgentConfigSyncService,
         @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
     ): AgentConfigRepository {
-        logger.info { "[Persistence] Neo4jAgentConfigRepository active (filesystem augmentation enabled)" }
+        logger.info { "[Persistence] Neo4jAgentConfigRepository active (filesystem augmentation + Neo4j sync enabled)" }
         return FilesystemAgentConfigRepository(
-            delegate = Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository, childLinkService),
+            delegate = neo4jAgentConfigRepositoryDelegate,
             namespaceRepository = namespaceRepository,
             yamlMapper = yamlMapper,
+            syncCallback = syncService,
         )
     }
 

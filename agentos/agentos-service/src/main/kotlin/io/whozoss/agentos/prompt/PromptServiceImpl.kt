@@ -35,11 +35,8 @@ class PromptServiceImpl(
         if (entity.agentConfigId != null) {
             val agentConfig = agentConfigService.findById(entity.agentConfigId)
                 ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
-            if (agentConfig.isFilesystemOnly) {
-                throw UnprocessableEntityException(
-                    "AgentConfig id=${entity.agentConfigId} is a filesystem-only agent and cannot be linked to a prompt",
-                )
-            }
+            // File-origin agents are synced into Neo4j and are valid targets for Prompts.
+            // We do not block them here.
             validateAgentConfigScope(entity, agentConfig)
         }
         repository.findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
@@ -197,6 +194,20 @@ class PromptServiceImpl(
      * create (resp. attempt to soft-delete) a phantom Neo4j node sharing the id — the
      * persisted copy would then silently shadow the file-backed prompt it was meant to edit,
      * defeating the collision rule documented on [FilesystemPromptRepository].
+     */
+    /**
+     * Rejects [update] / [delete] when [id] resolves to a filesystem-backed prompt.
+     *
+     * A filesystem prompt (loaded by [FilesystemPromptRepository] from YAML) carries
+     * `metadata.version == null` — it was never saved through SDN. A naive PUT/DELETE
+     * on that id would otherwise create (resp. attempt to soft-delete) a phantom Neo4j
+     * node sharing the id — the persisted copy would then silently shadow the file-backed
+     * prompt it was meant to edit, defeating the collision rule documented on
+     * [FilesystemPromptRepository].
+     *
+     * Note: this guard remains version-based (`metadata.version == null`) rather than
+     * switching to `fileOrigin` because filesystem [Prompt]s are intentionally NOT synced
+     * into Neo4j (only [io.whozoss.agentos.agentConfig.AgentConfig] gets that treatment).
      */
     private fun rejectIfFilesystemBacked(id: UUID, action: String) {
         val existing = repository.findByIds(listOf(id)).firstOrNull() ?: return

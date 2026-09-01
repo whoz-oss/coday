@@ -23,11 +23,20 @@ import java.util.UUID
  * Filesystem reads are cached per directory with a configurable [ttl] (default
  * 5 minutes) to avoid repeated I/O on hot paths such as agent-name autocomplete.
  */
+/**
+ * Callback invoked after each cache reload to sync the filesystem agents into Neo4j.
+ * Receives the namespaceId and the full list of currently-live filesystem agents for that namespace.
+ */
+fun interface FilesystemAgentSyncCallback {
+    fun sync(namespaceId: UUID, liveAgents: List<AgentConfig>)
+}
+
 class FilesystemAgentConfigRepository(
     private val delegate: AgentConfigRepository,
     private val namespaceRepository: NamespaceRepository,
     private val yamlMapper: ObjectMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build()),
     ttl: Duration = Duration.ofMinutes(5),
+    private val syncCallback: FilesystemAgentSyncCallback? = null,
 ) : AgentConfigRepository by delegate {
     private val cacheRegistry =
         FilesystemYamlCacheRegistry(
@@ -71,7 +80,11 @@ class FilesystemAgentConfigRepository(
             emptyList()
         } else {
             val directory = Path.of(configPath, AGENTS_SUBDIR)
-            cacheRegistry.getAll(directory)
+            val agents = cacheRegistry.getAll(directory)
+            // Trigger Neo4j sync after each cache read. The cache's TTL ensures this is cheap
+            // on hot paths: the callback is invoked at most once per TTL window per namespace.
+            syncCallback?.sync(namespaceId, agents)
+            agents
         }
     }
 
@@ -173,6 +186,7 @@ class FilesystemAgentConfigRepository(
             // Stable UUID derived from the name so identity survives restarts.
             // namespaceId is null here; it is overwritten in findByParent.
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("filesystem-agent:${model.name}".toByteArray())),
+            fileOrigin = true,
             namespaceId = null,
             name = model.name,
             description = model.description,
