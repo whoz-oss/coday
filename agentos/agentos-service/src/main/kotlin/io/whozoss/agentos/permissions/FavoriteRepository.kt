@@ -5,7 +5,7 @@ package io.whozoss.agentos.permissions
  * permission edges — and the single-round-trip read that resolves the caller's direct
  * role + favorite flag per entity ([listDirectRelations]).
  *
- * State is stored on the `[:HAS_USER_CASE_STATE]` relationship-with-properties, which
+ * State is stored on the `[:WATCHES]` relationship-with-properties, which
  * also carries [DirectRelation.readAt]. The legacy `[:STARRED]` plain edge has been
  * replaced by this consolidated edge.
  *
@@ -14,7 +14,7 @@ package io.whozoss.agentos.permissions
  */
 interface FavoriteRepository {
     /**
-     * Sets or clears the `favoriteAt` property on the `[:HAS_USER_CASE_STATE]` edge
+     * Sets or clears the `favorite` property on the `[:WATCHES]` edge
      * between the user and the entity.
      *
      * The operation is guarded by a prior `[:ADMIN|MEMBER]` MATCH: the edge is only
@@ -24,7 +24,7 @@ interface FavoriteRepository {
      * @return true if the user has a direct `[:ADMIN]` or `[:MEMBER]` edge on the entity
      *   (the favorite flag was set or cleared as requested); false if they have no direct
      *   permission edge (the call was a no-op regardless of [favorite]).
-     *   Note: for `favorite=false`, returns true even when `favoriteAt` was already null —
+     *   Note: for `favorite=false`, returns true even when `favorite` was already false —
      *   the guard only checks for the permission edge, not the prior state of the flag.
      */
     fun setFavorite(

@@ -325,12 +325,12 @@ class Neo4jPersistenceConfiguration {
 
     /**
      * One-time migration: converts legacy `[:STARRED]` plain edges to
-     * `[:HAS_USER_CASE_STATE]` relationship-with-properties edges.
+     * `[:WATCHES]` relationship-with-properties edges.
      *
-     * Sets `favoriteAt = datetime()` on the new edge (the original edge carried no
-     * timestamp). The migration is idempotent: `MERGE` on `[:HAS_USER_CASE_STATE]`
-     * ensures that if the edge already exists (from a previous partial migration),
-     * only `favoriteAt` is SET — `readAt` is left untouched via `ON CREATE SET`.
+     * Sets `favorite = true` on the new edge (the original edge carried no properties).
+     * The migration is idempotent: `MERGE` on `[:WATCHES]` ensures that if the edge
+     * already exists (from a previous partial migration), only `favorite` is SET —
+     * `readAt` is left untouched.
      * The legacy `[:STARRED]` edge is deleted after the merge.
      *
      * Runs once at startup and is a no-op when no `[:STARRED]` edges remain.
@@ -340,16 +340,15 @@ class Neo4jPersistenceConfiguration {
         val result = neo4jClient.query(
             """
             MATCH (u:User)-[s:STARRED]->(c:Case)
-            MERGE (u)-[state:HAS_USER_CASE_STATE]->(c)
-            ON CREATE SET state.favoriteAt = datetime()
-            ON MATCH SET state.favoriteAt = datetime()
+            MERGE (u)-[state:WATCHES]->(c)
+            SET state.favorite = true
             DELETE s
             RETURN count(s) AS migrated
             """.trimIndent(),
         ).fetch().one()
         val count = result.map { it["migrated"] as Long }.orElse(0L)
         if (count > 0L) {
-            logger.info { "[Migration] Converted $count [:STARRED] edges to [:HAS_USER_CASE_STATE]" }
+            logger.info { "[Migration] Converted $count [:STARRED] edges to [:WATCHES]" }
         } else {
             logger.debug { "[Migration] No legacy [:STARRED] edges found — nothing to migrate" }
         }

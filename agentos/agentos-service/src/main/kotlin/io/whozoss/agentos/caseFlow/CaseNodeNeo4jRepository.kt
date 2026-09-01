@@ -171,7 +171,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     )
 
     // -------------------------------------------------------------------------
-    // HAS_USER_CASE_STATE — consolidated per-user case state (favorite + read).
+    // WATCHES — consolidated per-user case state (favorite + read).
     //
     // The MATCH guard on [:ADMIN|MEMBER] prevents orphaned state edges for users
     // with no direct permission. Role transitions (promote/demote) leave the state
@@ -179,7 +179,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     // -------------------------------------------------------------------------
 
     /**
-     * Sets `favoriteAt = now()` on the `(u)-[:HAS_USER_CASE_STATE]->(c)` edge,
+     * Sets `favorite = true` on the `(u)-[:WATCHES]->(c)` edge,
      * creating it if it does not exist. Guarded: only runs when the user already
      * holds a direct `[:ADMIN]` or `[:MEMBER]` edge on the case.
      *
@@ -188,28 +188,27 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      */
     @Query(
         $$"""MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(c:Case {id: $caseId})
-            MERGE (u)-[s:HAS_USER_CASE_STATE]->(c)
-            SET s.favoriteAt = $favoriteAt
+            MERGE (u)-[s:WATCHES]->(c)
+            SET s.favorite = true
             RETURN count(c)
             """,
     )
     fun mergeFavorite(
         @Param("userId") userId: String,
         @Param("caseId") caseId: String,
-        @Param("favoriteAt") favoriteAt: Instant?,
     ): Long
 
     /**
-     * Clears `favoriteAt` on the `(u)-[:HAS_USER_CASE_STATE]->(c)` edge (sets it to null).
+     * Sets `favorite = false` on the `(u)-[:WATCHES]->(c)` edge.
      * Does not delete the edge so that [readAt] is preserved.
      *
      * Returns the number of Case nodes matched (0 = no direct permission edge).
      */
     @Query(
         $$"""MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(c:Case {id: $caseId})
-            OPTIONAL MATCH (u)-[s:HAS_USER_CASE_STATE]->(c)
+            OPTIONAL MATCH (u)-[s:WATCHES]->(c)
             FOREACH (rel IN CASE WHEN s IS NOT NULL THEN [s] ELSE [] END |
-                SET rel.favoriteAt = null
+                SET rel.favorite = false
             )
             RETURN count(c)
             """,
@@ -220,13 +219,13 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     ): Long
 
     /**
-     * Sets `readAt = $readAt` on the `(u)-[:HAS_USER_CASE_STATE]->(c)` edge, creating
+     * Sets `readAt = $readAt` on the `(u)-[:WATCHES]->(c)` edge, creating
      * it if it does not exist. No permission guard: the controller already checks
      * Case READ before calling this.
      */
     @Query(
         $$"""MATCH (u:User {id: $userId}), (c:Case {id: $caseId})
-            MERGE (u)-[s:HAS_USER_CASE_STATE]->(c)
+            MERGE (u)-[s:WATCHES]->(c)
             SET s.readAt = $readAt
             """,
     )
@@ -241,7 +240,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      *
      * A case is unread when:
      * - The user has a direct `[:ADMIN|MEMBER]` edge on the case (access check), AND
-     * - Either no `[:HAS_USER_CASE_STATE]` edge exists, OR the most recent
+     * - Either no `[:WATCHES]` edge exists, OR the most recent
      *   `CaseEvent.timestamp` for that case is after the edge's `readAt`.
      *
      * Returns a scalar Long (0 = all read).
@@ -251,7 +250,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
         $$"""MATCH (c:Case)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
             WHERE (c.removed IS NULL OR c.removed = false)
               AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
-            OPTIONAL MATCH (:User {id: $userId})-[state:HAS_USER_CASE_STATE]->(c)
+            OPTIONAL MATCH (:User {id: $userId})-[state:WATCHES]->(c)
             WITH c, state.readAt AS readAt
             OPTIONAL MATCH (e:CaseEvent {caseId: c.id})
               WHERE e.removed IS NULL OR e.removed = false
@@ -270,7 +269,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      * Each map holds:
      * - `caseId` (String) — the case id
      * - `relations` (List<String>) — distinct edge types (`["ADMIN"]`, `["MEMBER"]`, or both)
-     * - `favoriteAt` (ZonedDateTime?) — non-null when the user has favorited the case
+     * - `favorite` (Boolean?) — true when the user has favorited the case; false or null otherwise
      * - `readAt` (ZonedDateTime?) — timestamp of the user's last read; null = never read
      *
      * Built as a single-column `collect` of maps: Spring Data Neo4j rejects a multi-column
@@ -283,11 +282,11 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     @Query(
         $$"""MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(c:Case)
             WITH u, c, collect(DISTINCT type(r)) AS relations
-            OPTIONAL MATCH (u)-[state:HAS_USER_CASE_STATE]->(c)
+            OPTIONAL MATCH (u)-[state:WATCHES]->(c)
             RETURN collect({
                 caseId: c.id,
                 relations: relations,
-                favoriteAt: state.favoriteAt,
+                favorite: state.favorite,
                 readAt: state.readAt
             })
             """,

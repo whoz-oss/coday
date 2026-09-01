@@ -290,7 +290,7 @@ class CaseControllerSpec :
             every { userService.getCurrentUser() } returns caller
             every {
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()))
+            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favorite = true))
             every {
                 permissionService.hasPermission(
                     callerId.toString(),
@@ -337,7 +337,7 @@ class CaseControllerSpec :
             every { userService.getCurrentUser() } returns caller
             every {
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
+            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favorite = true))
             every {
                 permissionService.hasPermission(
                     callerId.toString(),
@@ -460,8 +460,8 @@ class CaseControllerSpec :
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
             } returns
                 mapOf(
-                    starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()),
-                    plain.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = null),
+                    starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favorite = true),
+                    plain.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favorite = false),
                 )
             every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(starred, plain)
 
@@ -548,7 +548,7 @@ class CaseControllerSpec :
             every { caseService.findConcerningUser(callerId) } returns listOf(starredCase)
             every {
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
+            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favorite = true))
 
             val result = controller.listByUser(callerId)
 
@@ -625,7 +625,7 @@ class CaseControllerSpec :
             every { caseService.findConcerningUser(callerId) } returns listOf(starredCase)
             every {
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
+            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favorite = true))
 
             val result = controller.listByUserExternalId(caller.externalId)
 
@@ -728,7 +728,7 @@ class CaseControllerSpec :
             every { caseService.findConcerningUserInNamespace(callerId, namespaceId) } returns listOf(starredCase, plainCase)
             every {
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
+            } returns mapOf(starredCase.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favorite = true))
 
             val result =
                 controller.listByUserInNamespace(
@@ -895,7 +895,7 @@ class CaseControllerSpec :
             every { caseService.update(any()) } returns existing
             every {
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(existing.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favoriteAt = Instant.now()))
+            } returns mapOf(existing.metadata.id.toString() to DirectRelation(PermissionRelation.MEMBER, favorite = true))
 
             val result = controller.update(existing.metadata.id, caseResource(id = existing.metadata.id))
 
@@ -938,7 +938,7 @@ class CaseControllerSpec :
             every { caseService.getById(entity.metadata.id) } returns entity
             every {
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(entity.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()))
+            } returns mapOf(entity.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favorite = true))
 
             val result = controller.getById(entity.metadata.id)
 
@@ -989,7 +989,7 @@ class CaseControllerSpec :
             every { caseService.findByIds(any(), any()) } returns listOf(starred, plain)
             every {
                 favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
-            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favoriteAt = Instant.now()))
+            } returns mapOf(starred.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favorite = true))
 
             val result =
                 controller.getByIds(
@@ -1042,7 +1042,7 @@ class CaseControllerSpec :
         // readAt — populated via withCallerMeta
         // -------------------------------------------------------------------------
 
-        "getById populates readAt from the user's HAS_USER_CASE_STATE edge" {
+        "getById populates readAt from the user's WATCHES edge" {
             val entity = caseEntity()
             val readTimestamp = Instant.parse("2025-06-01T12:00:00Z")
             every { userService.getCurrentUser() } returns caller

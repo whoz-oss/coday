@@ -156,7 +156,7 @@ class CaseController(
         return this.map {
             val meta = starred[it.metadata.id.toString()]
             toDto(it).copy(
-                favorite = meta?.isFavorite ?: false,
+                favorite = meta?.favorite ?: false,
                 role = meta?.relation?.name,
                 readAt = meta?.readAt,
                 lastMessageAt = lastMessageTimestamps[it.id],

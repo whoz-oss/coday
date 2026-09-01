@@ -1,19 +1,19 @@
 package io.whozoss.agentos.permissions
 
 /**
- * Service for the per-user `[:STARRED]` (favorite) relationship, plus the read-model
+ * Service for the per-user favorite flag and read state, plus the read-model
  * that decorates case listings with the caller's own metadata.
  *
- * Kept separate from [PermissionService]: it owns the `[:STARRED]` edge (a user
- * preference) and a single-round-trip read of the caller's *direct* role + favorite
- * flag per entity ([listDirectRelations]). It neither grants nor checks access — the
- * role it returns is for display only; authorization stays with [PermissionService]
- * and `@PreAuthorize`.
+ * Kept separate from [PermissionService]: it owns the `[:WATCHES]` edge properties
+ * (`favorite`, `readAt`) and a single-round-trip read of the caller's *direct*
+ * role + favorite flag per entity ([listDirectRelations]). It neither grants nor
+ * checks access — the role it returns is for display only; authorization stays with
+ * [PermissionService] and `@PreAuthorize`.
  */
 interface FavoriteService {
 
     /**
-     * Sets or clears the `favoriteAt` timestamp for the entity on behalf of the user.
+     * Sets or clears the favorite flag for the entity on behalf of the user.
      *
      * Requires the user to hold a direct `[:ADMIN]` or `[:MEMBER]` relation on the
      * entity — favoriting is not allowed via transitive (namespace-level) access only.

@@ -2,18 +2,17 @@ package io.whozoss.agentos.permissions
 
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import mu.KLogging
-import java.time.Instant
 import java.time.ZonedDateTime
 
 /**
  * Neo4j implementation of [FavoriteRepository].
  *
  * Delegates to [CaseNodeNeo4jRepository] which owns all Cypher queries
- * for the `[:HAS_USER_CASE_STATE]` relationship on Case nodes.
+ * for the `[:WATCHES]` relationship on Case nodes.
  *
  * The legacy `[:STARRED]` plain edge has been replaced by the
- * `[:HAS_USER_CASE_STATE]` relationship-with-properties, which consolidates
- * both the favorite flag ([DirectRelation.favoriteAt]) and the read timestamp
+ * `[:WATCHES]` relationship-with-properties, which consolidates
+ * both the favorite flag ([DirectRelation.favorite]) and the read timestamp
  * ([DirectRelation.readAt]) on a single edge.
  */
 class Neo4jFavoriteRepository(
@@ -35,7 +34,6 @@ class Neo4jFavoriteRepository(
                             caseNodeNeo4jRepository.mergeFavorite(
                                 userId = userId,
                                 caseId = entityId,
-                                favoriteAt = Instant.now(),
                             ) > 0
                         }
 
@@ -71,7 +69,7 @@ class Neo4jFavoriteRepository(
                         val caseId = row["caseId"] as String
                         val relations = (row["relations"] as List<*>).map { it.toString() }
                         // Temporal values come back from the Neo4j driver as ZonedDateTime in raw Map projections.
-                        val favoriteAt = (row["favoriteAt"] as? ZonedDateTime)?.toInstant()
+                        val favorite = (row["favorite"] as? Boolean) ?: false
                         val readAt = (row["readAt"] as? ZonedDateTime)?.toInstant()
                         val relation =
                             if (PermissionRelation.ADMIN.name in relations) {
@@ -79,7 +77,7 @@ class Neo4jFavoriteRepository(
                             } else {
                                 PermissionRelation.MEMBER
                             }
-                        caseId to DirectRelation(relation = relation, favoriteAt = favoriteAt, readAt = readAt)
+                        caseId to DirectRelation(relation = relation, favorite = favorite, readAt = readAt)
                     }
                 }
 
