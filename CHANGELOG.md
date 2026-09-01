@@ -1,3 +1,13 @@
+## 0.249.11 (2026-09-01)
+
+### 🩹 Fixes
+
+- discard stale MCP OAuth client registration when tokens are absent ([#1265](https://github.com/whoz-oss/coday/pull/1265))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.249.10 (2026-09-01)
 
 ### 🩹 Fixes
