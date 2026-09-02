@@ -62,19 +62,22 @@ import java.util.concurrent.atomic.AtomicBoolean
  * before polling again, avoiding a busy-loop. On database errors it applies exponential
  * backoff (capped at 60 s). The producer respects [consumePaused]: when paused it delays
  * 2 s per iteration without touching the database.
+ * The channel is closed in the producer's `finally` block, guaranteeing that workers
+ * exit their `for (userRun in channel)` loop cleanly regardless of how the producer stops.
  *
  * **Worker pool** ([SchedulerProperties.workerCount] coroutines, `Dispatchers.IO`): each worker
  * receives [ScheduledPromptUserRun]s from the channel and calls [processUserRun] followed by
  * [checkCompletion]. A failure in one worker does not affect its siblings — exceptions are
  * caught per-item; [CancellationException] is always re-thrown to honour cooperative cancellation.
  *
- * **Channel capacity**: `workerCount`. At most one item waiting per worker beyond what
- * is currently being processed. The producer suspends on `channel.send` once the buffer
- * is full — natural backpressure that prevents pre-claiming more leased UserRuns than
- * workers can absorb.
+ * **Channel capacity**: [SchedulerProperties.channelCapacity] (default 50 = 2 x batchSize,
+ * double-buffering): the producer can fill a second batch into the channel while workers drain
+ * the first, keeping all workers continuously fed without pre-claiming an excessive number of
+ * leased UserRuns.
  *
  * **Shutdown**: [stop] cancels the scope. The [CancellationException] propagates
  * immediately to all coroutines at their next suspension point — no graceful drain.
+ * The producer's `finally` block closes the channel, unblocking workers suspended on receive.
  * UserRuns that were in-flight remain RUNNING; their leases expire and another instance
  * (or the restarted instance) reclaims them via [claimBatch] (at-least-once delivery).
  *
@@ -161,13 +164,14 @@ class ScheduledPromptExecutor(
     /**
      * Runs the producer and worker pool inside the bean’s [CoroutineScope].
      *
-     * The channel capacity is `workerCount * 2`: small enough to prevent the producer
-     * from pre-claiming leased UserRuns that workers won’t reach before expiry, yet
-     * large enough to keep workers busy while the producer fetches the next batch.
+     * The channel is closed in the producer's `finally` block, guaranteeing that workers
+     * iterating `for (userRun in channel)` exit their loop cleanly whether the producer
+     * stops normally, is cancelled, or throws an unexpected exception.
      *
      * The producer and all workers share the same scope. Cancelling the scope (on [stop])
      * propagates [CancellationException] to all of them at their next suspension point.
-     * Workers exit their `for (userRun in channel)` loop; the producer exits its `while (isActive)`.
+     * The producer's `finally` block then closes the channel, which unblocks any worker
+     * suspended on `channel.receive()`.
      */
     private suspend fun runConsumerLoop() {
         val channel = Channel<ScheduledPromptUserRun>(capacity = properties.channelCapacity)
@@ -177,29 +181,33 @@ class ScheduledPromptExecutor(
         currentScope.launch(Dispatchers.IO) {
             val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
             var consecutiveErrors = 0
-            while (isActive) {
-                when {
-                    consumePaused.get() -> delay(2_000L)
-                    else -> {
-                        try {
-                            val batch = userRunRepository.claimBatch(leaseDuration, properties.batchSize)
-                            when {
-                                batch.isEmpty() -> delay(properties.emptyPollDelayMs)
-                                else -> batch.forEach { channel.send(it) }
+            try {
+                while (isActive) {
+                    when {
+                        consumePaused.get() -> delay(2_000L)
+                        else -> {
+                            try {
+                                val batch = userRunRepository.claimBatch(leaseDuration, properties.batchSize)
+                                when {
+                                    batch.isEmpty() -> delay(properties.emptyPollDelayMs)
+                                    else -> batch.forEach { channel.send(it) }
+                                }
+                                consecutiveErrors = 0
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                consecutiveErrors++
+                                val backoffMs = exponentialBackoffMs(consecutiveErrors)
+                                logger.error(e) {
+                                    "[Executor] producer error (attempt=$consecutiveErrors), backing off ${backoffMs}ms"
+                                }
+                                delay(backoffMs)
                             }
-                            consecutiveErrors = 0
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            consecutiveErrors++
-                            val backoffMs = exponentialBackoffMs(consecutiveErrors)
-                            logger.error(e) {
-                                "[Executor] producer error (attempt=$consecutiveErrors), backing off ${backoffMs}ms"
-                            }
-                            delay(backoffMs)
                         }
                     }
                 }
+            } finally {
+                channel.close()
             }
         }
 
