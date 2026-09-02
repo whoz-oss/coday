@@ -3224,6 +3224,9 @@ components:
             format: uuid
           agentName:
             type: string
+          questionId:
+            type: string
+            format: uuid
       required:
       - agentId
       - agentName
