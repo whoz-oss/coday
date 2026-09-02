@@ -116,6 +116,39 @@ data class AgentConfig(
      * Silently ignored when configPath is absent.
      */
     val docs: List<String>? = null,
+    /**
+     * Selectors controlling which namespace skills are advertised to this agent.
+     *
+     * Skills are `SKILL.md` files discovered by [io.whozoss.agentos.skill.SkillResolver] in the
+     * `skills` directory of the namespace configPath, each carrying a YAML frontmatter `name` and
+     * `description`. Only the catalog (name, description, path) is injected into the agent's
+     * instructions; skill bodies and adjacent resources are read on demand through the agent's
+     * file tools.
+     *
+     * Tri-state, inverse of [integrations]:
+     * - null: all discovered skills are advertised (default)
+     * - empty list: explicit opt-out, no skills block is produced
+     * - non-empty list: union of everything the listed selectors match
+     *
+     * Selector forms, matched case-insensitively against slash-normalized paths:
+     * - a lone star: every discovered skill
+     * - a folder path ending with slash-star or slash-double-star: recursive prefix match on the
+     *   path relative to the skills root, both forms behave identically (a `core` prefix selector
+     *   matches `core/branch-creation`)
+     * - the path relative to the skills root, with or without a trailing `SKILL.md` segment
+     *   (`product/spec-writing`, `product/spec-writing/SKILL.md`)
+     * - the path relative to the project root (`coday/skills/product/spec-writing/SKILL.md`)
+     * - the skill's frontmatter name (`spec-writing`)
+     *
+     * Selectors are additive and deduplicated: overlapping selectors never duplicate a skill and the
+     * result keeps discovery order (path-sorted), not selector order. A selector matching nothing is
+     * logged as a warning and ignored, never an error, so a typo narrows the catalog silently rather
+     * than failing agent resolution.
+     *
+     * Only applicable for filesystem-backed agents (namespace with a configPath).
+     * Silently ignored when configPath is absent.
+     */
+    val skillSelectors: List<String>? = null,
 ) : Entity {
     /**
      * True when this [AgentConfig] was loaded from a filesystem YAML definition

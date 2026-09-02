@@ -51,6 +51,7 @@ import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolPlugin
+import io.whozoss.agentos.skill.SkillResolver
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
@@ -80,6 +81,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val authServiceFactory: AuthServiceFactory = mockk(relaxed = true)
     private val oAuthFlowService: OAuthFlowService = mockk(relaxed = true)
     private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
+    private val skillResolver: SkillResolver = mockk(relaxed = true)
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
 
@@ -111,6 +113,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             exchangeCapabilityService = exchangeCapabilityService,
             exchangeToolGrantService = exchangeToolGrantService,
             agentDocumentResolver = agentDocumentResolver,
+            skillResolver = skillResolver,
             idCompressorService = IdCompressorService(),
             agentConfigProperties = AgentConfigProperties(),
             queryUserToolGrantService = queryUserToolGrantService,
@@ -449,6 +452,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     exchangeCapabilityService = exchangeCapabilityService,
                     exchangeToolGrantService = realGrantService,
                     agentDocumentResolver = agentDocumentResolver,
+                    skillResolver = skillResolver,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
@@ -779,6 +783,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     exchangeCapabilityService = exchangeCapabilityService,
                     exchangeToolGrantService = exchangeToolGrantService,
                     agentDocumentResolver = agentDocumentResolver,
+                    skillResolver = skillResolver,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
@@ -1259,6 +1264,69 @@ class AgentServiceImplUnitSpec : StringSpec() {
             (agent.instructions ?: "") shouldNotContain "## User"
             (agent.instructions ?: "") shouldNotContain userId.toString()
             (agent.instructions ?: "") shouldNotContain "opaque-objectid-123"
+        }
+
+        // -------------------------------------------------------------------------
+        // Skills block injection into instructions
+        // -------------------------------------------------------------------------
+
+        "findAgentByName appends skills block when skills are resolved for namespace" {
+            val config = agentConfig(name = "my-agent", instructions = "Base instructions", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            every { skillResolver.buildSkillsBlock(any(), any()) } returns "## Available Skills\n- **Review** (`coday/skills/review/SKILL.md`): Code review"
+
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+
+            agent.instructions shouldContain "Base instructions"
+            agent.instructions shouldContain "## Available Skills"
+            agent.instructions shouldContain "- **Review** (`coday/skills/review/SKILL.md`): Code review"
+        }
+
+        "findAgentByName forwards skillSelectors from agentConfig to skillResolver" {
+            val config =
+                agentConfig(name = "filtered-agent", instructions = "Base instructions", modelName = "sonnet")
+                    .copy(skillSelectors = listOf("core/**", "product/**"))
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "filtered-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            every { skillResolver.buildSkillsBlock(any(), eq(listOf("core/**", "product/**"))) } returns "## Available Skills\n- **spec-writing** (`coday/skills/product/spec-writing/SKILL.md`): Spec writing"
+
+            val agent = agentService.findAgentByName("filtered-agent", context) as AgentSimple
+
+            agent.instructions shouldContain "- **spec-writing** (`coday/skills/product/spec-writing/SKILL.md`): Spec writing"
+            verify(exactly = 1) { skillResolver.buildSkillsBlock(any(), eq(listOf("core/**", "product/**"))) }
+        }
+
+        "findAgentByName with empty skillSelectors results in no skills block" {
+            val config =
+                agentConfig(name = "opt-out-agent", instructions = "Base instructions", modelName = "sonnet")
+                    .copy(skillSelectors = emptyList())
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "opt-out-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            every { skillResolver.buildSkillsBlock(any(), eq(emptyList())) } returns null
+
+            val agent = agentService.findAgentByName("opt-out-agent", context) as AgentSimple
+
+            (agent.instructions ?: "") shouldNotContain "## Available Skills"
+            verify(exactly = 1) { skillResolver.buildSkillsBlock(any(), eq(emptyList())) }
         }
 
         // -------------------------------------------------------------------------

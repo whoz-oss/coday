@@ -61,4 +61,16 @@ data class AgentConfigDto(
             ),
     )
     val subAgents: List<String>? = null,
+    @ArraySchema(
+        schema =
+            Schema(
+                minLength = 1,
+                implementation = String::class,
+                description =
+                    "Selectors controlling which filesystem skills are injected into the agent's instructions. " +
+                        "When null, all discovered skills are included. When empty list [], no skills are included. " +
+                        "Supports exact path/name, folder prefixes ('core/**'), or wildcard '*'.",
+            ),
+    )
+    val skillSelectors: List<String>? = null,
 )

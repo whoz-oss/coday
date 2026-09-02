@@ -1,8 +1,8 @@
 package io.whozoss.agentos.agentConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agent.ResolvedAgentDefinition
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -13,10 +13,7 @@ import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigSearchRequest
 import io.whozoss.agentos.sdk.api.agentConfig.AgentDefinitionDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
-import jakarta.validation.Valid
-import mu.KLogging
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -32,33 +29,11 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
+import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 
-/**
- * REST API for managing [AgentConfig] entities. Implements [AgentConfigApi] so external
- * consumers can declare a Feign client against the SDK interface.
- *
- * Authorization is declared via `@PreAuthorize` on each endpoint:
- * - READ: namespace MEMBER (transitive permission via `[:BELONGS_TO]`)
- * - WRITE/DELETE: namespace ADMIN (FR17/18/19)
- * - CREATE: namespace ADMIN (target namespace from payload)
- *
- * The `update` override preserves [AgentConfig.namespaceId] from the persisted entity
- * (mass-assignment guard); permission is checked declaratively before the body runs.
- *
- * **Platform agents** (namespaceId = null): the `@PreAuthorize` annotations on [create],
- * [update], and [delete] delegate to [PermissionServiceImpl.hasPermission] with a null
- * entityId. [PermissionServiceImpl] enforces the rule: READ is open to any authenticated
- * user; WRITE/DELETE with a null entityId return `false` for non-super-admins. Super-admins
- * bypass all checks via the `user.isAdmin` flag and are therefore the only callers who can
- * create, update, or delete platform-level agents.
- */
 @RestController
-@RequestMapping(
-    "/api/agent-configs",
-    produces = [MediaType.APPLICATION_JSON_VALUE],
-)
+@RequestMapping(AgentConfigController.PATH)
 class AgentConfigController(
     private val agentConfigService: AgentConfigService,
     private val agentService: AgentService,
@@ -73,166 +48,163 @@ class AgentConfigController(
             permissions = permissionService,
             entityType = EntityType.AGENT_CONFIG,
             toResource = { toDto(it as AgentConfig) },
-            toDomain = { resource ->
-                AgentConfig(
-                    metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-                    namespaceId = resource.namespaceId,
-                    name = resource.name,
-                    description = resource.description,
-                    instructions = resource.instructions,
-                    modelName = resource.modelName,
-                    integrations = resource.integrations,
-                    advancedExecution = resource.advancedExecution ?: false,
-                    externalMetadata = resource.externalMetadata,
-                    enabled = resource.enabled ?: false,
-                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-                )
-            },
+            toDomain = { toDomain(it) },
         )
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
-    @HideOnAccessDenied
+    @PreAuthorize("hasPermission(#id, 'AGENT_CONFIG', 'READ')")
     override fun getById(
         @PathVariable id: UUID,
     ): AgentConfigDto = crud.getById(id)
 
-    @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PostMapping("/by-ids")
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(
-        @RequestBody request: io.whozoss.agentos.sdk.api.common.GetByIdsRequest,
+        @RequestBody request: SdkGetByIdsRequest,
     ): List<AgentConfigDto> = crud.getByIds(GetByIdsRequest(request.ids, request.withRemoved))
 
-    @GetMapping("/by-parentId/{parentId}")
-    @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
+    @GetMapping("/by-parentId/{namespaceId}")
+    @PreAuthorize("hasPermission(#namespaceId, 'NAMESPACE', 'READ')")
     override fun listByParent(
-        @PathVariable parentId: UUID,
-        @RequestParam(required = false, defaultValue = "true") withDisabled: Boolean,
-    ): List<AgentConfigDto> = agentConfigService.findByNamespace(parentId, withDisabled = withDisabled).map(::toDto)
+        @PathVariable namespaceId: UUID,
+        @RequestParam(defaultValue = "true") withDisabled: Boolean,
+    ): List<AgentConfigDto> =
+        agentConfigService
+            .findByNamespace(namespaceId, withDisabled)
+            .map { toDto(it) }
 
     @GetMapping("/platform")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasPermission(null, 'PLATFORM', 'SUPER_ADMIN')")
     fun listPlatformAgents(
-        @RequestParam(required = false, defaultValue = "false") withDisabled: Boolean,
-    ): List<AgentConfigDto> = agentConfigService.findByNamespace(null, withDisabled = withDisabled).map(::toDto)
+        @RequestParam(defaultValue = "false") withDisabled: Boolean,
+    ): List<AgentConfigDto> =
+        agentConfigService
+            .findByNamespace(null, withDisabled)
+            .map { toDto(it) }
 
-    @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'WRITE')")
+    @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize(
+        "#resource.namespaceId == null ? hasPermission(null, 'PLATFORM', 'SUPER_ADMIN') : " +
+            "hasPermission(#resource.namespaceId, 'NAMESPACE', 'WRITE')",
+    )
     override fun create(
-        @Valid @RequestBody resource: AgentConfigDto,
+        @RequestBody resource: AgentConfigDto,
     ): AgentConfigDto = crud.create(resource)
 
-    @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
+    @PutMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'AGENT_CONFIG', 'WRITE')")
     override fun update(
         @PathVariable id: UUID,
-        @Valid @RequestBody resource: AgentConfigDto,
+        @RequestBody resource: AgentConfigDto,
     ): AgentConfigDto {
         val existing =
             agentConfigService.findById(id)
-                ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+                ?: throw ResourceNotFoundException("AgentConfig with id '$id' not found")
+        val domain = toDomain(resource.copy(id = id))
         return toDto(
             agentConfigService.update(
-                existing.copy(
-                    name = resource.name,
-                    description = resource.description,
-                    instructions = resource.instructions,
-                    modelName = resource.modelName,
-                    integrations = resource.integrations,
-                    advancedExecution = resource.advancedExecution ?: false,
-                    externalMetadata = resource.externalMetadata,
+                domain.copy(
+                    namespaceId = existing.namespaceId,
                     enabled = resource.enabled ?: existing.enabled,
-                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
+                    externalMetadata = resource.externalMetadata,
+                    skillSelectors = resource.skillSelectors,
                 ),
             ),
         )
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'DELETE')")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    override fun delete(
-        @PathVariable id: UUID,
-    ) = crud.delete(id)
-
     @PostMapping("/{id}/enable")
-    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
+    @PreAuthorize("hasPermission(#id, 'AGENT_CONFIG', 'WRITE')")
     override fun enable(
         @PathVariable id: UUID,
-    ): AgentConfigDto {
-        logger.info { "[AgentConfig] Enabling agent config $id" }
-        return toDto(agentConfigService.enable(id))
-    }
+    ): AgentConfigDto = toDto(agentConfigService.enable(id))
 
     @PostMapping("/{id}/disable")
-    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
+    @PreAuthorize("hasPermission(#id, 'AGENT_CONFIG', 'WRITE')")
     override fun disable(
         @PathVariable id: UUID,
-    ): AgentConfigDto {
-        logger.info { "[AgentConfig] Disabling agent config $id" }
-        return toDto(agentConfigService.disable(id))
-    }
+    ): AgentConfigDto = toDto(agentConfigService.disable(id))
 
-    @PostMapping("/search", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("hasPermission(#request.namespaceId, 'Namespace', 'READ')")
+    @PostMapping("/search")
+    @PreAuthorize("hasPermission(#request.namespaceId, 'NAMESPACE', 'READ')")
     override fun search(
-        @Valid @RequestBody request: AgentConfigSearchRequest,
-    ): List<AgentConfigDto> =
-        agentConfigService
-            .findAvailableByUserExternalId(request.namespaceId, request.userExternalId)
-            .map(::toDto)
-
-    @Operation(
-        summary = "Export an AgentConfig as a YAML file",
-        description = "Returns the agent config as a downloadable YAML file, ready to be placed in " +
-            "the namespace `agents/` directory under `configPath`. " +
-            "Only the fields meaningful in a filesystem config are included. " +
-            "Scope metadata (`id`, `namespaceId`, `enabled`, `advancedExecution`, `externalMetadata`) is intentionally omitted.",
-    )
-    @GetMapping("/{id}/export", produces = [MediaType.APPLICATION_YAML_VALUE])
-    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'WRITE')")
-    @HideOnAccessDenied
-    fun export(
-        @PathVariable id: UUID,
-    ): ResponseEntity<String> {
-        val entity =
-            agentConfigService.findById(id)
-                ?: throw ResourceNotFoundException("AgentConfig not found: $id")
-        val yaml = yamlExportMapper.writeValueAsString(toExportModel(entity))
-        val filename = entity.name.lowercase().replace(Regex("[^a-z0-9]+"), "-") + ".yaml"
-        return ResponseEntity
-            .ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
-            .contentType(MediaType.parseMediaType(MediaType.APPLICATION_YAML_VALUE))
-            .body(yaml)
+        @RequestBody request: AgentConfigSearchRequest,
+    ): List<AgentConfigDto> {
+        val results =
+            agentConfigService.findAvailableByUserExternalId(
+                namespaceId = request.namespaceId,
+                userExternalId = request.userExternalId,
+            )
+        return results.map { toDto(it) }
     }
 
     @GetMapping("/{id}/definition")
-    @PreAuthorize("hasPermission(#id, 'AgentConfig', 'READ')")
-    @HideOnAccessDenied
+    @PreAuthorize("hasPermission(#id, 'AGENT_CONFIG', 'READ')")
     override suspend fun getDefinition(
         @PathVariable id: UUID,
-        @RequestParam(required = false, defaultValue = "false") withUserOverlay: Boolean,
+        @RequestParam(defaultValue = "true") withUserOverlay: Boolean,
         @RequestParam(required = false) namespaceId: UUID?,
     ): AgentDefinitionDto {
-        val agentConfig =
+        val config =
             agentConfigService.findById(id)
-                ?: throw ResourceNotFoundException("AgentConfig not found: $id")
-        val resolvedNamespaceId =
-            agentConfig.namespaceId ?: namespaceId
-                ?: throw ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "namespaceId query parameter is required for platform-level agent configs",
-                )
-        val resolvedUserId = if (withUserOverlay) userService.getCurrentUser().metadata.id else null
+                ?: throw ResourceNotFoundException("AgentConfig with id '$id' not found")
+        val effectiveNamespaceId =
+            namespaceId
+                ?: config.namespaceId
+                ?: throw IllegalArgumentException("namespaceId is required to resolve definition for a platform agent")
+        val caller = if (withUserOverlay) userService.getCurrentUser() else null
         val definition =
             agentService.resolveDefinition(
                 agentConfigId = id,
-                namespaceId = resolvedNamespaceId,
-                userId = resolvedUserId,
+                namespaceId = effectiveNamespaceId,
+                userId = caller?.metadata?.id,
             )
-        return AgentDefinitionDto(
+        return toDefinitionDto(definition)
+    }
+
+    @GetMapping("/{id}/export")
+    @PreAuthorize("hasPermission(#id, 'AGENT_CONFIG', 'READ')")
+    fun export(
+        @PathVariable id: UUID,
+    ): ResponseEntity<String> {
+        val config =
+            agentConfigService.findById(id)
+                ?: throw ResourceNotFoundException("AgentConfig with id '$id' not found")
+
+        val payload =
+            buildMap {
+                put("name", config.name)
+                config.description?.let { put("description", it) }
+                config.instructions?.let { put("instructions", it) }
+                config.modelName?.let { put("modelName", it) }
+                config.integrations?.takeIf { it.isNotEmpty() }?.let { put("integrations", it) }
+                config.subAgents?.takeIf { it.isNotEmpty() }?.let { put("subAgents", it) }
+                config.docs?.takeIf { it.isNotEmpty() }?.let { put("docs", it) }
+                config.skillSelectors?.takeIf { it.isNotEmpty() }?.let { put("skillSelectors", it) }
+            }
+
+        val yamlContent = yamlExportMapper.writeValueAsString(payload)
+        val filename = "${sanitizeFilename(config.name)}.yaml"
+
+        return ResponseEntity
+            .ok()
+            .contentType(MediaType("application", "x-yaml"))
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
+            .body(yamlContent)
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasPermission(#id, 'AGENT_CONFIG', 'WRITE')")
+    override fun delete(
+        @PathVariable id: UUID,
+    ) {
+        crud.delete(id)
+    }
+
+    private fun toDefinitionDto(definition: ResolvedAgentDefinition): AgentDefinitionDto =
+        AgentDefinitionDto(
             agentConfigId = definition.agentConfigId,
             name = definition.name,
             systemPrompt = definition.systemPrompt,
@@ -251,31 +223,22 @@ class AgentConfigController(
             namespaceId = definition.namespaceId,
             userId = definition.userId,
         )
+
+    companion object {
+        const val PATH = "/api/agent-configs"
+
+        private val SPECIAL_CHARS_REGEX = Regex("[^a-zA-Z0-9]+")
+        internal fun sanitizeFilename(name: String): String =
+            name
+                .lowercase()
+                .replace(SPECIAL_CHARS_REGEX, "-")
+                .ifEmpty { "agent" }
     }
-
-    companion object : KLogging()
 }
 
-internal fun toDomain(resource: AgentConfigDto): AgentConfig {
-    val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
-    return AgentConfig(
-        metadata = metadata,
-        namespaceId = resource.namespaceId,
-        name = resource.name,
-        description = resource.description,
-        instructions = resource.instructions,
-        modelName = resource.modelName,
-        integrations = resource.integrations,
-        advancedExecution = resource.advancedExecution ?: false,
-        externalMetadata = resource.externalMetadata,
-        enabled = resource.enabled ?: false,
-        subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-    )
-}
-
-internal fun toDto(entity: AgentConfig) =
+internal fun toDto(entity: AgentConfig): AgentConfigDto =
     AgentConfigDto(
-        id = entity.metadata.id,
+        id = entity.id,
         namespaceId = entity.namespaceId,
         name = entity.name,
         description = entity.description,
@@ -290,29 +253,28 @@ internal fun toDto(entity: AgentConfig) =
         updatedOn = entity.metadata.modified,
         enabled = entity.enabled,
         subAgents = entity.subAgents,
+        skillSelectors = entity.skillSelectors,
     )
 
-/**
- * Produces the filesystem-ready export model from a persisted [AgentConfig].
- *
- * Scope fields (`id`, `namespaceId`, `enabled`, `advancedExecution`, `externalMetadata`) are
- * intentionally excluded — they are persistence artefacts with no meaning in a YAML file.
- * Only the fields that [FilesystemAgentConfigRepository] reads are included, so the exported
- * file can be dropped directly into the namespace `agents/` directory.
- *
- * The map is built explicitly rather than via a data class so that null, blank and empty top-level
- * values can be omitted without a per-field `@JsonInclude` annotation. Doing it here rather than
- * with a mapper-level inclusion policy is what keeps the filtering out of the `integrations` map,
- * whose entries are kept verbatim: a null value (all tools of the integration) and an empty list
- * (explicit opt-out) are distinct states the re-import must see unchanged.
- */
-private fun toExportModel(entity: AgentConfig): Map<String, Any?> =
-    buildMap {
-        put("name", entity.name)
-        entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
-        entity.instructions?.takeIf { it.isNotBlank() }?.let { put("instructions", it) }
-        entity.modelName?.takeIf { it.isNotBlank() }?.let { put("modelName", it) }
-        entity.integrations?.takeIf { it.isNotEmpty() }?.let { put("integrations", it) }
-        entity.subAgents?.takeIf { it.isNotEmpty() }?.let { put("subAgents", it) }
-        entity.docs?.takeIf { it.isNotEmpty() }?.let { put("docs", it) }
-    }
+internal fun toDomain(resource: AgentConfigDto): AgentConfig =
+    AgentConfig(
+        metadata =
+            EntityMetadata(
+                id = resource.id ?: UUID.randomUUID(),
+                createdBy = resource.createdBy,
+                created = resource.createdOn ?: java.time.Instant.now(),
+                modifiedBy = resource.updatedBy,
+                modified = resource.updatedOn ?: java.time.Instant.now(),
+            ),
+        namespaceId = resource.namespaceId,
+        name = resource.name,
+        description = resource.description,
+        instructions = resource.instructions,
+        modelName = resource.modelName,
+        integrations = resource.integrations,
+        advancedExecution = resource.advancedExecution ?: false,
+        externalMetadata = resource.externalMetadata,
+        enabled = resource.enabled ?: false,
+        subAgents = resource.subAgents,
+        skillSelectors = resource.skillSelectors,
+    )
