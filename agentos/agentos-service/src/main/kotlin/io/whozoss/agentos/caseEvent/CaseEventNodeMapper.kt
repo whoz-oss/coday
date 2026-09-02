@@ -148,6 +148,7 @@ class CaseEventNodeMapper(
                     node.timestamp,
                     node.agentId,
                     node.agentName,
+                    node.questionId,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -424,6 +425,7 @@ class CaseEventNodeMapper(
             timestamp = n.timestamp,
             agentId = UUID.fromString(n.agentId),
             agentName = n.agentName,
+            questionId = n.questionId?.let { UUID.fromString(it) },
         )
 
     private fun toDomain(n: AgentFinishedEventNode) =
@@ -628,6 +630,7 @@ class CaseEventNodeMapper(
             timestamp = e.timestamp,
             agentId = e.agentId.toString(),
             agentName = e.agentName,
+            questionId = e.questionId?.toString(),
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

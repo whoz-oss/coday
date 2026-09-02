@@ -178,7 +178,7 @@ agentos:
     # the QUERY_USER key to an empty list [] in its integrations map — the right choice for fully
     # autonomous agents triggered by webhooks where nobody is listening.
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
-    # enabled-by-default: true
+    enabled-by-default: true
   defaults:
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.
