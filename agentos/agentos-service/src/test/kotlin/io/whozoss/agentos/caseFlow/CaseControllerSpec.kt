@@ -103,6 +103,23 @@ class CaseControllerSpec :
         // Mapping
         // -------------------------------------------------------------------------
 
+        "toDto maps scheduledPromptId when the case was started by a ScheduledPrompt" {
+            val spId = UUID.randomUUID()
+            val entity = caseEntity().copy(scheduledPromptId = spId)
+
+            val result = toDto(entity)
+
+            result.scheduledPromptId shouldBe spId
+        }
+
+        "toDto leaves scheduledPromptId null for a user-initiated case" {
+            val entity = caseEntity()
+
+            val result = toDto(entity)
+
+            result.scheduledPromptId shouldBe null
+        }
+
         "toDto maps all case fields including namespaceId, status, created and modified" {
             val now = Instant.now()
             val later = now.plusSeconds(60)

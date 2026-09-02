@@ -29,6 +29,8 @@ import java.util.UUID
  *   `listByUserExternalId` where the target user may differ from the caller. Defaults to false on create.
  * @property role The caller's direct relation on this case (`ADMIN` or `MEMBER`), or null when the
  *   caller has no direct edge (e.g. transitive namespace-admin access). Same population rules as `favorite`.
+ * @property scheduledPromptId Id of the ScheduledPrompt that triggered this case, or null when the
+ *   case was started by a human user or a delegation tool.
  */
 @Schema(name = "Case")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -39,6 +41,7 @@ data class CaseDto(
     val status: CaseStatus = CaseStatus.PENDING,
     val title: String? = null,
     val parentCaseId: UUID? = null,
+    val scheduledPromptId: UUID? = null,
     val created: Instant? = null,
     val modified: Instant? = null,
     /**
