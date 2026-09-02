@@ -45,7 +45,7 @@ import java.util.UUID
 @SpringBootTest
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-class EmbeddedNeo4jPermissionStarPersistenceSpec : StringSpec() {
+class EmbeddedNeo4jWatchesPersistenceSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
     @Autowired

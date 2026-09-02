@@ -36,11 +36,11 @@ import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
 import io.whozoss.agentos.namespace.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
-import io.whozoss.agentos.permissions.Neo4jPermissionRepository
+import io.whozoss.agentos.permissions.FavoriteRepository
 import io.whozoss.agentos.permissions.Neo4jFavoriteRepository
+import io.whozoss.agentos.permissions.Neo4jPermissionRepository
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRepository
-import io.whozoss.agentos.permissions.FavoriteRepository
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.prompt.FilesystemPromptRepository
 import io.whozoss.agentos.prompt.Neo4jPromptRepository
@@ -188,9 +188,8 @@ class Neo4jPersistenceConfiguration {
         integrationConfigNodeNeo4jRepository: IntegrationConfigNodeNeo4jRepository,
         objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
-    ): Neo4jIntegrationConfigRepository {
-        return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
-    }
+    ): Neo4jIntegrationConfigRepository =
+        Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
 
     @Bean
     @Primary
@@ -336,23 +335,27 @@ class Neo4jPersistenceConfiguration {
      * Runs once at startup and is a no-op when no `[:STARRED]` edges remain.
      */
     @Bean
-    fun migrateStarredEdges(neo4jClient: Neo4jClient): CommandLineRunner = CommandLineRunner {
-        val result = neo4jClient.query(
-            """
-            MATCH (u:User)-[s:STARRED]->(c:Case)
-            MERGE (u)-[state:WATCHES]->(c)
-            SET state.favorite = true
-            DELETE s
-            RETURN count(s) AS migrated
-            """.trimIndent(),
-        ).fetch().one()
-        val count = result.map { it["migrated"] as Long }.orElse(0L)
-        if (count > 0L) {
-            logger.info { "[Migration] Converted $count [:STARRED] edges to [:WATCHES]" }
-        } else {
-            logger.debug { "[Migration] No legacy [:STARRED] edges found — nothing to migrate" }
+    fun migrateStarredEdges(neo4jClient: Neo4jClient): CommandLineRunner =
+        CommandLineRunner {
+            val result =
+                neo4jClient
+                    .query(
+                        """
+                        MATCH (u:User)-[s:STARRED]->(c:Case)
+                        MERGE (u)-[state:WATCHES]->(c)
+                        SET state.favorite = true
+                        DELETE s
+                        RETURN count(s) AS migrated
+                        """.trimIndent(),
+                    ).fetch()
+                    .one()
+            val count = result.map { it["migrated"] as Long }.orElse(0L) ?: 0L
+            if (count > 0L) {
+                logger.info { "[Migration] Converted $count [:STARRED] edges to [:WATCHES]" }
+            } else {
+                logger.debug { "[Migration] No legacy [:STARRED] edges found — nothing to migrate" }
+            }
         }
-    }
 
     companion object : KLogging()
 }

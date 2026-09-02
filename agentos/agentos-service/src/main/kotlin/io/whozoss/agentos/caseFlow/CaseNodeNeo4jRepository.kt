@@ -242,8 +242,12 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      *
      * A case is unread when:
      * - The user has a direct `[:ADMIN|MEMBER]` edge on the case (access check), AND
-     * - Either no `[:WATCHES]` edge exists, OR the most recent
-     *   `CaseEvent.timestamp` for that case is after the edge's `readAt`.
+     * - Either no `[:WATCHES]` edge exists (never opened), OR `Case.modified` is after
+     *   the edge's `readAt` (the case changed since the user last read it).
+     *
+     * Uses `Case.modified` rather than scanning `CaseEvent` nodes — O(1) per case
+     * instead of O(events). Requires the `modified` audit field to be kept current
+     * on every case mutation (see known bug: EntityMetadata.modified never updated).
      *
      * Returns a scalar Long (0 = all read).
      */
@@ -254,10 +258,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
               AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
             OPTIONAL MATCH (:User {id: $userId})-[state:WATCHES]->(c)
             WITH c, state.readAt AS readAt
-            OPTIONAL MATCH (e:CaseEvent {caseId: c.id})
-              WHERE e.removed IS NULL OR e.removed = false
-            WITH c, readAt, max(e.timestamp) AS latestEventAt
-            WHERE readAt IS NULL OR (latestEventAt IS NOT NULL AND latestEventAt > readAt)
+            WHERE readAt IS NULL OR c.modified > readAt
             RETURN count(c)
             """,
     )
