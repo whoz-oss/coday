@@ -5,7 +5,7 @@ info:
   version: 0.0.1
 servers:
 - description: Generated server url
-  url: http://localhost:8124
+  url: http://localhost:18124
 tags:
 - description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
   name: sse
@@ -3509,6 +3509,9 @@ components:
           enum:
           - ADMIN
           - MEMBER
+        scheduledPromptId:
+          type: string
+          format: uuid
         status:
           type: string
           enum:

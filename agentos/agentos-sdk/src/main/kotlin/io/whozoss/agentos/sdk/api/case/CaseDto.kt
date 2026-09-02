@@ -33,6 +33,8 @@ import java.util.UUID
  *   been opened by this user (meaning it is unread). Same population rules as `favorite`.
  * @property unreadCount Number of unread cases in the namespace for the current user. Only populated
  *   by the dedicated [io.whozoss.agentos.sdk.api.case.CaseApi.countUnread] endpoint; null everywhere else.
+ * @property scheduledPromptId Id of the ScheduledPrompt that triggered this case, or null when the
+ *   case was started by a human user or a delegation tool.
  */
 @Schema(name = "Case")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -43,6 +45,7 @@ data class CaseDto(
     val status: CaseStatus = CaseStatus.PENDING,
     val title: String? = null,
     val parentCaseId: UUID? = null,
+    val scheduledPromptId: UUID? = null,
     val created: Instant? = null,
     val modified: Instant? = null,
     /**

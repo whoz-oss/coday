@@ -416,6 +416,7 @@ internal fun toDto(entity: Case) =
         status = entity.status,
         title = entity.title,
         parentCaseId = entity.parentCaseId,
+        scheduledPromptId = entity.scheduledPromptId,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
         // lastMessageAt is not stored on Case — it is resolved at list time by
