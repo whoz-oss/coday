@@ -322,7 +322,9 @@ class PromptController(
                 "If the requested language matches `sourceLanguage`, returns `content` as-is. " +
                 "If a cached translation exists it is returned without an LLM call. " +
                 "Otherwise the content is translated via the namespace's AI model, persisted, and returned. " +
-                "At least one of `namespaceId` / `namespaceExternalId` is required for model resolution.",
+                "For namespace-scoped prompts the namespace is inferred from the prompt itself. " +
+                "For platform-scoped prompts (namespaceId IS NULL on the prompt), " +
+                "at least one of `namespaceId` / `namespaceExternalId` is required in the request body.",
     )
     @PostMapping("/{id}/translations/{languageCode}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#id, 'Prompt', 'READ')")
@@ -332,15 +334,24 @@ class PromptController(
         @PathVariable languageCode: String,
         @Valid @RequestBody request: PromptTranslateRequest,
     ): PromptTranslationDto {
-        val namespaceId = externalIdentifierResolver.resolveNamespaceId(
-            id = request.namespaceId,
-            externalId = request.namespaceExternalId,
-        )
-        val translation = promptService.translate(
-            id = id,
-            targetLanguage = languageCode,
-            namespaceId = namespaceId,
-        )
+        // Resolve caller-supplied namespace only when present — used as fallback for platform prompts.
+        // Namespace-scoped prompts derive namespaceId from the prompt itself in PromptServiceImpl.
+        val callerNamespaceId =
+            if (request.namespaceId != null || request.namespaceExternalId != null) {
+                externalIdentifierResolver.resolveNamespaceId(
+                    id = request.namespaceId,
+                    externalId = request.namespaceExternalId,
+                )
+            } else {
+                null
+            }
+
+        val translation =
+            promptService.translate(
+                id = id,
+                targetLanguage = languageCode,
+                callerNamespaceId = callerNamespaceId,
+            )
         return PromptTranslationDto(title = translation.title, content = translation.content)
     }
 

@@ -52,8 +52,9 @@ interface PromptApi : EntityCrudApi<PromptDto> {
      * - Returns cached translations when available without an LLM call.
      * - Otherwise translates via LLM, persists the results, and returns them.
      *
-     * [namespaceId] or [namespaceExternalId] is required for AI model resolution.
-     * At least one must be provided.
+     * For namespace-scoped prompts the namespace is inferred from the prompt itself.
+     * For platform-scoped prompts (namespaceId IS NULL on the prompt), at least one of
+     * [namespaceId] / [namespaceExternalId] must be provided in the request body.
      *
      * Returns a [PromptTranslationDto] with the resolved [title] (null when the prompt has
      * no title) and [content] (same indices as [PromptDto.content]).

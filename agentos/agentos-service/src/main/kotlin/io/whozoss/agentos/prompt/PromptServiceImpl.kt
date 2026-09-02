@@ -109,10 +109,18 @@ class PromptServiceImpl(
     override fun translate(
         id: UUID,
         targetLanguage: String,
-        namespaceId: UUID,
+        callerNamespaceId: UUID?,
     ): PromptTranslation {
         val prompt = repository.findByIds(listOf(id)).firstOrNull()
             ?: throw NoSuchElementException("Prompt $id not found")
+
+        // Namespace-scoped prompts use their own namespaceId for model resolution;
+        // platform prompts (namespaceId == null) require the caller to supply one.
+        val namespaceId = prompt.namespaceId
+            ?: callerNamespaceId
+            ?: throw BadRequestException(
+                "Prompt $id is platform-scoped: a namespaceId is required for AI model resolution",
+            )
 
         return when {
             // Short-circuit: requested language is the source — return originals as-is

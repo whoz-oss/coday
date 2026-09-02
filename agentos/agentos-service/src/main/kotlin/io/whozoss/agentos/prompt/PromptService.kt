@@ -58,8 +58,11 @@ interface PromptService : EntityService<Prompt, UUID>, OwnershipAware {
      * source fields as-is without an LLM call. Returns cached translations when available.
      * Otherwise calls [PromptTranslationService], persists the results, and returns them.
      *
-     * [namespaceId] must be a resolved UUID — callers are responsible for resolving any
-     * external identifier before invoking this method.
+     * [callerNamespaceId] is used for AI model resolution when the prompt itself is
+     * platform-scoped (namespaceId IS NULL). For namespace-scoped prompts it is ignored —
+     * the prompt's own [Prompt.namespaceId] is used instead, ensuring coherence.
+     * [callerNamespaceId] is required when the prompt is platform-scoped; a
+     * [io.whozoss.agentos.exception.BadRequestException] is thrown if it is null in that case.
      *
      * Returns a [PromptTranslation] carrying the resolved title and content for the
      * requested language.
@@ -67,7 +70,7 @@ interface PromptService : EntityService<Prompt, UUID>, OwnershipAware {
     fun translate(
         id: UUID,
         targetLanguage: String,
-        namespaceId: UUID,
+        callerNamespaceId: UUID?,
     ): PromptTranslation
 }
 

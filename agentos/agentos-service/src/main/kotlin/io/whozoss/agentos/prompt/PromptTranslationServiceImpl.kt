@@ -130,30 +130,28 @@ class PromptTranslationServiceImpl(
         modelId: UUID,
     ): String {
         val key = CacheKey(text, sourceLanguage, targetLanguage, modelId, kind)
-        translationCache.getIfPresent(key)?.let { return it }
+        return translationCache.get(key) {
+            val promptText =
+                """
+                ${kind.context}
 
-        val promptText =
-            """
-            ${kind.context}
+                Your goal is to translate the following text from $sourceLanguage to $targetLanguage.
 
-            Your goal is to translate the following text from $sourceLanguage to $targetLanguage.
+                Text:
+                <text>
+                $text
+                </text>
 
-            Text:
-            <text>
-            $text
-            </text>
+                ### Translation Guidelines
+                - Translate the text naturally to the target language
+                - Keep the meaning and intent
+                - Use appropriate terminology for the target language
+                - Be concise and preserve the tone (action-oriented for titles, directive for content)
 
-            ### Translation Guidelines
-            - Translate the text naturally to the target language
-            - Keep the meaning and intent
-            - Use appropriate terminology for the target language
-            - Be concise and preserve the tone (action-oriented for titles, directive for content)
+                Now give me the text translated to the specified target language.
+                Output only the translated string, with no XML tags or formatting.
+                """.trimIndent()
 
-            Now give me the text translated to the specified target language.
-            Output only the translated string, with no XML tags or formatting.
-            """.trimIndent()
-
-        val translated =
             runCatching {
                 chatClient
                     .prompt(AiPrompt(UserMessage(promptText)))
@@ -168,9 +166,7 @@ class PromptTranslationServiceImpl(
             }.onFailure { e ->
                 logger.error(e) { "[PromptTranslation] LLM call failed translating text: ${text.take(80)}" }
             }.getOrElse { text }
-
-        translationCache.put(key, translated)
-        return translated
+        }
     }
 
     companion object : KLogging()
