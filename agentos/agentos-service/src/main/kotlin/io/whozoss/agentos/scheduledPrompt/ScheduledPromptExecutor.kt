@@ -192,10 +192,7 @@ class ScheduledPromptExecutor(
                             throw e
                         } catch (e: Exception) {
                             consecutiveErrors++
-                            val backoffMs = minOf(
-                                2_000L * (1L shl (consecutiveErrors - 1).coerceAtMost(29)),
-                                60_000L,
-                            )
+                            val backoffMs = exponentialBackoffMs(consecutiveErrors)
                             logger.error(e) {
                                 "[Executor] producer error (attempt=$consecutiveErrors), backing off ${backoffMs}ms"
                             }
