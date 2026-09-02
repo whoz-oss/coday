@@ -1,3 +1,13 @@
+## 0.249.15 (2026-09-02)
+
+### 🚀 Features
+
+- wz-32132: read cases tracking ([#1260](https://github.com/whoz-oss/coday/pull/1260))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.249.14 (2026-09-02)
 
 ### 🚀 Features
