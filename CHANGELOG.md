@@ -1,3 +1,20 @@
+## 0.249.14 (2026-09-02)
+
+### 🚀 Features
+
+- #1235 Add queryUser tool and resume agents after answers ([#1235](https://github.com/whoz-oss/coday/issues/1235))
+- #1236 Extract QuestionEvent prompt rendering helper ([#1236](https://github.com/whoz-oss/coday/issues/1236))
+- #1235 Add queryUser tool and resume agents after answers ([#1236](https://github.com/whoz-oss/coday/pull/1236), [#1235](https://github.com/whoz-oss/coday/issues/1235))
+
+### 🩹 Fixes
+
+- #1235 disable queryUser tool by default (review VA) ([#1235](https://github.com/whoz-oss/coday/issues/1235))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 0.249.13 (2026-09-02)
 
 ### 🚀 Features
