@@ -14,10 +14,9 @@ import java.time.ZoneOffset
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them,
- * and a separate tick that consumes available [ScheduledPromptUserRun]s.
+ * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them.
  *
- * ### Two-tick architecture
+ * ### Single-tick architecture
  *
  * **[tickClaim]** (Phase A, every `agentos.prompt.scheduler.tick-interval-ms`):
  * 1. Sweep orphaned CLAIMED runs via [recoverOrphanedClaimedRuns] — handles the crash
@@ -27,13 +26,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    calls [ScheduledPromptExecutor.materialize] to create PENDING UserRuns.
  * 4. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
  *
- * **[tickConsume]** (Phase B, every `agentos.prompt.scheduler.consume-interval-ms`):
- * Declared `suspend` — Spring Framework 6.1+ natively supports suspend functions on
- * `@Scheduled` methods. Calls [ScheduledPromptExecutor.consumeAvailable] which suspends
- * until ALL UserRuns from ALL batches have finished executing. Spring `fixedDelay`
- * guarantees no overlap between consecutive consume ticks.
+ * Phase B (UserRun consumption) is handled by [ScheduledPromptExecutor], which runs a
+ * continuous producer + channel + worker-pool loop as a [org.springframework.context.SmartLifecycle]
+ * bean. There is no consume tick in this scanner.
  *
- * Both ticks use Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
+ * [tickClaim] uses Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
  * own successor. No fire-and-forget coroutines are used at the Scanner level.
  *
  * ### Claim logic
@@ -76,11 +73,7 @@ class SchedulerScanner(
     /** When true, tickClaim() exits immediately without processing. */
     private val claimPaused = AtomicBoolean(false)
 
-    /** When true, tickConsume() exits immediately without processing. */
-    private val consumePaused = AtomicBoolean(false)
-
     fun isClaimPaused(): Boolean = claimPaused.get()
-    fun isConsumePaused(): Boolean = consumePaused.get()
 
     fun pauseClaim() {
         claimPaused.set(true)
@@ -90,16 +83,6 @@ class SchedulerScanner(
     fun resumeClaim() {
         claimPaused.set(false)
         logger.warn { "[SchedulerScanner] tickClaim RESUMED by operator" }
-    }
-
-    fun pauseConsume() {
-        consumePaused.set(true)
-        logger.warn { "[SchedulerScanner] tickConsume PAUSED by operator" }
-    }
-
-    fun resumeConsume() {
-        consumePaused.set(false)
-        logger.warn { "[SchedulerScanner] tickConsume RESUMED by operator" }
     }
 
     @PostConstruct
@@ -122,7 +105,7 @@ class SchedulerScanner(
      * When [claimPaused] the tick is a no-op — the scheduling thread still fires
      * but [processClaim] is not called.
      */
-    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
+    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:60000}")
     fun tickClaim() {
         when {
             claimPaused.get() -> logger.debug { "[SchedulerScanner] tickClaim PAUSED — skipping" }
@@ -224,27 +207,6 @@ class SchedulerScanner(
                 "[SchedulerScanner] Orphaned RUNNING run=${run.id} sp=${run.scheduledPromptId} " +
                     "— all UserRuns settled, closing as $finalStatus (crash recovery)"
             }
-        }
-    }
-
-    /**
-     * Phase B: Consume available UserRuns.
-     * Declared `suspend` — Spring Framework 6.1+ natively dispatches suspend `@Scheduled`
-     * methods on the application's coroutine scheduler.
-     * Returns only when all claimed UserRuns have finished executing.
-     * Spring fixedDelay guarantees no overlap between ticks.
-     *
-     * When [consumePaused] the tick is a no-op — the scheduling thread still fires
-     * but [ScheduledPromptExecutor.consumeAvailable] is not called.
-     *
-     * The IO dispatcher is managed by [ScheduledPromptExecutor.consumeAvailable] itself
-     * via [kotlinx.coroutines.withContext].
-     */
-    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.consume-interval-ms:10000}")
-    suspend fun tickConsume() {
-        when {
-            consumePaused.get() -> logger.debug { "[SchedulerScanner] tickConsume PAUSED — skipping" }
-            else -> executor.consumeAvailable()
         }
     }
 
