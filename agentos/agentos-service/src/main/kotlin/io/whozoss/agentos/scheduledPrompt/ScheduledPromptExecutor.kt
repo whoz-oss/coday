@@ -125,6 +125,11 @@ class ScheduledPromptExecutor(
     /** When true, the producer skips claimBatch and delays instead. */
     private val consumePaused = AtomicBoolean(false)
 
+    // No synchronisation needed: start() writes scope then immediately launches the coroutine
+    // that reads it — the launch itself establishes a happens-before edge so runConsumerLoop()
+    // always sees the written value. stop() is called by Spring @PreDestroy, sequentially after
+    // start() has returned, never concurrently with it. If this invariant ever changes (e.g. an
+    // admin endpoint calling start/stop concurrently), replace with AtomicReference + compareAndSet.
     private var scope: CoroutineScope? = null
 
     fun isConsumePaused(): Boolean = consumePaused.get()
