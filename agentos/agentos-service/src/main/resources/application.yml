@@ -171,6 +171,14 @@ agentos:
       # A single table cell longer than this is truncated by readDocument.
       # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_CELL_CHARS
       # document-max-cell-chars: 5000
+  query-user:
+    # Grant the built-in queryUser tool to every agent that does not mention QUERY_USER in its
+    # integrations map. On by default: asking a question is a primitive of conversation, not an
+    # integration, so agents should not have to declare it. An agent can still opt out by mapping
+    # the QUERY_USER key to an empty list [] in its integrations map — the right choice for fully
+    # autonomous agents triggered by webhooks where nobody is listening.
+    # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
+    # enabled-by-default: true
   defaults:
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.

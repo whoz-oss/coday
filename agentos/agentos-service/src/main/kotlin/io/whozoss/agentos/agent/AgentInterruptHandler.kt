@@ -5,6 +5,7 @@ import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import kotlinx.coroutines.flow.FlowCollector
 import mu.KLogger
 import org.springframework.ai.retry.NonTransientAiException
@@ -75,6 +76,27 @@ suspend fun FlowCollector<CaseEvent>.emitInterruptAndFinishEvents(
                     caseId = caseId,
                     agentId = UUID.nameUUIDFromBytes(e.targetAgentName.toByteArray()),
                     agentName = e.targetAgentName,
+                ),
+            )
+        }
+
+        is AgentInterrupt.AwaitAnswer -> {
+            logger.info { "[${agent.name}] awaiting user answer: ${e.question}" }
+            emit(
+                QuestionEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agent.id,
+                    agentName = agent.name,
+                    question = e.question,
+                    options = e.options,
+                    questionType = e.questionType,
+                    // userId is the user for whom the agent is running — the one whose answer
+                    // is awaited. Null means the question is addressed to any user of the case.
+                    // The value comes from AgentInterrupt.AwaitAnswer, which receives it from
+                    // ToolContext.userId (set by AgentSimple/AgentAdvanced from their own userId
+                    // constructor parameter). No fallback: null in → null out.
+                    userId = e.userId,
                 ),
             )
         }
