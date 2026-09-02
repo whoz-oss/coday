@@ -7,13 +7,14 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.permissions.StarredService
+import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
 import io.whozoss.agentos.sdk.api.case.CaseApi
 import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
+import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
@@ -61,7 +63,8 @@ class CaseController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
-    private val starredService: StarredService,
+    private val favoriteService: FavoriteService,
+    private val caseReadService: CaseReadService,
 ) : CaseApi {
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
@@ -74,7 +77,10 @@ class CaseController(
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(
         @RequestBody request: SdkGetByIdsRequest,
-    ): List<CaseDto> = caseService.findByIds(request.ids, request.withRemoved).withCallerMeta(userService.getCurrentUser().id.toString())
+    ): List<CaseDto> =
+        caseService
+            .findByIds(request.ids, request.withRemoved)
+            .withCallerMeta(userService.getCurrentUser().id.toString())
 
     /**
      * GET /api/cases/by-parentId/{parentId} — list cases in a namespace.
@@ -134,24 +140,25 @@ class CaseController(
 
     /**
      * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
-     * relation (`role`), favorite flag, and [CaseDto.lastMessageAt].
+     * relation (`role`), favorite flag, [CaseDto.readAt], and [CaseDto.lastMessageAt].
      *
      * Two batch queries resolve the whole set (no per-case round-trips):
-     * - [StarredService.listDirectRelations] for role/favorite metadata
+     * - [FavoriteService.listDirectRelations] for role/favorite/readAt metadata
      * - [CaseEventService.findLastMessageTimestamps] for the last-message timestamp
      *   used by the frontend to sort and group conversations.
      *
-     * Cases the user has no direct edge on get `role = null` and `favorite = false`
-     * (e.g. the namespace-admin fast path in [listByParent]).
+     * Cases the user has no direct edge on get `role = null`, `favorite = false`,
+     * and `readAt = null` (e.g. the namespace-admin fast path in [listByParent]).
      */
     private fun List<Case>.withCallerMeta(userId: String): List<CaseDto> {
-        val starred = starredService.listDirectRelations(userId, EntityType.CASE)
+        val starred = favoriteService.listDirectRelations(userId, EntityType.CASE)
         val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(this.map { it.id })
         return this.map {
             val meta = starred[it.metadata.id.toString()]
             toDto(it).copy(
-                favorite = meta?.starred ?: false,
+                favorite = meta?.favorite ?: false,
                 role = meta?.relation?.name,
+                readAt = meta?.readAt,
                 lastMessageAt = lastMessageTimestamps[it.id],
             )
         }
@@ -322,6 +329,28 @@ class CaseController(
         logger.info { "Case killed: $caseId" }
     }
 
+    /** POST /api/cases/{caseId}/read — record that the current user has read this case. */
+    @PostMapping("/{caseId}/read")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    override fun markCaseRead(
+        @PathVariable caseId: UUID,
+    ) {
+        val userId = userService.getCurrentUser().id.toString()
+        caseReadService.markRead(userId, caseId)
+        logger.debug { "User $userId marked case $caseId as read" }
+    }
+
+    /** GET /api/cases/unread-count?namespaceId= — count of unread cases for the current user. */
+    @GetMapping("/unread-count")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    override fun countUnread(
+        @RequestParam namespaceId: UUID,
+    ): UnreadCountResponse {
+        val userId = userService.getCurrentUser().id.toString()
+        return UnreadCountResponse(unreadCount = caseReadService.countUnread(userId, namespaceId))
+    }
+
     /** PUT /api/cases/{id}/star — mark the case as favorite for the current user. */
     @PutMapping("/{id}/star")
     @ResponseStatus(HttpStatus.OK)
@@ -330,8 +359,8 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        callStarredService(userId = userId, id = id, starred = true)
-        logger.info { "User $userId starred case $id" }
+        callFavoriteService(userId = userId, id = id, favorite = true)
+        logger.info { "User $userId favorited case $id" }
     }
 
     /** DELETE /api/cases/{id}/star — remove the case from the current user's favorites. */
@@ -342,25 +371,26 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        callStarredService(userId = userId, id = id, starred = false)
-        logger.info { "User $userId unstarred case $id" }
+        callFavoriteService(userId = userId, id = id, favorite = false)
+        logger.info { "User $userId unfavorited case $id" }
     }
 
-    private fun callStarredService(
+    private fun callFavoriteService(
         userId: String,
         id: UUID,
-        starred: Boolean,
+        favorite: Boolean,
     ) {
-        if (!starredService.setStarred(
+        if (!favoriteService.setFavorite(
                 userId = userId,
                 entityType = EntityType.CASE,
                 entityId = id.toString(),
-                starred = starred,
+                favorite = favorite,
             )
         ) {
+            val action = if (favorite) "favorite" else "unfavorite"
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
-                "Cannot unstar case $id: the caller has no direct relation on it",
+                "Cannot $action case $id: the caller has no direct relation on it",
             )
         }
     }

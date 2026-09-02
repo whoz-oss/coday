@@ -8,6 +8,7 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -279,6 +280,23 @@ class CaseRuntime(
         iterationCount = 0
 
         try {
+            // Pre-flight: resume an agent whose run was terminated by AwaitAnswer and
+            // whose question has since been answered. Must come AFTER the runInFlight
+            // guard (above) to avoid double execution on concurrent callers, and BEFORE
+            // runTurns() so the AgentSelectedEvent is in the history before the loop
+            // starts scanning backward.
+            findUnresolvedQuestion(eventList.getAll())?.let { question ->
+                logger.info { "[CaseRuntime $id] Resuming agent '${question.agentName}' after user answer" }
+                storeAndEmitEvent(
+                    AgentSelectedEvent(
+                        namespaceId = namespaceId,
+                        caseId = id,
+                        agentId = question.agentId,
+                        agentName = question.agentName,
+                    ),
+                )
+            }
+
             val finalStatus = runTurns()
             logger.info { "[CaseRuntime $id] Exited loop → $finalStatus, iterations: $iterationCount" }
             if (finalStatus != CaseStatus.IDLE) commandQueue.clear()
@@ -453,6 +471,96 @@ class CaseRuntime(
         // selectAgent stored only a WarnEvent — stop cleanly, return to IDLE.
         logger.warn { "[CaseRuntime $id] No agent selection found in history, stopping" }
         return StepResult.AGENT_FINISHED
+    }
+
+    /**
+     * Returns the [QuestionEvent] that should trigger an agent wake-up, or null when
+     * no wake-up is warranted.
+     *
+     * A wake-up is warranted when ALL of the following hold:
+     * 1. There is at least one [QuestionEvent] in the history.
+     * 2. A **legitimate** [AnswerEvent] exists for that question (see below).
+     * 3. No [AgentFinishedEvent] appears STRICTLY AFTER that legitimate answer.
+     *
+     * ## Legitimate answer — recipient check
+     *
+     * When [QuestionEvent.userId] is **null** the question is unaddressed: any
+     * [AnswerEvent] paired by [AnswerEvent.questionId] qualifies.
+     *
+     * When [QuestionEvent.userId] is **non-null** the question is directed at a specific
+     * user: the [AnswerEvent] qualifies only when `actor.id` parses as a [UUID] that
+     * equals `question.userId`. If the actor id cannot be parsed (system actor, external
+     * identifier), the answer does **not** qualify and the agent is not woken up; a debug
+     * log is emitted for diagnosability.
+     *
+     * ## Why the recipient check is inside indexOfFirst — DO NOT move it out
+     *
+     * Using `indexOfFirst { pairedById }` and then testing the recipient afterward
+     * introduces a permanent-deadlock bug on shared cases:
+     *   1. Bob answers a question directed at Alice.
+     *   2. `indexOfFirst` finds Bob's answer (first paired by questionId).
+     *   3. The recipient check fails → return null.
+     *   4. Alice answers later.
+     *   5. `indexOfFirst` STILL finds Bob's answer first → stuck forever.
+     *
+     * The recipient predicate must therefore be part of the `indexOfFirst` call so that
+     * only a legitimate answer can anchor the search.
+     *
+     * ## OAuth guard — condition 3, do not remove
+     *
+     * During an OAuth flow the agent is blocked INSIDE its run when the answer arrives.
+     * The agent finishes its turn normally, emitting an [AgentFinishedEvent] AFTER the
+     * [AnswerEvent]. Waking up again would plant a spurious [AgentSelectedEvent] in the
+     * middle of a completed turn, potentially triggering a phantom agent run.
+     *
+     * For [io.whozoss.agentos.agent.AgentInterrupt.AwaitAnswer], the run terminated
+     * BEFORE the answer arrived, so no [AgentFinishedEvent] follows the legitimate answer.
+     * The guard therefore lets exactly the right cases through.
+     *
+     * ## Known limitation — only the LAST question is considered
+     *
+     * Only the most recent [QuestionEvent] in the history is examined. An earlier question
+     * left unanswered is invisible to this pre-flight and its agent will never be woken up.
+     *
+     * This holds today because a case can only ever have one question outstanding: a
+     * [io.whozoss.agentos.agent.AgentInterrupt.AwaitAnswer] terminates the run that raised
+     * it, and [run] admits a single turn at a time via [runInFlight] — so no second agent
+     * can ask anything while the first is waiting.
+     *
+     * The assumption breaks as soon as two agents can be in flight on the same case (e.g.
+     * concurrent delegation). At that point the search must iterate over all unanswered
+     * questions rather than only the last one, and the wake-up must emit one
+     * [AgentSelectedEvent] per resolved question. Revisit this method — and the recipient
+     * check below, whose `indexOfFirst` anchoring assumes a single candidate question.
+     */
+    private fun findUnresolvedQuestion(events: List<CaseEvent>): QuestionEvent? {
+        val lastQuestion = events.filterIsInstance<QuestionEvent>().lastOrNull() ?: return null
+
+        // Find the first LEGITIMATE answer: paired by questionId AND from the right recipient.
+        // The recipient check is intentionally inside this predicate — see KDoc for why moving
+        // it outside causes a permanent-deadlock bug on shared cases.
+        val legitimateAnswerIndex = events.indexOfFirst { event ->
+            if (event !is AnswerEvent || event.questionId != lastQuestion.id) return@indexOfFirst false
+            val targetUserId = lastQuestion.userId
+                ?: return@indexOfFirst true // unaddressed question: any respondent qualifies
+            val respondentId = runCatching { UUID.fromString(event.actor.id) }.getOrElse {
+                logger.debug {
+                    "[CaseRuntime $id] AnswerEvent actor id '${event.actor.id}' is not a UUID — " +
+                        "does not qualify as a legitimate answer for question ${lastQuestion.id}"
+                }
+                return@indexOfFirst false
+            }
+            respondentId == targetUserId
+        }
+        if (legitimateAnswerIndex < 0) return null // no legitimate answer yet
+
+        // OAuth guard: if any AgentFinishedEvent appears STRICTLY AFTER the legitimate
+        // answer, the agent already handled it — do not wake up again.
+        val hasAgentFinishedAfterAnswer = events
+            .subList(legitimateAnswerIndex + 1, events.size)
+            .any { it is AgentFinishedEvent }
+
+        return if (hasAgentFinishedAfterAnswer) null else lastQuestion
     }
 
     /**
