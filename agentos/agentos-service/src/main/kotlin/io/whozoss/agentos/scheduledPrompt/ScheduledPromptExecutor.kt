@@ -70,10 +70,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * [checkCompletion]. A failure in one worker does not affect its siblings — exceptions are
  * caught per-item; [CancellationException] is always re-thrown to honour cooperative cancellation.
  *
- * **Channel capacity**: [SchedulerProperties.channelCapacity] (default 50 = 2 x batchSize,
- * double-buffering): the producer can fill a second batch into the channel while workers drain
+ * **Channel capacity**: [SchedulerProperties.channelCapacity] (default 50 = 2 x batchSize).
+ * Double-buffering: the producer can fill a second batch into the channel while workers drain
  * the first, keeping all workers continuously fed without pre-claiming an excessive number of
- * leased UserRuns.
+ * leased UserRuns. The channel capacity should be at least [SchedulerProperties.batchSize]
+ * so the producer never suspends mid-batch.
  *
  * **Shutdown**: [stop] cancels the scope. The [CancellationException] propagates
  * immediately to all coroutines at their next suspension point — no graceful drain.
