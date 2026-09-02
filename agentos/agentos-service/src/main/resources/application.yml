@@ -103,13 +103,16 @@ management:
 # datadog/agent:latest
 
 agentos:
+  encryption:
+    key: ${AGENTOS_ENCRYPTION_KEY}
+    salt: ${AGENTOS_ENCRYPTION_SALT}
   case:
-    # Grace period (ms) before an idle runtime with no SSE subscribers is evicted.
-    # Override with env var: AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
-    # idle-eviction-grace-ms: 300000
-    # Interval (ms) between SSE keep-alive comment frames sent to connected clients.
-    # Override with env var: AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
-    # sse-heartbeat-interval-ms: 30000
+  # Grace period (ms) before an idle runtime with no SSE subscribers is evicted.
+  # Override with env var: AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
+  # idle-eviction-grace-ms: 300000
+  # Interval (ms) between SSE keep-alive comment frames sent to connected clients.
+  # Override with env var: AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
+  # sse-heartbeat-interval-ms: 30000
   exchange:
     # Root directory for file-exchange files (relative to the working directory).
     # Override with env var: AGENTOS_EXCHANGE_MOUNT_ROOT
@@ -126,51 +129,51 @@ agentos:
     # both scopes; rootPath and readOnly are computed per run, and readMaxSizeMb derives from
     # read-max-size-bytes above.
     tools:
-      # Grant the case exchange to every agent that does not mention CASE_FILE_EXCHANGE in its
-      # integrations map. An agent that lists the key decides for itself; an empty list opts out.
-      # Override with env var: AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT
-      # case-enabled-by-default: false
-      # Same platform default for NAMESPACE_FILE_EXCHANGE. Every namespace grant, default or
-      # declared, also requires the invoking user to hold Namespace READ; a run without an
-      # identified user is denied. Write access follows the user's Namespace WRITE right.
-      # Override with env var: AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT
-      # namespace-enabled-by-default: false
-      # Comma-separated extra patterns blocked for the agent file tools, on top of the plugin's
-      # built-in sensitive-file list (.env, *.key, *.pem). Additive only, built-ins always apply.
-      # A pattern matches the file or directory NAME only, never the path: *suffix, prefix*,
-      # *contains* or an exact name. A path-shaped pattern like "secrets/*" matches nothing, and a
-      # prefix pattern denies a matching directory entry without denying the files inside it.
-      # Override with env var: AGENTOS_EXCHANGE_TOOLS_EXTRA_DENY_PATTERNS
-      # extra-deny-patterns: "*.bak,*confidential*"
-      # Longest edge (px) of the images readAsImage/readDocument hand to the LLM; larger ones are
-      # downscaled. Track the vision model in use.
-      # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_DIMENSION
-      # image-max-dimension: 1024
-      # JPEG re-encoding quality between 0 and 1: prompt bytes against the legibility of screenshots
-      # and scans. Out-of-range values are clamped.
-      # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_JPEG_QUALITY
-      # image-jpeg-quality: 0.80
-      # Decode-bomb guard: a source or embedded image above this pixel count is refused before being
-      # decoded. Raise it only if the heap can absorb the larger raster.
-      # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_SOURCE_PIXELS
-      # image-max-source-pixels: 50000000
-      # Originals at or below this byte size that already fit the max dimension are forwarded
-      # untouched instead of re-encoded, preserving text sharpness.
-      # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_PASS_THROUGH_MAX_BYTES
-      # image-pass-through-max-bytes: 1048576
-      # Markdown character budget of one readDocument call; a longer document is paged via
-      # startElement. Scales with the context window of the models this instance runs.
-      # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_OUTPUT_CHARS
-      # document-max-output-chars: 100000
-      # Maximum embedded pictures readDocument attaches per call — the image half of that budget.
-      # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_ATTACHED_IMAGES
-      # document-max-attached-images: 10
-      # Table columns beyond this are dropped when readDocument renders a .docx table to Markdown.
-      # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_TABLE_COLUMNS
-      # document-max-table-columns: 64
-      # A single table cell longer than this is truncated by readDocument.
-      # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_CELL_CHARS
-      # document-max-cell-chars: 5000
+    # Grant the case exchange to every agent that does not mention CASE_FILE_EXCHANGE in its
+    # integrations map. An agent that lists the key decides for itself; an empty list opts out.
+    # Override with env var: AGENTOS_EXCHANGE_TOOLS_CASE_ENABLED_BY_DEFAULT
+    # case-enabled-by-default: false
+    # Same platform default for NAMESPACE_FILE_EXCHANGE. Every namespace grant, default or
+    # declared, also requires the invoking user to hold Namespace READ; a run without an
+    # identified user is denied. Write access follows the user's Namespace WRITE right.
+    # Override with env var: AGENTOS_EXCHANGE_TOOLS_NAMESPACE_ENABLED_BY_DEFAULT
+    # namespace-enabled-by-default: false
+    # Comma-separated extra patterns blocked for the agent file tools, on top of the plugin's
+    # built-in sensitive-file list (.env, *.key, *.pem). Additive only, built-ins always apply.
+    # A pattern matches the file or directory NAME only, never the path: *suffix, prefix*,
+    # *contains* or an exact name. A path-shaped pattern like "secrets/*" matches nothing, and a
+    # prefix pattern denies a matching directory entry without denying the files inside it.
+    # Override with env var: AGENTOS_EXCHANGE_TOOLS_EXTRA_DENY_PATTERNS
+    # extra-deny-patterns: "*.bak,*confidential*"
+    # Longest edge (px) of the images readAsImage/readDocument hand to the LLM; larger ones are
+    # downscaled. Track the vision model in use.
+    # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_DIMENSION
+    # image-max-dimension: 1024
+    # JPEG re-encoding quality between 0 and 1: prompt bytes against the legibility of screenshots
+    # and scans. Out-of-range values are clamped.
+    # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_JPEG_QUALITY
+    # image-jpeg-quality: 0.80
+    # Decode-bomb guard: a source or embedded image above this pixel count is refused before being
+    # decoded. Raise it only if the heap can absorb the larger raster.
+    # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_MAX_SOURCE_PIXELS
+    # image-max-source-pixels: 50000000
+    # Originals at or below this byte size that already fit the max dimension are forwarded
+    # untouched instead of re-encoded, preserving text sharpness.
+    # Override with env var: AGENTOS_EXCHANGE_TOOLS_IMAGE_PASS_THROUGH_MAX_BYTES
+    # image-pass-through-max-bytes: 1048576
+    # Markdown character budget of one readDocument call; a longer document is paged via
+    # startElement. Scales with the context window of the models this instance runs.
+    # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_OUTPUT_CHARS
+    # document-max-output-chars: 100000
+    # Maximum embedded pictures readDocument attaches per call — the image half of that budget.
+    # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_ATTACHED_IMAGES
+    # document-max-attached-images: 10
+    # Table columns beyond this are dropped when readDocument renders a .docx table to Markdown.
+    # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_TABLE_COLUMNS
+    # document-max-table-columns: 64
+    # A single table cell longer than this is truncated by readDocument.
+    # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_CELL_CHARS
+    # document-max-cell-chars: 5000
   query-user:
     # Grant the built-in queryUser tool to every agent that does not mention QUERY_USER in its
     # integrations map. On by default: asking a question is a primitive of conversation, not an

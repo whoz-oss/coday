@@ -5,6 +5,7 @@ import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.config.PersistenceConfigProperties
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
+import io.whozoss.agentos.prompt.PromptTranslationCacheProperties
 import io.whozoss.agentos.queryUser.QueryUserConfigProperties
 import io.whozoss.agentos.scheduledPrompt.SchedulerProperties
 import io.whozoss.agentos.service.config.AgentOsPluginsConfigProperties
@@ -29,6 +30,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
     PersistenceConfigProperties::class,
     ExchangeStorageConfigProperties::class,
     ExchangeToolsConfigProperties::class,
+    PromptTranslationCacheProperties::class,
     QueryUserConfigProperties::class,
     SchedulerProperties::class,
 )

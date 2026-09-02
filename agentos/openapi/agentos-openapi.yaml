@@ -2548,6 +2548,45 @@ paths:
       summary: Export a Prompt as a YAML file
       tags:
       - prompt-controller
+  /api/prompts/{id}/translations/{languageCode}:
+    post:
+      description: "Returns the translated content list (same indices as `content`).\
+        \ If the requested language matches `sourceLanguage`, returns `content` as-is.\
+        \ If a cached translation exists it is returned without an LLM call. Otherwise\
+        \ the content is translated via the namespace's AI model, persisted, and returned.\
+        \ For namespace-scoped prompts the namespace is inferred from the prompt itself.\
+        \ For platform-scoped prompts (namespaceId IS NULL on the prompt), at least\
+        \ one of `namespaceId` / `namespaceExternalId` is required in the request\
+        \ body."
+      operationId: translatePrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: languageCode
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptTranslateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptTranslation"
+          description: OK
+      summary: Translate prompt content into a target language
+      tags:
+      - prompt-controller
   /api/scheduled-prompts:
     post:
       operationId: createScheduledPrompt
@@ -4369,6 +4408,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PromptParameter"
+        sourceLanguage:
+          type: string
+          description: BCP-47 language code of the authored content and title. Defaults
+            to 'en'.
+          example: en
+        title:
+          type: string
+          description: "Optional user-facing display label (e.g. starter button text).\
+            \ Distinct from content, which is the message sent to the LLM. Null when\
+            \ no explicit title has been set."
         updatedBy:
           type: string
         updatedOn:
@@ -4383,6 +4432,7 @@ components:
       - content
       - name
       - parameters
+      - sourceLanguage
     PromptEffectiveRequest:
       type: object
       properties:
@@ -4440,6 +4490,31 @@ components:
           - string
           - "null"
           format: uuid
+    PromptTranslateRequest:
+      type: object
+      properties:
+        namespaceExternalId:
+          type: string
+          description: Namespace external ID for AI model resolution (resolved server-side).
+            Required only for platform-scoped prompts. Mutually exclusive with namespaceId.
+        namespaceId:
+          type: string
+          format: uuid
+          description: Namespace UUID for AI model resolution. Required only for platform-scoped
+            prompts. Mutually exclusive with namespaceExternalId.
+    PromptTranslation:
+      type: object
+      properties:
+        content:
+          type: array
+          description: Translated content list. Same indices as the source content.
+          items:
+            type: string
+        title:
+          type: string
+          description: Translated display label. Null when the prompt has no title.
+      required:
+      - content
     QuestionEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
