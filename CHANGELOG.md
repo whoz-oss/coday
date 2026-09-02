@@ -1,3 +1,13 @@
+## 0.249.13 (2026-09-02)
+
+### 🚀 Features
+
+- wz-34012: identify scheduler that initiated a case ([#1254](https://github.com/whoz-oss/coday/pull/1254))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.249.12 (2026-09-01)
 
 ### 🩹 Fixes
