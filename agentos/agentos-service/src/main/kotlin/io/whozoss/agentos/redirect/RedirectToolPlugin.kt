@@ -94,7 +94,15 @@ class RedirectToolPlugin(
         } else {
             logger.info { "[RedirectToolPlugin] Resolved ${eligibleAgents.size} eligible agent(s) for namespace $namespaceId" }
         }
-        return listOf(RedirectTool(configName = configName, eligibleAgents = eligibleAgents))
+
+        val redirectTool = RedirectTool(configName = configName, eligibleAgents = eligibleAgents)
+        val guideline = config?.get("guideline")?.asText()?.takeIf { it.isNotBlank() }
+        return if (guideline != null) {
+            logger.info { "[RedirectToolPlugin] Guideline present — adding WhatsNextTool for namespace $namespaceId" }
+            listOf(redirectTool, WhatsNextTool(configName = configName, guideline = guideline))
+        } else {
+            listOf(redirectTool)
+        }
     }
 
     companion object : KLogging() {
@@ -113,6 +121,11 @@ class RedirectToolPlugin(
                         "description": "Glob patterns matching agent names this integration may redirect to. Use \"*\" for all agents. Examples: [\"*\"], [\"Github*\", \"Jira*\"].",
                         "items": { "type": "string" },
                         "default": ["*"]
+                    },
+                    "guideline": {
+                        "type": "string",
+                        "title": "Process Guideline",
+                        "description": "Optional process guideline returned verbatim by the WhatsNext tool. When present, a WhatsNextTool is added to the agent's tool set so the agent can consult the guideline at the end of its turn and decide whether to hand off to another agent."
                     }
                 },
                 "additionalProperties": false
