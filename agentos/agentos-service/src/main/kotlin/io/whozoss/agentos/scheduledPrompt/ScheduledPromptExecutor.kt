@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
@@ -35,7 +36,6 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Executes [ScheduledPromptRun]s in two phases.
@@ -125,13 +125,6 @@ class ScheduledPromptExecutor(
     /** When true, the producer skips claimBatch and delays instead. */
     private val consumePaused = AtomicBoolean(false)
 
-    // No synchronisation needed: start() writes scope then immediately launches the coroutine
-    // that reads it — the launch itself establishes a happens-before edge so runConsumerLoop()
-    // always sees the written value. stop() is called by Spring @PreDestroy, sequentially after
-    // start() has returned, never concurrently with it. If this invariant ever changes (e.g. an
-    // admin endpoint calling start/stop concurrently), replace with AtomicReference + compareAndSet.
-    private var scope: CoroutineScope? = null
-
     fun isConsumePaused(): Boolean = consumePaused.get()
 
     fun pauseConsume() {
@@ -143,6 +136,13 @@ class ScheduledPromptExecutor(
         consumePaused.set(false)
         logger.warn { "[Executor] consume RESUMED by operator" }
     }
+
+    // No synchronisation needed: start() writes scope then immediately launches the coroutine
+    // that reads it — the launch itself establishes a happens-before edge so runConsumerLoop()
+    // always sees the written value. stop() is called by Spring @PreDestroy, sequentially after
+    // start() has returned, never concurrently with it. If this invariant ever changes (e.g. an
+    // admin endpoint calling start/stop concurrently), replace with AtomicReference + compareAndSet.
+    private var scope: CoroutineScope? = null
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -190,7 +190,7 @@ class ScheduledPromptExecutor(
             try {
                 while (isActive) {
                     when {
-                        consumePaused.get() -> delay(2_000L)
+                        consumePaused.get() -> delay(properties.pausedPollDelayMs)
                         else -> {
                             try {
                                 val batch = userRunRepository.claimBatch(leaseDuration, properties.batchSize)

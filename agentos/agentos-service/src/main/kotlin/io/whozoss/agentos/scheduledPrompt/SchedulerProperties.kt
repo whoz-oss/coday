@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * | `agentos.prompt.scheduler.worker-count` | `AGENTOS_PROMPT_SCHEDULER_WORKER_COUNT` | 5 | Number of parallel consumer workers |
  * | `agentos.prompt.scheduler.channel-capacity` | `AGENTOS_PROMPT_SCHEDULER_CHANNEL_CAPACITY` | 50 | Channel buffer size (2 × batchSize — double-buffering) |
  * | `agentos.prompt.scheduler.empty-poll-delay-ms` | `AGENTOS_PROMPT_SCHEDULER_EMPTY_POLL_DELAY_MS` | 5000 | Delay (ms) when claimBatch returns empty — avoids busy-looping |
+ * | `agentos.prompt.scheduler.paused-poll-delay-ms` | `AGENTOS_PROMPT_SCHEDULER_PAUSED_POLL_DELAY_MS` | 10000 | Delay (ms) between producer iterations when consume is paused |
  * | `agentos.prompt.scheduler.launch-timeout-seconds` | `AGENTOS_PROMPT_SCHEDULER_LAUNCH_TIMEOUT_SECONDS` | 30 | Max seconds to wait for a Case to reach IDLE or terminal after launch |
  * | `agentos.prompt.scheduler.lease-minutes` | `AGENTOS_PROMPT_SCHEDULER_LEASE_MINUTES` | 30 | Lease duration for RUNNING UserRuns (minutes) |
  */
@@ -46,6 +47,11 @@ data class SchedulerProperties(
      * when no UserRuns are pending.
      */
     val emptyPollDelayMs: Long = 5_000L,
+    /**
+     * Delay in milliseconds between producer iterations when consume is paused.
+     * Keeps the producer responsive to resume without busy-looping.
+     */
+    val pausedPollDelayMs: Long = 10_000L,
     /**
      * Max seconds to wait for a Case to reach IDLE or terminal after launch.
      * Beyond this the UserRun is closed as TIMEOUT (Case continues running independently).
