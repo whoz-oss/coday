@@ -43,6 +43,10 @@ function makeItem(seed: Record<string, unknown> | null): ObjectItem {
  *   - date-time → <input type="datetime-local">
  *   - (others)  → <input type="text">
  *
+ * String fields with `"x-ui-widget": "textarea"` render a resizable <textarea>
+ * regardless of `format`. Use this for fields expected to hold long text
+ * (prompts, templates, multi-line configs, etc.).
+ *
  * Array-of-scalars: each item is a typed <input> with an × remove button.
  * Array-of-objects: each item is rendered as a ds-json-schema-form card with
  *   an × remove button. Items are tracked by a stable uid so Angular destroys
@@ -269,6 +273,8 @@ export class JsonSchemaFieldComponent implements OnInit {
     | 'textarea' {
     const schema = this.fieldSchema()
     if (schema.enum?.length) return 'enum'
+    // x-ui-widget extension: explicit widget override takes priority over type inference.
+    if (schema['x-ui-widget'] === 'textarea') return 'textarea'
     const type = Array.isArray(schema.type) ? schema.type[0] : schema.type
     switch (type) {
       case 'number':

@@ -125,7 +125,8 @@ class RedirectToolPlugin(
                     "guideline": {
                         "type": "string",
                         "title": "Process Guideline",
-                        "description": "Optional process guideline returned verbatim by the WhatsNext tool. When present, a WhatsNextTool is added to the agent's tool set so the agent can consult the guideline at the end of its turn and decide whether to hand off to another agent."
+                        "description": "Optional process guideline returned verbatim by the WhatsNext tool. When present, a WhatsNextTool is added to the agent's tool set so the agent can consult the guideline at the end of its turn and decide whether to hand off to another agent.",
+                        "x-ui-widget": "textarea"
                     }
                 },
                 "additionalProperties": false
