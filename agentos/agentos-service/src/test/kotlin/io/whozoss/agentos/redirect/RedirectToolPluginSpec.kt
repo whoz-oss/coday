@@ -245,12 +245,13 @@ class RedirectToolPluginSpec : StringSpec({
         val tools = plugin.provideTools(config = config, context = context(userId = userId))
         val whatsNext = tools.filterIsInstance<WhatsNextTool>().first()
 
-        // execute returns the guideline verbatim
+        // execute returns a JSON-wrapped guideline: {"guideline": "..."}
         val result = kotlinx.coroutines.runBlocking {
-            whatsNext.execute(WhatsNextTool.Input(), mockk(relaxed = true))
+            whatsNext.execute(null, mockk(relaxed = true))
         }
-        result.output shouldBe guideline
         result.success shouldBe true
+        val parsed = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(result.output)
+        parsed.get("guideline").asText() shouldBe guideline
     }
 
     "provideTools does not add WhatsNextTool when guideline is blank" {

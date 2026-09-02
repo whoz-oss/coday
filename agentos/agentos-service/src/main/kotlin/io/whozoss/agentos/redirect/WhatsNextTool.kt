@@ -1,5 +1,6 @@
 package io.whozoss.agentos.redirect
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -9,8 +10,8 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
  *
  * The LLM calls this tool when it has finished helping the user and needs to determine
  * whether a next step exists in the current workflow. The tool returns the guideline
- * verbatim; the agent then reasons over it — using the available [RedirectTool] if a
- * handoff is warranted — without any additional LLM call inside this tool.
+ * wrapped in a JSON object (`{"guideline": "..."}`) so the response is always valid JSON,
+ * which prevents downstream LLMs from misinterpreting plain text as tool-call arguments.
  *
  * ## Design rationale
  *
@@ -29,10 +30,7 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 class WhatsNextTool(
     configName: String?,
     private val guideline: String,
-) : StandardTool<WhatsNextTool.Input> {
-    /** Empty input — the LLM calls this tool with no arguments. */
-    class Input
-
+) : StandardTool<Nothing> {
     override val name: String = configName?.let { "${it}__whatsNext" } ?: "whatsNext"
 
     override val description: String =
@@ -50,8 +48,22 @@ class WhatsNextTool(
         """.trimIndent()
 
     override val version: String = "1.0.0"
-    override val paramType: Class<Input> = Input::class.java
 
-    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult =
-        ToolExecutionResult.success(guideline)
+    /**
+     * No input type — the LLM always sends `{}`. Setting paramType to null causes
+     * [executeWithJson] to skip deserialization and call [execute] with null directly.
+     */
+    override val paramType: Class<Nothing>? = null
+
+    /**
+     * Returns the guideline wrapped in a JSON object so the tool response is always
+     * valid JSON. Plain-text responses can be mistaken by some LLMs as argument JSON
+     * for subsequent tool calls, causing a parse error.
+     */
+    override suspend fun execute(input: Nothing?, context: ToolContext): ToolExecutionResult =
+        ToolExecutionResult.success(objectMapper.writeValueAsString(mapOf("guideline" to guideline)))
+
+    companion object {
+        private val objectMapper = jacksonObjectMapper()
+    }
 }

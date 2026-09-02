@@ -1,5 +1,6 @@
 package io.whozoss.agentos.redirect
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
@@ -7,6 +8,7 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 
 private val CONTEXT = mockk<ToolContext>(relaxed = true)
 private const val GUIDELINE = "When DemandBuilder finishes, redirect to TRSharing."
+private val objectMapper = jacksonObjectMapper()
 
 class WhatsNextToolSpec : StringSpec({
 
@@ -28,17 +30,18 @@ class WhatsNextToolSpec : StringSpec({
     // execute
     // -------------------------------------------------------------------------
 
-    "execute returns the guideline verbatim" {
-        val tool = WhatsNextTool(configName = null, guideline = GUIDELINE)
-        val result = tool.execute(WhatsNextTool.Input(), CONTEXT)
-        result.output shouldBe GUIDELINE
-        result.success shouldBe true
-    }
-
-    "execute returns the guideline verbatim even when input is null" {
+    "execute returns the guideline wrapped in a JSON object" {
         val tool = WhatsNextTool(configName = null, guideline = GUIDELINE)
         val result = tool.execute(null, CONTEXT)
-        result.output shouldBe GUIDELINE
         result.success shouldBe true
+        val parsed = objectMapper.readTree(result.output)
+        parsed.get("guideline").asText() shouldBe GUIDELINE
+    }
+
+    "execute output is valid JSON" {
+        val tool = WhatsNextTool(configName = null, guideline = GUIDELINE)
+        val result = tool.execute(null, CONTEXT)
+        // Should not throw
+        objectMapper.readTree(result.output)
     }
 })
