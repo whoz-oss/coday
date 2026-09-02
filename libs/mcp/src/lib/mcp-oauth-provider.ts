@@ -162,11 +162,21 @@ export class McpOAuthProvider implements OAuthClientProvider {
       }
     }
 
-    const raw = this.loadRaw()?.clientInfo
+    const storage = this.loadRaw()
+    const raw = storage?.clientInfo
     if (!raw) {
       this.interactor.debug(`[MCP OAuth:${this.mcpId}] no stored client info found`)
       return undefined
     }
+
+    // If clientInfo exists but tokens are absent, the previous OAuth flow was interrupted
+    // before the code exchange completed. Treat as unregistered to force a clean re-registration
+    // rather than reusing a potentially stale/revoked client_id.
+    if (!storage?.tokens) {
+      this.clearStorage()
+      return undefined
+    }
+
     const parsed = OAuthClientInformationFullSchema.safeParse(raw)
     if (!parsed.success) {
       this.interactor.warn(
