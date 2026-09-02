@@ -354,7 +354,25 @@ export async function startAgentos(
   debugLog('AGENTOS', `[RUNTIME] AgentOS is up and healthy on port ${agentosPort}`)
 
   // ------------------------------------------------------------------
-  // 7. Build and return the handle
+  // 7. Register a synchronous exit handler to kill the child process
+  //    if Node.js exits without going through gracefulShutdown (crash,
+  //    process.exit(), or kill -9 on the Node process itself).
+  //    The 'exit' handler is the only hook that runs in all exit scenarios;
+  //    it must be synchronous — child.kill() qualifies.
+  // ------------------------------------------------------------------
+  const exitHandler = () => {
+    if (child.exitCode === null && !child.killed) {
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        // child already dead — ignore
+      }
+    }
+  }
+  process.on('exit', exitHandler)
+
+  // ------------------------------------------------------------------
+  // 8. Build and return the handle
   // ------------------------------------------------------------------
   const shutdown = (): Promise<void> =>
     new Promise((resolve) => {
@@ -388,5 +406,10 @@ export async function startAgentos(
       }
     })
 
-  return { port: agentosPort, spawned: true, shutdown }
+  const shutdownWithCleanup = async (): Promise<void> => {
+    process.removeListener('exit', exitHandler)
+    return shutdown()
+  }
+
+  return { port: agentosPort, spawned: true, shutdown: shutdownWithCleanup }
 }
