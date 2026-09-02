@@ -7,7 +7,7 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 
 /**
- * Internal tool that pauses the current agent run to ask the user a question.
+ * Internal tool that asks the user a question.
  *
  * The agent calls this tool when it genuinely cannot proceed without information that
  * only the user can provide — for example a preference, a clarification, or a decision
@@ -63,8 +63,8 @@ class QueryUserTool(
 
     override val description: String =
         """
-        Ask the user a question and pause the current run until they answer.
-        The run will resume automatically with the user's answer in the conversation history.
+        Ask the user a question. The run resumes automatically with the user's answer
+        in the conversation history.
 
         IMPORTANT — only use this tool when:
         - The information is genuinely required to proceed and cannot be inferred, guessed, or
