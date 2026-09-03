@@ -203,9 +203,9 @@ class SchedulerScanner(
                 else -> RunStatus.DONE
             }
             runRepository.updateStatus(run.id, finalStatus, now)
-            logger.warn {
-                "[SchedulerScanner] Orphaned RUNNING run=${run.id} sp=${run.scheduledPromptId} " +
-                    "— all UserRuns settled, closing as $finalStatus (crash recovery)"
+            logger.info {
+                "[SchedulerScanner] RUNNING run=${run.id} sp=${run.scheduledPromptId} " +
+                    "— all UserRuns settled, closing as $finalStatus"
             }
         }
     }
