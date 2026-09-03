@@ -173,14 +173,17 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             shouldThrow<ResourceNotFoundException> { newService().create(sp(agentId = unknownId)) }
         }
 
-        "create throws UnprocessableEntityException for filesystem-only agent" {
+        "create succeeds with file-origin agent (synced into Neo4j, valid target for ScheduledPrompts)" {
             val fsId = UUID.randomUUID()
+            // File-origin agents now have a real Neo4j node and are valid targets for ScheduledPrompts.
+            // The fileOrigin flag is the canonical discriminator; version=null is no longer a blocker.
             every { agentConfigService.findById(fsId) } returns AgentConfig(
                 metadata = EntityMetadata(id = fsId, version = null),
+                fileOrigin = true,
                 namespaceId = namespaceId,
                 name = "fs-agent",
             )
-            shouldThrow<UnprocessableEntityException> { newService().create(sp(agentId = fsId)) }
+            newService().create(sp(agentId = fsId)).agentConfigId shouldBe fsId
         }
 
         "create throws UnprocessableEntityException when agentConfig belongs to a different namespace" {

@@ -168,6 +168,61 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             result.modelName shouldBe "BIG"
         }
 
+        "findByParent sets fileOrigin=true on filesystem configs" {
+            val root = tempDir()
+            writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev"))
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
+
+            result.fileOrigin shouldBe true
+        }
+
+        "findByParent invokes the sync callback with namespaceId and live agents" {
+            val root = tempDir()
+            writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev"))
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            var syncedNamespaceId: UUID? = null
+            var syncedAgents: List<AgentConfig>? = null
+            val callback = FilesystemAgentSyncCallback { ns, agents ->
+                syncedNamespaceId = ns
+                syncedAgents = agents
+            }
+
+            FilesystemAgentConfigRepository(
+                delegate = delegate,
+                namespaceRepository = nsRepo,
+                syncCallback = callback,
+            ).findByParent(namespaceId)
+
+            syncedNamespaceId shouldBe namespaceId
+            syncedAgents?.map { it.name } shouldBe listOf("Dev")
+        }
+
+        "findByParent does not invoke the sync callback when namespace has no configPath" {
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, configPath = null)
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            var callbackInvoked = false
+            val callback = FilesystemAgentSyncCallback { _, _ -> callbackInvoked = true }
+
+            FilesystemAgentConfigRepository(
+                delegate = delegate,
+                namespaceRepository = nsRepo,
+                syncCallback = callback,
+            ).findByParent(namespaceId)
+
+            callbackInvoked shouldBe false
+        }
+
         "findByParent uses stable UUID derived from agent name" {
             val root = tempDir()
             writeYaml(agentsDir(root), "dev.yaml", agentYaml("Dev"))
