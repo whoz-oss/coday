@@ -1,3 +1,13 @@
+## 0.250.0 (2026-09-03)
+
+### 🚀 Features
+
+- #34228 add WhatsNext tool to REDIRECT integration ([#1270](https://github.com/whoz-oss/coday/pull/1270), [#34228](https://github.com/whoz-oss/coday/issues/34228))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.249.19 (2026-09-03)
 
 ### 🩹 Fixes
