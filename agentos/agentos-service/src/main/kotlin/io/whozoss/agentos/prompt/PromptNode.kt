@@ -47,6 +47,19 @@ import java.util.UUID
  *
  * [externalMetadataJson] stores the opaque [Prompt.externalMetadata] map as a JSON string.
  *
+ * [title] is the optional user-facing display label, stored as a plain nullable string.
+ *
+ * [sourceLanguage] is the BCP-47 language code of [Prompt.content] and [Prompt.title]
+ * as authored. Stored as a plain string property on the node. Defaults to `"en"`.
+ *
+ * [translatedTitlesJson] stores [Prompt.translatedTitles] as a JSON string
+ * (`Map<languageCode, String>`). Null when [Prompt.title] is null or no title
+ * translations have been generated yet. Cleared when [title] or [sourceLanguage] changes.
+ *
+ * [translatedContentJson] stores [Prompt.translatedContent] as a JSON string
+ * (`Map<languageCode, List<String>>`). Null when no content translations have been
+ * generated yet. Cleared when [content] or [sourceLanguage] changes.
+ *
  * [version] backs Spring Data Neo4j optimistic locking. A null version means the
  * entity has never been persisted (new entity); SDN sets it to 0 on first save.
  */
@@ -61,6 +74,10 @@ data class PromptNode(
     val contentJson: String,
     val parametersJson: String? = null,
     val externalMetadataJson: String? = null,
+    val title: String? = null,
+    val sourceLanguage: String = "en",
+    val translatedTitlesJson: String? = null,
+    val translatedContentJson: String? = null,
     val tripleKey: String,
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
@@ -89,12 +106,18 @@ data class PromptNode(
             content = objectMapper.readValue(contentJson, CONTENT_TYPE),
             parameters = parametersJson?.let { objectMapper.readValue(it, PARAMETERS_TYPE) } ?: emptyList(),
             externalMetadata = externalMetadataJson?.let { objectMapper.readValue(it, EXTERNAL_METADATA_TYPE) },
+            title = title,
+            sourceLanguage = sourceLanguage,
+            translatedTitles = translatedTitlesJson?.let { objectMapper.readValue(it, TRANSLATED_TITLES_TYPE) },
+            translatedContent = translatedContentJson?.let { objectMapper.readValue(it, TRANSLATED_CONTENT_TYPE) },
         )
 
     companion object {
         private val CONTENT_TYPE = object : TypeReference<List<String>>() {}
         private val PARAMETERS_TYPE = object : TypeReference<List<PromptParameter>>() {}
         private val EXTERNAL_METADATA_TYPE = object : TypeReference<Map<String, Any?>>() {}
+        private val TRANSLATED_TITLES_TYPE = object : TypeReference<Map<String, String>>() {}
+        private val TRANSLATED_CONTENT_TYPE = object : TypeReference<Map<String, List<String>>>() {}
 
         fun computeTripleKey(namespaceId: UUID?, userId: UUID?, name: String): String =
             OverlayKeyEncoding.activeKey(namespaceId, userId, name)
@@ -116,6 +139,10 @@ data class PromptNode(
                 contentJson = objectMapper.writeValueAsString(prompt.content),
                 parametersJson = prompt.parameters.takeIf { it.isNotEmpty() }?.let { objectMapper.writeValueAsString(it) },
                 externalMetadataJson = prompt.externalMetadata?.let { objectMapper.writeValueAsString(it) },
+                title = prompt.title,
+                sourceLanguage = prompt.sourceLanguage,
+                translatedTitlesJson = prompt.translatedTitles?.let { objectMapper.writeValueAsString(it) },
+                translatedContentJson = prompt.translatedContent?.let { objectMapper.writeValueAsString(it) },
                 tripleKey = computeTripleKey(prompt.namespaceId, prompt.userId, prompt.name),
                 version = prompt.metadata.version,
                 created = prompt.metadata.created,

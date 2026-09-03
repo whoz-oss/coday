@@ -51,6 +51,21 @@ interface CaseApi : EntityCrudApi<CaseDto> {
     fun killCase(caseId: UUID)
 
     @Operation(
+        summary = "Mark case as read",
+        description = "POST /api/cases/{caseId}/read — record that the current user has read this case. " +
+            "Sets readAt = now() on the User\u2194Case relation. Idempotent. Returns 200 with no body.",
+    )
+    fun markCaseRead(caseId: UUID)
+
+    @Operation(
+        summary = "Count unread cases",
+        description = "GET /api/cases/unread-count?namespaceId= — number of unread cases in the namespace " +
+            "for the current user. A case is unread when no readAt relation exists or the most recent " +
+            "event timestamp is after the user's readAt.",
+    )
+    fun countUnread(namespaceId: UUID): UnreadCountResponse
+
+    @Operation(
         summary = "Star a case",
         description = "PUT /api/cases/{id}/star — mark the case as favorite for the current user. " +
             "Requires a direct user↔case relation, otherwise the call is rejected.",

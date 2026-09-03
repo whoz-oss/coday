@@ -1,3 +1,103 @@
+## 0.249.19 (2026-09-03)
+
+### 🩹 Fixes
+
+- **release:** restore minor bump for feat commits after nx 23 migration ([ec697413](https://github.com/whoz-oss/coday/commit/ec697413))
+- **release:** restore minor bump for feat commits after nx 23 migration ([#1279](https://github.com/whoz-oss/coday/pull/1279), [#1278](https://github.com/whoz-oss/coday/issues/1278))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.18 (2026-09-03)
+
+### 🩹 Fixes
+
+- authSettingName missing from IntegrationConfig YAML export and filesystem load ([#1267](https://github.com/whoz-oss/coday/pull/1267))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.17 (2026-09-02)
+
+### 🚀 Features
+
+- wz-30464: fix agentos-ui for prompt translations ([#1276](https://github.com/whoz-oss/coday/pull/1276))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.249.16 (2026-09-02)
+
+### 🚀 Features
+
+- wz-30464: prompt translations ([#1253](https://github.com/whoz-oss/coday/pull/1253))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- vincent.audibert
+
+## 0.249.15 (2026-09-02)
+
+### 🚀 Features
+
+- wz-32132: read cases tracking ([#1260](https://github.com/whoz-oss/coday/pull/1260))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.249.14 (2026-09-02)
+
+### 🚀 Features
+
+- #1235 Add queryUser tool and resume agents after answers ([#1235](https://github.com/whoz-oss/coday/issues/1235))
+- #1236 Extract QuestionEvent prompt rendering helper ([#1236](https://github.com/whoz-oss/coday/issues/1236))
+- #1235 Add queryUser tool and resume agents after answers ([#1236](https://github.com/whoz-oss/coday/pull/1236), [#1235](https://github.com/whoz-oss/coday/issues/1235))
+
+### 🩹 Fixes
+
+- #1235 disable queryUser tool by default (review VA) ([#1235](https://github.com/whoz-oss/coday/issues/1235))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.249.13 (2026-09-02)
+
+### 🚀 Features
+
+- wz-34012: identify scheduler that initiated a case ([#1254](https://github.com/whoz-oss/coday/pull/1254))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.249.12 (2026-09-01)
+
+### 🩹 Fixes
+
+- kill AgentOS child process on Node.js unclean exit to prevent Neo4j store_lock orphan ([#1266](https://github.com/whoz-oss/coday/pull/1266))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.11 (2026-09-01)
+
+### 🩹 Fixes
+
+- discard stale MCP OAuth client registration when tokens are absent ([#1265](https://github.com/whoz-oss/coday/pull/1265))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.249.10 (2026-09-01)
 
 ### 🩹 Fixes

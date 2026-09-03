@@ -426,6 +426,7 @@ class AgentAdvanced(
                                     MessageContent.Text(
                                         when (e) {
                                             is AgentInterrupt.Redirect -> "Redirecting to agent '${e.targetAgentName}'."
+                                            is AgentInterrupt.AwaitAnswer -> "Waiting for the user's answer."
                                         },
                                     ),
                                 success = true,

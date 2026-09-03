@@ -21,6 +21,10 @@ import { Prompt } from '../model/prompt'
 import { PromptEffectiveRequest } from '../model/prompt-effective-request'
 // @ts-ignore
 import { PromptSearchRequest } from '../model/prompt-search-request'
+// @ts-ignore
+import { PromptTranslateRequest } from '../model/prompt-translate-request'
+// @ts-ignore
+import { PromptTranslation } from '../model/prompt-translation'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -571,6 +575,101 @@ export class PromptControllerService extends BaseService {
     return this.httpClient.request<Array<Prompt>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       body: promptSearchRequest,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Translate prompt content into a target language
+   * Returns the translated content list (same indices as &#x60;content&#x60;). If the requested language matches &#x60;sourceLanguage&#x60;, returns &#x60;content&#x60; as-is. If a cached translation exists it is returned without an LLM call. Otherwise the content is translated via the namespace\&#39;s AI model, persisted, and returned. At least one of &#x60;namespaceId&#x60; / &#x60;namespaceExternalId&#x60; is required for model resolution.
+   * @param id
+   * @param languageCode
+   * @param promptTranslateRequest
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public translatePrompt(
+    id: string,
+    languageCode: string,
+    promptTranslateRequest: PromptTranslateRequest,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<PromptTranslation>
+  public translatePrompt(
+    id: string,
+    languageCode: string,
+    promptTranslateRequest: PromptTranslateRequest,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<PromptTranslation>>
+  public translatePrompt(
+    id: string,
+    languageCode: string,
+    promptTranslateRequest: PromptTranslateRequest,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<PromptTranslation>>
+  public translatePrompt(
+    id: string,
+    languageCode: string,
+    promptTranslateRequest: PromptTranslateRequest,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling translatePrompt.')
+    }
+    if (languageCode === null || languageCode === undefined) {
+      throw new Error('Required parameter languageCode was null or undefined when calling translatePrompt.')
+    }
+    if (promptTranslateRequest === null || promptTranslateRequest === undefined) {
+      throw new Error('Required parameter promptTranslateRequest was null or undefined when calling translatePrompt.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/prompts/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/translations/${this.configuration.encodeParam({ name: 'languageCode', value: languageCode, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: undefined })}`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<PromptTranslation>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: promptTranslateRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

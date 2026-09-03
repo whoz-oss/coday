@@ -2,6 +2,7 @@ package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Hidden
+import org.springframework.beans.factory.annotation.Qualifier
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
@@ -71,7 +72,7 @@ class IntegrationConfigController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
-    private val yamlExportMapper: ObjectMapper,
+    @Qualifier("yamlExportMapper") private val yamlExportMapper: ObjectMapper,
 ) : IntegrationConfigApi {
     private val scopedOwnershipCrudDelegate =
         ScopedOwnershipCrudDelegate(
@@ -362,8 +363,8 @@ private fun toDto(entity: IntegrationConfig) =
  *
  * Built explicitly via `buildMap` so that null/empty values are omitted without a
  * mapper-level inclusion policy — consistent with [AgentConfigController] and
- * [PromptController]. The [parameters] field is a [JsonNode] that Jackson serialises
- * verbatim; a null value means no parameters were set, so the key is omitted entirely.
+ * [PromptController]. The [parameters] field is a [JsonNode] that the YAML mapper
+ * serialises natively; a null value means no parameters were set, so the key is omitted.
  */
 private fun toExportModel(entity: IntegrationConfig): Map<String, Any?> =
     buildMap {
@@ -371,4 +372,5 @@ private fun toExportModel(entity: IntegrationConfig): Map<String, Any?> =
         put("integrationType", entity.integrationType)
         entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
         entity.parameters?.let { put("parameters", it) }
+        entity.authSettingName?.takeIf { it.isNotBlank() }?.let { put("authSettingName", it) }
     }

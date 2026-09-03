@@ -27,4 +27,9 @@ data class Case(
      * Null for top-level cases created directly by a user.
      */
     val parentCaseId: UUID? = null,
+    /**
+     * Id of the [io.whozoss.agentos.scheduledPrompt.ScheduledPrompt] that triggered this case.
+     * Null for cases started by a human user or a delegation tool.
+     */
+    val scheduledPromptId: UUID? = null,
 ) : Entity

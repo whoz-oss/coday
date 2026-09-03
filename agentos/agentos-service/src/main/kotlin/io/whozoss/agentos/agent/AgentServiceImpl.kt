@@ -23,6 +23,7 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.queryUser.QueryUserToolGrantService
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -71,6 +72,7 @@ class AgentServiceImpl(
     private val exchangeToolGrantService: ExchangeToolGrantService,
     private val agentDocumentResolver: AgentDocumentResolver,
     private val agentConfigProperties: AgentConfigProperties,
+    private val queryUserToolGrantService: QueryUserToolGrantService,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -331,6 +333,12 @@ class AgentServiceImpl(
         // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
         // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name
         // collision (e.g. a user FILE_ACCESS integration named "case-exchange") crashing downstream.
+        val queryUserTools =
+            if (queryUserToolGrantService.isGranted(agentConfig.integrations)) {
+                queryUserToolGrantService.grantTools(toolContext)
+            } else {
+                emptyList()
+            }
         val tools =
             toolResolverService.dedupToolsByName(
                 baseTools +
@@ -343,7 +351,8 @@ class AgentServiceImpl(
                             )
                         },
                     ) +
-                    buildExchangeTools(agentConfig, context, toolContext),
+                    buildExchangeTools(agentConfig, context, toolContext) +
+                    queryUserTools,
             )
 
         return ResolvedAgentDefinition(

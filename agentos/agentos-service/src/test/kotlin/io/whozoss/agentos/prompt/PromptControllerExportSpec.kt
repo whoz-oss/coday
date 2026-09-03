@@ -38,7 +38,8 @@ class PromptControllerExportSpec : StringSpec({
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
     val overlayScopeAuthorizer = mockk<OverlayScopeAuthorizer>(relaxed = true)
-    val controller = PromptController(promptService, namespaceService, userService, permissionService, overlayScopeAuthorizer, yamlExportMapper())
+    val externalIdentifierResolver = mockk<io.whozoss.agentos.entity.ExternalIdentifierResolver>(relaxed = true)
+    val controller = PromptController(promptService, namespaceService, userService, permissionService, overlayScopeAuthorizer, externalIdentifierResolver, yamlExportMapper())
 
     val namespaceId = UUID.randomUUID()
 

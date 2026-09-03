@@ -20,6 +20,14 @@ export interface Prompt {
   name: string
   namespaceId?: string | null
   parameters: Array<PromptParameter>
+  /**
+   * BCP-47 language code of the authored content and title. Defaults to \'en\'.
+   */
+  sourceLanguage: string
+  /**
+   * Optional user-facing display label (e.g. starter button text). Distinct from content, which is the message sent to the LLM. Null when no explicit title has been set.
+   */
+  title?: string
   updatedBy?: string
   updatedOn?: string
   userId?: string | null
