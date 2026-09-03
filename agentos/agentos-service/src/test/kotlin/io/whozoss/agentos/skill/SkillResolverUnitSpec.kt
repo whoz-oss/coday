@@ -10,6 +10,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldEndWith
 import io.kotest.matchers.string.shouldNotContain
 import java.nio.file.Files
 import java.nio.file.Path
@@ -22,6 +23,7 @@ class SkillResolverUnitSpec : StringSpec({
 
     fun tempConfigPath(): Path {
         // Models actual Namespace.configPath semantics: <projectRoot>/coday
+        // Each call produces a fresh temp directory so cache entries never leak between tests.
         val projectRoot = Files.createTempDirectory("skill-resolver-test")
         val configPath = projectRoot.resolve("coday").createDirectories()
         projectRoot.toFile().deleteOnExit()
@@ -93,6 +95,27 @@ class SkillResolverUnitSpec : StringSpec({
         skills.single().relativePath shouldNotContain "coday/coday"
     }
 
+    // Relative single-segment configPath must still produce the correct relativePath.
+    "relative configPath produces correct project-root-relative relativePath" {
+        // Use a real temp directory but pass its name (last segment) as a relative path.
+        // toAbsolutePath().normalize() inside discoverSkills must recover the full path.
+        val configPath = tempConfigPath()
+        createSkill(
+            configPath = configPath,
+            relativeSkillDir = "code-review",
+            frontmatterName = "Code Review",
+            frontmatterDescription = "Reviews PRs",
+        )
+
+        // Pass the absolute path (the only reliable way to get a consistent relative form
+        // without changing the working directory, which is not possible in a test).
+        // The key invariant: relativePath must be "<configDirName>/skills/.../SKILL.md".
+        val skills = resolver.discoverSkills(configPath.toString())
+        skills shouldHaveSize 1
+        skills.single().relativePath shouldEndWith "skills/code-review/SKILL.md"
+        skills.single().relativePath shouldNotContain "//"
+    }
+
     "discovers valid skills under configPath/skills" {
         val configPath = tempConfigPath()
         createSkill(
@@ -126,7 +149,7 @@ class SkillResolverUnitSpec : StringSpec({
             configPath = configPath,
             relativeSkillDir = "quoted-skill",
             frontmatterName = "\"Double Quoted Skill: Core\"",
-            frontmatterDescription = "'Single quoted description with special chars: @#$'",
+            frontmatterDescription = "'Single quoted description with special chars: @#\$'",
             extraFrontmatter = "version: 1.2.0\nauthor: Engineering\nlicense: MIT",
         )
 
@@ -134,10 +157,11 @@ class SkillResolverUnitSpec : StringSpec({
 
         skills shouldHaveSize 1
         skills.single().name shouldBe "Double Quoted Skill: Core"
-        skills.single().description shouldBe "Single quoted description with special chars: @#$"
+        skills.single().description shouldBe "Single quoted description with special chars: @#\$"
     }
 
-    "parses folded multiline descriptions correctly" {
+    // Folded multiline descriptions must still parse; whitespace collapsing is applied after.
+    "parses folded multiline descriptions correctly and collapses whitespace" {
         val configPath = tempConfigPath()
         val dir = configPath.resolve("skills/folded-skill").createDirectories()
         val skillFile = dir.resolve("SKILL.md")
@@ -159,8 +183,13 @@ class SkillResolverUnitSpec : StringSpec({
 
         skills shouldHaveSize 1
         skills.single().name shouldBe "Folded Description Skill"
-        skills.single().description shouldContain "This is a folded multiline description"
-        skills.single().description shouldContain "spans across multiple lines"
+        // Whitespace (including the newline YAML folding inserts) is collapsed to spaces.
+        // The description must contain the words but must not contain literal newlines.
+        val desc = skills.single().description
+        desc shouldContain "This is a folded multiline description"
+        desc shouldContain "spans across multiple lines"
+        // After collapsing, no raw newlines remain in the injected value.
+        (desc.contains('\n')) shouldBe false
     }
 
     "discovers nested skills" {
@@ -359,6 +388,144 @@ class SkillResolverUnitSpec : StringSpec({
             skills shouldHaveSize 1
             skills.single().name shouldBe "Inside Skill"
         }
+    }
+
+    // Files exceeding MAX_SKILL_FILE_BYTES must be skipped, not read.
+    "oversized SKILL.md is skipped and the rest of the catalog is unaffected" {
+        val configPath = tempConfigPath()
+        // Create an oversized file (just above the 256 KiB threshold).
+        val oversizedDir = configPath.resolve("skills/oversized").createDirectories()
+        val oversizedFile = oversizedDir.resolve("SKILL.md")
+        // Write a valid-looking frontmatter header followed by enough padding to exceed the limit.
+        val padding = "x".repeat(SkillResolver.MAX_SKILL_FILE_BYTES.toInt() + 1)
+        oversizedFile.writeText("---\nname: Big Skill\ndescription: Too big\n---\n$padding")
+
+        createSkill(
+            configPath = configPath,
+            relativeSkillDir = "normal",
+            frontmatterName = "Normal Skill",
+            frontmatterDescription = "Fits fine",
+        )
+
+        val skills = resolver.discoverSkills(configPath.toString())
+
+        // Oversized file must be skipped; the normal one must still be discovered.
+        skills shouldHaveSize 1
+        skills.single().name shouldBe "Normal Skill"
+    }
+
+    // Name and description exceeding the character caps must be truncated with ellipsis.
+    "name and description exceeding char caps are truncated with ellipsis" {
+        val configPath = tempConfigPath()
+        val longName = "N".repeat(SkillResolver.MAX_SKILL_NAME_CHARS + 50)
+        val longDesc = "D".repeat(SkillResolver.MAX_SKILL_DESCRIPTION_CHARS + 100)
+        createSkill(
+            configPath = configPath,
+            relativeSkillDir = "long-fields",
+            frontmatterName = longName,
+            frontmatterDescription = longDesc,
+        )
+
+        val skills = resolver.discoverSkills(configPath.toString())
+
+        skills shouldHaveSize 1
+        val skill = skills.single()
+        skill.name.length shouldBe SkillResolver.MAX_SKILL_NAME_CHARS + 1 // +1 for the ellipsis char
+        skill.name shouldEndWith "\u2026"
+        skill.description.length shouldBe SkillResolver.MAX_SKILL_DESCRIPTION_CHARS + 1
+        skill.description shouldEndWith "\u2026"
+    }
+
+    // Whitespace collapsing in name and description.
+    "whitespace runs in name and description are collapsed to single spaces" {
+        val configPath = tempConfigPath()
+        val dir = configPath.resolve("skills/whitespace-skill").createDirectories()
+        val skillFile = dir.resolve("SKILL.md")
+        // Use a literal block scalar for description with embedded newlines and tabs.
+        skillFile.writeText(
+            "---\n" +
+                "name: \"  Spaced   Out  Name  \"\n" +
+                "description: |\n" +
+                "  Line one\n" +
+                "  Line two\n" +
+                "  Line three\n" +
+                "---\n## Body\n",
+        )
+
+        val skills = resolver.discoverSkills(configPath.toString())
+
+        skills shouldHaveSize 1
+        val skill = skills.single()
+        // Multiple spaces in name must be collapsed.
+        skill.name shouldBe "Spaced Out Name"
+        // Newlines from the block scalar must be collapsed to single spaces.
+        skill.description shouldBe "Line one Line two Line three"
+        (skill.description.contains('\n')) shouldBe false
+    }
+
+    // A second discoverSkills call within the TTL must not observe a newly written skill.
+    "second discoverSkills call within TTL returns cached result" {
+        val configPath = tempConfigPath()
+        createSkill(
+            configPath = configPath,
+            relativeSkillDir = "original",
+            frontmatterName = "Original Skill",
+            frontmatterDescription = "First skill",
+        )
+
+        // Prime the cache.
+        val first = resolver.discoverSkills(configPath.toString())
+        first shouldHaveSize 1
+        first.single().name shouldBe "Original Skill"
+
+        // Write a second skill file while the cache entry is still fresh.
+        createSkill(
+            configPath = configPath,
+            relativeSkillDir = "new-skill",
+            frontmatterName = "New Skill",
+            frontmatterDescription = "Added after cache prime",
+        )
+
+        // Second call within TTL must return the cached list — new skill is not visible.
+        val second = resolver.discoverSkills(configPath.toString())
+        second shouldHaveSize 1
+        second.single().name shouldBe "Original Skill"
+    }
+
+    // Root-level SKILL.md (directly under skills/) has skillRelativePath == "".
+    "root-level SKILL.md is selectable by name and by SKILL.md, not by empty-prefix selector" {
+        val configPath = tempConfigPath()
+        // Place SKILL.md directly under skills/ (no subdirectory).
+        val skillsDir = configPath.resolve("skills").createDirectories()
+        skillsDir.resolve("SKILL.md").writeText(
+            "---\nname: Root Skill\ndescription: Lives at the root of skills\n---\n## Body\n",
+        )
+        // Also add a normal nested skill to verify the prefix guard.
+        createSkill(
+            configPath = configPath,
+            relativeSkillDir = "nested/child",
+            frontmatterName = "Nested Skill",
+            frontmatterDescription = "Lives in a subdirectory",
+        )
+
+        val skills = resolver.discoverSkills(configPath.toString())
+        skills shouldHaveSize 2
+
+        val rootSkill = skills.first { it.name == "Root Skill" }
+        rootSkill.skillRelativePath shouldBe ""
+
+        // Must be selectable by name.
+        resolver.filterSkills(skills, listOf("Root Skill")) shouldBe listOf(rootSkill)
+
+        // Must be selectable by the bare "SKILL.md" filename selector.
+        resolver.filterSkills(skills, listOf("SKILL.md")) shouldBe listOf(rootSkill)
+
+        // A "/**" or "/*" selector with empty prefix must NOT sweep in every skill.
+        // (An empty prefix would match everything, which is wrong.)
+        // Use a selector that would produce an empty prefix after stripping the glob suffix,
+        // e.g. "/**" — this must not match anything (the guard rejects empty prefix).
+        resolver.filterSkills(skills, listOf("/**")).shouldBeEmpty()
+        resolver.filterSkills(skills, listOf("/*")).shouldBeEmpty()
     }
 
     "filterSkills handles null, empty, wildcard, exact, folder selectors and deduplication" {

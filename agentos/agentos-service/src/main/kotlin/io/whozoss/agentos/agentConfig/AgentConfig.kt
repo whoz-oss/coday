@@ -125,16 +125,56 @@ data class AgentConfig(
      * instructions; skill bodies and adjacent resources are read on demand through the agent's
      * file tools.
      *
+     * Operator-visible behaviour:
+     * - The `name` and `description` values injected into the prompt are whitespace-collapsed
+     *   (runs of whitespace including newlines become a single space) and truncated to 120 and
+     *   500 characters respectively, with an ellipsis appended when truncated. YAML folded
+     *   scalars are resolved by the YAML parser before collapsing, so `description: >` still
+     *   works correctly.
+     * - Discovery walks at most 10 directory levels below the `skills` root and collects at most
+     *   500 `SKILL.md` files per namespace; files exceeding 256 KiB are skipped with a WARN.
+     * - The discovered catalog is cached per namespace for 60 seconds. Skill authors see edits
+     *   reflected within a minute; steady-state agent traffic pays one filesystem walk per
+     *   namespace per minute.
+     *
      * Tri-state, inverse of [integrations]:
      * - null: all discovered skills are advertised (default)
      * - empty list: explicit opt-out, no skills block is produced
      * - non-empty list: union of everything the listed selectors match
      *
+     * Default-on and upgrade semantics: a null `skillSelectors` means all discovered skills are
+     * advertised. Because `skillSelectorsJson` is a newly added nullable Neo4j property, every
+     * already-persisted agent in a namespace that has a `skills/` directory will start receiving
+     * a skills block as soon as this feature is deployed — a default-on upgrade behaviour. This is
+     * deliberate: it follows the Claude-compatible skill convention where discovery is opt-out
+     * rather than opt-in, and the agent is expected to use the description to decide relevance.
+     * This is knowingly the inverse of the exchange-tool defaults documented on
+     * [io.whozoss.agentos.agent.AgentServiceImpl.buildExchangeTools], which are both off by default
+     * precisely so an upgrade changes no agent's tool set. The two mechanisms make opposite choices
+     * for defensible, domain-specific reasons; this comment exists so a future reader sees a
+     * decision rather than an inconsistency.
+     *
+     * Trust boundary: injecting skill `name` and `description` verbatim into agent instructions
+     * does not introduce a new privilege boundary. Anyone with write access to
+     * `<configPath>/skills/` already holds write access to the agent YAML files under
+     * `<configPath>/agents/`, which carry the raw `instructions` field loaded by
+     * [io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository]. Authoring a skill
+     * frontmatter is therefore a strictly weaker capability than what that same actor already
+     * possesses: both are administrator-level namespace configuration. If `skills/` write access
+     * were ever granted to a broader role than `agents/` write access, that would become a genuine
+     * prompt-injection vector, so the two directories must be kept at the same privilege level.
+     *
      * Selector forms, matched case-insensitively against slash-normalized paths:
-     * - a lone star: every discovered skill
-     * - a folder path ending with slash-star or slash-double-star: recursive prefix match on the
-     *   path relative to the skills root, both forms behave identically (a `core` prefix selector
-     *   matches `core/branch-creation`)
+     * - a lone star (`*`): every discovered skill
+     * - a folder path suffixed with slash-star or slash-double-star: recursive prefix match on the
+     *   path relative to the skills root; both suffixes behave identically. Example: `core`
+     *   followed by slash-double-star matches `core/branch-creation`. A bare `core` carrying
+     *   neither suffix is an exact match against the skill's directory path, not a prefix — it
+     *   will NOT match `core/branch-creation`.
+     *   (Both suffixes are spelled out in prose here rather than written literally: a slash
+     *   immediately followed by a star opens a nested block comment inside KDoc, which Kotlin
+     *   requires to be closed. The `docs` property KDoc above uses the same wording for the same
+     *   reason.)
      * - the path relative to the skills root, with or without a trailing `SKILL.md` segment
      *   (`product/spec-writing`, `product/spec-writing/SKILL.md`)
      * - the path relative to the project root (`coday/skills/product/spec-writing/SKILL.md`)

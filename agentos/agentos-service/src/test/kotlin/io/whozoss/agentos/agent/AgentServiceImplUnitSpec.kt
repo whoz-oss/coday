@@ -1280,7 +1280,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
-            every { skillResolver.buildSkillsBlock(any(), any()) } returns "## Available Skills\n- **Review** (`coday/skills/review/SKILL.md`): Code review"
+            coEvery { skillResolver.buildSkillsBlock(any(), any()) } returns "## Available Skills\n- **Review** (`coday/skills/review/SKILL.md`): Code review"
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -1301,12 +1301,12 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
-            every { skillResolver.buildSkillsBlock(any(), eq(listOf("core/**", "product/**"))) } returns "## Available Skills\n- **spec-writing** (`coday/skills/product/spec-writing/SKILL.md`): Spec writing"
+            coEvery { skillResolver.buildSkillsBlock(any(), eq(listOf("core/**", "product/**"))) } returns "## Available Skills\n- **spec-writing** (`coday/skills/product/spec-writing/SKILL.md`): Spec writing"
 
             val agent = agentService.findAgentByName("filtered-agent", context) as AgentSimple
 
             agent.instructions shouldContain "- **spec-writing** (`coday/skills/product/spec-writing/SKILL.md`): Spec writing"
-            verify(exactly = 1) { skillResolver.buildSkillsBlock(any(), eq(listOf("core/**", "product/**"))) }
+            coVerify(exactly = 1) { skillResolver.buildSkillsBlock(any(), eq(listOf("core/**", "product/**"))) }
         }
 
         "findAgentByName with empty skillSelectors results in no skills block" {
@@ -1321,12 +1321,12 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
-            every { skillResolver.buildSkillsBlock(any(), eq(emptyList())) } returns null
+            coEvery { skillResolver.buildSkillsBlock(any(), eq(emptyList())) } returns null
 
             val agent = agentService.findAgentByName("opt-out-agent", context) as AgentSimple
 
             (agent.instructions ?: "") shouldNotContain "## Available Skills"
-            verify(exactly = 1) { skillResolver.buildSkillsBlock(any(), eq(emptyList())) }
+            coVerify(exactly = 1) { skillResolver.buildSkillsBlock(any(), eq(emptyList())) }
         }
 
         // -------------------------------------------------------------------------
