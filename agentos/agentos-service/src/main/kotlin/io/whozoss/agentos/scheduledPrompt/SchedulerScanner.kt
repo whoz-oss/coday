@@ -114,6 +114,20 @@ class SchedulerScanner(
     }
 
     /**
+     * Watchdog: restarts the consumer loop if it died unexpectedly.
+     * Runs on the same interval as [tickClaim] so a dead producer is detected within one tick.
+     * Safe: Spring guarantees @PostConstruct on all beans completes before @Scheduled ticks fire,
+     * so executor.scope is always initialized when this first runs.
+     */
+    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:60000}")
+    fun tickWatchdog() {
+        if (!executor.isRunning()) {
+            logger.error { "[SchedulerScanner] consumer loop is dead — restarting automatically" }
+            executor.restart()
+        }
+    }
+
+    /**
      * Core claim logic, extracted from [tickClaim] so the scheduled entry point
      * remains a pure activation guard.
      */

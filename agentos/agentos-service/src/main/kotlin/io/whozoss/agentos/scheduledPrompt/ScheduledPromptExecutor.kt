@@ -125,6 +125,17 @@ class ScheduledPromptExecutor(
     /** When true, the producer skips claimBatch and delays instead. */
     private val consumePaused = AtomicBoolean(false)
 
+
+
+    /** True if the consumer loop is active. Returns false if start() was never called or if
+     * stop() was called. The watchdog uses this to detect unexpected coroutine death. */
+    fun isRunning(): Boolean = scope?.isActive == true
+
+    fun restart() {
+        stop()
+        start()
+    }
+
     fun isConsumePaused(): Boolean = consumePaused.get()
 
     fun pauseConsume() {
