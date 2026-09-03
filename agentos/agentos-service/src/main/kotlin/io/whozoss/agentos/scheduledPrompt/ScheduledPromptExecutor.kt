@@ -17,17 +17,18 @@ import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicBoolean
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
@@ -120,6 +121,7 @@ class ScheduledPromptExecutor(
     private val properties: SchedulerProperties,
     private val clock: Clock,
     private val userContextProvider: UserContextProvider? = null,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
     /** When true, the producer skips claimBatch and delays instead. */
@@ -163,7 +165,7 @@ class ScheduledPromptExecutor(
     fun start() {
         val newScope = CoroutineScope(SupervisorJob())
         scope = newScope
-        newScope.launch(Dispatchers.IO) { runConsumerLoop() }
+        newScope.launch(dispatcher) { runConsumerLoop() }
         logger.info { "[Executor] consumer loop started (workers=${properties.workerCount}, batchSize=${properties.batchSize}, channelCapacity=${properties.channelCapacity})" }
     }
 
@@ -195,7 +197,7 @@ class ScheduledPromptExecutor(
         val currentScope = checkNotNull(scope)
 
         // Producer
-        currentScope.launch(Dispatchers.IO) {
+        currentScope.launch(dispatcher) {
             val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
             var consecutiveErrors = 0
             try {
@@ -231,7 +233,7 @@ class ScheduledPromptExecutor(
         // Worker pool — Run (parent) completion is NOT checked here.
         // SchedulerScanner.recoverOrphanedRunningRuns handles RUNNING → DONE/FAILED on each tickClaim.
         repeat(properties.workerCount) { workerId ->
-            currentScope.launch(Dispatchers.IO) {
+            currentScope.launch(dispatcher) {
                 for (userRun in channel) {
                     try {
                         logger.info {
