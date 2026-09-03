@@ -298,17 +298,6 @@ class PromptServiceImpl(
     /**
      * Rejects [update] / [delete] when [id] resolves to a filesystem-backed prompt.
      *
-     * A filesystem prompt (loaded by [FilesystemPromptRepository] from YAML, never saved
-     * through SDN) carries `metadata.version == null` — the same idiom used in [create] to
-     * detect filesystem-only AgentConfigs. Since [FilesystemPromptRepository.findByIds] now
-     * resolves the synthetic filesystem id, a naive PUT/DELETE on that id would otherwise
-     * create (resp. attempt to soft-delete) a phantom Neo4j node sharing the id — the
-     * persisted copy would then silently shadow the file-backed prompt it was meant to edit,
-     * defeating the collision rule documented on [FilesystemPromptRepository].
-     */
-    /**
-     * Rejects [update] / [delete] when [id] resolves to a filesystem-backed prompt.
-     *
      * A filesystem prompt (loaded by [FilesystemPromptRepository] from YAML) carries
      * `metadata.version == null` — it was never saved through SDN. A naive PUT/DELETE
      * on that id would otherwise create (resp. attempt to soft-delete) a phantom Neo4j

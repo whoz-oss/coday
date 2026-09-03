@@ -42,7 +42,27 @@ import java.util.UUID
 class FilesystemAgentConfigSyncService(
     private val neo4jRepository: Neo4jAgentConfigRepository,
 ) : FilesystemAgentSyncCallback {
+    /**
+     * Sync is best-effort: any exception is caught and logged rather than propagated.
+     * A sync failure must never prevent [FilesystemAgentConfigRepository] read paths from
+     * returning filesystem agents — addressability (Neo4j nodes) is a bonus on top of the
+     * primary read contract, not a prerequisite for it.
+     */
     override fun sync(
+        namespaceId: UUID,
+        liveAgents: List<AgentConfig>,
+    ) {
+        try {
+            doSync(namespaceId, liveAgents)
+        } catch (e: Exception) {
+            logger.warn(e) {
+                "[FilesystemAgentConfigSyncService] Neo4j sync failed for namespace $namespaceId — " +
+                    "filesystem agents remain readable but may not be addressable from scheduler/user-groups until next successful sync"
+            }
+        }
+    }
+
+    private fun doSync(
         namespaceId: UUID,
         liveAgents: List<AgentConfig>,
     ) {
@@ -92,10 +112,11 @@ class FilesystemAgentConfigSyncService(
             .forEach { agent ->
                 // Preserve the persisted version so SDN performs an UPDATE rather than an INSERT.
                 val existingVersion = existingFileOriginById[agent.metadata.id]?.metadata?.version
-                val toSave = agent.copy(
-                    namespaceId = namespaceId,
-                    metadata = agent.metadata.copy(version = existingVersion),
-                )
+                val toSave =
+                    agent.copy(
+                        namespaceId = namespaceId,
+                        metadata = agent.metadata.copy(version = existingVersion),
+                    )
                 neo4jRepository.save(toSave)
                 logger.debug {
                     "[FilesystemAgentConfigSyncService] Upserted file-origin agent " +
