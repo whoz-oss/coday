@@ -399,6 +399,27 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
             result.parameters?.get("tools")?.get(0)?.get("name")?.textValue() shouldBe "build"
         }
 
+        "findByNamespaceId maps authSettingName from YAML" {
+            val root = tempDir()
+            writeYaml(
+                integrationsDir(root),
+                "jira.yaml",
+                buildString {
+                    appendLine("name: JIRA")
+                    appendLine("integrationType: JIRA")
+                    appendLine("authSettingName: my-oauth")
+                },
+            )
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId).single()
+
+            result.authSettingName shouldBe "my-oauth"
+        }
+
         "findByNamespaceId does not substitute the token in name, integrationType, or description" {
             val root = tempDir()
             writeYaml(
