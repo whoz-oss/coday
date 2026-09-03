@@ -39,4 +39,12 @@ data class AiModelDto(
     val priority: Int = 0,
     val temperature: Double? = null,
     val maxTokens: Int? = null,
+    /** Per-million-token input rate (USD). Null = cost estimation disabled for this model. */
+    val pricingInputMTokens: Double? = null,
+    /** Per-million-token output rate (USD). */
+    val pricingOutputMTokens: Double? = null,
+    /** Per-million-token cache-read rate (USD). Anthropic + OpenAI cached tokens. */
+    val pricingCacheRead: Double? = null,
+    /** Per-million-token cache-write rate (USD). Anthropic only; OpenAI has no write rate. */
+    val pricingCacheWrite: Double? = null,
 )

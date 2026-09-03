@@ -63,6 +63,10 @@ class AiModelController(
                     priority = resource.priority,
                     temperature = resource.temperature,
                     maxTokens = resource.maxTokens,
+                    pricingInputMTokens = resource.pricingInputMTokens,
+                    pricingOutputMTokens = resource.pricingOutputMTokens,
+                    pricingCacheRead = resource.pricingCacheRead,
+                    pricingCacheWrite = resource.pricingCacheWrite,
                 )
             },
         )
@@ -109,6 +113,10 @@ class AiModelController(
                     priority = resource.priority,
                     temperature = resource.temperature,
                     maxTokens = resource.maxTokens,
+                    pricingInputMTokens = resource.pricingInputMTokens,
+                    pricingOutputMTokens = resource.pricingOutputMTokens,
+                    pricingCacheRead = resource.pricingCacheRead,
+                    pricingCacheWrite = resource.pricingCacheWrite,
                 ),
             ).let(::toDto)
     }
@@ -150,4 +158,8 @@ private fun toDto(entity: AiModel) =
         priority = entity.priority,
         temperature = entity.temperature,
         maxTokens = entity.maxTokens,
+        pricingInputMTokens = entity.pricingInputMTokens,
+        pricingOutputMTokens = entity.pricingOutputMTokens,
+        pricingCacheRead = entity.pricingCacheRead,
+        pricingCacheWrite = entity.pricingCacheWrite,
     )

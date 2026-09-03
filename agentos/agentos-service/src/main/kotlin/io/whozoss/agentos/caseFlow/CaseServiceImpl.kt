@@ -4,6 +4,8 @@ import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.chat.UsageAccumulator
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.delegation.SubCaseManager
@@ -62,6 +64,7 @@ class CaseServiceImpl(
     private val permissionService: PermissionService,
     private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
+    private val limitsConfig: LimitsConfigProperties,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -270,6 +273,7 @@ class CaseServiceImpl(
             },
             inputEvents = inputEvents,
             initialStatus = case.status,
+            maxIterations = limitsConfig.caseMaxIterations,
         ).also { startEvictionWatcher(case.id, it) }
 
     // ======================================================
@@ -582,6 +586,7 @@ class CaseServiceImpl(
         }
 
         logger.info { "Running agent: $agentName for case $caseId" }
+        val usageAccumulator = UsageAccumulator()
         val context =
             AgentExecutionContext(
                 namespaceId = runtime.namespaceId,
@@ -594,6 +599,7 @@ class CaseServiceImpl(
                     runtime.emitEvent(saved)
                     saved
                 },
+                usageAccumulator = usageAccumulator,
             )
         val agent = agentService.findAgentByName(agentName, context, this)
 
@@ -627,8 +633,17 @@ class CaseServiceImpl(
                     runtime.emitEvent(saved)
                 }
             }.collect { event ->
-                val saved = storeEvent(event)
-                if (event.caseId == caseId && event !is TransientCaseEvent) {
+                // Enrich AgentFinishedEvent with accumulated LLM usage before persisting.
+                // The accumulator is populated by UsageTrackingChatClient as each LLM call
+                // completes; by the time the agent emits AgentFinishedEvent, all calls for
+                // this run are done and the total is stable.
+                val enriched = if (event is AgentFinishedEvent && usageAccumulator.hasData) {
+                    event.copy(llmUsage = usageAccumulator.total)
+                } else {
+                    event
+                }
+                val saved = storeEvent(enriched)
+                if (enriched.caseId == caseId && enriched !is TransientCaseEvent) {
                     runtime.pushEvents(listOf(saved))
                 }
                 runtime.emitEvent(saved)

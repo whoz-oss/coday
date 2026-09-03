@@ -37,6 +37,10 @@ data class AiModelNode(
     val priority: Int = 0,
     val temperature: Double? = null,
     val maxTokens: Int? = null,
+    val pricingInputMTokens: Double? = null,
+    val pricingOutputMTokens: Double? = null,
+    val pricingCacheRead: Double? = null,
+    val pricingCacheWrite: Double? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -66,6 +70,10 @@ data class AiModelNode(
             priority = priority,
             temperature = temperature,
             maxTokens = maxTokens,
+            pricingInputMTokens = pricingInputMTokens,
+            pricingOutputMTokens = pricingOutputMTokens,
+            pricingCacheRead = pricingCacheRead,
+            pricingCacheWrite = pricingCacheWrite,
         )
 
     companion object {
@@ -81,6 +89,10 @@ data class AiModelNode(
                 priority = model.priority,
                 temperature = model.temperature,
                 maxTokens = model.maxTokens,
+                pricingInputMTokens = model.pricingInputMTokens,
+                pricingOutputMTokens = model.pricingOutputMTokens,
+                pricingCacheRead = model.pricingCacheRead,
+                pricingCacheWrite = model.pricingCacheWrite,
                 created = model.metadata.created,
                 createdBy = model.metadata.createdBy,
                 modified = model.metadata.modified,

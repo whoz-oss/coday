@@ -44,4 +44,21 @@ data class AiModel(
     val priority: Int = 0,
     val temperature: Double? = null,
     val maxTokens: Int? = null,
+    /**
+     * Per-million-token pricing rates (USD). All four are optional — when absent, cost
+     * estimation is skipped and [io.whozoss.agentos.sdk.usage.LlmUsage.estimatedCostUsd]
+     * is null for calls using this model.
+     *
+     * Semantics match [io.whozoss.agentos.chat.CostCalculator] exactly:
+     * - [pricingInputMTokens]  base input tokens (prompt, excluding cache for Anthropic)
+     * - [pricingOutputMTokens] generated output tokens
+     * - [pricingCacheRead]     cache-read tokens (Anthropic cacheReadInputTokens /
+     *                          OpenAI PromptTokensDetails.cachedTokens)
+     * - [pricingCacheWrite]    cache-write (creation) tokens — Anthropic only;
+     *                          OpenAI does not expose a write rate
+     */
+    val pricingInputMTokens: Double? = null,
+    val pricingOutputMTokens: Double? = null,
+    val pricingCacheRead: Double? = null,
+    val pricingCacheWrite: Double? = null,
 ) : Entity

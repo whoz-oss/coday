@@ -112,6 +112,11 @@ class ChatModelFactory(
             optionsBuilder.maxCompletionTokens(maxTokens)
         }
         val options = optionsBuilder.build()
+        // Required for usage tracking during streaming: the OpenAI streaming protocol
+        // does not include usage by default. With this option the last chunk carries
+        // the aggregated usage, which UsageTrackingChatClient reads via doOnComplete.
+        // setStreamOptions is on OpenAiChatOptions directly, not on its builder.
+        options.streamOptions = OpenAiApi.ChatCompletionRequest.StreamOptions.INCLUDE_USAGE
 
         return OpenAiChatModel(
             api,
