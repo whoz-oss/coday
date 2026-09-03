@@ -1,3 +1,35 @@
+## 0.249.19 (2026-09-03)
+
+### 🩹 Fixes
+
+- **release:** restore minor bump for feat commits after nx 23 migration ([ec697413](https://github.com/whoz-oss/coday/commit/ec697413))
+- **release:** restore minor bump for feat commits after nx 23 migration ([#1279](https://github.com/whoz-oss/coday/pull/1279), [#1278](https://github.com/whoz-oss/coday/issues/1278))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.18 (2026-09-03)
+
+### 🩹 Fixes
+
+- authSettingName missing from IntegrationConfig YAML export and filesystem load ([#1267](https://github.com/whoz-oss/coday/pull/1267))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.17 (2026-09-02)
+
+### 🚀 Features
+
+- wz-30464: fix agentos-ui for prompt translations ([#1276](https://github.com/whoz-oss/coday/pull/1276))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.249.16 (2026-09-02)
 
 ### 🚀 Features

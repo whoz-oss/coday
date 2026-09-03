@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agentConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.springframework.beans.factory.annotation.Qualifier
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agent.ResolvedAgentDefinition
 import io.whozoss.agentos.entity.EntityCrudDelegate
@@ -39,7 +40,7 @@ class AgentConfigController(
     private val agentService: AgentService,
     private val userService: UserService,
     permissionService: PermissionService,
-    private val yamlExportMapper: ObjectMapper,
+    @Qualifier("yamlExportMapper") private val yamlExportMapper: ObjectMapper,
 ) : AgentConfigApi {
     private val crud =
         EntityCrudDelegate(
