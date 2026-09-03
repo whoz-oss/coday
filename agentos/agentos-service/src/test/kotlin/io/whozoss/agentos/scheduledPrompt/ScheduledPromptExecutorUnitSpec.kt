@@ -734,6 +734,132 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
         }
 
+        // -------------------------------------------------------------------------
+        // Phase B — error handling in processUserRun
+        // -------------------------------------------------------------------------
+
+        "processUserRun: resolveContext throws (findById returns null for run) → markFailed called" {
+            // runRepository.findById returns null → resolveContext throws IllegalStateException
+            // → catch block in processUserRun calls markFailed → userRunRepository.markTerminal FAILED
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            // runRepository that throws on findById
+            val throwingRunRepo = mockk<ScheduledPromptRunRepository>().also {
+                every { it.findById(run.id) } throws RuntimeException("DB unavailable")
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = throwingRunRepo,
+                userRunRepo = userRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+            ).processUserRun(userRun)
+
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.FAILED
+        }
+
+        "processUserRun: markFailed fails (DB down) → exception swallowed, no rethrow" {
+            // Both resolveContext (findById) and markTerminal throw → processUserRun must not propagate
+            val sp = makeScheduledPrompt()
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(UUID.randomUUID(), agentId, namespaceId)
+            }
+            // Claim a userRun from the in-memory repo so we have a valid id
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            // runRepository throws → resolveContext throws → catch block → markFailed called
+            val throwingRunRepo = mockk<ScheduledPromptRunRepository>().also {
+                every { it.findById(any()) } throws RuntimeException("DB unavailable")
+            }
+            // userRunRepository also throws on markTerminal → markFailed swallows the error
+            val throwingUserRunRepo = mockk<ScheduledPromptUserRunRepository>().also {
+                every { it.markTerminal(any(), any(), any(), any()) } throws RuntimeException("DB also down")
+            }
+
+            // Must not throw — the exception in markFailed is swallowed by runCatching in markFailed
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = throwingRunRepo,
+                userRunRepo = throwingUserRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+            ).processUserRun(userRun)
+            // No assertion needed — the test passes if no exception is thrown
+        }
+
+        "processUserRun: markTerminal fails after successful case creation → UserRun stays RUNNING (at-least-once)" {
+            // resolveContext and createAndInjectCase succeed, but markTerminal (called from closeUserRun)
+            // throws — the UserRun stays RUNNING (lease expires and is reclaimed: at-least-once delivery)
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val realRunRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                // No active runtime → closeUserRun is called with findById result
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            // Wrap userRunRepo to make markTerminal throw on the first call (from closeUserRun)
+            // but still track the actual state so we can verify the UserRun stays RUNNING
+            val throwingOnMarkTerminalRepo = object : ScheduledPromptUserRunRepository by userRunRepo {
+                override fun markTerminal(
+                    id: UUID,
+                    status: UserRunStatus,
+                    now: Instant,
+                    error: String?,
+                ): ScheduledPromptUserRun {
+                    throw RuntimeException("DB write failed")
+                }
+            }
+
+            // processUserRun catches the exception from closeUserRun → calls markFailed
+            // but markFailed also uses the same repo (throwingOnMarkTerminalRepo) → also throws
+            // → runCatching in markFailed swallows it → no rethrow from processUserRun
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = realRunRepo,
+                userRunRepo = throwingOnMarkTerminalRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            // The original in-memory repo still shows the UserRun as RUNNING (markTerminal was never persisted)
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.RUNNING
+        }
+
         "Phase B: agent config not found marks UserRun FAILED" {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)

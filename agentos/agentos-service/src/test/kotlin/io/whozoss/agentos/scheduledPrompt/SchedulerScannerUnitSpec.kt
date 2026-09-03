@@ -8,6 +8,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.CaseService
@@ -1017,6 +1018,58 @@ class SchedulerScannerUnitSpec : StringSpec() {
             }
             scanner(scheduledPromptRepo, runRepo).tickClaim()
             scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // Watchdog
+        // -------------------------------------------------------------------------
+
+        "tickWatchdog: executor running → no restart" {
+            // Build a scanner with a mocked executor that reports isRunning() = true
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            val mockExecutor = mockk<ScheduledPromptExecutor>(relaxed = true).also {
+                every { it.isRunning() } returns true
+            }
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = properties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = mockExecutor,
+            )
+
+            sc.tickWatchdog()
+
+            verify(exactly = 0) { mockExecutor.restart() }
+        }
+
+        "tickWatchdog: executor dead → restart called" {
+            // Build a scanner with a mocked executor that reports isRunning() = false
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            val mockExecutor = mockk<ScheduledPromptExecutor>(relaxed = true).also {
+                every { it.isRunning() } returns false
+            }
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = properties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = mockExecutor,
+            )
+
+            sc.tickWatchdog()
+
+            verify(exactly = 1) { mockExecutor.restart() }
         }
     }
 }
