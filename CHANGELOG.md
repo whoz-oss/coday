@@ -1,3 +1,15 @@
+## 0.249.19 (2026-09-03)
+
+### 🩹 Fixes
+
+- **release:** restore minor bump for feat commits after nx 23 migration ([ec697413](https://github.com/whoz-oss/coday/commit/ec697413))
+- **release:** restore minor bump for feat commits after nx 23 migration ([#1279](https://github.com/whoz-oss/coday/pull/1279), [#1278](https://github.com/whoz-oss/coday/issues/1278))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.249.18 (2026-09-03)
 
 ### 🩹 Fixes
