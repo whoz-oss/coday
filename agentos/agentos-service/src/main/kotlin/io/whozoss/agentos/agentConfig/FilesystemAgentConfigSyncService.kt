@@ -63,7 +63,7 @@ class FilesystemAgentConfigSyncService(
             .filter { it.name.lowercase() !in liveNames }
             .forEach { stale ->
                 logger.info {
-                    "[FilesystemAgentConfigSyncService] Soft-deleting stale file-origin agent "
+                    "[FilesystemAgentConfigSyncService] Soft-deleting stale file-origin agent " +
                         "'${stale.name}' (${stale.metadata.id}) from namespace $namespaceId"
                 }
                 neo4jRepository.delete(stale.metadata.id)
@@ -72,6 +72,13 @@ class FilesystemAgentConfigSyncService(
         // --- Upsert live filesystem agents ---
         // Skip agents whose deterministic id already belongs to an API-managed node
         // (fileOrigin = false) — the collision rule preserves the API-managed agent.
+        //
+        // existingFileOriginNodes is also used to carry the SDN @Version of already-persisted
+        // file-origin nodes into the upsert. Without the version, SDN treats version=null as a
+        // new entity and attempts an INSERT, which fails with OptimisticLockingFailureException
+        // on the second sync (after the cache TTL expires) when the node already exists in Neo4j.
+        val existingFileOriginById = existingFileOriginNodes.associateBy { it.metadata.id }
+
         val liveIds = liveAgents.map { it.metadata.id }.toSet()
         val existingApiManagedIds =
             neo4jRepository
@@ -83,10 +90,15 @@ class FilesystemAgentConfigSyncService(
         liveAgents
             .filter { it.metadata.id !in existingApiManagedIds }
             .forEach { agent ->
-                val toSave = agent.copy(namespaceId = namespaceId)
+                // Preserve the persisted version so SDN performs an UPDATE rather than an INSERT.
+                val existingVersion = existingFileOriginById[agent.metadata.id]?.metadata?.version
+                val toSave = agent.copy(
+                    namespaceId = namespaceId,
+                    metadata = agent.metadata.copy(version = existingVersion),
+                )
                 neo4jRepository.save(toSave)
                 logger.debug {
-                    "[FilesystemAgentConfigSyncService] Upserted file-origin agent "
+                    "[FilesystemAgentConfigSyncService] Upserted file-origin agent " +
                         "'${agent.name}' (${agent.metadata.id}) into namespace $namespaceId"
                 }
             }
