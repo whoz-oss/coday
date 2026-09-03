@@ -37,11 +37,11 @@ import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
 import io.whozoss.agentos.namespace.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
+import io.whozoss.agentos.permissions.FavoriteRepository
+import io.whozoss.agentos.permissions.Neo4jFavoriteRepository
 import io.whozoss.agentos.permissions.Neo4jPermissionRepository
-import io.whozoss.agentos.permissions.Neo4jStarredRepository
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRepository
-import io.whozoss.agentos.permissions.StarredRepository
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.prompt.FilesystemPromptRepository
 import io.whozoss.agentos.prompt.Neo4jPromptRepository
@@ -64,6 +64,7 @@ import io.whozoss.agentos.userGroup.UserGroupNodeNeo4jRepository
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -184,9 +185,9 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
-    fun neo4jStarredRepository(caseNodeNeo4jRepository: CaseNodeNeo4jRepository): StarredRepository {
-        logger.info { "[Persistence] Neo4jStarredRepository active" }
-        return Neo4jStarredRepository(caseNodeNeo4jRepository)
+    fun neo4jFavoriteRepository(caseNodeNeo4jRepository: CaseNodeNeo4jRepository): FavoriteRepository {
+        logger.info { "[Persistence] Neo4jFavoriteRepository active" }
+        return Neo4jFavoriteRepository(caseNodeNeo4jRepository)
     }
 
     /**
@@ -203,9 +204,8 @@ class Neo4jPersistenceConfiguration {
         integrationConfigNodeNeo4jRepository: IntegrationConfigNodeNeo4jRepository,
         objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
-    ): Neo4jIntegrationConfigRepository {
-        return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
-    }
+    ): Neo4jIntegrationConfigRepository =
+        Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
 
     @Bean
     @Primary
@@ -337,6 +337,41 @@ class Neo4jPersistenceConfiguration {
         logger.info { "[Persistence] Neo4jScheduledPromptUserRunRepository active" }
         return Neo4jScheduledPromptUserRunRepository(scheduledPromptUserRunNodeNeo4jRepository)
     }
+
+    /**
+     * One-time migration: converts legacy `[:STARRED]` plain edges to
+     * `[:WATCHES]` relationship-with-properties edges.
+     *
+     * Sets `favorite = true` on the new edge (the original edge carried no properties).
+     * The migration is idempotent: `MERGE` on `[:WATCHES]` ensures that if the edge
+     * already exists (from a previous partial migration), only `favorite` is SET —
+     * `readAt` is left untouched.
+     * The legacy `[:STARRED]` edge is deleted after the merge.
+     *
+     * Runs once at startup and is a no-op when no `[:STARRED]` edges remain.
+     */
+    @Bean
+    fun migrateStarredEdges(neo4jClient: Neo4jClient): CommandLineRunner =
+        CommandLineRunner {
+            val result =
+                neo4jClient
+                    .query(
+                        """
+                        MATCH (u:User)-[s:STARRED]->(c:Case)
+                        MERGE (u)-[state:WATCHES]->(c)
+                        SET state.favorite = true
+                        DELETE s
+                        RETURN count(s) AS migrated
+                        """.trimIndent(),
+                    ).fetch()
+                    .one()
+            val count = result.map { it["migrated"] as Long }.orElse(0L) ?: 0L
+            if (count > 0L) {
+                logger.info { "[Migration] Converted $count [:STARRED] edges to [:WATCHES]" }
+            } else {
+                logger.debug { "[Migration] No legacy [:STARRED] edges found — nothing to migrate" }
+            }
+        }
 
     companion object : KLogging()
 }
