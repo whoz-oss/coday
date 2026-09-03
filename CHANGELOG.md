@@ -1,3 +1,13 @@
+## 0.249.18 (2026-09-03)
+
+### 🩹 Fixes
+
+- authSettingName missing from IntegrationConfig YAML export and filesystem load ([#1267](https://github.com/whoz-oss/coday/pull/1267))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.249.17 (2026-09-02)
 
 ### 🚀 Features
