@@ -321,6 +321,10 @@ class ScheduledPromptExecutor(
      * full [SmartLifecycle] loop.
      */
     internal suspend fun processUserRun(userRun: ScheduledPromptUserRun) {
+        // At-least-once delivery: if markTerminal() fails (DB unavailable), the UserRun stays
+        // RUNNING until its lease expires and is reclaimed — potentially creating a second Case
+        // for the same user. A future improvement would store the userRunId on the Case and
+        // check for an existing Case before creating one, making execution effectively-once.
         try {
             val context = resolveContext(userRun)
             val caseId = createAndInjectCase(userRun, context)
