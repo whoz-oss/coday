@@ -167,6 +167,22 @@ abstract class AbstractCasePersistenceSpec : StringSpec() {
             descendants.map { it.id } shouldBe listOf(child.id)
         }
 
+        "scheduledPromptId round-trips through toDomain/fromDomain" {
+            val ns = namespaceRepo.save(namespace())
+            val spId = UUID.randomUUID()
+            val saved = repo.save(case(ns.id).copy(scheduledPromptId = spId))
+            val found = repo.findByIds(listOf(saved.id))
+            found shouldHaveSize 1
+            found.first().scheduledPromptId shouldBe spId
+        }
+
+        "scheduledPromptId is null when not set" {
+            val ns = namespaceRepo.save(namespace())
+            val saved = repo.save(case(ns.id))
+            val found = repo.findByIds(listOf(saved.id))
+            found.first().scheduledPromptId shouldBe null
+        }
+
         "deleteByParent removes all cases in namespace without touching others" {
             val ns1 = namespaceRepo.save(namespace())
             val ns2 = namespaceRepo.save(namespace())

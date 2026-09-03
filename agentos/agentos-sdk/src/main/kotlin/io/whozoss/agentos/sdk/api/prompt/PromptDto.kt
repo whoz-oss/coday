@@ -15,10 +15,10 @@ import java.util.UUID
  * [namespaceId] is null for platform-level prompts and non-null for namespace-scoped prompts.
  *
  * On POST, scope is inferred from [namespaceId] and [userId]:
- * - (null, null)  → platform (Super Admin only)
- * - (ns, null)    → namespace-scoped (WRITE on namespace)
- * - (null, me)    → user-global (authenticated)
- * - (ns, me)      → user × namespace (READ on namespace)
+ * - (null, null)  -> platform (Super Admin only)
+ * - (ns, null)    -> namespace-scoped (WRITE on namespace)
+ * - (null, me)    -> user-global (authenticated)
+ * - (ns, me)      -> user x namespace (READ on namespace)
  *
  * On PUT, [namespaceId], [userId] and [agentConfigId] are immutable
  * (preserved from the persisted entity).
@@ -29,6 +29,17 @@ import java.util.UUID
  * [externalMetadata] is an opaque map persisted as-is by AgentOS.
  * External consumers (Copilot, Studio) store their own metadata here
  * (label, triggers, sections, etc.).
+ *
+ * [title] is the optional user-facing display label (e.g. starter button text).
+ * Distinct from [content], which is the message sent to the LLM.
+ * Null when no explicit title has been set.
+ *
+ * [sourceLanguage] is the BCP-47 language code of [content] and [title] as authored.
+ * Defaults to `"en"`. Used by the translation endpoint to skip an LLM call
+ * when the requested language matches the source.
+ *
+ * Translations of [title] and [content] are not exposed on this DTO. Use
+ * `POST /api/prompts/{id}/translations/{languageCode}` to retrieve translated text.
  *
  * [createdBy], [createdOn], [updatedBy], [updatedOn] are read-only audit fields
  * present in GET responses; ignored on write.
@@ -50,6 +61,18 @@ data class PromptDto(
     val content: List<String>,
     @field:Valid val parameters: List<PromptParameterDto> = emptyList(),
     val externalMetadata: Map<String, Any?>? = null,
+    @field:Schema(
+        description = "Optional user-facing display label (e.g. starter button text). " +
+            "Distinct from content, which is the message sent to the LLM. " +
+            "Null when no explicit title has been set.",
+        nullable = true,
+    )
+    val title: String? = null,
+    @field:Schema(
+        description = "BCP-47 language code of the authored content and title. Defaults to 'en'.",
+        example = "en",
+    )
+    val sourceLanguage: String = "en",
     val createdBy: String? = null,
     val createdOn: Instant? = null,
     val updatedBy: String? = null,
