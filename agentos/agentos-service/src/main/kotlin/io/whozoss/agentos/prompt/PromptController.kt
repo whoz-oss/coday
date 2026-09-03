@@ -2,6 +2,7 @@ package io.whozoss.agentos.prompt
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Operation
+import org.springframework.beans.factory.annotation.Qualifier
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.entity.GetByIdsRequest
@@ -84,7 +85,7 @@ class PromptController(
     private val permissionService: PermissionService,
     private val overlayScopeAuthorizer: OverlayScopeAuthorizer,
     private val externalIdentifierResolver: ExternalIdentifierResolver,
-    private val yamlExportMapper: ObjectMapper,
+    @Qualifier("yamlExportMapper") private val yamlExportMapper: ObjectMapper,
 ) : PromptApi {
     private val crud =
         EntityCrudDelegate(
