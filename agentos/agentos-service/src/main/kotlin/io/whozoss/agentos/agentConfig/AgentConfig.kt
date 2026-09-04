@@ -58,13 +58,13 @@ data class AgentConfig(
      * [ToolPlugin.integrationType] for config-less plugins).
      * Map value = allowed tool names, or null for all tools of that integration.
      *
-     * Reserved keys `CASE_FILE_EXCHANGE` / `NAMESPACE_FILE_EXCHANGE`
+     * Reserved keys `CASE_FILE_EXCHANGE` and `NAMESPACE_FILE_EXCHANGE`
      * (see [io.whozoss.agentos.exchange.ExchangeIntegrationTypes]) enable the built-in
      * file-exchange integrations: they have no [IntegrationConfig] instance and are resolved by
      * `AgentServiceImpl.buildExchangeTools` rather than the normal plugin path. For those two keys
      * only, an **empty list is an explicit opt-out** rather than an empty allow-list, and an
      * **absent key does not mean "never granted"**: the platform defaults
-     * `agentos.exchange.tools.case-enabled-by-default` /
+     * `agentos.exchange.tools.case-enabled-by-default` and
      * `...namespace-enabled-by-default` (off by default) decide for an agent that stays silent.
      * The namespace key is further gated at run time: whatever this map says, the scope is only
      * granted when the invoking user holds Namespace READ.
@@ -109,7 +109,7 @@ data class AgentConfig(
      *
      * Three path patterns are supported (resolved relative to the namespace configPath):
      * - explicit file path: single file, content injected verbatim
-     * - path ending with slash: directory listing (first-level only, no content)
+     * - path ending with a slash: directory listing (first-level only, no content)
      * - path ending with slash-star: all readable files in the directory, content injected
      *
      * Only applicable for filesystem-backed agents (namespace with a configPath).
@@ -119,74 +119,15 @@ data class AgentConfig(
     /**
      * Selectors controlling which namespace skills are advertised to this agent.
      *
-     * Skills are `SKILL.md` files discovered by [io.whozoss.agentos.skill.SkillResolver] in the
-     * `skills` directory of the namespace configPath, each carrying a YAML frontmatter `name` and
-     * `description`. Only the catalog (name, description, path) is injected into the agent's
-     * instructions; skill bodies and adjacent resources are read on demand through the agent's
-     * file tools.
+     * - null or empty list: no skills
+     * - a single star entry: all discovered skills
+     * - other entries: union of matched skills (folder prefix such as core followed by
+     *   slash-star-star, exact path, or skill name)
      *
-     * Operator-visible behaviour:
-     * - The `name` and `description` values injected into the prompt are whitespace-collapsed
-     *   (runs of whitespace including newlines become a single space) and truncated to 120 and
-     *   500 characters respectively, with an ellipsis appended when truncated. YAML folded
-     *   scalars are resolved by the YAML parser before collapsing, so `description: >` still
-     *   works correctly.
-     * - Discovery walks at most 10 directory levels below the `skills` root and collects at most
-     *   500 `SKILL.md` files per namespace; files exceeding 256 KiB are skipped with a WARN.
-     * - The discovered catalog is cached per namespace for 60 seconds. Skill authors see edits
-     *   reflected within a minute; steady-state agent traffic pays one filesystem walk per
-     *   namespace per minute.
-     *
-     * Tri-state, inverse of [integrations]:
-     * - null: all discovered skills are advertised (default)
-     * - empty list: explicit opt-out, no skills block is produced
-     * - non-empty list: union of everything the listed selectors match
-     *
-     * Default-on and upgrade semantics: a null `skillSelectors` means all discovered skills are
-     * advertised. Because `skillSelectorsJson` is a newly added nullable Neo4j property, every
-     * already-persisted agent in a namespace that has a `skills/` directory will start receiving
-     * a skills block as soon as this feature is deployed — a default-on upgrade behaviour. This is
-     * deliberate: it follows the Claude-compatible skill convention where discovery is opt-out
-     * rather than opt-in, and the agent is expected to use the description to decide relevance.
-     * This is knowingly the inverse of the exchange-tool defaults documented on
-     * [io.whozoss.agentos.agent.AgentServiceImpl.buildExchangeTools], which are both off by default
-     * precisely so an upgrade changes no agent's tool set. The two mechanisms make opposite choices
-     * for defensible, domain-specific reasons; this comment exists so a future reader sees a
-     * decision rather than an inconsistency.
-     *
-     * Trust boundary: injecting skill `name` and `description` verbatim into agent instructions
-     * does not introduce a new privilege boundary. Anyone with write access to
-     * `<configPath>/skills/` already holds write access to the agent YAML files under
-     * `<configPath>/agents/`, which carry the raw `instructions` field loaded by
-     * [io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository]. Authoring a skill
-     * frontmatter is therefore a strictly weaker capability than what that same actor already
-     * possesses: both are administrator-level namespace configuration. If `skills/` write access
-     * were ever granted to a broader role than `agents/` write access, that would become a genuine
-     * prompt-injection vector, so the two directories must be kept at the same privilege level.
-     *
-     * Selector forms, matched case-insensitively against slash-normalized paths:
-     * - a lone star (`*`): every discovered skill
-     * - a folder path suffixed with slash-star or slash-double-star: recursive prefix match on the
-     *   path relative to the skills root; both suffixes behave identically. Example: `core`
-     *   followed by slash-double-star matches `core/branch-creation`. A bare `core` carrying
-     *   neither suffix is an exact match against the skill's directory path, not a prefix — it
-     *   will NOT match `core/branch-creation`.
-     *   (Both suffixes are spelled out in prose here rather than written literally: a slash
-     *   immediately followed by a star opens a nested block comment inside KDoc, which Kotlin
-     *   requires to be closed. The `docs` property KDoc above uses the same wording for the same
-     *   reason.)
-     * - the path relative to the skills root, with or without a trailing `SKILL.md` segment
-     *   (`product/spec-writing`, `product/spec-writing/SKILL.md`)
-     * - the path relative to the project root (`coday/skills/product/spec-writing/SKILL.md`)
-     * - the skill's frontmatter name (`spec-writing`)
-     *
-     * Selectors are additive and deduplicated: overlapping selectors never duplicate a skill and the
-     * result keeps discovery order (path-sorted), not selector order. A selector matching nothing is
-     * logged as a warning and ignored, never an error, so a typo narrows the catalog silently rather
-     * than failing agent resolution.
+     * Skills are SKILL.md files under `configPath/skills/`. Only name and description
+     * are injected into the agent catalog; bodies are read on demand via the readSkill tool.
      *
      * Only applicable for filesystem-backed agents (namespace with a configPath).
-     * Silently ignored when configPath is absent.
      */
     val skillSelectors: List<String>? = null,
 ) : Entity {

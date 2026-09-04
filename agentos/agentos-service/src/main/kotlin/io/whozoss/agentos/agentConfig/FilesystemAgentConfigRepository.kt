@@ -201,14 +201,11 @@ class FilesystemAgentConfigRepository(
                             .normalize()
                             .toString() + suffix
                     }?.takeIf { it.isNotEmpty() },
-            // An explicit empty list (`skillSelectors: []`) is a deliberate opt-out and must be
-            // preserved as-is — never collapsed to null via takeIf { it.isNotEmpty() }. This is
-            // intentionally asymmetric with `subAgents` directly above, which does collapse to null
-            // because an empty subAgents list has no opt-out semantics in the delegation model.
             skillSelectors =
                 model.skillSelectors
                     ?.filter { it.isNotBlank() }
-                    ?.map { it.trim() },
+                    ?.map { it.trim() }
+                    ?.takeIf { it.isNotEmpty() },
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,
         )

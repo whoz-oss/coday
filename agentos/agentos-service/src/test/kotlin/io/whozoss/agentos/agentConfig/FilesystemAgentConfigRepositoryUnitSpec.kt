@@ -429,6 +429,67 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             result.subAgents shouldBe null
         }
 
+        // -------------------------------------------------------------------------
+        // skillSelectors field
+        // -------------------------------------------------------------------------
+
+        "findByParent maps skillSelectors list from YAML" {
+            val root = tempDir()
+            writeYaml(
+                agentsDir(root),
+                "dev.yaml",
+                """
+                name: Dev
+                skillSelectors:
+                  - core/**
+                  - product/**
+                """.trimIndent(),
+            )
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
+
+            result.skillSelectors shouldBe listOf("core/**", "product/**")
+        }
+
+        "findByParent sets skillSelectors to null when YAML has no skillSelectors field" {
+            val root = tempDir()
+            writeYaml(agentsDir(root), "simple.yaml", agentYaml("Simple Agent"))
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
+
+            result.skillSelectors shouldBe null
+        }
+
+        "findByParent sets skillSelectors to null when all entries are blank (same as subAgents)" {
+            val root = tempDir()
+            writeYaml(
+                agentsDir(root),
+                "dev.yaml",
+                """
+                name: Dev
+                skillSelectors:
+                  - ""
+                  - "   "
+                """.trimIndent(),
+            )
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
+
+            result.skillSelectors shouldBe null
+        }
+
         "findByParent sets integrations to null when YAML has no integrations field" {
             val root = tempDir()
             writeYaml(agentsDir(root), "simple.yaml", agentYaml("Simple Agent"))

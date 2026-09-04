@@ -67,9 +67,9 @@ data class AgentConfigDto(
                 minLength = 1,
                 implementation = String::class,
                 description =
-                    "Selectors controlling which filesystem skills are injected into the agent's instructions. " +
-                        "When null, all discovered skills are included. When empty list [], no skills are included. " +
-                        "Supports exact path/name, folder prefixes ('core/**'), or wildcard '*'.",
+                    "Selectors controlling which skills are advertised to this agent. " +
+                        "Null or empty means no skills. Use ['*'] for all, 'core/**' for a folder prefix, " +
+                        "or a skill name / path for exact matching.",
             ),
     )
     val skillSelectors: List<String>? = null,
