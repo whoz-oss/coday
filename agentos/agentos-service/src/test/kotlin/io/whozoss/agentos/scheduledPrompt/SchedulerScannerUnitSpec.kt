@@ -71,6 +71,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
         scheduledPromptRepo: InMemoryScheduledPromptRepository,
         runRepo: InMemoryScheduledPromptRunRepository,
         agentConfigService: AgentConfigService = defaultAgentConfigService(),
+        properties: SchedulerProperties = this.properties,
     ): SchedulerScanner {
         val userRunRepo = InMemoryScheduledPromptUserRunRepository()
         runRepo.userRunRepository = userRunRepo
@@ -1016,6 +1017,43 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val sc = scanner(makeScheduledPromptRepo(), makeRunRepo())
             sc.pauseClaim()
             sc.isConsumePaused().shouldBeFalse()
+        }
+
+        // -------------------------------------------------------------------------
+        // Execution window guard — tickClaim
+        // Fixed clock: 2026-01-01T09:00:00Z = Thursday 09:00 UTC
+        // -------------------------------------------------------------------------
+
+        "tickClaim outside execution window: no runs created" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T08:00:00Z"))
+            // Thursday 09:00 is outside THURSDAY 22:00 → FRIDAY 05:00
+            val sc = scanner(scheduledPromptRepo, runRepo,
+                properties = SchedulerProperties(windows = "THURSDAY 22:00,FRIDAY 05:00"))
+            sc.tickClaim()
+            runRepo.all().shouldBeEmpty()
+        }
+
+        "tickClaim inside execution window: runs created normally" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T08:00:00Z"))
+            // Thursday 09:00 is inside THURSDAY 08:00 → FRIDAY 05:00
+            val sc = scanner(scheduledPromptRepo, runRepo,
+                properties = SchedulerProperties(windows = "THURSDAY 08:00,FRIDAY 05:00"))
+            sc.tickClaim()
+            runRepo.all() shouldHaveSize 1
+        }
+
+        "tickClaim with invalid window config: runs created (fail-open)" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T08:00:00Z"))
+            val sc = scanner(scheduledPromptRepo, runRepo,
+                properties = SchedulerProperties(windows = "BADDAY 22:00,FRIDAY 05:00"))
+            sc.tickClaim()
+            runRepo.all() shouldHaveSize 1
         }
 
         "SchedulerScanner startup: does not throw when leaseMinutes * 60 > launchTimeoutSeconds" {
