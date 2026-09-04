@@ -85,7 +85,8 @@
       "git": {
         "commit": false,
         "tag": false
-      }
+      },
+        "adjustSemverBumpsForZeroMajorVersion": false
     },
     "releaseTag": {
       "pattern": "release/{version}"

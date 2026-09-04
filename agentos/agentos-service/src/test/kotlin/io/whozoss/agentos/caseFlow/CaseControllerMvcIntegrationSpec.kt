@@ -77,6 +77,21 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$.title").value("hello"))
         }
 
+        "POST /api/cases response body contains scheduledPromptId=null for a user-created case" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-sp-null"),
+            )
+
+            mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            )
+                .andExpect(status().isCreated)
+                // scheduledPromptId is null for cases created directly by a user
+                .andExpect(jsonPath("$.scheduledPromptId").doesNotExist())
+        }
+
         "POST /api/cases without title still returns 201 (title optional)" {
             val ns = namespaceService.create(
                 Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-no-title"),

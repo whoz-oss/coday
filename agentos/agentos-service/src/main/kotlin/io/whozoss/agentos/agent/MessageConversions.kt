@@ -3,6 +3,7 @@ package io.whozoss.agentos.agent
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import org.springframework.web.util.HtmlUtils
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
@@ -92,6 +93,26 @@ internal fun toolImagesUserMessage(
         .text("[Attached: ${images.size} image(s) produced by tool $toolName, see tool result above]")
         .media(images.map { it.toSpringAiMedia() })
         .build()
+
+/**
+ * Render a [QuestionEvent] as the text of the [AssistantMessage] replayed to the LLM.
+ *
+ * The question is the agent's own voice, so it is rendered plain — no XML tagging, unlike
+ * the `<user>` / `<agent>` wrapping applied by [toSpringAiMessage] to foreign messages.
+ * Closed-choice options are appended so the resuming agent sees the exact set it offered.
+ *
+ * Shared by both runtimes ([AgentSimple.convertEventsToMessages] and
+ * [AgentAdvancedContext.convertEventsToMessages]) so the two cannot drift apart.
+ */
+internal fun QuestionEvent.toPromptText(): String =
+    buildString {
+        append(question)
+        val opts = options
+        if (!opts.isNullOrEmpty()) {
+            append("\nOptions: ")
+            append(opts.joinToString(", ") { "\"$it\"" })
+        }
+    }
 
 internal fun MessageEvent.toSpringAiMessage(currentAgentId: String): Message {
     val textContent =

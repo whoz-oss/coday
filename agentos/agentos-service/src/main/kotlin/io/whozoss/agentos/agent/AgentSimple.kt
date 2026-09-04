@@ -5,9 +5,11 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
@@ -302,31 +304,7 @@ class AgentSimple(
                     if (index == lastUserMessageIndex) {
                         event.sessionContextPromptText()?.let { messages.add(UserMessage(it)) }
                     }
-                    // If we have accumulated tool calls, create AssistantMessage with them
-                    if (toolCallsForCurrentMessage.isNotEmpty()) {
-                        messages.add(
-                            AssistantMessage
-                                .builder()
-                                .toolCalls(
-                                    toolCallsForCurrentMessage.toList(),
-                                ).build(),
-                        )
-
-                        // Every AssistantMessage with tool_calls MUST be followed by a
-                        // ToolResponseMessage for each tool_call_id — OpenAI returns 400
-                        // otherwise. Use the real response when available, or a placeholder.
-                        val toolResponseMessages =
-                            toolCallsForCurrentMessage.map { toolCall ->
-                                val response = toolResponses[toolCall.id()]
-                                val output = response?.let { toolResponseText(it) } ?: "[No response recorded]"
-                                ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
-                            }
-
-                        messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
-
-                        toolCallsForCurrentMessage.clear()
-                    }
-
+                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses)
                     messages.add(event.toSpringAiMessage(id.toString()))
                 }
 
@@ -346,37 +324,79 @@ class AgentSimple(
                     )
                 }
 
+                // QuestionEvent: the agent asked the user a question and terminated its run.
+                // Rendered as AssistantMessage (the agent's own voice). Any accumulated tool
+                // calls are flushed first so the message list stays well-formed (every
+                // AssistantMessage with tool_calls must be followed by a ToolResponseMessage).
+                is QuestionEvent -> {
+                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses)
+                    messages.add(AssistantMessage(event.toPromptText()))
+                }
+
+                // AnswerEvent: the user's reply to a QuestionEvent.
+                // Rendered as UserMessage, consistent with MessageEvent USER rendering.
+                // Tool calls are flushed first for the same well-formedness reason.
+                is AnswerEvent -> {
+                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses)
+                    messages.add(UserMessage(event.answer))
+                }
+
                 else -> {
                     // Ignore other event types for message conversion
                 }
             }
         }
 
-        // Handle any remaining tool calls at the end.
-        // Note: args are already normalised to "{}" in the accumulation loop above.
-        if (toolCallsForCurrentMessage.isNotEmpty()) {
-            messages.add(
-                AssistantMessage
-                    .builder()
-                    .toolCalls(
-                        toolCallsForCurrentMessage.toList(),
-                    ).build(),
-            )
-
-            // Every AssistantMessage with tool_calls MUST be followed by a
-            // ToolResponseMessage for each tool_call_id — OpenAI returns 400
-            // otherwise. Use the real response when available, or a placeholder.
-            val toolResponseMessages =
-                toolCallsForCurrentMessage.map { toolCall ->
-                    val response = toolResponses[toolCall.id()]
-                    val output = response?.let { toolResponseText(it) } ?: "[No response recorded]"
-                    ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
-                }
-
-            messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
-        }
+        // Flush any tool calls that trail the end of the event list without a following
+        // conversational message (e.g. the last thing the agent did was call a tool, then
+        // the run was interrupted). Args are already normalised in the accumulation loop above.
+        flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses)
 
         return messages
+    }
+
+    /**
+     * Flush accumulated tool calls into [messages] as a well-formed
+     * `AssistantMessage(tool_calls) + ToolResponseMessage` pair, then clear the accumulator.
+     *
+     * ## Why this invariant exists
+     *
+     * OpenAI (and Anthropic) require that every `AssistantMessage` carrying `tool_calls`
+     * is immediately followed by a `ToolResponseMessage` that covers **each** `tool_call_id`
+     * referenced in that assistant turn. Violating this constraint causes a hard HTTP 400
+     * from the provider. Because `convertEventsToMessages` accumulates tool calls across
+     * `ToolRequestEvent` entries and only materialises the `AssistantMessage` when a
+     * conversational boundary is reached (a `MessageEvent`, `QuestionEvent`, `AnswerEvent`,
+     * or the end of the list), this flush must be called at every such boundary — and only
+     * at those boundaries.
+     *
+     * When a response is missing (e.g. the run was interrupted mid-tool), a
+     * `[No response recorded]` placeholder is inserted so the message list remains
+     * syntactically valid even for incomplete histories.
+     *
+     * This function is a no-op when [pendingToolCalls] is empty.
+     */
+    private fun flushPendingToolCalls(
+        messages: MutableList<Message>,
+        pendingToolCalls: MutableList<AssistantMessage.ToolCall>,
+        toolResponses: Map<String, ToolResponseEvent>,
+    ) {
+        if (pendingToolCalls.isEmpty()) return
+
+        messages.add(
+            AssistantMessage
+                .builder()
+                .toolCalls(pendingToolCalls.toList())
+                .build(),
+        )
+        val toolResponseMessages =
+            pendingToolCalls.map { toolCall ->
+                val response = toolResponses[toolCall.id()]
+                val output = response?.let { toolResponseText(it) } ?: "[No response recorded]"
+                ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
+            }
+        messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
+        pendingToolCalls.clear()
     }
 
     /**
@@ -506,6 +526,7 @@ class AgentSimple(
                                 val message =
                                     when (e) {
                                         is AgentInterrupt.Redirect -> "Redirecting to agent '${e.targetAgentName}'."
+                                        is AgentInterrupt.AwaitAnswer -> "Waiting for the user's answer."
                                     }
                                 sendEvent(
                                     ToolResponseEvent(

@@ -692,6 +692,50 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // Phase B — scheduledPromptId propagation
+        // -------------------------------------------------------------------------
+
+        "Phase B: Case created by ScheduledPrompt carries scheduledPromptId set to the ScheduledPrompt id" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseSlot = slot<Case>()
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(capture(caseSlot)) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).consumeAvailable()
+
+            caseSlot.captured.scheduledPromptId shouldBe sp.id
+        }
+
+        // -------------------------------------------------------------------------
         // Phase B: prompt or agent not found — UserRun marked FAILED
         // -------------------------------------------------------------------------
 

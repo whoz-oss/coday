@@ -290,6 +290,7 @@ export class PromptFormComponent implements OnInit {
     const payload: Prompt = {
       ...(this.existingPrompt ?? {}),
       namespaceId: this.namespaceId,
+      sourceLanguage: this.existingPrompt?.sourceLanguage ?? 'en',
       name: this.nameControl.value.trim(),
       description: this.descriptionControl.value?.trim() || undefined,
       // No client-side blank filter: Validators.pattern(/\S/) already prevents submit

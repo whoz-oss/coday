@@ -52,7 +52,7 @@ class PromptControllerSpec : StringSpec({
     val externalIdentifierResolver = ExternalIdentifierResolver(namespaceService, userService)
     val overlayScopeAuthorizer = OverlayScopeAuthorizer(permissionService, userService, externalIdentifierResolver)
     val controller = PromptController(
-        service, namespaceService, userService, permissionService, overlayScopeAuthorizer, yamlExportMapper(),
+        service, namespaceService, userService, permissionService, overlayScopeAuthorizer, externalIdentifierResolver, yamlExportMapper(),
     )
 
     val namespaceId = UUID.randomUUID()

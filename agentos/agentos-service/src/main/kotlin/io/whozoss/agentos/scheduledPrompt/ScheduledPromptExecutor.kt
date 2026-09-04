@@ -319,6 +319,7 @@ class ScheduledPromptExecutor(
             // Inject resolved content with @mention — selectAgent resolves the agent,
             // PromptCommandParser sees no /command and passes text through unchanged.
             message = "@$agentName $promptContent",
+            scheduledPromptId = scheduledPrompt.id,
             sessionContext = sessionContext,
         )
     }
@@ -333,7 +334,13 @@ class ScheduledPromptExecutor(
      * a UNIQUE constraint on Case keyed by (runId, userId).
      */
     private fun createAndInjectCase(userRun: ScheduledPromptUserRun, context: UserRunContext): UUID {
-        val case = caseService.create(Case(namespaceId = context.namespaceId, title = context.caseTitle))
+        val case = caseService.create(
+            Case(
+                namespaceId = context.namespaceId,
+                title = context.caseTitle,
+                scheduledPromptId = context.scheduledPromptId,
+            ),
+        )
         permissionService.grantPermission(
             userRun.userId.toString(),
             EntityType.CASE,
@@ -371,6 +378,7 @@ class ScheduledPromptExecutor(
         val caseTitle: String,
         val actor: Actor,
         val message: String,
+        val scheduledPromptId: UUID,
         val sessionContext: Map<String, Any?>? = null,
     )
 

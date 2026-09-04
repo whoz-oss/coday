@@ -167,6 +167,7 @@ class FilesystemIntegrationConfigRepository(
             integrationType = integrationConfigYaml.integrationType,
             description = integrationConfigYaml.description,
             parameters = substituteConfigPath(integrationConfigYaml.parameters, configPath),
+            authSettingName = integrationConfigYaml.authSettingName,
         )
     }
 
@@ -202,4 +203,5 @@ private data class IntegrationConfigYamlModel(
     val integrationType: String = "",
     val description: String? = null,
     val parameters: JsonNode? = null,
+    val authSettingName: String? = null,
 )

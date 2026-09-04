@@ -142,7 +142,7 @@
         rows="4"
         [formControl]="control()"
         [attr.required]="required() || null"
-        placeholder="JSON"
+        [attr.placeholder]="fieldSchema()['x-ui-widget'] === 'textarea' ? null : 'JSON'"
       ></textarea>
     }
   }
