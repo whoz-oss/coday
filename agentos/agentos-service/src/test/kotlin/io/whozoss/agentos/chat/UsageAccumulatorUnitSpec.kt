@@ -58,6 +58,37 @@ class UsageAccumulatorUnitSpec : StringSpec({
         acc.total.inputTokens shouldBe 100L
     }
 
+    "record(LlmUsage.ZERO) on a fresh accumulator leaves hasData false" {
+        // Regression: record(ZERO) used to transition costRef from UNSET to null,
+        // making hasData return true even though no LLM call was ever made.
+        // The guard at the top of record() now short-circuits on all-zero entries.
+        val acc = UsageAccumulator()
+        acc.record(LlmUsage.ZERO)
+
+        acc.hasData shouldBe false
+    }
+
+    "record(LlmUsage.ZERO) multiple times leaves hasData false" {
+        val acc = UsageAccumulator()
+        acc.record(LlmUsage.ZERO)
+        acc.record(LlmUsage.ZERO)
+        acc.record(LlmUsage.ZERO)
+
+        acc.hasData shouldBe false
+        acc.total shouldBe LlmUsage.ZERO
+    }
+
+    "non-zero tokens with null cost (unpriced model) sets hasData true and contaminates cost" {
+        // LlmUsage with tokens but null cost must NOT be treated as ZERO.
+        // This covers providers like Gemini/Ollama where pricing is not configured.
+        val acc = UsageAccumulator()
+        acc.record(LlmUsage(inputTokens = 50, totalTokens = 50, estimatedCostUsd = null))
+
+        acc.hasData shouldBe true
+        acc.total.totalTokens shouldBe 50L
+        acc.total.estimatedCostUsd shouldBe null
+    }
+
     "null cost on the first entry: total cost is null" {
         // An unpriced model as the very first entry keeps cost null.
         val acc = UsageAccumulator()

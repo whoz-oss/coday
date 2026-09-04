@@ -6,6 +6,9 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.config.LimitsConfigProperties
+import io.whozoss.agentos.usage.UsageRecord
+import io.whozoss.agentos.usage.UsageOutcome
+import io.whozoss.agentos.usage.UsageRecordService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.delegation.SubCaseManager
@@ -65,6 +68,7 @@ class CaseServiceImpl(
     private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
     private val limitsConfig: LimitsConfigProperties,
+    private val usageRecordService: UsageRecordService,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -601,7 +605,11 @@ class CaseServiceImpl(
                 },
                 usageAccumulator = usageAccumulator,
             )
+        // agent is resolved before the try/finally so that if findAgentByName throws,
+        // the accumulator has no data (no LLM call was made) and the finally block writes
+        // nothing — rule 1 (hasData guard) covers this path naturally.
         val agent = agentService.findAgentByName(agentName, context, this)
+        var outcome = UsageOutcome.COMPLETED
 
         if (shouldEmitRunningEvent(events)) {
             val runningEvent =
@@ -619,35 +627,87 @@ class CaseServiceImpl(
             }
         }
 
-        agent
-            .run(events, shouldContinue)
-            .catch { error ->
-                logger.error(error) { "Error in agent $agentName for case $caseId" }
-                storeEvent(
-                    WarnEvent(
-                        namespaceId = runtime.namespaceId,
-                        caseId = caseId,
-                        message = "Agent $agentName error: ${error.message}",
-                    ),
-                ).also { saved ->
+        try {
+            agent
+                .run(events, shouldContinue)
+                .catch { error ->
+                    outcome = UsageOutcome.FAILED
+                    logger.error(error) { "Error in agent $agentName for case $caseId" }
+                    storeEvent(
+                        WarnEvent(
+                            namespaceId = runtime.namespaceId,
+                            caseId = caseId,
+                            message = "Agent $agentName error: ${error.message}",
+                        ),
+                    ).also { saved ->
+                        runtime.emitEvent(saved)
+                    }
+                    // Emit a synthetic AgentFinishedEvent so the runtime's processNextStep
+                    // sees a closed turn and exits the loop cleanly. Without this, the loop
+                    // would find the AgentRunningEvent still as the latest orchestration event
+                    // and call runAgent again indefinitely.
+                    val finishedEvent = storeEvent(
+                        AgentFinishedEvent(
+                            namespaceId = runtime.namespaceId,
+                            caseId = caseId,
+                            agentId = agent.id,
+                            agentName = agent.name,
+                        ),
+                    )
+                    runtime.pushEvents(listOf(finishedEvent))
+                    runtime.emitEvent(finishedEvent)
+                }.collect { event ->
+                    // Enrich AgentFinishedEvent with accumulated LLM usage before persisting.
+                    // The accumulator is populated by UsageTrackingChatClient as each LLM call
+                    // completes; by the time the agent emits AgentFinishedEvent, all calls for
+                    // this run are done and the total is stable.
+                    val enriched = if (event is AgentFinishedEvent && usageAccumulator.hasData) {
+                        event.copy(llmUsage = usageAccumulator.total)
+                    } else {
+                        event
+                    }
+                    val saved = storeEvent(enriched)
+                    if (enriched.caseId == caseId && enriched !is TransientCaseEvent) {
+                        runtime.pushEvents(listOf(saved))
+                    }
                     runtime.emitEvent(saved)
                 }
-            }.collect { event ->
-                // Enrich AgentFinishedEvent with accumulated LLM usage before persisting.
-                // The accumulator is populated by UsageTrackingChatClient as each LLM call
-                // completes; by the time the agent emits AgentFinishedEvent, all calls for
-                // this run are done and the total is stable.
-                val enriched = if (event is AgentFinishedEvent && usageAccumulator.hasData) {
-                    event.copy(llmUsage = usageAccumulator.total)
-                } else {
-                    event
-                }
-                val saved = storeEvent(enriched)
-                if (enriched.caseId == caseId && enriched !is TransientCaseEvent) {
-                    runtime.pushEvents(listOf(saved))
-                }
-                runtime.emitEvent(saved)
+            // If shouldContinue() is false at end of collect, the run was interrupted by a
+            // kill request — the flow drained without exception but the agent was cut short.
+            // This check runs only when outcome is still COMPLETED (exception path sets FAILED
+            // above and we must not overwrite it).
+            if (outcome == UsageOutcome.COMPLETED && !shouldContinue()) {
+                outcome = UsageOutcome.INTERRUPTED
             }
+        } catch (e: Exception) {
+            outcome = UsageOutcome.FAILED
+            throw e
+        } finally {
+            // Write an analytical UsageRecord only when the accumulator has data.
+            // A run with no LLM calls must not produce a zero-cost record.
+            // The write is wrapped in runCatching so that a Neo4j failure or constraint
+            // violation never propagates into the agent execution path — observability
+            // must not bring down the domain.
+            if (usageAccumulator.hasData) {
+                runCatching {
+                    usageRecordService.create(
+                        UsageRecord.fromLlmUsage(
+                            llmUsage = usageAccumulator.total,
+                            namespaceId = runtime.namespaceId,
+                            caseId = caseId,
+                            agentName = agent.name,
+                            outcome = outcome,
+                            userId = userId,
+                            agentConfigId = agent.id,
+                            providerName = agent.llmProvider,
+                            apiModelName = agent.llmModel,
+                        ),
+                    )
+                }.onFailure { e ->
+                    logger.error(e) { "[UsageRecord] Failed to write usage record for agent $agentName, case $caseId — run outcome unaffected" }
+                }
+            }
+        }
         logger.info { "Agent $agentName finished for case $caseId" }
     }
 

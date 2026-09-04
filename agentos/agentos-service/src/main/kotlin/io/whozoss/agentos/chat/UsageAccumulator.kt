@@ -53,8 +53,22 @@ class UsageAccumulator {
     /**
      * Merges [usage] into the running total.
      * Thread-safe: token counts via [AtomicLong.addAndGet], cost via CAS loop.
+     *
+     * A [LlmUsage.ZERO]-equivalent entry (all token counts zero, null cost) is silently
+     * ignored so that [hasData] stays false after a provider returns an empty usage block.
+     * This preserves the invariant: "no LLM call was made" ↔ `hasData == false`.
+     * A non-zero token count with null cost (e.g. Gemini/Ollama without pricing configured)
+     * is recorded normally and contaminates the cost total.
      */
     fun record(usage: LlmUsage) {
+        if (usage.totalTokens == 0L &&
+            usage.inputTokens == 0L &&
+            usage.outputTokens == 0L &&
+            usage.cacheReadTokens == 0L &&
+            usage.cacheWriteTokens == 0L &&
+            usage.estimatedCostUsd == null
+        ) return
+
         inputTokens.addAndGet(usage.inputTokens)
         outputTokens.addAndGet(usage.outputTokens)
         cacheReadTokens.addAndGet(usage.cacheReadTokens)
