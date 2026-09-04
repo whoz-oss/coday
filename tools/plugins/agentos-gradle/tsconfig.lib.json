@@ -2,8 +2,8 @@
   "compilerOptions": {
     "declaration": true,
     "outDir": "../../../dist/out-tsc",
-    "types": ["node"],
-    "rootDir": "src"
+    "rootDir": "src",
+    "types": ["node"]
   },
   "exclude": ["jest.config.ts", "jest.config.cts", "src/**/*.spec.ts", "src/**/*.test.ts"],
   "extends": "./tsconfig.json",
