@@ -11,19 +11,10 @@ import java.time.ZonedDateTime
  *
  * Uses fixed [ZonedDateTime] values — no Spring context, no Clock injection.
  *
- * Reference week (ISO 8601, Monday = day 1):
- *   MONDAY    = minuteOfWeek   0 – 1439
- *   TUESDAY   = minuteOfWeek 1440 – 2879
- *   WEDNESDAY = minuteOfWeek 2880 – 4319
- *   THURSDAY  = minuteOfWeek 4320 – 5759
- *   FRIDAY    = minuteOfWeek 5760 – 7199
- *   SATURDAY  = minuteOfWeek 7200 – 8639
- *   SUNDAY    = minuteOfWeek 8640 – 10079
- *
  * Business-hours config used in most tests:
  *   `MONDAY 22:00,FRIDAY 05:00,FRIDAY 22:00,MONDAY 05:00`
- *   Window 1: Mon 22:00 → Fri 05:00  (nightly Mon–Thu + early Fri)
- *   Window 2: Fri 22:00 → Mon 05:00  (continuous weekend)
+ *   Window 1: Mon 22:00 UTC → Fri 05:00 UTC  (continuous nightly Mon–Thu + early Fri)
+ *   Window 2: Fri 22:00 UTC → Mon 05:00 UTC  (continuous weekend)
  */
 class ExecutionWindowServiceSpec : StringSpec() {
 
@@ -247,10 +238,9 @@ class ExecutionWindowServiceSpec : StringSpec() {
         }
 
         "invalid config: two overlapping wrap-around windows — fail-open" {
-            // Both windows cross the Sunday→Monday boundary:
-            //   Window 1: SUNDAY 20:00 → MONDAY 02:00  (minuteOfWeek 8880 → 120)
-            //   Window 2: SUNDAY 22:00 → MONDAY 05:00  (minuteOfWeek 9000 → 300)
-            // Raw comparison (9000 > 120) passes the old check — this test guards the fix.
+            // Both windows cross the Sunday→Monday boundary and overlap:
+            //   Window 1: SUNDAY 20:00 → MONDAY 02:00
+            //   Window 2: SUNDAY 22:00 → MONDAY 05:00  (starts inside window 1)
             val svc = ExecutionWindowService("SUNDAY 20:00,MONDAY 02:00,SUNDAY 22:00,MONDAY 05:00")
             svc.isWithinWindow(at("SUNDAY", 23)).shouldBeTrue()  // fail-open
         }

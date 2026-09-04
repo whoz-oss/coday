@@ -48,16 +48,22 @@ import java.time.ZonedDateTime
 class ExecutionWindowService(windows: String?) {
 
     /**
-     * A parsed window boundary: minutes elapsed since Monday 00:00 UTC within the week.
+     * A parsed window boundary, retaining the original [day] and [time] for readability.
+     * [minuteOfWeek] is derived: minutes elapsed since Monday 00:00 UTC within the week.
      * Range: [0, 7×24×60) = [0, 10080).
      */
-    private data class WeeklyBoundary(val minuteOfWeek: Int)
+    private data class WeeklyBoundary(val day: DayOfWeek, val time: LocalTime) {
+        val minuteOfWeek: Int get() = (day.value - 1) * 24 * 60 + time.toSecondOfDay() / 60
+        override fun toString(): String = "$day ${time} UTC"
+    }
 
     /**
      * A validated open/close window pair, both expressed as [WeeklyBoundary].
      * A window where [close] < [open] wraps around the Sunday→Monday boundary.
      */
-    private data class Window(val open: WeeklyBoundary, val close: WeeklyBoundary)
+    private data class Window(val open: WeeklyBoundary, val close: WeeklyBoundary) {
+        override fun toString(): String = "[$open → $close]"
+    }
 
     /**
      * Parsed and validated windows.
@@ -105,17 +111,12 @@ class ExecutionWindowService(windows: String?) {
     }
 
     /**
-     * Converts a [ZonedDateTime] (any zone, reinterpreted as UTC) to minutes elapsed
-     * since Monday 00:00 UTC within the week.
-     *
-     * [DayOfWeek.getValue] returns 1 (Monday) … 7 (Sunday).
-     * Subtracting 1 gives 0-based day index (Monday = 0, Sunday = 6).
+     * Converts a [ZonedDateTime] (any zone) to minutes elapsed since Monday 00:00 UTC
+     * within the week.
      */
     private fun minuteOfWeek(now: ZonedDateTime): Int {
         val utc = now.withZoneSameInstant(ZoneOffset.UTC)
-        val dayOffset = (utc.dayOfWeek.value - 1) * MINUTES_PER_DAY
-        val timeOffset = utc.hour * 60 + utc.minute
-        return dayOffset + timeOffset
+        return WeeklyBoundary(utc.dayOfWeek, utc.toLocalTime()).minuteOfWeek
     }
 
     /**
@@ -140,29 +141,24 @@ class ExecutionWindowService(windows: String?) {
         }
 
         if (errors.isNotEmpty()) {
-            logger.error {
-                "[ExecutionWindowService] Invalid scheduler windows configuration — " +
-                    "scheduler will run continuously (fail-open). Errors: ${errors.joinToString("; ")}"
-            }
-            return null  // fail-open: null triggers always-open in isWithinWindow
+            logErrors(errors)
+            return null
         }
 
         // Pair into windows: (0,1), (2,3), …
         val windows = boundaries.chunked(2) { (open, close) -> Window(open, close) }
 
-        // Validate: within each window, close must differ from open
+        // Validate: within each window, open and close must differ
         windows.forEachIndexed { i, w ->
             if (w.open == w.close) {
                 errors += "window[$i]: open and close are identical (${entries[i * 2]})"
             }
         }
 
-        // Validate ordering: each open must be strictly after the previous close,
-        // and within a window the close must be strictly after the open (no wrap for ordering check).
-        // Wrap-around windows (close < open) are valid but must not overlap each other.
+        // Validate ordering: each open must be strictly after the previous close.
+        // Wrap-around windows (close < open) are valid but must not coexist (ambiguous overlap).
         for (i in windows.indices) {
             val w = windows[i]
-            // Check no zero-length window
             if (w.open.minuteOfWeek == w.close.minuteOfWeek) continue // already reported above
 
             if (i > 0) {
@@ -170,28 +166,21 @@ class ExecutionWindowService(windows: String?) {
                 val prevIsWrapAround = prev.close.minuteOfWeek < prev.open.minuteOfWeek
                 val currIsWrapAround = w.close.minuteOfWeek < w.open.minuteOfWeek
                 if (prevIsWrapAround && currIsWrapAround) {
-                    errors += "window[$i]: only one wrap-around window (crossing Sunday\u2192Monday) is allowed; " +
-                        "window[${i - 1}] and window[$i] both wrap around"
+                    errors += "window[$i]: only one wrap-around window (crossing Sunday→Monday) is allowed; " +
+                        "window[${i - 1}] ($prev) and window[$i] ($w) both wrap around"
                 } else if (w.open.minuteOfWeek <= prev.close.minuteOfWeek) {
-                    errors += "window[$i] open (${entries[i * 2]}) must be strictly after " +
-                        "window[${i - 1}] close (${entries[(i - 1) * 2 + 1]})"
+                    errors += "window[$i] open (${w.open}) must be strictly after window[${i - 1}] close (${prev.close})"
                 }
             }
         }
 
         if (errors.isNotEmpty()) {
-            logger.error {
-                "[ExecutionWindowService] Invalid scheduler windows configuration — " +
-                    "scheduler will run continuously (fail-open). Errors: ${errors.joinToString("; ")}"
-            }
-            return null  // fail-open: null triggers always-open in isWithinWindow
+            logErrors(errors)
+            return null
         }
 
         logger.info {
-            "[ExecutionWindowService] Execution windows configured: " +
-                windows.joinToString(", ") { w ->
-                    "[${minuteOfWeekToLabel(w.open.minuteOfWeek)} → ${minuteOfWeekToLabel(w.close.minuteOfWeek)}]"
-                }
+            "[ExecutionWindowService] Execution windows configured: ${windows.joinToString(", ")}"
         }
         return windows
     }
@@ -214,19 +203,15 @@ class ExecutionWindowService(windows: String?) {
             errors += "entry[$index] '$entry': invalid time '${parts[1]}' (expected HH:mm)"
             return null
         }
-        val minuteOfWeek = (day.value - 1) * MINUTES_PER_DAY + time.hour * 60 + time.minute
-        return WeeklyBoundary(minuteOfWeek)
+        return WeeklyBoundary(day, time)
     }
 
-    /** Human-readable label for a minuteOfWeek value, used in log messages. */
-    private fun minuteOfWeekToLabel(minuteOfWeek: Int): String {
-        val day = DayOfWeek.of(minuteOfWeek / MINUTES_PER_DAY + 1)
-        val hour = (minuteOfWeek % MINUTES_PER_DAY) / 60
-        val minute = minuteOfWeek % 60
-        return "$day %02d:%02d UTC".format(hour, minute)
+    private fun logErrors(errors: List<String>) {
+        logger.error {
+            "[ExecutionWindowService] Invalid scheduler windows configuration — " +
+                "scheduler will run continuously (fail-open). Errors: ${errors.joinToString("; ")}"
+        }
     }
 
-    companion object : KLogging() {
-        private val MINUTES_PER_DAY = Duration.ofDays(1).toMinutes().toInt()
-    }
+    companion object : KLogging()
 }
