@@ -58,13 +58,13 @@ data class AgentConfig(
      * [ToolPlugin.integrationType] for config-less plugins).
      * Map value = allowed tool names, or null for all tools of that integration.
      *
-     * Reserved keys `CASE_FILE_EXCHANGE` / `NAMESPACE_FILE_EXCHANGE`
+     * Reserved keys `CASE_FILE_EXCHANGE` and `NAMESPACE_FILE_EXCHANGE`
      * (see [io.whozoss.agentos.exchange.ExchangeIntegrationTypes]) enable the built-in
      * file-exchange integrations: they have no [IntegrationConfig] instance and are resolved by
      * `AgentServiceImpl.buildExchangeTools` rather than the normal plugin path. For those two keys
      * only, an **empty list is an explicit opt-out** rather than an empty allow-list, and an
      * **absent key does not mean "never granted"**: the platform defaults
-     * `agentos.exchange.tools.case-enabled-by-default` /
+     * `agentos.exchange.tools.case-enabled-by-default` and
      * `...namespace-enabled-by-default` (off by default) decide for an agent that stays silent.
      * The namespace key is further gated at run time: whatever this map says, the scope is only
      * granted when the invoking user holds Namespace READ.
@@ -109,13 +109,27 @@ data class AgentConfig(
      *
      * Three path patterns are supported (resolved relative to the namespace configPath):
      * - explicit file path: single file, content injected verbatim
-     * - path ending with slash: directory listing (first-level only, no content)
+     * - path ending with a slash: directory listing (first-level only, no content)
      * - path ending with slash-star: all readable files in the directory, content injected
      *
      * Only applicable for filesystem-backed agents (namespace with a configPath).
      * Silently ignored when configPath is absent.
      */
     val docs: List<String>? = null,
+    /**
+     * Selectors controlling which namespace skills are advertised to this agent.
+     *
+     * - null or empty list: no skills
+     * - a single star entry: all discovered skills
+     * - other entries: union of matched skills (folder prefix such as core followed by
+     *   slash-star-star, exact path, or skill name)
+     *
+     * Skills are SKILL.md files under `configPath/skills/`. Only name and description
+     * are injected into the agent catalog; bodies are read on demand via the readSkill tool.
+     *
+     * Only applicable for filesystem-backed agents (namespace with a configPath).
+     */
+    val skillSelectors: List<String>? = null,
 ) : Entity {
     /**
      * True when this [AgentConfig] was loaded from a filesystem YAML definition

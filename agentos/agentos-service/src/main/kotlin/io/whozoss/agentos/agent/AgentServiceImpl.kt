@@ -32,6 +32,10 @@ import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.skill.Skill
+import io.whozoss.agentos.skill.SkillCatalogRenderer
+import io.whozoss.agentos.skill.SkillService
+import io.whozoss.agentos.skill.SkillToolGrantService
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
@@ -71,6 +75,8 @@ class AgentServiceImpl(
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val exchangeToolGrantService: ExchangeToolGrantService,
     private val agentDocumentResolver: AgentDocumentResolver,
+    private val skillService: SkillService,
+    private val skillToolGrantService: SkillToolGrantService,
     private val agentConfigProperties: AgentConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
 ) : AgentService {
@@ -227,6 +233,11 @@ class AgentServiceImpl(
                 resolvedUser = resolvedUser,
                 effectiveIntegrationConfigs = effectiveIntegrationConfigs,
             )
+        val resolvedSkills =
+            skillService.findSkills(
+                namespaceId = context.namespaceId,
+                selectors = agentConfig.skillSelectors,
+            )
         val instructions =
             buildInstructions(
                 baseInstructions = agentConfig.instructions,
@@ -234,6 +245,7 @@ class AgentServiceImpl(
                 resolvedUser = resolvedUser,
                 effectiveIntegrationConfigs = effectiveIntegrationConfigs,
                 docs = agentConfig.docs,
+                resolvedSkills = resolvedSkills,
             )
         val toolContext =
             context.toToolContext(
@@ -339,6 +351,12 @@ class AgentServiceImpl(
             } else {
                 emptyList()
             }
+        val skillTools =
+            if (skillToolGrantService.isGranted(resolvedSkills)) {
+                skillToolGrantService.grantTools(resolvedSkills, toolContext)
+            } else {
+                emptyList()
+            }
         val tools =
             toolResolverService.dedupToolsByName(
                 baseTools +
@@ -352,7 +370,8 @@ class AgentServiceImpl(
                         },
                     ) +
                     buildExchangeTools(agentConfig, context, toolContext) +
-                    queryUserTools,
+                    queryUserTools +
+                    skillTools,
             )
 
         return ResolvedAgentDefinition(
@@ -552,7 +571,8 @@ class AgentServiceImpl(
 
     /**
      * Compose the agent's instructions from [baseInstructions] (the agent's own instructions
-     * from [AgentConfig]), an integrations block, and a user context block.
+     * from [AgentConfig]), an integrations block, a user context block, a docs block, and
+     * a skills block.
      *
      * The namespace context is intentionally NOT part of this — it is built separately
      * by [buildNamespaceSystemPrompt] and sent as a system prompt.
@@ -572,6 +592,7 @@ class AgentServiceImpl(
         resolvedUser: User?,
         effectiveIntegrationConfigs: List<IntegrationConfig>,
         docs: List<String>? = null,
+        resolvedSkills: List<Skill> = emptyList(),
     ): String {
         val integrationsBlock =
             when {
@@ -623,8 +644,9 @@ class AgentServiceImpl(
             }
 
         val docsBlock = agentDocumentResolver.buildDocsBlock(docs)
+        val skillsBlock = SkillCatalogRenderer.buildBlock(resolvedSkills)
 
-        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock)
+        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock, skillsBlock)
             .joinToString("\n")
     }
 

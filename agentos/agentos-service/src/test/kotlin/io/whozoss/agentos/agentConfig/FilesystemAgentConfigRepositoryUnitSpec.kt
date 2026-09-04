@@ -39,6 +39,7 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             description: String? = null,
             instructions: String? = null,
             modelName: String? = null,
+            skillSelectors: List<String>? = null,
         ) = buildString {
             appendLine("name: $name")
             description?.let { appendLine("description: $it") }
@@ -47,6 +48,10 @@ class FilesystemAgentConfigRepositoryUnitSpec :
                 appendLine("  $it")
             }
             modelName?.let { appendLine("modelName: $it") }
+            if (skillSelectors != null) {
+                appendLine("skillSelectors:")
+                skillSelectors.forEach { appendLine("  - $it") }
+            }
         }
 
         fun persistedConfig(
@@ -154,7 +159,7 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             writeYaml(
                 agentsDir(root),
                 "dev.yaml",
-                agentYaml("Dev", description = "Backend specialist", modelName = "BIG"),
+                agentYaml("Dev", description = "Backend specialist", modelName = "BIG", skillSelectors = listOf("core/**", "backend/**")),
             )
 
             val delegate = mockk<AgentConfigRepository>()
@@ -166,6 +171,7 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             result.name shouldBe "Dev"
             result.description shouldBe "Backend specialist"
             result.modelName shouldBe "BIG"
+            result.skillSelectors shouldBe listOf("core/**", "backend/**")
         }
 
         "findByParent uses stable UUID derived from agent name" {
@@ -421,6 +427,67 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
 
             result.subAgents shouldBe null
+        }
+
+        // -------------------------------------------------------------------------
+        // skillSelectors field
+        // -------------------------------------------------------------------------
+
+        "findByParent maps skillSelectors list from YAML" {
+            val root = tempDir()
+            writeYaml(
+                agentsDir(root),
+                "dev.yaml",
+                """
+                name: Dev
+                skillSelectors:
+                  - core/**
+                  - product/**
+                """.trimIndent(),
+            )
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
+
+            result.skillSelectors shouldBe listOf("core/**", "product/**")
+        }
+
+        "findByParent sets skillSelectors to null when YAML has no skillSelectors field" {
+            val root = tempDir()
+            writeYaml(agentsDir(root), "simple.yaml", agentYaml("Simple Agent"))
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
+
+            result.skillSelectors shouldBe null
+        }
+
+        "findByParent sets skillSelectors to null when all entries are blank (same as subAgents)" {
+            val root = tempDir()
+            writeYaml(
+                agentsDir(root),
+                "dev.yaml",
+                """
+                name: Dev
+                skillSelectors:
+                  - ""
+                  - "   "
+                """.trimIndent(),
+            )
+
+            val delegate = mockk<AgentConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+
+            val result = buildRepo(delegate, nsRepo).findByParent(namespaceId).single()
+
+            result.skillSelectors shouldBe null
         }
 
         "findByParent sets integrations to null when YAML has no integrations field" {
