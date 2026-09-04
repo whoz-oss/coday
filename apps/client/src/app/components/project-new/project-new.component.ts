@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core'
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core'
 import { Router } from '@angular/router'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
@@ -18,6 +18,7 @@ import { TextInputComponent } from '../text-input/text-input.component'
   standalone: true,
   imports: [MatButtonModule, MatIconModule, TextInputComponent],
   templateUrl: './project-new.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './project-new.component.scss',
 })
 export class ProjectNewComponent {

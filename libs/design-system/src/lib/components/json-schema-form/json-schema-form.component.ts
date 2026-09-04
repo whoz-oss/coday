@@ -1,4 +1,14 @@
-import { Component, DestroyRef, computed, effect, inject, input, output, untracked } from '@angular/core'
+import {
+  Component,
+  DestroyRef,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  untracked,
+  ChangeDetectionStrategy,
+} from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, ReactiveFormsModule, UntypedFormGroup } from '@angular/forms'
 import { JsonSchemaFieldComponent } from './json-schema-field.component'
@@ -35,6 +45,7 @@ import { JsonSchemaObject } from './json-schema.model'
   standalone: true,
   imports: [ReactiveFormsModule, JsonSchemaFieldComponent],
   templateUrl: './json-schema-form.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './json-schema-form.component.scss',
 })
 export class JsonSchemaFormComponent {

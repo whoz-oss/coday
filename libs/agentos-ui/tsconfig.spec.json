@@ -4,6 +4,7 @@
     "esModuleInterop": true,
     "module": "commonjs",
     "outDir": "../../dist/out-tsc",
+    "rootDir": "..",
     "target": "es2016",
     "types": ["jest", "node"]
   },

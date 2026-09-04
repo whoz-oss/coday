@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core'
+import { Component, OnInit, inject, ChangeDetectionStrategy } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { ActivatedRoute } from '@angular/router'
 import { Configuration } from '@whoz-oss/agentos-api-client'
@@ -22,6 +22,7 @@ import { AGENTOS_OAUTH_CALLBACK_STORAGE_KEY } from '../../services/oauth-agentos
  */
 @Component({
   selector: 'agentos-oauth-callback',
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `<p style="font-family: sans-serif; padding: 2rem; text-align: center">{{ message }}</p>`,
 })
 export class OAuthCallbackComponent implements OnInit {

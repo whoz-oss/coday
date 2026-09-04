@@ -1,3 +1,255 @@
+## 0.250.0 (2026-09-03)
+
+### 🚀 Features
+
+- #34228 add WhatsNext tool to REDIRECT integration ([#1270](https://github.com/whoz-oss/coday/pull/1270), [#34228](https://github.com/whoz-oss/coday/issues/34228))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.19 (2026-09-03)
+
+### 🩹 Fixes
+
+- **release:** restore minor bump for feat commits after nx 23 migration ([ec697413](https://github.com/whoz-oss/coday/commit/ec697413))
+- **release:** restore minor bump for feat commits after nx 23 migration ([#1279](https://github.com/whoz-oss/coday/pull/1279), [#1278](https://github.com/whoz-oss/coday/issues/1278))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.18 (2026-09-03)
+
+### 🩹 Fixes
+
+- authSettingName missing from IntegrationConfig YAML export and filesystem load ([#1267](https://github.com/whoz-oss/coday/pull/1267))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.17 (2026-09-02)
+
+### 🚀 Features
+
+- wz-30464: fix agentos-ui for prompt translations ([#1276](https://github.com/whoz-oss/coday/pull/1276))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.249.16 (2026-09-02)
+
+### 🚀 Features
+
+- wz-30464: prompt translations ([#1253](https://github.com/whoz-oss/coday/pull/1253))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- vincent.audibert
+
+## 0.249.15 (2026-09-02)
+
+### 🚀 Features
+
+- wz-32132: read cases tracking ([#1260](https://github.com/whoz-oss/coday/pull/1260))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.249.14 (2026-09-02)
+
+### 🚀 Features
+
+- #1235 Add queryUser tool and resume agents after answers ([#1235](https://github.com/whoz-oss/coday/issues/1235))
+- #1236 Extract QuestionEvent prompt rendering helper ([#1236](https://github.com/whoz-oss/coday/issues/1236))
+- #1235 Add queryUser tool and resume agents after answers ([#1236](https://github.com/whoz-oss/coday/pull/1236), [#1235](https://github.com/whoz-oss/coday/issues/1235))
+
+### 🩹 Fixes
+
+- #1235 disable queryUser tool by default (review VA) ([#1235](https://github.com/whoz-oss/coday/issues/1235))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.249.13 (2026-09-02)
+
+### 🚀 Features
+
+- wz-34012: identify scheduler that initiated a case ([#1254](https://github.com/whoz-oss/coday/pull/1254))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.249.12 (2026-09-01)
+
+### 🩹 Fixes
+
+- kill AgentOS child process on Node.js unclean exit to prevent Neo4j store_lock orphan ([#1266](https://github.com/whoz-oss/coday/pull/1266))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.11 (2026-09-01)
+
+### 🩹 Fixes
+
+- discard stale MCP OAuth client registration when tokens are absent ([#1265](https://github.com/whoz-oss/coday/pull/1265))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.10 (2026-09-01)
+
+### 🩹 Fixes
+
+- avoid openapi gen port collision ([#1264](https://github.com/whoz-oss/coday/pull/1264))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.9 (2026-08-31)
+
+### 🩹 Fixes
+
+- build front ([#1262](https://github.com/whoz-oss/coday/pull/1262))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.8 (2026-08-28)
+
+### 🚀 Features
+
+- #33829 share a case with other users (multi-user case) ([#1248](https://github.com/whoz-oss/coday/pull/1248), [#33829](https://github.com/whoz-oss/coday/issues/33829))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.7 (2026-08-28)
+
+### 🚀 Features
+
+- bump bundled version to 0.249.0 ([#1249](https://github.com/whoz-oss/coday/pull/1249))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.6 (2026-08-28)
+
+### 🩹 Fixes
+
+- **agentos-ui:** add infinite scroll to ds-entity-list to prevent freeze on large user lists ([35a8c9fc](https://github.com/whoz-oss/coday/commit/35a8c9fc))
+- **agentos-ui:** add infinite scroll to ds-entity-list to prevent freeze on large user lists ([#1259](https://github.com/whoz-oss/coday/pull/1259), [#1258](https://github.com/whoz-oss/coday/issues/1258))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.5 (2026-08-28)
+
+### 🩹 Fixes
+
+- remove $safeNavigationMigration (remaining from ng migration) ([1fd5b3a1](https://github.com/whoz-oss/coday/commit/1fd5b3a1))
+- remove $safeNavigationMigration (remaining from ng migration) ([#1257](https://github.com/whoz-oss/coday/pull/1257))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.4 (2026-08-28)
+
+### 🩹 Fixes
+
+- disable prompt select while loading in scheduler form ([56f5f10d](https://github.com/whoz-oss/coday/commit/56f5f10d))
+- disable prompt select while loading in scheduler form ([#1256](https://github.com/whoz-oss/coday/pull/1256), [#1255](https://github.com/whoz-oss/coday/issues/1255))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.3 (2026-08-28)
+
+### 🩹 Fixes
+
+- **agentos:** fix advancedExecution attribut mapping in case of yml agent config #1244 ([#1245](https://github.com/whoz-oss/coday/pull/1245), [#1244](https://github.com/whoz-oss/coday/issues/1244))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.249.2 (2026-08-27)
+
+### 🚀 Features
+
+- nx23 angular22 ([#1252](https://github.com/whoz-oss/coday/pull/1252), [#1251](https://github.com/whoz-oss/coday/issues/1251))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.249.1 (2026-08-26)
+
+### 🚀 Features
+
+- **agentos:** add actuator endpoint to disable / enable agentos schedulers #34024 ([#1250](https://github.com/whoz-oss/coday/pull/1250), [#34024](https://github.com/whoz-oss/coday/issues/34024))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.249.0 (2026-08-25)
+
+### 🚀 Features
+
+- #1246 Add batch mark-done for paused tasks and auto-close stale threads ([#1246](https://github.com/whoz-oss/coday/issues/1246))
+- #1246 Add batch mark-done for paused tasks and auto-close stale… ([#1247](https://github.com/whoz-oss/coday/pull/1247), [#1246](https://github.com/whoz-oss/coday/issues/1246))
+
+### 🩹 Fixes
+
+- #1246 Stop propagation on task checkbox click ([#1246](https://github.com/whoz-oss/coday/issues/1246))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.248.3 (2026-08-21)
+
+### 🩹 Fixes
+
+- **agentos:** fix missed favorite and role enrichment in case read and list endpoints #33653 ([#1241](https://github.com/whoz-oss/coday/pull/1241), [#33653](https://github.com/whoz-oss/coday/issues/33653))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.248.2 (2026-08-20)
+
+### 🩹 Fixes
+
+- sanitize MCP tool names to comply with Anthropic name pattern ([8b39346f](https://github.com/whoz-oss/coday/commit/8b39346f))
+
+### ❤️ Thank You
+
+- Marc Bouteiller @marc-bouteiller-whoz
+
 ## 0.248.1 (2026-08-19)
 
 ### 🩹 Fixes

@@ -7,6 +7,7 @@
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,
     "experimentalDecorators": true,
+    "ignoreDeprecations": "6.0",
     "importHelpers": true,
     "lib": ["ESNext", "dom"],
     "module": "esnext",
@@ -15,6 +16,7 @@
     "noImplicitReturns": true,
     "noImplicitThis": true,
     "noUncheckedIndexedAccess": true,
+    "noUncheckedSideEffectImports": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "paths": {
@@ -76,7 +78,8 @@
     "sourceMap": true,
     "strict": true,
     "target": "ESNext",
-    "typeRoots": ["node_modules/@types"]
+    "typeRoots": ["node_modules/@types"],
+    "types": ["*"]
   },
   "exclude": ["node_modules", "tmp", "dist"]
 }

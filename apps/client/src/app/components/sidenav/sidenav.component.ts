@@ -10,6 +10,7 @@ import {
   Output,
   signal,
   ViewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 import { Router } from '@angular/router'
 import { FormsModule } from '@angular/forms'
@@ -50,6 +51,7 @@ import { ContextGaugeComponent } from '../context-gauge/context-gauge.component'
     ContextGaugeComponent,
   ],
   templateUrl: './sidenav.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './sidenav.component.scss',
 })
 export class SidenavComponent implements OnInit, OnDestroy {

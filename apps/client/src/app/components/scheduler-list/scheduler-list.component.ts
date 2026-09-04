@@ -1,5 +1,5 @@
 import { Location } from '@angular/common'
-import { Component, computed, inject, OnInit, signal } from '@angular/core'
+import { Component, computed, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 import { MatSlideToggleModule } from '@angular/material/slide-toggle'
@@ -34,6 +34,7 @@ import { SchedulerFormComponent, SchedulerFormData } from '../scheduler-form/sch
     FormsModule,
   ],
   templateUrl: './scheduler-list.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './scheduler-list.component.scss',
 })
 export class SchedulerListComponent implements OnInit {

@@ -3,6 +3,7 @@
     "module": "commonjs",
     "moduleResolution": "node10",
     "outDir": "../../../dist/out-tsc",
+    "rootDir": ".",
     "types": ["jest", "node"]
   },
   "extends": "./tsconfig.json",

@@ -411,6 +411,70 @@ export function registerThreadRoutes(
   )
 
   /**
+   * POST /api/projects/:projectName/threads/batch-done
+   * Mark multiple threads as done in a single request (best-effort)
+   *
+   * Body: { threadIds: string[] }
+   * Response: { success: true, count: N }
+   *
+   * IMPORTANT: This route must be declared BEFORE /:threadId routes to avoid
+   * Express matching "batch-done" as a threadId parameter.
+   */
+  app.post('/api/projects/:projectName/threads/batch-done', async (req: express.Request, res: express.Response) => {
+    try {
+      const projectName = getParamAsString(req.params.projectName)
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+
+      const username = getUsernameFn(req)
+      if (!username) {
+        res.status(401).json({ error: 'Authentication required' })
+        return
+      }
+
+      const { threadIds } = req.body as { threadIds?: unknown }
+      if (!Array.isArray(threadIds) || threadIds.length === 0) {
+        res.status(400).json({ error: 'threadIds must be a non-empty array' })
+        return
+      }
+
+      debugLog(
+        'THREAD',
+        `POST batch-done: ${threadIds.length} thread(s) in project: ${projectName} by user: ${username}`
+      )
+
+      let count = 0
+      for (const threadId of threadIds) {
+        try {
+          const thread = await threadService.getThread(projectName, threadId)
+          if (!thread || !hasAccess(thread, username)) {
+            debugLog('THREAD', `batch-done: skipping thread ${threadId} (not found or no access)`)
+            continue
+          }
+          await threadService.updateThread(projectName, threadId, { closedByUser: true })
+          count++
+        } catch (err) {
+          console.error(`batch-done: error closing thread ${threadId}:`, err)
+          // best-effort: continue with remaining threads
+        }
+      }
+
+      // Single broadcast per project after all updates
+      if (count > 0) {
+        threadCodayManager.projectEventManager.broadcast(projectName, new ThreadUpdateEvent({ threadId: '' }))
+      }
+
+      res.status(200).json({ success: true, count })
+    } catch (error) {
+      console.error('Error in batch-done:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: `Failed to batch-close threads: ${errorMessage}` })
+    }
+  })
+
+  /**
    * POST /api/projects/:projectName/threads/:threadId/done
    * Mark a thread as done by the current user
    */

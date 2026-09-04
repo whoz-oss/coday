@@ -1,3 +1,6 @@
 {
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0"
+  },
   "extends": "../../tsconfig.base.json"
 }

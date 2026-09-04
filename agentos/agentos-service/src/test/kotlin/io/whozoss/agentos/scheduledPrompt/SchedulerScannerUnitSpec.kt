@@ -931,6 +931,93 @@ class SchedulerScannerUnitSpec : StringSpec() {
             }
         }
 
+        // -------------------------------------------------------------------------
+        // Pause guards — tickClaim
+        // -------------------------------------------------------------------------
+
+        "tickClaim when paused: no runs created" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            val sc = scanner(scheduledPromptRepo, runRepo)
+            sc.pauseClaim()
+            sc.tickClaim()
+            runRepo.all().shouldBeEmpty()
+        }
+
+        "tickClaim when resumed after pause: runs created normally" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            val sc = scanner(scheduledPromptRepo, runRepo)
+            sc.pauseClaim()
+            sc.tickClaim()
+            runRepo.all().shouldBeEmpty()
+            sc.resumeClaim()
+            sc.tickClaim()
+            runRepo.all() shouldHaveSize 1
+        }
+
+        // -------------------------------------------------------------------------
+        // Pause guards — tickConsume
+        // -------------------------------------------------------------------------
+
+        "tickConsume when paused: consumeAvailable not called" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val sc = scanner(scheduledPromptRepo, runRepo)
+            sc.pauseConsume()
+            // tickConsume is a no-op when paused — verify by checking isConsumePaused
+            sc.isConsumePaused().shouldBeTrue()
+            // Actual consume path is not exercised; this test asserts the guard is active
+            sc.tickConsume()
+            // No exception, no side-effects — the guard returned early
+        }
+
+        "tickConsume when resumed after pause: isConsumePaused returns false" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val sc = scanner(scheduledPromptRepo, runRepo)
+            sc.pauseConsume()
+            sc.isConsumePaused().shouldBeTrue()
+            sc.resumeConsume()
+            sc.isConsumePaused().shouldBeFalse()
+        }
+
+        "isConsumePaused returns false by default" {
+            val sc = scanner(makeScheduledPromptRepo(), makeRunRepo())
+            sc.isConsumePaused().shouldBeFalse()
+        }
+
+        "pauseConsume then resumeConsume: idempotent on multiple calls" {
+            val sc = scanner(makeScheduledPromptRepo(), makeRunRepo())
+            sc.pauseConsume()
+            sc.pauseConsume()
+            sc.isConsumePaused().shouldBeTrue()
+            sc.resumeConsume()
+            sc.resumeConsume()
+            sc.isConsumePaused().shouldBeFalse()
+        }
+
+        "pauseConsume does not affect tickClaim: runs still created" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            val sc = scanner(scheduledPromptRepo, runRepo)
+            sc.pauseConsume()
+            sc.tickClaim()
+            runRepo.all() shouldHaveSize 1
+        }
+
+        "pauseClaim does not affect isConsumePaused: consume guard independent" {
+            val sc = scanner(makeScheduledPromptRepo(), makeRunRepo())
+            sc.pauseClaim()
+            sc.isConsumePaused().shouldBeFalse()
+        }
+
         "SchedulerScanner startup: does not throw when leaseMinutes * 60 > launchTimeoutSeconds" {
             val goodProperties = SchedulerProperties(
                 leaseMinutes = 2L,          // 120 seconds

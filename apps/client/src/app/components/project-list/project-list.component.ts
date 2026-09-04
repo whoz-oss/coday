@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, inject } from '@angular/core'
+import { Component, computed, DestroyRef, inject, ChangeDetectionStrategy } from '@angular/core'
 import { Router } from '@angular/router'
 
 import { ProjectStateService } from '../../core/services/project-state.service'
@@ -35,6 +35,7 @@ const WORKTREE_SEPARATOR = '__'
   standalone: true,
   imports: [EntityListComponent, EntityCardComponent, MatIconModule, MatIconButton, RouterLink],
   templateUrl: './project-list.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './project-list.component.scss',
 })
 export class ProjectListComponent {

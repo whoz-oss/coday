@@ -1,11 +1,13 @@
 {
   "name": "@whoz-oss/coday-client",
-  "version": "0.248.1",
+  "version": "0.250.0",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
   "dependencies": {
     "@angular/animations": "catalog:",
+    "@angular/cdk": "catalog:",
     "@angular/common": "catalog:",
+    "@angular/compiler": "catalog:",
     "@angular/core": "catalog:",
     "@angular/forms": "catalog:",
     "@angular/material": "catalog:",
@@ -20,6 +22,7 @@
   },
   "devDependencies": {
     "@angular/build": "catalog:dev",
+    "@angular/compiler-cli": "catalog:dev",
     "@types/dompurify": "catalog:dev",
     "jest-preset-angular": "catalog:dev",
     "typescript": "catalog:dev"

@@ -4,6 +4,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "outDir": "../../dist/out-tsc",
+    "rootDir": "src",
     "types": []
   },
   "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts"],

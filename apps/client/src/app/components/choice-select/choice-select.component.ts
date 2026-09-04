@@ -10,6 +10,7 @@ import {
   Output,
   SimpleChanges,
   ViewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { BehaviorSubject, Observable, Subject } from 'rxjs'
@@ -29,6 +30,7 @@ export interface ChoiceOption {
   standalone: true,
   imports: [AsyncPipe, MatIconModule, FormsModule],
   templateUrl: './choice-select.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './choice-select.component.scss',
 })
 export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestroy {

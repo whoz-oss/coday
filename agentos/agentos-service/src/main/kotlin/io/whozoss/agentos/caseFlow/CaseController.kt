@@ -7,13 +7,14 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.permissions.StarredService
+import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
 import io.whozoss.agentos.sdk.api.case.CaseApi
 import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
+import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
@@ -30,10 +31,11 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import java.util.UUID
 import org.springframework.web.server.ResponseStatusException
+import java.util.UUID
 import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 
 /**
@@ -61,20 +63,24 @@ class CaseController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
-    private val starredService: StarredService,
+    private val favoriteService: FavoriteService,
+    private val caseReadService: CaseReadService,
 ) : CaseApi {
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
     @HideOnAccessDenied
     override fun getById(
         @PathVariable id: UUID,
-    ): CaseDto = caseService.getById(id).withLastMessageAt()
+    ): CaseDto = caseService.getById(id).withCallerMeta(userService.getCurrentUser().id.toString())
 
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(
         @RequestBody request: SdkGetByIdsRequest,
-    ): List<CaseDto> = caseService.findByIds(request.ids, request.withRemoved).withLastMessageAt()
+    ): List<CaseDto> =
+        caseService
+            .findByIds(request.ids, request.withRemoved)
+            .withCallerMeta(userService.getCurrentUser().id.toString())
 
     /**
      * GET /api/cases/by-parentId/{parentId} — list cases in a namespace.
@@ -107,7 +113,7 @@ class CaseController(
                 logger.debug { "User $userId not namespace-ADMIN on $parentId — using permission-filtered listing" }
                 caseService.findAccessibleByUserInNamespace(user.id, parentId)
             }
-        return withCallerMeta(cases, userId)
+        return cases.withCallerMeta(userId)
     }
 
     /**
@@ -129,36 +135,36 @@ class CaseController(
         val user = userService.getCurrentUser()
         logger.debug { "Listing directly-related cases for user ${user.id} in namespace $parentId" }
         val cases = caseService.findConcerningUserInNamespace(user.id, parentId)
-        return withCallerMeta(cases, user.id.toString())
+        return cases.withCallerMeta(user.id.toString())
     }
 
     /**
      * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
-     * relation (`role`), favorite flag, and [CaseDto.lastMessageAt].
+     * relation (`role`), favorite flag, [CaseDto.readAt], and [CaseDto.lastMessageAt].
      *
      * Two batch queries resolve the whole set (no per-case round-trips):
-     * - [StarredService.listDirectRelations] for role/favorite metadata
+     * - [FavoriteService.listDirectRelations] for role/favorite/readAt metadata
      * - [CaseEventService.findLastMessageTimestamps] for the last-message timestamp
      *   used by the frontend to sort and group conversations.
      *
-     * Cases the user has no direct edge on get `role = null` and `favorite = false`
-     * (e.g. the namespace-admin fast path in [listByParent]).
+     * Cases the user has no direct edge on get `role = null`, `favorite = false`,
+     * and `readAt = null` (e.g. the namespace-admin fast path in [listByParent]).
      */
-    private fun withCallerMeta(
-        cases: List<Case>,
-        userId: String,
-    ): List<CaseDto> {
-        val starred = starredService.listDirectRelations(userId, EntityType.CASE)
-        val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(cases.map { it.id })
-        return cases.map {
+    private fun List<Case>.withCallerMeta(userId: String): List<CaseDto> {
+        val starred = favoriteService.listDirectRelations(userId, EntityType.CASE)
+        val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(this.map { it.id })
+        return this.map {
             val meta = starred[it.metadata.id.toString()]
             toDto(it).copy(
-                favorite = meta?.starred ?: false,
+                favorite = meta?.favorite ?: false,
                 role = meta?.relation?.name,
+                readAt = meta?.readAt,
                 lastMessageAt = lastMessageTimestamps[it.id],
             )
         }
     }
+
+    private fun Case.withCallerMeta(userId: String): CaseDto = listOf(this).withCallerMeta(userId).first()
 
     /**
      * POST /api/cases — create a Case. Permission gate is namespace READ (a MEMBER may
@@ -214,15 +220,16 @@ class CaseController(
         val existing =
             caseService.findById(id)
                 ?: throw ResourceNotFoundException("Case not found: $id")
-        return caseService
-            .update(
+        val updated =
+            caseService.update(
                 existing.copy(
                     // namespaceId and status are mass-assignment-guarded:
                     // namespaceId is the transitivity key for permissions;
                     // status is driven by the runtime lifecycle, not PUT.
                     title = resource.title ?: existing.title,
                 ),
-            ).withLastMessageAt()
+            )
+        return updated.withCallerMeta(userService.getCurrentUser().id.toString())
     }
 
     @DeleteMapping("/{id}")
@@ -239,9 +246,11 @@ class CaseController(
         @PathVariable userId: UUID,
     ): List<CaseDto> {
         logger.debug { "Listing cases for user $userId" }
-        // role/favorite are caller-relative and would be misleading here, so they stay
-        // at their defaults. lastMessageAt is objective data and is always populated.
-        return caseService.findConcerningUser(userId).withLastMessageAt()
+        val caller = userService.getCurrentUser()
+        val cases = caseService.findConcerningUser(userId)
+        // Enrich with caller's meta only when the caller is the target user;
+        // otherwise the caller has no direct relation on these cases so favorite would always be false.
+        return if (caller.id == userId) cases.withCallerMeta(caller.id.toString()) else cases.withLastMessageAt()
     }
 
     @GetMapping("/by-user/external/{externalId}")
@@ -252,7 +261,11 @@ class CaseController(
             userService.findByExternalId(externalId)
                 ?: throw ResourceNotFoundException("User not found: $externalId")
         logger.debug { "Listing cases for user ${user.id} (externalId=$externalId)" }
-        return caseService.findConcerningUser(user.id).withLastMessageAt()
+        val caller = userService.getCurrentUser()
+        val cases = caseService.findConcerningUser(user.id)
+        // Enrich with caller's meta only when the caller is the target user;
+        // otherwise the caller has no direct relation on these cases so favorite would always be false.
+        return if (caller.id == user.id) cases.withCallerMeta(caller.id.toString()) else cases.withLastMessageAt()
     }
 
     @PostMapping("/by-user/in-namespace", consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -266,7 +279,11 @@ class CaseController(
             namespaceService.findByExternalId(request.namespaceExternalId)
                 ?: throw ResourceNotFoundException("Namespace not found: ${request.namespaceExternalId}")
         logger.debug { "Listing cases for user ${user.id} in namespace ${namespace.id}" }
-        return caseService.findConcerningUserInNamespace(user.id, namespace.id).withLastMessageAt()
+        val caller = userService.getCurrentUser()
+        val cases = caseService.findConcerningUserInNamespace(user.id, namespace.id)
+        // Enrich with caller's meta only when the caller is the target user;
+        // otherwise the caller has no direct relation on these cases so favorite would always be false.
+        return if (caller.id == user.id) cases.withCallerMeta(caller.id.toString()) else cases.withLastMessageAt()
     }
 
     @PostMapping("/{caseId}/messages")
@@ -312,6 +329,28 @@ class CaseController(
         logger.info { "Case killed: $caseId" }
     }
 
+    /** POST /api/cases/{caseId}/read — record that the current user has read this case. */
+    @PostMapping("/{caseId}/read")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    override fun markCaseRead(
+        @PathVariable caseId: UUID,
+    ) {
+        val userId = userService.getCurrentUser().id.toString()
+        caseReadService.markRead(userId, caseId)
+        logger.debug { "User $userId marked case $caseId as read" }
+    }
+
+    /** GET /api/cases/unread-count?namespaceId= — count of unread cases for the current user. */
+    @GetMapping("/unread-count")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    override fun countUnread(
+        @RequestParam namespaceId: UUID,
+    ): UnreadCountResponse {
+        val userId = userService.getCurrentUser().id.toString()
+        return UnreadCountResponse(unreadCount = caseReadService.countUnread(userId, namespaceId))
+    }
+
     /** PUT /api/cases/{id}/star — mark the case as favorite for the current user. */
     @PutMapping("/{id}/star")
     @ResponseStatus(HttpStatus.OK)
@@ -320,8 +359,8 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        callStarredService(userId = userId, id = id, starred = true)
-        logger.info { "User $userId starred case $id" }
+        callFavoriteService(userId = userId, id = id, favorite = true)
+        logger.info { "User $userId favorited case $id" }
     }
 
     /** DELETE /api/cases/{id}/star — remove the case from the current user's favorites. */
@@ -332,33 +371,29 @@ class CaseController(
         @PathVariable id: UUID,
     ) {
         val userId = userService.getCurrentUser().id.toString()
-        callStarredService(userId = userId, id = id, starred = false)
-        logger.info { "User $userId unstarred case $id" }
+        callFavoriteService(userId = userId, id = id, favorite = false)
+        logger.info { "User $userId unfavorited case $id" }
     }
 
-    private fun callStarredService(
+    private fun callFavoriteService(
         userId: String,
         id: UUID,
-        starred: Boolean,
+        favorite: Boolean,
     ) {
-        if (!starredService.setStarred(
+        if (!favoriteService.setFavorite(
                 userId = userId,
                 entityType = EntityType.CASE,
                 entityId = id.toString(),
-                starred = starred,
+                favorite = favorite,
             )
         ) {
+            val action = if (favorite) "favorite" else "unfavorite"
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
-                "Cannot unstar case $id: the caller has no direct relation on it",
+                "Cannot $action case $id: the caller has no direct relation on it",
             )
         }
     }
-
-    /**
-     * Enrich a single [Case] with [CaseDto.lastMessageAt].
-     */
-    private fun Case.withLastMessageAt(): CaseDto = listOf(this).withLastMessageAt().first()
 
     /**
      * Enrich a list of [Case]s with [CaseDto.lastMessageAt] only — no role/favorite.
@@ -381,6 +416,7 @@ internal fun toDto(entity: Case) =
         status = entity.status,
         title = entity.title,
         parentCaseId = entity.parentCaseId,
+        scheduledPromptId = entity.scheduledPromptId,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
         // lastMessageAt is not stored on Case — it is resolved at list time by

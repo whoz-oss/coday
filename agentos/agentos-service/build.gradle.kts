@@ -90,6 +90,11 @@ dependencies {
     // Also used by Feign when the whoz profile activates feign.okhttp.enabled=true.
     implementation(libs.bundles.okhttp)
 
+    // Jolokia — HTTP/JSON bridge over JMX so Spring Boot Admin can invoke JMX operations
+    // (e.g. SchedulerEndpoint pause/resume) via its Jolokia integration.
+    // Version kept in sync with libs.versions.toml jolokia entry.
+    implementation(libs.jolokia.spring)
+
     // Spring Boot dependencies
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
@@ -315,7 +320,9 @@ configurations.all {
         // plugin is loaded under PF4J. Pin coroutines to the compiled-against version.
         if (requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-coroutines")) {
             useVersion(libs.versions.kotlinCoroutines.get())
-            because("code compiles against coroutines ${libs.versions.kotlinCoroutines.get()}; Spring Boot BOM downgrades it to 1.8.x at runtime")
+            because(
+                "code compiles against coroutines ${libs.versions.kotlinCoroutines.get()}; Spring Boot BOM downgrades it to 1.8.x at runtime",
+            )
         }
     }
 }
@@ -351,13 +358,18 @@ listOf("forkedSpringBootRun", "forkedSpringBootStop", "generateOpenApiDocs").for
     }
 }
 
-val agentosPort = 8124
+// Dedicated port for the OpenAPI spec generation fork.
+// Must differ from agentosPort so that generateOpenApiDocs can start its own
+// forked JVM even when a dev instance is already running on agentosPort.
+// apiDocsUrl must point to the same port so the plugin reads from the forked
+// JVM, not from the live dev instance (which would produce a stale/wrong spec).
+val openApiGenPort = 18124
 
 openApi {
     // Output the spec alongside the agentos root so it can be committed
     outputDir.set(file("$rootDir/../openapi"))
     outputFileName.set("agentos-openapi.yaml")
-    apiDocsUrl.set("http://localhost:$agentosPort/v3/api-docs.yaml")
+    apiDocsUrl.set("http://localhost:$openApiGenPort/v3/api-docs.yaml")
     // Wait up to 60s for the app to be ready
     waitTimeInSeconds.set(60)
     // Activate the openapi profile so the app starts without real AI API keys.
@@ -369,7 +381,7 @@ openApi {
         args.set(
             listOf(
                 "--spring.profiles.active=openapi,embedded-neo4j",
-                "--server.port=$agentosPort",
+                "--server.port=$openApiGenPort",
                 "--agentos.persistence.embedded-bolt-port=0",
             ),
         )

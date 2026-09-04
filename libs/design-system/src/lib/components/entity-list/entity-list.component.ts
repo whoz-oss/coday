@@ -2,12 +2,15 @@ import {
   AfterViewInit,
   Component,
   computed,
+  effect,
   ElementRef,
   input,
+  OnDestroy,
   output,
   signal,
   TemplateRef,
   ViewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
 import { MatExpansionModule } from '@angular/material/expansion'
@@ -42,9 +45,10 @@ export interface GroupedItems {
   },
   imports: [MatExpansionModule, EntityCardComponent, NgTemplateOutlet],
   templateUrl: './entity-list.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './entity-list.component.scss',
 })
-export class EntityListComponent implements AfterViewInit {
+export class EntityListComponent implements AfterViewInit, OnDestroy {
   readonly title = input.required<string>()
   readonly items = input<EntityListItem[]>([])
   readonly searchPlaceholder = input<string>('Filter…')
@@ -56,6 +60,12 @@ export class EntityListComponent implements AfterViewInit {
   /** Hide the visible title (e.g. when a tab already labels the section); search/content stay. */
   readonly hideTitle = input<boolean>(false)
   readonly itemTemplate = input<TemplateRef<{ $implicit: EntityListItem }> | undefined>(undefined)
+  /**
+   * When > 0, enables infinite scroll: renders `pageSize` items initially and
+   * loads more as the user scrolls to the bottom sentinel.
+   * 0 (default) renders all items at once.
+   */
+  readonly pageSize = input<number>(0)
   /**
    * When true, the internal search filter is disabled — items are displayed as-is.
    * Use this when the parent manages its own filtering logic and passes pre-filtered items.
@@ -80,10 +90,15 @@ export class EntityListComponent implements AfterViewInit {
   readonly searchChanged = output<string>()
 
   @ViewChild('searchInput') private searchInputRef?: ElementRef<HTMLInputElement>
+  @ViewChild('scrollSentinel') private sentinelRef?: ElementRef<HTMLElement>
 
   protected readonly searchQuery = signal('')
+  protected readonly visibleCount = signal(0)
+  private observer?: IntersectionObserver
 
   protected readonly isSearchActive = computed(() => this.searchQuery().trim().length > 0)
+
+  protected readonly isPaged = computed(() => this.pageSize() > 0)
 
   protected readonly filteredItems = computed(() => {
     const all = this.items()
@@ -95,8 +110,15 @@ export class EntityListComponent implements AfterViewInit {
     )
   })
 
+  protected readonly pagedItems = computed(() => {
+    const all = this.filteredItems()
+    return this.isPaged() ? all.slice(0, this.visibleCount()) : all
+  })
+
+  protected readonly hasMore = computed(() => this.isPaged() && this.visibleCount() < this.filteredItems().length)
+
   protected readonly groupedItems = computed<GroupedItems[]>(() => {
-    const items = this.filteredItems()
+    const items = this.pagedItems()
     const groups: GroupedItems[] = []
     const byKey = new Map<string, GroupedItems>()
 
@@ -123,10 +145,34 @@ export class EntityListComponent implements AfterViewInit {
       (this.keepGroupsWhileSearching() || !this.isSearchActive()) && this.groupedItems().some((g) => g.groupKey !== '')
   )
 
+  constructor() {
+    // Reset visible count whenever the page size or search query changes
+    effect(() => {
+      const size = this.pageSize()
+      this.searchQuery() // track
+      this.visibleCount.set(size > 0 ? size : 0)
+    })
+  }
+
   ngAfterViewInit(): void {
     if (this.autoFocusSearch()) {
       setTimeout(() => this.searchInputRef?.nativeElement.focus(), 0)
     }
+    if (this.isPaged() && this.sentinelRef) {
+      this.observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0]?.isIntersecting && this.hasMore()) {
+            this.visibleCount.update((n) => n + this.pageSize())
+          }
+        },
+        { threshold: 0.1 }
+      )
+      this.observer.observe(this.sentinelRef.nativeElement)
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.observer?.disconnect()
   }
 
   protected onSearchChange(value: string): void {

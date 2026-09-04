@@ -1,4 +1,4 @@
-import { CreateNodesContextV2, CreateNodesResult, CreateNodesV2, createNodesFromFiles } from '@nx/devkit'
+import { CreateNodesContext, CreateNodesResult, CreateNodes, createNodesFromFiles } from '@nx/devkit'
 import { existsSync } from 'fs'
 import { basename, dirname } from 'path'
 
@@ -20,9 +20,9 @@ const SDK_ASSEMBLE_DEPENDENCY = { target: 'assemble', projects: ['agentos-sdk'] 
 // Matches all build.gradle.kts files one level deep under agentos/
 // e.g. agentos/agentos-service/build.gradle.kts
 // Excludes the composite root agentos/build.gradle.kts (no parent subdir)
-export const createNodesV2: CreateNodesV2 = [
+export const createNodesV2: CreateNodes = [
   'agentos/*/build.gradle.kts',
-  async (configFiles, _options, context: CreateNodesContextV2) => {
+  async (configFiles, _options, context: CreateNodesContext) => {
     return await createNodesFromFiles(
       (configFile) => createNodesInternal(configFile, context),
       configFiles,
@@ -32,7 +32,7 @@ export const createNodesV2: CreateNodesV2 = [
   },
 ]
 
-function createNodesInternal(configFilePath: string, context: CreateNodesContextV2): CreateNodesResult {
+function createNodesInternal(configFilePath: string, context: CreateNodesContext): CreateNodesResult {
   const projectDir = dirname(configFilePath)
   const projectName = basename(projectDir)
 
