@@ -14,10 +14,9 @@ import java.time.ZoneOffset
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them,
- * and a separate tick that consumes available [ScheduledPromptUserRun]s.
+ * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them.
  *
- * ### Two-tick architecture
+ * ### Scheduled entry points
  *
  * **[tickClaim]** (Phase A, every `agentos.prompt.scheduler.tick-interval-ms`):
  * 1. Sweep orphaned CLAIMED runs via [recoverOrphanedClaimedRuns] — handles the crash
@@ -27,13 +26,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    calls [ScheduledPromptExecutor.materialize] to create PENDING UserRuns.
  * 4. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
  *
- * **[tickConsume]** (Phase B, every `agentos.prompt.scheduler.consume-interval-ms`):
- * Declared `suspend` — Spring Framework 6.1+ natively supports suspend functions on
- * `@Scheduled` methods. Calls [ScheduledPromptExecutor.consumeAvailable] which suspends
- * until ALL UserRuns from ALL batches have finished executing. Spring `fixedDelay`
- * guarantees no overlap between consecutive consume ticks.
+ * **[tickWatchdog]** (every `agentos.prompt.scheduler.tick-interval-ms`):
+ * Checks [ScheduledPromptExecutor.isRunning] and calls [ScheduledPromptExecutor.restart]
+ * if the consumer loop has died unexpectedly. Runs on the same interval as [tickClaim]
+ * so a dead producer is detected within one tick.
  *
- * Both ticks use Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
+ * Phase B (UserRun consumption) is handled by [ScheduledPromptExecutor], which runs a
+ * continuous producer + channel + worker-pool loop started by `@PostConstruct` and stopped
+ * by `@PreDestroy`. There is no consume tick in this scanner.
+ *
+ * [tickClaim] uses Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
  * own successor. No fire-and-forget coroutines are used at the Scanner level.
  *
  * ### Claim logic
@@ -51,10 +53,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * and materialize). [recoverOrphanedClaimedRuns] marks such runs FAILED at the start of
  * each tick, unblocking the [ScheduledPromptRunRepository.hasActive] overlap guard.
  *
- * A RUNNING Run whose UserRuns are all terminal but whose completion check was never
- * called is handled by [recoverOrphanedRunningRuns], also called at the start of each
- * tick. This covers the crash window between [ScheduledPromptUserRunRepository.markTerminal]
- * and [ScheduledPromptExecutor.checkCompletion].
+ * A RUNNING Run whose UserRuns are all terminal but whose parent was never closed is
+ * handled by [recoverOrphanedRunningRuns], also called at the start of each tick.
+ * This covers the crash window between the [ScheduledPromptUserRunRepository.markTerminal]
+ * call of the last UserRun and the closure of the parent Run, which is now performed
+ * exclusively by [recoverOrphanedRunningRuns] on each tick.
  *
  * The [clock] is injected so tests can freeze time.
  *
@@ -76,11 +79,7 @@ class SchedulerScanner(
     /** When true, tickClaim() exits immediately without processing. */
     private val claimPaused = AtomicBoolean(false)
 
-    /** When true, tickConsume() exits immediately without processing. */
-    private val consumePaused = AtomicBoolean(false)
-
     fun isClaimPaused(): Boolean = claimPaused.get()
-    fun isConsumePaused(): Boolean = consumePaused.get()
 
     fun pauseClaim() {
         claimPaused.set(true)
@@ -90,16 +89,6 @@ class SchedulerScanner(
     fun resumeClaim() {
         claimPaused.set(false)
         logger.warn { "[SchedulerScanner] tickClaim RESUMED by operator" }
-    }
-
-    fun pauseConsume() {
-        consumePaused.set(true)
-        logger.warn { "[SchedulerScanner] tickConsume PAUSED by operator" }
-    }
-
-    fun resumeConsume() {
-        consumePaused.set(false)
-        logger.warn { "[SchedulerScanner] tickConsume RESUMED by operator" }
     }
 
     @PostConstruct
@@ -122,11 +111,25 @@ class SchedulerScanner(
      * When [claimPaused] the tick is a no-op — the scheduling thread still fires
      * but [processClaim] is not called.
      */
-    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
+    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:60000}")
     fun tickClaim() {
         when {
             claimPaused.get() -> logger.debug { "[SchedulerScanner] tickClaim PAUSED — skipping" }
             else -> processClaim()
+        }
+    }
+
+    /**
+     * Watchdog: restarts the consumer loop if it died unexpectedly.
+     * Runs on the same interval as [tickClaim] so a dead producer is detected within one tick.
+     * Safe: Spring guarantees @PostConstruct on all beans completes before @Scheduled ticks fire,
+     * so executor.scope is always initialized when this first runs.
+     */
+    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:60000}")
+    fun tickWatchdog() {
+        if (!executor.isRunning()) {
+            logger.error { "[SchedulerScanner] consumer loop is dead — restarting automatically" }
+            executor.restart()
         }
     }
 
@@ -146,9 +149,9 @@ class SchedulerScanner(
             logger.error(e) { "[SchedulerScanner] recoverOrphanedClaimedRuns failed — continuing tick" }
         }
 
-        // Sweep: close RUNNING runs whose UserRuns are all settled but whose completion
-        // check was missed. This handles the crash window between markTerminal() and
-        // checkCompletion() in ScheduledPromptExecutor.
+        // Sweep: close RUNNING runs whose UserRuns are all settled but whose parent was
+        // never closed. This handles the crash window between the last markTerminal() call
+        // and the closure of the parent Run by recoverOrphanedRunningRuns.
         runCatching { recoverOrphanedRunningRuns(now) }.onFailure { e ->
             logger.error(e) { "[SchedulerScanner] recoverOrphanedRunningRuns failed — continuing tick" }
         }
@@ -197,12 +200,12 @@ class SchedulerScanner(
     }
 
     /**
-     * Close RUNNING Runs whose UserRuns are all settled but whose completion check was missed.
+     * Close RUNNING Runs whose UserRuns are all settled but whose parent was never closed.
      *
      * This handles the crash window where the last [ScheduledPromptUserRunRepository.markTerminal]
-     * completed but the instance crashed before [ScheduledPromptExecutor]'s `checkCompletion()`
-     * could transition the parent Run. Without this sweep, the Run would stay RUNNING forever
-     * — no subsequent UserRun closure will re-trigger the check.
+     * completed but the instance crashed before the parent Run could be transitioned.
+     * Without this sweep, the Run would stay RUNNING forever — no subsequent event will
+     * re-trigger the closure.
      *
      * Uses a single [ScheduledPromptRunRepository.findSettledRunning] query that filters
      * directly in the database: only RUNNING Runs with no UserRun in PENDING or RUNNING
@@ -220,31 +223,10 @@ class SchedulerScanner(
                 else -> RunStatus.DONE
             }
             runRepository.updateStatus(run.id, finalStatus, now)
-            logger.warn {
-                "[SchedulerScanner] Orphaned RUNNING run=${run.id} sp=${run.scheduledPromptId} " +
-                    "— all UserRuns settled, closing as $finalStatus (crash recovery)"
+            logger.info {
+                "[SchedulerScanner] RUNNING run=${run.id} sp=${run.scheduledPromptId} " +
+                    "— all UserRuns settled, closing as $finalStatus"
             }
-        }
-    }
-
-    /**
-     * Phase B: Consume available UserRuns.
-     * Declared `suspend` — Spring Framework 6.1+ natively dispatches suspend `@Scheduled`
-     * methods on the application's coroutine scheduler.
-     * Returns only when all claimed UserRuns have finished executing.
-     * Spring fixedDelay guarantees no overlap between ticks.
-     *
-     * When [consumePaused] the tick is a no-op — the scheduling thread still fires
-     * but [ScheduledPromptExecutor.consumeAvailable] is not called.
-     *
-     * The IO dispatcher is managed by [ScheduledPromptExecutor.consumeAvailable] itself
-     * via [kotlinx.coroutines.withContext].
-     */
-    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.consume-interval-ms:10000}")
-    suspend fun tickConsume() {
-        when {
-            consumePaused.get() -> logger.debug { "[SchedulerScanner] tickConsume PAUSED — skipping" }
-            else -> executor.consumeAvailable()
         }
     }
 

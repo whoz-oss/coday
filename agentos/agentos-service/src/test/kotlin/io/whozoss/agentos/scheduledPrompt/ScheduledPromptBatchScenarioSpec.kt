@@ -21,6 +21,7 @@ import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -30,8 +31,15 @@ import java.util.UUID
 /**
  * End-to-end scenario tests for the scheduled prompt batch pipeline.
  *
- * Each test drives the full sequence tickClaim() → tickConsume() and verifies the
- * cumulative state transitions across both phases, including crash-recovery sweeps.
+ * Each test drives the full sequence: tickClaim() (Phase A) → drivePhaseB() → tickClaim() again
+ * (Run parent completion via [SchedulerScanner.recoverOrphanedRunningRuns]).
+ *
+ * The two-tickClaim pattern mirrors production: workers close UserRuns, then the next
+ * claim tick detects settled RUNNING Runs and transitions them to DONE/FAILED.
+ *
+ * Phase B is driven directly via [ScheduledPromptExecutor.processUserRun] (`internal`)
+ * rather than starting the full producer + channel + worker-pool consumption loop.
+ * This keeps the tests deterministic without coroutine infrastructure.
  *
  * Uses in-memory repositories and MockK stubs — no Spring context, no Neo4j.
  * Fixed clock: 2026-01-01 09:00:00 UTC (Thursday).
@@ -97,7 +105,10 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
         ),
     )
 
-    private fun makeScanner(
+    /**
+     * Build scanner + executor together. Returns both so tests can drive Phase B directly.
+     */
+    private fun makeComponents(
         spRepo: InMemoryScheduledPromptRepository,
         runRepo: InMemoryScheduledPromptRunRepository,
         userRunRepo: InMemoryScheduledPromptUserRunRepository,
@@ -109,7 +120,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             every { it.findById(userId1) } returns user1
             every { it.findById(userId2) } returns user2
         },
-    ): SchedulerScanner {
+    ): Pair<SchedulerScanner, ScheduledPromptExecutor> {
         runRepo.userRunRepository = userRunRepo
         val promptService = mockk<PromptService>().also {
             every { it.findById(promptTemplateId) } returns promptTemplate
@@ -126,7 +137,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             properties = properties,
             clock = clock,
         )
-        return SchedulerScanner(
+        val scanner = SchedulerScanner(
             scheduledPromptRepository = spRepo,
             runRepository = runRepo,
             userRunRepository = userRunRepo,
@@ -136,26 +147,21 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             nextRunCalculatorService = NextRunCalculatorService(clock = clock),
             executor = executor,
         )
+        return scanner to executor
     }
 
     /**
-     * CaseService where each Case's runtime transitions to IDLE after addMessage is called,
-     * simulating a fast agent turn completing synchronously from the test's perspective.
+     * CaseService where each Case's runtime is immediately IDLE.
      *
-     * The runtime map is keyed by caseId and populated in `create` so that `findActiveRuntime`
-     * and `addMessage` can look up the correct flow. All state is local to the returned mock.
+     * statusFlow starts at IDLE so monitorLaunch sees the terminal state immediately.
+     * This avoids mocking addMessage (whose sessionContext parameter is nullable, causing
+     * MockK 1.13.x matcher issues) and keeps the scenarios deterministic.
      */
     private fun eventuallyIdleCaseService(): CaseService {
         val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
         return mockk<CaseService>(relaxed = true).also { svc ->
             every { svc.create(any()) } answers {
                 val id = UUID.randomUUID()
-                // statusFlow starts at IDLE rather than transitioning via addMessage callback.
-                // Reason: addMessage's sessionContext parameter is Map<String, Any?>? (nullable).
-                // MockK 1.13.x any<T>() requires T : Any, so there is no matcher for nullable
-                // types usable in every {}. Starting at IDLE avoids needing to mock addMessage
-                // at all — monitorLaunch sees the terminal state immediately, which is
-                // equivalent for what these scenario tests verify (end-to-end UserRunStatus).
                 val flow = MutableStateFlow(CaseStatus.IDLE)
                 val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
                 runtimeMap[id] = rt
@@ -165,19 +171,38 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
         }
     }
 
+    /**
+     * Drive Phase B for all PENDING UserRuns: claim each one and call processUserRun.
+     *
+     * Run (parent) completion is NOT handled here. A second [SchedulerScanner.tickClaim]
+     * call in each test drives [SchedulerScanner.recoverOrphanedRunningRuns], which closes
+     * settled RUNNING Runs — mirroring the production flow.
+     */
+    private suspend fun drivePhaseB(
+        executor: ScheduledPromptExecutor,
+        userRunRepo: InMemoryScheduledPromptUserRunRepository,
+    ) {
+        val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
+        var batch: List<ScheduledPromptUserRun>
+        do {
+            batch = userRunRepo.claimBatch(leaseDuration, properties.batchSize)
+            batch.forEach { userRun -> executor.processUserRun(userRun) }
+        } while (batch.isNotEmpty())
+    }
+
     // ---------------------------------------------------------------------------
     // Scenarios
     // ---------------------------------------------------------------------------
 
     init {
 
-        "happy path: tickClaim then tickConsume closes Run as DONE" {
+        "happy path: tickClaim then Phase B then tickClaim closes Run as DONE" {
             val spRepo = InMemoryScheduledPromptRepository()
             val runRepo = InMemoryScheduledPromptRunRepository()
             val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> setOf(userId1, userId2) }
             makeScheduledPrompt(spRepo)
 
-            val scanner = makeScanner(
+            val (scanner, executor) = makeComponents(
                 spRepo, runRepo, userRunRepo,
                 caseService = eventuallyIdleCaseService(),
             )
@@ -185,17 +210,21 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             // Phase A: claim the due slot, materialise UserRuns
             scanner.tickClaim()
 
-            val runAfterClaim = runRepo.all().single()
-            runAfterClaim.status shouldBe RunStatus.RUNNING
+            val run = runRepo.all().single()
+            run.status shouldBe RunStatus.RUNNING
             userRunRepo.all() shouldHaveSize 2
             userRunRepo.all().all { it.status == UserRunStatus.PENDING } shouldBe true
 
-            // Phase B: claim and execute UserRuns; Cases reach IDLE → UserRuns DONE → Run DONE
-            scanner.tickConsume()
-
-            val runAfterConsume = runRepo.findById(runAfterClaim.id)!!
-            runAfterConsume.status shouldBe RunStatus.DONE
+            // Phase B: process UserRuns; Cases reach IDLE → UserRuns DONE
+            drivePhaseB(executor, userRunRepo)
             userRunRepo.all().all { it.status == UserRunStatus.DONE } shouldBe true
+
+            // Run still RUNNING — recoverOrphanedRunningRuns has not fired yet
+            runRepo.findById(run.id)!!.status shouldBe RunStatus.RUNNING
+
+            // Second tickClaim: recoverOrphanedRunningRuns detects all UserRuns settled → DONE
+            scanner.tickClaim()
+            runRepo.findById(run.id)!!.status shouldBe RunStatus.DONE
         }
 
         "crash Phase A: orphaned CLAIMED Run is swept to FAILED, next tick creates new Run" {
@@ -205,7 +234,6 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             val sp = makeScheduledPrompt(spRepo, slot = Instant.parse("2026-01-01T08:00:00Z"))
 
             // Simulate crash: insert a CLAIMED Run older than the orphan threshold (5 min)
-            // as if materialize never completed.
             val orphanedRun = ScheduledPromptRun(
                 metadata = EntityMetadata(
                     id = UUID.randomUUID(),
@@ -218,13 +246,13 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             )
             runRepo.insert(orphanedRun)
 
-            val scanner = makeScanner(
+            val (scanner, _) = makeComponents(
                 spRepo, runRepo, userRunRepo,
                 caseService = eventuallyIdleCaseService(),
             )
 
             // tickClaim: sweep marks orphan FAILED (unblocking hasActive guard),
-            // then claims the due slot → materialises → RUNNING.
+            // then claims the due slot -> materialises -> RUNNING.
             scanner.tickClaim()
 
             runRepo.findById(orphanedRun.id)!!.status shouldBe RunStatus.FAILED
@@ -239,7 +267,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> setOf(userId1) }
             val sp = makeScheduledPrompt(spRepo, slot = Instant.parse("2026-01-01T10:00:00Z")) // not due
 
-            // Simulate crash: Run is RUNNING but checkCompletion was never called.
+            // Simulate crash: Run is RUNNING, UserRun settled, but the Run was never closed.
             val orphanedRun = runRepo.insert(
                 ScheduledPromptRun(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
@@ -249,7 +277,6 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                     correlationId = "orphaned-running",
                 ),
             )
-            // Seed a terminal UserRun — all settled, but the Run was never closed.
             userRunRepo.materialize(orphanedRun.id, agentId, namespaceId)
             userRunRepo.markTerminal(
                 userRunRepo.findByRunId(orphanedRun.id).first().id,
@@ -257,25 +284,25 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 nowInstant,
             )
 
-            val scanner = makeScanner(
+            val (scanner, _) = makeComponents(
                 spRepo, runRepo, userRunRepo,
-                caseService = mockk(relaxed = true), // no due prompt — consume not invoked
+                caseService = mockk(relaxed = true),
             )
 
-            // tickClaim sweeps the orphaned RUNNING run → DONE (no due prompts to claim)
+            // tickClaim sweeps the orphaned RUNNING run -> DONE
             scanner.tickClaim()
 
             runRepo.findById(orphanedRun.id)!!.status shouldBe RunStatus.DONE
         }
 
-        "multi-batch: all UserRuns processed when count exceeds batchSize" {
+        "multi-batch: all UserRuns processed when count exceeds batchSize, Run closed on next tick" {
             val userIds = (1..5).map { UUID.randomUUID() }.toSet()
             val spRepo = InMemoryScheduledPromptRepository()
             val runRepo = InMemoryScheduledPromptRunRepository()
             val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> userIds }
             makeScheduledPrompt(spRepo)
 
-            // batchSize = 2 → 3 batches needed for 5 UserRuns
+            // batchSize = 2 -> 3 batches needed for 5 UserRuns
             val smallBatchProperties = SchedulerProperties(batchSize = 2, leaseMinutes = 30L)
             val userService = mockk<UserService>().also { svc ->
                 userIds.forEach { id ->
@@ -287,15 +314,13 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                     )
                 }
             }
-
-            val caseService = eventuallyIdleCaseService()
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns activeAgent
+            }
 
             runRepo.userRunRepository = userRunRepo
             val promptService = mockk<PromptService>().also {
                 every { it.findById(promptTemplateId) } returns promptTemplate
-            }
-            val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns activeAgent
             }
             val executor = ScheduledPromptExecutor(
                 scheduledPromptRepository = spRepo,
@@ -303,7 +328,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 userRunRepository = userRunRepo,
                 promptService = promptService,
                 agentConfigService = agentConfigService,
-                caseService = caseService,
+                caseService = eventuallyIdleCaseService(),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
                 properties = smallBatchProperties,
@@ -324,11 +349,21 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             scanner.tickClaim()
             userRunRepo.all() shouldHaveSize 5
 
-            // Phase B: 3 batches of 2, 2, 1 — all 5 UserRuns must be processed
-            scanner.tickConsume()
+            // Phase B: 3 batches of 2, 2, 1 — all 5 UserRuns processed
+            val leaseDuration = Duration.ofMinutes(smallBatchProperties.leaseMinutes)
+            var batch: List<ScheduledPromptUserRun>
+            do {
+                batch = userRunRepo.claimBatch(leaseDuration, smallBatchProperties.batchSize)
+                batch.forEach { userRun -> executor.processUserRun(userRun) }
+            } while (batch.isNotEmpty())
 
             userRunRepo.all().all { it.status == UserRunStatus.DONE } shouldBe true
-            runRepo.findById(runRepo.all().single().id)!!.status shouldBe RunStatus.DONE
+            // Run still RUNNING — not yet closed by the scan
+            runRepo.all().single().status shouldBe RunStatus.RUNNING
+
+            // Second tickClaim closes the settled Run
+            scanner.tickClaim()
+            runRepo.all().single().status shouldBe RunStatus.DONE
         }
 
         "crash Phase B: orphaned RUNNING Run with failed UserRun is swept to FAILED" {
@@ -354,7 +389,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 "Case creation failed",
             )
 
-            val scanner = makeScanner(
+            val (scanner, _) = makeComponents(
                 spRepo, runRepo, userRunRepo,
                 caseService = mockk(relaxed = true),
             )

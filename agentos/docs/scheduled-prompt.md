@@ -9,8 +9,10 @@ Execution is split into two phases handled by `SchedulerScanner` and `ScheduledP
 
 - **Phase A — Claim** (`tickClaim`): discovers due prompts, inserts a Run, and materialises
   UserRuns via a single Cypher INSERT-SELECT.
-- **Phase B — Consume** (`tickConsume`): claims PENDING UserRuns, creates a Case per user,
-  injects the prompt, and monitors the launch.
+- **Phase B — Consume** (continuous loop in `ScheduledPromptExecutor`): a producer +
+  channel + worker-pool loop started by `@PostConstruct` claims PENDING UserRuns, creates
+  a Case per user, injects the prompt, and monitors the launch. This loop runs
+  independently of the claim tick and is kept alive by a watchdog (see below).
 
 ## UserRun lifecycle
 
@@ -42,7 +44,7 @@ Each mechanism fires automatically on the next tick.
 | Between `runRepository.insert()` and `runCatching { executor.materialize() }` | Run CLAIMED, no UserRuns created | `recoverOrphanedClaimedRuns` marks FAILED after `ORPHAN_THRESHOLD` (5 min) | ~5 min |
 | Inside `materialize()` (transactional) | Run CLAIMED (transaction rolled back), no UserRuns | Inline `runCatching` marks FAILED immediately if instance alive; otherwise same as above | Immediate or ~5 min |
 | Between `materialize()` and `markTerminal()` | UserRun RUNNING with expired lease | `claimBatch` reclaims on lease expiry — new Case created (at-least-once) | `leaseMinutes` |
-| Between last `markTerminal()` and `checkCompletion()` | Run RUNNING, all UserRuns terminal | `recoverOrphanedRunningRuns` closes Run as DONE or FAILED on next tick | Next claim tick |
+| Between last `markTerminal()` and Run closure | Run RUNNING, all UserRuns terminal | `recoverOrphanedRunningRuns` closes Run as DONE or FAILED on next tick | Next claim tick |
 
 ### Delivery guarantee
 
@@ -58,8 +60,17 @@ The lease must outlive the launch timeout. A shorter lease allows UserRuns to be
 before `monitorLaunch` completes, causing double execution within the same slot.
 Enforced at startup via `require()` in `SchedulerScanner.logStartup()`.
 
+## Consumer-loop watchdog
+
+`SchedulerScanner.tickWatchdog` fires on the same interval as `tickClaim`. It calls
+`ScheduledPromptExecutor.isRunning()` and, if the consumer loop has died unexpectedly
+(e.g. due to an uncaught exception escaping the scope), calls `ScheduledPromptExecutor.restart()`
+to recreate the `CoroutineScope` and relaunch the producer + worker pool. This ensures
+Phase B resumes automatically without operator intervention.
+
 ## `updateStatus` guard
 
 `ScheduledPromptRunNodeNeo4jRepository.updateStatus` only writes when the Run is not already
-in a terminal status (`DONE` or `FAILED`). This prevents `recoverOrphanedRunningRuns` from
-overwriting `finishedAt` already set by `checkCompletion` when both race on the same Run.
+in a terminal status (`DONE` or `FAILED`). This prevents concurrent calls to
+`recoverOrphanedRunningRuns` across instances from overwriting a `finishedAt` already set
+by a previous invocation.
