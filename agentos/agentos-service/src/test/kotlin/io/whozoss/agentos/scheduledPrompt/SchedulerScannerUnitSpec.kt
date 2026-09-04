@@ -719,7 +719,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             )
 
             // Insert a RUNNING run directly (simulates a run that was materialised but whose
-            // checkCompletion call was lost in a crash)
+            // parent closure was lost in a crash)
             val run = ScheduledPromptRun(
                 metadata = EntityMetadata(id = UUID.randomUUID(), created = Instant.parse("2026-01-01T08:00:00Z")),
                 scheduledPromptId = sp.id,
@@ -962,7 +962,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // Pause guards — tickConsume
+        // Startup invariant: leaseMinutes > launchTimeoutSeconds (valid case)
         // -------------------------------------------------------------------------
 
         "SchedulerScanner startup: does not throw when leaseMinutes * 60 > launchTimeoutSeconds" {

@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them.
  *
- * ### Single-tick architecture
+ * ### Scheduled entry points
  *
  * **[tickClaim]** (Phase A, every `agentos.prompt.scheduler.tick-interval-ms`):
  * 1. Sweep orphaned CLAIMED runs via [recoverOrphanedClaimedRuns] — handles the crash
@@ -26,9 +26,14 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    calls [ScheduledPromptExecutor.materialize] to create PENDING UserRuns.
  * 4. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
  *
+ * **[tickWatchdog]** (every `agentos.prompt.scheduler.tick-interval-ms`):
+ * Checks [ScheduledPromptExecutor.isRunning] and calls [ScheduledPromptExecutor.restart]
+ * if the consumer loop has died unexpectedly. Runs on the same interval as [tickClaim]
+ * so a dead producer is detected within one tick.
+ *
  * Phase B (UserRun consumption) is handled by [ScheduledPromptExecutor], which runs a
- * continuous producer + channel + worker-pool loop as a [org.springframework.context.SmartLifecycle]
- * bean. There is no consume tick in this scanner.
+ * continuous producer + channel + worker-pool loop started by `@PostConstruct` and stopped
+ * by `@PreDestroy`. There is no consume tick in this scanner.
  *
  * [tickClaim] uses Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
  * own successor. No fire-and-forget coroutines are used at the Scanner level.
@@ -48,10 +53,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * and materialize). [recoverOrphanedClaimedRuns] marks such runs FAILED at the start of
  * each tick, unblocking the [ScheduledPromptRunRepository.hasActive] overlap guard.
  *
- * A RUNNING Run whose UserRuns are all terminal but whose completion check was never
- * called is handled by [recoverOrphanedRunningRuns], also called at the start of each
- * tick. This covers the crash window between [ScheduledPromptUserRunRepository.markTerminal]
- * and [ScheduledPromptExecutor.checkCompletion].
+ * A RUNNING Run whose UserRuns are all terminal but whose parent was never closed is
+ * handled by [recoverOrphanedRunningRuns], also called at the start of each tick.
+ * This covers the crash window between the [ScheduledPromptUserRunRepository.markTerminal]
+ * call of the last UserRun and the closure of the parent Run, which is now performed
+ * exclusively by [recoverOrphanedRunningRuns] on each tick.
  *
  * The [clock] is injected so tests can freeze time.
  *
@@ -143,9 +149,9 @@ class SchedulerScanner(
             logger.error(e) { "[SchedulerScanner] recoverOrphanedClaimedRuns failed — continuing tick" }
         }
 
-        // Sweep: close RUNNING runs whose UserRuns are all settled but whose completion
-        // check was missed. This handles the crash window between markTerminal() and
-        // checkCompletion() in ScheduledPromptExecutor.
+        // Sweep: close RUNNING runs whose UserRuns are all settled but whose parent was
+        // never closed. This handles the crash window between the last markTerminal() call
+        // and the closure of the parent Run by recoverOrphanedRunningRuns.
         runCatching { recoverOrphanedRunningRuns(now) }.onFailure { e ->
             logger.error(e) { "[SchedulerScanner] recoverOrphanedRunningRuns failed — continuing tick" }
         }
@@ -194,12 +200,12 @@ class SchedulerScanner(
     }
 
     /**
-     * Close RUNNING Runs whose UserRuns are all settled but whose completion check was missed.
+     * Close RUNNING Runs whose UserRuns are all settled but whose parent was never closed.
      *
      * This handles the crash window where the last [ScheduledPromptUserRunRepository.markTerminal]
-     * completed but the instance crashed before [ScheduledPromptExecutor]'s `checkCompletion()`
-     * could transition the parent Run. Without this sweep, the Run would stay RUNNING forever
-     * — no subsequent UserRun closure will re-trigger the check.
+     * completed but the instance crashed before the parent Run could be transitioned.
+     * Without this sweep, the Run would stay RUNNING forever — no subsequent event will
+     * re-trigger the closure.
      *
      * Uses a single [ScheduledPromptRunRepository.findSettledRunning] query that filters
      * directly in the database: only RUNNING Runs with no UserRun in PENDING or RUNNING

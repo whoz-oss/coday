@@ -54,22 +54,27 @@ import java.util.UUID
  *
  * ### Phase B — Continuous consumption (producer + channel + worker pool)
  *
- * This bean implements [SmartLifecycle]. On [start], a [CoroutineScope] is created and two
- * structured children are launched inside it:
+ * The lifecycle is driven by `@PostConstruct` / `@PreDestroy` (Jakarta annotations).
+ * On [start], a [CoroutineScope] is created with a [SupervisorJob] and [runConsumerLoop]
+ * is launched inside it on the [dispatcher]. [stop] cancels the scope. [restart] (stop
+ * then start) is called by the watchdog [SchedulerScanner.tickWatchdog] whenever
+ * [isRunning] returns false, recovering from unexpected coroutine death.
  *
- * **Producer** (`Dispatchers.IO`): loops continuously, calling
- * [ScheduledPromptUserRunRepository.claimBatch] and sending each claimed [ScheduledPromptUserRun]
- * into the channel. When the batch is empty the producer delays [SchedulerProperties.emptyPollDelayMs]
- * before polling again, avoiding a busy-loop. On database errors it applies exponential
- * backoff (capped at 60 s). The producer respects [consumePaused]: when paused it delays
- * 2 s per iteration without touching the database.
+ * **Producer** (on the [dispatcher] injected, `Dispatchers.IO` by default): loops
+ * continuously, calling [ScheduledPromptUserRunRepository.claimBatch] and sending each
+ * claimed [ScheduledPromptUserRun] into the channel. When the batch is empty the producer
+ * delays [SchedulerProperties.emptyPollDelayMs] before polling again, avoiding a busy-loop.
+ * On database errors it applies exponential backoff (capped at 60 s). The producer respects
+ * [consumePaused]: when paused it delays [SchedulerProperties.pausedPollDelayMs] per
+ * iteration without touching the database.
  * The channel is closed in the producer's `finally` block, guaranteeing that workers
  * exit their `for (userRun in channel)` loop cleanly regardless of how the producer stops.
  *
- * **Worker pool** ([SchedulerProperties.workerCount] coroutines, `Dispatchers.IO`): each worker
- * receives [ScheduledPromptUserRun]s from the channel and calls [processUserRun] followed by
- * [checkCompletion]. A failure in one worker does not affect its siblings — exceptions are
- * caught per-item; [CancellationException] is always re-thrown to honour cooperative cancellation.
+ * **Worker pool** ([SchedulerProperties.workerCount] coroutines, on the [dispatcher]
+ * injected, `Dispatchers.IO` by default): each worker receives [ScheduledPromptUserRun]s
+ * from the channel and calls [processUserRun]. A failure in one worker does not affect its
+ * siblings — exceptions are caught per-item; [CancellationException] is always re-thrown
+ * to honour cooperative cancellation.
  *
  * **Channel capacity**: [SchedulerProperties.channelCapacity] (default 50 = 2 x batchSize).
  * Double-buffering: the producer can fill a second batch into the channel while workers drain
@@ -126,8 +131,6 @@ class ScheduledPromptExecutor(
 
     /** When true, the producer skips claimBatch and delays instead. */
     private val consumePaused = AtomicBoolean(false)
-
-
 
     /** True if the consumer loop is active. Returns false if start() was never called or if
      * stop() was called. The watchdog uses this to detect unexpected coroutine death. */
@@ -312,15 +315,17 @@ class ScheduledPromptExecutor(
      * Execute a single [ScheduledPromptUserRun]: resolve context, create a Case,
      * inject the prompt message, and await the launch outcome.
      *
-     * Throws on any unrecoverable error (missing entity, Case creation failure, etc.).
-     * The worker catches all non-[CancellationException] exceptions and logs them;
-     * the UserRun stays RUNNING until its lease expires and is reclaimed.
+     * Captures any non-[CancellationException] exception internally and calls [markFailed]
+     * to transition the UserRun to FAILED. If [markFailed] itself fails (e.g. database
+     * unavailable), the error is swallowed by `runCatching` and the UserRun remains RUNNING
+     * until its lease expires and is reclaimed by [ScheduledPromptUserRunRepository.claimBatch]
+     * (at-least-once delivery). This edge case is covered by a dedicated test.
      *
      * On a [CancellationException] (scope cancelled) the exception is re-thrown so the
      * worker exits its channel loop and the coroutine terminates cooperatively.
      *
      * Exposed as `internal` so unit tests can invoke it directly without starting the
-     * full [SmartLifecycle] loop.
+     * full consumption loop.
      */
     internal suspend fun processUserRun(userRun: ScheduledPromptUserRun) {
         // At-least-once delivery: if markTerminal() fails (DB unavailable), the UserRun stays

@@ -79,7 +79,7 @@ interface ScheduledPromptRunRepository {
      *
      * These Runs are presumed orphaned — the instance that processed the last UserRun
      * crashed after [ScheduledPromptUserRunRepository.markTerminal] but before
-     * [ScheduledPromptExecutor]'s `checkCompletion()` could transition the parent Run.
+     * [SchedulerScanner.recoverOrphanedRunningRuns] could close the parent Run.
      */
     fun findSettledRunning(): List<ScheduledPromptRun>
 }

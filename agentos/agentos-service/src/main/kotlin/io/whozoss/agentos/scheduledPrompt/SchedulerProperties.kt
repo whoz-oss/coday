@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * | Property | Env var | Default | Description |
  * |---|---|---|---|
  * | `agentos.prompt.scheduler.enabled` | `AGENTOS_PROMPT_SCHEDULER_ENABLED` | false | Enable/disable the scheduler |
- * | `agentos.prompt.scheduler.tick-interval-ms` | `AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS` | 60000 | Interval between claim ticks (ms) — read directly by `@Scheduled`, not via this class. Also drives the Run parent completion scan (`recoverOrphanedRunningRuns`) |
+ * | `agentos.prompt.scheduler.tick-interval-ms` | `AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS` | 60000 | Interval between claim ticks (ms) — read directly by `@Scheduled`, not via this class. Also drives the Run parent completion scan (`recoverOrphanedRunningRuns`) and the consumer-loop watchdog (`tickWatchdog`) |
  * | `agentos.prompt.scheduler.batch-size` | `AGENTOS_PROMPT_SCHEDULER_BATCH_SIZE` | 25 | Max UserRuns claimed per producer iteration |
  * | `agentos.prompt.scheduler.worker-count` | `AGENTOS_PROMPT_SCHEDULER_WORKER_COUNT` | 5 | Number of parallel consumer workers |
  * | `agentos.prompt.scheduler.channel-capacity` | `AGENTOS_PROMPT_SCHEDULER_CHANNEL_CAPACITY` | 50 | Channel buffer size (2 × batchSize — double-buffering) |
@@ -30,8 +30,9 @@ data class SchedulerProperties(
      */
     val batchSize: Int = 25,
     /**
-     * Number of parallel consumer workers processing UserRuns from the channel.
-     * Matches the former page size (5) so throughput is unchanged vs. the old tick model.
+     * Number of coroutines consuming [ScheduledPromptUserRun]s from the channel in parallel.
+     * A higher value increases the throughput of Case creation at the cost of more
+     * concurrent database and downstream API calls.
      */
     val workerCount: Int = 5,
     /**

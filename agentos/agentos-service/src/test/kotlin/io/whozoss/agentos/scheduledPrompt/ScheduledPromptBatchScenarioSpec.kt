@@ -38,7 +38,7 @@ import java.util.UUID
  * claim tick detects settled RUNNING Runs and transitions them to DONE/FAILED.
  *
  * Phase B is driven directly via [ScheduledPromptExecutor.processUserRun] (`internal`)
- * rather than starting the full [org.springframework.context.SmartLifecycle] loop.
+ * rather than starting the full producer + channel + worker-pool consumption loop.
  * This keeps the tests deterministic without coroutine infrastructure.
  *
  * Uses in-memory repositories and MockK stubs — no Spring context, no Neo4j.
