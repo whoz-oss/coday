@@ -27,10 +27,42 @@ class SkillServiceImplUnitSpec : StringSpec({
             )
     }
 
-    val skill1 = Skill("spec-writing", "Writes specs", "## Spec\nBody", "product/spec-writing", "/tmp/skills/product/spec-writing")
-    val skill2 = Skill("jira-writing", "Writes tickets", "## Jira\nBody", "product/jira-writing", "/tmp/skills/product/jira-writing")
-    val skill3 = Skill("branch-creation", "Creates branches", "## Branch\nBody", "core/branch-creation", "/tmp/skills/core/branch-creation")
-    val skill4 = Skill("adversarial-review", "Reviews diffs", "## Review\nBody", "review/adversarial-review", "/tmp/skills/review/adversarial-review")
+    val skill1 = Skill(
+        metadata = EntityMetadata(),
+        namespaceId = namespaceId,
+        name = "spec-writing",
+        description = "Writes specs",
+        body = "## Spec\nBody",
+        skillRelativePath = "product/spec-writing",
+        resourceRoot = "/tmp/skills/product/spec-writing",
+    )
+    val skill2 = Skill(
+        metadata = EntityMetadata(),
+        namespaceId = namespaceId,
+        name = "jira-writing",
+        description = "Writes tickets",
+        body = "## Jira\nBody",
+        skillRelativePath = "product/jira-writing",
+        resourceRoot = "/tmp/skills/product/jira-writing",
+    )
+    val skill3 = Skill(
+        metadata = EntityMetadata(),
+        namespaceId = namespaceId,
+        name = "branch-creation",
+        description = "Creates branches",
+        body = "## Branch\nBody",
+        skillRelativePath = "core/branch-creation",
+        resourceRoot = "/tmp/skills/core/branch-creation",
+    )
+    val skill4 = Skill(
+        metadata = EntityMetadata(),
+        namespaceId = namespaceId,
+        name = "adversarial-review",
+        description = "Reviews diffs",
+        body = "## Review\nBody",
+        skillRelativePath = "review/adversarial-review",
+        resourceRoot = "/tmp/skills/review/adversarial-review",
+    )
     val all = listOf(skill3, skill1, skill2, skill4) // discovery order: core, product, review
 
     // -------------------------------------------------------------------------
@@ -117,8 +149,24 @@ class SkillServiceImplUnitSpec : StringSpec({
     // -------------------------------------------------------------------------
 
     "filterSkills root-level skill selectable by name and by SKILL.md" {
-        val rootSkill = Skill("Root Skill", "Root desc", "## Body", "", "/tmp/skills")
-        val nested = Skill("Nested", "Nested desc", "## Body", "nested/child", "/tmp/skills/nested/child")
+        val rootSkill = Skill(
+            metadata = EntityMetadata(),
+            namespaceId = namespaceId,
+            name = "Root Skill",
+            description = "Root desc",
+            body = "## Body",
+            skillRelativePath = "",
+            resourceRoot = "/tmp/skills",
+        )
+        val nested = Skill(
+            metadata = EntityMetadata(),
+            namespaceId = namespaceId,
+            name = "Nested",
+            description = "Nested desc",
+            body = "## Body",
+            skillRelativePath = "nested/child",
+            resourceRoot = "/tmp/skills/nested/child",
+        )
         val skills = listOf(rootSkill, nested)
 
         service.filterSkills(skills, listOf("Root Skill")) shouldBe listOf(rootSkill)

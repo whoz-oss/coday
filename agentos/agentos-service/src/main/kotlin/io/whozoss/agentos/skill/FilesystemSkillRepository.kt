@@ -3,6 +3,7 @@ package io.whozoss.agentos.skill
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Component
@@ -10,6 +11,7 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
+import java.util.UUID
 
 /**
  * Discovers [Skill] definitions from `SKILL.md` files on the filesystem.
@@ -202,6 +204,8 @@ class FilesystemSkillRepository(
         }
 
         return Skill(
+            metadata = EntityMetadata(),
+            namespaceId = null,
             name = name,
             description = description,
             body = body,

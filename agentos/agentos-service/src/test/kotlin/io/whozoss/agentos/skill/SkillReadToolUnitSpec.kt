@@ -4,9 +4,11 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.mockk
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import java.nio.file.Files
+import java.util.UUID
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 
@@ -24,7 +26,15 @@ class SkillReadToolUnitSpec : StringSpec({
         name: String = "Code Review",
         body: String = "## Guidelines\nDo this.",
         resourceRoot: String? = null,
-    ) = Skill(name, "Reviews code", body, "core/${name.lowercase().replace(' ', '-')}", resourceRoot)
+    ) = Skill(
+        metadata = EntityMetadata(),
+        namespaceId = UUID.randomUUID(),
+        name = name,
+        description = "Reviews code",
+        body = body,
+        skillRelativePath = "core/${name.lowercase().replace(' ', '-')}",
+        resourceRoot = resourceRoot,
+    )
 
     // -------------------------------------------------------------------------
     // SkillReadTool
@@ -102,7 +112,15 @@ class SkillReadToolUnitSpec : StringSpec({
     }
 
     "readSkillResource null resourceRoot returns error" {
-        val s = Skill("No Root", "desc", "body", "core/no-root", resourceRoot = null)
+        val s = Skill(
+            metadata = EntityMetadata(),
+            namespaceId = UUID.randomUUID(),
+            name = "No Root",
+            description = "desc",
+            body = "body",
+            skillRelativePath = "core/no-root",
+            resourceRoot = null,
+        )
         val tool = SkillReadResourceTool(listOf(s))
 
         val result = kotlinx.coroutines.runBlocking {

@@ -1,9 +1,9 @@
 # AgentOS — skills as first-class entities: state, decisions, and remaining work
 
 > Implementation specification for PR #1277 (`feature/leo/issue-1275-filesystem-skills`).
-> **Current status:** agent-facing capability and hardened filesystem source are implemented and
-> verified; first-class entity, Neo4j persistence, hybrid repository, CRUD API, and platform-level
-> shadowing remain.
+> **Current status:** agent-facing capability, hardened filesystem source, and Delivery 1 domain / 
+> Neo4j repository layer are implemented. Hybrid repository decorator, persistence wiring, CRUD
+> service/API, platform-level shadowing resolution, and generated Skill contract remain.
 >
 > This document is canonical guide for completing implementation. Status reflects current working
 > tree after filesystem restoration and verification (2840 backend tests, 0 failures). Update this
@@ -225,27 +225,34 @@ decorator), but discovery behavior is complete:
 Latest backend run: **2840 tests, 0 failures**. Focused cache/skill specs and broader
 `agentos-service` build/test passed. Frontend was not touched or built.
 
-### Not implemented: first-class entity management
+### Implemented: Delivery 1 entity and Neo4j repository layer
 
-Repository-wide audit confirmed absence of:
+- `Skill` implements `Entity` with `EntityMetadata`, nullable `namespaceId`, and nullable
+  filesystem-only `skillRelativePath` / `resourceRoot`.
+- `SkillNode` maps all audit/version metadata, scalar namespace id, and outgoing `BELONGS_TO`.
+- `SkillRepository` exposes namespace, platform, and exact case-insensitive per-level name lookup.
+- `SkillNodeNeo4jRepository` provides active namespace/platform/double-key queries.
+- `Neo4jSkillRepository` implements save/read/soft-delete contracts, relationship synchronization,
+  tombstoned uniqueness keys, and transactional multi-operation writes.
+- Focused skill and `AgentServiceImplUnitSpec` tests pass. Full backend compile succeeded; known
+  `ScheduledPromptBatchScenarioSpec` flake reproduced in full suite and passed in isolation.
 
-- `EntityMetadata` / `namespaceId` on `Skill`
-- `SkillNode`, `SkillNodeNeo4jRepository`
-- `SkillRepository`, `Neo4jSkillRepository`
-- hybrid `FilesystemSkillRepository : SkillRepository by delegate`
-- Skill beans/package registration in `Neo4jPersistenceConfiguration`
-- `SkillService : EntityService<Skill, UUID>` CRUD behavior
-- `SkillDto`, `SkillController`, REST routes, Skill OpenAPI schema
-- platform-level skill shadowing
+### Not implemented: hybrid management plane
 
-Current `Skill` is a plain in-memory data class. Current service still resolves namespace configPath and
-depends on concrete filesystem repository. This is exact remaining architectural gap.
+- `FilesystemSkillRepository` is not yet a `SkillRepository` decorator.
+- Skill repository beans/package registration are absent from `Neo4jPersistenceConfiguration`.
+- `SkillService` does not yet extend `EntityService`; final namespace-over-platform resolution and
+  CRUD uniqueness/read-only rules are absent.
+- `SkillDto`, `SkillController`, REST routes, Skill OpenAPI schema, and schema setup are absent.
+
+Current service still resolves namespace configPath and depends on concrete filesystem repository.
+`AgentServiceImpl` remains unchanged, as required.
 
 ---
 
 ## Remaining work
 
-### Delivery 1 — entity + node + repository
+### Delivery 1 — entity + node + repository (implemented, pending checkpoint review)
 
 Mirror `IntegrationConfig` exactly. Read these first; they *are* the specification:
 

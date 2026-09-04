@@ -1277,7 +1277,15 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "findAgentByName appends skills block when skills are resolved for namespace" {
-            val skill = Skill("Review", "Code review", "## Body", "core/review", "/tmp/skills/core/review")
+            val skill = Skill(
+                metadata = EntityMetadata(),
+                namespaceId = namespaceId,
+                name = "Review",
+                description = "Code review",
+                body = "## Body",
+                skillRelativePath = "core/review",
+                resourceRoot = "/tmp/skills/core/review",
+            )
             val config = agentConfig(name = "my-agent", instructions = "Base instructions", modelName = "sonnet")
                 .copy(skillSelectors = listOf("*"))
             val model = modelConfig(alias = "sonnet")
@@ -1298,7 +1306,15 @@ class AgentServiceImplUnitSpec : StringSpec() {
         }
 
         "findAgentByName forwards skillSelectors from agentConfig to skillService" {
-            val skill = Skill("spec-writing", "Spec writing", "## Body", "product/spec-writing", "/tmp")
+            val skill = Skill(
+                metadata = EntityMetadata(),
+                namespaceId = namespaceId,
+                name = "spec-writing",
+                description = "Spec writing",
+                body = "## Body",
+                skillRelativePath = "product/spec-writing",
+                resourceRoot = "/tmp",
+            )
             val config =
                 agentConfig(name = "filtered-agent", instructions = "Base instructions", modelName = "sonnet")
                     .copy(skillSelectors = listOf("core/**", "product/**"))
