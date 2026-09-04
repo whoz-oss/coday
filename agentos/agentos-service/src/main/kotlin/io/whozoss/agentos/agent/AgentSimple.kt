@@ -328,7 +328,7 @@ class AgentSimple(
                     if (index == lastUserMessageIndex) {
                         event.sessionContextPromptText()?.let { messages.add(UserMessage(it)) }
                     }
-                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses)
+                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses, mediaRequestIds)
                     messages.add(event.toSpringAiMessage(id.toString()))
                 }
 
@@ -353,7 +353,7 @@ class AgentSimple(
                 // calls are flushed first so the message list stays well-formed (every
                 // AssistantMessage with tool_calls must be followed by a ToolResponseMessage).
                 is QuestionEvent -> {
-                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses)
+                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses, mediaRequestIds)
                     messages.add(AssistantMessage(event.toPromptText()))
                 }
 
@@ -361,7 +361,7 @@ class AgentSimple(
                 // Rendered as UserMessage, consistent with MessageEvent USER rendering.
                 // Tool calls are flushed first for the same well-formedness reason.
                 is AnswerEvent -> {
-                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses)
+                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses, mediaRequestIds)
                     messages.add(UserMessage(event.answer))
                 }
 
@@ -374,7 +374,7 @@ class AgentSimple(
         // Flush any tool calls that trail the end of the event list without a following
         // conversational message (e.g. the last thing the agent did was call a tool, then
         // the run was interrupted). Args are already normalised in the accumulation loop above.
-        flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses)
+        flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses, mediaRequestIds)
 
         return messages
     }
@@ -404,6 +404,7 @@ class AgentSimple(
         messages: MutableList<Message>,
         pendingToolCalls: MutableList<AssistantMessage.ToolCall>,
         toolResponses: Map<String, ToolResponseEvent>,
+        mediaRequestIds: Set<String>,
     ) {
         if (pendingToolCalls.isEmpty()) return
 
@@ -421,13 +422,13 @@ class AgentSimple(
             }
         messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
 
-            // Inject image Media messages for tool calls within the image budget
-            toolCallsForCurrentMessage.forEach { toolCall ->
-                val response = toolResponses[toolCall.id()]
-                if (response != null && response.images.isNotEmpty() && toolCall.id() in mediaRequestIds) {
-                    messages.add(toolImagesUserMessage(toolCall.name(), response.images))
-                }
+        // Inject image Media messages for tool calls within the image budget
+        pendingToolCalls.forEach { toolCall ->
+            val response = toolResponses[toolCall.id()]
+            if (response != null && response.images.isNotEmpty() && toolCall.id() in mediaRequestIds) {
+                messages.add(toolImagesUserMessage(toolCall.name(), response.images))
             }
+        }
         pendingToolCalls.clear()
     }
 
@@ -469,7 +470,10 @@ class AgentSimple(
      * is appended telling the LLM the images are no longer attached and it should re-call
      * the tool if needed.
      */
-    private fun toolResponseText(response: ToolResponseEvent, mediaRequestIds: Set<String>): String {
+    private fun toolResponseText(
+        response: ToolResponseEvent,
+        mediaRequestIds: Set<String>,
+    ): String {
         val text =
             when (val content = response.output) {
                 is MessageContent.Text -> content.content
@@ -477,7 +481,10 @@ class AgentSimple(
             }
         return when {
             response.images.isEmpty() -> text
-            response.toolRequestId in mediaRequestIds -> text  // images come via follow-up UserMessage
+
+            response.toolRequestId in mediaRequestIds -> text
+
+            // images come via follow-up UserMessage
             else -> text + "\n[${response.images.size} image(s) no longer attached, call the tool again if needed]"
         }
     }
