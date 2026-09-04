@@ -122,7 +122,7 @@ class ExecutionWindowService(windows: String?) {
      * Parses [raw] into a list of [Window]s, collecting all validation errors.
      *
      * Returns `null` when [raw] is null or blank (no windows → always-open).
-     * Returns an empty list on parse failure (fail-open — [isWithinWindow] returns true).
+     * Returns `null` on parse failure (fail-open — [isWithinWindow] returns true).
      * Returns the validated windows on success.
      */
     private fun parseAndValidate(raw: String?): List<Window>? {
@@ -167,7 +167,12 @@ class ExecutionWindowService(windows: String?) {
 
             if (i > 0) {
                 val prev = windows[i - 1]
-                if (w.open.minuteOfWeek <= prev.close.minuteOfWeek) {
+                val prevIsWrapAround = prev.close.minuteOfWeek < prev.open.minuteOfWeek
+                val currIsWrapAround = w.close.minuteOfWeek < w.open.minuteOfWeek
+                if (prevIsWrapAround && currIsWrapAround) {
+                    errors += "window[$i]: only one wrap-around window (crossing Sunday\u2192Monday) is allowed; " +
+                        "window[${i - 1}] and window[$i] both wrap around"
+                } else if (w.open.minuteOfWeek <= prev.close.minuteOfWeek) {
                     errors += "window[$i] open (${entries[i * 2]}) must be strictly after " +
                         "window[${i - 1}] close (${entries[(i - 1) * 2 + 1]})"
                 }

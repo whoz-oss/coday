@@ -246,6 +246,15 @@ class ExecutionWindowServiceSpec : StringSpec() {
             svc.isWithinWindow(at("MONDAY", 22)).shouldBeTrue()
         }
 
+        "invalid config: two overlapping wrap-around windows — fail-open" {
+            // Both windows cross the Sunday→Monday boundary:
+            //   Window 1: SUNDAY 20:00 → MONDAY 02:00  (minuteOfWeek 8880 → 120)
+            //   Window 2: SUNDAY 22:00 → MONDAY 05:00  (minuteOfWeek 9000 → 300)
+            // Raw comparison (9000 > 120) passes the old check — this test guards the fix.
+            val svc = ExecutionWindowService("SUNDAY 20:00,MONDAY 02:00,SUNDAY 22:00,MONDAY 05:00")
+            svc.isWithinWindow(at("SUNDAY", 23)).shouldBeTrue()  // fail-open
+        }
+
         // -------------------------------------------------------------------------
         // Case-insensitive day names
         // -------------------------------------------------------------------------

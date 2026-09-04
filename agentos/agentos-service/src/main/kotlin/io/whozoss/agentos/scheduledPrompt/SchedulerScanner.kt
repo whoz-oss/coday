@@ -143,8 +143,7 @@ class SchedulerScanner(
     fun tickClaim() {
         when {
             claimPaused.get() -> logger.debug { "[SchedulerScanner] tickClaim PAUSED — skipping" }
-            !checkExecutionWindow() -> return
-            else -> processClaim()
+            else -> if (checkExecutionWindow()) processClaim()
         }
     }
 
@@ -162,15 +161,16 @@ class SchedulerScanner(
      */
     private fun checkExecutionWindow(): Boolean {
         val now = ZonedDateTime.now(clock)
+        val nowUtc = now.withZoneSameInstant(ZoneOffset.UTC)
         val inWindow = executionWindowService.isWithinWindow(now)
 
         when {
             inWindow && lastWindowState != true -> {
-                logger.info { "[SchedulerScanner] WINDOW_OPEN — scheduler resuming dispatch (${now.toLocalTime()} UTC)" }
+                logger.info { "[SchedulerScanner] WINDOW_OPEN — scheduler resuming dispatch (${nowUtc.toLocalTime()} UTC)" }
                 lastWindowState = true
             }
             !inWindow && lastWindowState != false -> {
-                logger.info { "[SchedulerScanner] WINDOW_CLOSE — scheduler pausing dispatch (${now.toLocalTime()} UTC)" }
+                logger.info { "[SchedulerScanner] WINDOW_CLOSE — scheduler pausing dispatch (${nowUtc.toLocalTime()} UTC)" }
                 lastWindowState = false
             }
         }
