@@ -25,6 +25,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.usage.LlmUsage
 import java.util.UUID
 
 // Note: fromDomain does NOT set the `case` @Relationship field. The BELONGS_TO
@@ -166,6 +167,12 @@ class CaseEventNodeMapper(
                     node.agentName,
                     node.llmProvider,
                     node.llmModel,
+                    node.usageInputTokens,
+                    node.usageOutputTokens,
+                    node.usageCacheReadTokens,
+                    node.usageCacheWriteTokens,
+                    node.usageTotalTokens,
+                    node.usageEstimatedCostUsd,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -436,6 +443,16 @@ class CaseEventNodeMapper(
             agentName = n.agentName,
             llmProvider = n.llmProvider,
             llmModel = n.llmModel,
+            llmUsage = if (n.usageTotalTokens != null) {
+                LlmUsage(
+                    inputTokens = n.usageInputTokens ?: 0L,
+                    outputTokens = n.usageOutputTokens ?: 0L,
+                    cacheReadTokens = n.usageCacheReadTokens ?: 0L,
+                    cacheWriteTokens = n.usageCacheWriteTokens ?: 0L,
+                    totalTokens = n.usageTotalTokens,
+                    estimatedCostUsd = n.usageEstimatedCostUsd,
+                )
+            } else null,
         )
 
     private fun toDomain(n: AgentRunningEventNode) =
@@ -645,6 +662,12 @@ class CaseEventNodeMapper(
             agentName = e.agentName,
             llmProvider = e.llmProvider,
             llmModel = e.llmModel,
+            usageInputTokens = e.llmUsage?.inputTokens,
+            usageOutputTokens = e.llmUsage?.outputTokens,
+            usageCacheReadTokens = e.llmUsage?.cacheReadTokens,
+            usageCacheWriteTokens = e.llmUsage?.cacheWriteTokens,
+            usageTotalTokens = e.llmUsage?.totalTokens,
+            usageEstimatedCostUsd = e.llmUsage?.estimatedCostUsd,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
