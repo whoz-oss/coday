@@ -11,6 +11,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import java.time.ZonedDateTime
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -73,6 +74,15 @@ class SchedulerScanner(
     private val nextRunCalculatorService: NextRunCalculatorService,
     private val executor: ScheduledPromptExecutor,
 ) {
+    private val executionWindowService = ExecutionWindowService(properties.windows)
+    /**
+     * Tracks whether the scheduler was last seen inside or outside the execution window,
+     * so WINDOW_OPEN / WINDOW_CLOSE transitions are logged exactly once per transition
+     * rather than on every tick.
+     * Initialised to `null` — unknown until the first tick evaluation.
+     */
+    private var lastWindowState: Boolean? = null
+
     /** When true, tickClaim() exits immediately without processing. */
     private val claimPaused = AtomicBoolean(false)
 
@@ -119,15 +129,57 @@ class SchedulerScanner(
      * Fully blocking — materialize runs synchronously within the tick.
      * Spring fixedDelay guarantees no overlap between ticks.
      *
-     * When [claimPaused] the tick is a no-op — the scheduling thread still fires
-     * but [processClaim] is not called.
+     * Guards (evaluated in order):
+     * 1. [claimPaused] — operator pause via [pauseClaim] / [SchedulerEndpoint].
+     * 2. [ExecutionWindowService.isWithinWindow] — time-window guard; logs WINDOW_OPEN /
+     *    WINDOW_CLOSE on transitions and REQUEST_HELD when outside the window.
+     *
+     * When outside the execution window, due prompts are not dispatched and nextRunAt is
+     * not advanced — they accumulate and are processed at the next window open, including
+     * after a service restart (state is not persisted; the window is re-evaluated from
+     * config + current time on every tick).
      */
     @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
     fun tickClaim() {
         when {
             claimPaused.get() -> logger.debug { "[SchedulerScanner] tickClaim PAUSED — skipping" }
+            !checkExecutionWindow() -> return
             else -> processClaim()
         }
+    }
+
+    /**
+     * Evaluates the execution window and emits transition log events.
+     *
+     * Returns `true` when the scheduler is allowed to dispatch (inside the window or no
+     * window configured). Returns `false` when outside the window — the caller must skip
+     * processing.
+     *
+     * Logs:
+     * - `WINDOW_OPEN`  on the first tick after entering the window.
+     * - `WINDOW_CLOSE` on the first tick after leaving the window.
+     * - `REQUEST_HELD` on every tick while outside the window (indicates pending work is waiting).
+     */
+    private fun checkExecutionWindow(): Boolean {
+        val now = ZonedDateTime.now(clock)
+        val inWindow = executionWindowService.isWithinWindow(now)
+
+        when {
+            inWindow && lastWindowState != true -> {
+                logger.info { "[SchedulerScanner] WINDOW_OPEN — scheduler resuming dispatch (${now.toLocalTime()} UTC)" }
+                lastWindowState = true
+            }
+            !inWindow && lastWindowState != false -> {
+                logger.info { "[SchedulerScanner] WINDOW_CLOSE — scheduler pausing dispatch (${now.toLocalTime()} UTC)" }
+                lastWindowState = false
+            }
+        }
+
+        if (!inWindow) {
+            logger.debug { "[SchedulerScanner] REQUEST_HELD — outside execution window, due prompts will wait" }
+        }
+
+        return inWindow
     }
 
     /**
@@ -236,6 +288,10 @@ class SchedulerScanner(
      *
      * When [consumePaused] the tick is a no-op — the scheduling thread still fires
      * but [ScheduledPromptExecutor.consumeAvailable] is not called.
+     *
+     * The time-window guard applies only to [tickClaim] (Phase A). This tick (Phase B)
+     * always runs so that UserRuns already materialised before the window closed are
+     * consumed to completion — in-flight requests are never interrupted.
      *
      * The IO dispatcher is managed by [ScheduledPromptExecutor.consumeAvailable] itself
      * via [kotlinx.coroutines.withContext].

@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * | `agentos.prompt.scheduler.batch-size` | `AGENTOS_PROMPT_SCHEDULER_BATCH_SIZE` | 5 | Max UserRuns claimed and executed in parallel per consume tick |
  * | `agentos.prompt.scheduler.launch-timeout-seconds` | `AGENTOS_PROMPT_SCHEDULER_LAUNCH_TIMEOUT_SECONDS` | 30 | Max seconds to wait for a Case to reach IDLE or terminal after launch |
  * | `agentos.prompt.scheduler.lease-minutes` | `AGENTOS_PROMPT_SCHEDULER_LEASE_MINUTES` | 30 | Lease duration for RUNNING UserRuns (minutes) |
+ * | `agentos.prompt.scheduler.windows` | `AGENTOS_PROMPT_SCHEDULER_WINDOWS` | null | Comma-separated open/close window pairs: `DAYOFWEEK HH:mm` in UTC. See [ExecutionWindowService]. |
  */
 @ConfigurationProperties(prefix = "agentos.prompt.scheduler")
 data class SchedulerProperties(
@@ -34,4 +35,21 @@ data class SchedulerProperties(
      * Must be strictly greater than [launchTimeoutSeconds] ÷ 60 — enforced at startup by [SchedulerScanner].
      */
     val leaseMinutes: Long = 30L,
+    /**
+     * Optional execution time windows. When set, the scheduler only dispatches new claims
+     * during the specified UTC windows; outside windows tickClaim is a no-op and prompts
+     * accumulate until the next window opens.
+     *
+     * Format: comma-separated `DAYOFWEEK HH:mm` pairs — alternating open, close boundaries.
+     * Day names are case-insensitive [java.time.DayOfWeek] values. Times are UTC `HH:mm`.
+     *
+     * Example (nightly Mon–Thu + continuous Fri–Mon weekend):
+     * `MONDAY 22:00,FRIDAY 05:00,FRIDAY 22:00,MONDAY 05:00`
+     *
+     * When null or blank, the scheduler runs continuously (existing behaviour).
+     * On parse failure the scheduler also runs continuously (fail-open).
+     *
+     * State is not persisted — on restart the window is re-evaluated from config + current time.
+     */
+    val windows: String? = null,
 )
