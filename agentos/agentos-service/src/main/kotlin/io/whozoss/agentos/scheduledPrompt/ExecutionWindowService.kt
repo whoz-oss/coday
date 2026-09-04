@@ -227,6 +227,6 @@ class ExecutionWindowService(windows: String?) {
     }
 
     companion object : KLogging() {
-        private const val MINUTES_PER_DAY = 24 * 60
+        private val MINUTES_PER_DAY = Duration.ofDays(1).toMinutes().toInt()
     }
 }
