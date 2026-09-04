@@ -113,6 +113,17 @@ class CaseRuntime(
      */
     private val commandQueue = ConcurrentLinkedQueue<PendingCommand>()
 
+    /**
+     * Questions found answered during the pre-flight, after the first one has been
+     * scheduled. They are deliberately executed one at a time by [runTurns].
+     *
+     * The runtime is single-threaded while [runInFlight] is held: persisting all
+     * AgentSelectedEvents up front would make the newest selection hide earlier ones
+     * from [processNextStep]'s backwards scan. Keeping this queue lets each completed
+     * resumption yield before the next selection is emitted.
+     */
+    private val pendingQuestionResumptions = ArrayDeque<QuestionEvent>()
+
     private val _statusFlow = MutableStateFlow(initialStatus)
 
     // -------------------------------------------------------------------------
@@ -285,16 +296,10 @@ class CaseRuntime(
             // guard (above) to avoid double execution on concurrent callers, and BEFORE
             // runTurns() so the AgentSelectedEvent is in the history before the loop
             // starts scanning backward.
-            findUnresolvedQuestion(eventList.getAll())?.let { question ->
-                logger.info { "[CaseRuntime $id] Resuming agent '${question.agentName}' after user answer" }
-                storeAndEmitEvent(
-                    AgentSelectedEvent(
-                        namespaceId = namespaceId,
-                        caseId = id,
-                        agentId = question.agentId,
-                        agentName = question.agentName,
-                    ),
-                )
+            pendingQuestionResumptions.clear()
+            findQuestionsToResume(eventList.getAll()).let { questions ->
+                questions.firstOrNull()?.let(::resumeQuestion)
+                questions.drop(1).forEach(pendingQuestionResumptions::addLast)
             }
 
             val finalStatus = runTurns()
@@ -331,6 +336,17 @@ class CaseRuntime(
                 StepResult.STOP -> return CaseStatus.KILLED
                 StepResult.AGENT_FINISHED -> {
                     if (interruptRequested.get()) return CaseStatus.IDLE
+
+                    // A pre-flight may have found several independently answered
+                    // questions. Resume them in QuestionEvent history order, strictly
+                    // one agent turn at a time; runInFlight remains held throughout.
+                    val nextQuestion = pendingQuestionResumptions.removeFirstOrNull()
+                    if (nextQuestion != null) {
+                        resumeQuestion(nextQuestion)
+                        iterationCount = 0
+                        continue
+                    }
+
                     val nextCommand = commandQueue.poll()
                         ?: return CaseStatus.IDLE
                     logger.info {
@@ -473,6 +489,70 @@ class CaseRuntime(
         return StepResult.AGENT_FINISHED
     }
 
+    private fun resumeQuestion(question: QuestionEvent) {
+        logger.info { "[CaseRuntime $id] Resuming agent '${question.agentName}' after user answer" }
+        // Persist the per-question correlation with the selection itself. On replay,
+        // this prevents exactly this question (not merely this agent) from re-running.
+        storeAndEmitEvent(
+            AgentSelectedEvent(
+                namespaceId = namespaceId,
+                caseId = id,
+                agentId = question.agentId,
+                agentName = question.agentName,
+                questionId = question.id,
+            ),
+        )
+    }
+
+    /**
+     * Returns every [QuestionEvent] that should trigger an agent wake-up, in their
+     * deterministic event-history order.
+     *
+     * The caller schedules the returned questions sequentially, never concurrently.
+     */
+    private fun findQuestionsToResume(events: List<CaseEvent>): List<QuestionEvent> =
+        events.filterIsInstance<QuestionEvent>().filter { question ->
+            findLegitimateAnswerIndex(question, events) >= 0
+        }
+
+    /**
+     * Returns the index of the legitimate answer for [question], or -1 when that
+     * question must remain pending (or was already handled).
+     */
+    private fun findLegitimateAnswerIndex(question: QuestionEvent, events: List<CaseEvent>): Int {
+        // Find the first LEGITIMATE answer: paired by questionId AND from the right recipient.
+        // The recipient check is intentionally inside this predicate — see KDoc for why moving
+        // it outside causes a permanent-deadlock bug on shared cases.
+        val legitimateAnswerIndex = events.indexOfFirst { event ->
+            if (event !is AnswerEvent || event.questionId != question.id) return@indexOfFirst false
+            val targetUserId = question.userId
+                ?: return@indexOfFirst true // unaddressed question: any respondent qualifies
+            val respondentId = runCatching { UUID.fromString(event.actor.id) }.getOrElse {
+                logger.debug {
+                    "[CaseRuntime $id] AnswerEvent actor id '${event.actor.id}' is not a UUID — " +
+                        "does not qualify as a legitimate answer for question ${question.id}"
+                }
+                return@indexOfFirst false
+            }
+            respondentId == targetUserId
+        }
+        if (legitimateAnswerIndex < 0) return -1
+
+        // A durable per-question claim means this exact question was already
+        // scheduled. Unlike AgentSelectedEvent, it remains unambiguous when one agent
+        // has several outstanding questions.
+        if (events.any { it is AgentSelectedEvent && it.questionId == question.id }) return -1
+
+        // OAuth questions are answered inside the still-running OAuth flow; they must
+        // never schedule an AwaitAnswer resumption. QuestionType is a durable, explicit
+        // delivery-mode signal, unlike an AgentFinishedEvent whose ownership cannot be
+        // inferred reliably when several questions are interleaved.
+        return when (question.questionType) {
+            io.whozoss.agentos.sdk.caseEvent.QuestionType.OAUTH_AUTHORIZE -> -1
+            else -> legitimateAnswerIndex
+        }
+    }
+
     /**
      * Returns the [QuestionEvent] that should trigger an agent wake-up, or null when
      * no wake-up is warranted.
@@ -480,7 +560,9 @@ class CaseRuntime(
      * A wake-up is warranted when ALL of the following hold:
      * 1. There is at least one [QuestionEvent] in the history.
      * 2. A **legitimate** [AnswerEvent] exists for that question (see below).
-     * 3. No [AgentFinishedEvent] appears STRICTLY AFTER that legitimate answer.
+     * 3. The question is not an OAuth authorization question. OAuth waits inside its
+     *    existing agent run; its durable [QuestionEvent.questionType] explicitly carries
+     *    that delivery mode, so it must not schedule an AwaitAnswer resumption.
      *
      * ## Legitimate answer — recipient check
      *
@@ -506,62 +588,19 @@ class CaseRuntime(
      * The recipient predicate must therefore be part of the `indexOfFirst` call so that
      * only a legitimate answer can anchor the search.
      *
-     * ## OAuth guard — condition 3, do not remove
+     * ## OAuth delivery mode — condition 3, do not remove
      *
-     * During an OAuth flow the agent is blocked INSIDE its run when the answer arrives.
-     * The agent finishes its turn normally, emitting an [AgentFinishedEvent] AFTER the
-     * [AnswerEvent]. Waking up again would plant a spurious [AgentSelectedEvent] in the
-     * middle of a completed turn, potentially triggering a phantom agent run.
+     * OAuth is distinguished by [io.whozoss.agentos.sdk.caseEvent.QuestionType.OAUTH_AUTHORIZE],
+     * persisted on the question itself. The OAuth flow remains alive while the user authorizes
+     * and completes without an AwaitAnswer wake-up. Looking for a later [AgentFinishedEvent]
+     * is not sound: with several questions, a finish cannot be assigned unambiguously from
+     * event position or agent id (OAuth and AwaitAnswer ids differ). The explicit question
+     * type remains correct after replay and arbitrary event interleavings.
      *
-     * For [io.whozoss.agentos.agent.AgentInterrupt.AwaitAnswer], the run terminated
-     * BEFORE the answer arrived, so no [AgentFinishedEvent] follows the legitimate answer.
-     * The guard therefore lets exactly the right cases through.
-     *
-     * ## Known limitation — only the LAST question is considered
-     *
-     * Only the most recent [QuestionEvent] in the history is examined. An earlier question
-     * left unanswered is invisible to this pre-flight and its agent will never be woken up.
-     *
-     * This holds today because a case can only ever have one question outstanding: a
-     * [io.whozoss.agentos.agent.AgentInterrupt.AwaitAnswer] terminates the run that raised
-     * it, and [run] admits a single turn at a time via [runInFlight] — so no second agent
-     * can ask anything while the first is waiting.
-     *
-     * The assumption breaks as soon as two agents can be in flight on the same case (e.g.
-     * concurrent delegation). At that point the search must iterate over all unanswered
-     * questions rather than only the last one, and the wake-up must emit one
-     * [AgentSelectedEvent] per resolved question. Revisit this method — and the recipient
-     * check below, whose `indexOfFirst` anchoring assumes a single candidate question.
+     * Multiple answered questions are evaluated independently. Their resumption
+     * order is the ascending [QuestionEvent] history order, and each is completed
+     * before the next is selected.
      */
-    private fun findUnresolvedQuestion(events: List<CaseEvent>): QuestionEvent? {
-        val lastQuestion = events.filterIsInstance<QuestionEvent>().lastOrNull() ?: return null
-
-        // Find the first LEGITIMATE answer: paired by questionId AND from the right recipient.
-        // The recipient check is intentionally inside this predicate — see KDoc for why moving
-        // it outside causes a permanent-deadlock bug on shared cases.
-        val legitimateAnswerIndex = events.indexOfFirst { event ->
-            if (event !is AnswerEvent || event.questionId != lastQuestion.id) return@indexOfFirst false
-            val targetUserId = lastQuestion.userId
-                ?: return@indexOfFirst true // unaddressed question: any respondent qualifies
-            val respondentId = runCatching { UUID.fromString(event.actor.id) }.getOrElse {
-                logger.debug {
-                    "[CaseRuntime $id] AnswerEvent actor id '${event.actor.id}' is not a UUID — " +
-                        "does not qualify as a legitimate answer for question ${lastQuestion.id}"
-                }
-                return@indexOfFirst false
-            }
-            respondentId == targetUserId
-        }
-        if (legitimateAnswerIndex < 0) return null // no legitimate answer yet
-
-        // OAuth guard: if any AgentFinishedEvent appears STRICTLY AFTER the legitimate
-        // answer, the agent already handled it — do not wake up again.
-        val hasAgentFinishedAfterAnswer = events
-            .subList(legitimateAnswerIndex + 1, events.size)
-            .any { it is AgentFinishedEvent }
-
-        return if (hasAgentFinishedAfterAnswer) null else lastQuestion
-    }
 
     /**
      * Scans the event history backward and returns the UUID of the last user actor,
