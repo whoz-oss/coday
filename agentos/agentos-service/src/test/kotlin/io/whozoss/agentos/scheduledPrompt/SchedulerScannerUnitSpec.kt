@@ -1030,7 +1030,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T08:00:00Z"))
             // Thursday 09:00 is outside THURSDAY 22:00 → FRIDAY 05:00
             val sc = scanner(scheduledPromptRepo, runRepo,
-                properties = SchedulerProperties(windows = "THURSDAY 22:00,FRIDAY 05:00"))
+                properties = SchedulerProperties(windows = listOf("THURSDAY 22:00", "FRIDAY 05:00")))
             sc.tickClaim()
             runRepo.all().shouldBeEmpty()
         }
@@ -1041,7 +1041,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T08:00:00Z"))
             // Thursday 09:00 is inside THURSDAY 08:00 → FRIDAY 05:00
             val sc = scanner(scheduledPromptRepo, runRepo,
-                properties = SchedulerProperties(windows = "THURSDAY 08:00,FRIDAY 05:00"))
+                properties = SchedulerProperties(windows = listOf("THURSDAY 08:00", "FRIDAY 05:00")))
             sc.tickClaim()
             runRepo.all() shouldHaveSize 1
         }
@@ -1051,7 +1051,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val runRepo = makeRunRepo()
             scheduledPromptRepo.insertScheduledPrompt(nextRunAt = Instant.parse("2026-01-01T08:00:00Z"))
             val sc = scanner(scheduledPromptRepo, runRepo,
-                properties = SchedulerProperties(windows = "BADDAY 22:00,FRIDAY 05:00"))
+                properties = SchedulerProperties(windows = listOf("BADDAY 22:00", "FRIDAY 05:00")))
             sc.tickClaim()
             runRepo.all() shouldHaveSize 1
         }

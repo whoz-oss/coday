@@ -11,41 +11,50 @@ import java.time.ZonedDateTime
  *
  * ### Configuration format
  *
- * The window list is specified as a comma-separated string of `DayOfWeek HH:mm` pairs.
- * Pairs are ordered as alternating open/close boundaries: open₁, close₁, open₂, close₂, …
+ * The constructor receives a flat list of **boundaries**, each of the form `DayOfWeek HH:mm`.
+ * Spring produces this list by splitting the comma-separated value of
+ * [SchedulerProperties.windows] — this class never splits on `,` itself.
+ *
+ * Boundaries are ordered as alternating open/close pairs: open₁, close₁, open₂, close₂, …
+ * and are grouped into [Window]s by position in [parseAndValidate] (`chunked(2)`).
+ * The open/close role is therefore carried by the **index**, not by the type — a deliberate
+ * trade-off to keep the whole configuration in a single environment variable.
  *
  * Each boundary is a `java.time.DayOfWeek` name (case-insensitive) followed by a space
  * and an `HH:mm` time in UTC.
  *
- * Example — nightly Mon–Thu + continuous weekend:
+ * Example — continuous Mon-night→Fri-morning + continuous weekend:
  * ```
- * MONDAY 22:00,FRIDAY 05:00,FRIDAY 22:00,MONDAY 05:00
+ * AGENTOS_PROMPT_SCHEDULER_WINDOWS=MONDAY 22:00,FRIDAY 05:00,FRIDAY 22:00,MONDAY 05:00
  * ```
- * This defines two windows:
+ * Spring binds this to `["MONDAY 22:00", "FRIDAY 05:00", "FRIDAY 22:00", "MONDAY 05:00"]`,
+ * which this class groups into two windows:
  * - Window 1: Monday 22:00 UTC → Friday 05:00 UTC
  * - Window 2: Friday 22:00 UTC → Monday 05:00 UTC
  *
- * Windows are expressed as weekly offsets (minutes since Monday 00:00 UTC).
+ * Windows are evaluated as weekly offsets (minutes since Monday 00:00 UTC).
  * A window that crosses the Sunday→Monday boundary is handled via modular arithmetic.
  *
  * ### No windows configured
  *
- * When [SchedulerProperties.windows] is null or blank, [isWithinWindow] always returns `true`
- * — the scheduler runs continuously, preserving the existing behaviour.
+ * When the list is empty, [isWithinWindow] always returns `true` — the scheduler runs
+ * continuously, preserving the existing behaviour.
  *
  * ### Validation
  *
- * [parseAndValidate] is called at construction time. If the string is malformed, all
+ * [parseAndValidate] is called at construction time. If the configuration is malformed, all
  * errors are collected and logged; [isWithinWindow] then always returns `true` (fail-open)
  * so that a misconfiguration does not silently halt all scheduled executions.
  *
  * Validation rules:
- * - Even number of entries (open/close pairs).
- * - Each entry matches `DayOfWeek HH:mm` with a valid day name and time.
- * - Windows do not overlap (close must be strictly after open in weekly offset).
- * - Windows are ordered (each open must be strictly after the previous close).
+ * - Even number of boundaries (each window needs both an open and a close).
+ * - Each boundary matches `DayOfWeek HH:mm` with a valid day name and time.
+ * - Within a window, open and close differ (no zero-length window).
+ * - Windows are ordered and non-overlapping (each open strictly after the previous close).
+ * - At most one wrap-around window (crossing Sunday→Monday), since two such windows
+ *   cannot be ordered by weekly offset and may overlap undetected.
  */
-class ExecutionWindowService(windows: String?) {
+class ExecutionWindowService(windows: List<String>) {
 
     /**
      * A parsed window boundary, retaining the original [day] and [time] for readability.
@@ -62,6 +71,8 @@ class ExecutionWindowService(windows: String?) {
      * A window where [close] < [open] wraps around the Sunday→Monday boundary.
      */
     private data class Window(val open: WeeklyBoundary, val close: WeeklyBoundary) {
+        /** True when the window crosses the Sunday→Monday boundary (close offset before open offset). */
+        val isWrapAround: Boolean get() = close.minuteOfWeek < open.minuteOfWeek
         override fun toString(): String = "[$open → $close]"
     }
 
@@ -122,14 +133,14 @@ class ExecutionWindowService(windows: String?) {
     /**
      * Parses [raw] into a list of [Window]s, collecting all validation errors.
      *
-     * Returns `null` when [raw] is null or blank (no windows → always-open).
+     * Returns `null` when [raw] is empty (no windows → always-open).
      * Returns `null` on parse failure (fail-open — [isWithinWindow] returns true).
      * Returns the validated windows on success.
      */
-    private fun parseAndValidate(raw: String?): List<Window>? {
-        if (raw.isNullOrBlank()) return null
+    private fun parseAndValidate(raw: List<String>): List<Window>? {
+        if (raw.isEmpty()) return null
 
-        val entries = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val entries = raw.map { it.trim() }.filter { it.isNotEmpty() }
         val errors = mutableListOf<String>()
 
         if (entries.size % 2 != 0) {
@@ -151,24 +162,30 @@ class ExecutionWindowService(windows: String?) {
         // Validate: within each window, open and close must differ
         windows.forEachIndexed { i, w ->
             if (w.open == w.close) {
-                errors += "window[$i]: open and close are identical (${entries[i * 2]})"
+                errors += "window[$i]: open and close are identical (${w.open})"
             }
         }
 
-        // Validate ordering: each open must be strictly after the previous close.
-        // Wrap-around windows (close < open) are valid but must not coexist (ambiguous overlap).
-        for (i in windows.indices) {
-            val w = windows[i]
-            if (w.open.minuteOfWeek == w.close.minuteOfWeek) continue // already reported above
+        // Validate: at most one wrap-around window. Two of them cannot be ordered by weekly
+        // offset (both have a high open and a low close), so the ordering check below cannot
+        // detect an overlap between them. Checked globally rather than pairwise so the rule
+        // matches its stated intent regardless of window positions.
+        val wrapAroundWindows = windows.filter { it.isWrapAround }
+        if (wrapAroundWindows.size > 1) {
+            errors += "at most one wrap-around window (crossing Sunday→Monday) is allowed, " +
+                "got ${wrapAroundWindows.size}: ${wrapAroundWindows.joinToString(", ")}"
+        }
 
-            if (i > 0) {
+        // Validate ordering: each open must be strictly after the previous close.
+        // Skipped when a wrap-around pair was already reported — raw offset comparison is
+        // meaningless in that case and would emit a confusing secondary error.
+        if (wrapAroundWindows.size <= 1) {
+            for (i in 1 until windows.size) {
+                val w = windows[i]
                 val prev = windows[i - 1]
-                val prevIsWrapAround = prev.close.minuteOfWeek < prev.open.minuteOfWeek
-                val currIsWrapAround = w.close.minuteOfWeek < w.open.minuteOfWeek
-                if (prevIsWrapAround && currIsWrapAround) {
-                    errors += "window[$i]: only one wrap-around window (crossing Sunday→Monday) is allowed; " +
-                        "window[${i - 1}] ($prev) and window[$i] ($w) both wrap around"
-                } else if (w.open.minuteOfWeek <= prev.close.minuteOfWeek) {
+                if (w.open == w.close || prev.open == prev.close) continue // already reported above
+
+                if (w.open.minuteOfWeek <= prev.close.minuteOfWeek) {
                     errors += "window[$i] open (${w.open}) must be strictly after window[${i - 1}] close (${prev.close})"
                 }
             }

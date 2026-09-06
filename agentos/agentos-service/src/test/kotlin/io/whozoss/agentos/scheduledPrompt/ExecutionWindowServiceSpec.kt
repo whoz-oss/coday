@@ -19,7 +19,7 @@ import java.time.ZonedDateTime
 class ExecutionWindowServiceSpec : StringSpec() {
 
     /** Canonical business-hours config: nightly Mon–Thu + continuous Fri–Mon. */
-    private val businessHoursConfig = "MONDAY 22:00,FRIDAY 05:00,FRIDAY 22:00,MONDAY 05:00"
+    private val businessHoursConfig = listOf("MONDAY 22:00", "FRIDAY 05:00", "FRIDAY 22:00", "MONDAY 05:00")
 
     private fun at(day: String, hour: Int, minute: Int = 0): ZonedDateTime {
         val dayOfWeek = java.time.DayOfWeek.valueOf(day)
@@ -35,15 +35,10 @@ class ExecutionWindowServiceSpec : StringSpec() {
         // No windows configured — always open
         // -------------------------------------------------------------------------
 
-        "no windows (null): always within window" {
-            val svc = ExecutionWindowService(null)
+        "no windows (empty list): always within window" {
+            val svc = ExecutionWindowService(emptyList())
             svc.isWithinWindow(at("MONDAY", 10)).shouldBeTrue()
             svc.isWithinWindow(at("SATURDAY", 14)).shouldBeTrue()
-        }
-
-        "no windows (blank): always within window" {
-            val svc = ExecutionWindowService("   ")
-            svc.isWithinWindow(at("WEDNESDAY", 9)).shouldBeTrue()
         }
 
         // -------------------------------------------------------------------------
@@ -166,14 +161,13 @@ class ExecutionWindowServiceSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "single nightly window: within window" {
-            // Every night 22:00 → 05:00 (wraps midnight)
-            val svc = ExecutionWindowService("MONDAY 22:00,TUESDAY 05:00")
+            val svc = ExecutionWindowService(listOf("MONDAY 22:00", "TUESDAY 05:00"))
             svc.isWithinWindow(at("MONDAY", 23)).shouldBeTrue()
             svc.isWithinWindow(at("TUESDAY", 2)).shouldBeTrue()
         }
 
         "single nightly window: outside window" {
-            val svc = ExecutionWindowService("MONDAY 22:00,TUESDAY 05:00")
+            val svc = ExecutionWindowService(listOf("MONDAY 22:00", "TUESDAY 05:00"))
             svc.isWithinWindow(at("MONDAY", 10)).shouldBeFalse()
             svc.isWithinWindow(at("TUESDAY", 6)).shouldBeFalse()
         }
@@ -183,22 +177,22 @@ class ExecutionWindowServiceSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "wrap-around: Sunday 23:00 is within a Sun 22:00 → Mon 05:00 window" {
-            val svc = ExecutionWindowService("SUNDAY 22:00,MONDAY 05:00")
+            val svc = ExecutionWindowService(listOf("SUNDAY 22:00", "MONDAY 05:00"))
             svc.isWithinWindow(at("SUNDAY", 23)).shouldBeTrue()
         }
 
         "wrap-around: Monday 02:00 is within a Sun 22:00 → Mon 05:00 window" {
-            val svc = ExecutionWindowService("SUNDAY 22:00,MONDAY 05:00")
+            val svc = ExecutionWindowService(listOf("SUNDAY 22:00", "MONDAY 05:00"))
             svc.isWithinWindow(at("MONDAY", 2)).shouldBeTrue()
         }
 
         "wrap-around: Monday 06:00 is outside a Sun 22:00 → Mon 05:00 window" {
-            val svc = ExecutionWindowService("SUNDAY 22:00,MONDAY 05:00")
+            val svc = ExecutionWindowService(listOf("SUNDAY 22:00", "MONDAY 05:00"))
             svc.isWithinWindow(at("MONDAY", 6)).shouldBeFalse()
         }
 
         "wrap-around: Sunday 21:59 is outside a Sun 22:00 → Mon 05:00 window" {
-            val svc = ExecutionWindowService("SUNDAY 22:00,MONDAY 05:00")
+            val svc = ExecutionWindowService(listOf("SUNDAY 22:00", "MONDAY 05:00"))
             svc.isWithinWindow(at("SUNDAY", 21, 59)).shouldBeFalse()
         }
 
@@ -207,33 +201,33 @@ class ExecutionWindowServiceSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "invalid config: odd number of entries — fail-open" {
-            val svc = ExecutionWindowService("MONDAY 22:00,FRIDAY 05:00,FRIDAY 22:00")
+            val svc = ExecutionWindowService(listOf("MONDAY 22:00", "FRIDAY 05:00", "FRIDAY 22:00"))
             svc.isWithinWindow(at("WEDNESDAY", 14)).shouldBeTrue()
         }
 
         "invalid config: unknown day name — fail-open" {
-            val svc = ExecutionWindowService("FUNDAY 22:00,FRIDAY 05:00")
+            val svc = ExecutionWindowService(listOf("FUNDAY 22:00", "FRIDAY 05:00"))
             svc.isWithinWindow(at("WEDNESDAY", 14)).shouldBeTrue()
         }
 
         "invalid config: malformed time — fail-open" {
-            val svc = ExecutionWindowService("MONDAY 25:00,FRIDAY 05:00")
+            val svc = ExecutionWindowService(listOf("MONDAY 25:00", "FRIDAY 05:00"))
             svc.isWithinWindow(at("WEDNESDAY", 14)).shouldBeTrue()
         }
 
         "invalid config: missing time part — fail-open" {
-            val svc = ExecutionWindowService("MONDAY,FRIDAY 05:00")
+            val svc = ExecutionWindowService(listOf("MONDAY", "FRIDAY 05:00"))
             svc.isWithinWindow(at("WEDNESDAY", 14)).shouldBeTrue()
         }
 
         "invalid config: overlapping windows — fail-open" {
             // Window 2 open (TUESDAY 08:00) is before window 1 close (WEDNESDAY 05:00)
-            val svc = ExecutionWindowService("MONDAY 22:00,WEDNESDAY 05:00,TUESDAY 08:00,THURSDAY 05:00")
+            val svc = ExecutionWindowService(listOf("MONDAY 22:00", "WEDNESDAY 05:00", "TUESDAY 08:00", "THURSDAY 05:00"))
             svc.isWithinWindow(at("WEDNESDAY", 14)).shouldBeTrue()
         }
 
         "invalid config: identical open and close — fail-open" {
-            val svc = ExecutionWindowService("MONDAY 22:00,MONDAY 22:00")
+            val svc = ExecutionWindowService(listOf("MONDAY 22:00", "MONDAY 22:00"))
             svc.isWithinWindow(at("MONDAY", 22)).shouldBeTrue()
         }
 
@@ -241,7 +235,7 @@ class ExecutionWindowServiceSpec : StringSpec() {
             // Both windows cross the Sunday→Monday boundary and overlap:
             //   Window 1: SUNDAY 20:00 → MONDAY 02:00
             //   Window 2: SUNDAY 22:00 → MONDAY 05:00  (starts inside window 1)
-            val svc = ExecutionWindowService("SUNDAY 20:00,MONDAY 02:00,SUNDAY 22:00,MONDAY 05:00")
+            val svc = ExecutionWindowService(listOf("SUNDAY 20:00", "MONDAY 02:00", "SUNDAY 22:00", "MONDAY 05:00"))
             svc.isWithinWindow(at("SUNDAY", 23)).shouldBeTrue()  // fail-open
         }
 
@@ -250,13 +244,13 @@ class ExecutionWindowServiceSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "case-insensitive: lowercase day names are accepted" {
-            val svc = ExecutionWindowService("monday 22:00,friday 05:00,friday 22:00,monday 05:00")
+            val svc = ExecutionWindowService(listOf("monday 22:00", "friday 05:00", "friday 22:00", "monday 05:00"))
             svc.isWithinWindow(at("MONDAY", 23)).shouldBeTrue()
             svc.isWithinWindow(at("MONDAY", 10)).shouldBeFalse()
         }
 
         "case-insensitive: mixed-case day names are accepted" {
-            val svc = ExecutionWindowService("Monday 22:00,Friday 05:00,Friday 22:00,Monday 05:00")
+            val svc = ExecutionWindowService(listOf("Monday 22:00", "Friday 05:00", "Friday 22:00", "Monday 05:00"))
             svc.isWithinWindow(at("SATURDAY", 12)).shouldBeTrue()
         }
     }
