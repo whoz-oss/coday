@@ -3548,6 +3548,13 @@ components:
           enum:
           - ADMIN
           - MEMBER
+        runCostThreshold:
+          type: number
+          format: double
+          description: "Per-case override of the run cost threshold, in the platform\
+            \ currency unit. Null means inherit from the namespace or platform default\
+            \ (never \"no limit\" or \"zero\"). Set upfront for costly runs, or written\
+            \ by the enforcement mechanism on continuation."
         scheduledPromptId:
           type: string
           format: uuid
@@ -4091,6 +4098,13 @@ components:
         name:
           type: string
           minLength: 1
+        runCostThreshold:
+          type: number
+          format: double
+          description: "Namespace-level default for the run cost threshold, in the\
+            \ platform currency unit. Null means inherit from the platform default.\
+            \ Applies to all cases in this namespace that do not declare their own\
+            \ threshold."
       required:
       - name
     NamespaceAgentDeployRequest:

@@ -24,4 +24,8 @@ export interface Namespace {
   externalId?: string
   id?: string
   name: string
+  /**
+   * Namespace-level default for the run cost threshold, in the platform currency unit. Null means inherit from the platform default. Applies to all cases in this namespace that do not declare their own threshold.
+   */
+  runCostThreshold?: number
 }
