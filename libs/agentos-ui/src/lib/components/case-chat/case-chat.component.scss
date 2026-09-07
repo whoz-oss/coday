@@ -19,6 +19,7 @@
 .case-chat__host {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -161,6 +162,7 @@
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
   min-height: 0;
   width: 100%;
   padding: 1rem;
@@ -176,6 +178,7 @@
 
   &__messages {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
@@ -205,9 +208,11 @@
 
   &__turn {
     flex-shrink: 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    width: 88%;
     max-width: 88%;
 
     @media (max-width: 600px) {
@@ -218,6 +223,7 @@
     &--user {
       align-self: flex-end;
       align-items: flex-end;
+      width: 78%;
       max-width: 78%;
 
       @media (max-width: 600px) {
@@ -263,6 +269,9 @@
 
   &__bubble-wrapper {
     position: relative;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
 
     &:hover .case-chat__bubble-copy {
       opacity: 1;
@@ -282,8 +291,11 @@
     padding: 16px 18px;
     font-size: 16px;
     line-height: 1.6;
-    word-break: break-word;
-    overflow-x: hidden;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
     background: var(--color-neutral-100);
     border-left: 2px solid var(--color-accent-300);
     color: var(--color-text);
@@ -300,7 +312,6 @@
       color: var(--color-accent-800);
       border-left: none;
       padding: 11px 15px;
-      overflow: visible;
 
       @media (max-width: 600px) {
         padding: 10px 12px;
@@ -619,20 +630,6 @@
       padding: 0.1em 0.35em;
     }
 
-    pre {
-      background: var(--color-neutral-100);
-      padding: 0.6em 0.8em;
-      overflow-x: auto;
-      margin: 0.4em 0;
-
-      code {
-        background: none;
-        padding: 0;
-        font-family: var(--font-heading);
-        font-size: 0.8rem;
-      }
-    }
-
     blockquote {
       margin: 0.4em 0;
       padding-left: 0.8em;
@@ -708,6 +705,7 @@
   &__input {
     flex: 1;
     resize: none;
+    box-sizing: border-box;
     padding: 13px 16px 4px;
     border: none;
     background: transparent;
@@ -717,6 +715,8 @@
     line-height: 1.55;
     outline: none;
     min-height: 52px;
+    max-height: min(35vh, 16rem);
+    overflow-y: auto;
 
     &::placeholder {
       color: var(--color-neutral-700);

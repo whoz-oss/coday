@@ -299,6 +299,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       })
     })
 
+    // Keep the composer sized to its current content, including after a message is sent
+    // or an autocomplete selection changes the input programmatically.
+    effect(() => {
+      this.inputValue()
+      queueMicrotask(() => this.resizeComposer())
+    })
+
     // Auto-scroll to bottom whenever the timeline or streaming text changes,
     // but only when the user is already at the bottom (magnetic behaviour).
     // Skip when the user has an active text selection to avoid disrupting copy intent.
@@ -731,6 +738,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.autocomplete.onInput(value, this.inputValue)
   }
 
+  /**
+   * Grow to the content height and let the CSS max-height take over for long drafts.
+   * Resetting to auto first also lets the textarea shrink after text is removed.
+   */
+  private resizeComposer(): void {
+    const input = this.composerInput()?.nativeElement
+    if (!input) return
+
+    input.style.height = 'auto'
+    input.style.height = `${input.scrollHeight}px`
+  }
+
   protected onKeydown(event: KeyboardEvent): void {
     const consumed = this.autocomplete.onKeydown(event, this.promptAutocompleteRef, this.agentAutocompleteRef)
     if (consumed) return
@@ -923,6 +942,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private buildMarkdownRenderer(): Renderer {
     const renderer = new Renderer()
     const originalLink = renderer.link.bind(renderer)
+    const originalCode = renderer.code.bind(renderer)
+    renderer.code = (token): string => {
+      // [innerHTML] content is not decorated with Angular's emulated-encapsulation
+      // attribute. Mark generated fenced code explicitly so global, agentos-scoped CSS
+      // can create its own horizontal scroll container.
+      return originalCode(token).replace('<pre>', '<pre class="agentos-chat-code-block">')
+    }
     renderer.link = (token): string => {
       let html = originalLink(token)
       if (this.isExternalLink(token.href)) {
