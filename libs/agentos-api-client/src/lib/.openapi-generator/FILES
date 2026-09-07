@@ -73,6 +73,7 @@ model/member-item.ts
 model/message-content.ts
 model/message-event-all-of-content.ts
 model/message-event.ts
+model/model-pricing.ts
 model/models.ts
 model/namespace-agent-deploy-request.ts
 model/namespace-list-item.ts
