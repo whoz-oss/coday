@@ -716,8 +716,7 @@
     line-height: 1.55;
     outline: none;
     min-height: 52px;
-    max-height: min(35vh, 16rem);
-    overflow-y: auto;
+    overflow-y: hidden;
 
     &::placeholder {
       color: var(--color-neutral-700);
