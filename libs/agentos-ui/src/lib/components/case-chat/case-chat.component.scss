@@ -703,7 +703,8 @@
   }
 
   &__input {
-    flex: 1;
+    flex: none;
+    width: 100%;
     resize: none;
     box-sizing: border-box;
     padding: 13px 16px 4px;

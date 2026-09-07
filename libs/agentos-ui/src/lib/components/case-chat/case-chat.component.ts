@@ -321,9 +321,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     })
 
-    // Register scroll listener after the first render so the ViewChild is available.
+    // Register DOM-dependent behaviour after the first render.
     afterNextRender(() => {
       this.attachScrollListener()
+      this.resizeComposer()
     })
   }
 
@@ -734,16 +735,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private anyToolResponseThisTurn = false
 
   protected onInput(event: Event): void {
-    const value = (event.target as HTMLTextAreaElement).value
-    this.autocomplete.onInput(value, this.inputValue)
+    const input = event.target as HTMLTextAreaElement
+    this.autocomplete.onInput(input.value, this.inputValue)
+    // The browser has already updated the textarea value when input fires, so measure
+    // the actual element directly instead of relying on a later signal-effect cycle.
+    this.resizeComposer(input)
   }
 
   /**
    * Grow to the content height and let the CSS max-height take over for long drafts.
    * Resetting to auto first also lets the textarea shrink after text is removed.
    */
-  private resizeComposer(): void {
-    const input = this.composerInput()?.nativeElement
+  private resizeComposer(input = this.composerInput()?.nativeElement): void {
     if (!input) return
 
     input.style.height = 'auto'
