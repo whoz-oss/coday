@@ -1,0 +1,30 @@
+:host {
+  display: block;
+  flex-shrink: 0;
+}
+
+.execution-attribution {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--color-neutral-600);
+  font-family: var(--font-heading);
+  font-size: 0.7rem;
+  letter-spacing: 0.03em;
+}
+
+.execution-attribution__line {
+  height: 1px;
+  flex: 1;
+  background: var(--color-divider);
+}
+
+.execution-attribution__label {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.execution-attribution__model {
+  color: var(--color-neutral-500);
+  font-weight: 400;
+}

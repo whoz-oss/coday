@@ -1,0 +1,13 @@
+<div class="execution-attribution">
+  <span class="execution-attribution__line" aria-hidden="true"></span>
+  <span class="execution-attribution__label">
+    {{ event().agentName || 'Agent' }} is executing
+    @if (event().llmProvider || event().llmModel) {
+      <span class="execution-attribution__model">· {{ event().llmProvider || 'provider unavailable' }}</span>
+      @if (event().llmModel) {
+        <span class="execution-attribution__model">/ {{ event().llmModel }}</span>
+      }
+    }
+  </span>
+  <span class="execution-attribution__line" aria-hidden="true"></span>
+</div>
