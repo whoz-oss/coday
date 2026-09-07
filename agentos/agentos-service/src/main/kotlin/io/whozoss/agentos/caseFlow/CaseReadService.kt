@@ -24,9 +24,10 @@ interface CaseReadService {
     /**
      * Counts the number of unread cases in [namespaceId] for [userId].
      *
-     * A case is unread when no `WATCHES` edge exists for the user,
-     * or when the most recent event's timestamp is after the edge's `readAt`.
+     * A case is unread when it has at least one message (`lastMessageAt` is not null) and
+     * either no `WATCHES` edge exists (`readAt IS NULL`) or `max(MessageEvent.timestamp) > readAt`.
      * Only cases the user has a direct `[:ADMIN|MEMBER]` edge on are counted.
+     * Cases with no messages are never counted as unread.
      */
     fun countUnread(userId: String, namespaceId: UUID): Long
 }

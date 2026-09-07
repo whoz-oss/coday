@@ -6,6 +6,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
+import io.whozoss.agentos.caseEvent.CaseEventRepository
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
@@ -16,6 +17,10 @@ import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.permissions.FavoriteService
+import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
@@ -71,6 +76,20 @@ class EmbeddedNeo4jWatchesPersistenceSpec : StringSpec() {
 
     @Autowired
     lateinit var driver: Driver
+
+    @Autowired
+    lateinit var caseEventRepository: CaseEventRepository
+
+    private fun createMessage(caseId: java.util.UUID) =
+        caseEventRepository.save(
+            MessageEvent(
+                metadata = EntityMetadata(),
+                namespaceId = java.util.UUID.randomUUID(),
+                caseId = caseId,
+                actor = Actor(id = "system", displayName = "System", role = ActorRole.AGENT),
+                content = listOf(MessageContent.Text("hello")),
+            ),
+        )
 
     private fun createUser(externalId: String = "test@example.com"): User =
         userRepository.save(
@@ -358,13 +377,14 @@ class EmbeddedNeo4jWatchesPersistenceSpec : StringSpec() {
                 entityId = caseId,
                 entityLabel = "Case",
             )
+            createMessage(case.id)
 
-            // Before any read: case is unread.
+            // Before any read: case has a message and no WATCHES edge → unread.
             caseNodeRepository.countUnread(userId = userId, namespaceId = namespaceId) shouldBe 1L
 
             caseNodeRepository.markRead(userId = userId, caseId = caseId, readAt = Instant.now())
 
-            // After markRead: case with no events since readAt is considered read.
+            // After markRead: readAt is after the message timestamp → read.
             caseNodeRepository.countUnread(userId = userId, namespaceId = namespaceId) shouldBe 0L
         }
 
@@ -387,6 +407,8 @@ class EmbeddedNeo4jWatchesPersistenceSpec : StringSpec() {
                 entityId = theirCase.id.toString(),
                 entityLabel = "Case",
             )
+            createMessage(myCase.id)
+            createMessage(theirCase.id)
 
             // user has access only to myCase, not theirCase.
             caseNodeRepository.countUnread(userId = userId, namespaceId = namespaceId) shouldBe 1L

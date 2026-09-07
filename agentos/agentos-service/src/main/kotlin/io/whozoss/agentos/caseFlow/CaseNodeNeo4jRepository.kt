@@ -242,12 +242,12 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
      *
      * A case is unread when:
      * - The user has a direct `[:ADMIN|MEMBER]` edge on the case (access check), AND
-     * - Either no `[:WATCHES]` edge exists (never opened), OR `Case.modified` is after
-     *   the edge's `readAt` (the case changed since the user last read it).
+     * - At least one `MessageEvent` exists on the case (`lastMessageAt` is not null), AND
+     * - Either no `[:WATCHES]` edge exists (`readAt IS NULL`), OR `max(MessageEvent.timestamp)`
+     *   is after the edge's `readAt`.
      *
-     * Uses `Case.modified` rather than scanning `CaseEvent` nodes — O(1) per case
-     * instead of O(events). Requires the `modified` audit field to be kept current
-     * on every case mutation (see known bug: EntityMetadata.modified never updated).
+     * Matches the frontend semantic: `lastMessageAt exists AND (readAt IS NULL OR lastMessageAt > readAt)`.
+     * Cases with no messages are never counted as unread.
      *
      * Returns a scalar Long (0 = all read).
      */
@@ -256,10 +256,13 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
         $$"""MATCH (c:Case)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
             WHERE (c.removed IS NULL OR c.removed = false)
               AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
+            OPTIONAL MATCH (msg:MessageEvent {caseId: c.id})
+            WITH c, max(msg.timestamp) AS lastMessageAt
+            WHERE lastMessageAt IS NOT NULL
             OPTIONAL MATCH (:User {id: $userId})-[state:WATCHES]->(c)
-            WITH c, state.readAt AS readAt
-            WHERE readAt IS NULL OR c.modified > readAt
-            RETURN count(c)
+            WITH lastMessageAt, state.readAt AS readAt
+            WHERE readAt IS NULL OR lastMessageAt > readAt
+            RETURN count(*)
             """,
     )
     fun countUnread(
