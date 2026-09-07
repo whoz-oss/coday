@@ -22,6 +22,7 @@ data class CaseNode(
     val title: String,
     val parentCaseId: String? = null,
     val scheduledPromptId: String? = null,
+    val runCostThreshold: Double? = null,
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
     val modified: Instant = Instant.now(),
@@ -46,6 +47,7 @@ data class CaseNode(
             title = title,
             parentCaseId = parentCaseId?.let { UUID.fromString(it) },
             scheduledPromptId = scheduledPromptId?.let { UUID.fromString(it) },
+            runCostThreshold = runCostThreshold,
         )
 
     companion object {
@@ -57,6 +59,7 @@ data class CaseNode(
                 title = case.title,
                 parentCaseId = case.parentCaseId?.toString(),
                 scheduledPromptId = case.scheduledPromptId?.toString(),
+                runCostThreshold = case.runCostThreshold,
                 created = case.metadata.created,
                 createdBy = case.metadata.createdBy,
                 modified = case.metadata.modified,

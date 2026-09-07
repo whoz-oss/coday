@@ -31,10 +31,13 @@ import java.util.UUID
  *   caller has no direct edge (e.g. transitive namespace-admin access). Same population rules as `favorite`.
  * @property readAt Timestamp of the caller's last read of this case, or null when the case has never
  *   been opened by this user (meaning it is unread). Same population rules as `favorite`.
- * @property unreadCount Number of unread cases in the namespace for the current user. Only populated
- *   by the dedicated [io.whozoss.agentos.sdk.api.case.CaseApi.countUnread] endpoint; null everywhere else.
  * @property scheduledPromptId Id of the ScheduledPrompt that triggered this case, or null when the
  *   case was started by a human user or a delegation tool.
+ * @property runCostThreshold Per-case override of the run cost threshold, in the platform currency
+ *   unit. Null means "inherit from the namespace or platform default", never "no limit" or "zero".
+ *   Can be set upfront when the caller anticipates a costly run, or written by the cost-enforcement
+ *   mechanism when the user chooses to continue after a breach. A stored value is always absolute
+ *   and independent of platform or namespace config changes.
  */
 @Schema(name = "Case")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -46,6 +49,13 @@ data class CaseDto(
     val title: String? = null,
     val parentCaseId: UUID? = null,
     val scheduledPromptId: UUID? = null,
+    @field:Schema(
+        description =
+            "Per-case override of the run cost threshold, in the platform currency unit. " +
+                "Null means inherit from the namespace or platform default (never \"no limit\" or \"zero\"). " +
+                "Set upfront for costly runs, or written by the enforcement mechanism on continuation.",
+    )
+    val runCostThreshold: Double? = null,
     val created: Instant? = null,
     val modified: Instant? = null,
     /**

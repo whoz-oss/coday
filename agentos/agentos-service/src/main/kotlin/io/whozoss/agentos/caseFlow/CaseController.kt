@@ -5,9 +5,9 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
@@ -139,7 +139,7 @@ class CaseController(
     }
 
     /**
-     * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
+     * Map domain [Case] to [CaseDto]s, enriching each with [userId]'s direct
      * relation (`role`), favorite flag, [CaseDto.readAt], and [CaseDto.lastMessageAt].
      *
      * Two batch queries resolve the whole set (no per-case round-trips):
@@ -227,6 +227,10 @@ class CaseController(
                     // namespaceId is the transitivity key for permissions;
                     // status is driven by the runtime lifecycle, not PUT.
                     title = resource.title ?: existing.title,
+                    // runCostThreshold: accept the caller's value as-is (including null to
+                    // revert to inherited). The enforcement mechanism also writes here when
+                    // the user chooses to continue after a cost threshold breach.
+                    runCostThreshold = resource.runCostThreshold,
                 ),
             )
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
@@ -417,6 +421,7 @@ internal fun toDto(entity: Case) =
         title = entity.title,
         parentCaseId = entity.parentCaseId,
         scheduledPromptId = entity.scheduledPromptId,
+        runCostThreshold = entity.runCostThreshold,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
         // lastMessageAt is not stored on Case — it is resolved at list time by
