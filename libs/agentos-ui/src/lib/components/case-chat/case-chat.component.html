@@ -22,6 +22,12 @@
           [class.case-chat__header-badge--killed]="caseStatus() === CaseStatusEnum.KILLED"
           >{{ caseStatus().toLowerCase() }}</span
         >
+        @if (activeCase()?.runCostThreshold !== null && activeCase()?.runCostThreshold !== undefined) {
+          <span class="case-chat__header-cost-threshold" title="Run cost threshold">
+            <span class="material-icons case-chat__header-cost-threshold-icon" aria-hidden="true">price_check</span>
+            {{ activeCase()!.runCostThreshold }}
+          </span>
+        }
       </div>
 
       <!-- Exchange toggle -->

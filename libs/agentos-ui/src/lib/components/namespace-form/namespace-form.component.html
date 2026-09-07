@@ -70,6 +70,20 @@
         />
       </div>
 
+      <div class="namespace-form__field">
+        <label class="namespace-form__label" for="ns-run-cost-threshold">Run cost threshold</label>
+        <input
+          id="ns-run-cost-threshold"
+          class="namespace-form__input"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Optional maximum cost per run (e.g. 0.50)"
+          [formControl]="runCostThresholdControl"
+        />
+        <span class="namespace-form__hint">Leave empty for no limit.</span>
+      </div>
+
       <div class="namespace-form__actions">
         <button
           class="namespace-form__btn namespace-form__btn--primary"
