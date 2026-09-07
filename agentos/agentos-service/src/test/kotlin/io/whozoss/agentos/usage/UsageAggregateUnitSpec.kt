@@ -12,8 +12,7 @@ import java.util.UUID
  * Unit tests for aggregation semantics via [InMemoryUsageRecordRepository].
  *
  * These tests validate:
- * - Multi-currency safety: costs in different currencies are never summed together
- * - Null-cost contamination: one unpriced record makes the group total null
+ * - Null-cost contamination: one unpriced record makes the aggregate cost null
  * - Tree aggregation: root + descendants are all included
  * - Token counts always sum normally regardless of cost nullability
  *
@@ -31,7 +30,6 @@ class UsageAggregateUnitSpec : StringSpec({
         apiModelName: String? = "gpt-4",
         totalTokens: Long = 100L,
         cost: Double? = 0.25,
-        currency: String = "USD",
         userId: UUID? = null,
         timestamp: Instant = Instant.now(),
     ) = UsageRecord(
@@ -47,7 +45,6 @@ class UsageAggregateUnitSpec : StringSpec({
         inputTokens = totalTokens / 2,
         outputTokens = totalTokens / 2,
         cost = cost,
-        currency = currency,
         timestamp = timestamp,
     )
 
@@ -60,7 +57,7 @@ class UsageAggregateUnitSpec : StringSpec({
         repo.aggregateByCaseId(UUID.randomUUID()) shouldBe UsageAggregate.EMPTY
     }
 
-    "aggregateByCaseId sums tokens across records" {
+    "aggregateByCaseId sums tokens and cost across records" {
         val repo = InMemoryUsageRecordRepository()
         val caseId = UUID.randomUUID()
         repo.save(record(caseId, totalTokens = 100L, cost = 0.25))
@@ -69,11 +66,11 @@ class UsageAggregateUnitSpec : StringSpec({
         val agg = repo.aggregateByCaseId(caseId)
         agg.totalTokens shouldBe 300L
         agg.recordCount shouldBe 2L
-        agg.costByCurrency["USD"] shouldBe 0.75
+        agg.cost shouldBe 0.75
     }
 
-    "aggregateByCaseId: null cost contaminates the group total" {
-        // One unpriced record makes the whole USD total null.
+    "aggregateByCaseId: null cost contaminates the aggregate total" {
+        // One unpriced record makes the whole cost null.
         val repo = InMemoryUsageRecordRepository()
         val caseId = UUID.randomUUID()
         repo.save(record(caseId, totalTokens = 100L, cost = 0.25))
@@ -81,34 +78,7 @@ class UsageAggregateUnitSpec : StringSpec({
 
         val agg = repo.aggregateByCaseId(caseId)
         agg.totalTokens shouldBe 300L // tokens sum normally
-        agg.costByCurrency["USD"] shouldBe null // cost is contaminated
-    }
-
-    "aggregateByCaseId: multi-currency records are not mixed" {
-        // Records in USD and EUR must produce separate entries in costByCurrency.
-        val repo = InMemoryUsageRecordRepository()
-        val caseId = UUID.randomUUID()
-        repo.save(record(caseId, totalTokens = 100L, cost = 0.25, currency = "USD"))
-        repo.save(record(caseId, totalTokens = 50L, cost = 0.50, currency = "EUR"))
-
-        val agg = repo.aggregateByCaseId(caseId)
-        agg.totalTokens shouldBe 150L
-        ("USD" in agg.costByCurrency) shouldBe true
-        ("EUR" in agg.costByCurrency) shouldBe true
-        agg.costByCurrency["USD"] shouldBe 0.25
-        agg.costByCurrency["EUR"] shouldBe 0.50
-    }
-
-    "aggregateByCaseId: null cost in one currency does not contaminate another" {
-        // USD is unpriced but EUR is priced. EUR total must remain non-null.
-        val repo = InMemoryUsageRecordRepository()
-        val caseId = UUID.randomUUID()
-        repo.save(record(caseId, totalTokens = 100L, cost = null, currency = "USD"))
-        repo.save(record(caseId, totalTokens = 50L, cost = 0.50, currency = "EUR"))
-
-        val agg = repo.aggregateByCaseId(caseId)
-        agg.costByCurrency["USD"] shouldBe null
-        agg.costByCurrency["EUR"] shouldBe 0.50
+        agg.cost shouldBe null         // cost is contaminated
     }
 
     // =========================================================================
@@ -136,7 +106,7 @@ class UsageAggregateUnitSpec : StringSpec({
         val agg = repo.aggregateByCaseTree(rootId)
         agg.totalTokens shouldBe 300L
         agg.recordCount shouldBe 2L
-        agg.costByCurrency["USD"] shouldBe 0.75
+        agg.cost shouldBe 0.75
     }
 
     "aggregateByCaseTree includes multi-level descendants" {
@@ -155,7 +125,7 @@ class UsageAggregateUnitSpec : StringSpec({
         val agg = repo.aggregateByCaseTree(rootId)
         agg.totalTokens shouldBe 600L
         agg.recordCount shouldBe 3L
-        agg.costByCurrency["USD"] shouldBe 1.0
+        agg.cost shouldBe 1.0
     }
 
     "aggregateByCaseTree: null cost in descendant contaminates tree total" {
@@ -169,7 +139,7 @@ class UsageAggregateUnitSpec : StringSpec({
 
         val agg = repo.aggregateByCaseTree(rootId)
         agg.totalTokens shouldBe 300L // tokens still sum
-        agg.costByCurrency["USD"] shouldBe null // contaminated by child
+        agg.cost shouldBe null         // contaminated by child
     }
 
     "aggregateByCaseTree does not include records from unrelated cases" {
@@ -207,7 +177,7 @@ class UsageAggregateUnitSpec : StringSpec({
         val to = Instant.parse("2024-06-30T23:59:59Z")
         val agg = repo.aggregateByUser(userId, nsId, from, to)
         agg.totalTokens shouldBe 300L
-        agg.costByCurrency["USD"] shouldBe 0.75
+        agg.cost shouldBe 0.75
     }
 
     "aggregateByUser excludes records outside the time window" {
@@ -244,7 +214,7 @@ class UsageAggregateUnitSpec : StringSpec({
         val alpha = results.find { it.key == "alpha" }
         alpha shouldNotBe null
         alpha!!.aggregate.totalTokens shouldBe 300L
-        alpha.aggregate.costByCurrency["USD"] shouldBe 0.75
+        alpha.aggregate.cost shouldBe 0.75
         val beta = results.find { it.key == "beta" }
         beta!!.aggregate.totalTokens shouldBe 50L
     }
@@ -262,7 +232,7 @@ class UsageAggregateUnitSpec : StringSpec({
         results shouldHaveSize 1
         val alpha = results.first()
         alpha.aggregate.totalTokens shouldBe 300L // tokens sum normally
-        alpha.aggregate.costByCurrency["USD"] shouldBe null // contaminated
+        alpha.aggregate.cost shouldBe null         // contaminated
     }
 
     // =========================================================================

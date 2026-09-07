@@ -113,20 +113,14 @@ class InMemoryUsageRecordRepository : UsageRecordRepository {
     /**
      * Reduce a flat list of records into a [UsageAggregate].
      *
-     * Null-cost contamination: within each currency group, if any record has
-     * `cost == null`, the group total is null. Token counts always sum normally.
+     * Null-cost contamination: if any record has `cost == null`, the aggregate cost is
+     * null (pricing unknown). Token counts always sum normally.
      */
     private fun aggregate(records: List<UsageRecord>): UsageAggregate {
         if (records.isEmpty()) return UsageAggregate.EMPTY
-
-        // Group costs by currency; null cost contaminates the group total.
-        val costByCurrency: Map<String, Double?> = records
-            .groupBy { it.currency }
-            .mapValues { (_, group) ->
-                if (group.any { it.cost == null }) null
-                else group.sumOf { it.cost!! }
-            }
-
+        val cost: Double? =
+            if (records.any { it.cost == null }) null
+            else records.sumOf { it.cost!! }
         return UsageAggregate(
             recordCount = records.size.toLong(),
             inputTokens = records.sumOf { it.inputTokens },
@@ -134,7 +128,7 @@ class InMemoryUsageRecordRepository : UsageRecordRepository {
             cacheReadTokens = records.sumOf { it.cacheReadTokens },
             cacheWriteTokens = records.sumOf { it.cacheWriteTokens },
             totalTokens = records.sumOf { it.totalTokens },
-            costByCurrency = costByCurrency,
+            cost = cost,
         )
     }
 }

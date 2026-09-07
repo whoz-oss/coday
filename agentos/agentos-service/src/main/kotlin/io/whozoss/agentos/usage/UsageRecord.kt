@@ -16,10 +16,9 @@ import java.util.UUID
  * in aggregations; instead they must propagate the unknown upward (e.g. sum returns null if
  * any addend is null, matching the semantics of [LlmUsage.plus]).
  *
- * ## Currency and cross-record aggregation
- * [currency] is always stored alongside [cost]. Summing costs across records without grouping
- * by currency would silently mix amounts in different units. Any aggregation query **must**
- * include a `GROUP BY currency` (or equivalent) clause.
+ * ## Single implicit currency
+ * All costs in AgentOS are expressed in a single implicit currency unit. There is no
+ * `currency` field to group by in aggregations.
  *
  * ## Denormalised provider and model names
  * [providerName] and [apiModelName] are stored as plain strings rather than foreign keys.
@@ -52,8 +51,6 @@ data class UsageRecord(
     val totalTokens: Long = 0L,
     /** `null` = cost unknown (pricing not configured), not zero. See class KDoc. */
     val cost: Double? = null,
-    /** ISO 4217 currency code. Costs in different currencies must never be summed without grouping. */
-    val currency: String = "USD",
     val timestamp: Instant = Instant.now(),
 ) : Entity {
     companion object {
@@ -61,8 +58,8 @@ data class UsageRecord(
          * Convenience factory that copies the five token counters and the estimated cost
          * from a [LlmUsage] value object into a new [UsageRecord].
          *
-         * The [LlmUsage.estimatedCostUsd] is mapped to [cost]; [currency] defaults to `"USD"`
-         * because [LlmUsage] always expresses cost in USD.
+         * [LlmUsage.estimatedCostUsd] maps to [cost]. All costs in AgentOS share a single
+         * implicit currency unit; no currency field is stored.
          */
         fun fromLlmUsage(
             llmUsage: LlmUsage,
@@ -91,7 +88,6 @@ data class UsageRecord(
                 cacheWriteTokens = llmUsage.cacheWriteTokens,
                 totalTokens = llmUsage.totalTokens,
                 cost = llmUsage.estimatedCostUsd,
-                currency = "USD",
             )
     }
 }

@@ -6,6 +6,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.ModelPricing
 import io.whozoss.agentos.sdk.api.aiProvider.AiModelApi
 import io.whozoss.agentos.sdk.api.aiProvider.AiModelDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -62,11 +63,9 @@ class AiModelController(
                     alias = resource.alias,
                     priority = resource.priority,
                     temperature = resource.temperature,
-                    maxTokens = resource.maxTokens,
-                    pricingInputMTokens = resource.pricingInputMTokens,
-                    pricingOutputMTokens = resource.pricingOutputMTokens,
-                    pricingCacheRead = resource.pricingCacheRead,
-                    pricingCacheWrite = resource.pricingCacheWrite,
+                    maxCompletionTokens = resource.maxCompletionTokens,
+                    contextWindow = resource.contextWindow,
+                    pricing = resource.pricing,
                 )
             },
         )
@@ -112,11 +111,9 @@ class AiModelController(
                     alias = resource.alias,
                     priority = resource.priority,
                     temperature = resource.temperature,
-                    maxTokens = resource.maxTokens,
-                    pricingInputMTokens = resource.pricingInputMTokens,
-                    pricingOutputMTokens = resource.pricingOutputMTokens,
-                    pricingCacheRead = resource.pricingCacheRead,
-                    pricingCacheWrite = resource.pricingCacheWrite,
+                    maxCompletionTokens = resource.maxCompletionTokens,
+                    contextWindow = resource.contextWindow,
+                    pricing = resource.pricing,
                 ),
             ).let(::toDto)
     }
@@ -157,9 +154,7 @@ private fun toDto(entity: AiModel) =
         alias = entity.alias,
         priority = entity.priority,
         temperature = entity.temperature,
-        maxTokens = entity.maxTokens,
-        pricingInputMTokens = entity.pricingInputMTokens,
-        pricingOutputMTokens = entity.pricingOutputMTokens,
-        pricingCacheRead = entity.pricingCacheRead,
-        pricingCacheWrite = entity.pricingCacheWrite,
+        maxCompletionTokens = entity.maxCompletionTokens,
+        contextWindow = entity.contextWindow,
+        pricing = entity.pricing,
     )

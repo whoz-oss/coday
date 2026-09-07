@@ -26,7 +26,6 @@ class UsageRecordNodeUnitSpec : StringSpec({
         recordUserId: UUID? = userId,
         recordAgentConfigId: UUID? = agentConfigId,
         cost: Double? = 0.042,
-        currency: String = "USD",
     ) = UsageRecord(
         metadata = EntityMetadata(id = UUID.randomUUID(), created = fixedInstant, modified = fixedInstant),
         namespaceId = namespaceId,
@@ -44,7 +43,6 @@ class UsageRecordNodeUnitSpec : StringSpec({
         cacheWriteTokens = 10L,
         totalTokens = 360L,
         cost = cost,
-        currency = currency,
         timestamp = fixedInstant,
     )
 
@@ -72,7 +70,6 @@ class UsageRecordNodeUnitSpec : StringSpec({
         roundTripped.cacheWriteTokens shouldBe 10L
         roundTripped.totalTokens shouldBe 360L
         roundTripped.cost shouldBe 0.042
-        roundTripped.currency shouldBe "USD"
         roundTripped.timestamp shouldBe fixedInstant
         roundTripped.metadata.created shouldBe fixedInstant
     }
@@ -100,18 +97,6 @@ class UsageRecordNodeUnitSpec : StringSpec({
         val roundTripped = UsageRecordNode.fromDomain(record).toDomain()
 
         roundTripped.agentConfigId shouldBe null
-    }
-
-    // -------------------------------------------------------------------------
-    // Non-USD currency
-    // -------------------------------------------------------------------------
-
-    "round-trip with non-USD currency preserves the currency code" {
-        val record = baseRecord(cost = 0.038, currency = "EUR")
-        val roundTripped = UsageRecordNode.fromDomain(record).toDomain()
-
-        roundTripped.currency shouldBe "EUR"
-        roundTripped.cost shouldBe 0.038
     }
 
     // -------------------------------------------------------------------------
@@ -159,7 +144,6 @@ class UsageRecordNodeUnitSpec : StringSpec({
         record.cacheWriteTokens shouldBe 10L
         record.totalTokens shouldBe 360L
         record.cost shouldBe 0.042
-        record.currency shouldBe "USD"
         record.source shouldBe UsageSource.LLM
     }
 

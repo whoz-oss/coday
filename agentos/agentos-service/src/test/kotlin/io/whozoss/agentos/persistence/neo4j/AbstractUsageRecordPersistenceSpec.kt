@@ -58,7 +58,6 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
         totalTokens: Long = 100L,
         inputTokens: Long = 50L,
         cost: Double? = 0.25,
-        currency: String = "USD",
         userId: UUID? = null,
         timestamp: Instant = Instant.now(),
     ) = UsageRecord(
@@ -73,7 +72,6 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
         totalTokens = totalTokens,
         inputTokens = inputTokens,
         cost = cost,
-        currency = currency,
         timestamp = timestamp,
     )
 
@@ -97,10 +95,10 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
             val agg = repo.aggregateByCaseId(case.id)
             agg.totalTokens shouldBe 300L
             agg.recordCount shouldBe 2L
-            agg.costByCurrency["USD"] shouldBe 0.75
+            agg.cost shouldBe 0.75
         }
 
-        "aggregateByCaseId: null cost contaminates group total, tokens still sum" {
+        "aggregateByCaseId: null cost contaminates aggregate total, tokens still sum" {
             val ns = namespaceRepo.save(namespace())
             val case = caseRepo.save(case(ns.id))
             repo.save(record(case.id, ns.id, totalTokens = 100L, cost = 0.25))
@@ -108,21 +106,7 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
 
             val agg = repo.aggregateByCaseId(case.id)
             agg.totalTokens shouldBe 300L
-            agg.costByCurrency["USD"] shouldBe null
-        }
-
-        "aggregateByCaseId: multi-currency records produce separate cost entries" {
-            val ns = namespaceRepo.save(namespace())
-            val case = caseRepo.save(case(ns.id))
-            repo.save(record(case.id, ns.id, totalTokens = 100L, cost = 0.25, currency = "USD"))
-            repo.save(record(case.id, ns.id, totalTokens = 50L, cost = 0.50, currency = "EUR"))
-
-            val agg = repo.aggregateByCaseId(case.id)
-            agg.totalTokens shouldBe 150L
-            ("USD" in agg.costByCurrency) shouldBe true
-            ("EUR" in agg.costByCurrency) shouldBe true
-            agg.costByCurrency["USD"] shouldBe 0.25
-            agg.costByCurrency["EUR"] shouldBe 0.50
+            agg.cost shouldBe null
         }
 
         // =====================================================================
@@ -156,7 +140,7 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
             val agg = repo.aggregateByCaseTree(root.id)
             agg.totalTokens shouldBe 600L
             agg.recordCount shouldBe 3L
-            agg.costByCurrency["USD"] shouldBe 1.0
+            agg.cost shouldBe 1.0
         }
 
         "aggregateByCaseTree: null cost in descendant contaminates tree total" {
@@ -169,7 +153,7 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
 
             val agg = repo.aggregateByCaseTree(root.id)
             agg.totalTokens shouldBe 300L
-            agg.costByCurrency["USD"] shouldBe null
+            agg.cost shouldBe null
         }
 
         "aggregateByCaseTree does not include records from unrelated cases" {
@@ -200,7 +184,7 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
             val to = Instant.parse("2024-06-30T23:59:59Z")
             val agg = repo.aggregateByUser(userId, ns.id, from, to)
             agg.totalTokens shouldBe 300L
-            agg.costByCurrency["USD"] shouldBe 0.75
+            agg.cost shouldBe 0.75
         }
 
         "aggregateByUser excludes records outside the time window" {
@@ -237,7 +221,7 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
             val alpha = results.find { it.key == "alpha" }
             alpha shouldNotBe null
             alpha!!.aggregate.totalTokens shouldBe 300L
-            alpha.aggregate.costByCurrency["USD"] shouldBe 0.75
+            alpha.aggregate.cost shouldBe 0.75
         }
 
         "aggregateByAgent: null cost contaminates the agent group total" {
@@ -253,7 +237,7 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
             results shouldHaveSize 1
             val alpha = results.first()
             alpha.aggregate.totalTokens shouldBe 300L
-            alpha.aggregate.costByCurrency["USD"] shouldBe null
+            alpha.aggregate.cost shouldBe null
         }
 
         // =====================================================================

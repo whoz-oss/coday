@@ -46,7 +46,6 @@ data class UsageRecordNode(
     val cacheWriteTokens: Long = 0L,
     val totalTokens: Long = 0L,
     val cost: Double? = null,
-    val currency: String = "USD",
     val timestamp: Instant = Instant.now(),
     // Audit fields from EntityMetadata
     val created: Instant = Instant.now(),
@@ -84,7 +83,6 @@ data class UsageRecordNode(
             cacheWriteTokens = cacheWriteTokens,
             totalTokens = totalTokens,
             cost = cost,
-            currency = currency,
             timestamp = timestamp,
         )
 
@@ -107,7 +105,6 @@ data class UsageRecordNode(
                 cacheWriteTokens = record.cacheWriteTokens,
                 totalTokens = record.totalTokens,
                 cost = record.cost,
-                currency = record.currency,
                 timestamp = record.timestamp,
                 created = record.metadata.created,
                 createdBy = record.metadata.createdBy,

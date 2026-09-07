@@ -3332,24 +3332,14 @@ components:
         id:
           type: string
           format: uuid
-        maxTokens:
+        maxCompletionTokens:
           type: integer
           format: int32
         namespaceId:
           type: string
           format: uuid
-        pricingCacheRead:
-          type: number
-          format: double
-        pricingCacheWrite:
-          type: number
-          format: double
-        pricingInputMTokens:
-          type: number
-          format: double
-        pricingOutputMTokens:
-          type: number
-          format: double
+        pricing:
+          $ref: "#/components/schemas/ModelPricing"
         priority:
           type: integer
           format: int32
@@ -4108,6 +4098,25 @@ components:
       - namespaceId
       - timestamp
       - type
+    ModelPricing:
+      type: object
+      properties:
+        cacheRead:
+          type: number
+          format: double
+        cacheWrite:
+          type: number
+          format: double
+        inputMTokens:
+          type: number
+          format: double
+        isEmpty:
+          type: boolean
+        outputMTokens:
+          type: number
+          format: double
+      required:
+      - isEmpty
     Namespace:
       type: object
       properties:

@@ -18,8 +18,8 @@ import java.util.UUID
  * ## Aggregation and null-cost contamination
  *
  * All aggregation queries return raw [Map] rows from Cypher. Each row contains a
- * `nullCostCount` field. When > 0, the cost for that currency group is unknown and is
- * reported as `null` in [UsageAggregate.costByCurrency] — never as the partial sum.
+ * `nullCostCount` field. When > 0, the cost is unknown and is reported as `null` in
+ * [UsageAggregate.cost] — never as the partial sum, which would be a silent undercount.
  *
  * @see UsageRecordNodeNeo4jRepository for the Cypher queries.
  */
@@ -95,111 +95,61 @@ open class Neo4jUsageRecordRepository(
     // =========================================================================
 
     /**
-     * Convert a list of Cypher aggregate rows (one per currency) into a single [UsageAggregate].
+     * Convert a list of Cypher aggregate rows into a single [UsageAggregate].
      *
-     * Each row contains:
-     *   currency, recordCount, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
-     *   totalTokens, partialCostSum, nullCostCount
+     * All costs are in a single implicit currency unit, so Cypher returns at most one row
+     * (via `collect({...})`). Each row contains: recordCount, inputTokens, outputTokens,
+     * cacheReadTokens, cacheWriteTokens, totalTokens, partialCostSum, nullCostCount.
      *
-     * Null-cost contamination: when `nullCostCount > 0` for a currency, the cost for that
-     * currency is `null` (not `partialCostSum`, which would be a silent undercount).
-     * Token counts are summed across all currency rows (tokens are currency-agnostic).
+     * Null-cost contamination: when `nullCostCount > 0`, the cost is `null` (not
+     * `partialCostSum`, which would be a silent undercount).
      */
     private fun mapToAggregate(rows: List<Map<String, Any>>): UsageAggregate {
         if (rows.isEmpty()) return UsageAggregate.EMPTY
-
-        var totalRecords = 0L
-        var inputTokens = 0L
-        var outputTokens = 0L
-        var cacheReadTokens = 0L
-        var cacheWriteTokens = 0L
-        var totalTokens = 0L
-        val costByCurrency = mutableMapOf<String, Double?>()
-
-        for (row in rows) {
-            val currency = row["currency"] as String
-            val nullCostCount = (row["nullCostCount"] as Number).toLong()
-            val partialCostSum = (row["partialCostSum"] as Number).toDouble()
-
-            totalRecords += (row["recordCount"] as Number).toLong()
-            inputTokens += (row["inputTokens"] as Number).toLong()
-            outputTokens += (row["outputTokens"] as Number).toLong()
-            cacheReadTokens += (row["cacheReadTokens"] as Number).toLong()
-            cacheWriteTokens += (row["cacheWriteTokens"] as Number).toLong()
-            totalTokens += (row["totalTokens"] as Number).toLong()
-
-            // Contamination: if any record in this currency group has no pricing, the
-            // whole group total is null — never a partial sum.
-            costByCurrency[currency] = if (nullCostCount > 0L) null else partialCostSum
-        }
-
+        val row = rows.first()
+        // Without GROUP BY currency, Cypher always returns one row — even when no records
+        // matched. Detect the empty case via recordCount before interpreting cost fields.
+        val recordCount = (row["recordCount"] as Number).toLong()
+        if (recordCount == 0L) return UsageAggregate.EMPTY
+        val nullCostCount = (row["nullCostCount"] as Number).toLong()
+        val partialCostSum = (row["partialCostSum"] as Number).toDouble()
         return UsageAggregate(
-            recordCount = totalRecords,
-            inputTokens = inputTokens,
-            outputTokens = outputTokens,
-            cacheReadTokens = cacheReadTokens,
-            cacheWriteTokens = cacheWriteTokens,
-            totalTokens = totalTokens,
-            costByCurrency = costByCurrency,
+            recordCount = recordCount,
+            inputTokens = (row["inputTokens"] as Number).toLong(),
+            outputTokens = (row["outputTokens"] as Number).toLong(),
+            cacheReadTokens = (row["cacheReadTokens"] as Number).toLong(),
+            cacheWriteTokens = (row["cacheWriteTokens"] as Number).toLong(),
+            totalTokens = (row["totalTokens"] as Number).toLong(),
+            cost = if (nullCostCount > 0L) null else partialCostSum,
         )
     }
 
     /**
-     * Convert a list of Cypher rows (one per key+currency combination) into a list of
-     * [UsageAggregateByKey], one per distinct key.
+     * Convert a list of Cypher rows (one per key) into a list of [UsageAggregateByKey].
      *
-     * [keyField] is the Cypher column that holds the group dimension (e.g. "agentName").
-     *
-     * Rows for the same key but different currencies are merged: token counts are summed
-     * (currency-agnostic) and costs are collected per currency with contamination applied.
+     * [keyField] is the Cypher column holding the group dimension (e.g. "agentName").
+     * Each row is already fully aggregated by Cypher; no cross-row merging is needed.
      */
     private fun mapToAggregateByKey(
         rows: List<Map<String, Any>>,
         keyField: String,
-    ): List<UsageAggregateByKey> {
-        // Group rows by key, then fold each group into a UsageAggregate.
-        data class Accum(
-            var recordCount: Long = 0L,
-            var inputTokens: Long = 0L,
-            var outputTokens: Long = 0L,
-            var cacheReadTokens: Long = 0L,
-            var cacheWriteTokens: Long = 0L,
-            var totalTokens: Long = 0L,
-            val costByCurrency: MutableMap<String, Double?> = mutableMapOf(),
-        )
-
-        val accumByKey = linkedMapOf<String, Accum>() // preserve ORDER BY from Cypher
-        for (row in rows) {
-            val key = row[keyField] as String
-            val acc = accumByKey.getOrPut(key) { Accum() }
-            val currency = row["currency"] as String
+    ): List<UsageAggregateByKey> =
+        rows.map { row ->
             val nullCostCount = (row["nullCostCount"] as Number).toLong()
             val partialCostSum = (row["partialCostSum"] as Number).toDouble()
-
-            acc.recordCount += (row["recordCount"] as Number).toLong()
-            acc.inputTokens += (row["inputTokens"] as Number).toLong()
-            acc.outputTokens += (row["outputTokens"] as Number).toLong()
-            acc.cacheReadTokens += (row["cacheReadTokens"] as Number).toLong()
-            acc.cacheWriteTokens += (row["cacheWriteTokens"] as Number).toLong()
-            acc.totalTokens += (row["totalTokens"] as Number).toLong()
-            acc.costByCurrency[currency] = if (nullCostCount > 0L) null else partialCostSum
-        }
-
-        return accumByKey.map { (key, acc) ->
             UsageAggregateByKey(
-                key = key,
+                key = row[keyField] as String,
                 aggregate = UsageAggregate(
-                    recordCount = acc.recordCount,
-                    inputTokens = acc.inputTokens,
-                    outputTokens = acc.outputTokens,
-                    cacheReadTokens = acc.cacheReadTokens,
-                    cacheWriteTokens = acc.cacheWriteTokens,
-                    totalTokens = acc.totalTokens,
-                    costByCurrency = acc.costByCurrency,
+                    recordCount = (row["recordCount"] as Number).toLong(),
+                    inputTokens = (row["inputTokens"] as Number).toLong(),
+                    outputTokens = (row["outputTokens"] as Number).toLong(),
+                    cacheReadTokens = (row["cacheReadTokens"] as Number).toLong(),
+                    cacheWriteTokens = (row["cacheWriteTokens"] as Number).toLong(),
+                    totalTokens = (row["totalTokens"] as Number).toLong(),
+                    cost = if (nullCostCount > 0L) null else partialCostSum,
                 ),
             )
         }
-    }
 
     companion object : KLogging()
 }
