@@ -23,6 +23,7 @@ data class NamespaceNode(
     val configPath: String? = null,
     val externalId: String? = null,
     val defaultAgentName: String? = null,
+    val runCostThreshold: Double? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -46,6 +47,7 @@ data class NamespaceNode(
             configPath = configPath,
             externalId = externalId,
             defaultAgentName = defaultAgentName,
+            runCostThreshold = runCostThreshold,
         )
 
     companion object {
@@ -57,6 +59,7 @@ data class NamespaceNode(
                 configPath = ns.configPath,
                 externalId = ns.externalId,
                 defaultAgentName = ns.defaultAgentName,
+                runCostThreshold = ns.runCostThreshold,
                 created = ns.metadata.created,
                 createdBy = ns.metadata.createdBy,
                 modified = ns.metadata.modified,

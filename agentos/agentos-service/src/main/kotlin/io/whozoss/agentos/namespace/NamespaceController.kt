@@ -62,6 +62,7 @@ class NamespaceController(
                     configPath = resource.configPath?.takeIf { it.isNotBlank() },
                     externalId = resource.externalId?.takeIf { it.isNotBlank() },
                     defaultAgentName = resource.defaultAgentName?.takeIf { it.isNotBlank() },
+                    runCostThreshold = resource.runCostThreshold,
                 )
             },
         )
@@ -137,6 +138,7 @@ class NamespaceController(
                     configPath = resource.configPath?.takeIf { it.isNotBlank() },
                     defaultAgentName = resource.defaultAgentName?.takeIf { it.isNotBlank() },
                     externalId = existing.externalId, // immutable post-create
+                    runCostThreshold = resource.runCostThreshold,
                 ),
             ).toDto()
     }
@@ -223,8 +225,11 @@ fun Namespace.toDto() =
         configPath = configPath,
         externalId = externalId,
         defaultAgentName = defaultAgentName,
+        runCostThreshold = runCostThreshold,
     )
 
+// runCostThreshold is intentionally absent from NamespaceListItem — it is an admin-configuration
+// detail not needed in list views. Full value is available via getById / update.
 private fun Namespace.toListItem(role: String) =
     NamespaceListItem(
         id = metadata.id,
