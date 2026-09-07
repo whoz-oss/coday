@@ -4,6 +4,12 @@
   z-index: 1500;
   display: block;
   top: calc(1rem + 40px + 0.5rem + 40px + 2rem);
+
+  --gauge-glass: #dddddd;
+}
+
+:host-context([data-theme$='dark']) {
+  --gauge-glass: #333333;
 }
 
 .tube-host {
@@ -23,7 +29,7 @@
   width: 24px;
   border: none;
   border-radius: 0 0 50rem 50rem;
-  background-color: #333333;
+  background-color: var(--gauge-glass, #333333);
   cursor: default;
   overflow: visible;
 
@@ -35,7 +41,7 @@
     width: calc(100% + 6px);
     height: 4px;
     border-radius: 50rem;
-    background: #333333;
+    background: var(--gauge-glass, #333333);
   }
 }
 
@@ -269,16 +275,6 @@
   100% {
     background: rgba(255, 255, 255, 0);
     transform: scale(0.6);
-  }
-}
-
-:host-context(:root:not([data-theme='dark'])) {
-  .tube {
-    background-color: #dddddd;
-
-    &::after {
-      background: #dddddd;
-    }
   }
 }
 
