@@ -60,6 +60,7 @@ import { CaseMembersComponent } from '../case-members/case-members.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
+import { DelegationResultComponent } from './delegation-result/delegation-result.component'
 
 export interface ToolCall {
   requestId: string
@@ -129,6 +130,7 @@ function hasActiveSelection(): boolean {
     CopyButtonComponent,
     ComposerAttachmentsComponent,
     QuestionPanelComponent,
+    DelegationResultComponent,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
@@ -175,6 +177,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // so route params are empty — all context comes through query params.
   protected caseId = this.route.snapshot.queryParams['case'] as string
   private readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
+  protected readonly delegationNamespaceId = this.namespaceId
 
   /** Markdown renderer shared across all message pre-computations. */
   private readonly markdownRenderer = this.buildMarkdownRenderer()
@@ -386,6 +389,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
         }
         lastMessageRole = null
+      } else if (e.type === 'AgentRunningEvent') {
+        // Attribution is shown alongside the following agent message label.
+        continue
       } else if (e.type === 'QuestionEvent') {
         const qe = e as QuestionEvent
         // A question is answered when there is a corresponding AnswerEvent in the stream.
@@ -894,6 +900,22 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.extractText(item.event)
   }
 
+  /** Provider/model reported by the nearest preceding execution event for this agent message. */
+  protected agentModelAttribution(message: CaseMessageEvent): string | null {
+    if (message.actor.role !== 'AGENT') return null
+    const events = this.events()
+    const messageIndex = events.findIndex((event) => event.id === message.id)
+    for (let index = messageIndex - 1; index >= 0; index--) {
+      const event = events[index]
+      if (!event || event.type !== 'AgentRunningEvent') continue
+      const running = event as AgentRunningEvent
+      if (running.agentName !== message.actor.displayName) continue
+      const parts = [running.llmProvider, running.llmModel].filter((part): part is string => !!part)
+      return parts.length ? parts.join(' · ') : null
+    }
+    return null
+  }
+
   // ---------------------------------------------------------------------------
   // Markdown rendering
   // ---------------------------------------------------------------------------
@@ -962,10 +984,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       case 'CaseStatusEvent': {
         const e = event as CaseStatusEvent
         return { type: 'CaseStatusEvent', label: `🟡 Status: ${e.status}` }
-      }
-      case 'AgentRunningEvent': {
-        const e = event as AgentRunningEvent
-        return { type: 'AgentRunningEvent', label: `▶️ Agent running: ${e.agentName}` }
       }
       case 'AgentFinishedEvent': {
         const e = event as AgentFinishedEvent
