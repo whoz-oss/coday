@@ -1,3 +1,13 @@
+## 0.250.1 (2026-09-07)
+
+### 🩹 Fixes
+
+- correct context gauge glass color in dark themes ([#1284](https://github.com/whoz-oss/coday/pull/1284))
+
+### ❤️ Thank You
+
+- Romain Petit
+
 ## 0.250.0 (2026-09-03)
 
 ### 🚀 Features
