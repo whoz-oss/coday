@@ -40,6 +40,7 @@ data class AiModelNode(
     // Stored as a flat scalar — Neo4j nodes cannot hold nested objects.
     // ModelPricing is assembled/disassembled in toDomain()/fromDomain().
     val maxCompletionTokens: Int? = null,
+    val contextWindow: Long? = null,
     val pricingInputMTokens: Double? = null,
     val pricingOutputMTokens: Double? = null,
     val pricingCacheRead: Double? = null,
@@ -86,6 +87,7 @@ data class AiModelNode(
             priority = priority,
             temperature = temperature,
             maxCompletionTokens = maxCompletionTokens,
+            contextWindow = contextWindow,
             pricing = pricing,
         )
     }
@@ -103,6 +105,7 @@ data class AiModelNode(
                 priority = model.priority,
                 temperature = model.temperature,
                 maxCompletionTokens = model.maxCompletionTokens,
+                contextWindow = model.contextWindow,
                 pricingInputMTokens = model.pricing?.inputMTokens,
                 pricingOutputMTokens = model.pricing?.outputMTokens,
                 pricingCacheRead = model.pricing?.cacheRead,

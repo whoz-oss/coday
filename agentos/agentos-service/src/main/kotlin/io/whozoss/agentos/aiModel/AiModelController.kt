@@ -64,6 +64,7 @@ class AiModelController(
                     priority = resource.priority,
                     temperature = resource.temperature,
                     maxCompletionTokens = resource.maxCompletionTokens,
+                    contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
                 )
             },
@@ -111,6 +112,7 @@ class AiModelController(
                     priority = resource.priority,
                     temperature = resource.temperature,
                     maxCompletionTokens = resource.maxCompletionTokens,
+                    contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
                 ),
             ).let(::toDto)
@@ -153,5 +155,6 @@ private fun toDto(entity: AiModel) =
         priority = entity.priority,
         temperature = entity.temperature,
         maxCompletionTokens = entity.maxCompletionTokens,
+        contextWindow = entity.contextWindow,
         pricing = entity.pricing,
     )

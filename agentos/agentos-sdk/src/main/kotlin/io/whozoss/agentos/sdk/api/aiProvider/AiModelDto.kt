@@ -47,6 +47,10 @@ data class AiModelDto(
      */
     val maxCompletionTokens: Int? = null,
     /**
+     * Total context window size in tokens (input + output combined). Null = not configured.
+     */
+    val contextWindow: Long? = null,
+    /**
      * Optional per-million-token pricing configuration (USD). Null means no pricing is
      * configured and cost estimation is skipped. See [io.whozoss.agentos.sdk.aiProvider.ModelPricing]
      * for field semantics.

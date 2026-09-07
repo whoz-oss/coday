@@ -54,6 +54,13 @@ data class AiModel(
      */
     val maxCompletionTokens: Int? = null,
     /**
+     * Total context window size in tokens (input + output combined), as advertised by
+     * the provider. Used at runtime to guard against prompts that exceed the model's
+     * capacity. Null means unknown / not configured. [Long] to accommodate models with
+     * windows exceeding [Int.MAX_VALUE] (up to ~2 billion).
+     */
+    val contextWindow: Long? = null,
+    /**
      * Optional per-million-token pricing configuration (USD). Null means no pricing
      * is configured and cost estimation is skipped — [io.whozoss.agentos.sdk.usage.LlmUsage.estimatedCostUsd]
      * will be null for every call using this model. See [ModelPricing] for field semantics.
