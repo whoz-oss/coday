@@ -1,3 +1,13 @@
+## 0.251.1 (2026-09-07)
+
+### 🩹 Fixes
+
+- bump bundled agentos version to incorporate anthropic cache option ([#1288](https://github.com/whoz-oss/coday/pull/1288))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.251.0 (2026-09-07)
 
 ### 🚀 Features
