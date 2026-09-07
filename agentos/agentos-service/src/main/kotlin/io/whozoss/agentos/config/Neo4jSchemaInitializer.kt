@@ -76,6 +76,7 @@ class Neo4jSchemaInitializer(
                 "user_group_id_unique" to "UserGroup",
                 "feedback_id_unique" to "Feedback",
                 "prompt_id_unique" to "Prompt",
+                "skill_id_unique" to "Skill",
             )
 
         // CaseEvent base label + one entry per subtype derived from the canonical enum.
@@ -100,6 +101,15 @@ class Neo4jSchemaInitializer(
                 ).run()
             logger.info { "[Neo4jSchemaInitializer] Constraint $constraintName ensured" }
         }
+
+        // Skill doubleKey uniqueness constraint: enforces uniqueness on (namespaceId, lowercased name)
+        // while allowing soft-deleted entities via tombstoned doubleKeys.
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT skill_double_key_unique IF NOT EXISTS " +
+                    "FOR (s:Skill) REQUIRE s.doubleKey IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint skill_double_key_unique ensured" }
 
         // Backfill @Version on AgentConfig nodes created before the version field was introduced.
         // Spring Data Neo4j's optimistic-locking check generates MATCH WHERE version = ?

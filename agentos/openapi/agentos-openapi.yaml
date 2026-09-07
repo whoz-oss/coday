@@ -2764,6 +2764,139 @@ paths:
       summary: Enable a scheduled prompt (idempotent)
       tags:
       - scheduled-prompt-controller
+  /api/skills:
+    post:
+      operationId: createSkill
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Skill"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Skill"
+          description: Created
+      summary: Create a Skill
+      tags:
+      - skill-controller
+  /api/skills/by-ids:
+    post:
+      operationId: getByIdsSkill
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetByIdsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Skill"
+          description: OK
+      tags:
+      - skill-controller
+  /api/skills/by-parentId/{parentId}:
+    get:
+      operationId: listByParentSkill
+      parameters:
+      - in: path
+        name: parentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Skill"
+          description: OK
+      tags:
+      - skill-controller
+  /api/skills/platform:
+    get:
+      operationId: listPlatformSkill
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Skill"
+          description: OK
+      tags:
+      - skill-controller
+  /api/skills/{id}:
+    delete:
+      operationId: deleteSkill
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      summary: Delete a Skill
+      tags:
+      - skill-controller
+    get:
+      operationId: getByIdSkill
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Skill"
+          description: OK
+      tags:
+      - skill-controller
+    put:
+      operationId: updateSkill
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Skill"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Skill"
+          description: OK
+      summary: Update a Skill
+      tags:
+      - skill-controller
   /api/user-groups:
     get:
       operationId: findByNamespaceIdUserGroup
@@ -3160,10 +3293,9 @@ components:
           type: array
           items:
             type: string
-            description: "Selectors controlling which filesystem skills are injected\
-              \ into the agent's instructions. When null, all discovered skills are\
-              \ included. When empty list [], no skills are included. Supports exact\
-              \ path/name, folder prefixes ('core/**'), or wildcard '*'."
+            description: "Selectors controlling which skills are advertised to this\
+              \ agent. Null or empty means no skills. Use ['*'] for all, 'core/**'\
+              \ for a folder prefix, or a skill name / path for exact matching."
             minLength: 1
         subAgents:
           type: array
@@ -4686,6 +4818,40 @@ components:
           - string
           - "null"
           format: uuid
+    Skill:
+      type: object
+      properties:
+        body:
+          type: string
+          minLength: 1
+        createdBy:
+          type: string
+        createdOn:
+          type: string
+          format: date-time
+        description:
+          type: string
+          minLength: 1
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        namespaceId:
+          type:
+          - string
+          - "null"
+          format: uuid
+        updatedBy:
+          type: string
+        updatedOn:
+          type: string
+          format: date-time
+      required:
+      - body
+      - description
+      - name
     SyncUserRolesRequest:
       type: object
       properties:

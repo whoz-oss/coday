@@ -1,6 +1,7 @@
 package io.whozoss.agentos.skill
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.mockk.every
@@ -43,7 +44,7 @@ class SkillToolGrantServiceUnitSpec : StringSpec({
         service.isGranted(listOf(skill1, skill2)) shouldBe true
     }
 
-    "grantTools returns two tools (readSkill and readSkillResource)" {
+    "grantTools returns two tools (readSkill and readSkillResource) for non-empty skill list" {
         every { toolContext.agentName } returns "test-agent"
 
         val tools = service.grantTools(listOf(skill1), toolContext)
@@ -52,12 +53,10 @@ class SkillToolGrantServiceUnitSpec : StringSpec({
         tools.map { it.name }.toSet() shouldBe setOf("readSkill", "readSkillResource")
     }
 
-    "grantTools with empty list still returns tools (caller guards with isGranted)" {
+    "grantTools with empty list returns empty list defensively" {
         every { toolContext.agentName } returns "test-agent"
 
-        // SkillToolGrantService.grantTools is called only when isGranted=true,
-        // but if called with empty list the plugin still returns the tool instances.
         val tools = service.grantTools(emptyList(), toolContext)
-        tools shouldHaveSize 2
+        tools.shouldBeEmpty()
     }
 })

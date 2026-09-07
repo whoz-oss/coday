@@ -2,11 +2,11 @@ package io.whozoss.agentos.skill
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.stereotype.Component
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -14,7 +14,8 @@ import java.time.Duration
 import java.util.UUID
 
 /**
- * Discovers [Skill] definitions from `SKILL.md` files on the filesystem.
+ * Decorator over a delegate [SkillRepository] that augments read operations with [Skill]
+ * definitions discovered from `SKILL.md` files under `<namespace.configPath>/skills/`.
  *
  * Each skill lives in its own directory under `<configPath>/skills/`. The directory
  * name becomes the [Skill.skillRelativePath]. The `SKILL.md` file must start with a
@@ -27,6 +28,17 @@ import java.util.UUID
  *   core/branch-creation/SKILL.md
  * ```
  *
+ * All write operations ([save], [delete], [deleteByParent]) are forwarded to the delegate
+ * unchanged — the filesystem is never written.
+ *
+ * Collision rule: when a persisted skill carries the same name as a filesystem skill within
+ * the same namespace (case-insensitive), the persisted skill wins and the filesystem entry is
+ * dropped.
+ *
+ * Platform skills ([findPlatform]) are purely delegate-backed — the filesystem has no platform scope.
+ *
+ * Filesystem reads are cached per directory with a configurable [ttl] (default 5 minutes).
+ *
  * Safety limits:
  * - [MAX_SKILL_FILE_BYTES]: files larger than this are skipped.
  * - [MAX_WALK_DEPTH]: accepted skill-directory depths are zero through three; the shared
@@ -35,26 +47,21 @@ import java.util.UUID
  * - [MAX_SKILL_NAME_CHARS]: names longer than this are truncated with an ellipsis.
  * - [MAX_SKILL_DESCRIPTION_CHARS]: same for descriptions.
  *
- * Discovery reuses [FilesystemYamlCacheRegistry] (the same caching mechanism as
- * [io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository] and
- * [io.whozoss.agentos.prompt.FilesystemPromptRepository]), with a custom [filePredicate]
- * matching the exact filename `SKILL.md` instead of the default YAML-extension predicate.
- * Results are cached per skills-root directory for a TTL to avoid repeated I/O.
+ * Discovery reuses [FilesystemYamlCacheRegistry] with a custom [filePredicate] matching the
+ * exact filename `SKILL.md`.
  *
  * Symlinks that escape the skills root are rejected (path containment check).
  *
  * Deduplication: if two SKILL.md files produce the same name (case-insensitive),
- * the one with the lexicographically smaller [skillRelativePath] wins.
- *
- * @param yamlMapper Shared YAML mapper bean (qualified `yamlMapper`), consistent with every
- *   other filesystem repository in AgentOS. Never an inline mapper instance.
- * @param ttl Cache TTL per directory. Defaults to 5 minutes.
+ * the one with the lexicographically smaller [Skill.skillRelativePath] wins.
  */
-@Component
 class FilesystemSkillRepository(
+    private val delegate: SkillRepository,
+    private val namespaceRepository: NamespaceRepository,
     @param:Qualifier("yamlMapper") private val yamlMapper: ObjectMapper,
-    private val ttl: Duration = Duration.ofMinutes(5),
-) {
+    ttl: Duration = Duration.ofMinutes(5),
+) : SkillRepository by delegate {
+
     private val cacheRegistry =
         FilesystemYamlCacheRegistry(
             parser = ::parseSkillFile,
@@ -68,19 +75,78 @@ class FilesystemSkillRepository(
             maxDepth = MAX_WALK_DEPTH,
         )
 
+    // -------------------------------------------------------------------------
+    // Augmented read operations
+    // -------------------------------------------------------------------------
+
+    override fun findByParent(parentId: UUID): List<Skill> = findByNamespaceId(parentId)
+
+    override fun findByNamespaceId(namespaceId: UUID): List<Skill> {
+        val persisted = delegate.findByNamespaceId(namespaceId)
+        val fromFilesystem = filesystemSkills(namespaceId, excludeNames = persisted.mapTo(HashSet()) { it.name.lowercase() })
+        val merged = persisted + fromFilesystem
+        logger.debug {
+            "[FilesystemSkillRepository] namespace=$namespaceId: ${persisted.size} persisted + ${fromFilesystem.size} filesystem = ${merged.size} total"
+        }
+        return merged
+    }
+
+    override fun findPlatform(): List<Skill> = delegate.findPlatform()
+
+    override fun findByNameInNamespace(
+        namespaceId: UUID?,
+        name: String,
+    ): Skill? {
+        val fromDelegate = delegate.findByNameInNamespace(namespaceId, name)
+        if (fromDelegate != null) return fromDelegate
+        if (namespaceId == null) return null
+        return filesystemSkills(namespaceId).firstOrNull { it.name.equals(name, ignoreCase = true) }
+    }
+
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<Skill> {
+        val fromDelegate = delegate.findByIds(ids, withRemoved)
+        val foundIds = fromDelegate.mapTo(HashSet()) { it.metadata.id }
+        val missing = ids.filter { it !in foundIds }
+        if (missing.isEmpty()) return fromDelegate
+
+        val missingSet = missing.toHashSet()
+        val seenFsIds = HashSet<UUID>()
+        val fromFilesystem =
+            namespaceRepository
+                .findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY)
+                .filter { it.configPath != null }
+                .flatMap { namespace ->
+                    filesystemSkills(namespace.metadata.id)
+                        .filter { it.metadata.id in missingSet && seenFsIds.add(it.metadata.id) }
+                }
+
+        val allById = (fromDelegate + fromFilesystem).associateBy { it.metadata.id }
+        return ids.mapNotNull { allById[it] }
+    }
+
+    // -------------------------------------------------------------------------
+    // Filesystem discovery helpers
+    // -------------------------------------------------------------------------
+
     /**
-     * Returns all valid skills discovered under `<configPath>/skills/`.
+     * Loads and returns skills from the filesystem for [namespaceId].
      *
-     * Results are cached per skills-root directory for [ttl]. A cache miss triggers a full
-     * directory walk. Returns an empty list when the skills directory does not exist.
+     * Results are sorted by [Skill.skillRelativePath] and deduplicated by name (case-insensitive,
+     * first-by-path wins). When [excludeNames] is provided, matching names are dropped
+     * (persisted skills always win over filesystem ones).
      *
-     * Deduplication by name (case-insensitive) is applied here, after the cache returns raw
-     * results: skills are sorted by [Skill.skillRelativePath] and the first occurrence of
-     * each lowercased name wins. [MAX_SKILL_COUNT] caps the final deduplicated list —
-     * duplicates removed by name never consume the count — with a single WARN when truncation
-     * occurs.
+     * Duplicates removed by name do not consume the [MAX_SKILL_COUNT] budget.
      */
-    fun findAll(configPath: String): List<Skill> {
+    private fun filesystemSkills(
+        namespaceId: UUID,
+        excludeNames: Set<String> = emptySet(),
+    ): List<Skill> {
+        val configPath =
+            namespaceRepository.findByIds(listOf(namespaceId)).firstOrNull()?.configPath
+                ?: return emptyList()
         val skillsRoot = Path.of(configPath, SKILLS_SUBDIR)
         val all = cacheRegistry.getAll(skillsRoot).sortedBy { it.skillRelativePath }
 
@@ -89,8 +155,10 @@ class FilesystemSkillRepository(
         for (skill in all) {
             val nameKey = skill.name.lowercase()
             if (seenNames.add(nameKey)) {
-                if (result.size < MAX_SKILL_COUNT) {
-                    result += skill
+                if (nameKey !in excludeNames) {
+                    if (result.size < MAX_SKILL_COUNT) {
+                        result += skill.copy(namespaceId = namespaceId)
+                    }
                 }
             } else {
                 logger.debug { "[FilesystemSkillRepository] Duplicate name '${skill.name}' at '${skill.skillRelativePath}' (kept an earlier path)" }
@@ -204,7 +272,9 @@ class FilesystemSkillRepository(
         }
 
         return Skill(
-            metadata = EntityMetadata(),
+            metadata = EntityMetadata(
+                id = UUID.nameUUIDFromBytes("filesystem-skill:$name".toByteArray(Charsets.UTF_8)),
+            ),
             namespaceId = null,
             name = name,
             description = description,
@@ -280,9 +350,9 @@ class FilesystemSkillRepository(
         const val MAX_SKILL_FILE_BYTES = 512 * 1024L // 512 KiB
 
         /**
-         * Maximum number of unique (post-dedup) skills returned by [findAll]. Duplicates removed
-         * by name never consume this budget — the cap applies strictly to the deduplicated,
-         * path-sorted result. Matches the prior `SkillResolver` precedent.
+         * Maximum number of unique (post-dedup) skills returned by filesystem discovery.
+         * Duplicates removed by name never consume this budget — the cap applies strictly
+         * to the deduplicated, path-sorted result.
          */
         const val MAX_SKILL_COUNT = 500
 

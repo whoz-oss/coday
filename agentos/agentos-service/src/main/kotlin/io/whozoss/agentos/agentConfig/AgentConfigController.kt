@@ -86,8 +86,8 @@ class AgentConfigController(
                     advancedExecution = resource.advancedExecution ?: false,
                     externalMetadata = resource.externalMetadata,
                     enabled = resource.enabled ?: false,
-                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-                    skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() },
+                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
+                    skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
                 )
             },
         )
@@ -145,8 +145,8 @@ class AgentConfigController(
                     advancedExecution = resource.advancedExecution ?: false,
                     externalMetadata = resource.externalMetadata,
                     enabled = resource.enabled ?: existing.enabled,
-                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-                    skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() },
+                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
+                    skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
                 ),
             ),
         )
@@ -272,8 +272,8 @@ internal fun toDomain(resource: AgentConfigDto): AgentConfig {
         advancedExecution = resource.advancedExecution ?: false,
         externalMetadata = resource.externalMetadata,
         enabled = resource.enabled ?: false,
-        subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-        skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() },
+        subAgents = resource.subAgents?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
+        skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
     )
 }
 

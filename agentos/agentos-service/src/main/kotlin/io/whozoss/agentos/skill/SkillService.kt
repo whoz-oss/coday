@@ -1,9 +1,13 @@
 package io.whozoss.agentos.skill
 
+import io.whozoss.agentos.entity.EntityService
 import java.util.UUID
 
 /**
- * Service for skill discovery.
+ * Service for skill entity management and discovery.
+ *
+ * Implements [EntityService] for standard CRUD operations while providing specialized
+ * discovery and resolution for runtime execution.
  *
  * [findSkills] is the primary entry point used by [io.whozoss.agentos.agent.AgentServiceImpl]
  * to resolve the skill catalogue for an agent run. It returns an empty list when [selectors]
@@ -14,9 +18,12 @@ import java.util.UUID
  * Selector matching is an implementation detail of [SkillServiceImpl] (`internal` method
  * `filterSkills`), not part of the public service contract.
  */
-interface SkillService {
+interface SkillService : EntityService<Skill, UUID> {
     /**
      * Returns the skills accessible in [namespaceId] that match [selectors].
+     *
+     * Resolves effective skills combining namespace-scoped and platform-level skills,
+     * with namespace-scoped skills shadowing platform skills of the same name.
      *
      * Returns an empty list when [selectors] is null or empty (no skills requested).
      * Returns all skills when [selectors] contains `"*"`.
@@ -31,11 +38,15 @@ interface SkillService {
     /**
      * Returns the skill matching [name] (case-insensitive) in [namespaceId], or null.
      *
-     * Scans the full catalogue. Returns null when [namespaceId] has no configPath
-     * or when no skill matches.
+     * Checks namespace-scoped skills first, then falls back to platform-level skills.
      */
     suspend fun findSkillByName(
         namespaceId: UUID,
         name: String,
     ): Skill?
+
+    /**
+     * Returns platform-level skills (namespaceId == null).
+     */
+    fun findPlatform(): List<Skill>
 }

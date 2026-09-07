@@ -9,7 +9,6 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import java.nio.file.Files
 import java.util.UUID
-import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 
 class SkillReadToolUnitSpec : StringSpec({
@@ -100,6 +99,21 @@ class SkillReadToolUnitSpec : StringSpec({
         result shouldBe ToolExecutionResult.success("# Template content")
     }
 
+    "readSkillResource exactly at MAX_RESOURCE_BYTES returns content" {
+        val dir = tempSkillDir()
+        val exactFile = dir.resolve("exact.txt")
+        exactFile.writeText("a".repeat(SkillReadResourceTool.MAX_RESOURCE_BYTES.toInt()))
+        val s = skill(resourceRoot = dir.toString())
+        val tool = SkillReadResourceTool(listOf(s))
+
+        val result = kotlinx.coroutines.runBlocking {
+            tool.execute(SkillReadResourceTool.Input("Code Review", "exact.txt"), toolContext)
+        }
+
+        result.success shouldBe true
+        result.output.length shouldBe SkillReadResourceTool.MAX_RESOURCE_BYTES.toInt()
+    }
+
     "readSkillResource unknown skill returns error" {
         val tool = SkillReadResourceTool(listOf(skill()))
 
@@ -160,8 +174,7 @@ class SkillReadToolUnitSpec : StringSpec({
     "readSkillResource oversized file is rejected" {
         val dir = tempSkillDir()
         val bigFile = dir.resolve("big.txt")
-        bigFile.writeText("x".repeat((SkillReadResourceTool.Companion.MAX_RESOURCE_BYTES.toInt()) + 1))
-        // MAX_RESOURCE_BYTES is internal; we write just over 1 MiB.
+        bigFile.writeText("x".repeat(SkillReadResourceTool.MAX_RESOURCE_BYTES.toInt() + 1))
         val s = skill(resourceRoot = dir.toString())
         val tool = SkillReadResourceTool(listOf(s))
 

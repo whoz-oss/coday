@@ -25,11 +25,13 @@ class SkillToolGrantService {
     /**
      * Builds the skill tools bound to [skills], so a read never rescans the filesystem
      * and can never reach a skill outside the agent's own catalogue.
+     * Returns an empty list defensively if called with an empty skill list.
      */
     fun grantTools(
         skills: List<Skill>,
         toolContext: ToolContext,
     ): List<StandardTool<*>> {
+        if (skills.isEmpty()) return emptyList()
         logger.debug { "Granting built-in skill tools to agent '${toolContext.agentName}' (${skills.size} skills)" }
         return listOf(
             SkillReadTool(skills),

@@ -5,6 +5,9 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import mu.KLogging
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
@@ -162,18 +165,34 @@ class SkillReadResourceTool(
             return ToolExecutionResult.error("'${input.path}' is not a regular file.", errorType = "NOT_A_FILE")
         }
 
-        val size = Files.size(resolved)
-        if (size > MAX_RESOURCE_BYTES) {
+        val probe = (MAX_RESOURCE_BYTES + 1).coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
+        val bytes =
+            try {
+                Files.newInputStream(resolved).use { it.readNBytes(probe) }
+            } catch (e: NoSuchFileException) {
+                return ToolExecutionResult.error("Resource '${input.path}' not found in skill '${skill.name}'.", errorType = "NOT_FOUND")
+            } catch (e: IOException) {
+                logger.warn(e) { "[SkillReadResourceTool] Could not open $resolved" }
+                return ToolExecutionResult.error("Could not read resource '${input.path}'.", errorType = "IO_ERROR")
+            }
+
+        if (bytes.size.toLong() > MAX_RESOURCE_BYTES) {
             return ToolExecutionResult.error(
-                "Resource '${input.path}' is too large (${size}B > ${MAX_RESOURCE_BYTES}B).",
+                "Resource '${input.path}' is too large (exceeds ${MAX_RESOURCE_BYTES}B limit).",
                 errorType = "TOO_LARGE",
             )
         }
 
         return try {
-            ToolExecutionResult.success(Files.readString(resolved))
-        } catch (e: IOException) {
-            logger.warn(e) { "[SkillReadResourceTool] Could not read $resolved" }
+            val content = StandardCharsets.UTF_8
+                .newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+            ToolExecutionResult.success(content)
+        } catch (e: Exception) {
+            logger.warn(e) { "[SkillReadResourceTool] Could not decode UTF-8 from $resolved" }
             ToolExecutionResult.error("Could not read resource '${input.path}'.", errorType = "IO_ERROR")
         }
     }

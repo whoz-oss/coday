@@ -37,6 +37,7 @@ enum class EntityType(
     NAMESPACE("Namespace"),
     PROMPT("Prompt"),
     SCHEDULED_PROMPT("ScheduledPrompt"),
+    SKILL("Skill"),
     USER("User"),
     USER_GROUP("UserGroup"),
     ;
