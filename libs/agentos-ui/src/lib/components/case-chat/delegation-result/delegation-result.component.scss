@@ -2,10 +2,13 @@
 
 :host {
   display: block;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .delegation-results {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.5rem;
   padding: 0.65rem;
   border-top: 1px solid var(--color-divider);
@@ -15,6 +18,8 @@
     padding: 0.6rem 0.7rem;
     border-left: 3px solid var(--color-divider);
     background: var(--color-surface);
+    overflow: hidden;
+    min-width: 0;
 
     &--success {
       border-left-color: var(--color-success);
@@ -84,6 +89,8 @@
     color: var(--color-text);
     font-size: 0.8rem;
     line-height: 1.5;
+    overflow-wrap: break-word;
+    min-width: 0;
 
     p {
       margin: 0 0 0.5em;
