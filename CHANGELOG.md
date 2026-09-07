@@ -1,3 +1,96 @@
+## 0.251.1 (2026-09-07)
+
+### 🩹 Fixes
+
+- bump bundled agentos version to incorporate anthropic cache option ([#1288](https://github.com/whoz-oss/coday/pull/1288))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.251.0 (2026-09-07)
+
+### 🚀 Features
+
+- enable Anthropic prompt caching (CONVERSATION_HISTORY strategy) ([#1287](https://github.com/whoz-oss/coday/pull/1287))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.250.1 (2026-09-07)
+
+### 🩹 Fixes
+
+- correct context gauge glass color in dark themes ([#1284](https://github.com/whoz-oss/coday/pull/1284))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 0.250.0 (2026-09-03)
+
+### 🚀 Features
+
+- #34228 add WhatsNext tool to REDIRECT integration ([#1270](https://github.com/whoz-oss/coday/pull/1270), [#34228](https://github.com/whoz-oss/coday/issues/34228))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.19 (2026-09-03)
+
+### 🩹 Fixes
+
+- **release:** restore minor bump for feat commits after nx 23 migration ([ec697413](https://github.com/whoz-oss/coday/commit/ec697413))
+- **release:** restore minor bump for feat commits after nx 23 migration ([#1279](https://github.com/whoz-oss/coday/pull/1279), [#1278](https://github.com/whoz-oss/coday/issues/1278))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.18 (2026-09-03)
+
+### 🩹 Fixes
+
+- authSettingName missing from IntegrationConfig YAML export and filesystem load ([#1267](https://github.com/whoz-oss/coday/pull/1267))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.17 (2026-09-02)
+
+### 🚀 Features
+
+- wz-30464: fix agentos-ui for prompt translations ([#1276](https://github.com/whoz-oss/coday/pull/1276))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.249.16 (2026-09-02)
+
+### 🚀 Features
+
+- wz-30464: prompt translations ([#1253](https://github.com/whoz-oss/coday/pull/1253))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- vincent.audibert
+
+## 0.249.15 (2026-09-02)
+
+### 🚀 Features
+
+- wz-32132: read cases tracking ([#1260](https://github.com/whoz-oss/coday/pull/1260))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.249.14 (2026-09-02)
 
 ### 🚀 Features

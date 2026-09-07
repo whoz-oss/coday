@@ -4,6 +4,7 @@ import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 
 /**
  * Spring Data Neo4j repository for [CaseNode].
@@ -170,68 +171,126 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     )
 
     // -------------------------------------------------------------------------
-    // Starred / favorite — per-user [:STARRED] relationship on Case nodes.
+    // WATCHES — consolidated per-user case state (favorite + read).
     //
-    // The [:STARRED] edge is orthogonal to [:ADMIN]/[:MEMBER]: role transitions
-    // (promote/demote) leave it untouched. The MATCH guard on [:ADMIN|MEMBER]
-    // prevents orphaned [:STARRED] edges for users with no direct permission.
+    // The MATCH guard on [:ADMIN|MEMBER] prevents orphaned state edges for users
+    // with no direct permission. Role transitions (promote/demote) leave the state
+    // edge untouched.
     // -------------------------------------------------------------------------
 
     /**
-     * Creates a `[:STARRED]` edge `(u)-[:STARRED]->(c:Case)` — only when a direct
-     * `[:ADMIN]` or `[:MEMBER]` edge already exists on the case (guard against orphans).
+     * Sets `favorite = true` on the `(u)-[:WATCHES]->(c)` edge,
+     * creating it if it does not exist. Guarded: only runs when the user already
+     * holds a direct `[:ADMIN]` or `[:MEMBER]` edge on the case.
      *
-     * Returns the number of `[:Case]` nodes matched (0 = user has no direct
-     * permission edge, so no star was persisted).
+     * Returns the number of Case nodes matched (0 = no direct permission edge,
+     * nothing was written).
      */
     @Query(
         $$"""MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(c:Case {id: $caseId})
-            MERGE (u)-[:STARRED]->(c)
+            MERGE (u)-[s:WATCHES]->(c)
+            SET s.favorite = true
             RETURN count(c)
             """,
     )
-    fun mergeStarred(
+    fun mergeFavorite(
         @Param("userId") userId: String,
         @Param("caseId") caseId: String,
     ): Long
 
     /**
-     * Removes the `[:STARRED]` edge between the user and the case, if it exists.
+     * Sets `favorite = false` on the `(u)-[:WATCHES]->(c)` edge.
+     * Does not delete the edge so that [readAt] is preserved.
      *
-     * Returns the number of `[:ADMIN]/[:MEMBER]` edges matched (0 = user has no
-     * direct permission edge; safe no-op).
+     * Returns the number of Case nodes matched (0 = no direct permission edge).
      */
     @Query(
         $$"""MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(c:Case {id: $caseId})
-            OPTIONAL MATCH (u)-[s:STARRED]->(c)
-            DELETE s
+            OPTIONAL MATCH (u)-[s:WATCHES]->(c)
+            FOREACH (rel IN CASE WHEN s IS NOT NULL THEN [s] ELSE [] END |
+                SET rel.favorite = false
+            )
             RETURN count(c)
             """,
     )
-    fun deleteStarred(
+    fun clearFavorite(
         @Param("userId") userId: String,
         @Param("caseId") caseId: String,
     ): Long
 
     /**
-     * Returns one entry per case the user has a direct `[:ADMIN]`/`[:MEMBER]` edge on, collapsed at
-     * the Cypher level so the caller needs no manual de-duplication. Each map holds:
-     * - `caseId` (String) — the case id,
-     * - `relations` (List<String>) — the distinct edge types (`["ADMIN"]`, `["MEMBER"]`, or both),
-     * - `starred` (Boolean) — `true` when a `[:STARRED]` edge also exists between the user and the case.
+     * Sets `readAt = $readAt` on the `(u)-[:WATCHES]->(c)` edge, creating
+     * it if it does not exist. Guarded: only runs when the user already holds a
+     * direct `[:ADMIN]` or `[:MEMBER]` edge on the case. The controller's
+     * `@PreAuthorize` is the primary gate, but the query-level guard prevents
+     * stale or forged calls from creating orphaned state edges.
+     */
+    @Query(
+        $$"""MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(c:Case {id: $caseId})
+            MERGE (u)-[s:WATCHES]->(c)
+            SET s.readAt = $readAt
+            """,
+    )
+    fun markRead(
+        @Param("userId") userId: String,
+        @Param("caseId") caseId: String,
+        @Param("readAt") readAt: Instant,
+    )
+
+    /**
+     * Counts the cases in [namespaceId] that are unread for [userId].
+     *
+     * A case is unread when:
+     * - The user has a direct `[:ADMIN|MEMBER]` edge on the case (access check), AND
+     * - Either no `[:WATCHES]` edge exists (never opened), OR `Case.modified` is after
+     *   the edge's `readAt` (the case changed since the user last read it).
+     *
+     * Uses `Case.modified` rather than scanning `CaseEvent` nodes — O(1) per case
+     * instead of O(events). Requires the `modified` audit field to be kept current
+     * on every case mutation (see known bug: EntityMetadata.modified never updated).
+     *
+     * Returns a scalar Long (0 = all read).
+     */
+    @Transactional(readOnly = true)
+    @Query(
+        $$"""MATCH (c:Case)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
+            WHERE (c.removed IS NULL OR c.removed = false)
+              AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
+            OPTIONAL MATCH (:User {id: $userId})-[state:WATCHES]->(c)
+            WITH c, state.readAt AS readAt
+            WHERE readAt IS NULL OR c.modified > readAt
+            RETURN count(c)
+            """,
+    )
+    fun countUnread(
+        @Param("userId") userId: String,
+        @Param("namespaceId") namespaceId: String,
+    ): Long
+
+    /**
+     * Returns one entry per case the user has a direct `[:ADMIN]`/`[:MEMBER]` edge on.
+     * Each map holds:
+     * - `caseId` (String) — the case id
+     * - `relations` (List<String>) — distinct edge types (`["ADMIN"]`, `["MEMBER"]`, or both)
+     * - `favorite` (Boolean?) — true when the user has favorited the case; false or null otherwise
+     * - `readAt` (ZonedDateTime?) — timestamp of the user's last read; null = never read
      *
      * Built as a single-column `collect` of maps: Spring Data Neo4j rejects a multi-column
      * `RETURN a, b, c` ("Records with more than one value cannot be converted without a mapper"),
      * so the whole result is returned as one `List<Map>` value it can map without a custom converter.
+     * Temporal values are returned as [java.time.ZonedDateTime] by the Neo4j driver in raw Map
+     * projections; callers convert to [java.time.Instant] via `toInstant()`.
      */
     @Transactional(readOnly = true)
     @Query(
         $$"""MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(c:Case)
             WITH u, c, collect(DISTINCT type(r)) AS relations
+            OPTIONAL MATCH (u)-[state:WATCHES]->(c)
             RETURN collect({
                 caseId: c.id,
                 relations: relations,
-                starred: EXISTS { (u)-[:STARRED]->(c) }
+                favorite: state.favorite,
+                readAt: state.readAt
             })
             """,
     )
