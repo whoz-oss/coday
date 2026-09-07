@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service
  * The two entities carry everything [ChatModelFactory] needs:
  * - provider connectivity ([AiProvider.apiType], [AiProvider.baseUrl], [AiProvider.apiKey])
  * - model identity and inference parameters ([AiModel.apiModelName],
- *   [AiModel.temperature], [AiModel.maxTokens])
+ *   [AiModel.temperature], [AiModel.maxCompletionTokens])
  *
  * Resolution of which model/provider pair to use is the responsibility of the caller
  * (currently [io.whozoss.agentos.agent.AgentServiceImpl]).
@@ -46,7 +46,7 @@ class ChatClientProvider(
                 apiKey = providerConfig.apiKey,
                 modelName = modelConfig.apiModelName,
                 temperature = modelConfig.temperature,
-                maxTokens = modelConfig.maxTokens,
+                maxCompletionTokens = modelConfig.maxCompletionTokens,
                 headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
             )
         val baseClient = ChatClient.builder(chatModel).build()

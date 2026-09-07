@@ -7,6 +7,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.ModelPricing
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.usage.LlmUsage
 import org.springframework.ai.anthropic.api.AnthropicApi
@@ -49,16 +50,25 @@ class CostCalculatorUnitSpec : StringSpec({
         outputRate: Double? = null,
         cacheReadRate: Double? = null,
         cacheWriteRate: Double? = null,
-    ): AiModel =
-        AiModel(
+    ): AiModel {
+        val pricing =
+            if (inputRate != null || outputRate != null || cacheReadRate != null || cacheWriteRate != null) {
+                ModelPricing(
+                    inputMTokens = inputRate,
+                    outputMTokens = outputRate,
+                    cacheRead = cacheReadRate,
+                    cacheWrite = cacheWriteRate,
+                )
+            } else {
+                null
+            }
+        return AiModel(
             metadata = EntityMetadata(id = UUID.randomUUID()),
             aiProviderId = UUID.randomUUID(),
             apiModelName = "test-model",
-            pricingInputMTokens = inputRate,
-            pricingOutputMTokens = outputRate,
-            pricingCacheRead = cacheReadRate,
-            pricingCacheWrite = cacheWriteRate,
+            pricing = pricing,
         )
+    }
 
     /**
      * Wraps a provider-native usage object in the Spring AI [Usage] + [ChatResponse]

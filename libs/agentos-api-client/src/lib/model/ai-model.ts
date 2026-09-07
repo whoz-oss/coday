@@ -7,6 +7,7 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { ModelPricing } from './model-pricing'
 
 export interface AiModel {
   aiProviderId: string
@@ -14,12 +15,9 @@ export interface AiModel {
   apiModelName: string
   description?: string
   id?: string
-  maxTokens?: number
+  maxCompletionTokens?: number
   namespaceId?: string
-  pricingCacheRead?: number
-  pricingCacheWrite?: number
-  pricingInputMTokens?: number
-  pricingOutputMTokens?: number
+  pricing?: ModelPricing
   priority: number
   temperature?: number
   userId?: string

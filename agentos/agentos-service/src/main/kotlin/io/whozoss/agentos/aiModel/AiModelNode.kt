@@ -2,6 +2,7 @@ package io.whozoss.agentos.aiModel
 
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.ModelPricing
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
@@ -36,7 +37,9 @@ data class AiModelNode(
     val alias: String? = null,
     val priority: Int = 0,
     val temperature: Double? = null,
-    val maxTokens: Int? = null,
+    // Stored as a flat scalar — Neo4j nodes cannot hold nested objects.
+    // ModelPricing is assembled/disassembled in toDomain()/fromDomain().
+    val maxCompletionTokens: Int? = null,
     val pricingInputMTokens: Double? = null,
     val pricingOutputMTokens: Double? = null,
     val pricingCacheRead: Double? = null,
@@ -50,8 +53,21 @@ data class AiModelNode(
     @Relationship(type = "BELONGS_TO", direction = OUTGOING)
     val namespace: NamespaceNode? = null,
 ) {
-    fun toDomain(): AiModel =
-        AiModel(
+    fun toDomain(): AiModel {
+        val pricing =
+            if (pricingInputMTokens != null || pricingOutputMTokens != null ||
+                pricingCacheRead != null || pricingCacheWrite != null
+            ) {
+                ModelPricing(
+                    inputMTokens = pricingInputMTokens,
+                    outputMTokens = pricingOutputMTokens,
+                    cacheRead = pricingCacheRead,
+                    cacheWrite = pricingCacheWrite,
+                )
+            } else {
+                null
+            }
+        return AiModel(
             metadata =
                 EntityMetadata(
                     id = UUID.fromString(id),
@@ -69,12 +85,10 @@ data class AiModelNode(
             alias = alias,
             priority = priority,
             temperature = temperature,
-            maxTokens = maxTokens,
-            pricingInputMTokens = pricingInputMTokens,
-            pricingOutputMTokens = pricingOutputMTokens,
-            pricingCacheRead = pricingCacheRead,
-            pricingCacheWrite = pricingCacheWrite,
+            maxCompletionTokens = maxCompletionTokens,
+            pricing = pricing,
         )
+    }
 
     companion object {
         fun fromDomain(model: AiModel): AiModelNode =
@@ -88,11 +102,11 @@ data class AiModelNode(
                 alias = model.alias,
                 priority = model.priority,
                 temperature = model.temperature,
-                maxTokens = model.maxTokens,
-                pricingInputMTokens = model.pricingInputMTokens,
-                pricingOutputMTokens = model.pricingOutputMTokens,
-                pricingCacheRead = model.pricingCacheRead,
-                pricingCacheWrite = model.pricingCacheWrite,
+                maxCompletionTokens = model.maxCompletionTokens,
+                pricingInputMTokens = model.pricing?.inputMTokens,
+                pricingOutputMTokens = model.pricing?.outputMTokens,
+                pricingCacheRead = model.pricing?.cacheRead,
+                pricingCacheWrite = model.pricing?.cacheWrite,
                 created = model.metadata.created,
                 createdBy = model.metadata.createdBy,
                 modified = model.metadata.modified,
