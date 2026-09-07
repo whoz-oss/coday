@@ -38,8 +38,8 @@ class AgentosToolPluginUnitSpec : StringSpec({
     // Integration type and config schema
     // -------------------------------------------------------------------------
 
-    "integrationType is AGENTOS" {
-        plugin().integrationType shouldBe "AGENTOS"
+    "integrationType is AGENTOS_AGENTS" {
+        plugin().integrationType shouldBe "AGENTOS_AGENTS"
     }
 
     "configSchema is a valid empty-properties JSON object" {

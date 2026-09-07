@@ -67,7 +67,7 @@ class AgentosToolPlugin(
     }
 
     companion object : KLogging() {
-        const val INTEGRATION_TYPE = "AGENTOS"
+        const val INTEGRATION_TYPE = "AGENTOS_AGENTS"
 
         val CONFIG_SCHEMA: JsonNode = jacksonObjectMapper().readTree(
             """
