@@ -1,3 +1,13 @@
+## 0.251.0 (2026-09-07)
+
+### 🚀 Features
+
+- enable Anthropic prompt caching (CONVERSATION_HISTORY strategy) ([#1287](https://github.com/whoz-oss/coday/pull/1287))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.250.1 (2026-09-07)
 
 ### 🩹 Fixes
