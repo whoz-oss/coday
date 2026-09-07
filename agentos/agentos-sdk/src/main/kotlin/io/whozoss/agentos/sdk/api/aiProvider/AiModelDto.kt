@@ -23,6 +23,9 @@ import java.util.UUID
  *
  * [priority] controls resolution order when multiple configs share the same alias or
  * apiModelName within a namespace. Higher value wins. Defaults to 0.
+ *
+ * [maxCompletionTokens] limits the number of tokens the model may generate in a single
+ * response (completion side only — does not affect the input / context window).
  */
 @Schema(name = "AiModel")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -38,13 +41,15 @@ data class AiModelDto(
     val alias: String? = null,
     val priority: Int = 0,
     val temperature: Double? = null,
-    val maxTokens: Int? = null,
-    /** Per-million-token input rate (USD). Null = cost estimation disabled for this model. */
-    val pricingInputMTokens: Double? = null,
-    /** Per-million-token output rate (USD). */
-    val pricingOutputMTokens: Double? = null,
-    /** Per-million-token cache-read rate (USD). Anthropic + OpenAI cached tokens. */
-    val pricingCacheRead: Double? = null,
-    /** Per-million-token cache-write rate (USD). Anthropic only; OpenAI has no write rate. */
-    val pricingCacheWrite: Double? = null,
+    /**
+     * Maximum number of tokens the model may generate in a single response.
+     * Completion side only — does not affect the input / context window. Null = provider default.
+     */
+    val maxCompletionTokens: Int? = null,
+    /**
+     * Optional per-million-token pricing configuration (USD). Null means no pricing is
+     * configured and cost estimation is skipped. See [io.whozoss.agentos.sdk.aiProvider.ModelPricing]
+     * for field semantics.
+     */
+    val pricing: io.whozoss.agentos.sdk.aiProvider.ModelPricing? = null,
 )

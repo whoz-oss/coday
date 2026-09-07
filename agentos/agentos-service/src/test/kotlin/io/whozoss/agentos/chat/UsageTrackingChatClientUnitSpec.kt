@@ -8,6 +8,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.ModelPricing
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.client.ChatClient.ChatClientRequestSpec
@@ -56,8 +57,7 @@ class UsageTrackingChatClientUnitSpec : StringSpec({
             metadata = EntityMetadata(id = UUID.randomUUID()),
             aiProviderId = UUID.randomUUID(),
             apiModelName = "test-model",
-            pricingInputMTokens = 3.0,
-            pricingOutputMTokens = 15.0,
+            pricing = ModelPricing(inputMTokens = 3.0, outputMTokens = 15.0),
         )
 
     fun modelWithoutPricing(): AiModel =

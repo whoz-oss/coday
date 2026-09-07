@@ -2,6 +2,7 @@ package io.whozoss.agentos.chat
 
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.ModelPricing
 import io.whozoss.agentos.sdk.usage.LlmUsage
 import mu.KLogging
 import org.springframework.ai.chat.model.ChatResponse
@@ -42,8 +43,8 @@ import org.springframework.ai.chat.model.ChatResponse
  *
  * ## Pricing
  *
- * Pricing is configured on [AiModel] as four optional per-million-token rates.
- * When all four are absent (null), cost is not estimated and
+ * Pricing is configured on [AiModel] via an optional [ModelPricing] object.
+ * When null (no pricing configured), cost is not estimated and
  * [LlmUsage.estimatedCostUsd] is `null`.
  */
 object CostCalculator : KLogging() {
@@ -78,7 +79,7 @@ object CostCalculator : KLogging() {
         return when (normalisedInput) {
             is NormalisedInput.Known -> {
                 val estimatedCost = estimateCost(
-                    modelConfig,
+                    modelConfig.pricing,
                     normalisedInput.inputTokens,
                     outputTokens,
                     normalisedInput.cacheRead,
@@ -231,38 +232,32 @@ object CostCalculator : KLogging() {
         }
 
     /**
-     * Estimates cost in USD from normalised token counts and the model's per-million-token rates.
-     * Returns `null` when no pricing is configured (all four rates are absent).
+     * Estimates cost in USD from normalised token counts and the model's [ModelPricing].
+     * Returns `null` when [pricing] is null (no pricing configured) or when
+     * [ModelPricing.isEmpty] is true.
      *
      * Each count is billed at its own rate:
-     * - [inputTokens]      → [AiModel.pricingInputMTokens]   (full input rate)
-     * - [outputTokens]     → [AiModel.pricingOutputMTokens]  (generation rate)
-     * - [cacheReadTokens]  → [AiModel.pricingCacheRead]      (cache-read rate, cheaper than input)
-     * - [cacheWriteTokens] → [AiModel.pricingCacheWrite]     (cache-write rate, pricier than input)
+     * - [inputTokens]      → [ModelPricing.inputMTokens]   (full input rate)
+     * - [outputTokens]     → [ModelPricing.outputMTokens]  (generation rate)
+     * - [cacheReadTokens]  → [ModelPricing.cacheRead]      (cache-read rate, cheaper than input)
+     * - [cacheWriteTokens] → [ModelPricing.cacheWrite]     (cache-write rate, pricier than input)
      *
-     * Missing rates default to 0.0 for that component so a partial pricing config
-     * still produces a meaningful estimate.
+     * Missing individual rates default to 0.0 so a partial config still produces a
+     * meaningful (though incomplete) estimate.
      */
     private fun estimateCost(
-        model: AiModel,
+        pricing: ModelPricing?,
         inputTokens: Long,
         outputTokens: Long,
         cacheReadTokens: Long,
         cacheWriteTokens: Long,
     ): Double? {
-        val inputRate = model.pricingInputMTokens
-        val outputRate = model.pricingOutputMTokens
-        val cacheReadRate = model.pricingCacheRead
-        val cacheWriteRate = model.pricingCacheWrite
+        if (pricing == null || pricing.isEmpty) return null
 
-        if (inputRate == null && outputRate == null && cacheReadRate == null && cacheWriteRate == null) {
-            return null
-        }
-
-        val inputCost = (inputTokens / 1_000_000.0) * (inputRate ?: 0.0)
-        val outputCost = (outputTokens / 1_000_000.0) * (outputRate ?: 0.0)
-        val cacheReadCost = (cacheReadTokens / 1_000_000.0) * (cacheReadRate ?: 0.0)
-        val cacheWriteCost = (cacheWriteTokens / 1_000_000.0) * (cacheWriteRate ?: 0.0)
+        val inputCost = (inputTokens / 1_000_000.0) * (pricing.inputMTokens ?: 0.0)
+        val outputCost = (outputTokens / 1_000_000.0) * (pricing.outputMTokens ?: 0.0)
+        val cacheReadCost = (cacheReadTokens / 1_000_000.0) * (pricing.cacheRead ?: 0.0)
+        val cacheWriteCost = (cacheWriteTokens / 1_000_000.0) * (pricing.cacheWrite ?: 0.0)
 
         return inputCost + outputCost + cacheReadCost + cacheWriteCost
     }
