@@ -5,15 +5,16 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
 import io.whozoss.agentos.sdk.api.case.CaseApi
 import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
+import io.whozoss.agentos.sdk.api.case.MarkCaseReadRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -329,16 +330,18 @@ class CaseController(
         logger.info { "Case killed: $caseId" }
     }
 
-    /** POST /api/cases/{caseId}/read — record that the current user has read this case. */
-    @PostMapping("/{caseId}/read")
+    /** POST /api/cases/{caseId}/read — record that the current user has read this case. Returns the updated case. */
+    @PostMapping("/{caseId}/read", consumes = [MediaType.APPLICATION_JSON_VALUE, MediaType.ALL_VALUE])
     @ResponseStatus(HttpStatus.OK)
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     override fun markCaseRead(
         @PathVariable caseId: UUID,
-    ) {
+        @RequestBody(required = false) request: MarkCaseReadRequest?,
+    ): CaseDto {
         val userId = userService.getCurrentUser().id.toString()
-        caseReadService.markRead(userId, caseId)
-        logger.debug { "User $userId marked case $caseId as read" }
+        caseReadService.markRead(userId, caseId, request?.readAt)
+        logger.debug { "User $userId marked case $caseId as read (readAt=${request?.readAt})" }
+        return caseService.getById(caseId).withCallerMeta(userId)
     }
 
     /** GET /api/cases/unread-count?namespaceId= — count of unread cases for the current user. */

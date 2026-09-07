@@ -24,17 +24,26 @@ class CaseReadServiceImpl(
 ) : CaseReadService {
     companion object : KLogging()
 
-    override fun markRead(userId: String, caseId: UUID) {
+    override fun markRead(
+        userId: String,
+        caseId: UUID,
+        at: Instant?,
+    ) {
+        // Clamp future timestamps to now so clients cannot set readAt ahead of current time.
         val now = Instant.now(clock)
+        val effective = if (at != null && at.isBefore(now)) at else now
         caseNodeNeo4jRepository.markRead(
             userId = userId,
             caseId = caseId.toString(),
-            readAt = now,
+            readAt = effective,
         )
-        logger.debug { "markRead: user=$userId case=$caseId at=$now" }
+        logger.debug { "markRead: user=$userId case=$caseId at=$effective" }
     }
 
-    override fun countUnread(userId: String, namespaceId: UUID): Long =
+    override fun countUnread(
+        userId: String,
+        namespaceId: UUID,
+    ): Long =
         caseNodeNeo4jRepository.countUnread(
             userId = userId,
             namespaceId = namespaceId.toString(),

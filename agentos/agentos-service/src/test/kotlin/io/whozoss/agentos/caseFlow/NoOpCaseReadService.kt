@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseFlow
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Service
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -20,7 +21,14 @@ import java.util.UUID
 @Profile("test")
 @ConditionalOnMissingBean(CaseReadService::class)
 class NoOpCaseReadService : CaseReadService {
-    override fun markRead(userId: String, caseId: UUID) = Unit
+    override fun markRead(
+        userId: String,
+        caseId: UUID,
+        at: Instant?,
+    ) = Unit
 
-    override fun countUnread(userId: String, namespaceId: UUID): Long = 0L
+    override fun countUnread(
+        userId: String,
+        namespaceId: UUID,
+    ): Long = 0L
 }
