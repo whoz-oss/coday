@@ -2,6 +2,8 @@ package io.whozoss.agentos.delegation
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -36,6 +38,7 @@ import java.util.UUID
  * - `pendingQuestion` — the question text when the sub-agent is waiting for input
  * - `options` — optional list of choices for the pending question
  * - `error` — error description when success is false
+ * - `llmProvider` / `llmModel` — the provider and model recorded for this execution
  *
  * **Timeout** applies to the entire batch: all sub-cases must complete within [timeoutMs].
  * Sub-cases still running when the timeout fires are killed individually.
@@ -213,6 +216,20 @@ class DelegationTool(
         userId: UUID,
     ): DelegationResult {
         val agentName = delegation.agentName
+        // On resume, retain the durable event ids that predate this delegation. The
+        // reloaded history can then be restricted to this turn, rather than attributing
+        // a model from an earlier execution of the same sub-case.
+        val baselineEventIds =
+            delegation.subCaseId
+                ?.let { subCaseId ->
+                    runCatching {
+                        withTimeout(eventLoadTimeoutMs) { loadCaseEvents(subCaseId).map { it.id }.toSet() }
+                    }.onFailure { error ->
+                        logger.warn(error) { "[DelegationTool] Could not establish event baseline for resumed sub-case $subCaseId" }
+                    }.getOrDefault(emptySet())
+                }
+                ?: emptySet()
+
         val subRuntime =
             runCatching {
                 when (val subCaseId = delegation.subCaseId) {
@@ -264,25 +281,17 @@ class DelegationTool(
                 logger.warn { "[DelegationTool] Sub-case $subCaseId timed out after ${timeoutMs}ms, killing" }
                 runCatching { subCaseManager.killCase(subCaseId) }
                     .onFailure { err -> logger.warn(err) { "[DelegationTool] Failed to kill sub-case $subCaseId after timeout" } }
+                val executionModel = loadExecutionModel(subCaseId, baselineEventIds, agentName)
                 return DelegationResult(
                     agentName = agentName,
                     subCaseId = subCaseId,
                     success = false,
                     error = "Sub-case timed out after ${timeoutMs / 1000}s.",
                     errorType = "TIMEOUT",
+                    llmProvider = executionModel?.provider,
+                    llmModel = executionModel?.model,
                 )
             }
-
-        if (finalStatus.isTerminal()) {
-            logger.warn { "[DelegationTool] Sub-case $subCaseId ended with terminal status $finalStatus" }
-            return DelegationResult(
-                agentName = agentName,
-                subCaseId = subCaseId,
-                success = false,
-                error = "Sub-case ended with status $finalStatus without producing a result.",
-                errorType = "TERMINAL_STATUS",
-            )
-        }
 
         // Load events with an isolated timeout so a slow store doesn't corrupt the batch timeout.
         val events =
@@ -298,6 +307,21 @@ class DelegationTool(
                     errorType = "EVENT_LOAD_TIMEOUT",
                 )
             }
+
+        val executionModel = executionModel(events, baselineEventIds, agentName)
+
+        if (finalStatus.isTerminal()) {
+            logger.warn { "[DelegationTool] Sub-case $subCaseId ended with terminal status $finalStatus" }
+            return DelegationResult(
+                agentName = agentName,
+                subCaseId = subCaseId,
+                success = false,
+                error = "Sub-case ended with status $finalStatus without producing a result.",
+                errorType = "TERMINAL_STATUS",
+                llmProvider = executionModel?.provider,
+                llmModel = executionModel?.model,
+            )
+        }
 
         // Detect a pending QuestionEvent (no agent message emitted after it).
         val lastQuestion = events.filterIsInstance<QuestionEvent>().lastOrNull()
@@ -317,6 +341,8 @@ class DelegationTool(
                 success = true,
                 pendingQuestion = lastQuestion.question,
                 options = lastQuestion.options,
+                llmProvider = executionModel?.provider,
+                llmModel = executionModel?.model,
             )
         } else {
             val result = extractLastAgentMessage(events)
@@ -326,9 +352,53 @@ class DelegationTool(
                 subCaseId = subCaseId,
                 success = true,
                 result = result,
+                llmProvider = executionModel?.provider,
+                llmModel = executionModel?.model,
             )
         }
     }
+
+    private suspend fun loadExecutionModel(
+        subCaseId: UUID,
+        baselineEventIds: Set<UUID>,
+        agentName: String,
+    ): ExecutionModel? =
+        runCatching {
+            withTimeout(eventLoadTimeoutMs) {
+                executionModel(loadCaseEvents(subCaseId), baselineEventIds, agentName)
+            }
+        }.onFailure { error ->
+            logger.warn(error) { "[DelegationTool] Could not load execution model for sub-case $subCaseId" }
+        }.getOrNull()
+
+    /**
+     * Reads execution facts rather than the agent configuration. For resumed sub-cases,
+     * [baselineEventIds] removes events that existed before this turn was injected.
+     * The last lifecycle event for the delegated agent is authoritative; finished and
+     * running events both persist the provider/model selected for that execution.
+     */
+    private fun executionModel(
+        events: List<CaseEvent>,
+        baselineEventIds: Set<UUID>,
+        agentName: String,
+    ): ExecutionModel? =
+        events
+            .asSequence()
+            .filter { it.id !in baselineEventIds }
+            .mapNotNull { event ->
+                when (event) {
+                    is AgentRunningEvent ->
+                        event
+                            .takeIf { it.agentName == agentName }
+                            ?.let { ExecutionModel(it.llmProvider, it.llmModel) }
+                    is AgentFinishedEvent ->
+                        event
+                            .takeIf { it.agentName == agentName }
+                            ?.let { ExecutionModel(it.llmProvider, it.llmModel) }
+                    else -> null
+                }
+            }
+            .lastOrNull()
 
     private fun extractLastAgentMessage(events: List<CaseEvent>): String =
         events
@@ -353,6 +423,8 @@ class DelegationTool(
         val options: List<String>? = null,
         val error: String? = null,
         val errorType: String? = null,
+        val llmProvider: String? = null,
+        val llmModel: String? = null,
     ) {
         fun toMap(): Map<String, Any?> =
             buildMap {
@@ -364,8 +436,15 @@ class DelegationTool(
                 options?.let { put("options", it) }
                 error?.let { put("error", it) }
                 errorType?.let { put("errorType", it) }
+                llmProvider?.let { put("llmProvider", it) }
+                llmModel?.let { put("llmModel", it) }
             }
     }
+
+    private data class ExecutionModel(
+        val provider: String?,
+        val model: String?,
+    )
 
     companion object : KLogging() {
         private val objectMapper = jacksonObjectMapper()
