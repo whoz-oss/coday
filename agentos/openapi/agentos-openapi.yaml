@@ -1276,8 +1276,9 @@ paths:
   /api/cases/{caseId}/read:
     post:
       description: "POST /api/cases/{caseId}/read — record that the current user has\
-        \ read this case. Sets readAt = now() on the User↔Case relation. Idempotent.\
-        \ Returns 200 with no body."
+        \ read this case. Sets readAt on the User↔Case relation. Idempotent. When\
+        \ the request body supplies a readAt timestamp, that value is used; otherwise\
+        \ now() is used. Returns 200 with the updated Case DTO."
       operationId: markCaseRead
       parameters:
       - in: path
@@ -1286,8 +1287,20 @@ paths:
         schema:
           type: string
           format: uuid
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              $ref: "#/components/schemas/MarkCaseReadRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkCaseReadRequest"
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
           description: OK
       summary: Mark case as read
       tags:
@@ -4009,6 +4022,14 @@ components:
       required:
       - namespaceExternalId
       - userExternalId
+    MarkCaseReadRequest:
+      type: object
+      properties:
+        readAt:
+          type: string
+          format: date-time
+          description: Exact instant to record as the read timestamp. Defaults to
+            server-side now() when absent.
     MemberItem:
       type: object
       properties:
