@@ -16,6 +16,10 @@ export interface AiModel {
   id?: string
   maxTokens?: number
   namespaceId?: string
+  pricingCacheRead?: number
+  pricingCacheWrite?: number
+  pricingInputMTokens?: number
+  pricingOutputMTokens?: number
   priority: number
   temperature?: number
   userId?: string
