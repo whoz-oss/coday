@@ -1,3 +1,13 @@
+## 1.1.4 (2026-09-08)
+
+### 🩹 Fixes
+
+- bump bundled version to 1.1.3 ([#1316](https://github.com/whoz-oss/coday/pull/1316))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 1.1.3 (2026-09-08)
 
 ### 🩹 Fixes
