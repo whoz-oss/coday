@@ -111,7 +111,7 @@ class SchedulerScanner(
      * When [claimPaused] the tick is a no-op — the scheduling thread still fires
      * but [processClaim] is not called.
      */
-    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:60000}")
+    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
     fun tickClaim() {
         when {
             claimPaused.get() -> logger.debug { "[SchedulerScanner] tickClaim PAUSED — skipping" }
@@ -125,7 +125,7 @@ class SchedulerScanner(
      * Safe: Spring guarantees @PostConstruct on all beans completes before @Scheduled ticks fire,
      * so executor.scope is always initialized when this first runs.
      */
-    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:60000}")
+    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
     fun tickWatchdog() {
         if (!executor.isRunning()) {
             logger.error { "[SchedulerScanner] consumer loop is dead — restarting automatically" }
