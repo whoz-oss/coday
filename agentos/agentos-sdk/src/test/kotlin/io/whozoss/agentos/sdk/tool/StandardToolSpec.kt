@@ -98,6 +98,14 @@ class StandardToolSpec : StringSpec() {
             listTool.executeWithJson("""{"pages":3}""", dummyContext).output shouldBe "null|[3]"
         }
 
+        // Counterpart to the test above: the coercion is unconditional, so a delimited or empty
+        // scalar becomes one element rather than being split or rejected. Pinned so the surprising
+        // half of the trade-off is visible and cannot change silently.
+        "executeWithJson does not split a delimited scalar" {
+            listTool.executeWithJson("""{"fileTypes":"kt,java"}""", dummyContext).output shouldBe "[kt,java]|null"
+            listTool.executeWithJson("""{"fileTypes":""}""", dummyContext).output shouldBe "[]|null"
+        }
+
         // FAIL_ON_UNKNOWN_PROPERTIES stays on: a misnamed parameter must surface as an error the
         // LLM can correct, not be silently dropped (e.g. an unfiltered search).
         "executeWithJson still rejects an unknown property" {

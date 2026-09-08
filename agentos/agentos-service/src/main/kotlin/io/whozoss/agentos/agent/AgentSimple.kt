@@ -19,6 +19,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -558,6 +559,11 @@ class AgentSimple(
                                     ),
                                 )
                                 throw e
+                            } catch (e: CancellationException) {
+                                // Cancellation is a signal, not a tool failure: never turn it into a
+                                // result the LLM would be re-prompted on. Must stay above the generic
+                                // catch — CancellationException is an Exception.
+                                throw e
                             } catch (e: Exception) {
                                 // A tool failure is a tool result, not a run failure: the message goes
                                 // back to the LLM so it can correct its call (same contract as
@@ -565,7 +571,12 @@ class AgentSimple(
                                 // into a tool result; any other exception escaping call() errors the
                                 // stream and ends the turn.
                                 logger.warn(e) { "[AgentSimple] error during tool execution for ${tool.name}" }
-                                ToolExecutionResult.error("Error executing tool: ${e.message}")
+                                val reason = e.message ?: e::class.simpleName ?: "unknown error"
+                                ToolExecutionResult.error(
+                                    "Error executing tool: $reason",
+                                    errorType = e::class.simpleName,
+                                    errorMessage = e.message,
+                                )
                             }
                     }
                 logger.info { "tool '${tool.name}' executed in $toolDuration" }

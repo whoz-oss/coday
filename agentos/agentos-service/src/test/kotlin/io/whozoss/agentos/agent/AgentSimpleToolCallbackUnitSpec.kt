@@ -4,13 +4,16 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldHaveSize as mediaHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.slot
+import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -63,6 +66,7 @@ class AgentSimpleToolCallbackUnitSpec :
             chatClient: ChatClient,
             tools: Collection<StandardTool<*>>,
             maxAttachedImages: Int = 20,
+            toolMetricsService: ToolMetricsService? = null,
         ): AgentSimple =
             AgentSimple(
                 metadata = EntityMetadata(id = agentId),
@@ -72,6 +76,7 @@ class AgentSimpleToolCallbackUnitSpec :
                 llmProvider = "test-provider",
                 llmModel = "test-model",
                 maxAttachedImages = maxAttachedImages,
+                toolMetricsService = toolMetricsService,
             )
 
         fun userMessage(
@@ -674,10 +679,29 @@ class AgentSimpleToolCallbackUnitSpec :
             }
             every { mockStreamSpec.content() } returns Flux.just("That failed")
 
-            val agent = makeAgent(agentId, mockChatClient, listOf(throwingTool))
+            val meterRegistry = SimpleMeterRegistry()
+            val agent =
+                makeAgent(
+                    agentId,
+                    mockChatClient,
+                    listOf(throwingTool),
+                    toolMetricsService = ToolMetricsService(meterRegistry),
+                )
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "go"))).toList()
 
             returnedToLlm shouldBe "Error executing tool: boom"
+
+            // The catch no longer stops the timer itself: the shared tail does, from
+            // executionResult.success. Pin the failure tag so a regression there cannot
+            // silently report tool failures as successes.
+            val timer =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CALLS_DURATION)
+                    .tag(ToolMetricsService.TAG_TOOL_NAME, "Boom")
+                    .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_FAILURE)
+                    .timer()
+            timer.shouldNotBeNull()
+            timer.count() shouldBe 1L
 
             val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
             toolResponse.success shouldBe false

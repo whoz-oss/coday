@@ -172,8 +172,12 @@ interface StandardTool<T> {
 
     companion object {
         // LLMs regularly emit a bare scalar for a single-element array (prod: "fileTypes": "kt").
-        // FAIL_ON_UNKNOWN_PROPERTIES stays on: schemas declare additionalProperties=false and a
-        // misnamed parameter must surface as a tool error, not be silently ignored.
+        // Note this coerces ANY scalar: a delimited string ("kt,java") becomes a single element,
+        // which yields an empty result the LLM can observe rather than a wrong one.
+        // FAIL_ON_UNKNOWN_PROPERTIES stays on so a misnamed parameter surfaces as a tool error
+        // instead of being dropped (a null filter would silently widen the tool's behaviour).
+        // Applies to tools using this default deserialization only — a tool overriding
+        // executeWithJson (e.g. McpTool) brings its own mapper and neither guarantee holds.
         private val objectMapper =
             jacksonObjectMapper().enable(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
     }
