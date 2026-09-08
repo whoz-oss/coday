@@ -1021,6 +1021,185 @@ class SchedulerScannerUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // Execution window guard (offpeak exclusion)
+        // -------------------------------------------------------------------------
+
+        "tickClaim outside execution window: no runs created" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z") // due
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+
+            // nowInstant = 2026-01-01T09:00:00Z (Thursday)
+            // Window: FRIDAY 22:00 → MONDAY 05:00 (weekend only) — Thursday 09:00 is outside
+            val outsideWindowProperties = SchedulerProperties(
+                windows = listOf("FRIDAY 22:00", "MONDAY 05:00"),
+            )
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            runRepo.userRunRepository = userRunRepo
+            val executor = ScheduledPromptExecutor(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+                properties = outsideWindowProperties,
+                clock = clock,
+            )
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = outsideWindowProperties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = executor,
+            )
+
+            sc.tickClaim()
+
+            runRepo.all().shouldBeEmpty()
+        }
+
+        "tickClaim inside execution window: runs created normally" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z") // due
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+
+            // nowInstant = 2026-01-01T09:00:00Z (Thursday)
+            // Window: MONDAY 00:00 → FRIDAY 22:00 — Thursday 09:00 is inside
+            val insideWindowProperties = SchedulerProperties(
+                windows = listOf("MONDAY 00:00", "FRIDAY 22:00"),
+            )
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            runRepo.userRunRepository = userRunRepo
+            val executor = ScheduledPromptExecutor(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+                properties = insideWindowProperties,
+                clock = clock,
+            )
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = insideWindowProperties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = executor,
+            )
+
+            sc.tickClaim()
+
+            runRepo.all() shouldHaveSize 1
+        }
+
+        "tickClaim outside window: nextRunAt is NOT advanced (prompts accumulate)" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+
+            // Thursday 09:00 is outside the weekend-only window
+            val outsideWindowProperties = SchedulerProperties(
+                windows = listOf("FRIDAY 22:00", "MONDAY 05:00"),
+            )
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            runRepo.userRunRepository = userRunRepo
+            val executor = ScheduledPromptExecutor(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+                properties = outsideWindowProperties,
+                clock = clock,
+            )
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = outsideWindowProperties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = executor,
+            )
+
+            sc.tickClaim()
+
+            // nextRunAt must be unchanged — the slot must accumulate until the window opens
+            scheduledPromptRepo.findById(sp.id)!!.nextRunAt shouldBe slot
+        }
+
+        "tickClaim pause takes precedence over window check" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+
+            // Thursday 09:00 is inside this window
+            val insideWindowProperties = SchedulerProperties(
+                windows = listOf("MONDAY 00:00", "FRIDAY 22:00"),
+            )
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            runRepo.userRunRepository = userRunRepo
+            val executor = ScheduledPromptExecutor(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+                properties = insideWindowProperties,
+                clock = clock,
+            )
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = insideWindowProperties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = executor,
+            )
+
+            // Pause takes precedence — even inside the window, no runs should be created
+            sc.pauseClaim()
+            sc.tickClaim()
+
+            runRepo.all().shouldBeEmpty()
+        }
+
+        "tickClaim no windows configured: runs created regardless of time" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            // Default SchedulerProperties has windows = emptyList() → always-open
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            runRepo.all() shouldHaveSize 1
+        }
+
+        // -------------------------------------------------------------------------
         // Watchdog
         // -------------------------------------------------------------------------
 
