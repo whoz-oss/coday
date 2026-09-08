@@ -579,7 +579,8 @@ class AgentSimple(
                             }
                     }
                 logger.info { "tool '${tool.name}' executed in $toolDuration" }
-                // Success and tool-error paths stop the timer here (the interrupt path stops it before rethrowing).
+                // Success and tool-error paths stop the timer here. AgentInterrupt stops it before
+                // rethrowing; cancellation/interruption rethrow without recording a metric.
                 toolMetricsService?.stopTimerAndSendMetrics(
                     sample,
                     tool.name,

@@ -9,6 +9,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
@@ -29,6 +30,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.UserMessage
@@ -596,11 +598,15 @@ class AgentSimpleToolCallbackUnitSpec :
             returned shouldContain "Error executing tool"
             returned shouldContain "'kt'"
 
+            // Request and response are paired and both reach the stream — master lost both.
+            val toolRequest = events.filterIsInstance<ToolRequestEvent>().single()
             val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
+            toolResponse.toolRequestId shouldBe toolRequest.toolRequestId
             toolResponse.success shouldBe false
             (toolResponse.output as MessageContent.Text).content shouldBe returned
 
             events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            events.filterIsInstance<ErrorEvent>() shouldHaveSize 0
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
@@ -717,6 +723,83 @@ class AgentSimpleToolCallbackUnitSpec :
 
             events.filterIsInstance<WarnEvent>() shouldHaveSize 0
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "cancellation inside a tool is rethrown, not turned into a tool result" {
+            // The guard at the top of the generic catch: a cancellation signal must keep
+            // unwinding the run (as on master) instead of becoming a result the model is
+            // re-prompted on.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val cancellingTool =
+                object : StandardTool<Nothing> {
+                    override val name = "Cancel"
+                    override val description = "Cancels the run"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType: Class<Nothing>? = null
+
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = throw CancellationException("stop")
+                }
+
+            var thrown: Throwable? = null
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "Cancel" }
+                thrown = runCatching { cb.call("{}") }.exceptionOrNull()
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.empty()
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(cancellingTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "go"))).toList()
+
+            thrown.shouldBeInstanceOf<CancellationException>()
+            events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 0
+        }
+
+        "an exception without a message falls back to the exception class name" {
+            // Otherwise the model would receive "Error executing tool: null" and have nothing to act on.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val messagelessTool =
+                object : StandardTool<Nothing> {
+                    override val name = "Silent"
+                    override val description = "Fails without a message"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType: Class<Nothing>? = null
+
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = throw IllegalStateException()
+                }
+
+            var returnedToLlm: String? = null
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "Silent" }
+                returnedToLlm = cb.call("{}")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.just("That failed")
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(messagelessTool))
+            agent.run(listOf(userMessage(namespaceId, caseId, "go"))).toList()
+
+            returnedToLlm shouldBe "Error executing tool: IllegalStateException"
         }
     })
 
