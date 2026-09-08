@@ -1,3 +1,17 @@
+## 0.251.2 (2026-09-08)
+
+### 🚀 Features
+
+- ⚠️  **agentos:** breaking change - remove date on case title of scheduled cases ([#1304](https://github.com/whoz-oss/coday/pull/1304))
+
+### ⚠️  Breaking Changes
+
+- **agentos:** breaking change - remove date on case title of scheduled cases  ([#1304](https://github.com/whoz-oss/coday/pull/1304))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 0.251.1 (2026-09-07)
 
 ### 🩹 Fixes
