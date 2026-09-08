@@ -52,52 +52,53 @@ import java.util.UUID
  * [materialize] call, the Run remains CLAIMED forever. [SchedulerScanner.recoverOrphanedClaimedRuns]
  * detects such orphans on the next tick and marks them FAILED, unblocking the overlap guard.
  *
- * ### Phase B — Continuous consumption (producer + channel + worker pool)
+ * ### Phase B — Continuous processing (DB poller + worker pool)
  *
  * The lifecycle is driven by `@PostConstruct` / `@PreDestroy` (Jakarta annotations).
- * On [start], a [CoroutineScope] is created with a [SupervisorJob] and [runConsumerLoop]
+ * On [start], a [CoroutineScope] is created with a [SupervisorJob] and [startProcessingLoop]
  * is launched inside it on the [dispatcher]. [stop] cancels the scope. [restart] (stop
  * then start) is called by the watchdog [SchedulerScanner.tickWatchdog] whenever
  * [isRunning] returns false, recovering from unexpected coroutine death.
  *
- * **Producer** (on the [dispatcher] injected, `Dispatchers.IO` by default): loops
- * continuously, calling [ScheduledPromptUserRunRepository.claimBatch] and sending each
- * claimed [ScheduledPromptUserRun] into the channel. When the batch is empty the producer
+ * **DB poller** (on the [dispatcher] injected, `Dispatchers.IO` by default): loops
+ * continuously, calling [ScheduledPromptUserRunRepository.claimBatch] and handing each
+ * claimed [ScheduledPromptUserRun] off for processing. When the batch is empty the poller
  * delays [SchedulerProperties.emptyPollDelayMs] before polling again, avoiding a busy-loop.
- * On database errors it applies exponential backoff (capped at 60 s). The producer respects
+ * On database errors it applies exponential backoff (capped at 60 s). The poller respects
  * [consumePaused]: when paused it delays [SchedulerProperties.pausedPollDelayMs] per
  * iteration without touching the database.
- * The channel is closed in the producer's `finally` block, guaranteeing that workers
- * exit their `for (userRun in channel)` loop cleanly regardless of how the producer stops.
+ * The handoff channel is closed in the poller's `finally` block, guaranteeing that workers
+ * exit their iteration loop cleanly regardless of how the poller stops.
  *
  * **Worker pool** ([SchedulerProperties.workerCount] coroutines, on the [dispatcher]
  * injected, `Dispatchers.IO` by default): each worker receives [ScheduledPromptUserRun]s
- * from the channel and calls [processUserRun]. A failure in one worker does not affect its
+ * and calls [processUserRun]. A failure in one worker does not affect its
  * siblings — exceptions are caught per-item; [CancellationException] is always re-thrown
  * to honour cooperative cancellation.
  *
  * **Channel capacity**: [SchedulerProperties.channelCapacity] (default 50 = 2 x batchSize).
- * Double-buffering: the producer can fill a second batch into the channel while workers drain
+ * Double-buffering: the poller can fill a second batch into the channel while workers drain
  * the first, keeping all workers continuously fed without pre-claiming an excessive number of
  * leased UserRuns. The channel capacity should be at least [SchedulerProperties.batchSize]
- * so the producer never suspends mid-batch.
+ * so the poller never suspends mid-batch.
  *
  * **Shutdown**: [stop] cancels the scope. The [CancellationException] propagates
- * immediately to all coroutines at their next suspension point — no graceful drain.
- * The producer's `finally` block closes the channel, unblocking workers suspended on receive.
- * UserRuns that were in-flight remain RUNNING; their leases expire and another instance
- * (or the restarted instance) reclaims them via [claimBatch] (at-least-once delivery).
+ * immediately to all coroutines at their next suspension point — minimising shutdown time
+ * without killing coroutines abruptly. The poller's `finally` block closes the channel,
+ * unblocking workers suspended on receive. UserRuns that were in-flight remain RUNNING;
+ * their leases expire and another instance (or the restarted instance) reclaims them
+ * via [claimBatch] (at-least-once delivery).
  *
  * ### Per-UserRun processing
  *
- * 1. Create a [Case] in the prompt’s namespace.
+ * 1. Create a [Case] in the prompt's namespace.
  * 2. Grant ADMIN on the Case to the target user via [PermissionService.grantPermission].
  * 3. Build an [Actor] with `role = USER`.
  * 4. Resolve the prompt content directly and inject `"@agentName <content>"` via
  *    [CaseService.addMessage]. The Executor resolves content itself rather than using
  *    a `/slash-command` because PromptCommandParser requires the text to start with `/`,
  *    which is incompatible with the leading `@mention`.
- * 5. Await the Case launch: inspect the runtime’s [CaseRuntime.statusFlow] current value,
+ * 5. Await the Case launch: inspect the runtime's [CaseRuntime.statusFlow] current value,
  *    then observe future transitions for up to [SchedulerProperties.launchTimeoutSeconds]
  *    seconds to detect immediate failures. If the Case is IDLE (turn finished) it is closed
  *    as DONE. If still RUNNING after the timeout, monitoring is released (Case continues
@@ -129,10 +130,10 @@ class ScheduledPromptExecutor(
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
-    /** When true, the producer skips claimBatch and delays instead. */
+    /** When true, the poller skips claimBatch and delays instead. */
     private val consumePaused = AtomicBoolean(false)
 
-    /** True if the consumer loop is active. Returns false if start() was never called or if
+    /** True if the processing loop is active. Returns false if start() was never called or if
      * stop() was called. The watchdog uses this to detect unexpected coroutine death. */
     fun isRunning(): Boolean = scope?.isActive == true
 
@@ -154,10 +155,16 @@ class ScheduledPromptExecutor(
     }
 
     // No synchronisation needed: start() writes scope then immediately launches the coroutine
-    // that reads it — the launch itself establishes a happens-before edge so runConsumerLoop()
+    // that reads it — the launch itself establishes a happens-before edge so startProcessingLoop()
     // always sees the written value. stop() is called by Spring @PreDestroy, sequentially after
     // start() has returned, never concurrently with it. If this invariant ever changes (e.g. an
     // admin endpoint calling start/stop concurrently), replace with AtomicReference + compareAndSet.
+    //
+    // We store a CoroutineScope rather than just the SupervisorJob for convenience: it lets us
+    // call launch() directly (currentScope.launch(...)) and use scope.isActive as a natural
+    // liveness check in isRunning(). Both scope.cancel() and scope.isActive are shortcuts to
+    // the underlying Job: scope.coroutineContext[Job]?.cancel() and
+    // scope.coroutineContext[Job]?.isActive respectively — everything goes through the Job.
     private var scope: CoroutineScope? = null
 
     // -------------------------------------------------------------------------
@@ -168,40 +175,40 @@ class ScheduledPromptExecutor(
     fun start() {
         val newScope = CoroutineScope(SupervisorJob())
         scope = newScope
-        newScope.launch(dispatcher) { runConsumerLoop() }
-        logger.info { "[Executor] consumer loop started (workers=${properties.workerCount}, batchSize=${properties.batchSize}, channelCapacity=${properties.channelCapacity})" }
+        newScope.launch(dispatcher) { startProcessingLoop() }
+        logger.info { "[Executor] started (workers=${properties.workerCount}, batchSize=${properties.batchSize}, channelCapacity=${properties.channelCapacity})" }
     }
 
     @PreDestroy
     fun stop() {
         scope?.cancel()
         scope = null
-        logger.info { "[Executor] consumer loop stopped" }
+        logger.info { "[Executor] stopped" }
     }
 
     // -------------------------------------------------------------------------
-    // Consumer loop (producer + channel + worker pool)
+    // Processing loop (DB poller + worker pool)
     // -------------------------------------------------------------------------
 
     /**
-     * Runs the producer and worker pool inside the bean’s [CoroutineScope].
+     * Orchestrates UserRun processing: starts the DB poller and the worker pool.
      *
-     * The channel is closed in the producer's `finally` block, guaranteeing that workers
-     * iterating `for (userRun in channel)` exit their loop cleanly whether the producer
-     * stops normally, is cancelled, or throws an unexpected exception.
+     * The poller closes the handoff channel in its `finally` block, guaranteeing that workers
+     * exit their iteration loop cleanly whether the poller stops normally, is cancelled, or
+     * throws an unexpected exception.
      *
-     * The producer and all workers share the same scope. Cancelling the scope (on [stop])
-     * propagates [CancellationException] to all of them at their next suspension point.
-     * The producer's `finally` block then closes the channel, which unblocks any worker
-     * suspended on `channel.receive()`.
+     * The poller and all workers share the same scope. Cancelling the scope (on [stop])
+     * propagates [CancellationException] to all of them at their next suspension point —
+     * minimising shutdown time without killing coroutines abruptly.
      */
-    private suspend fun runConsumerLoop() {
+    private suspend fun startProcessingLoop() {
         val channel = Channel<ScheduledPromptUserRun>(capacity = properties.channelCapacity)
-        initUserRunProcessingProducer(channel)
-        initUserRunProcessingWorkers(channel)
+        startUserRunPoller(channel)
+        startUserRunWorkers(channel)
     }
 
-    private fun initUserRunProcessingProducer(channel: Channel<ScheduledPromptUserRun>) {
+    /** Continuously claims UserRuns from the database and hands them off for processing. */
+    private fun startUserRunPoller(channel: Channel<ScheduledPromptUserRun>) {
         val currentScope = checkNotNull(scope)
         currentScope.launch(dispatcher) {
             val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
@@ -224,7 +231,7 @@ class ScheduledPromptExecutor(
                                 consecutiveErrors++
                                 val backoffMs = exponentialBackoffMs(consecutiveErrors)
                                 logger.error(e) {
-                                    "[Executor] producer error (attempt=$consecutiveErrors), backing off ${backoffMs}ms"
+                                    "[Executor] poller error (attempt=$consecutiveErrors), backing off ${backoffMs}ms"
                                 }
                                 delay(backoffMs)
                             }
@@ -237,9 +244,12 @@ class ScheduledPromptExecutor(
         }
     }
 
-    // Run (parent) completion is NOT checked here.
-    // SchedulerScanner.recoverOrphanedRunningRuns handles RUNNING → DONE/FAILED on each tickClaim.
-    private fun initUserRunProcessingWorkers(channel: Channel<ScheduledPromptUserRun>) {
+    /**
+     * Processes claimed UserRuns — one worker per configured [SchedulerProperties.workerCount].
+     * Run (parent) completion is NOT checked here:
+     * [SchedulerScanner.recoverOrphanedRunningRuns] handles RUNNING -> DONE/FAILED on each tickClaim.
+     */
+    private fun startUserRunWorkers(channel: Channel<ScheduledPromptUserRun>) {
         val currentScope = checkNotNull(scope)
         repeat(properties.workerCount) { workerId ->
             currentScope.launch(dispatcher) {
@@ -276,7 +286,7 @@ class ScheduledPromptExecutor(
      * Transitions the Run to [RunStatus.RUNNING] when UserRuns are created, or directly
      * to [RunStatus.DONE] when no target users exist (e.g. platform-scope ScheduledPrompt).
      *
-     * The MERGE and the CLAIMED→RUNNING transition run in a single `@Transactional`:
+     * The MERGE and the CLAIMED->RUNNING transition run in a single `@Transactional`:
      * if the service crashes between the two, neither orphaned PENDING UserRuns (never
      * consumed) nor a RUNNING Run with no UserRuns can result.
      *
@@ -331,7 +341,7 @@ class ScheduledPromptExecutor(
      * worker exits its channel loop and the coroutine terminates cooperatively.
      *
      * Exposed as `internal` so unit tests can invoke it directly without starting the
-     * full consumption loop.
+     * full processing loop.
      */
     internal suspend fun processUserRun(userRun: ScheduledPromptUserRun) {
         // At-least-once delivery: if markTerminal() fails (DB unavailable), the UserRun stays
@@ -457,9 +467,9 @@ class ScheduledPromptExecutor(
      *
      * Collects [CaseRuntime.statusFlow] for up to [SchedulerProperties.launchTimeoutSeconds]
      * seconds. This is a **health check**, not a completion wait:
-     * - IDLE → agent finished its turn quickly → DONE
-     * - Timeout (still RUNNING) → Case is healthy but slow; monitoring released → TIMEOUT
-     * - ERROR/KILLED → immediate crash → FAILED
+     * - IDLE -> agent finished its turn quickly -> DONE
+     * - Timeout (still RUNNING) -> Case is healthy but slow; monitoring released -> TIMEOUT
+     * - ERROR/KILLED -> immediate crash -> FAILED
      *
      * ### StateFlow current-value guard
      *
@@ -467,7 +477,7 @@ class ScheduledPromptExecutor(
      * on a StateFlow always evaluates the **current value** first: if it satisfies the predicate,
      * it is returned immediately without suspending.
      *
-     * The status lifecycle in [CaseRuntime.run] is: `PENDING → RUNNING → IDLE/ERROR/KILLED`.
+     * The status lifecycle in [CaseRuntime.run] is: `PENDING -> RUNNING -> IDLE/ERROR/KILLED`.
      * `statusFlow` is initialised to `PENDING` at construction. The only status that can cause
      * a false early return is **IDLE**: if a very fast turn completes before `monitorLaunch` is
      * called, `statusFlow.value` is already `IDLE`, and `.first { it == IDLE || it.isTerminal() }`
