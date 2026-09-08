@@ -314,7 +314,7 @@ class ScheduledPromptExecutor(
         }.getOrNull()
         return UserRunContext(
             namespaceId = namespaceId,
-            caseTitle = "${scheduledPrompt.name} ${run.scheduledFor}",
+            caseTitle = scheduledPrompt.name,
             actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
             // Inject resolved content with @mention — selectAgent resolves the agent,
             // PromptCommandParser sees no /command and passes text through unchanged.

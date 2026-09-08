@@ -349,7 +349,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
 
             val caseSlot = slot<Case>()
             verify(exactly = 1) { caseService.create(capture(caseSlot)) }
-            caseSlot.captured.title shouldBe "Weekly Digest ${nowInstant}"
+            caseSlot.captured.title shouldBe "Weekly Digest"
             verify(exactly = 1) {
                 permissionService.grantPermission(
                     userId1.toString(),
