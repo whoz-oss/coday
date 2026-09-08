@@ -227,10 +227,12 @@ class CaseController(
                     // namespaceId is the transitivity key for permissions;
                     // status is driven by the runtime lifecycle, not PUT.
                     title = resource.title ?: existing.title,
-                    // runCostThreshold: accept the caller's value as-is (including null to
-                    // revert to inherited). The enforcement mechanism also writes here when
-                    // the user chooses to continue after a cost threshold breach.
-                    runCostThreshold = resource.runCostThreshold,
+                    // runCostThreshold: keep the existing value when the caller omits the field
+                    // (null in DTO = not provided, not an explicit reset). An explicit reset to
+                    // the inherited regime is not supported via PUT — the value materialised at
+                    // creation is sticky. The enforcement mechanism raises the limit by writing
+                    // a concrete value here when the user chooses to continue after a breach.
+                    runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
                 ),
             )
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())

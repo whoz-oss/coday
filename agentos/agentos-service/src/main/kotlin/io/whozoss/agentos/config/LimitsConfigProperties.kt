@@ -100,7 +100,7 @@ data class LimitsConfigProperties(
      * "unlimited". A case that materialises its own value leaves the inherited regime and is
      * no longer affected by later namespace changes.
      *
-     * Defaults to 10.0.
+     * Defaults to null for not defined.
      */
-    val runCostThreshold: Double = 10.0,
+    val runCostThreshold: Double? = null,
 )

@@ -14,8 +14,8 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptCommandParser
-import io.whozoss.agentos.prompt.ResolvedCommand
 import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.prompt.ResolvedCommand
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -95,9 +95,19 @@ class CaseServiceImpl(
 
     override fun create(entity: Case): Case {
         require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
-        // Persist the full entity so client-supplied title and status are preserved
-        // .
-        val saved = caseRepository.save(entity)
+        // Materialise runCostThreshold at creation time from the resolution chain:
+        // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
+        // A non-null value on the incoming entity is an explicit caller override — kept as-is.
+        // Materialising at creation rather than resolving at runtime means the case is
+        // unaffected by later namespace or platform config changes (same principle as
+        // UsageRecord denormalising provider pricing at record time).
+        val resolvedThreshold: Double? =
+            entity.runCostThreshold
+                ?: namespaceService.resolveRunCostThreshold(entity.namespaceId)
+        val caseToSave =
+            entity.copy(runCostThreshold = resolvedThreshold)
+
+        val saved = caseRepository.save(caseToSave)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
@@ -295,35 +305,36 @@ class CaseServiceImpl(
         // Resolution failures (cycle, depth exceeded, missing arguments) are caught here
         // and surfaced as a WarnEvent in the runtime so the SSE client sees the error.
         // The original user message is stored first so the conversation history is intact.
-        val resolvedCommands: List<ResolvedCommand>? = if (userId != null) {
-            try {
-                content.filterIsInstance<MessageContent.Text>().flatMap { mc ->
-                    PromptCommandParser.resolve(mc.content) {
-                        promptService.findEffective(runtime.namespaceId, userId)
+        val resolvedCommands: List<ResolvedCommand>? =
+            if (userId != null) {
+                try {
+                    content.filterIsInstance<MessageContent.Text>().flatMap { mc ->
+                        PromptCommandParser.resolve(mc.content) {
+                            promptService.findEffective(runtime.namespaceId, userId)
+                        }
                     }
-                }
-            } catch (e: PromptResolutionException) {
-                logger.warn(e) { "Prompt resolution failed for case $caseId: ${e.message}" }
-                runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
-                runtime.emitEvent(
-                    storeEvent(
-                        WarnEvent(
-                            namespaceId = runtime.namespaceId,
-                            caseId = caseId,
-                            message = "Prompt resolution failed: ${e.message}",
+                } catch (e: PromptResolutionException) {
+                    logger.warn(e) { "Prompt resolution failed for case $caseId: ${e.message}" }
+                    runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+                    runtime.emitEvent(
+                        storeEvent(
+                            WarnEvent(
+                                namespaceId = runtime.namespaceId,
+                                caseId = caseId,
+                                message = "Prompt resolution failed: ${e.message}",
+                            ),
                         ),
-                    ),
-                )
-                // run() must still be launched: addUserMessage stored a MessageEvent and
-                // an AgentSelectedEvent. Without run(), the runtime has a pending
-                // AgentSelectedEvent in its history but no execution loop to process it,
-                // leaving the case blocked in PENDING status forever.
-                scope.launch { runtime.run() }
-                return
+                    )
+                    // run() must still be launched: addUserMessage stored a MessageEvent and
+                    // an AgentSelectedEvent. Without run(), the runtime has a pending
+                    // AgentSelectedEvent in its history but no execution loop to process it,
+                    // leaving the case blocked in PENDING status forever.
+                    scope.launch { runtime.run() }
+                    return
+                }
+            } else {
+                content.filterIsInstance<MessageContent.Text>().map { ResolvedCommand(it.content) }
             }
-        } else {
-            content.filterIsInstance<MessageContent.Text>().map { ResolvedCommand(it.content) }
-        }
         val nonTextContent = content.filter { it !is MessageContent.Text }
 
         // Cache agentConfigId -> agent name lookups so multiple ResolvedCommands referencing
@@ -334,17 +345,21 @@ class CaseServiceImpl(
             val agentConfigId = cmd.agentConfigId ?: return cmd.text
             // Don't prefix if the content already starts with an @mention.
             if (cmd.text.trimStart().startsWith("@")) return cmd.text
-            val agentName = agentNameCache.getOrPut(agentConfigId) {
-                agentConfigService.findById(agentConfigId)
-                    ?.takeIf { !it.metadata.removed }
-                    ?.name
-            }
+            val agentName =
+                agentNameCache.getOrPut(agentConfigId) {
+                    agentConfigService
+                        .findById(agentConfigId)
+                        ?.takeIf { !it.metadata.removed }
+                        ?.name
+                }
             return if (agentName != null) "@$agentName ${cmd.text}" else cmd.text
         }
 
         when {
-            resolvedCommands.isNullOrEmpty() ->
+            resolvedCommands.isNullOrEmpty() -> {
                 runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+            }
+
             else -> {
                 // First command goes as the initial user message (with any non-text attachments).
                 // Subsequent commands are enqueued: the runtime drains them one-by-one after
