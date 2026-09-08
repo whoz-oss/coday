@@ -3325,17 +3325,22 @@ components:
         apiModelName:
           type: string
           minLength: 1
+        contextWindow:
+          type: integer
+          format: int64
         description:
           type: string
         id:
           type: string
           format: uuid
-        maxTokens:
+        maxCompletionTokens:
           type: integer
           format: int32
         namespaceId:
           type: string
           format: uuid
+        pricing:
+          $ref: "#/components/schemas/ModelPricing"
         priority:
           type: integer
           format: int32
@@ -4067,6 +4072,25 @@ components:
       - namespaceId
       - timestamp
       - type
+    ModelPricing:
+      type: object
+      properties:
+        cacheRead:
+          type: number
+          format: double
+        cacheWrite:
+          type: number
+          format: double
+        inputMTokens:
+          type: number
+          format: double
+        isEmpty:
+          type: boolean
+        outputMTokens:
+          type: number
+          format: double
+      required:
+      - isEmpty
     Namespace:
       type: object
       properties:
