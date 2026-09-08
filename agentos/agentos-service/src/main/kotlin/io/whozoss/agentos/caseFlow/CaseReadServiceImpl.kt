@@ -27,17 +27,14 @@ class CaseReadServiceImpl(
     override fun markRead(
         userId: String,
         caseId: UUID,
-        at: Instant?,
     ) {
-        // Clamp future timestamps to now so clients cannot set readAt ahead of current time.
         val now = Instant.now(clock)
-        val effective = if (at != null && at.isBefore(now)) at else now
         caseNodeNeo4jRepository.markRead(
             userId = userId,
             caseId = caseId.toString(),
-            readAt = effective,
+            readAt = now,
         )
-        logger.debug { "markRead: user=$userId case=$caseId at=$effective" }
+        logger.debug { "markRead: user=$userId case=$caseId at=$now" }
     }
 
     override fun countUnread(

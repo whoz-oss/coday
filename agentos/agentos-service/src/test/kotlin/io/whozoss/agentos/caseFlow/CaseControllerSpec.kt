@@ -18,7 +18,6 @@ import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
-import io.whozoss.agentos.sdk.api.case.MarkCaseReadRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -1066,40 +1065,13 @@ class CaseControllerSpec :
             val caseId = UUID.randomUUID()
             val entity = caseEntity(id = caseId)
             every { userService.getCurrentUser() } returns caller
-            every { caseReadService.markRead(callerId.toString(), caseId, null) } returns Unit
+            every { caseReadService.markRead(callerId.toString(), caseId) } returns Unit
             every { caseService.getById(caseId) } returns entity
 
-            val result = controller.markCaseRead(caseId, MarkCaseReadRequest())
+            val result = controller.markCaseRead(caseId)
 
             result.id shouldBe caseId
-            verify(exactly = 1) { caseReadService.markRead(callerId.toString(), caseId, null) }
-        }
-
-        "markCaseRead passes explicit readAt timestamp to caseReadService" {
-            val caseId = UUID.randomUUID()
-            val entity = caseEntity(id = caseId)
-            val explicitReadAt = Instant.parse("2025-08-01T10:00:00Z")
-            every { userService.getCurrentUser() } returns caller
-            every { caseReadService.markRead(callerId.toString(), caseId, explicitReadAt) } returns Unit
-            every { caseService.getById(caseId) } returns entity
-
-            val result = controller.markCaseRead(caseId, MarkCaseReadRequest(readAt = explicitReadAt))
-
-            result.id shouldBe caseId
-            verify(exactly = 1) { caseReadService.markRead(callerId.toString(), caseId, explicitReadAt) }
-        }
-
-        "markCaseRead with null request body delegates with null readAt" {
-            val caseId = UUID.randomUUID()
-            val entity = caseEntity(id = caseId)
-            every { userService.getCurrentUser() } returns caller
-            every { caseReadService.markRead(callerId.toString(), caseId, null) } returns Unit
-            every { caseService.getById(caseId) } returns entity
-
-            val result = controller.markCaseRead(caseId, null)
-
-            result.id shouldBe caseId
-            verify(exactly = 1) { caseReadService.markRead(callerId.toString(), caseId, null) }
+            verify(exactly = 1) { caseReadService.markRead(callerId.toString(), caseId) }
         }
 
         // -------------------------------------------------------------------------

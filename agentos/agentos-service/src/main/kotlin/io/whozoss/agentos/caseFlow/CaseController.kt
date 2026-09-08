@@ -14,7 +14,6 @@ import io.whozoss.agentos.sdk.api.case.AddMessageRequest
 import io.whozoss.agentos.sdk.api.case.CaseApi
 import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
-import io.whozoss.agentos.sdk.api.case.MarkCaseReadRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -336,11 +335,10 @@ class CaseController(
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     override fun markCaseRead(
         @PathVariable caseId: UUID,
-        @RequestBody(required = false) request: MarkCaseReadRequest?,
     ): CaseDto {
         val userId = userService.getCurrentUser().id.toString()
-        caseReadService.markRead(userId, caseId, request?.readAt)
-        logger.debug { "User $userId marked case $caseId as read (readAt=${request?.readAt})" }
+        caseReadService.markRead(userId, caseId)
+        logger.debug { "User $userId marked case $caseId as read" }
         return caseService.getById(caseId).withCallerMeta(userId)
     }
 

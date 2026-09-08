@@ -32,7 +32,6 @@ class CaseReadServiceImplUnitSpec :
 
         val userId = "user-abc"
         val caseId = UUID.randomUUID()
-        val namespaceId = UUID.randomUUID()
 
         beforeTest { clearAllMocks() }
 
@@ -40,44 +39,13 @@ class CaseReadServiceImplUnitSpec :
         // markRead
         // -------------------------------------------------------------------------
 
-        "markRead with no explicit timestamp uses clock now" {
+        "markRead uses clock now" {
             val readAtSlot = slot<Instant>()
             every { repo.markRead(userId, caseId.toString(), capture(readAtSlot)) } returns Unit
 
-            service.markRead(userId, caseId, at = null)
+            service.markRead(userId, caseId)
 
             readAtSlot.captured shouldBe fixedNow
             verify(exactly = 1) { repo.markRead(userId, caseId.toString(), fixedNow) }
-        }
-
-        "markRead with a past timestamp uses that timestamp" {
-            val past = fixedNow.minusSeconds(3600)
-            val readAtSlot = slot<Instant>()
-            every { repo.markRead(userId, caseId.toString(), capture(readAtSlot)) } returns Unit
-
-            service.markRead(userId, caseId, at = past)
-
-            readAtSlot.captured shouldBe past
-        }
-
-        "markRead with a future timestamp is clamped to now" {
-            val future = fixedNow.plusSeconds(3600)
-            val readAtSlot = slot<Instant>()
-            every { repo.markRead(userId, caseId.toString(), capture(readAtSlot)) } returns Unit
-
-            service.markRead(userId, caseId, at = future)
-
-            // Future timestamps are silently clamped to the clock time.
-            readAtSlot.captured shouldBe fixedNow
-        }
-
-        "markRead with exactly now is accepted unchanged" {
-            val readAtSlot = slot<Instant>()
-            every { repo.markRead(userId, caseId.toString(), capture(readAtSlot)) } returns Unit
-
-            service.markRead(userId, caseId, at = fixedNow)
-
-            // fixedNow is not strictly before fixedNow, so it falls through to clamping — result is fixedNow.
-            readAtSlot.captured shouldBe fixedNow
         }
     })

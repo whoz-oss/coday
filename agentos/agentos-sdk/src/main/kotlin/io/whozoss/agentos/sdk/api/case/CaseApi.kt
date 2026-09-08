@@ -72,13 +72,9 @@ interface CaseApi : EntityCrudApi<CaseDto> {
         description =
             "POST /api/cases/{caseId}/read — record that the current user has read this case. " +
                 "Sets readAt on the User\u2194Case relation. Idempotent. " +
-                "When the request body supplies a readAt timestamp, that value is used; otherwise now() is used. " +
                 "Returns 200 with the updated Case DTO.",
     )
-    fun markCaseRead(
-        caseId: UUID,
-        request: MarkCaseReadRequest?,
-    ): CaseDto
+    fun markCaseRead(caseId: UUID): CaseDto
 
     @Operation(
         summary = "Count unread cases",

@@ -23,7 +23,6 @@ interface CaseReadService {
     fun markRead(
         userId: String,
         caseId: UUID,
-        at: java.time.Instant? = null,
     )
 
     /**
