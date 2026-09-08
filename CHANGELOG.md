@@ -1,3 +1,13 @@
+## 1.1.0 (2026-09-08)
+
+### 🚀 Features
+
+- wz-30464 - fix migration flag ([#1306](https://github.com/whoz-oss/coday/pull/1306))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 # 1.0.0 (2026-09-08)
 
 ### 🚀 Features
