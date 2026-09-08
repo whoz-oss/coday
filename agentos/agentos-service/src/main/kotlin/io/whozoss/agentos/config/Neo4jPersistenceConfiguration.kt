@@ -372,7 +372,12 @@ class Neo4jPersistenceConfiguration {
      * This prevents cases that existed before the read-state feature was introduced from
      * appearing as "unread" for all their members on first startup.
      *
-     * Runs once at startup and is a no-op when all eligible edges already have a WATCHES edge.
+     * Idempotency is guaranteed by a `(:CompletedMigration {id: 'readAtFeat20260908'})` flag
+     * node in Neo4j: the node is created (MERGE ON CREATE) on the first run and the heavy
+     * WATCHES backfill only executes when the node is brand-new. On every subsequent startup
+     * the flag node already exists, the WITH/WHERE clause filters it out, and the body of the
+     * migration is never reached.
+     *
      * Runs after [migrateStarredEdges] (via bean dependency) so that edges converted from
      * `[:STARRED]` — which carry `readAt = null` — are also initialised here.
      */
@@ -386,10 +391,21 @@ class Neo4jPersistenceConfiguration {
             // Neo4j driver does not accept java.time.Instant directly — convert to ZonedDateTime
             // (stored as a Neo4j DateTime value) so the driver can serialise it correctly.
             val now = Instant.now(clock).atZone(ZoneOffset.UTC)
+            // The flag node ensures this migration runs exactly once across all restarts.
+            // ON CREATE SET flag.isNew = true marks the node as brand-new; the WITH/WHERE
+            // clause lets the rest of the query through only on that first creation.
+            // On every subsequent startup the MERGE matches the existing node (isNew absent),
+            // the WHERE filters it out, and the MATCH below never executes.
             val result =
                 neo4jClient
                     .query(
                         $$"""
+                        MERGE (flag:CompletedMigration {id: 'readAtFeat20260908'})
+                        ON CREATE SET flag.isNew = true
+                        WITH flag
+                        WHERE flag.isNew = true
+                        REMOVE flag.isNew
+                        WITH count(flag) AS guard
                         MATCH (u:User)-[:ADMIN|MEMBER]->(c:Case)
                         WHERE (c.removed IS NULL OR c.removed = false)
                         MERGE (u)-[s:WATCHES]->(c)
@@ -405,7 +421,7 @@ class Neo4jPersistenceConfiguration {
             if (count > 0L) {
                 logger.info { "[Migration] Initialised readAt on $count WATCHES edges" }
             } else {
-                logger.debug { "[Migration] All WATCHES edges already have readAt set — nothing to initialise" }
+                logger.debug { "[Migration] readAtFeat20260908 already applied — skipping" }
             }
         }
 
