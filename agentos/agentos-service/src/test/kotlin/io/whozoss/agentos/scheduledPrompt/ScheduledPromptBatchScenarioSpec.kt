@@ -146,6 +146,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             clock = clock,
             nextRunCalculatorService = NextRunCalculatorService(clock = clock),
             executor = executor,
+            executionWindowService = ExecutionWindowService(properties),
         )
         return scanner to executor
     }
@@ -343,6 +344,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
                 executor = executor,
+                executionWindowService = ExecutionWindowService(smallBatchProperties),
             )
 
             // Phase A

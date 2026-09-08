@@ -76,8 +76,8 @@ class SchedulerScanner(
     private val clock: Clock,
     private val nextRunCalculatorService: NextRunCalculatorService,
     private val executor: ScheduledPromptExecutor,
+    private val executionWindowService: ExecutionWindowService,
 ) {
-    private val executionWindowService = ExecutionWindowService(properties.windows)
     /**
      * Tracks whether the scheduler was last seen inside or outside the execution window,
      * so WINDOW_OPEN / WINDOW_CLOSE transitions are logged exactly once per transition
@@ -158,7 +158,7 @@ class SchedulerScanner(
     private fun checkExecutionWindow(): Boolean {
         val now = ZonedDateTime.now(clock)
         val nowUtc = now.withZoneSameInstant(ZoneOffset.UTC)
-        val inWindow = executionWindowService.isWithinWindow(now)
+        val inWindow = executionWindowService.isWithinExecutionWindow(now)
 
         when {
             inWindow && lastWindowState != true -> {

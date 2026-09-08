@@ -1,6 +1,7 @@
 package io.whozoss.agentos.scheduledPrompt
 
 import mu.KLogging
+import org.springframework.stereotype.Service
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.ZoneOffset
@@ -54,7 +55,8 @@ import java.time.ZonedDateTime
  * - At most one wrap-around window (crossing Sunday→Monday), since two such windows
  *   cannot be ordered by weekly offset and may overlap undetected.
  */
-class ExecutionWindowService(windows: List<String>) {
+@Service
+class ExecutionWindowService(properties: SchedulerProperties) {
 
     /**
      * A parsed window boundary, retaining the original [day] and [time] for readability.
@@ -84,16 +86,16 @@ class ExecutionWindowService(windows: List<String>) {
     private val parsedWindows: List<Window>?
 
     init {
-        parsedWindows = parseAndValidate(windows)
+        parsedWindows = parseAndValidate(properties.windows)
     }
 
     /**
-     * Returns `true` when [now] falls within any configured execution window.
+     * Returns `true` when [now] falls within any configured execution window (execution allowed).
      *
      * Returns `true` unconditionally when no windows are configured (always-open behaviour)
      * or when configuration parsing failed (fail-open).
      */
-    fun isWithinWindow(now: ZonedDateTime = ZonedDateTime.now(ZoneOffset.UTC)): Boolean {
+    fun isWithinExecutionWindow(now: ZonedDateTime = ZonedDateTime.now(ZoneOffset.UTC)): Boolean {
         val windows = parsedWindows ?: return true
         val current = minuteOfWeek(now)
         return windows.any { window -> isInWindow(current, window) }
