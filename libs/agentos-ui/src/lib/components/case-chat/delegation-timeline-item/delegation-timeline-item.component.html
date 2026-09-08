@@ -1,0 +1,90 @@
+<article
+  class="delegation-item"
+  [class.delegation-item--running]="delegation().status === 'running'"
+  [class.delegation-item--success]="delegation().status === 'success'"
+  [class.delegation-item--waiting]="delegation().status === 'waiting_user'"
+  [class.delegation-item--error]="delegation().status === 'error'"
+>
+  <div class="delegation-item__header">
+    <button
+      type="button"
+      class="delegation-item__toggle"
+      (click)="toggle()"
+      [attr.aria-expanded]="expanded()"
+      [attr.aria-label]="(expanded() ? 'Collapse' : 'Expand') + ' delegation for ' + delegation().agentName"
+    >
+      <span aria-hidden="true">{{ expanded() ? '▼' : '▶' }}</span>
+      <strong>{{ delegation().agentName }}</strong>
+      <span
+        class="delegation-item__status"
+        [class.delegation-item__status--success]="delegation().status === 'success'"
+        [class.delegation-item__status--waiting]="delegation().status === 'waiting_user'"
+        [class.delegation-item__status--error]="delegation().status === 'error'"
+      >
+        @if (delegation().status === 'running') {
+          Working
+        } @else {
+          {{ delegation().outcome ?? delegation().status }}
+        }
+      </span>
+    </button>
+    <button type="button" class="delegation-item__open" (click)="openSubCase()">Open sub-case</button>
+  </div>
+
+  @if (expanded()) {
+    <div class="delegation-item__body">
+      @if (hasStructuredResult()) {
+        @if (resultOutput(); as output) {
+          <agentos-delegation-result
+            [rawOutput]="output"
+            [namespaceId]="namespaceId()"
+            [showHeader]="false"
+            [expanded]="true"
+          />
+        }
+      } @else {
+        @if (loadingActivity()) {
+          <p class="delegation-item__activity-state">Loading sub-case activity…</p>
+        } @else if (activityError(); as error) {
+          <p class="delegation-item__activity-state delegation-item__activity-state--error">{{ error }}</p>
+        } @else if (activity().length === 0) {
+          <p class="delegation-item__activity-state">No sub-case activity yet.</p>
+        } @else {
+          <ol class="delegation-item__activity" aria-label="Sub-case activity">
+            @for (entry of activity(); track entry.id) {
+              <li
+                class="delegation-item__activity-entry"
+                [class.delegation-item__activity-entry--error]="entry.kind === 'error'"
+              >
+                <strong>
+                  {{ entry.label }}
+                  @if (entry.count && entry.count > 1) {
+                    <span>×{{ entry.count }}</span>
+                  }
+                  @if (entry.failed) {
+                    <span>· failed</span>
+                  }
+                </strong>
+                @if (entry.detail) {
+                  <span>{{ entry.detail }}</span>
+                }
+              </li>
+            }
+          </ol>
+        }
+        @if (delegation().task) {
+          <section class="delegation-item__task">
+            <span>Task</span>
+            <p>{{ delegation().task }}</p>
+          </section>
+        }
+        @if (delegation().resumed) {
+          <span class="delegation-item__resumed">Resumed delegation</span>
+        }
+        @if (delegation().errorType) {
+          <span class="delegation-item__error-type">{{ delegation().errorType }}</span>
+        }
+      }
+    </div>
+  }
+</article>

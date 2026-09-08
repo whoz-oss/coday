@@ -10,6 +10,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -17,6 +18,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
 import mu.KLogging
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.GetMapping
@@ -50,8 +52,8 @@ class CaseEventSseController(
      *
      * Each SSE event carries:
      * - id: the CaseEvent UUID
-     * - name: the CaseEventType value (e.g. "MessageEvent", "ThinkingEvent")
-     * - data: the JSON-serialized CaseEvent subtype (polymorphic via @JsonTypeInfo)
+     * - name: [CASE_EVENT_SSE_NAME] for every CaseEvent
+     * - data: the JSON-serialized CaseEvent subtype; [CaseEvent.type] is the discriminant
      */
     @Operation(
         tags = ["sse"],
@@ -125,26 +127,48 @@ class CaseEventSseController(
         emitter: SseEmitter,
     ) {
         scope.launch {
+            var liveCollector: Job? = null
+            var liveEvents: Channel<CaseEvent>? = null
             try {
-                if (includePreviousEvents == true) {
-                    // Replay persisted history first so clients connecting mid-run
-                    // or reconnecting after a disconnect receive the full sequence.
-                    caseEventService.findByParent(caseId).forEach { sendEvent(it, emitter) }
+                // Subscribe before reading persistence. The runtime emitter has replay=0, so doing
+                // this after the DB snapshot creates an unrecoverable live-event loss window.
+                // A bounded channel buffers live events while this coroutine serially replays history.
+                val activeCase = caseService.findActiveRuntime(caseId)
+                val channel = Channel<CaseEvent>(LIVE_REPLAY_BUFFER_CAPACITY)
+                liveEvents = channel
+                if (activeCase != null) {
+                    liveCollector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        activeCase.events.collect { channel.send(it) }
+                    }
                 }
 
-                // If the case is still active, subscribe to the live flow.
-                // findActiveRuntime never rehydrates — safe for observation only.
-                // If the case is completed, the history replay above is sufficient
-                // and the emitter completes at the end of the try block.
-                val activeCase = caseService.findActiveRuntime(caseId)
-                activeCase?.events?.collect { event ->
-                    try {
-                        sendEvent(event, emitter)
-                        logger.trace { "Event ${event.type} sent to SSE for case $caseId" }
-                    } catch (e: Exception) {
-                        logger.debug { "Failed to send event to SSE for case $caseId: ${e.message}" }
-                        throw e
-                    }
+                // This coroutine is the sole writer to SseEmitter: replay first, then the live
+                // buffer in arrival order. Event ids deduplicate overlap between persistence and live.
+                val sentEventIds = mutableSetOf<UUID>()
+                fun sendOnce(event: CaseEvent) {
+                    if (sentEventIds.add(event.id)) sendEvent(event, emitter)
+                }
+
+                if (includePreviousEvents == true) {
+                    caseEventService.findByParent(caseId).forEach(::sendOnce)
+                }
+
+                if (activeCase == null) {
+                    emitter.complete()
+                    return@launch
+                }
+
+                // Drain every event buffered during replay before waiting for subsequent live events.
+                // tryReceive is deliberately repeated: events arriving during a drain remain queued
+                // and are sent by this same coroutine, preserving a single serialized emitter path.
+                while (true) {
+                    val buffered = channel.tryReceive().getOrNull() ?: break
+                    sendOnce(buffered)
+                }
+                while (true) {
+                    val event = channel.receiveCatching().getOrNull() ?: break
+                    sendOnce(event)
+                    logger.trace { "Event ${event.type} sent to SSE for case $caseId" }
                 }
                 emitter.complete()
             } catch (e: CancellationException) {
@@ -153,8 +177,13 @@ class CaseEventSseController(
                 logger.debug { "SSE collector cancelled for case $caseId (client disconnected)" }
                 throw e // re-throw so cancellation propagates correctly through the coroutine hierarchy
             } catch (error: Exception) {
+                // A replay failure must also stop the live collector; otherwise it remains
+                // subscribed to the hot runtime flow after the HTTP response has failed.
                 logger.error("Error in event stream for case $caseId", error)
                 emitter.completeWithError(error)
+            } finally {
+                liveCollector?.cancel()
+                liveEvents?.cancel()
             }
         }
     }
@@ -166,7 +195,7 @@ class CaseEventSseController(
         SseEmitter
             .event()
             .id(event.id.toString())
-            .name(event.type.value)
+            .name(CASE_EVENT_SSE_NAME)
             .data(event),
     )
 
@@ -198,5 +227,11 @@ class CaseEventSseController(
             }
         }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /** Stable SSE envelope name; consumers discriminate CaseEvent subtypes via JSON data.type. */
+        const val CASE_EVENT_SSE_NAME = "case-event"
+
+        /** Back-pressure rather than silent loss while a slow persisted replay is sent. */
+        private const val LIVE_REPLAY_BUFFER_CAPACITY = 256
+    }
 }

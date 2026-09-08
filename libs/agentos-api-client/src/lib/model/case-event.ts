@@ -25,6 +25,8 @@ import { ErrorEvent } from './error-event'
 import { CaseStatusEvent } from './case-status-event'
 import { CaseUpdatedEvent } from './case-updated-event'
 import { ToolRequestEvent } from './tool-request-event'
+import { SubCaseStartedEvent } from './sub-case-started-event'
+import { SubCaseFinishedEvent } from './sub-case-finished-event'
 
 export type CaseEvent =
   | AgentFinishedEvent
@@ -45,3 +47,5 @@ export type CaseEvent =
   | ToolResponseEvent
   | ToolSelectedEvent
   | WarnEvent
+  | SubCaseStartedEvent
+  | SubCaseFinishedEvent

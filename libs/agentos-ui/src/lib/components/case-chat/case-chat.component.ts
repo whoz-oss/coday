@@ -23,7 +23,6 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { ActivatedRoute } from '@angular/router'
 import {
   AgentFinishedEvent,
-  AgentRunningEvent,
   AgentSelectedEvent,
   AnswerEvent,
   CaseEvent,
@@ -40,6 +39,8 @@ import {
   ToolRequestEvent,
   ToolResponseEvent,
   WarnEvent,
+  CASE_EVENT_SSE_NAME,
+  parseCaseEventSsePayload,
 } from '@whoz-oss/agentos-api-client'
 import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
 import { BlueprintDirective, CopyButtonComponent, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
@@ -60,7 +61,10 @@ import { CaseMembersComponent } from '../case-members/case-members.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
-import { DelegationResultComponent } from './delegation-result/delegation-result.component'
+import {
+  DelegationTimelineItemComponent,
+  DelegationTimelineItemData,
+} from './delegation-timeline-item/delegation-timeline-item.component'
 
 export interface ToolCall {
   requestId: string
@@ -92,6 +96,7 @@ export type TimelineItem =
   | { kind: 'streaming' }
   | { kind: 'technical'; item: TechnicalItem; eventId: string }
   | { kind: 'question'; event: QuestionEvent; answered: boolean }
+  | { kind: 'delegation'; delegation: DelegationTimelineItemData }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
@@ -130,7 +135,7 @@ function hasActiveSelection(): boolean {
     CopyButtonComponent,
     ComposerAttachmentsComponent,
     QuestionPanelComponent,
-    DelegationResultComponent,
+    DelegationTimelineItemComponent,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
@@ -335,7 +340,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    */
   private readonly baseTimeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()
-    const showTechnical = this.showTechnical()
+    this.showTechnical() // preserve recomputation when the visibility mode changes
 
     // Pass 1: build complete tool call map (request + optional response)
     const toolCallMap = new Map<string, ToolCall>()
@@ -365,6 +370,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     }
 
+    const delegations = this.projectDelegations(allEvents, toolCallMap)
+    const delegationStartEventIds = new Set(delegations.values().map(({ startEventId }) => startEventId))
+    // Set is iterable but Array#flatMap does not flatten generic iterables; materialize each
+    // set so this is inferred as Set<string>, not Set<Set<string>>.
+    const correlatedToolRequestIds = new Set<string>(
+      [...delegations.values()].flatMap(({ toolRequestIds }) => [...toolRequestIds])
+    )
+
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
     // Track the last role to detect group boundaries (consecutive same-role messages).
@@ -382,11 +395,25 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           html: this.messageHtmlCache.get(e.id) ?? '',
           isFirstInGroup,
         })
+      } else if (e.type === 'SubCaseStartedEvent') {
+        if (delegationStartEventIds.has(e.id)) {
+          const delegation = [...delegations.values()].find((entry) => entry.startEventId === e.id)?.item
+          if (delegation) items.push({ kind: 'delegation', delegation })
+        }
+        lastMessageRole = null
+      } else if (e.type === 'SubCaseFinishedEvent') {
+        // Finished events update their durable delegation projection; never render separately.
+        continue
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
         const requestId = e.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
           seenToolIds.add(requestId)
-          items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
+          // A durable SubCaseStartedEvent explicitly correlates this parent tool request.
+          // The delegation block replaces it in both normal and technical modes; technical
+          // mode must not reintroduce the duplicate generic card.
+          if (!correlatedToolRequestIds.has(requestId)) {
+            items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
+          }
         }
         lastMessageRole = null
       } else if (e.type === 'AgentRunningEvent') {
@@ -397,7 +424,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         // A question is answered when there is a corresponding AnswerEvent in the stream.
         const answered = allEvents.some((ae) => ae.type === 'AnswerEvent' && (ae as AnswerEvent).questionId === qe.id)
         items.push({ kind: 'question', event: qe, answered })
-      } else if (showTechnical) {
+      } else if (this.showTechnical()) {
         const technical = this.toTechnicalItem(e)
         if (technical) {
           items.push({ kind: 'technical', item: technical, eventId: e.id })
@@ -408,6 +435,100 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     return items
   })
+
+  /**
+   * Builds one durable visual projection per delegation id. The backend may replay the complete
+   * stream, so correlation is strictly by delegationId and never by event adjacency or agent name.
+   */
+  private projectDelegations(
+    events: CaseEvent[],
+    toolCalls: Map<string, ToolCall>
+  ): Map<string, { item: DelegationTimelineItemData; startEventId: string; toolRequestIds: Set<string> }> {
+    const projected = new Map<
+      string,
+      { item: DelegationTimelineItemData; startEventId: string; toolRequestIds: Set<string> }
+    >()
+
+    for (const event of events) {
+      if (event.type === 'SubCaseStartedEvent') {
+        const started = event as CaseEvent & {
+          delegationId?: unknown
+          subCaseId?: unknown
+          agentName?: unknown
+          task?: unknown
+          resumed?: unknown
+          toolRequestId?: unknown
+        }
+        if (typeof started.delegationId !== 'string' || typeof started.subCaseId !== 'string') continue
+        const toolRequestIds = new Set<string>()
+        if (typeof started.toolRequestId === 'string') toolRequestIds.add(started.toolRequestId)
+        projected.set(started.delegationId, {
+          startEventId: event.id,
+          toolRequestIds,
+          item: {
+            delegationId: started.delegationId,
+            subCaseId: started.subCaseId,
+            agentName: typeof started.agentName === 'string' ? started.agentName : 'Agent',
+            task: typeof started.task === 'string' ? started.task : '',
+            resumed: started.resumed === true,
+            status: 'running',
+          },
+        })
+      } else if (event.type === 'SubCaseFinishedEvent') {
+        const finished = event as CaseEvent & {
+          delegationId?: unknown
+          outcome?: unknown
+          errorType?: unknown
+          toolRequestId?: unknown
+        }
+        if (typeof finished.delegationId !== 'string') continue
+        const entry = projected.get(finished.delegationId)
+        if (!entry) continue
+        const outcome = typeof finished.outcome === 'string' ? finished.outcome : 'ERROR'
+        entry.item.outcome = outcome
+        entry.item.errorType = typeof finished.errorType === 'string' ? finished.errorType : undefined
+        entry.item.status = outcome === 'SUCCESS' ? 'success' : outcome === 'WAITING_USER' ? 'waiting_user' : 'error'
+        if (typeof finished.toolRequestId === 'string') entry.toolRequestIds.add(finished.toolRequestId)
+      }
+    }
+
+    for (const [requestId, call] of toolCalls) {
+      for (const result of this.parseDelegationResults(call.response?.output)) {
+        const entry = projected.get(result.delegationId)
+        if (!entry) continue
+        entry.item.result = result.value
+        entry.toolRequestIds.add(requestId)
+      }
+    }
+    return projected
+  }
+
+  /** Parses only the structured delegation response shape; invalid JSON deliberately falls back to the generic tool. */
+  private parseDelegationResults(output: unknown): Array<{ delegationId: string; value: Record<string, unknown> }> {
+    const content = output && typeof output === 'object' ? (output as { content?: unknown }).content : output
+    if (typeof content !== 'string') return []
+    try {
+      const parsed: unknown = JSON.parse(content)
+      if (!Array.isArray(parsed)) return []
+      return parsed.flatMap((value) => {
+        if (
+          !value ||
+          typeof value !== 'object' ||
+          typeof (value as Record<string, unknown>)['delegationId'] !== 'string' ||
+          typeof (value as Record<string, unknown>)['subCaseId'] !== 'string'
+        )
+          return []
+        return [
+          {
+            delegationId: (value as Record<string, unknown>)['delegationId'] as string,
+            value: value as Record<string, unknown>,
+          },
+        ]
+      })
+    } catch {
+      return []
+    }
+  }
 
   /** Final timeline: base + trailing streaming assistant bubble during a RUNNING turn. */
   protected readonly timeline = computed<TimelineItem[]>(() => {
@@ -429,6 +550,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         return 'streaming'
       case 'question':
         return `question-${item.event.id}`
+      case 'delegation':
+        return `delegation-${item.delegation.delegationId}`
     }
   }
 
@@ -540,8 +663,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
 
-    // NOTE: the backend sends named SSE events ("event: MessageEvent", "event: CaseStatusEvent", ...)
-    // In that case, `onmessage` is NOT called. We must subscribe to named events.
+    // The backend emits every domain event on the single generic `case-event` channel.
+    // Its JSON payload retains `type` for the domain-level dispatch below.
     const handler = (msg: globalThis.MessageEvent<string>) => {
       const receivedAt = performance.now()
       const sseEventName = (msg as unknown as { type?: string }).type
@@ -555,164 +678,132 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         receivedAtMs: receivedAt,
       })
 
-      try {
-        const event = JSON.parse(raw) as CaseEvent
-        this.zone.run(() => {
-          const beforeLen = this.events().length
-
-          // Pre-compute markdown HTML for MessageEvent before adding to signal.
-          if (event.type === 'MessageEvent') {
-            const msg = event as CaseMessageEvent
-            const text = this.extractText(msg)
-            if (!this.messageHtmlCache.has(event.id)) {
-              this.messageHtmlCache.set(event.id, this.renderMarkdown(text))
-            }
-          }
-
-          this.events.update((prev) => (prev.some((e) => e.id === event.id) ? prev : [...prev, event]))
-          const afterLen = this.events().length
-
-          console.log('[AgentOS SSE] event processed', {
-            sseEventName,
-            eventType: event.type,
-            eventId: event.id,
-            beforeLen,
-            afterLen,
-            running: this.isRunning(),
-            terminal: this.isTerminal(),
-          })
-
-          if (event.type === 'TextChunkEvent') {
-            const chunk = (event as unknown as { chunk?: string }).chunk
-            if (chunk) {
-              this.streamingText.update((prev) => prev + chunk)
-            }
-            return
-          }
-
-          if (event.type === 'CaseUpdatedEvent') {
-            const updated = event as CaseUpdatedEvent
-            if (updated.title) {
-              this.caseState.updateCaseTitle(event.caseId, updated.title)
-            }
-            return
-          }
-
-          if (event.type === 'CaseStatusEvent') {
-            // Source of truth for running/terminal states.
-            // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
-            const status = (event as CaseStatusEvent).status as string
-            this._sseStatus.set(status)
-            // Sync the drawer list so both header and drawer show the same status
-            this.caseState.updateCaseStatus(this.caseId, status)
-
-            const isTerminal = status === 'KILLED' || status === 'ERROR'
-            this.isTerminal.set(isTerminal)
-
-            if (isTerminal) {
-              this.isRunning.set(false)
-              // Terminal: close SSE connection.
-              this.eventSource?.close()
-              this.eventSource = null
-            } else {
-              const running = status === 'RUNNING'
-              this.isRunning.set(running)
-              if (!running) {
-                // End of turn / idle: reset streaming buffer.
-                this.streamingText.set('')
-              }
-            }
-            return
-          }
-
-          // In practice, the SSE stream currently does NOT emit CaseStatusEvent.
-          // So we treat AgentFinishedEvent as the end-of-turn signal.
-          if (event.type === 'AgentFinishedEvent') {
-            this.isRunning.set(false)
-            // End-of-turn: reset streaming buffer.
-            this.streamingText.set('')
-            // Safety net: refresh both scopes at end-of-turn ONLY if a tool ran (covers a mutation the
-            // per-op regex may have missed); pure-conversation turns skip the manifest fetch.
-            if (this.anyToolResponseThisTurn) {
-              this.exchangeState.refreshManifest()
-            }
-            this.anyToolResponseThisTurn = false
-            return
-          }
-
-          if (event.type === 'ToolResponseEvent') {
-            this.anyToolResponseThisTurn = true
-            // The agent mutated the exchange filesystem → refresh the affected scope's drawer + badge live.
-            const mutatedScope = exchangeMutationScope((event as ToolResponseEvent).toolName)
-            if (mutatedScope === 'case') {
-              this.exchangeState.refreshCase()
-            } else if (mutatedScope === 'namespace') {
-              this.exchangeState.refreshNamespace()
-            }
-            return
-          }
-
-          if (event.type === 'QuestionEvent') {
-            const qe = event as QuestionEvent
-            if (qe.questionType === QuestionEventQuestionTypeEnum.OAUTH_AUTHORIZE) {
-              // Delegate OAuth popup management to the service.
-              // The panel is shown via the timeline (question kind) and the service
-              // exposes pendingQuestion so the panel knows when to hide after popup opens.
-              this.oauthService.setPendingQuestion(qe)
-            }
-            return
-          }
-
-          // For other events: don't force isRunning=true.
-          // submit() sets isRunning=true, and we flip it back on AgentFinishedEvent.
-        })
-      } catch (err) {
-        console.warn('[AgentOS SSE] failed to parse event data', {
+      const event = parseCaseEventSsePayload(raw)
+      if (!event) {
+        console.warn('[AgentOS SSE] ignored malformed case-event payload', {
           sseEventName,
-          error: err,
           dataPreview: raw?.slice(0, 500),
         })
+        return
       }
+      this.zone.run(() => {
+        const beforeLen = this.events().length
+
+        // Pre-compute markdown HTML for MessageEvent before adding to signal.
+        if (event.type === 'MessageEvent') {
+          const msg = event as CaseMessageEvent
+          const text = this.extractText(msg)
+          if (!this.messageHtmlCache.has(event.id)) {
+            this.messageHtmlCache.set(event.id, this.renderMarkdown(text))
+          }
+        }
+
+        this.events.update((prev) => (prev.some((e) => e.id === event.id) ? prev : [...prev, event]))
+        const afterLen = this.events().length
+
+        console.log('[AgentOS SSE] event processed', {
+          sseEventName,
+          eventType: event.type,
+          eventId: event.id,
+          beforeLen,
+          afterLen,
+          running: this.isRunning(),
+          terminal: this.isTerminal(),
+        })
+
+        if (event.type === 'TextChunkEvent') {
+          const chunk = (event as unknown as { chunk?: string }).chunk
+          if (chunk) {
+            this.streamingText.update((prev) => prev + chunk)
+          }
+          return
+        }
+
+        if (event.type === 'CaseUpdatedEvent') {
+          const updated = event as CaseUpdatedEvent
+          if (updated.title) {
+            this.caseState.updateCaseTitle(event.caseId, updated.title)
+          }
+          return
+        }
+
+        if (event.type === 'CaseStatusEvent') {
+          // Source of truth for running/terminal states.
+          // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
+          const status = (event as CaseStatusEvent).status as string
+          this._sseStatus.set(status)
+          // Sync the drawer list so both header and drawer show the same status
+          this.caseState.updateCaseStatus(this.caseId, status)
+
+          const isTerminal = status === 'KILLED' || status === 'ERROR'
+          this.isTerminal.set(isTerminal)
+
+          if (isTerminal) {
+            this.isRunning.set(false)
+            // Terminal: close SSE connection.
+            this.eventSource?.close()
+            this.eventSource = null
+          } else {
+            const running = status === 'RUNNING'
+            this.isRunning.set(running)
+            if (!running) {
+              // End of turn / idle: reset streaming buffer.
+              this.streamingText.set('')
+            }
+          }
+          return
+        }
+
+        // In practice, the SSE stream currently does NOT emit CaseStatusEvent.
+        // So we treat AgentFinishedEvent as the end-of-turn signal.
+        if (event.type === 'AgentFinishedEvent') {
+          this.isRunning.set(false)
+          // End-of-turn: reset streaming buffer.
+          this.streamingText.set('')
+          // Safety net: refresh both scopes at end-of-turn ONLY if a tool ran (covers a mutation the
+          // per-op regex may have missed); pure-conversation turns skip the manifest fetch.
+          if (this.anyToolResponseThisTurn) {
+            this.exchangeState.refreshManifest()
+          }
+          this.anyToolResponseThisTurn = false
+          return
+        }
+
+        if (event.type === 'ToolResponseEvent') {
+          this.anyToolResponseThisTurn = true
+          // The agent mutated the exchange filesystem → refresh the affected scope's drawer + badge live.
+          const mutatedScope = exchangeMutationScope((event as ToolResponseEvent).toolName)
+          if (mutatedScope === 'case') {
+            this.exchangeState.refreshCase()
+          } else if (mutatedScope === 'namespace') {
+            this.exchangeState.refreshNamespace()
+          }
+          return
+        }
+
+        if (event.type === 'QuestionEvent') {
+          const qe = event as QuestionEvent
+          if (qe.questionType === QuestionEventQuestionTypeEnum.OAUTH_AUTHORIZE) {
+            // Delegate OAuth popup management to the service.
+            // The panel is shown via the timeline (question kind) and the service
+            // exposes pendingQuestion so the panel knows when to hide after popup opens.
+            this.oauthService.setPendingQuestion(qe)
+          }
+          return
+        }
+
+        // For other events: don't force isRunning=true.
+        // submit() sets isRunning=true, and we flip it back on AgentFinishedEvent.
+      })
     }
 
-    const eventNames = [
-      'MessageEvent',
-      'CaseStatusEvent',
-      'CaseUpdatedEvent',
-      'AgentSelectedEvent',
-      'AgentRunningEvent',
-      'AgentFinishedEvent',
-      'ThinkingEvent',
-      'TextChunkEvent',
-      'ToolRequestEvent',
-      'ToolResponseEvent',
-      'PendingConfirmationEvent',
-      'ConfirmationResolvedEvent',
-      'ErrorEvent',
-      'WarnEvent',
-      'IntentionGeneratedEvent',
-      'QuestionEvent',
-      'AnswerEvent',
-    ] as const
-
-    // handle the different event names we see in the SSE stream
-    for (const name of eventNames) {
-      console.log('[AgentOS SSE] addEventListener', name)
-      this.eventSource.addEventListener(name, handler)
-    }
+    console.log('[AgentOS SSE] addEventListener', CASE_EVENT_SSE_NAME)
+    this.eventSource.addEventListener(CASE_EVENT_SSE_NAME, handler)
 
     this.eventSource.onopen = () => {
       console.log('[AgentOS SSE] connection open', {
         readyState: this.eventSource?.readyState,
         at: new Date().toISOString(),
-      })
-    }
-
-    // Note: onmessage only fires for unnamed events. Keep it for debugging.
-    this.eventSource.onmessage = (msg) => {
-      console.log('[AgentOS SSE] onmessage (unnamed event) received', {
-        dataLength: msg.data?.length ?? 0,
-        dataPreview: msg.data?.slice(0, 120),
       })
     }
 
@@ -900,20 +991,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.extractText(item.event)
   }
 
-  /** Provider/model reported by the nearest preceding execution event for this agent message. */
+  /** Durable provider/model attribution carried by the agent MessageEvent itself. */
   protected agentModelAttribution(message: CaseMessageEvent): string | null {
     if (message.actor.role !== 'AGENT') return null
-    const events = this.events()
-    const messageIndex = events.findIndex((event) => event.id === message.id)
-    for (let index = messageIndex - 1; index >= 0; index--) {
-      const event = events[index]
-      if (!event || event.type !== 'AgentRunningEvent') continue
-      const running = event as AgentRunningEvent
-      if (running.agentName !== message.actor.displayName) continue
-      const parts = [running.llmProvider, running.llmModel].filter((part): part is string => !!part)
-      return parts.length ? parts.join(' · ') : null
-    }
-    return null
+    const attributed = message as CaseMessageEvent & { llmProvider?: string | null; llmModel?: string | null }
+    const parts = [attributed.llmProvider, attributed.llmModel].filter((part): part is string => !!part)
+    return parts.length ? parts.join(' · ') : null
   }
 
   // ---------------------------------------------------------------------------

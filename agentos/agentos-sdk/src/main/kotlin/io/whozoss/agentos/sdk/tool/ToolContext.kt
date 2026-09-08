@@ -36,4 +36,6 @@ data class ToolContext(
     val caseEvents: List<CaseEvent>,
     val agentName: String? = null,
     val credentialProvider: CredentialProvider? = null,
+    /** Id of the ToolRequestEvent currently executing, null outside an invocation. */
+    val toolRequestId: String? = null,
 )

@@ -127,6 +127,30 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
         // Active case — history replayed then live flow subscribed
         // -------------------------------------------------------------------------
 
+        "active case: subscribes before a blocking history replay, so events emitted during replay are buffered" {
+            val caseId = UUID.randomUUID()
+            val replayStarted = CountDownLatch(1)
+            val allowReplayToFinish = CountDownLatch(1)
+            val liveFlow = MutableSharedFlow<CaseEvent>(replay = 0)
+            val activeCase = mockk<CaseRuntime> { every { events } returns liveFlow }
+            val caseService = mockk<CaseService> { every { findActiveRuntime(caseId) } returns activeCase }
+            val caseEventService = mockk<CaseEventService> {
+                every { findByParent(caseId) } answers {
+                    replayStarted.countDown()
+                    allowReplayToFinish.await(2, TimeUnit.SECONDS)
+                    emptyList()
+                }
+            }
+            val controller = CaseEventSseController(caseService, caseEventService, CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE))
+            controller.streamEvents(caseId)
+
+            replayStarted.await(2, TimeUnit.SECONDS) shouldBe true
+            // A replay=0 flow only delivers this event if the collector was installed first.
+            liveFlow.subscriptionCount.first { it >= 1 }.shouldBe(1)
+            liveFlow.tryEmit(warnEvent(caseId)) shouldBe true
+            allowReplayToFinish.countDown()
+        }
+
         "active case: history is queried and live flow is subscribed" {
             val caseId = UUID.randomUUID()
             val history = listOf(msgEvent(caseId))

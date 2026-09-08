@@ -7,6 +7,8 @@ import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -124,6 +126,12 @@ data class AgentAdvancedContext(
                 is AnswerEvent -> {
                     listOf(UserMessage(event.answer))
                 }
+
+                // Parent-case lifecycle events are already represented by the delegating tool
+                // call and its final structured result. Do not replay duplicate narration to the LLM.
+                is SubCaseStartedEvent,
+                is SubCaseFinishedEvent,
+                -> emptyList()
 
                 else -> {
                     emptyList()

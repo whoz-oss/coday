@@ -290,6 +290,39 @@ body {
  * They do not affect the legacy apps/client app.
  */
 agentos-shell {
+  /* Fenced Markdown in case-chat is rendered via [innerHTML], so it cannot be
+   * styled by the component's emulated stylesheet. The renderer adds this unique
+   * class; keep overflow local to the code block and scoped to AgentOS. */
+  .agentos-chat-code-block {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 0.4em 0;
+    padding: 0.6em 0.8em;
+    background: var(--color-neutral-100);
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: pre;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-divider) transparent;
+
+    &::-webkit-scrollbar {
+      height: 8px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--color-divider);
+    }
+
+    code {
+      background: none;
+      padding: 0;
+      font-family: var(--font-heading);
+      font-size: 0.8rem;
+    }
+  }
+
   /* Blueprint corner decorations — used by the dsBlueprint directive */
   .blueprint-corner {
     position: absolute;

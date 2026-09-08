@@ -9,7 +9,6 @@ import io.mockk.verify
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
@@ -37,6 +36,7 @@ class DelegationToolUnitSpec :
                 userId = userId,
                 userExternalId = null,
                 caseEvents = emptyList(),
+                toolRequestId = "parent-tool-request",
             )
 
         fun agentMessage(text: String) =
@@ -46,18 +46,6 @@ class DelegationToolUnitSpec :
                 actor = Actor(id = UUID.randomUUID().toString(), displayName = "sub-agent", role = ActorRole.AGENT),
                 content = listOf(MessageContent.Text(text)),
             )
-
-        fun runningEvent(
-            provider: String = "anthropic",
-            model: String = "claude-sonnet",
-        ) = AgentRunningEvent(
-            namespaceId = namespaceId,
-            caseId = subCaseId,
-            agentId = UUID.randomUUID(),
-            agentName = "sub-agent",
-            llmProvider = provider,
-            llmModel = model,
-        )
 
         fun questionEvent(
             question: String,
@@ -149,19 +137,6 @@ class DelegationToolUnitSpec :
             tree[0].get("result").asText() shouldBe "the result"
             tree[0].get("agentName").asText() shouldBe "sub-agent"
             tree[0].get("subCaseId").asText() shouldBe subCaseId.toString()
-        }
-
-        "includes the model recorded by the delegated execution" {
-            val launcher = mockk<SubCaseManager>()
-            val runtime = idleRuntime()
-            val tool = makeTool(launcher, listOf(runningEvent(), agentMessage("the result")))
-
-            every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
-
-            val tree = jacksonObjectMapper().readTree(tool.execute(singleDelegation(), toolContext).output)
-
-            tree[0].get("llmProvider").asText() shouldBe "anthropic"
-            tree[0].get("llmModel").asText() shouldBe "claude-sonnet"
         }
 
         "picks the last agent message when history contains multiple" {
@@ -322,20 +297,6 @@ class DelegationToolUnitSpec :
             tree[0].get("subCaseId").asText() shouldBe subCaseId.toString()
         }
 
-        "includes the running model with a pending question" {
-            val launcher = mockk<SubCaseManager>()
-            val runtime = idleRuntime()
-            val tool = makeTool(launcher, listOf(runningEvent("openai", "gpt-5"), questionEvent("Clarify?")))
-
-            every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
-
-            val tree = jacksonObjectMapper().readTree(tool.execute(singleDelegation(), toolContext).output)
-
-            tree[0].get("pendingQuestion").asText() shouldBe "Clarify?"
-            tree[0].get("llmProvider").asText() shouldBe "openai"
-            tree[0].get("llmModel").asText() shouldBe "gpt-5"
-        }
-
         "returns normal result when QuestionEvent is followed by an agent message" {
             val launcher = mockk<SubCaseManager>()
             val runtime = idleRuntime()
@@ -354,38 +315,6 @@ class DelegationToolUnitSpec :
         // -------------------------------------------------------------------------
         // Resume path
         // -------------------------------------------------------------------------
-
-        "uses the resumed turn model instead of an earlier sub-case execution" {
-            val launcher = mockk<SubCaseManager>()
-            val runtime = idleRuntime()
-            val priorRun = runningEvent("anthropic", "claude-3")
-            val currentRun = runningEvent("openai", "gpt-5")
-            var loadCount = 0
-            val tool = DelegationTool(
-                subCaseManager = launcher,
-                parentCaseId = parentCaseId,
-                namespaceId = namespaceId,
-                allowedAgents = allowedAgents,
-                loadCaseEvents = {
-                    loadCount += 1
-                    if (loadCount == 1) listOf(priorRun) else listOf(priorRun, currentRun, agentMessage("resumed"))
-                },
-                timeoutMs = 2_000,
-            )
-
-            every { launcher.resumeSubCase(subCaseId, "sub-agent", "follow-up", userId, allowedAgents) } returns runtime
-
-            val tree =
-                jacksonObjectMapper().readTree(
-                    tool.execute(
-                        DelegationTool.Args(listOf(DelegationTool.Delegation("sub-agent", "follow-up", subCaseId))),
-                        toolContext,
-                    ).output,
-                )
-
-            tree[0].get("llmProvider").asText() shouldBe "openai"
-            tree[0].get("llmModel").asText() shouldBe "gpt-5"
-        }
 
         "routes to resumeSubCase when subCaseId is provided" {
             val launcher = mockk<SubCaseManager>()

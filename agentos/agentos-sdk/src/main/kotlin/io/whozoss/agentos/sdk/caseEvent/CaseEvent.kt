@@ -40,6 +40,8 @@ enum class CaseEventType(
     PENDING_CONFIRMATION("PendingConfirmationEvent"),
     CONFIRMATION_RESOLVED("ConfirmationResolvedEvent"),
     CASE_UPDATED("CaseUpdatedEvent"),
+    SUB_CASE_STARTED("SubCaseStartedEvent"),
+    SUB_CASE_FINISHED("SubCaseFinishedEvent"),
     ;
 
     fun isFirstLevel(): Boolean = this in listOf(MESSAGE, QUESTION, ANSWER)
@@ -83,6 +85,8 @@ enum class CaseEventType(
     JsonSubTypes.Type(value = PendingConfirmationEvent::class, name = "PendingConfirmationEvent"),
     JsonSubTypes.Type(value = ConfirmationResolvedEvent::class, name = "ConfirmationResolvedEvent"),
     JsonSubTypes.Type(value = CaseUpdatedEvent::class, name = "CaseUpdatedEvent"),
+    JsonSubTypes.Type(value = SubCaseStartedEvent::class, name = "SubCaseStartedEvent"),
+    JsonSubTypes.Type(value = SubCaseFinishedEvent::class, name = "SubCaseFinishedEvent"),
 )
 sealed interface CaseEvent : Entity {
     val namespaceId: UUID
@@ -199,6 +203,10 @@ data class MessageEvent(
     val content: List<MessageContent>,
     /** Opaque application context at send time. Null when no context was provided. */
     val sessionContext: Map<String, Any?>? = null,
+    /** Durable execution attribution for agent-authored messages; null for user messages. */
+    val llmProvider: String? = null,
+    /** Durable execution attribution for agent-authored messages; null for user messages. */
+    val llmModel: String? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.MESSAGE
 }
@@ -449,6 +457,49 @@ data class ConfirmationResolvedEvent(
     val resultText: String = "",
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.CONFIRMATION_RESOLVED
+}
+
+/** Outcome of a delegated sub-case execution. */
+enum class SubCaseOutcome {
+    SUCCESS,
+    WAITING_USER,
+    ERROR,
+    TIMEOUT,
+    KILLED,
+}
+
+/** Emitted on the parent case immediately after a sub-case was started or resumed. */
+data class SubCaseStartedEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val delegationId: UUID,
+    /** Parent tool invocation that initiated this delegation batch. */
+    val toolRequestId: String,
+    val subCaseId: UUID,
+    val agentName: String,
+    val task: String,
+    val resumed: Boolean,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.SUB_CASE_STARTED
+}
+
+/** Emitted on the parent case when a delegated sub-case reaches a terminal delegation outcome. */
+data class SubCaseFinishedEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val delegationId: UUID,
+    /** Parent tool invocation that initiated this delegation batch. */
+    val toolRequestId: String,
+    val subCaseId: UUID,
+    val agentName: String,
+    val outcome: SubCaseOutcome,
+    val errorType: String? = null,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.SUB_CASE_FINISHED
 }
 
 /**

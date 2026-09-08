@@ -1,0 +1,126 @@
+@use 'libs/design-system/src/styles' as ds;
+
+:host {
+  display: block;
+  align-self: flex-start;
+  max-width: 90%;
+}
+.delegation-item {
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-left-width: 3px;
+}
+.delegation-item--success {
+  border-left-color: var(--color-success);
+}
+.delegation-item--waiting {
+  border-left-color: var(--color-warning);
+}
+.delegation-item--error {
+  border-left-color: var(--color-error);
+}
+.delegation-item__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+}
+.delegation-item__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+.delegation-item__status {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.delegation-item__status--success {
+  @include ds.badge-success;
+}
+.delegation-item__status--waiting {
+  @include ds.badge-warning;
+}
+.delegation-item__status--error {
+  @include ds.badge-error;
+}
+.delegation-item__open {
+  white-space: nowrap;
+  font-size: 0.75rem;
+  border: 1px solid var(--color-divider);
+  background: var(--color-surface);
+  color: var(--color-link);
+  cursor: pointer;
+  padding: 0.25rem 0.45rem;
+}
+.delegation-item__open:focus-visible,
+.delegation-item__toggle:focus-visible {
+  @include ds.focus-ring;
+}
+.delegation-item__body {
+  border-top: 1px solid var(--color-divider);
+  padding: 0.55rem 0.65rem;
+}
+.delegation-item__activity {
+  margin: 0 0 0.55rem;
+  padding-left: 1.15rem;
+  color: var(--color-text);
+  font-size: 0.8rem;
+}
+.delegation-item__activity-entry {
+  margin: 0.3rem 0;
+}
+.delegation-item__activity-entry span {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+}
+.delegation-item__activity-entry--error {
+  color: var(--color-error);
+}
+.delegation-item__activity-state {
+  margin: 0 0 0.55rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+.delegation-item__activity-state--error {
+  color: var(--color-error);
+}
+.delegation-item__task {
+  margin: 0 0 0.55rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+.delegation-item__task > span {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: var(--color-text-tertiary);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.delegation-item__task p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.delegation-item__resumed,
+.delegation-item__error-type {
+  display: inline-block;
+  margin-bottom: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+}
+.delegation-item__error-type {
+  color: var(--color-error);
+}

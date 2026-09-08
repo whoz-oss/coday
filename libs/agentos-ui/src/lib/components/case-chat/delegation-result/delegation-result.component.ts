@@ -6,6 +6,7 @@ import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
 
 interface DelegationResult {
+  delegationId: string
   agentName: string
   model?: string
   state: 'success' | 'pending' | 'error'
@@ -34,6 +35,8 @@ export class DelegationResultComponent {
   readonly rawPayload = input<string | null>(null)
   readonly namespaceId = input.required<string>()
   readonly showTechnical = input(false)
+  /** Hides agent/status/case metadata when an enclosing delegation card owns that context. */
+  readonly showHeader = input(true)
   /** Raw fallback preserves the parent tool call's collapsed-by-default behavior. */
   readonly expanded = input(false)
 
@@ -65,9 +68,10 @@ export class DelegationResultComponent {
   private parseEntry(entry: unknown): DelegationResult | null {
     if (!entry || typeof entry !== 'object') return null
     const value = entry as Record<string, unknown>
+    const delegationId = typeof value['delegationId'] === 'string' ? value['delegationId'] : null
     const agentName = typeof value['agentName'] === 'string' ? value['agentName'] : null
     const subCaseId = typeof value['subCaseId'] === 'string' ? value['subCaseId'] : undefined
-    if (!agentName || typeof value['success'] !== 'boolean') return null
+    if (!delegationId || !agentName || typeof value['success'] !== 'boolean') return null
 
     const result = typeof value['result'] === 'string' ? value['result'] : null
     const pendingQuestion = typeof value['pendingQuestion'] === 'string' ? value['pendingQuestion'] : null
@@ -86,6 +90,7 @@ export class DelegationResultComponent {
 
     if (pendingQuestion !== null && value['success'] === true) {
       return {
+        delegationId,
         agentName,
         model,
         subCaseId,
@@ -95,10 +100,18 @@ export class DelegationResultComponent {
       }
     }
     if (result !== null && value['success'] === true) {
-      return { agentName, model, subCaseId, state: 'success', resultHtml: this.renderMarkdown(result) }
+      return { delegationId, agentName, model, subCaseId, state: 'success', resultHtml: this.renderMarkdown(result) }
     }
     if (error !== null && value['success'] === false) {
-      return { agentName, model, subCaseId, state: 'error', errorHtml: this.renderMarkdown(error), errorType }
+      return {
+        delegationId,
+        agentName,
+        model,
+        subCaseId,
+        state: 'error',
+        errorHtml: this.renderMarkdown(error),
+        errorType,
+      }
     }
     return null
   }

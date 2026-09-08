@@ -384,7 +384,7 @@ class AgentAdvanced(
         if (!shouldContinue()) return GateOutcome.ContinueLoop
 
         val tool = context.tools.firstOrNull { it.name == intention.toolName }
-        val toolCtx = tool?.let { buildToolContext(it.name, namespaceId) }
+        val toolCtx = tool?.let { buildToolContext(it.name, namespaceId, toolRequestId) }
         val confirmationMode =
             tool?.getConfirmationMode(parameters.args, toolCtx) ?: ConfirmationMode.NONE
         return when {
@@ -534,6 +534,8 @@ class AgentAdvanced(
                         caseId = caseId,
                         actor = Actor(id.toString(), name, ActorRole.AGENT),
                         content = listOf(MessageContent.Text(question)),
+                        llmProvider = llmProvider,
+                        llmModel = llmModel,
                     ),
                 )
                 emitEvent(
@@ -658,6 +660,8 @@ class AgentAdvanced(
                 caseId = caseId,
                 actor = Actor(id.toString(), name, ActorRole.AGENT),
                 content = listOf(MessageContent.Text(errorText)),
+                llmProvider = llmProvider,
+                llmModel = llmModel,
             ),
             WarnEvent(
                 namespaceId = namespaceId,
@@ -758,6 +762,8 @@ class AgentAdvanced(
                                         caseId = caseId,
                                         actor = Actor(id.toString(), name, ActorRole.AGENT),
                                         content = listOf(MessageContent.Text(clarificationQuestion)),
+                                        llmProvider = llmProvider,
+                                        llmModel = llmModel,
                                     )
                                 emitEvent(clarification)
                                 appendTo += clarification
@@ -774,7 +780,7 @@ class AgentAdvanced(
                                         tool = tool,
                                         confirmed = confirmed,
                                         pending = pending,
-                                        toolCtx = buildToolContext(pending.toolName, namespaceId),
+                                        toolCtx = buildToolContext(pending.toolName, namespaceId, pending.toolRequestId),
                                         namespaceId = namespaceId,
                                         caseId = caseId,
                                         emitEvent = emitEvent,
@@ -874,6 +880,8 @@ class AgentAdvanced(
                 caseId = caseId,
                 actor = Actor(id.toString(), name, ActorRole.AGENT),
                 content = listOf(MessageContent.Text("$decisionPrefix$resultText")),
+                llmProvider = llmProvider,
+                llmModel = llmModel,
             )
         emitEvent(resolutionMessage)
         appendTo += resolutionMessage
@@ -917,12 +925,14 @@ class AgentAdvanced(
     private fun buildToolContext(
         toolName: String,
         namespaceId: UUID,
+        toolRequestId: String? = null,
     ): ToolContext =
         ToolContext(
             namespaceId = namespaceId,
             userId = userId,
             userExternalId = userExternalId,
             caseEvents = filterEventsByIntegration(toolName, caseEventsProvider()),
+            toolRequestId = toolRequestId,
         )
 
     private fun filterEventsByIntegration(
@@ -937,6 +947,10 @@ class AgentAdvanced(
                 when (event) {
                     is ToolRequestEvent -> event.toolName.startsWith("${integrationPrefix}__")
                     is ToolResponseEvent -> event.toolName.startsWith("${integrationPrefix}__")
+                    // Parent delegation lifecycle is cross-integration context.
+                    is SubCaseStartedEvent,
+                    is SubCaseFinishedEvent,
+                    -> true
                     else -> true
                 }
             }
@@ -1046,6 +1060,8 @@ class AgentAdvanced(
                     caseId = caseId,
                     actor = Actor(id.toString(), name, ActorRole.AGENT),
                     content = listOf(MessageContent.Text(content)),
+                    llmProvider = llmProvider,
+                    llmModel = llmModel,
                 )
             emitEvent(msg)
         }
@@ -1513,6 +1529,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                                 userId = userId,
                                 userExternalId = userExternalId,
                                 caseEvents = filteredEvents,
+                                toolRequestId = toolRequest.toolRequestId,
                             ),
                         )
                     val durationMs =

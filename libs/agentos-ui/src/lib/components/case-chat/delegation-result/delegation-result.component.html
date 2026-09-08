@@ -1,5 +1,9 @@
 @if (results(); as delegationResults) {
-  <div class="delegation-results" aria-label="Delegated agent results">
+  <div
+    class="delegation-results"
+    [class.delegation-results--embedded]="!showHeader()"
+    aria-label="Delegated agent results"
+  >
     @for (delegation of delegationResults; track delegation.subCaseId ?? delegation.agentName) {
       <article
         class="delegation-results__card"
@@ -7,29 +11,31 @@
         [class.delegation-results__card--pending]="delegation.state === 'pending'"
         [class.delegation-results__card--error]="delegation.state === 'error'"
       >
-        <header class="delegation-results__header">
-          <strong class="delegation-results__agent-name">{{ delegation.agentName }}</strong>
-          @if (delegation.model) {
-            <span class="delegation-results__model">({{ delegation.model }})</span>
-          }
-          <span
-            class="delegation-results__state"
-            [class.delegation-results__state--success]="delegation.state === 'success'"
-            [class.delegation-results__state--pending]="delegation.state === 'pending'"
-            [class.delegation-results__state--error]="delegation.state === 'error'"
-          >
-            {{ delegation.state }}
-          </span>
-        </header>
+        @if (showHeader()) {
+          <header class="delegation-results__header">
+            <strong class="delegation-results__agent-name">{{ delegation.agentName }}</strong>
+            @if (delegation.model) {
+              <span class="delegation-results__model">({{ delegation.model }})</span>
+            }
+            <span
+              class="delegation-results__state"
+              [class.delegation-results__state--success]="delegation.state === 'success'"
+              [class.delegation-results__state--pending]="delegation.state === 'pending'"
+              [class.delegation-results__state--error]="delegation.state === 'error'"
+            >
+              {{ delegation.state }}
+            </span>
+          </header>
 
-        @if (delegation.subCaseId) {
-          <a
-            class="delegation-results__case"
-            href=""
-            (click)="$event.preventDefault(); openSubCase(delegation.subCaseId)"
-          >
-            Case {{ delegation.subCaseId }}
-          </a>
+          @if (delegation.subCaseId) {
+            <a
+              class="delegation-results__case"
+              href=""
+              (click)="$event.preventDefault(); openSubCase(delegation.subCaseId)"
+            >
+              Case {{ delegation.subCaseId }}
+            </a>
+          }
         }
 
         @if (delegation.resultHtml) {

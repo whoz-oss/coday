@@ -2,7 +2,7 @@
 export * from './lib/index'
 
 // Custom — hand-written, safe from regeneration
-export { CaseEventSseService } from './custom/case-event-sse.service'
+export { CASE_EVENT_SSE_NAME, CaseEventSseService, parseCaseEventSsePayload } from './custom/case-event-sse.service'
 export { IntegrationConfigExportService } from './custom/integration-config-export.service'
 export { AgentConfigExportService } from './custom/agent-config-export.service'
 export { PromptExportService } from './custom/prompt-export.service'

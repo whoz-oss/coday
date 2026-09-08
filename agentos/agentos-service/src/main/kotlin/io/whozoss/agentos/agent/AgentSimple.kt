@@ -233,6 +233,8 @@ class AgentSimple(
                             caseId = caseId,
                             actor = Actor(id.toString(), name, ActorRole.AGENT),
                             content = listOf(MessageContent.Text(content)),
+                            llmProvider = llmProvider,
+                            llmModel = llmModel,
                         ),
                     )
                 }
@@ -523,6 +525,7 @@ class AgentSimple(
                         userId = userId,
                         userExternalId = userExternalId,
                         caseEvents = filteredEvents,
+                        toolRequestId = toolRequestId,
                     )
 
                 val executionResult: ToolExecutionResult

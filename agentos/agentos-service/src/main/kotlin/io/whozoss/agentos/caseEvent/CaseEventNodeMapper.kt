@@ -21,6 +21,9 @@ import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseOutcome
 import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -53,6 +56,8 @@ class CaseEventNodeMapper(
             is AgentFinishedEventNode -> toDomain(node)
             is AgentRunningEventNode -> toDomain(node)
             is MessageEventNode -> toDomain(node)
+            is SubCaseStartedEventNode -> toDomain(node)
+            is SubCaseFinishedEventNode -> toDomain(node)
             is ToolRequestEventNode -> toDomain(node)
             is ToolResponseEventNode -> toDomain(node)
             is ThinkingEventNode -> toDomain(node)
@@ -74,6 +79,8 @@ class CaseEventNodeMapper(
             is AgentFinishedEvent -> fromDomain(event)
             is AgentRunningEvent -> fromDomain(event)
             is MessageEvent -> fromDomain(event)
+            is SubCaseStartedEvent -> fromDomain(event)
+            is SubCaseFinishedEvent -> fromDomain(event)
             is ToolRequestEvent -> fromDomain(event)
             is ToolResponseEvent -> fromDomain(event)
             is ThinkingEvent -> fromDomain(event)
@@ -203,11 +210,29 @@ class CaseEventNodeMapper(
                     node.actorRole,
                     node.contentJson,
                     node.contextJson,
+                    node.llmProvider,
+                    node.llmModel,
                     node.created,
                     node.createdBy,
                     node.modified,
                     node.modifiedBy,
                     removed,
+                )
+            }
+
+            is SubCaseStartedEventNode -> {
+                SubCaseStartedEventNode(
+                    node.id, node.caseId, node.namespaceId, node.timestamp, node.delegationId, node.toolRequestId, node.subCaseId,
+                    node.agentName, node.task, node.resumed, node.created, node.createdBy, node.modified,
+                    node.modifiedBy, removed,
+                )
+            }
+
+            is SubCaseFinishedEventNode -> {
+                SubCaseFinishedEventNode(
+                    node.id, node.caseId, node.namespaceId, node.timestamp, node.delegationId, node.toolRequestId, node.subCaseId,
+                    node.agentName, node.outcome, node.errorType, node.created, node.createdBy, node.modified,
+                    node.modifiedBy, removed,
                 )
             }
 
@@ -459,6 +484,22 @@ class CaseEventNodeMapper(
             actor = Actor(id = n.actorId, displayName = n.actorDisplayName, role = ActorRole.valueOf(n.actorRole)),
             content = serializer.deserialize(n.contentJson),
             sessionContext = n.contextJson?.let { serializer.deserializeMetadata(it) },
+            llmProvider = n.llmProvider,
+            llmModel = n.llmModel,
+        )
+
+    private fun toDomain(n: SubCaseStartedEventNode) =
+        SubCaseStartedEvent(
+            metadata = metadata(n), namespaceId = UUID.fromString(n.namespaceId), caseId = UUID.fromString(n.caseId),
+            timestamp = n.timestamp, delegationId = UUID.fromString(n.delegationId), toolRequestId = n.toolRequestId,
+            subCaseId = UUID.fromString(n.subCaseId), agentName = n.agentName, task = n.task, resumed = n.resumed,
+        )
+
+    private fun toDomain(n: SubCaseFinishedEventNode) =
+        SubCaseFinishedEvent(
+            metadata = metadata(n), namespaceId = UUID.fromString(n.namespaceId), caseId = UUID.fromString(n.caseId),
+            timestamp = n.timestamp, delegationId = UUID.fromString(n.delegationId), toolRequestId = n.toolRequestId,
+            subCaseId = UUID.fromString(n.subCaseId), agentName = n.agentName, outcome = SubCaseOutcome.valueOf(n.outcome), errorType = n.errorType,
         )
 
     private fun toDomain(n: ToolRequestEventNode) =
@@ -680,11 +721,29 @@ class CaseEventNodeMapper(
             actorRole = e.actor.role.name,
             contentJson = serializer.serialize(e.content),
             contextJson = e.sessionContext?.let { serializer.serializeMetadata(it) },
+            llmProvider = e.llmProvider,
+            llmModel = e.llmModel,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
             modifiedBy = e.metadata.modifiedBy,
             removed = e.metadata.removed.takeIf { it },
+        )
+
+    private fun fromDomain(e: SubCaseStartedEvent) =
+        SubCaseStartedEventNode(
+            id = e.id.toString(), caseId = e.caseId.toString(), namespaceId = e.namespaceId.toString(), timestamp = e.timestamp,
+            delegationId = e.delegationId.toString(), toolRequestId = e.toolRequestId, subCaseId = e.subCaseId.toString(),
+            agentName = e.agentName, task = e.task, resumed = e.resumed, created = e.metadata.created, createdBy = e.metadata.createdBy,
+            modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy, removed = e.metadata.removed.takeIf { it },
+        )
+
+    private fun fromDomain(e: SubCaseFinishedEvent) =
+        SubCaseFinishedEventNode(
+            id = e.id.toString(), caseId = e.caseId.toString(), namespaceId = e.namespaceId.toString(), timestamp = e.timestamp,
+            delegationId = e.delegationId.toString(), toolRequestId = e.toolRequestId, subCaseId = e.subCaseId.toString(),
+            agentName = e.agentName, outcome = e.outcome.name, errorType = e.errorType, created = e.metadata.created, createdBy = e.metadata.createdBy,
+            modified = e.metadata.modified, modifiedBy = e.metadata.modifiedBy, removed = e.metadata.removed.takeIf { it },
         )
 
     private fun fromDomain(e: ToolRequestEvent) =

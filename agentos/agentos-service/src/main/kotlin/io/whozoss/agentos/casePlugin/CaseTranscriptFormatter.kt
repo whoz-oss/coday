@@ -19,6 +19,8 @@ import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 
 /**
@@ -99,6 +101,11 @@ object CaseTranscriptFormatter {
             is ConfirmationResolvedEvent -> {
                 if (includesTechnicalEvents) "CONFIRMATION_RESOLVED: confirmed=${event.confirmed} ${event.resultText}" else null
             }
+
+            // Parent-case delegation lifecycle is structured UI/orchestration state, not transcript prose.
+            // It is intentionally excluded even from technical transcripts to avoid duplicating tool results.
+            is SubCaseStartedEvent -> null
+            is SubCaseFinishedEvent -> null
 
             // ── Transient events — never persisted, silently ignored ───────────────
             is ThinkingEvent -> null

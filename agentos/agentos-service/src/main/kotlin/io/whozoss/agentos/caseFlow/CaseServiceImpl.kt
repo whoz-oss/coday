@@ -746,6 +746,14 @@ class CaseServiceImpl(
         handleStatusChange(caseId, CaseStatus.KILLED)
     }
 
+    override fun emitParentEvent(event: CaseEvent) {
+        val saved = storeEvent(event)
+        activeRuntimes[event.caseId]?.let { runtime ->
+            runtime.pushEvents(listOf(saved))
+            runtime.emitEvent(saved)
+        }
+    }
+
     override fun killCase(caseId: UUID) {
         logger.info { "Killing sub-case and its descendants: $caseId" }
         val descendants = caseRepository.findActiveDescendants(caseId)
