@@ -1,7 +1,5 @@
 package io.whozoss.agentos.sdk.tool
 
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import java.util.UUID
@@ -40,25 +38,6 @@ class StandardToolSpec : StringSpec() {
                 ToolExecutionResult.success(input?.timezone ?: "null-input")
         }
 
-    // Array-typed params: LLMs regularly send a bare scalar for a single-element array.
-    data class ListInput(
-        val path: String? = null,
-        val fileTypes: List<String>? = null,
-        val pages: List<Int>? = null,
-    )
-
-    val listTool =
-        object : StandardTool<ListInput> {
-            override val name = "ListTool"
-            override val description = "List tool"
-            override val version = "1.0.0"
-            override val paramType: Class<ListInput> = ListInput::class.java
-            override val inputSchema = "{}"
-
-            override suspend fun execute(input: ListInput?, context: ToolContext): ToolExecutionResult =
-                ToolExecutionResult.success("${input?.fileTypes}|${input?.pages}")
-        }
-
     init {
 
         // null/blank args → execute(null) → tool decides how to handle missing input.
@@ -87,31 +66,6 @@ class StandardToolSpec : StringSpec() {
                 },
                 dummyContext,
             ).output shouldBe "America/New_York"
-        }
-
-        // Regression (prod): the LLM sent "fileTypes": "kt" instead of ["kt"] and the strict
-        // mapper rejected it before execute() could run. A bare scalar is now accepted for
-        // array-typed properties (ACCEPT_SINGLE_VALUE_AS_ARRAY).
-        "executeWithJson wraps a bare scalar into a single-element list" {
-            val prodPayload = """{"path":"agentos","fileTypes":"kt"}"""
-            listTool.executeWithJson(prodPayload, dummyContext).output shouldBe "[kt]|null"
-            listTool.executeWithJson("""{"pages":3}""", dummyContext).output shouldBe "null|[3]"
-        }
-
-        // Counterpart to the test above: the coercion is unconditional, so a delimited or empty
-        // scalar becomes one element rather than being split or rejected. Pinned so the surprising
-        // half of the trade-off is visible and cannot change silently.
-        "executeWithJson does not split a delimited scalar" {
-            listTool.executeWithJson("""{"fileTypes":"kt,java"}""", dummyContext).output shouldBe "[kt,java]|null"
-            listTool.executeWithJson("""{"fileTypes":""}""", dummyContext).output shouldBe "[]|null"
-        }
-
-        // FAIL_ON_UNKNOWN_PROPERTIES stays on: a misnamed parameter must surface as an error the
-        // LLM can correct, not be silently dropped (e.g. an unfiltered search).
-        "executeWithJson still rejects an unknown property" {
-            shouldThrow<UnrecognizedPropertyException> {
-                listTool.executeWithJson("""{"file_types":["kt"]}""", dummyContext)
-            }
         }
 
         // getConfirmationMode(args, ctx) defaults to NONE when not overridden.

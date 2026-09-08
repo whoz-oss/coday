@@ -553,14 +553,15 @@ class AgentSimpleToolCallbackUnitSpec :
         // Tool failures are tool results, not run failures
         // -------------------------------------------------------------------------
 
-        "a bare scalar for an array parameter is coerced and the tool runs" {
-            // Regression (prod): the LLM sent {"fileTypes":"kt"} to FILES__searchFiles. The SDK
-            // mapper rejected the scalar before execute() and the raw exception aborted the run.
+        "the exact production payload is returned as a tool error instead of aborting the run" {
+            // Regression (prod): the LLM sent "fileTypes": "kt" (a scalar) to FILES__searchFiles.
+            // The SDK mapper rejects it before execute(), and the raw MismatchedInputException
+            // escaping the ToolCallback killed the whole turn. It must come back to the model as
+            // an explicit tool error it can correct on the next call.
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val receivedInputs = mutableListOf<ArrayInput?>()
             val arrayTool =
                 object : StandardTool<ArrayInput> {
                     override val name = "FILES__searchFiles"
@@ -572,29 +573,35 @@ class AgentSimpleToolCallbackUnitSpec :
                     override suspend fun execute(
                         input: ArrayInput?,
                         context: ToolContext,
-                    ): ToolExecutionResult {
-                        receivedInputs += input
-                        return ToolExecutionResult.success("found 1 file")
-                    }
+                    ): ToolExecutionResult = ToolExecutionResult.success("should not be reached")
                 }
 
+            var returnedToLlm: String? = null
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             val toolCallbackSlot = slot<List<ToolCallback>>()
             every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
                 val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "FILES__searchFiles" }
                 // Exact shape sent by the LLM in production
-                cb.call("""{"path":"agentos","fileName":"Repo","fileTypes":"kt"}""")
+                returnedToLlm = cb.call("""{"path":"agentos","fileName":"Repo","fileTypes":"kt"}""")
                 mockStreamSpec
             }
-            every { mockStreamSpec.content() } returns Flux.just("Found it")
+            every { mockStreamSpec.content() } returns Flux.just("Let me fix the call")
 
             val agent = makeAgent(agentId, mockChatClient, listOf(arrayTool))
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "find the repo"))).toList()
 
-            receivedInputs.single()?.fileTypes shouldBe listOf("kt")
-            events.filterIsInstance<ToolResponseEvent>().single().success shouldBe true
+            val returned = returnedToLlm
+            returned shouldNotBe null
+            returned shouldContain "Error executing tool"
+            returned shouldContain "'kt'"
+
+            val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
+            toolResponse.success shouldBe false
+            (toolResponse.output as MessageContent.Text).content shouldBe returned
+
             events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
         }
 
         "a deserialization failure is returned to the LLM instead of aborting the run" {
