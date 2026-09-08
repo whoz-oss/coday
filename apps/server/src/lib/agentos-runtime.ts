@@ -279,6 +279,8 @@ export async function startAgentos(
     // Replace with real cryptographic values when secret management is in place.
     env: {
       ...process.env,
+      // Setup default runCostThreshold
+      AGENTOS_LIMITS_RUN_COST_THRESHOLD: '10',
       // Fallback to NONE only if not already set — real values from the environment
       // take precedence (production deployments with actual encryption keys).
       AGENTOS_ENCRYPTION_KEY: process.env.AGENTOS_ENCRYPTION_KEY ?? 'NONE',
