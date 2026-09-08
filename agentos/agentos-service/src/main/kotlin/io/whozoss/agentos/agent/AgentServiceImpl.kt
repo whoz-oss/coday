@@ -8,6 +8,8 @@ import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.auth.OAuthFlowService
+import io.whozoss.agentos.auth.StaticCredentialFactory
+import io.whozoss.agentos.authSetting.AuthSetting
 import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
@@ -29,6 +31,7 @@ import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.auth.CredentialProvider
+import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -65,6 +68,7 @@ class AgentServiceImpl(
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
     private val oAuthFlowService: OAuthFlowService,
+    private val staticCredentialFactory: StaticCredentialFactory,
     private val authServiceFactory: AuthServiceFactory,
     private val idCompressorService: IdCompressorService,
     private val exchangeStorageService: ExchangeStorageService,
@@ -276,6 +280,13 @@ class AgentServiceImpl(
                         // it requires making `suspend` the entire chain `ToolPlugin.provideTools` →
                         // `ToolContext.credentialProvider` → `CredentialProvider` — three elements
                         // of the SDK public contract. Tracked in #1198.
+                        //
+                        // Non-OAuth types (API_KEY / BEARER_TOKEN / BASIC_AUTH) take the `else`
+                        // branch below: the per-user Credential row is looked up first and wins
+                        // when present; otherwise the static secret carried by the resolved
+                        // AuthSetting is synthesised in memory by `StaticCredentialFactory`.
+                        // Nothing is persisted on that path, and OAuth types are never
+                        // synthesised — their credentials only ever come from OAuthFlowService.
                         val credential =
                             kotlinx.coroutines.runBlocking {
                                 oAuthFlowService.resolveOAuthCredential(
@@ -306,13 +317,18 @@ class AgentServiceImpl(
                                 "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, using direct credential lookup"
                             }
                         }
-                        val credential = scopedAuthService.resolveCredential(setting.metadata.id)
+                        val credential =
+                            scopedAuthService.resolveCredential(setting.metadata.id)
+                                ?: staticCredentialFor(userId, setting)
                         if (credential == null) {
                             logger.warn {
                                 "CredentialProvider for '$authSettingName': no credential found for authSetting ${setting.metadata.id}"
                             }
                         } else {
-                            logger.debug { "CredentialProvider for '$authSettingName': direct credential resolved" }
+                            logger.debug {
+                                "CredentialProvider for '$authSettingName': credential resolved " +
+                                    "(per-user row or static AuthSetting secret)"
+                            }
                         }
                         credential
                     }
@@ -788,6 +804,17 @@ class AgentServiceImpl(
         }
         return tools
     }
+
+    /**
+     * Static-secret fallback used when no per-user Credential row exists: synthesised in memory
+     * from the resolved [setting], never persisted. OAuth types are never synthesised — their
+     * credentials only come from [OAuthFlowService].
+     */
+    private fun staticCredentialFor(
+        userId: UUID,
+        setting: AuthSetting,
+    ): Credential? =
+        if (setting.authType in OAUTH_AUTH_TYPES) null else staticCredentialFactory.fromAuthSetting(userId, setting)
 
     companion object : KLogging() {
         private val OAUTH_AUTH_TYPES =
