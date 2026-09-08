@@ -1,5 +1,6 @@
 package io.whozoss.agentos.sdk.tool
 
+import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool.Companion.objectMapper
 
@@ -170,6 +171,10 @@ interface StandardTool<T> {
     ): EnrichmentResult = EnrichmentResult(success = true)
 
     companion object {
-        private val objectMapper = jacksonObjectMapper()
+        // LLMs regularly emit a bare scalar for a single-element array (prod: "fileTypes": "kt").
+        // FAIL_ON_UNKNOWN_PROPERTIES stays on: schemas declare additionalProperties=false and a
+        // misnamed parameter must surface as a tool error, not be silently ignored.
+        private val objectMapper =
+            jacksonObjectMapper().enable(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
     }
 }

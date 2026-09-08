@@ -559,28 +559,17 @@ class AgentSimple(
                                 )
                                 throw e
                             } catch (e: Exception) {
-                                toolMetricsService?.stopTimerAndSendMetrics(
-                                    sample,
-                                    tool.name,
-                                    name,
-                                    namespaceId,
-                                    success = false,
-                                )
-                                sendEvent(
-                                    ToolResponseEvent(
-                                        namespaceId = namespaceId,
-                                        caseId = caseId,
-                                        toolRequestId = toolRequestId,
-                                        toolName = tool.name,
-                                        output = MessageContent.Text("Error: ${e.message}"),
-                                        success = false,
-                                    ),
-                                )
-                                throw e
+                                // A tool failure is a tool result, not a run failure: the message goes
+                                // back to the LLM so it can correct its call (same contract as
+                                // AgentAdvanced.executeTool). Spring AI only turns ToolExecutionException
+                                // into a tool result; any other exception escaping call() errors the
+                                // stream and ends the turn.
+                                logger.warn(e) { "[AgentSimple] error during tool execution for ${tool.name}" }
+                                ToolExecutionResult.error("Error executing tool: ${e.message}")
                             }
                     }
                 logger.info { "tool '${tool.name}' executed in $toolDuration" }
-                // Success path: stop the timer here (exception paths stop it before re-throwing).
+                // Success and tool-error paths stop the timer here (the interrupt path stops it before rethrowing).
                 toolMetricsService?.stopTimerAndSendMetrics(
                     sample,
                     tool.name,

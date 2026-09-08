@@ -543,4 +543,155 @@ class AgentSimpleToolCallbackUnitSpec :
             events shouldHaveAtLeastSize 3
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
         }
+
+        // -------------------------------------------------------------------------
+        // Tool failures are tool results, not run failures
+        // -------------------------------------------------------------------------
+
+        "a bare scalar for an array parameter is coerced and the tool runs" {
+            // Regression (prod): the LLM sent {"fileTypes":"kt"} to FILES__searchFiles. The SDK
+            // mapper rejected the scalar before execute() and the raw exception aborted the run.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val receivedInputs = mutableListOf<ArrayInput?>()
+            val arrayTool =
+                object : StandardTool<ArrayInput> {
+                    override val name = "FILES__searchFiles"
+                    override val description = "Search files"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType: Class<ArrayInput> = ArrayInput::class.java
+
+                    override suspend fun execute(
+                        input: ArrayInput?,
+                        context: ToolContext,
+                    ): ToolExecutionResult {
+                        receivedInputs += input
+                        return ToolExecutionResult.success("found 1 file")
+                    }
+                }
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "FILES__searchFiles" }
+                // Exact shape sent by the LLM in production
+                cb.call("""{"path":"agentos","fileName":"Repo","fileTypes":"kt"}""")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.just("Found it")
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(arrayTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "find the repo"))).toList()
+
+            receivedInputs.single()?.fileTypes shouldBe listOf("kt")
+            events.filterIsInstance<ToolResponseEvent>().single().success shouldBe true
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+        }
+
+        "a deserialization failure is returned to the LLM instead of aborting the run" {
+            // Spring AI only turns ToolExecutionException into a tool result; any other exception
+            // escaping ToolCallback.call() errors the stream and ends the turn. A malformed
+            // argument must come back to the model as a tool error so it can correct its call.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val arrayTool =
+                object : StandardTool<ArrayInput> {
+                    override val name = "FILES__searchFiles"
+                    override val description = "Search files"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType: Class<ArrayInput> = ArrayInput::class.java
+
+                    override suspend fun execute(
+                        input: ArrayInput?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("should not be reached")
+                }
+
+            var returnedToLlm: String? = null
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "FILES__searchFiles" }
+                // Misnamed property: FAIL_ON_UNKNOWN_PROPERTIES stays on, Jackson must reject it
+                returnedToLlm = cb.call("""{"file_types":"kt"}""")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.just("Let me retry")
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(arrayTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "find the repo"))).toList()
+
+            val returned = returnedToLlm
+            returned shouldNotBe null
+            returned shouldContain "Error executing tool"
+            returned shouldContain "file_types"
+
+            val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
+            toolResponse.success shouldBe false
+            (toolResponse.output as MessageContent.Text).content shouldBe returned
+            toolResponse.durationMs shouldNotBe null
+
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "a tool that throws during execute returns an error result instead of aborting the run" {
+            // Same contract for any failure, not only Jackson: parity with AgentAdvanced.executeTool.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val throwingTool =
+                object : StandardTool<Nothing> {
+                    override val name = "Boom"
+                    override val description = "Always fails"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType: Class<Nothing>? = null
+
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = throw IllegalStateException("boom")
+                }
+
+            var returnedToLlm: String? = null
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "Boom" }
+                returnedToLlm = cb.call("{}")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.just("That failed")
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(throwingTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "go"))).toList()
+
+            returnedToLlm shouldBe "Error executing tool: boom"
+
+            val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
+            toolResponse.success shouldBe false
+            (toolResponse.output as MessageContent.Text).content shouldBe "Error executing tool: boom"
+            toolResponse.durationMs shouldNotBe null
+
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
     })
+
+/** Mirrors the three properties the LLM sent to FILES__searchFiles in production. */
+private data class ArrayInput(
+    val fileName: String? = null,
+    val path: String? = null,
+    val fileTypes: List<String>? = null,
+)
