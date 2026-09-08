@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk.api.namespace
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import java.util.UUID
 
@@ -47,5 +48,6 @@ data class NamespaceDto(
                 "Null means inherit from the platform default. Applies to all cases in this namespace " +
                 "that do not declare their own threshold.",
     )
+    @field:Min(value = 0, message = "runCostThreshold must be zero or positive")
     val runCostThreshold: Double? = null,
 )

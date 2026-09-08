@@ -3,6 +3,7 @@ package io.whozoss.agentos.sdk.api.case
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotNull
 import java.time.Instant
 import java.util.UUID
@@ -55,6 +56,7 @@ data class CaseDto(
                 "Null means inherit from the namespace or platform default (never \"no limit\" or \"zero\"). " +
                 "Set upfront for costly runs, or written by the enforcement mechanism on continuation.",
     )
+    @field:Min(value = 0, message = "runCostThreshold must be zero or positive")
     val runCostThreshold: Double? = null,
     val created: Instant? = null,
     val modified: Instant? = null,

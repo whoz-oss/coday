@@ -184,6 +184,7 @@ class CaseController(
                 namespaceId = resource.namespaceId,
                 status = resource.status,
                 title = resource.title ?: "Case ${metadata.id}",
+                runCostThreshold = resource.runCostThreshold,
             )
         val saved = caseService.create(domain)
         val userId = userService.getCurrentUser().id.toString()

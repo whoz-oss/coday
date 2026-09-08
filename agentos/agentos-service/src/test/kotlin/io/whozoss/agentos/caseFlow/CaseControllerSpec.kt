@@ -179,6 +179,23 @@ class CaseControllerSpec :
             }
         }
 
+        "create preserves runCostThreshold from the request" {
+            val threshold = 42.5
+            val r = caseResource(id = null).copy(runCostThreshold = threshold)
+            val saved = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.create(any()) } answers {
+                val arg = firstArg<Case>()
+                arg.runCostThreshold shouldBe threshold
+                saved
+            }
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(r)
+
+            verify(exactly = 1) { caseService.create(any()) }
+        }
+
         "create still succeeds when the auto-ADMIN grant fails (logs warning, no rollback)" {
             val r = caseResource(id = null)
             val saved = caseEntity()
