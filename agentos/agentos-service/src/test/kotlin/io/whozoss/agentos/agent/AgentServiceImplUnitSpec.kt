@@ -143,7 +143,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         alias: String? = "sonnet",
         priority: Int = 0,
         temperature: Double? = null,
-        maxTokens: Int? = null,
+        maxCompletionTokens: Int? = null,
     ) = AiModel(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         aiProviderId = aiProviderId,
@@ -152,7 +152,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         alias = alias,
         priority = priority,
         temperature = temperature,
-        maxTokens = maxTokens,
+        maxCompletionTokens = maxCompletionTokens,
     )
 
     private fun agentConfig(
