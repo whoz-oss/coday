@@ -2930,25 +2930,6 @@ paths:
           description: OK
       tags:
       - usage-record-controller
-  /api/usage-records/{id}:
-    get:
-      operationId: getByIdUsageRecord
-      parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UsageRecord"
-          description: OK
-      tags:
-      - usage-record-controller
   /api/user-groups:
     get:
       operationId: findByNamespaceIdUserGroup
