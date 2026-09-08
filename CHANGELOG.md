@@ -1,3 +1,13 @@
+## 1.1.2 (2026-09-08)
+
+### 🩹 Fixes
+
+- #1310 MCP HTTP root endpoint unreachable due to forced SDK default ([#1313](https://github.com/whoz-oss/coday/pull/1313), [#1310](https://github.com/whoz-oss/coday/issues/1310))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 1.1.1 (2026-09-08)
 
 ### 🩹 Fixes
