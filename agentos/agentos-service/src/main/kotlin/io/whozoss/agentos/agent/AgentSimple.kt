@@ -19,6 +19,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -559,28 +560,27 @@ class AgentSimple(
                                 )
                                 throw e
                             } catch (e: Exception) {
-                                toolMetricsService?.stopTimerAndSendMetrics(
-                                    sample,
-                                    tool.name,
-                                    name,
-                                    namespaceId,
-                                    success = false,
+                                // Cancellation and thread interruption (runBlocking above) are signals,
+                                // not tool failures: keep unwinding the run instead of turning them
+                                // into a result the LLM would be re-prompted on.
+                                if (e is CancellationException || e is InterruptedException) throw e
+                                // A tool failure is a tool result, not a run failure: the message goes
+                                // back to the LLM so it can correct its call (same contract as
+                                // AgentAdvanced.executeTool). Spring AI only turns ToolExecutionException
+                                // into a tool result; any other exception escaping call() errors the
+                                // stream and ends the turn.
+                                logger.warn(e) { "[AgentSimple] error during tool execution for ${tool.name}" }
+                                val reason = e.message ?: e::class.simpleName ?: "unknown error"
+                                ToolExecutionResult.error(
+                                    "Error executing tool: $reason",
+                                    errorType = e::class.simpleName,
+                                    errorMessage = e.message,
                                 )
-                                sendEvent(
-                                    ToolResponseEvent(
-                                        namespaceId = namespaceId,
-                                        caseId = caseId,
-                                        toolRequestId = toolRequestId,
-                                        toolName = tool.name,
-                                        output = MessageContent.Text("Error: ${e.message}"),
-                                        success = false,
-                                    ),
-                                )
-                                throw e
                             }
                     }
                 logger.info { "tool '${tool.name}' executed in $toolDuration" }
-                // Success path: stop the timer here (exception paths stop it before re-throwing).
+                // Success and tool-error paths stop the timer here. AgentInterrupt stops it before
+                // rethrowing; cancellation/interruption rethrow without recording a metric.
                 toolMetricsService?.stopTimerAndSendMetrics(
                     sample,
                     tool.name,
