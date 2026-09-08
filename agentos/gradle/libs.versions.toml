@@ -43,6 +43,9 @@ springCloudNetflixEureka = "4.3.1"
 # 8.1 is the last version compatible with Jackson 2.x (Spring Boot 3.x);
 # 9.0+ requires Jackson 3.x.
 logstashLogbackEncoder = "8.1"
+# Logback classic — SLF4J binding used by plugin unit tests to capture log events (ListAppender).
+# Aligned with the version Spring Boot 3.5.x brings into agentos-service.
+logback = "1.5.22"
 # Micrometer Datadog registry — version intentionally omitted; managed by
 # the Spring Boot BOM to stay aligned with the rest of the Micrometer stack.
 # OkHttp — version aligned with Spring Cloud BOM constraint (spring-cloud-dependencies 2025.0.1)
@@ -112,6 +115,7 @@ klogger = { module = "io.github.microutils:kotlin-logging-jvm", version.ref = "k
 
 # Logstash Logback Encoder — JSON structured logging
 logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstashLogbackEncoder" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 # Micrometer Datadog registry — exports Micrometer metrics to the Datadog API.
 # Disabled at runtime unless DATADOG_API_KEY is set and datadog.metrics.export.enabled=true.
 # Version managed by Spring Boot BOM.

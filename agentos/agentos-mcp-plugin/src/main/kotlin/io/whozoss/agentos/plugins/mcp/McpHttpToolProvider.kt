@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.mcp
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
@@ -15,9 +16,11 @@ import org.pf4j.Extension
  * remote MCP server, discovers tools, and returns [McpTool] wrappers. The connection
  * is NOT pooled — it lives for the duration of the agent run.
  *
- * Authentication is resolved via [ToolContext.credentialProvider]:
- * - If a credential is available, its `accessToken`, `token`, or `key` is used as Bearer token.
- * - If [McpServerConfig.authToken] is set in the config, it is used as a static fallback.
+ * Authentication is resolved by [resolveAuthorization]:
+ * - If [ToolContext.credentialProvider] yields a credential, its [Credential.credentialType] selects
+ *   the header scheme via [AuthorizationHeader.from] (Bearer for OAuth/API key/Bearer token,
+ *   Basic for BASIC_AUTH).
+ * - Otherwise, if the deprecated [McpServerConfig.authToken] is set, it is sent as a Bearer token.
  * - If neither is available, the connection is attempted without authentication.
  */
 @Extension
@@ -48,12 +51,14 @@ class McpHttpToolProvider : ToolPlugin {
             return emptyList()
         }
 
-        val bearerToken = resolveBearerToken(context, serverConfig)
-        logger.info { "MCP_HTTP integration '$configName': url=${serverConfig.url}, bearerToken=${if (bearerToken != null) "present (${bearerToken.length} chars)" else "absent"}" }
+        val authorization = resolveAuthorization(context, serverConfig)
+        logger.info {
+            "MCP_HTTP integration '$configName': url=${serverConfig.url}, authorization=${authorization ?: "absent"}"
+        }
 
         val connection = HttpMcpConnection(serverConfig)
         return try {
-            connection.connect(bearerToken)
+            connection.connect(authorization)
             if (connection.tools.isEmpty()) {
                 logger.warn { "MCP_HTTP integration '$configName': server advertises no tools" }
                 connection.close()
@@ -72,40 +77,42 @@ class McpHttpToolProvider : ToolPlugin {
     }
 
     /**
-     * Resolves the Bearer token for the HTTP connection.
+     * Resolves the `Authorization` header for the HTTP connection.
      *
      * Priority:
-     * 1. [ToolContext.credentialProvider] — dynamic, per-user credential (OAuth tokens, API keys)
-     * 2. [McpServerConfig.authToken] — static token from IntegrationConfig parameters
-     * 3. null — no authentication
-     *
-     * **Unsupported credential type:** `BASIC_AUTH` credentials carry `username` and
-     * `password` keys, none of which match the recognised token keys (`accessToken`,
-     * `token`, `key`, `apiKey`). A `BASIC_AUTH` credential therefore falls through to
-     * the static-token fallback (or to unauthenticated if no static token is configured).
-     * Full Basic Auth transport support is tracked in issue #1201.
+     * 1. [ToolContext.credentialProvider] — per-user credential mapped by [AuthorizationHeader.from].
+     *    A credential whose material is missing or blank is reported and skipped.
+     * 2. [McpServerConfig.authToken] — deprecated static Bearer token; an Auth Setting should be bound instead.
+     * 3. `null` — no authentication.
      */
-    internal fun resolveBearerToken(context: ToolContext?, serverConfig: McpServerConfig): String? {
-        val credential = context?.credentialProvider?.invoke()
-        if (credential != null) {
-            // Try common token key names in priority order
-            val token = credential.data["accessToken"]
-                ?: credential.data["token"]
-                ?: credential.data["key"]
-                ?: credential.data["apiKey"]
-            if (token != null) {
-                logger.debug { "[MCP-HTTP] Using credential from CredentialProvider" }
-                return token
+    internal fun resolveAuthorization(context: ToolContext?, serverConfig: McpServerConfig): AuthorizationHeader? =
+        context?.credentialProvider?.invoke()?.let { fromCredential(it, serverConfig) }
+            ?: fromStaticToken(serverConfig)
+
+    private fun fromCredential(credential: Credential, serverConfig: McpServerConfig): AuthorizationHeader? {
+        val authorization = AuthorizationHeader.from(credential)
+        if (authorization == null) {
+            logger.warn {
+                "MCP_HTTP integration '${serverConfig.label}': credential of type ${credential.credentialType} " +
+                    "carries no usable material; ignoring it"
             }
+        } else {
+            logger.debug { "[MCP-HTTP] Using ${credential.credentialType} credential from CredentialProvider" }
         }
+        return authorization
+    }
 
-        if (serverConfig.authToken != null) {
-            logger.debug { "[MCP-HTTP] Using static authToken from config" }
-            return serverConfig.authToken
+    private fun fromStaticToken(serverConfig: McpServerConfig): AuthorizationHeader? {
+        val authToken = serverConfig.authToken
+        if (authToken == null) {
+            logger.debug { "[MCP-HTTP] No authentication configured" }
+            return null
         }
-
-        logger.debug { "[MCP-HTTP] No authentication configured" }
-        return null
+        logger.warn {
+            "MCP_HTTP integration '${serverConfig.label}': static 'authToken' is deprecated, " +
+                "bind an Auth Setting to the integration instead"
+        }
+        return AuthorizationHeader.Bearer(authToken)
     }
 
     companion object : KLogging() {
@@ -118,13 +125,14 @@ class McpHttpToolProvider : ToolPlugin {
                 "properties": {
                     "url": {
                         "type": "string",
+                        "format": "uri",
                         "title": "Server URL",
-                        "description": "Base URL of the remote MCP server (e.g. https://mcp.example.com). The SDK appends /mcp as the default endpoint."
+                        "description": "Absolute http(s) URL of the remote MCP server (e.g. https://mcp.example.com/mcp). Must have a public host: localhost, loopback, link-local, private, shared-address-space (CGNAT) and wildcard IPs are rejected, and embedded user:password is not allowed. Without a path the SDK appends /mcp as the default endpoint. Prefer https: credentials sent over plain http travel in cleartext."
                     },
                     "authToken": {
                         "type": "string",
                         "title": "Auth Token",
-                        "description": "Optional static Bearer token. Overridden by credentials from AuthSetting if configured."
+                        "description": "Deprecated: bind an Auth Setting instead; kept as a fallback. Static Bearer token used only when the bound Auth Setting yields no usable credential."
                     },
                     "timeoutSeconds": {
                         "type": "integer",

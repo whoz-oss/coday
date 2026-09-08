@@ -9,7 +9,8 @@ package io.whozoss.agentos.plugins.mcp
  *
  * **HTTP (remote)** — reached over the network:
  * - [url] must be set; [command] must be absent.
- * - [authToken] is the optional Bearer token sent in the `Authorization` header.
+ * - [authToken] is the deprecated static Bearer token, used only when no bound Auth Setting
+ *   yields a usable credential.
  *
  * The transport in use is determined by [McpServerConfig.transport]:
  * - [McpTransport.STDIO] when [command] is set.
@@ -21,7 +22,8 @@ package io.whozoss.agentos.plugins.mcp
  * @property cwd Optional working directory for the child process (stdio transport only).
  *   Defaults to the JVM working directory when null.
  * @property url HTTP endpoint of the remote MCP server (HTTP transport only).
- * @property authToken Optional Bearer token sent in the `Authorization` header (HTTP transport only).
+ * @property authToken Optional static Bearer token sent in the `Authorization` header (HTTP transport only).
+ *   Deprecated: bind an Auth Setting to the integration instead; kept as a fallback.
  * @property timeoutSeconds Connection/initialisation timeout in seconds.
  *   Defaults to [DEFAULT_CONNECT_TIMEOUT_SECONDS].
  * @property toolCallTimeoutSeconds Per-tool-call timeout in seconds.

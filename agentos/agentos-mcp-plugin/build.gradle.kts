@@ -87,6 +87,9 @@ dependencies {
     testImplementation(libs.bundles.jackson)
     testImplementation(libs.bundles.testing.common)
     testImplementation(libs.pf4j)
+    // SLF4J binding for tests: lets specs attach a Logback ListAppender and assert on WARN emission
+    // and on the absence of secrets in log output.
+    testImplementation(libs.logback.classic)
     testRuntimeOnly(libs.junit.platform.launcher)
     kaptTest(libs.pf4j)
 }
