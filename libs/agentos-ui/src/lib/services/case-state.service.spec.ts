@@ -193,4 +193,73 @@ describe('CaseStateService', () => {
       expect(controllerMock.updateCase).not.toHaveBeenCalled()
     })
   })
+
+  describe('updateCaseFields', () => {
+    const fieldCase = (id: string, extra: Partial<Case> = {}): Case =>
+      ({ id, namespaceId: 'ns', favorite: false, runCostThreshold: 10, ...extra }) as unknown as Case
+
+    it('applies the patch optimistically and syncs back the server value on success', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a', { runCostThreshold: 10 })])))
+      svc.loadCases('ns-1')
+      controllerMock.updateCase.mockReturnValue(of(fieldCase('a', { runCostThreshold: 20 })))
+
+      svc.updateCaseFields('a', { runCostThreshold: 20 }).subscribe()
+
+      expect(svc.cases()[0].runCostThreshold).toBe(20)
+    })
+
+    it('reverts the optimistic patch when the request fails', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a', { runCostThreshold: 10 })])))
+      svc.loadCases('ns-1')
+      controllerMock.updateCase.mockReturnValue(throwError(() => new Error('boom')))
+
+      svc.updateCaseFields('a', { runCostThreshold: 20 }).subscribe({ error: () => undefined })
+
+      expect(svc.cases()[0].runCostThreshold).toBe(10)
+    })
+
+    it('does not revert when a later request has already updated the field (out-of-order failure)', () => {
+      // Scenario from the review: save to 20 is issued first, then save to 30 succeeds,
+      // then the earlier save to 20 fails. The UI must keep 30, not revert to the
+      // original 10.
+      const { Subject } = jest.requireActual<typeof import('rxjs')>('rxjs')
+      const firstRequest = new Subject<Case>()
+      const secondRequest = new Subject<Case>()
+
+      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a', { runCostThreshold: 10 })])))
+      svc.loadCases('ns-1')
+
+      controllerMock.updateCase
+        .mockReturnValueOnce(firstRequest.asObservable()) // slow request (will fail later)
+        .mockReturnValueOnce(secondRequest.asObservable()) // fast request (succeeds first)
+
+      // Issue first update (threshold → 20), still in-flight
+      svc.updateCaseFields('a', { runCostThreshold: 20 }).subscribe({ error: () => undefined })
+      expect(svc.cases()[0].runCostThreshold).toBe(20) // optimistic
+
+      // Issue second update (threshold → 30), still in-flight
+      svc.updateCaseFields('a', { runCostThreshold: 30 }).subscribe({ error: () => undefined })
+      expect(svc.cases()[0].runCostThreshold).toBe(30) // optimistic
+
+      // Second request resolves successfully first
+      secondRequest.next(fieldCase('a', { runCostThreshold: 30 }))
+      secondRequest.complete()
+      expect(svc.cases()[0].runCostThreshold).toBe(30)
+
+      // First (older) request now fails — must NOT roll back to 10
+      firstRequest.error(new Error('network error'))
+      expect(svc.cases()[0].runCostThreshold).toBe(30)
+    })
+
+    it('errors without calling the controller when the case is not in the list', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a')])))
+      svc.loadCases('ns-1')
+      let failed = false
+
+      svc.updateCaseFields('gone', { runCostThreshold: 20 }).subscribe({ error: () => (failed = true) })
+
+      expect(failed).toBe(true)
+      expect(controllerMock.updateCase).not.toHaveBeenCalled()
+    })
+  })
 })
