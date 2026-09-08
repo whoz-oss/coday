@@ -10,11 +10,18 @@ import io.mockk.verify
 /**
  * Unit tests for [SchedulerEndpoint].
  *
- * Uses MockK to mock [SchedulerScanner] — no Spring context required.
+ * Uses MockK to mock [SchedulerScanner] and [ScheduledPromptExecutor] — no Spring context required.
  * Data-driven via Kotest [StringSpec] context/test loops for control routing and status assertions.
+ *
+ * The `claim` phase is delegated to [SchedulerScanner]; the `consume` phase is delegated
+ * to [ScheduledPromptExecutor] (which owns the producer loop since the refactoring to
+ * producer+channel+worker-pool).
  */
 class SchedulerEndpointUnitSpec : StringSpec() {
-    private fun endpoint(scanner: SchedulerScanner = mockk(relaxed = true)): SchedulerEndpoint = SchedulerEndpoint(scanner)
+    private fun endpoint(
+        scanner: SchedulerScanner = mockk(relaxed = true),
+        executor: ScheduledPromptExecutor = mockk(relaxed = true),
+    ): SchedulerEndpoint = SchedulerEndpoint(scanner, executor)
 
     data class StatusCase(
         val claimPaused: Boolean,
@@ -26,8 +33,8 @@ class SchedulerEndpointUnitSpec : StringSpec() {
         val action: String,
         val expectClaimPaused: Boolean,
         val expectConsumePaused: Boolean,
-        val verifyCall: (SchedulerScanner) -> Unit,
-        val verifyNotCalled: (SchedulerScanner) -> Unit,
+        val verifyCall: (SchedulerScanner, ScheduledPromptExecutor) -> Unit,
+        val verifyNotCalled: (SchedulerScanner, ScheduledPromptExecutor) -> Unit,
     )
 
     data class InvalidCase(
@@ -47,12 +54,13 @@ class SchedulerEndpointUnitSpec : StringSpec() {
             StatusCase(claimPaused = true, consumePaused = true),
         ).forEach { (claimPaused, consumePaused) ->
             "status claimPaused=$claimPaused consumePaused=$consumePaused" {
-                val scanner =
-                    mockk<SchedulerScanner> {
-                        every { isClaimPaused() } returns claimPaused
-                        every { isConsumePaused() } returns consumePaused
-                    }
-                val result = endpoint(scanner).status()
+                val scanner = mockk<SchedulerScanner> {
+                    every { isClaimPaused() } returns claimPaused
+                }
+                val executor = mockk<ScheduledPromptExecutor> {
+                    every { isConsumePaused() } returns consumePaused
+                }
+                val result = endpoint(scanner, executor).status()
                 result["claimPaused"] shouldBe claimPaused
                 result["consumePaused"] shouldBe consumePaused
             }
@@ -68,65 +76,69 @@ class SchedulerEndpointUnitSpec : StringSpec() {
                 action = "pause",
                 expectClaimPaused = true,
                 expectConsumePaused = false,
-                verifyCall = { verify(exactly = 1) { it.pauseClaim() } },
-                verifyNotCalled = { verify(exactly = 0) { it.pauseConsume() } },
+                verifyCall = { sc, _ -> verify(exactly = 1) { sc.pauseClaim() } },
+                verifyNotCalled = { _, ex -> verify(exactly = 0) { ex.pauseConsume() } },
             ),
             ControlCase(
                 phase = "claim",
                 action = "resume",
                 expectClaimPaused = false,
                 expectConsumePaused = false,
-                verifyCall = { verify(exactly = 1) { it.resumeClaim() } },
-                verifyNotCalled = { verify(exactly = 0) { it.resumeConsume() } },
+                verifyCall = { sc, _ -> verify(exactly = 1) { sc.resumeClaim() } },
+                verifyNotCalled = { _, ex -> verify(exactly = 0) { ex.resumeConsume() } },
             ),
             ControlCase(
                 phase = "consume",
                 action = "pause",
                 expectClaimPaused = false,
                 expectConsumePaused = true,
-                verifyCall = { verify(exactly = 1) { it.pauseConsume() } },
-                verifyNotCalled = { verify(exactly = 0) { it.pauseClaim() } },
+                verifyCall = { _, ex -> verify(exactly = 1) { ex.pauseConsume() } },
+                verifyNotCalled = { sc, _ -> verify(exactly = 0) { sc.pauseClaim() } },
             ),
             ControlCase(
                 phase = "consume",
                 action = "resume",
                 expectClaimPaused = false,
                 expectConsumePaused = false,
-                verifyCall = { verify(exactly = 1) { it.resumeConsume() } },
-                verifyNotCalled = { verify(exactly = 0) { it.resumeClaim() } },
+                verifyCall = { _, ex -> verify(exactly = 1) { ex.resumeConsume() } },
+                verifyNotCalled = { sc, _ -> verify(exactly = 0) { sc.resumeClaim() } },
             ),
             ControlCase(
                 phase = "all",
                 action = "pause",
                 expectClaimPaused = true,
                 expectConsumePaused = true,
-                verifyCall = {
-                    verify(exactly = 1) { it.pauseClaim() }
-                    verify(exactly = 1) { it.pauseConsume() }
+                verifyCall = { sc, ex ->
+                    verify(exactly = 1) { sc.pauseClaim() }
+                    verify(exactly = 1) { ex.pauseConsume() }
                 },
-                verifyNotCalled = { /* both called — nothing to negate */ },
+                verifyNotCalled = { _, _ -> /* both called — nothing to negate */ },
             ),
             ControlCase(
                 phase = "all",
                 action = "resume",
                 expectClaimPaused = false,
                 expectConsumePaused = false,
-                verifyCall = {
-                    verify(exactly = 1) { it.resumeClaim() }
-                    verify(exactly = 1) { it.resumeConsume() }
+                verifyCall = { sc, ex ->
+                    verify(exactly = 1) { sc.resumeClaim() }
+                    verify(exactly = 1) { ex.resumeConsume() }
                 },
-                verifyNotCalled = { /* both called — nothing to negate */ },
+                verifyNotCalled = { _, _ -> /* both called — nothing to negate */ },
             ),
         ).forEach { case ->
             "control phase=${case.phase} action=${case.action}" {
-                val scanner =
-                    mockk<SchedulerScanner>(relaxed = true) {
-                        every { isClaimPaused() } returns case.expectClaimPaused
-                        every { isConsumePaused() } returns case.expectConsumePaused
-                    }
-                val result = endpoint(scanner).control(claimOrConsumeOrAllPhase = case.phase, pauseOrResumeAction = case.action)
-                case.verifyCall(scanner)
-                case.verifyNotCalled(scanner)
+                val scanner = mockk<SchedulerScanner>(relaxed = true) {
+                    every { isClaimPaused() } returns case.expectClaimPaused
+                }
+                val executor = mockk<ScheduledPromptExecutor>(relaxed = true) {
+                    every { isConsumePaused() } returns case.expectConsumePaused
+                }
+                val result = endpoint(scanner, executor).control(
+                    claimOrConsumeOrAllPhase = case.phase,
+                    pauseOrResumeAction = case.action,
+                )
+                case.verifyCall(scanner, executor)
+                case.verifyNotCalled(scanner, executor)
                 result["claimPaused"] shouldBe case.expectClaimPaused
                 result["consumePaused"] shouldBe case.expectConsumePaused
             }

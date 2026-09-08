@@ -20,7 +20,13 @@ import java.util.UUID
 @Profile("test")
 @ConditionalOnMissingBean(CaseReadService::class)
 class NoOpCaseReadService : CaseReadService {
-    override fun markRead(userId: String, caseId: UUID) = Unit
+    override fun markRead(
+        userId: String,
+        caseId: UUID,
+    ) = Unit
 
-    override fun countUnread(userId: String, namespaceId: UUID): Long = 0L
+    override fun countUnread(
+        userId: String,
+        namespaceId: UUID,
+    ): Long = 0L
 }
