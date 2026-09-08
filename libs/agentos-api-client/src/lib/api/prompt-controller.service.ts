@@ -586,7 +586,7 @@ export class PromptControllerService extends BaseService {
 
   /**
    * Translate prompt content into a target language
-   * Returns the translated content list (same indices as &#x60;content&#x60;). If the requested language matches &#x60;sourceLanguage&#x60;, returns &#x60;content&#x60; as-is. If a cached translation exists it is returned without an LLM call. Otherwise the content is translated via the namespace\&#39;s AI model, persisted, and returned. At least one of &#x60;namespaceId&#x60; / &#x60;namespaceExternalId&#x60; is required for model resolution.
+   * Returns the translated content list (same indices as &#x60;content&#x60;). If the requested language matches &#x60;sourceLanguage&#x60;, returns &#x60;content&#x60; as-is. If a cached translation exists it is returned without an LLM call. Otherwise the content is translated via the namespace\&#39;s AI model, persisted, and returned. For namespace-scoped prompts the namespace is inferred from the prompt itself. For platform-scoped prompts (namespaceId IS NULL on the prompt), at least one of &#x60;namespaceId&#x60; / &#x60;namespaceExternalId&#x60; is required in the request body.
    * @param id
    * @param languageCode
    * @param promptTranslateRequest

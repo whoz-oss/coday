@@ -2768,6 +2768,187 @@ paths:
       summary: Enable a scheduled prompt (idempotent)
       tags:
       - scheduled-prompt-controller
+  /api/usage-records/aggregate/by-agent:
+    get:
+      operationId: aggregateByAgentUsageRecord
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageAggregateByKey"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-case-tree/{rootCaseId}:
+    get:
+      operationId: aggregateByCaseTreeUsageRecord
+      parameters:
+      - in: path
+        name: rootCaseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-case/{caseId}:
+    get:
+      operationId: aggregateByCaseIdUsageRecord
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-model:
+    get:
+      operationId: aggregateByModelUsageRecord
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageAggregateByKey"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-user:
+    get:
+      operationId: aggregateByUserUsageRecord
+      parameters:
+      - in: query
+        name: userId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/by-case/{caseId}:
+    get:
+      operationId: listByCaseIdUsageRecord
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageRecord"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/{id}:
+    get:
+      operationId: getByIdUsageRecord
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageRecord"
+          description: OK
+      tags:
+      - usage-record-controller
   /api/user-groups:
     get:
       operationId: findByNamespaceIdUserGroup
@@ -4817,6 +4998,113 @@ components:
           format: int64
       required:
       - unreadCount
+    UsageAggregate:
+      type: object
+      properties:
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        cost:
+          type: number
+          format: double
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        recordCount:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+      required:
+      - cacheReadTokens
+      - cacheWriteTokens
+      - inputTokens
+      - outputTokens
+      - recordCount
+      - totalTokens
+    UsageAggregateByKey:
+      type: object
+      properties:
+        aggregate:
+          $ref: "#/components/schemas/UsageAggregate"
+        key:
+          type: string
+      required:
+      - aggregate
+      - key
+    UsageRecord:
+      type: object
+      properties:
+        agentConfigId:
+          type: string
+          format: uuid
+        agentName:
+          type: string
+        apiModelName:
+          type: string
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type: number
+          format: double
+        createdOn:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        inputTokens:
+          type: integer
+          format: int64
+        namespaceId:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+        outputTokens:
+          type: integer
+          format: int64
+        providerName:
+          type: string
+        source:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        totalTokens:
+          type: integer
+          format: int64
+        userId:
+          type: string
+          format: uuid
+      required:
+      - agentName
+      - cacheReadTokens
+      - cacheWriteTokens
+      - caseId
+      - createdOn
+      - id
+      - inputTokens
+      - namespaceId
+      - outcome
+      - outputTokens
+      - source
+      - timestamp
+      - totalTokens
     User:
       type: object
       properties:
