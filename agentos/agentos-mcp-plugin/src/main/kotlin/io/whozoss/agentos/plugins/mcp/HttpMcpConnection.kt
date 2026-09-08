@@ -21,10 +21,16 @@ import java.time.Duration
  * Uses [HttpClientStreamableHttpTransport] from the MCP Java SDK 2.0.
  *
  * The URL from [McpServerConfig.url] is automatically split into base URI and endpoint
- * path to work around the MCP Java SDK's `URI.resolve` behavior. When the URL includes
- * a path (e.g. `https://mcp.example.com/v1/mcp`), the path is extracted as the explicit
- * endpoint. When the URL has no path (e.g. `https://mcp.example.com`), the SDK's default
- * `/mcp` endpoint is used.
+ * path to work around the MCP Java SDK's `URI.resolve` behavior. The endpoint is **always**
+ * set explicitly — the SDK's implicit default `/mcp` is never used:
+ *
+ * - URL with a meaningful path (e.g. `https://mcp.atlassian.com/v1/mcp`): the path is
+ *   extracted as the explicit endpoint (`/v1/mcp`), and the origin becomes the base URI.
+ * - URL with no path or root path (e.g. `https://mcp.hubspot.com` or
+ *   `https://mcp.hubspot.com/`): the endpoint is set to `"/"` so the server root is hit.
+ *
+ * This matters because the default `/mcp` is not universal: HubSpot exposes the MCP
+ * endpoint at the root (`/`), while Atlassian uses `/v1/mcp`.
  */
 class HttpMcpConnection(
     private val config: McpServerConfig,
@@ -165,24 +171,28 @@ class HttpMcpConnection(
          *   endpoint = "/mcp"
          *   resolved = "https://mcp.atlassian.com/mcp"  ← WRONG
          *
-         * To work around this, when the configured URL already contains the full path to
-         * the MCP endpoint, we split it into a base (scheme + authority) and the path as
-         * the explicit endpoint. This way `URI.resolve` produces the correct result.
+         * To prevent this, we always split the URL into origin (scheme + authority) and
+         * an explicit endpoint path, so the SDK's implicit default `"/mcp"` never applies.
          *
-         * When the URL has no meaningful path (e.g. `https://mcp.example.com`), we return
-         * `null` for the endpoint and let the SDK use its default `"/mcp"`.
+         * The SDK's default is not universal: HubSpot exposes MCP at the root (`/`),
+         * while Atlassian uses `/v1/mcp`. Letting the SDK silently fall back to `/mcp`
+         * would make root-endpoint servers unreachable.
+         *
+         * @return a pair of (origin, endpoint) where:
+         *   - `origin` is always `scheme://authority` (port preserved when explicit)
+         *   - `endpoint` is the path from the URL, or `"/"` when the URL has no path
+         *     (the second element is typed as [String?] but is never null in practice)
          */
         internal fun splitMcpUrl(url: String): Pair<String, String?> {
             val uri = java.net.URI.create(url)
+            val origin = "${uri.scheme}://${uri.authority}"
             val path = uri.path
-            // If the URL has a meaningful path (more than just "/"), extract it as the endpoint
-            // and use the origin (scheme + authority) as the base URL.
+            // Always set an explicit endpoint so the SDK's implicit "/mcp" default never applies.
+            // Root-only URLs (empty path or bare "/") get endpoint="/" to target the server root.
             return if (!path.isNullOrBlank() && path != "/") {
-                val origin = "${uri.scheme}://${uri.authority}"
                 Pair(origin, path)
             } else {
-                // No path — let the SDK use its default "/mcp" endpoint
-                Pair(url, null)
+                Pair(origin, "/")
             }
         }
     }
