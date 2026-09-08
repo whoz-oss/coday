@@ -92,6 +92,7 @@
         (starToggled)="onStarToggled($event)"
         (deleteRequested)="onDeleteRequested($event)"
         (logsToggled)="onMenuToggleLogs()"
+        (updateRequested)="onCaseUpdateRequested($event)"
       />
     } @else {
       <agentos-case-home [namespaceName]="selectedNamespace()?.name ?? null" />

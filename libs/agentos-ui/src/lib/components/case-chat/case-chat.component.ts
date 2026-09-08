@@ -254,6 +254,50 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly deleteRequested = output<string>()
   readonly logsToggled = output<void>()
+  readonly updateRequested = output<{ id: string; title?: string; runCostThreshold?: number | null }>()
+
+  // ---------------------------------------------------------------------------
+  // Inline header edit (title + runCostThreshold)
+  // ---------------------------------------------------------------------------
+
+  /** Whether the header is in edit mode. */
+  protected readonly isEditing = signal(false)
+  protected readonly draftTitle = signal('')
+  protected readonly draftThreshold = signal<string>('')
+
+  protected startEdit(): void {
+    const c = this.activeCase()
+    if (!c) return
+    this.draftTitle.set(c.title ?? '')
+    this.draftThreshold.set(c.runCostThreshold != null ? String(c.runCostThreshold) : '')
+    this.isEditing.set(true)
+  }
+
+  protected cancelEdit(): void {
+    this.isEditing.set(false)
+  }
+
+  protected commitEdit(): void {
+    const c = this.activeCase()
+    if (!c?.id) return
+    const title = this.draftTitle().trim()
+    if (!title) return // empty title not allowed
+    const rawThreshold = this.draftThreshold().trim()
+    const parsedThreshold = rawThreshold === '' ? undefined : parseFloat(rawThreshold)
+    if (rawThreshold !== '' && isNaN(parsedThreshold as number)) return
+    this.isEditing.set(false)
+    this.updateRequested.emit({ id: c.id, title, runCostThreshold: parsedThreshold })
+  }
+
+  protected onEditKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      this.commitEdit()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      this.cancelEdit()
+    }
+  }
 
   readonly showTechnicalOverride = input(false)
   protected readonly showTechnical = computed(() => this.showTechnicalOverride())
@@ -774,6 +818,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.collapsedTools.set(new Set())
     this.isAtBottom.set(true)
     this.drawerPanel.set('files')
+    this.isEditing.set(false)
     this.autocomplete.reset()
     this.attachments.reset()
     this.connectSse()

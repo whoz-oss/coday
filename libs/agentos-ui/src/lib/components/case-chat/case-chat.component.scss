@@ -108,6 +108,15 @@
   font-weight: 600;
   font-size: 17px;
   color: var(--color-text);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    color: var(--color-accent);
+  }
 
   @media (max-width: 600px) {
     font-size: 14px;
@@ -128,24 +137,100 @@
 }
 
 .case-chat__header-cost-threshold {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
   flex: none;
   font-family: var(--font-heading);
   font-size: 11px;
   font-weight: 600;
   color: var(--color-neutral-600);
   letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border: 1px solid var(--color-divider);
+  white-space: nowrap;
 
   @media (max-width: 600px) {
     display: none;
   }
 }
 
-.case-chat__header-cost-threshold-icon {
+// ── Inline header edit mode ──────────────────────────────────────────────
+
+.case-chat__header-edit {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+%header-edit-input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--color-accent);
+  background: var(--color-surface);
+  color: var(--color-text);
   font-size: 13px;
-  color: var(--color-neutral-500);
+  font-family: inherit;
+  outline: none;
+
+  &:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+  }
+}
+
+.case-chat__header-edit-title {
+  @extend %header-edit-input;
+
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.case-chat__header-edit-threshold {
+  @extend %header-edit-input;
+
+  width: 100px;
+  flex: none;
+
+  @media (max-width: 600px) {
+    display: none;
+  }
+}
+
+%header-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+
+  .material-icons {
+    font-size: 16px;
+  }
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.case-chat__header-edit-save {
+  @extend %header-edit-btn;
+
+  color: var(--color-success, #34c759);
+  border-color: var(--color-success, #34c759);
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-success, #34c759) 10%, transparent);
+  }
+}
+
+.case-chat__header-edit-cancel {
+  @extend %header-edit-btn;
 }
 
 // Exchange toggle — inline in header

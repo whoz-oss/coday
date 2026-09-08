@@ -114,9 +114,48 @@ export class CaseStateService {
     })
   }
 
+  /**
+   * Update a case's editable fields (title and/or runCostThreshold).
+   *
+   * Applies the patch optimistically so the header reflects the change immediately,
+   * and reverts on failure. Same constraints as renameCase regarding the full-resource
+   * PUT body (namespaceId must be present) and the response being ignored.
+   *
+   * `runCostThreshold: undefined` means "remove the threshold" (the field is optional
+   * on Case). `null` is not part of the Case type — callers must convert null → undefined.
+   */
+  updateCaseFields(caseId: string, patch: { title?: string; runCostThreshold?: number }): Observable<Case> {
+    return defer(() => {
+      const existing = this.cases().find((c) => c.id === caseId)
+      if (!existing) {
+        return throwError(() => new Error(`[CaseState] Case ${caseId} is not in the current list`))
+      }
+      const previous = { title: existing.title, runCostThreshold: existing.runCostThreshold }
+      this.patchFields(caseId, patch)
+      // Build the payload: spread existing then override with patch.
+      // undefined fields are omitted by JSON.stringify, so runCostThreshold: undefined
+      // removes the key from the body, which is the intended "clear" semantics.
+      const payload: Case = { ...existing, ...patch }
+      return this.caseController.updateCase(caseId, payload).pipe(
+        catchError((err) => {
+          this.patchFields(caseId, previous)
+          return throwError(() => err)
+        })
+      )
+    })
+  }
+
   /** Set the favorite flag of a single case in-place (immutably, to re-emit the signal). */
   private patchFavorite(caseId: string, favorite: boolean): void {
     this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, favorite } : c)))
+  }
+
+  /**
+   * Apply a partial field patch to a single case in-place.
+   * Uses a mapped type to allow `undefined` for optional fields without carrying `null`.
+   */
+  private patchFields(caseId: string, patch: { title?: string; runCostThreshold?: number }): void {
+    this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, ...patch } : c)))
   }
 
   /**
