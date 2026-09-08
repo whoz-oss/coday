@@ -407,7 +407,7 @@ class Neo4jPersistenceConfiguration {
                         REMOVE flag.isNew
                         WITH count(flag) AS guard
                         MATCH (u:User)-[:ADMIN|MEMBER]->(c:Case)
-                        WHERE (c.removed IS NULL OR c.removed = false)
+                        WHERE (c.removed IS NULL OR c.removed = false) and guard > 0
                         MERGE (u)-[s:WATCHES]->(c)
                         ON CREATE SET s.readAt = $readAt
                         ON MATCH SET s.readAt = CASE WHEN s.readAt IS NULL THEN $readAt ELSE s.readAt END

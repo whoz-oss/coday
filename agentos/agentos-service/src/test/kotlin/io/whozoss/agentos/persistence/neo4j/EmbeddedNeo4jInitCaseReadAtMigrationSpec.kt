@@ -12,7 +12,6 @@ import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
-import java.time.Instant
 import java.util.UUID
 
 /**
@@ -76,18 +75,32 @@ class EmbeddedNeo4jInitCaseReadAtMigrationSpec : StringSpec() {
     /** Counts WATCHES edges in the whole database. */
     private fun countWatchesEdges(): Long =
         driver.session().use { s ->
-            s.run("MATCH ()-[w:WATCHES]->() RETURN count(w) AS cnt")
+            s
+                .run("MATCH ()-[w:WATCHES]->() RETURN count(w) AS cnt")
                 .single()["cnt"]
+                .asLong()
+        }
+
+    /** Counts WATCHES edges pointing to a specific Case node. */
+    private fun countWatchesEdgesForCase(caseId: String): Long =
+        driver.session().use { s ->
+            s
+                .run(
+                    $$"""MATCH ()-[w:WATCHES]->(c:Case {id: $caseId}) RETURN count(w) AS cnt""",
+                    mapOf("caseId" to caseId),
+                ).single()["cnt"]
                 .asLong()
         }
 
     /** Counts CompletedMigration flag nodes matching the given id. */
     private fun countMigrationFlags(flagId: String): Long =
         driver.session().use { s ->
-            s.run(
-                $$"""MATCH (f:CompletedMigration {id: $flagId}) RETURN count(f) AS cnt""",
-                mapOf("flagId" to flagId),
-            ).single()["cnt"].asLong()
+            s
+                .run(
+                    $$"""MATCH (f:CompletedMigration {id: $flagId}) RETURN count(f) AS cnt""",
+                    mapOf("flagId" to flagId),
+                ).single()["cnt"]
+                .asLong()
         }
 
     /** Deletes the CompletedMigration flag so the migration can be re-triggered. */
@@ -119,19 +132,34 @@ class EmbeddedNeo4jInitCaseReadAtMigrationSpec : StringSpec() {
             countWatchesEdges() shouldBe 1L
         }
 
-        "migration is idempotent: running twice produces exactly one WATCHES edge" {
+        "migration is idempotent: case existing before first run gets WATCHES, case created after does not" {
             val userId = createUser()
-            val caseId = createCase(namespaceId = UUID.randomUUID().toString())
+            val namespaceId = UUID.randomUUID().toString()
+
+            // Case that existed before the migration.
+            val existingCaseId = createCase(namespaceId = namespaceId)
             permissionNodeRepository.createAdminPermission(
                 userId = userId,
-                entityId = caseId,
+                entityId = existingCaseId,
                 entityLabel = "Case",
             )
 
             initCaseReadAt.run()
+
+            // New case created after the migration has already run.
+            val newCaseId = createCase(namespaceId = namespaceId)
+            permissionNodeRepository.createAdminPermission(
+                userId = userId,
+                entityId = newCaseId,
+                entityLabel = "Case",
+            )
+
             initCaseReadAt.run()
 
-            countWatchesEdges() shouldBe 1L
+            // The pre-existing case has exactly one WATCHES edge.
+            countWatchesEdgesForCase(existingCaseId) shouldBe 1L
+            // The new case has no WATCHES edge — the second run was a no-op.
+            countWatchesEdgesForCase(newCaseId) shouldBe 0L
         }
 
         "migration leaves a CompletedMigration flag node after first run" {
