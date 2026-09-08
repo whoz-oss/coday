@@ -1,6 +1,5 @@
 package io.whozoss.agentos.usage
 
-import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.api.usageRecord.UsageAggregateByKeyDto
 import io.whozoss.agentos.sdk.api.usageRecord.UsageAggregateDto
 import io.whozoss.agentos.sdk.api.usageRecord.UsageRecordApi
@@ -24,21 +23,25 @@ import java.util.UUID
  * Usage records are write-once analytical facts created internally by the agent execution
  * pipeline. This controller exposes read and aggregation endpoints only.
  *
- * Authorization:
- * - Per-case endpoints require Case `READ` permission.
- * - Namespace-scoped aggregation endpoints require Namespace `READ` permission.
+ * ## Authorization
+ *
+ * Per-case endpoints — require Case `READ`:
+ * - [listByCaseId], [aggregateByCaseId], [aggregateByCaseTree]
+ * - Case READ follows the owner-private rule (FR15): direct MEMBER/ADMIN on the case,
+ *   or transitive via namespace ADMIN. Namespace MEMBERs without a direct case relation
+ *   are denied — they cannot see another user's cost data.
+ *
+ * Namespace-scoped aggregation endpoints — require Namespace `WRITE` (= ADMIN):
+ * - [aggregateByUser], [aggregateByAgent], [aggregateByModel]
+ * - These cross-user analytics are intentionally restricted to namespace admins and
+ *   super-admins. A namespace MEMBER must not see aggregated costs across cases they
+ *   do not individually have access to.
  */
 @RestController
 @RequestMapping("/api/usage-records", produces = [MediaType.APPLICATION_JSON_VALUE])
 class UsageRecordController(
     private val usageRecordService: UsageRecordService,
 ) : UsageRecordApi {
-
-    @GetMapping("/{id}")
-    @PreAuthorize("hasPermission(#id, 'UsageRecord', 'READ')")
-    override fun getById(@PathVariable id: UUID): UsageRecordDto =
-        (usageRecordService.findById(id) ?: throw ResourceNotFoundException("UsageRecord not found: $id"))
-            .toDto()
 
     @GetMapping("/by-case/{caseId}")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
@@ -56,7 +59,7 @@ class UsageRecordController(
         usageRecordService.aggregateByCaseTree(rootCaseId).toDto()
 
     @GetMapping("/aggregate/by-user")
-    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     override fun aggregateByUser(
         @RequestParam userId: UUID,
         @RequestParam namespaceId: UUID,
@@ -66,7 +69,7 @@ class UsageRecordController(
         usageRecordService.aggregateByUser(userId, namespaceId, from, to).toDto()
 
     @GetMapping("/aggregate/by-agent")
-    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     override fun aggregateByAgent(
         @RequestParam namespaceId: UUID,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) from: Instant,
@@ -75,7 +78,7 @@ class UsageRecordController(
         usageRecordService.aggregateByAgent(namespaceId, from, to).map { it.toDto() }
 
     @GetMapping("/aggregate/by-model")
-    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
     override fun aggregateByModel(
         @RequestParam namespaceId: UUID,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) from: Instant,
