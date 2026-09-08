@@ -67,7 +67,7 @@ class HttpMcpConnection(
         // the SDK from producing a wrong URL like "https://host/v1/mcp" → "https://host/mcp".
         // URI.resolve("/mcp") replaces the entire path — it does NOT append.
         val (baseUrl, endpoint) = splitMcpUrl(url)
-        logger.debug { "[MCP-HTTP] Resolved baseUrl=$baseUrl, endpoint=$endpoint" }
+        logger.info { "[MCP-HTTP] Resolved baseUrl=$baseUrl, endpoint=$endpoint" }
 
         val transportBuilder = HttpClientStreamableHttpTransport
             .builder(baseUrl)
