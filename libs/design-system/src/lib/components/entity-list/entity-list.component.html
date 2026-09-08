@@ -35,7 +35,11 @@
   <!-- Content (max-width constrained) — not rendered in toolbar-only mode -->
   @if (!toolbarOnly()) {
     <div class="entity-list__content" [style.max-width]="contentMaxWidth()">
-      @if (filteredItems().length === 0) {
+      @if (loading()) {
+        <div class="entity-list__loading">
+          <ds-spinner size="lg" [label]="'Loading ' + title()" />
+        </div>
+      } @else if (filteredItems().length === 0) {
         <p class="entity-list__empty">{{ emptyMessage() }}</p>
       } @else if (hasGroups()) {
         <!-- Grouped view (no active search) -->

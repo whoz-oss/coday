@@ -15,6 +15,7 @@ import {
 import { NgTemplateOutlet } from '@angular/common'
 import { MatExpansionModule } from '@angular/material/expansion'
 import { EntityCardComponent, EntityCardBadge } from '../entity-card/entity-card.component'
+import { SpinnerComponent } from '../spinner/spinner.component'
 
 export interface EntityListItem {
   id: string
@@ -43,7 +44,7 @@ export interface GroupedItems {
     '[attr.title]': 'null',
     '[class.ds-entity-list--toolbar-only]': 'toolbarOnly()',
   },
-  imports: [MatExpansionModule, EntityCardComponent, NgTemplateOutlet],
+  imports: [MatExpansionModule, EntityCardComponent, SpinnerComponent, NgTemplateOutlet],
   templateUrl: './entity-list.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './entity-list.component.scss',
@@ -51,6 +52,8 @@ export interface GroupedItems {
 export class EntityListComponent implements AfterViewInit, OnDestroy {
   readonly title = input.required<string>()
   readonly items = input<EntityListItem[]>([])
+  /** Replaces the list content with an accessible loading indicator while data is being fetched. */
+  readonly loading = input<boolean>(false)
   readonly searchPlaceholder = input<string>('Filter…')
   readonly emptyMessage = input<string>('No items found.')
   readonly autoFocusSearch = input<boolean>(false)
