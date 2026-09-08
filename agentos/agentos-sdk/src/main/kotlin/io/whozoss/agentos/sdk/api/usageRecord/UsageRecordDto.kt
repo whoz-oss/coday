@@ -30,6 +30,7 @@ data class UsageRecordDto(
     val cacheWriteTokens: Long,
     val totalTokens: Long,
     /** null = cost unknown (pricing not configured), not zero. */
+    @Schema(nullable = true)
     val cost: Double? = null,
     val timestamp: Instant,
     val createdOn: Instant,

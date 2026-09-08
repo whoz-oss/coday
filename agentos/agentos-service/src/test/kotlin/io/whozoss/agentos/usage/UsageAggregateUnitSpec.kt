@@ -219,6 +219,20 @@ class UsageAggregateUnitSpec : StringSpec({
         beta!!.aggregate.totalTokens shouldBe 50L
     }
 
+    "aggregateByAgent returns groups ordered by totalTokens descending" {
+        val repo = InMemoryUsageRecordRepository()
+        val caseId = UUID.randomUUID()
+        val ts = Instant.now()
+        repo.save(record(caseId, agentName = "low", totalTokens = 50L, timestamp = ts))
+        repo.save(record(caseId, agentName = "high", totalTokens = 300L, timestamp = ts))
+        repo.save(record(caseId, agentName = "mid", totalTokens = 150L, timestamp = ts))
+
+        val from = ts.minusSeconds(1)
+        val to = ts.plusSeconds(1)
+        val results = repo.aggregateByAgent(nsId, from, to)
+        results.map { it.key } shouldBe listOf("high", "mid", "low")
+    }
+
     "aggregateByAgent: null cost contaminates agent group total" {
         val repo = InMemoryUsageRecordRepository()
         val caseId = UUID.randomUUID()
@@ -238,6 +252,20 @@ class UsageAggregateUnitSpec : StringSpec({
     // =========================================================================
     // aggregateByModel
     // =========================================================================
+
+    "aggregateByModel returns groups ordered by totalTokens descending" {
+        val repo = InMemoryUsageRecordRepository()
+        val caseId = UUID.randomUUID()
+        val ts = Instant.now()
+        repo.save(record(caseId, apiModelName = "gpt-4", totalTokens = 100L, timestamp = ts))
+        repo.save(record(caseId, apiModelName = "claude-3", totalTokens = 500L, timestamp = ts))
+        repo.save(record(caseId, apiModelName = null, totalTokens = 50L, timestamp = ts))
+
+        val from = ts.minusSeconds(1)
+        val to = ts.plusSeconds(1)
+        val results = repo.aggregateByModel(nsId, from, to)
+        results.map { it.key } shouldBe listOf("claude-3", "gpt-4", "unknown")
+    }
 
     "aggregateByModel groups by model name and falls back to 'unknown' for null" {
         val repo = InMemoryUsageRecordRepository()

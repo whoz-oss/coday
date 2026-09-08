@@ -17,6 +17,7 @@ data class UsageAggregateDto(
     val cacheWriteTokens: Long,
     val totalTokens: Long,
     /** null = at least one record had unknown cost. */
+    @Schema(nullable = true)
     val cost: Double?,
 )
 

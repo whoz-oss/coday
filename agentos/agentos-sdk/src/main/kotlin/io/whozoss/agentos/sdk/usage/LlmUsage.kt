@@ -67,6 +67,12 @@ data class LlmUsage(
         )
 
     companion object {
-        val ZERO = LlmUsage()
+        /**
+         * Neutral element for [plus]: all token counts are 0 and cost is 0.0 (known zero),
+         * so that `fold(ZERO) { a, b -> a + b }` produces a non-null cost when every
+         * element is priced. An element with unknown cost ([estimatedCostUsd] = null)
+         * still contaminates the total.
+         */
+        val ZERO = LlmUsage(estimatedCostUsd = 0.0)
     }
 }

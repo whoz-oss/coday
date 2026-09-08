@@ -156,6 +156,7 @@ interface UsageRecordNodeNeo4jRepository : Neo4jRepository<UsageRecordNode, Stri
                  sum(u.totalTokens) AS totalTokens,
                  sum(CASE WHEN u.cost IS NOT NULL THEN u.cost ELSE 0 END) AS partialCostSum,
                  sum(CASE WHEN u.cost IS NULL THEN 1 ELSE 0 END) AS nullCostCount
+            ORDER BY totalTokens DESC
             RETURN collect({
                 agentName: agentName,
                 recordCount: recordCount,
@@ -192,6 +193,7 @@ interface UsageRecordNodeNeo4jRepository : Neo4jRepository<UsageRecordNode, Stri
                  sum(u.totalTokens) AS totalTokens,
                  sum(CASE WHEN u.cost IS NOT NULL THEN u.cost ELSE 0 END) AS partialCostSum,
                  sum(CASE WHEN u.cost IS NULL THEN 1 ELSE 0 END) AS nullCostCount
+            ORDER BY totalTokens DESC
             RETURN collect({
                 modelName: modelName,
                 recordCount: recordCount,
@@ -240,10 +242,13 @@ interface UsageRecordNodeNeo4jRepository : Neo4jRepository<UsageRecordNode, Stri
             WHERE u.caseId IN caseIds
               AND u.timestamp >= $since
               AND (u.removed IS NULL OR u.removed = false)
+            WITH count(u) AS recordCount,
+                 sum(CASE WHEN u.cost IS NOT NULL THEN u.cost ELSE 0 END) AS partialCostSum,
+                 sum(CASE WHEN u.cost IS NULL    THEN 1    ELSE 0 END) AS nullCostCount
             RETURN collect({
-                recordCount:    count(u),
-                partialCostSum: sum(CASE WHEN u.cost IS NOT NULL THEN u.cost ELSE 0 END),
-                nullCostCount:  sum(CASE WHEN u.cost IS NULL    THEN 1    ELSE 0 END)
+                recordCount:    recordCount,
+                partialCostSum: partialCostSum,
+                nullCostCount:  nullCostCount
             })
             """,
     )
