@@ -3555,6 +3555,7 @@ components:
             \ currency unit. Null means inherit from the namespace or platform default\
             \ (never \"no limit\" or \"zero\"). Set upfront for costly runs, or written\
             \ by the enforcement mechanism on continuation."
+          minimum: 0
         scheduledPromptId:
           type: string
           format: uuid
@@ -4105,6 +4106,7 @@ components:
             \ platform currency unit. Null means inherit from the platform default.\
             \ Applies to all cases in this namespace that do not declare their own\
             \ threshold."
+          minimum: 0
       required:
       - name
     NamespaceAgentDeployRequest:

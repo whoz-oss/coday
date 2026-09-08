@@ -273,33 +273,26 @@ export async function startAgentos(
 
   const child: ChildProcess = spawn(javaBin, ['-jar', jarPath, `--server.port=${agentosPort}`], {
     cwd: agentosDir,
-    // Inherit env from parent process, then add our overrides.
-    // AGENTOS_ENCRYPTION_KEY/SALT=NONE: explicitly disables field encryption
-    // (temporary — credentials stored in plaintext on disk; AgentOS logs a WARN).
-    // Replace with real cryptographic values when secret management is in place.
+    // Setup default values then take possible existing overrides
     env: {
-      ...process.env,
       // Setup default runCostThreshold
       AGENTOS_LIMITS_RUN_COST_THRESHOLD: '10',
       // Fallback to NONE only if not already set — real values from the environment
       // take precedence (production deployments with actual encryption keys).
-      AGENTOS_ENCRYPTION_KEY: process.env.AGENTOS_ENCRYPTION_KEY ?? 'NONE',
-      AGENTOS_ENCRYPTION_SALT: process.env.AGENTOS_ENCRYPTION_SALT ?? 'NONE',
+      AGENTOS_ENCRYPTION_KEY: 'NONE',
+      AGENTOS_ENCRYPTION_SALT: 'NONE',
       // Derive the OAuth redirect URI from the actual Express port so the
       // browser callback URL is correct regardless of which port was assigned.
       // An existing env var takes precedence (e.g. production reverse-proxy URL).
-      AGENTOS_OAUTH_REDIRECT_URI:
-        process.env.AGENTOS_OAUTH_REDIRECT_URI ?? `http://localhost:${expressPort}/agentos/oauth/callback`,
+      AGENTOS_OAUTH_REDIRECT_URI: `http://localhost:${expressPort}/agentos/oauth/callback`,
       // Assign a dynamic Bolt port for the embedded Neo4j instance to avoid
       // conflicts with other AgentOS instances or a standalone Neo4j on 7687/7688.
       // Also update the spring.neo4j.uri to match so SDN connects to the right port.
       // Both env vars respect any existing value; SPRING_NEO4J_URI falls back to
       // whichever Bolt port was ultimately chosen (env override or dynamic).
-      AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT:
-        process.env.AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT ?? String(neo4jBoltPort),
-      SPRING_NEO4J_URI:
-        process.env.SPRING_NEO4J_URI ??
-        `bolt://localhost:${process.env.AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT ?? neo4jBoltPort}`,
+      AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT: String(neo4jBoltPort),
+      SPRING_NEO4J_URI: `bolt://localhost:${process.env.AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT ?? neo4jBoltPort}`,
+      ...process.env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
