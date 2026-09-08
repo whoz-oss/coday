@@ -4,6 +4,7 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import org.springframework.web.util.HtmlUtils
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
@@ -93,6 +94,33 @@ internal fun toolImagesUserMessage(
         .text("[Attached: ${images.size} image(s) produced by tool $toolName, see tool result above]")
         .media(images.map { it.toSpringAiMedia() })
         .build()
+
+/**
+ * Render a [ToolResponseEvent] as the text for its [ToolResponseMessage] slot.
+ *
+ * When the response has images within [plan]'s media budget, the text is left plain —
+ * the LLM will see them via the follow-up [UserMessage] with [Media] attachments.
+ * When images fall outside the budget (oldest, evicted), a marker is appended telling
+ * the LLM the images are no longer attached and it should re-call the tool if needed.
+ *
+ * Shared by both runtimes so the marker text cannot drift between them.
+ */
+internal fun toolResponseText(
+    response: ToolResponseEvent,
+    plan: ToolReplayPlan,
+): String {
+    val text =
+        when (val content = response.output) {
+            is MessageContent.Text -> content.content
+            is MessageContent.Image -> "[image ${content.mimeType} ${content.width}x${content.height}]"
+        }
+    return when {
+        response.images.isEmpty() -> text
+        plan.hasAttachedMedia(response.toolRequestId) -> text
+        // images come via follow-up UserMessage
+        else -> text + "\n[${response.images.size} image(s) no longer attached, call the tool again if needed]"
+    }
+}
 
 /**
  * Render a [QuestionEvent] as the text of the [AssistantMessage] replayed to the LLM.
