@@ -210,4 +210,45 @@ interface UsageRecordNodeNeo4jRepository : Neo4jRepository<UsageRecordNode, Stri
         from: Instant,
         to: Instant,
     ): List<Map<String, Any>>
+
+    /**
+     * Sum the cost of all active [UsageRecordNode]s in the case tree rooted at [rootCaseId],
+     * restricted to records with [UsageRecordNode.timestamp] >= [since].
+     *
+     * Returns a single-element list containing a map with:
+     * - `recordCount`    (Long)   — number of matching records (0 = no records yet)
+     * - `partialCostSum` (Double) — sum of non-null costs (0.0 when all costs are null)
+     * - `nullCostCount`  (Long)   — number of records whose cost is null
+     *
+     * When `nullCostCount > 0` the total cost is unknown: the caller must return null
+     * rather than `partialCostSum`, which would be a silent undercount.
+     * When `recordCount == 0` there are no records yet; the caller should also return null.
+     *
+     * ## Index usage
+     * Phase 1 — `MATCH (root:Case {id: $rootCaseId})` hits the UNIQUE constraint on `Case.id`.
+     * Phase 2 — `WHERE u.caseId IN caseIds` hits the `usage_record_case_id` B-tree index
+     *            with at most 6 seeks (platform delegation depth limit = 5).
+     * The [since] predicate filters the already-small per-case result set after the index seek;
+     * a composite index on `(caseId, timestamp)` would eliminate that step but is not warranted
+     * at the expected cardinality (a few records per case per run).
+     */
+    @Transactional(readOnly = true)
+    @Query(
+        $$"""MATCH (root:Case {id: $rootCaseId})
+            WITH collect(root.id) + [desc IN [(root)-[:PARENT_OF*1..10]->(d:Case) | d.id] | desc] AS caseIds
+            MATCH (u:UsageRecord)
+            WHERE u.caseId IN caseIds
+              AND u.timestamp >= $since
+              AND (u.removed IS NULL OR u.removed = false)
+            RETURN collect({
+                recordCount:    count(u),
+                partialCostSum: sum(CASE WHEN u.cost IS NOT NULL THEN u.cost ELSE 0 END),
+                nullCostCount:  sum(CASE WHEN u.cost IS NULL    THEN 1    ELSE 0 END)
+            })
+            """,
+    )
+    fun sumCostByCaseTreeSince(
+        rootCaseId: String,
+        since: Instant,
+    ): List<Map<String, Any>>
 }

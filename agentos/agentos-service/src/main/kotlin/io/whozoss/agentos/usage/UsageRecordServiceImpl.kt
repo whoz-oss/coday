@@ -41,5 +41,10 @@ class UsageRecordServiceImpl(
         to: Instant,
     ): List<UsageAggregateByKey> = repository.aggregateByModel(namespaceId, from, to)
 
+    override fun sumCostByCaseTreeSince(
+        rootCaseId: UUID,
+        since: Instant,
+    ): Double? = repository.sumCostByCaseTreeSince(rootCaseId, since)
+
     companion object : KLogging()
 }

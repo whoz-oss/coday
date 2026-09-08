@@ -253,4 +253,58 @@ class UsageAggregateUnitSpec : StringSpec({
         results.find { it.key == "gpt-4" } shouldNotBe null
         results.find { it.key == "unknown" } shouldNotBe null
     }
+
+    // =========================================================================
+    // sumCostByCaseTreeSince
+    // =========================================================================
+
+    "sumCostByCaseTreeSince returns null when no records exist" {
+        val repo = InMemoryUsageRecordRepository()
+        repo.sumCostByCaseTreeSince(UUID.randomUUID(), Instant.now()) shouldBe null
+    }
+
+    "sumCostByCaseTreeSince sums costs for root and descendants since the given instant" {
+        val repo = InMemoryUsageRecordRepository()
+        val rootId = UUID.randomUUID()
+        val childId = UUID.randomUUID()
+        repo.linkParentToChild(rootId, childId)
+        val since = Instant.parse("2025-01-01T10:00:00Z")
+        repo.save(record(rootId, totalTokens = 100L, cost = 0.25, timestamp = Instant.parse("2025-01-01T10:00:00Z")))
+        repo.save(record(childId, totalTokens = 200L, cost = 0.50, timestamp = Instant.parse("2025-01-01T10:05:00Z")))
+
+        repo.sumCostByCaseTreeSince(rootId, since) shouldBe 0.75
+    }
+
+    "sumCostByCaseTreeSince excludes records before the since instant" {
+        val repo = InMemoryUsageRecordRepository()
+        val rootId = UUID.randomUUID()
+        val since = Instant.parse("2025-01-01T10:00:00Z")
+        // before since — must be excluded
+        repo.save(record(rootId, totalTokens = 999L, cost = 9.99, timestamp = Instant.parse("2025-01-01T09:59:59Z")))
+        // at exactly since — must be included (inclusive bound)
+        repo.save(record(rootId, totalTokens = 100L, cost = 0.25, timestamp = since))
+
+        repo.sumCostByCaseTreeSince(rootId, since) shouldBe 0.25
+    }
+
+    "sumCostByCaseTreeSince returns null when any record has null cost" {
+        val repo = InMemoryUsageRecordRepository()
+        val rootId = UUID.randomUUID()
+        val since = Instant.parse("2025-01-01T10:00:00Z")
+        repo.save(record(rootId, totalTokens = 100L, cost = 0.25, timestamp = since))
+        repo.save(record(rootId, totalTokens = 200L, cost = null, timestamp = since))
+
+        repo.sumCostByCaseTreeSince(rootId, since) shouldBe null
+    }
+
+    "sumCostByCaseTreeSince does not include records from unrelated cases" {
+        val repo = InMemoryUsageRecordRepository()
+        val rootId = UUID.randomUUID()
+        val unrelatedId = UUID.randomUUID()
+        val since = Instant.parse("2025-01-01T10:00:00Z")
+        repo.save(record(rootId, totalTokens = 100L, cost = 0.25, timestamp = since))
+        repo.save(record(unrelatedId, totalTokens = 999L, cost = 9.99, timestamp = since))
+
+        repo.sumCostByCaseTreeSince(rootId, since) shouldBe 0.25
+    }
 })

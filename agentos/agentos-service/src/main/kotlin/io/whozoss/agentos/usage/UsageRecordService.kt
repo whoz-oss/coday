@@ -43,4 +43,16 @@ interface UsageRecordService {
         from: Instant,
         to: Instant,
     ): List<UsageAggregateByKey>
+
+    /**
+     * Sum the cost of all active records in the case tree rooted at [rootCaseId],
+     * restricted to records with [UsageRecord.timestamp] >= [since].
+     *
+     * Returns `null` when at least one record has no pricing configured, or when no
+     * records exist yet. Null means "unknown", never zero.
+     */
+    fun sumCostByCaseTreeSince(
+        rootCaseId: UUID,
+        since: Instant,
+    ): Double?
 }

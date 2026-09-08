@@ -92,6 +92,21 @@ class InMemoryUsageRecordRepository : UsageRecordRepository {
             .map { (model, records) -> UsageAggregateByKey(key = model, aggregate = aggregate(records)) }
             .sortedByDescending { it.aggregate.totalTokens }
 
+    override fun sumCostByCaseTreeSince(
+        rootCaseId: UUID,
+        since: Instant,
+    ): Double? {
+        val caseIds = collectSubtree(rootCaseId)
+        val records = store.values.filter {
+            !it.metadata.removed &&
+                it.caseId in caseIds &&
+                !it.timestamp.isBefore(since)
+        }
+        if (records.isEmpty()) return null
+        if (records.any { it.cost == null }) return null
+        return records.sumOf { it.cost!! }
+    }
+
     // =========================================================================
     // Private helpers
     // =========================================================================

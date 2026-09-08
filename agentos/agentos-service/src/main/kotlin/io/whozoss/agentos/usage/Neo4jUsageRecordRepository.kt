@@ -90,6 +90,20 @@ open class Neo4jUsageRecordRepository(
             keyField = "modelName",
         )
 
+    override fun sumCostByCaseTreeSince(
+        rootCaseId: UUID,
+        since: Instant,
+    ): Double? {
+        val rows = usageRecordNodeNeo4jRepository.sumCostByCaseTreeSince(rootCaseId.toString(), since)
+        if (rows.isEmpty()) return null
+        val row = rows.first()
+        val recordCount = (row["recordCount"] as Number).toLong()
+        if (recordCount == 0L) return null
+        val nullCostCount = (row["nullCostCount"] as Number).toLong()
+        if (nullCostCount > 0L) return null
+        return (row["partialCostSum"] as Number).toDouble()
+    }
+
     // =========================================================================
     // Private mapping helpers
     // =========================================================================
