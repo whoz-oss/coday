@@ -1,3 +1,13 @@
+## 1.1.3 (2026-09-08)
+
+### 🩹 Fixes
+
+- #1311 add uniqueness constraint on Credential (userId, authSettingId) ([#1312](https://github.com/whoz-oss/coday/pull/1312), [#1311](https://github.com/whoz-oss/coday/issues/1311))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 1.1.2 (2026-09-08)
 
 ### 🩹 Fixes
