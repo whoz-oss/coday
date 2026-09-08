@@ -559,12 +559,11 @@ class AgentSimple(
                                     ),
                                 )
                                 throw e
-                            } catch (e: CancellationException) {
-                                // Cancellation is a signal, not a tool failure: never turn it into a
-                                // result the LLM would be re-prompted on. Must stay above the generic
-                                // catch — CancellationException is an Exception.
-                                throw e
                             } catch (e: Exception) {
+                                // Cancellation and thread interruption (runBlocking above) are signals,
+                                // not tool failures: keep unwinding the run instead of turning them
+                                // into a result the LLM would be re-prompted on.
+                                if (e is CancellationException || e is InterruptedException) throw e
                                 // A tool failure is a tool result, not a run failure: the message goes
                                 // back to the LLM so it can correct its call (same contract as
                                 // AgentAdvanced.executeTool). Spring AI only turns ToolExecutionException
