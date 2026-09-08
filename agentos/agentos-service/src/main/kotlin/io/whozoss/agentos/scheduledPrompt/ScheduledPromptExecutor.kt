@@ -197,9 +197,12 @@ class ScheduledPromptExecutor(
      */
     private suspend fun runConsumerLoop() {
         val channel = Channel<ScheduledPromptUserRun>(capacity = properties.channelCapacity)
-        val currentScope = checkNotNull(scope)
+        initUserRunProcessingProducer(channel)
+        initUserRunProcessingWorkers(channel)
+    }
 
-        // Producer
+    private fun initUserRunProcessingProducer(channel: Channel<ScheduledPromptUserRun>) {
+        val currentScope = checkNotNull(scope)
         currentScope.launch(dispatcher) {
             val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
             var consecutiveErrors = 0
@@ -232,9 +235,12 @@ class ScheduledPromptExecutor(
                 channel.close()
             }
         }
+    }
 
-        // Worker pool — Run (parent) completion is NOT checked here.
-        // SchedulerScanner.recoverOrphanedRunningRuns handles RUNNING → DONE/FAILED on each tickClaim.
+    // Run (parent) completion is NOT checked here.
+    // SchedulerScanner.recoverOrphanedRunningRuns handles RUNNING → DONE/FAILED on each tickClaim.
+    private fun initUserRunProcessingWorkers(channel: Channel<ScheduledPromptUserRun>) {
+        val currentScope = checkNotNull(scope)
         repeat(properties.workerCount) { workerId ->
             currentScope.launch(dispatcher) {
                 for (userRun in channel) {
