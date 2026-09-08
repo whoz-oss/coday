@@ -178,13 +178,14 @@ class CaseController(
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
         val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
+        val runCostThreshold = namespaceService.resolveRunCostThreshold(resource.namespaceId)
         val domain =
             Case(
                 metadata = metadata,
                 namespaceId = resource.namespaceId,
                 status = resource.status,
                 title = resource.title ?: "Case ${metadata.id}",
-                runCostThreshold = resource.runCostThreshold,
+                runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
             )
         val saved = caseService.create(domain)
         val userId = userService.getCurrentUser().id.toString()
