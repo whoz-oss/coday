@@ -1,3 +1,13 @@
+## 1.1.1 (2026-09-08)
+
+### 🩹 Fixes
+
+- **agentos:** return tool failures to the llm instead of aborting the run ([#1308](https://github.com/whoz-oss/coday/pull/1308))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 1.1.0 (2026-09-08)
 
 ### 🚀 Features
