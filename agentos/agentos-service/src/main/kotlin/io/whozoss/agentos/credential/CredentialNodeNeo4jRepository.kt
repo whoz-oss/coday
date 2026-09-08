@@ -22,9 +22,15 @@ interface CredentialNodeNeo4jRepository : Neo4jRepository<CredentialNode, String
      * have silently hidden future storage inconsistencies.
      */
     @Query(
-        FIND_BY_USER_AND_AUTH_SETTING,
+        $$"""
+            MATCH (c:Credential) 
+            WHERE c.userId = $userId AND c.authSettingId = $authSettingId 
+            RETURN c""",
     )
-    fun findByUserIdAndAuthSettingId(userId: String, authSettingId: String): CredentialNode?
+    fun findByUserIdAndAuthSettingId(
+        userId: String,
+        authSettingId: String,
+    ): CredentialNode?
 
     /**
      * Find all credentials owned by a given user, ordered by authSettingId
@@ -95,7 +101,10 @@ interface CredentialNodeNeo4jRepository : Neo4jRepository<CredentialNode, String
             DETACH DELETE c
             """,
     )
-    fun deleteByUserIdAndAuthSettingId(userId: String, authSettingId: String)
+    fun deleteByUserIdAndAuthSettingId(
+        userId: String,
+        authSettingId: String,
+    )
 
     /**
      * Hard-delete all credentials associated with a given authSetting.
@@ -109,12 +118,4 @@ interface CredentialNodeNeo4jRepository : Neo4jRepository<CredentialNode, String
             """,
     )
     fun deleteByAuthSettingId(authSettingId: String)
-
-    companion object {
-        // Extracted as a const to avoid Kotlin annotation argument interpolation issues
-        // with the $$ raw-string delimiter. The query uses Spring Data named parameters
-        // ($userId, $authSettingId) which must appear as literal dollar-sign sequences.
-        const val FIND_BY_USER_AND_AUTH_SETTING: String =
-            "MATCH (c:Credential) WHERE c.userId = \$userId AND c.authSettingId = \$authSettingId RETURN c"
-    }
 }
