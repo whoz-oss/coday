@@ -14,13 +14,15 @@ interface CredentialNodeNeo4jRepository : Neo4jRepository<CredentialNode, String
     /**
      * Find the credential for a specific (userId, authSettingId) pair.
      * Returns null if none exists.
+     *
+     * Uniqueness of the pair is enforced by the `credential_user_auth_setting_unique`
+     * constraint created by [CredentialSchemaInitializer], so this query returns at most
+     * one node. The former `LIMIT 1` defensive guard has been removed: it masked
+     * duplicate rows (reads succeeded, only writes surfaced the duplication) and would
+     * have silently hidden future storage inconsistencies.
      */
     @Query(
-        $$"""
-            MATCH (c:Credential)
-            WHERE c.userId = $userId AND c.authSettingId = $authSettingId
-            RETURN c LIMIT 1
-            """,
+        FIND_BY_USER_AND_AUTH_SETTING,
     )
     fun findByUserIdAndAuthSettingId(userId: String, authSettingId: String): CredentialNode?
 
@@ -107,4 +109,12 @@ interface CredentialNodeNeo4jRepository : Neo4jRepository<CredentialNode, String
             """,
     )
     fun deleteByAuthSettingId(authSettingId: String)
+
+    companion object {
+        // Extracted as a const to avoid Kotlin annotation argument interpolation issues
+        // with the $$ raw-string delimiter. The query uses Spring Data named parameters
+        // ($userId, $authSettingId) which must appear as literal dollar-sign sequences.
+        const val FIND_BY_USER_AND_AUTH_SETTING: String =
+            "MATCH (c:Credential) WHERE c.userId = \$userId AND c.authSettingId = \$authSettingId RETURN c"
+    }
 }
