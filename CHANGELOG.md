@@ -1,3 +1,24 @@
+# 1.0.0 (2026-09-08)
+
+### 🚀 Features
+
+- ⚠️  wz-33132 - fix bugs found in integration ([#1302](https://github.com/whoz-oss/coday/pull/1302))
+
+### 🩹 Fixes
+
+- move legacy H1 changelog entries to docs to unblock 1.0.0 release ([8c295c76](https://github.com/whoz-oss/coday/commit/8c295c76))
+- move legacy H1 changelog entries to docs to unblock 1.0.0 release ([#1307](https://github.com/whoz-oss/coday/pull/1307))
+
+### ⚠️  Breaking Changes
+
+- wz-33132 - fix bugs found in integration  ([#1302](https://github.com/whoz-oss/coday/pull/1302))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.251.2 (2026-09-08)
 
 ### 🚀 Features
