@@ -533,6 +533,8 @@ class AgentAdvanced(
                         caseId = caseId,
                         actor = Actor(id.toString(), name, ActorRole.AGENT),
                         content = listOf(MessageContent.Text(question)),
+                        llmProvider = llmProvider,
+                        llmModel = llmModel,
                     ),
                 )
                 emitEvent(
@@ -657,6 +659,8 @@ class AgentAdvanced(
                 caseId = caseId,
                 actor = Actor(id.toString(), name, ActorRole.AGENT),
                 content = listOf(MessageContent.Text(errorText)),
+                llmProvider = llmProvider,
+                llmModel = llmModel,
             ),
             WarnEvent(
                 namespaceId = namespaceId,
@@ -757,6 +761,8 @@ class AgentAdvanced(
                                         caseId = caseId,
                                         actor = Actor(id.toString(), name, ActorRole.AGENT),
                                         content = listOf(MessageContent.Text(clarificationQuestion)),
+                                        llmProvider = llmProvider,
+                                        llmModel = llmModel,
                                     )
                                 emitEvent(clarification)
                                 appendTo += clarification
@@ -873,6 +879,8 @@ class AgentAdvanced(
                 caseId = caseId,
                 actor = Actor(id.toString(), name, ActorRole.AGENT),
                 content = listOf(MessageContent.Text("$decisionPrefix$resultText")),
+                llmProvider = llmProvider,
+                llmModel = llmModel,
             )
         emitEvent(resolutionMessage)
         appendTo += resolutionMessage
@@ -1045,6 +1053,8 @@ class AgentAdvanced(
                     caseId = caseId,
                     actor = Actor(id.toString(), name, ActorRole.AGENT),
                     content = listOf(MessageContent.Text(content)),
+                    llmProvider = llmProvider,
+                    llmModel = llmModel,
                 )
             emitEvent(msg)
         }

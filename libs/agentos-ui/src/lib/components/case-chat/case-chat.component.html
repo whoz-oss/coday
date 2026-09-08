@@ -101,6 +101,9 @@
                 @if (item.isFirstInGroup) {
                   <span class="case-chat__role-label">
                     {{ item.event.actor.role === 'USER' ? 'You' : item.event.actor.displayName || 'Agent' }}
+                    @if (agentModelAttribution(item.event); as modelAttribution) {
+                      <span class="case-chat__role-model">({{ modelAttribution }})</span>
+                    }
                   </span>
                 }
                 @if (showTechnical() && item.event.sessionContext) {

@@ -876,6 +876,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.extractText(item.event)
   }
 
+  /** Durable provider/model attribution carried by the agent MessageEvent itself. */
+  protected agentModelAttribution(message: CaseMessageEvent): string | null {
+    if (message.actor.role !== 'AGENT') return null
+    const parts = [message.llmProvider, message.llmModel].filter((part): part is string => !!part)
+    return parts.length ? parts.join(' · ') : null
+  }
+
   // ---------------------------------------------------------------------------
   // Markdown rendering
   // ---------------------------------------------------------------------------
