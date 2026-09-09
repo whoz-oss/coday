@@ -1,0 +1,69 @@
+.delegation-card {
+  align-self: flex-start;
+  width: min(90%, 720px);
+  border: 1px solid var(--color-divider);
+  border-left: 3px solid var(--color-success);
+  background: var(--color-surface);
+}
+.delegation-card--working {
+  border-left-color: var(--color-warning);
+}
+.delegation-card--error {
+  border-left-color: var(--color-error);
+}
+.delegation-card__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.7rem;
+}
+.delegation-card__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+.delegation-card__status,
+.delegation-card__resumed {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.delegation-card__status {
+  margin-left: auto;
+}
+.delegation-card__resumed {
+  color: var(--color-text-secondary);
+}
+.delegation-card__open {
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.delegation-card__activity,
+.delegation-card__task {
+  margin: 0;
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--color-divider);
+  font-size: 0.85rem;
+}
+.delegation-card__activity {
+  padding-left: 2rem;
+}
+.delegation-card__task p {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+}

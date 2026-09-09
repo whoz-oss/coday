@@ -1,0 +1,13 @@
+<section class="delegation-result" aria-label="Delegation result">
+  <div class="delegation-result__markdown" [innerHTML]="html()"></div>
+  @if (result().pendingQuestion) {
+    <p><strong>Waiting for your answer:</strong> {{ result().pendingQuestion }}</p>
+  }
+  @if (result().options?.length) {
+    <ul>
+      @for (option of result().options!; track option) {
+        <li>{{ option }}</li>
+      }
+    </ul>
+  }
+</section>
