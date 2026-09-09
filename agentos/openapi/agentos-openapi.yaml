@@ -790,6 +790,8 @@ paths:
                   - $ref: "#/components/schemas/MessageEvent"
                   - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                  - $ref: "#/components/schemas/SubCaseStartedEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
                   - $ref: "#/components/schemas/ToolRequestEvent"
@@ -829,6 +831,8 @@ paths:
                   - $ref: "#/components/schemas/MessageEvent"
                   - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                  - $ref: "#/components/schemas/SubCaseStartedEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
                   - $ref: "#/components/schemas/ToolRequestEvent"
@@ -866,6 +870,8 @@ paths:
                 - $ref: "#/components/schemas/MessageEvent"
                 - $ref: "#/components/schemas/PendingConfirmationEvent"
                 - $ref: "#/components/schemas/QuestionEvent"
+                - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                - $ref: "#/components/schemas/SubCaseStartedEvent"
                 - $ref: "#/components/schemas/TextChunkEvent"
                 - $ref: "#/components/schemas/ThinkingEvent"
                 - $ref: "#/components/schemas/ToolRequestEvent"
@@ -3610,6 +3616,8 @@ components:
           - PendingConfirmationEvent
           - ConfirmationResolvedEvent
           - CaseUpdatedEvent
+          - SubCaseStartedEvent
+          - SubCaseFinishedEvent
       required:
       - caseId
       - id
@@ -4685,6 +4693,75 @@ components:
           - string
           - "null"
           format: uuid
+    SubCaseFinishedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentName:
+            type: string
+          delegationId:
+            type: string
+            format: uuid
+          errorType:
+            type: string
+          outcome:
+            type: string
+            enum:
+            - SUCCESS
+            - WAITING_USER
+            - ERROR
+            - TIMEOUT
+            - KILLED
+          subCaseId:
+            type: string
+            format: uuid
+          toolRequestId:
+            type: string
+      required:
+      - agentName
+      - caseId
+      - delegationId
+      - id
+      - metadata
+      - namespaceId
+      - outcome
+      - subCaseId
+      - timestamp
+      - toolRequestId
+      - type
+    SubCaseStartedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentName:
+            type: string
+          delegationId:
+            type: string
+            format: uuid
+          resumed:
+            type: boolean
+          subCaseId:
+            type: string
+            format: uuid
+          task:
+            type: string
+          toolRequestId:
+            type: string
+      required:
+      - agentName
+      - caseId
+      - delegationId
+      - id
+      - metadata
+      - namespaceId
+      - resumed
+      - subCaseId
+      - task
+      - timestamp
+      - toolRequestId
+      - type
     SyncUserRolesRequest:
       type: object
       properties:
