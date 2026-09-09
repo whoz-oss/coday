@@ -1,0 +1,11 @@
+{
+  "name": "agentos-http-plugin",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "agentos/agentos-http-plugin/src",
+  "tags": [
+    "type:lib",
+    "platform:jvm",
+    "scope:plugin"
+  ]
+}

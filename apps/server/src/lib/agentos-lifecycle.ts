@@ -9,6 +9,7 @@
  *   <configDir>/agentos/plugins/agentos-bash-plugin-<version>.jar
  *   <configDir>/agentos/plugins/agentos-file-plugin-<version>.jar
  *   <configDir>/agentos/plugins/agentos-mcp-plugin-<version>.jar
+ *   <configDir>/agentos/plugins/agentos-http-plugin-<version>.jar
  *   <configDir>/agentos/plugins/agentos-tmux-plugin-<version>.jar
  *
  * THIS MODULE HAS NO SIDE EFFECTS AT IMPORT TIME.
@@ -38,6 +39,7 @@ export const AGENTOS_ARTIFACT_IDS = [
   'agentos-bash-plugin',
   'agentos-file-plugin',
   'agentos-mcp-plugin',
+  'agentos-http-plugin',
   'agentos-tmux-plugin',
 ] as const
 
