@@ -1276,8 +1276,8 @@ paths:
   /api/cases/{caseId}/read:
     post:
       description: "POST /api/cases/{caseId}/read — record that the current user has\
-        \ read this case. Sets readAt = now() on the User↔Case relation. Idempotent.\
-        \ Returns 200 with no body."
+        \ read this case. Sets readAt on the User↔Case relation. Idempotent. Returns\
+        \ 200 with the updated Case DTO."
       operationId: markCaseRead
       parameters:
       - in: path
@@ -1288,6 +1288,10 @@ paths:
           format: uuid
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
           description: OK
       summary: Mark case as read
       tags:
@@ -4055,6 +4059,10 @@ components:
               oneOf:
               - $ref: "#/components/schemas/Image"
               - $ref: "#/components/schemas/Text"
+          llmModel:
+            type: string
+          llmProvider:
+            type: string
           sessionContext:
             type: object
             additionalProperties: {}

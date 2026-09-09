@@ -199,6 +199,10 @@ data class MessageEvent(
     val content: List<MessageContent>,
     /** Opaque application context at send time. Null when no context was provided. */
     val sessionContext: Map<String, Any?>? = null,
+    /** Durable execution attribution for agent-authored messages; null for user messages. */
+    val llmProvider: String? = null,
+    /** Durable execution attribution for agent-authored messages; null for user messages. */
+    val llmModel: String? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.MESSAGE
 }
