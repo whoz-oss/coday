@@ -21,7 +21,8 @@ class SchedulerEndpointUnitSpec : StringSpec() {
     private fun endpoint(
         scanner: SchedulerScanner = mockk(relaxed = true),
         executor: ScheduledPromptExecutor = mockk(relaxed = true),
-    ): SchedulerEndpoint = SchedulerEndpoint(scanner, executor)
+        executionWindowService: ExecutionWindowService = mockk(relaxed = true),
+    ): SchedulerEndpoint = SchedulerEndpoint(scanner, executor,executionWindowService)
 
     data class StatusCase(
         val claimPaused: Boolean,

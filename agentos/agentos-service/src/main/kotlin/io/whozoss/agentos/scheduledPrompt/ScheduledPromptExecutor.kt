@@ -65,8 +65,12 @@ import java.util.UUID
  * claimed [ScheduledPromptUserRun] off for processing. When the batch is empty the poller
  * delays [SchedulerProperties.emptyPollDelayMs] before polling again, avoiding a busy-loop.
  * On database errors it applies exponential backoff (capped at 60 s). The poller respects
- * [consumePaused]: when paused it delays [SchedulerProperties.pausedPollDelayMs] per
- * iteration without touching the database.
+ * two pause conditions combined: [consumePaused] (operator pause via [SchedulerEndpoint])
+ * or outside the execution window ([ExecutionWindowService.isWithinWindow] returns false).
+ * In either case the poller delays [SchedulerProperties.pausedPollDelayMs] per iteration
+ * without touching the database. Workers drain whatever is already in the channel, then block on receive.
+ * At most [SchedulerProperties.channelCapacity] UserRuns may still be processed after the
+ * window closes — bounded and deliberate (no lease expiry risk, no duplicate execution).
  * The handoff channel is closed in the poller's `finally` block, guaranteeing that workers
  * exit their iteration loop cleanly regardless of how the poller stops.
  *
@@ -128,8 +132,13 @@ class ScheduledPromptExecutor(
     private val clock: Clock,
     private val userContextProvider: UserContextProvider? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /**
+     * Evaluates whether Phase B is allowed to poll the database and dispatch UserRuns.
+     * Injected by Spring as [ExecutionWindowService] — same window config as Phase A.
+     * Defaults to always-open so tests and non-windowed deployments are unaffected.
+     */
+    private val executionWindowService: ExecutionWindowService = ExecutionWindowService(SchedulerProperties()),
 ) {
-
     /** When true, the poller skips claimBatch and delays instead. */
     private val consumePaused = AtomicBoolean(false)
 
@@ -216,7 +225,7 @@ class ScheduledPromptExecutor(
             try {
                 while (isActive) {
                     when {
-                        consumePaused.get() -> delay(properties.pausedPollDelayMs)
+                        consumePaused.get() || !executionWindowService.isWithinExecutionWindow() -> delay(properties.pausedPollDelayMs)
                         else -> {
                             try {
                                 val batch = userRunRepository.claimBatch(leaseDuration, properties.batchSize)
