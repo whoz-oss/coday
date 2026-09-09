@@ -10,13 +10,17 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import mu.KLogging
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.GetMapping
@@ -26,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * SSE endpoint for streaming case events in real time.
@@ -48,23 +53,26 @@ class CaseEventSseController(
      *
      * GET /api/cases/:caseId/events
      *
-     * Each SSE event carries:
-     * - id: the CaseEvent UUID
-     * - name: the CaseEventType value (e.g. "MessageEvent", "ThinkingEvent")
-     * - data: the JSON-serialized CaseEvent subtype (polymorphic via @JsonTypeInfo)
+     * BREAKING PROTOCOL CHANGE: every domain event is sent on the single stable
+     * `event: case-event` channel. Consumers must discriminate the JSON payload using
+     * `data.type`; event-type-specific SSE names are no longer emitted.
+     *
+     * `includePreviousEvents` is non-null and defaults explicitly to true: a new or
+     * reconnecting client receives durable history before buffered/live events.
      */
     @Operation(
         tags = ["sse"],
         summary = "Stream case events via SSE",
         description =
-            "Server-Sent Events stream emitting all events generated during case execution. " +
-                "Use the browser EventSource API to consume this endpoint, not a regular HTTP client.",
+            "BREAKING: every SSE frame uses the stable event name 'case-event'. " +
+                "Its JSON CaseEvent payload carries the subtype in its 'type' discriminant. " +
+                "includePreviousEvents defaults to true.",
         responses = [
             ApiResponse(
                 responseCode = "200",
                 description =
-                    "SSE stream — each event is a JSON-serialized CaseEvent subtype " +
-                        "(MessageEvent, ToolRequestEvent, etc.) with a \"type\" discriminant field.",
+                    "SSE stream — every event is named 'case-event' and carries a " +
+                        "JSON-serialized CaseEvent subtype with a 'type' discriminant.",
                 content = [Content(mediaType = "text/event-stream")],
             ),
         ],
@@ -74,12 +82,11 @@ class CaseEventSseController(
     @HideOnAccessDenied
     fun streamEvents(
         @PathVariable caseId: UUID,
-        @RequestParam includePreviousEvents: Boolean? = true,
+        @RequestParam(defaultValue = "true") includePreviousEvents: Boolean = true,
     ): SseEmitter {
         logger.info { "Client connecting to event stream for case: $caseId" }
 
-        val emitter = SseEmitter(0L) // Infinite timeout
-
+        val emitter = SseEmitter(0L)
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
         startCaseJob(
@@ -89,26 +96,16 @@ class CaseEventSseController(
             emitter = emitter,
         )
 
-        // Heartbeat: periodically send an SSE comment frame so that a client
-        // disconnect is detected even when the case is IDLE and emits no events.
-        // Without this, the collector coroutine above stays suspended on collect()
-        // indefinitely, keeping the SharedFlow subscriber alive and blocking eviction.
-        startHeartbeatJob(
-            scope = scope,
-            emitter = emitter,
-            caseId = caseId,
-        )
+        startHeartbeatJob(scope = scope, emitter = emitter, caseId = caseId)
 
         emitter.onCompletion {
             logger.debug { "SSE emitter completed for case $caseId" }
-            scope.cancel() // cancels all child jobs (collectorJob, heartbeatJob)
+            scope.cancel()
         }
-
         emitter.onTimeout {
             logger.debug { "SSE emitter timed out for case $caseId" }
             scope.cancel()
         }
-
         emitter.onError { throwable ->
             logger.debug { "SSE emitter error for case $caseId: ${throwable.message}" }
             scope.cancel()
@@ -118,40 +115,77 @@ class CaseEventSseController(
         return emitter
     }
 
+    /**
+     * Establishes the live subscription before reading persistence. Live events are put in
+     * a bounded per-connection queue while history is replayed, then sent in FIFO order.
+     * A durable event which is visible both in history and in the live queue is emitted once,
+     * keyed by its stable CaseEvent id.
+     */
     private fun startCaseJob(
         scope: CoroutineScope,
-        includePreviousEvents: Boolean?,
+        includePreviousEvents: Boolean,
         caseId: UUID,
         emitter: SseEmitter,
     ) {
-        scope.launch {
-            try {
-                if (includePreviousEvents == true) {
-                    // Replay persisted history first so clients connecting mid-run
-                    // or reconnecting after a disconnect receive the full sequence.
-                    caseEventService.findByParent(caseId).forEach { sendEvent(it, emitter) }
-                }
+        val activeCase = caseService.findActiveRuntime(caseId)
+        val liveEvents = Channel<CaseEvent>(LIVE_BUFFER_CAPACITY)
+        val invalidated = AtomicBoolean(false)
 
-                // If the case is still active, subscribe to the live flow.
-                // findActiveRuntime never rehydrates — safe for observation only.
-                // If the case is completed, the history replay above is sufficient
-                // and the emitter completes at the end of the try block.
-                val activeCase = caseService.findActiveRuntime(caseId)
-                activeCase?.events?.collect { event ->
-                    try {
-                        sendEvent(event, emitter)
-                        logger.trace { "Event ${event.type} sent to SSE for case $caseId" }
-                    } catch (e: Exception) {
-                        logger.debug { "Failed to send event to SSE for case $caseId: ${e.message}" }
-                        throw e
+        fun invalidateForSaturation(cause: Throwable) {
+            if (!invalidated.compareAndSet(false, true)) return
+            logger.warn(cause) { "SSE live buffer saturated for case $caseId; closing connection for durable replay" }
+            emitter.completeWithError(cause)
+            scope.cancel()
+        }
+
+        // UNDISTPATCHED subscribes to the hot SharedFlow before the repository replay starts.
+        // trySend is deliberately non-blocking: this collector must never feed back pressure
+        // into CaseRuntime. A full queue is an explicit reconnect/replay signal, never a drop.
+        activeCase?.let { runtime ->
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                runtime.events.collect { event ->
+                    if (liveEvents.trySend(event).isFailure) {
+                        invalidateForSaturation(SseConnectionSaturatedException(caseId))
                     }
                 }
-                emitter.complete()
+            }
+            // The runtime never blocks: a rejected tryEmit means its own live buffer
+            // cannot preserve the stream. Close this connection so EventSource reconnects
+            // and durable history is replayed rather than continuing with a gap.
+            scope.launch {
+                runtime.deliveryFailureCount.drop(1).first()
+                invalidateForSaturation(SseConnectionSaturatedException(caseId))
+            }
+        }
+
+        scope.launch {
+            try {
+                val emittedEventIds = mutableSetOf<UUID>()
+
+                if (includePreviousEvents) {
+                    caseEventService.findByParent(caseId).forEach { event ->
+                        sendIfNew(event, emittedEventIds, emitter)
+                    }
+                }
+
+                if (activeCase == null) {
+                    emitter.complete()
+                    return@launch
+                }
+
+                // First drain all live events accumulated while persistence was replayed.
+                // Thereafter receive continuously from the same FIFO queue.
+                while (true) {
+                    val buffered = liveEvents.tryReceive().getOrNull() ?: break
+                    sendIfNew(buffered, emittedEventIds, emitter)
+                }
+                for (event in liveEvents) {
+                    sendIfNew(event, emittedEventIds, emitter)
+                    logger.trace { "Event ${event.type} sent to SSE for case $caseId" }
+                }
             } catch (e: CancellationException) {
-                // Normal path: collectorJob was cancelled because the client disconnected
-                // (onError/onCompletion fired and called scope.cancel()). Not an error.
-                logger.debug { "SSE collector cancelled for case $caseId (client disconnected)" }
-                throw e // re-throw so cancellation propagates correctly through the coroutine hierarchy
+                logger.debug { "SSE collector cancelled for case $caseId" }
+                throw e
             } catch (error: Exception) {
                 logger.error("Error in event stream for case $caseId", error)
                 emitter.completeWithError(error)
@@ -159,44 +193,33 @@ class CaseEventSseController(
         }
     }
 
-    private fun sendEvent(
-        event: CaseEvent,
-        emitter: SseEmitter,
-    ) = emitter.send(
-        SseEmitter
-            .event()
-            .id(event.id.toString())
-            .name(event.type.value)
-            .data(event),
-    )
+    private fun sendIfNew(event: CaseEvent, emittedEventIds: MutableSet<UUID>, emitter: SseEmitter) {
+        if (emittedEventIds.add(event.id)) sendEvent(event, emitter)
+    }
 
-    private fun startHeartbeatJob(
-        scope: CoroutineScope,
-        emitter: SseEmitter,
-        caseId: UUID,
-    ): Job =
+    private fun sendEvent(event: CaseEvent, emitter: SseEmitter) =
+        emitter.send(
+            SseEmitter.event().id(event.id.toString()).name(CASE_EVENT_CHANNEL).data(event),
+        )
+
+    private fun startHeartbeatJob(scope: CoroutineScope, emitter: SseEmitter, caseId: UUID): Job =
         scope.launch {
             while (isActive) {
                 delay(heartbeatIntervalMs)
                 try {
-                    // SSE comment — ignored by EventSource but forces a socket write.
-                    emitter.send(
-                        SseEmitter
-                            .event()
-                            .comment("keep-alive"),
-                    )
+                    emitter.send(SseEmitter.event().comment("keep-alive"))
                 } catch (e: Exception) {
-                    // The socket is gone. Cancel the scope explicitly here rather than
-                    // relying solely on Tomcat's onError callback: if that callback never
-                    // fires, collectorJob would stay subscribed indefinitely.
-                    // scope.cancel() propagates to all child jobs so no explicit break is
-                    // needed — this coroutine will receive CancellationException at the
-                    // next delay() and exit the while loop naturally.
                     logger.debug { "Heartbeat write failed for case $caseId — client likely disconnected" }
                     scope.cancel()
                 }
             }
         }
 
-    companion object : KLogging()
+    private class SseConnectionSaturatedException(caseId: UUID) :
+        IllegalStateException("SSE live buffer saturated for case $caseId; reconnect to replay durable events")
+
+    companion object : KLogging() {
+        const val CASE_EVENT_CHANNEL = "case-event"
+        private const val LIVE_BUFFER_CAPACITY = 100
+    }
 }
