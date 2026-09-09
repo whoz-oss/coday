@@ -267,7 +267,7 @@ class IntegrationConfigServiceImpl(
         private const val TRIPLE_KEY_PROPERTY = "tripleKey"
 
         /**
-         * Comparator defining the 3-tier overlay precedence (lowest → highest priority).
+         * Comparator defining the 4-tier overlay precedence (lowest → highest priority).
          *
          * | Scope            | namespaceId | userId   | rank |
          * |------------------|-------------|----------|------|

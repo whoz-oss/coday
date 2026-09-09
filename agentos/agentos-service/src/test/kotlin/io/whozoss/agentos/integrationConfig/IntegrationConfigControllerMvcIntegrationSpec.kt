@@ -223,6 +223,107 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // POST / PUT — user scope denied for network-reaching integration types
+        // (agentos.integrations.user-scope-denied-types, default HTTP_API, MCP_STDIO, MCP_HTTP)
+        // -------------------------------------------------------------------------
+
+        "POST user-global config of a denied type (MCP_HTTP) returns 403" {
+            mockMvc.perform(
+                post("/api/integration-configs")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "userId": "$aliceId",
+                          "name": "DENIED_${UUID.randomUUID()}",
+                          "integrationType": "MCP_HTTP"
+                        }
+                        """.trimIndent(),
+                    ),
+            ).andExpect(status().isForbidden)
+        }
+
+        "POST user-namespace config of a denied type (HTTP_API) returns 403 even with namespace READ" {
+            mockMvc.perform(
+                post("/api/integration-configs")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "namespaceId": "$namespaceId",
+                          "userId": "$aliceId",
+                          "name": "DENIED_${UUID.randomUUID()}",
+                          "integrationType": "HTTP_API"
+                        }
+                        """.trimIndent(),
+                    ),
+            ).andExpect(status().isForbidden)
+        }
+
+        "POST NS-shared config of a denied type (MCP_HTTP) still returns 201" {
+            mockMvc.perform(
+                post("/api/integration-configs")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "namespaceId": "$namespaceId",
+                          "name": "SHARED_MCP_${UUID.randomUUID()}",
+                          "integrationType": "MCP_HTTP"
+                        }
+                        """.trimIndent(),
+                    ),
+            ).andExpect(status().isCreated)
+        }
+
+        "POST user-global config of a type outside the denied list (BASH) still returns 201" {
+            mockMvc.perform(
+                post("/api/integration-configs")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "userId": "$aliceId",
+                          "name": "ALLOWED_${UUID.randomUUID()}",
+                          "integrationType": "BASH"
+                        }
+                        """.trimIndent(),
+                    ),
+            ).andExpect(status().isCreated)
+        }
+
+        "PUT on an existing user-scoped config of a denied type returns 404 (hidden by @HideOnAccessDenied)" {
+            // Row created directly through the service (the API refuses it); alice owns it so the
+            // @PreAuthorize WRITE check passes and the controller body raises AccessDeniedException.
+            // `update` carries @HideOnAccessDenied, so AccessDeniedExceptionHandler translates that
+            // 403 into a 404: the endpoint deliberately never confirms the row's existence.
+            val created = integrationConfigService.create(
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = null,
+                    userId = aliceId,
+                    name = "LEGACY_MCP_${UUID.randomUUID()}",
+                    integrationType = "MCP_HTTP",
+                ),
+            )
+
+            mockMvc.perform(
+                put("/api/integration-configs/${created.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "id": "${created.id}",
+                          "name": "${created.name}",
+                          "integrationType": "MCP_HTTP",
+                          "parameters": { "url": "https://evil.example.com" }
+                        }
+                        """.trimIndent(),
+                    ),
+            ).andExpect(status().isNotFound)
+        }
+
+        // -------------------------------------------------------------------------
         // PUT — Bean Validation + immutable fields
         // -------------------------------------------------------------------------
 

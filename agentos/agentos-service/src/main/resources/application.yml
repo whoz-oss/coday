@@ -174,6 +174,13 @@ agentos:
     # A single table cell longer than this is truncated by readDocument.
     # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_CELL_CHARS
     # document-max-cell-chars: 5000
+  integrations:
+    # Comma-separated integration types that cannot be created or updated in a user scope
+    # (user-global or user x namespace), because a user overlay of a network-reaching type could
+    # redirect a shared credential to a host the user controls. Platform and namespace-shared
+    # configs are unaffected. Setting the list replaces the default entirely.
+    # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
+    # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP
   query-user:
     # Grant the built-in queryUser tool to every agent that does not mention QUERY_USER in its
     # integrations map. On by default: asking a question is a primitive of conversation, not an

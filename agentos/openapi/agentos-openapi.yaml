@@ -1555,7 +1555,7 @@ paths:
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
 
-        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404.
+        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404. Integration types listed in `agentos.integrations.user-scope-denied-types` (default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`) cannot be created in either user scope (403).
       operationId: createIntegrationConfig
       requestBody:
         content:
