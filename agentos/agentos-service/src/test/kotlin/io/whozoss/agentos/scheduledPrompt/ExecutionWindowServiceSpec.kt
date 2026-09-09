@@ -3,13 +3,15 @@ package io.whozoss.agentos.scheduledPrompt
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneOffset
-import java.time.ZonedDateTime
 
 /**
  * Unit tests for [ExecutionWindowService].
  *
- * Uses fixed [ZonedDateTime] values — no Spring context, no Clock injection.
+ * Uses fixed [Instant] values — no Spring context, no Clock injection.
  *
  * Business-hours config used in most tests:
  *   `MONDAY 22:00,FRIDAY 05:00,FRIDAY 22:00,MONDAY 05:00`
@@ -22,12 +24,9 @@ class ExecutionWindowServiceSpec : StringSpec() {
 
     private fun svc(windows: List<String>) = ExecutionWindowService(SchedulerProperties(windows = windows))
 
-    private fun at(day: String, hour: Int, minute: Int = 0): ZonedDateTime {
-        val dayOfWeek = java.time.DayOfWeek.valueOf(day)
-        val monday = java.time.LocalDate.of(2024, 1, 1)
-        val date = monday.plusDays((dayOfWeek.value - 1).toLong())
-        return ZonedDateTime.of(date, java.time.LocalTime.of(hour, minute), ZoneOffset.UTC)
-    }
+    private fun at(day: String, hour: Int, minute: Int = 0): Instant =
+        LocalDateTime.of(2024, 1, DayOfWeek.valueOf(day).value, hour, minute)
+            .toInstant(ZoneOffset.UTC)
 
     init {
 

@@ -11,7 +11,6 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
-import java.time.ZonedDateTime
 import java.util.concurrent.atomic.AtomicBoolean
 
 
@@ -156,17 +155,16 @@ class SchedulerScanner(
      * - `REQUEST_HELD` on every tick while outside the window (indicates pending work is waiting).
      */
     private fun checkExecutionWindow(): Boolean {
-        val now = ZonedDateTime.now(clock)
-        val nowUtc = now.withZoneSameInstant(ZoneOffset.UTC)
+        val now = Instant.now(clock)
         val inWindow = executionWindowService.isWithinExecutionWindow(now)
 
         when {
             inWindow && lastWindowState != true -> {
-                logger.info { "[SchedulerScanner] WINDOW_OPEN — scheduler resuming dispatch (${nowUtc.toLocalTime()} UTC)" }
+                logger.info { "[SchedulerScanner] WINDOW_OPEN — scheduler resuming dispatch (${now.atZone(ZoneOffset.UTC).toLocalTime()} UTC)" }
                 lastWindowState = true
             }
             !inWindow && lastWindowState != false -> {
-                logger.info { "[SchedulerScanner] WINDOW_CLOSE — scheduler pausing dispatch (${nowUtc.toLocalTime()} UTC)" }
+                logger.info { "[SchedulerScanner] WINDOW_CLOSE — scheduler pausing dispatch (${now.atZone(ZoneOffset.UTC).toLocalTime()} UTC)" }
                 lastWindowState = false
             }
         }

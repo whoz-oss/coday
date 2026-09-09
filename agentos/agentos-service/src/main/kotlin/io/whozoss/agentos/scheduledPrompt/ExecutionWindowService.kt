@@ -4,6 +4,7 @@ import mu.KLogging
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
@@ -97,14 +98,13 @@ class ExecutionWindowService(properties: SchedulerProperties, private val clock:
      * Returns `true` unconditionally when no windows are configured (always-open behaviour)
      * or when configuration parsing failed (fail-open).
      */
-    fun isWithinExecutionWindow(): Boolean = isWithinExecutionWindow(ZonedDateTime.now(clock))
+    fun isWithinExecutionWindow(): Boolean = isWithinExecutionWindow(Instant.now(clock))
 
     /**
      * Returns `true` when [now] falls within any configured execution window.
-     * Exposed for callers that already hold a [ZonedDateTime] (e.g. [SchedulerScanner]
-     * which derives [now] from its own injected clock).
+     * Exposed for callers that already hold an [Instant] (e.g. [SchedulerScanner]).
      */
-    fun isWithinExecutionWindow(now: ZonedDateTime): Boolean {
+    fun isWithinExecutionWindow(now: Instant): Boolean {
         val windows = parsedWindows ?: return true
         val current = minuteOfWeek(now)
         return windows.any { window -> isInWindow(current, window) }
@@ -133,11 +133,10 @@ class ExecutionWindowService(properties: SchedulerProperties, private val clock:
     }
 
     /**
-     * Converts a [ZonedDateTime] (any zone) to minutes elapsed since Monday 00:00 UTC
-     * within the week.
+     * Converts an [Instant] to minutes elapsed since Monday 00:00 UTC within the week.
      */
-    private fun minuteOfWeek(now: ZonedDateTime): Int {
-        val utc = now.withZoneSameInstant(ZoneOffset.UTC)
+    private fun minuteOfWeek(now: Instant): Int {
+        val utc = now.atZone(ZoneOffset.UTC)
         return WeeklyBoundary(utc.dayOfWeek, utc.toLocalTime()).minuteOfWeek
     }
 
