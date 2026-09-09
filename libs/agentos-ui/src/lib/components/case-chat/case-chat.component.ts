@@ -39,6 +39,7 @@ import {
   QuestionEventQuestionTypeEnum,
   ToolRequestEvent,
   ToolResponseEvent,
+  ToolSelectedEvent,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
@@ -73,15 +74,13 @@ export interface ToolCall {
 
 /** A technical event displayed only when showTechnical is enabled. */
 export interface TechnicalItem {
-  type:
-    | 'WarnEvent'
-    | 'ErrorEvent'
-    | 'CaseStatusEvent'
-    | 'AgentRunningEvent'
-    | 'AgentFinishedEvent'
-    | 'AgentSelectedEvent'
-    | 'IntentionGeneratedEvent'
   label: string
+  detail?: string
+}
+
+export interface ExecutionNotice {
+  severity: 'warning' | 'error' | 'terminal'
+  title: string
   detail?: string
 }
 
@@ -89,6 +88,7 @@ export type TimelineItem =
   | { kind: 'message'; event: CaseMessageEvent; html: SafeHtml; isFirstInGroup: boolean }
   | { kind: 'tool'; call: ToolCall }
   | { kind: 'streaming' }
+  | { kind: 'notice'; notice: ExecutionNotice; eventId: string }
   | { kind: 'technical'; item: TechnicalItem; eventId: string }
   | { kind: 'question'; event: QuestionEvent; answered: boolean }
 
@@ -399,12 +399,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         // A question is answered when there is a corresponding AnswerEvent in the stream.
         const answered = allEvents.some((ae) => ae.type === 'AnswerEvent' && (ae as AnswerEvent).questionId === qe.id)
         items.push({ kind: 'question', event: qe, answered })
-      } else if (showTechnical) {
-        const technical = this.toTechnicalItem(e)
-        if (technical) {
-          items.push({ kind: 'technical', item: technical, eventId: e.id })
-          lastMessageRole = null
+      } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
+        // Execution notices and the generic fallback are diagnostics: keep them entirely
+        // behind the technical toggle, while dedicated conversation/tool renderers stay visible.
+        const notice = this.toExecutionNotice(e)
+        if (notice) {
+          items.push({ kind: 'notice', notice, eventId: e.id })
+        } else {
+          // Every event not already represented elsewhere remains inspectable in technical mode.
+          items.push({ kind: 'technical', item: this.toTechnicalItem(e), eventId: e.id })
         }
+        lastMessageRole = null
       }
     }
 
@@ -426,6 +431,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       case 'tool':
         return item.call.requestId
       case 'technical':
+      case 'notice':
         return item.eventId
       case 'streaming':
         return 'streaming'
@@ -688,6 +694,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       'TextChunkEvent',
       'ToolRequestEvent',
       'ToolResponseEvent',
+      'ToolSelectedEvent',
       'PendingConfirmationEvent',
       'ConfirmationResolvedEvent',
       'ErrorEvent',
@@ -883,11 +890,53 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     )
   }
 
+  protected formatToolArguments(args: string | null): string | null {
+    return args === null ? null : this.formatStructuredData(args)
+  }
+
+  protected formatToolDuration(call: ToolCall): string | null {
+    const durationMs = call.response?.durationMs
+    if (typeof durationMs !== 'number' || !Number.isFinite(durationMs)) return null
+    return durationMs < 1000 ? `${durationMs} ms` : `${(durationMs / 1000).toFixed(durationMs < 10_000 ? 1 : 0)} s`
+  }
+
+  protected formatToolMetadata(call: ToolCall): string | null {
+    const metadata = call.response?.toolMetadata
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) || Object.keys(metadata).length === 0) {
+      return null
+    }
+    return this.formatStructuredData(metadata)
+  }
+
   protected extractToolOutput(call: ToolCall): string | null {
     if (!call.response) return null
-    const output = call.response.output as { content?: string } | null
-    if (!output) return null
-    return output.content ?? null
+    const output = call.response.output as unknown
+    if (output === null || output === undefined) return null
+
+    // Most tools currently use { content }, but retain the complete payload when a tool
+    // returns another shape or a malformed value.
+    if (typeof output === 'object' && 'content' in output) {
+      const content = (output as { content?: unknown }).content
+      if (content !== undefined && content !== null) return this.formatStructuredData(content)
+    }
+    return this.formatStructuredData(output)
+  }
+
+  /** Pretty-print valid structured payloads without hiding malformed or plain-text values. */
+  protected formatStructuredData(value: unknown): string {
+    if (typeof value === 'string') {
+      try {
+        return JSON.stringify(JSON.parse(value), null, 2)
+      } catch {
+        return value
+      }
+    }
+    try {
+      const formatted = JSON.stringify(value, null, 2)
+      return formatted ?? String(value)
+    } catch {
+      return String(value)
+    }
   }
 
   protected toggleToolCall(requestId: string): void {
@@ -985,38 +1034,65 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // Technical event mapping
   // ---------------------------------------------------------------------------
 
-  private toTechnicalItem(event: CaseEvent): TechnicalItem | null {
+  /**
+   * Events with a dedicated chat rendering or side effect must not also become fallback log
+   * rows. Keep orchestration events out of this list: they remain useful technical history.
+   */
+  private isEventConsumedElsewhere(event: CaseEvent): boolean {
     switch (event.type) {
-      case 'WarnEvent': {
-        const e = event as WarnEvent
-        return { type: 'WarnEvent', label: '⚠️ Warn', detail: e.message }
-      }
-      case 'ErrorEvent': {
-        const e = event as ErrorEvent
-        return { type: 'ErrorEvent', label: '❌ Error', detail: e.message }
-      }
+      case 'MessageEvent':
+      case 'ToolRequestEvent':
+      case 'ToolResponseEvent':
+      case 'QuestionEvent':
+      case 'AnswerEvent':
+      case 'CaseUpdatedEvent':
+      case 'TextChunkEvent':
+        return true
+      default:
+        return false
+    }
+  }
+
+  private toExecutionNotice(event: CaseEvent): ExecutionNotice | null {
+    switch (event.type) {
+      case 'WarnEvent':
+        return { severity: 'warning', title: 'Warning', detail: (event as WarnEvent).message }
+      case 'ErrorEvent':
+        return { severity: 'error', title: 'Execution error', detail: (event as ErrorEvent).message }
       case 'CaseStatusEvent': {
-        const e = event as CaseStatusEvent
-        return { type: 'CaseStatusEvent', label: `🟡 Status: ${e.status}` }
-      }
-      case 'AgentRunningEvent': {
-        const e = event as AgentRunningEvent
-        return { type: 'AgentRunningEvent', label: `▶️ Agent running: ${e.agentName}` }
-      }
-      case 'AgentFinishedEvent': {
-        const e = event as AgentFinishedEvent
-        return { type: 'AgentFinishedEvent', label: `✅ Agent finished: ${e.agentName}` }
-      }
-      case 'AgentSelectedEvent': {
-        const e = event as AgentSelectedEvent
-        return { type: 'AgentSelectedEvent', label: `🎯 Agent selected: ${e.agentName}` }
-      }
-      case 'IntentionGeneratedEvent': {
-        const e = event as IntentionGeneratedEvent
-        return { type: 'IntentionGeneratedEvent', label: `🧠 Intention → ${e.toolName}`, detail: e.intention }
+        const status = (event as CaseStatusEvent).status
+        if (status === 'ERROR') return { severity: 'terminal', title: 'Execution ended with an error' }
+        if (status === 'KILLED') return { severity: 'terminal', title: 'Execution was killed' }
+        return null
       }
       default:
         return null
+    }
+  }
+
+  private toTechnicalItem(event: CaseEvent): TechnicalItem {
+    switch (event.type) {
+      case 'CaseStatusEvent':
+        return { label: `Status: ${(event as CaseStatusEvent).status}` }
+      case 'AgentRunningEvent':
+        return { label: `Agent running: ${(event as AgentRunningEvent).agentName}` }
+      case 'AgentFinishedEvent':
+        return { label: `Agent finished: ${(event as AgentFinishedEvent).agentName}` }
+      case 'AgentSelectedEvent':
+        return { label: `Agent selected: ${(event as AgentSelectedEvent).agentName}` }
+      case 'IntentionGeneratedEvent': {
+        const e = event as IntentionGeneratedEvent
+        return { label: `Intention → ${e.toolName}`, detail: e.intention }
+      }
+      case 'ToolSelectedEvent':
+        return { label: `Tool selected: ${(event as ToolSelectedEvent).toolName}` }
+      default:
+        // Defensive fallback for known but not specifically formatted events, and for
+        // forward-compatible payloads received at runtime.
+        return {
+          label: `Event: ${(event as { type?: string }).type ?? 'unknown'}`,
+          detail: this.formatStructuredData(event),
+        }
     }
   }
 

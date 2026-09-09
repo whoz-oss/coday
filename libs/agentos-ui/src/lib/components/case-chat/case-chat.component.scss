@@ -398,6 +398,11 @@
     flex: 1;
     min-width: 0;
   }
+  &__tool-call-status {
+    margin-left: auto;
+    color: var(--color-neutral-500);
+    font-size: 0.7rem;
+  }
   &__tool-call-chevron {
     flex-shrink: 0;
     font-size: 0.6rem;
@@ -514,7 +519,35 @@
     font-size: 0.75rem;
   }
 
-  // ── System log ───────────────────────────────────────────────────────────────
+  // ── Execution notices and system log ─────────────────────────────────────────
+
+  &__execution-notice {
+    flex-shrink: 0;
+    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    max-width: 90%;
+    padding: 0.55rem 0.75rem;
+    border-left: 3px solid var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+    color: var(--color-text);
+    font-size: 0.8rem;
+
+    &--error {
+      border-left-color: var(--color-error);
+      background: color-mix(in srgb, var(--color-error) 8%, transparent);
+    }
+  }
+
+  &__execution-notice-title {
+    font-weight: 600;
+  }
+
+  &__execution-notice-detail {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 
   &__log {
     flex-shrink: 0;
@@ -545,6 +578,9 @@
   }
 
   &__log-body {
+    display: block;
+    max-height: 260px;
+    overflow: auto;
     margin-top: 4px;
     padding: 10px 12px;
     font-family: var(--font-heading);
