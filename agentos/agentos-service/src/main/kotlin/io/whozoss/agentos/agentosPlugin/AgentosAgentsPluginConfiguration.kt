@@ -1,7 +1,7 @@
 package io.whozoss.agentos.agentosPlugin
 
 import io.whozoss.agentos.agentConfig.AgentConfig
-import io.whozoss.agentos.agentConfig.AgentConfigRepository
+import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -17,10 +17,12 @@ import java.util.UUID
  *
  * Declared in a dedicated `@Configuration` class (mirroring
  * [io.whozoss.agentos.casePlugin.CasePluginConfiguration]) to avoid a circular Spring
- * dependency. This class injects [AgentConfigRepository] directly rather than
- * [io.whozoss.agentos.agentConfig.AgentConfigService], because `AgentConfigServiceImpl`
- * depends on `AgentService` which depends on `ToolRegistryService` which collects all
- * `ToolPlugin` beans — creating a cycle if `AgentConfigService` were injected here.
+ * dependency. This class injects [AgentConfigService] rather than [AgentConfigRepository]
+ * to go through the proper service layer (uniqueness enforcement, business rules).
+ *
+ * No Spring cycle arises here: [AgentConfigServiceImpl] depends on [UserService] and
+ * [PromptRepository], neither of which pulls in [ToolRegistryService] or any [ToolPlugin].
+ * The previously documented cycle was inaccurate.
  *
  * Permission model:
  * - **List** : Namespace READ
@@ -33,7 +35,7 @@ import java.util.UUID
  */
 @Configuration
 class AgentosAgentsPluginConfiguration(
-    private val agentConfigRepository: AgentConfigRepository,
+    private val agentConfigService: AgentConfigService,
     private val permissionService: PermissionService,
 ) {
     @Bean
@@ -54,7 +56,7 @@ class AgentosAgentsPluginConfiguration(
                     logger.debug { "[AgentosPlugin] listAgents denied: user $userId lacks READ on namespace $namespaceId" }
                     return@AgentosAgentsToolPlugin null
                 }
-                agentConfigRepository.findByParent(namespaceId, withDisabled)
+                agentConfigService.findByNamespace(namespaceId, withDisabled)
             },
             getAgent = { namespaceId, userId, name ->
                 if (userId == null) {
@@ -62,8 +64,8 @@ class AgentosAgentsPluginConfiguration(
                     return@AgentosAgentsToolPlugin null
                 }
                 val agent =
-                    agentConfigRepository
-                        .findByParent(namespaceId, withDisabled = true)
+                    agentConfigService
+                        .findByNamespace(namespaceId, withDisabled = true)
                         .firstOrNull { it.name.equals(name, ignoreCase = true) }
                         ?: return@AgentosAgentsToolPlugin null
                 if (!permissionService.hasPermission(
@@ -93,28 +95,26 @@ class AgentosAgentsPluginConfiguration(
                     logger.debug { "[AgentosPlugin] createAgent denied: user $userId lacks WRITE on namespace $namespaceId" }
                     return@AgentosAgentsToolPlugin null
                 }
-                // Reject if an agent with the same name already exists (case-insensitive)
-                val existing =
-                    agentConfigRepository
-                        .findByParent(namespaceId, withDisabled = true)
-                        .any { it.name.equals(input.name, ignoreCase = true) }
-                if (existing) {
-                    logger.debug { "[AgentosPlugin] createAgent denied: name '${input.name}' already exists in namespace $namespaceId" }
-                    return@AgentosAgentsToolPlugin null
-                }
-                agentConfigRepository.save(
-                    AgentConfig(
-                        metadata = EntityMetadata(id = UUID.randomUUID()),
-                        namespaceId = namespaceId,
-                        name = input.name,
-                        description = input.description,
-                        instructions = input.instructions,
-                        modelName = input.modelName,
-                        integrations = input.integrations,
-                        subAgents = input.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
-                        advancedExecution = input.advancedExecution,
-                    ),
-                )
+                // Name uniqueness is enforced by AgentConfigService.create() — no need to
+                // pre-check here. An IllegalArgumentException from the service maps to a
+                // PERMISSION_DENIED error in the tool (duplicate name = cannot create).
+                runCatching {
+                    agentConfigService.create(
+                        AgentConfig(
+                            metadata = EntityMetadata(id = UUID.randomUUID()),
+                            namespaceId = namespaceId,
+                            name = input.name,
+                            description = input.description,
+                            instructions = input.instructions,
+                            modelName = input.modelName,
+                            integrations = input.integrations,
+                            subAgents = input.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
+                            advancedExecution = input.advancedExecution,
+                        ),
+                    )
+                }.onFailure { e ->
+                    logger.debug { "[AgentosPlugin] createAgent failed: ${e.message}" }
+                }.getOrNull()
             },
             updateAgent = { namespaceId, userId, input ->
                 if (userId == null) {
@@ -122,8 +122,8 @@ class AgentosAgentsPluginConfiguration(
                     return@AgentosAgentsToolPlugin null
                 }
                 val agent =
-                    agentConfigRepository
-                        .findByParent(namespaceId, withDisabled = true)
+                    agentConfigService
+                        .findByNamespace(namespaceId, withDisabled = true)
                         .firstOrNull { it.name.equals(input.name, ignoreCase = true) }
                         ?: return@AgentosAgentsToolPlugin null
                 if (!permissionService.hasPermission(
@@ -136,7 +136,7 @@ class AgentosAgentsPluginConfiguration(
                     logger.debug { "[AgentosPlugin] updateAgent denied: user $userId lacks WRITE on agent ${agent.id}" }
                     return@AgentosAgentsToolPlugin null
                 }
-                agentConfigRepository.save(
+                agentConfigService.update(
                     agent.copy(
                         description = input.description ?: agent.description,
                         instructions = input.instructions ?: agent.instructions,
@@ -155,8 +155,8 @@ class AgentosAgentsPluginConfiguration(
                     return@AgentosAgentsToolPlugin null
                 }
                 val agent =
-                    agentConfigRepository
-                        .findByParent(namespaceId, withDisabled = true)
+                    agentConfigService
+                        .findByNamespace(namespaceId, withDisabled = true)
                         .firstOrNull { it.name.equals(name, ignoreCase = true) }
                         ?: return@AgentosAgentsToolPlugin null
                 if (!permissionService.hasPermission(
@@ -169,7 +169,7 @@ class AgentosAgentsPluginConfiguration(
                     logger.debug { "[AgentosPlugin] enableAgent denied: user $userId lacks WRITE on agent ${agent.id}" }
                     return@AgentosAgentsToolPlugin null
                 }
-                agentConfigRepository.save(agent.copy(enabled = true))
+                agentConfigService.enable(agent.metadata.id)
             },
             disableAgent = { namespaceId, userId, name ->
                 if (userId == null) {
@@ -177,8 +177,8 @@ class AgentosAgentsPluginConfiguration(
                     return@AgentosAgentsToolPlugin null
                 }
                 val agent =
-                    agentConfigRepository
-                        .findByParent(namespaceId, withDisabled = true)
+                    agentConfigService
+                        .findByNamespace(namespaceId, withDisabled = true)
                         .firstOrNull { it.name.equals(name, ignoreCase = true) }
                         ?: return@AgentosAgentsToolPlugin null
                 if (!permissionService.hasPermission(
@@ -191,7 +191,7 @@ class AgentosAgentsPluginConfiguration(
                     logger.debug { "[AgentosPlugin] disableAgent denied: user $userId lacks WRITE on agent ${agent.id}" }
                     return@AgentosAgentsToolPlugin null
                 }
-                agentConfigRepository.save(agent.copy(enabled = false))
+                agentConfigService.disable(agent.metadata.id)
             },
         )
 

@@ -7,24 +7,28 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
+import io.whozoss.agentos.agentConfig.AgentConfigServiceImpl
 import io.whozoss.agentos.entity.EntityRepository
 import io.whozoss.agentos.entity.InMemoryEntityRepository
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.prompt.PromptRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
  * Unit tests for the [AgentosAgentsPluginConfiguration] lambdas.
  *
  * Instantiates [AgentosAgentsPluginConfiguration] directly (no Spring context), wires it
- * with in-memory repositories and MockK permission services, then exercises each tool
- * through [AgentosAgentsToolPlugin.provideTools] → tool.execute().
+ * with a real [AgentConfigServiceImpl] backed by an in-memory repository and MockK
+ * permission services, then exercises each tool through
+ * [AgentosAgentsToolPlugin.provideTools] → tool.execute().
  *
- * This approach tests the **actual** lambda body from [AgentosAgentsPluginConfiguration],
- * not a hand-written copy, so any weakened guard is caught here.
+ * Using the real service (instead of the former direct repository mock) means the
+ * uniqueness enforcement in [AgentConfigServiceImpl.create] is exercised here too.
  */
 class AgentosPluginConfigurationUnitSpec :
     StringSpec({
@@ -73,7 +77,13 @@ class AgentosPluginConfigurationUnitSpec :
             repo: AgentConfigRepository,
             permissionService: PermissionService,
         ): AgentosAgentsToolPlugin {
-            val config = AgentosAgentsPluginConfiguration(repo, permissionService)
+            val service =
+                AgentConfigServiceImpl(
+                    agentConfigRepository = repo,
+                    promptRepository = mockk<PromptRepository>(relaxed = true),
+                    userService = mockk<UserService>(relaxed = true),
+                )
+            val config = AgentosAgentsPluginConfiguration(service, permissionService)
             return config.agentosAgentsToolPlugin() as AgentosAgentsToolPlugin
         }
 
@@ -334,7 +344,6 @@ class AgentosPluginConfigurationUnitSpec :
             val result = tool.execute(UpdateAgentTool.Input(name = "Dev", description = "New desc"), context())
 
             result.success shouldBe true
-            // Verify the repo was updated with description but preserved other fields
             val updated = repo.findByParent(namespaceId).first { it.name == "Dev" }
             updated.description shouldBe "New desc"
             updated.instructions shouldBe "original instructions"
