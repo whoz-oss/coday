@@ -259,6 +259,14 @@
     }
   }
 
+  &__role-model {
+    font-size: 8px;
+    font-weight: 400;
+    color: var(--color-text-tertiary);
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
   // ── Bubbles ────────────────────────────────────────────────────
 
   &__bubble-wrapper {
