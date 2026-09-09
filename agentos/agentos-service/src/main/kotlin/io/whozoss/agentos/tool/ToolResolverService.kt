@@ -58,7 +58,18 @@ class ToolResolverService(
     }
 
     /**
-     * De-duplicate tools by name, keeping the first occurrence and warning on each conflict.
+     * De-duplicate tools by name, keeping the first occurrence and warning on each conflict,
+     * then sort the result by name using binary (locale-independent) ordering.
+     *
+     * Sorting after deduplication is intentional: sorting before would change which duplicate
+     * is kept (the first alphabetically rather than the first encountered), breaking the
+     * existing selection semantics.
+     *
+     * The binary sort (compareBy with String.compareTo using ordinal comparison) is independent
+     * of the JVM default locale, ensuring a stable, reproducible order across deployments.
+     * This matters for prompt-cache stability: OpenAI's prefix cache is invalidated by any
+     * change in tool name order, so a deterministic order maximises cache reuse.
+     *
      * Shared so every tool source (resolver, delegation, exchange) reconciles collisions identically.
      */
     fun dedupToolsByName(tools: List<StandardTool<*>>): List<StandardTool<*>> =
@@ -70,6 +81,7 @@ class ToolResolverService(
                 }
                 duplicates.first()
             }
+            .sortedWith(compareBy { it.name })
 
     private fun extractTools(
         allowedNames: List<String>?,
