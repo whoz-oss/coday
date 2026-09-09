@@ -80,8 +80,7 @@ class ToolResolverService(
                     logger.warn { "[ToolResolver] Tool name conflict: '$name' present ${duplicates.size} times, keeping the first one." }
                 }
                 duplicates.first()
-            }
-            .sortedWith(compareBy { it.name })
+            }.sortedBy { it.name }
 
     private fun extractTools(
         allowedNames: List<String>?,
