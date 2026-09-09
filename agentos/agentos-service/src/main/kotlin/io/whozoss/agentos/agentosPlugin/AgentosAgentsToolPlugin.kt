@@ -13,7 +13,7 @@ import java.util.UUID
  * Internal Spring-managed [ToolPlugin] that provides the AGENTOS integration.
  *
  * Like [io.whozoss.agentos.casePlugin.CaseToolPlugin], this class is NOT annotated
- * with `@Component` — it is instantiated as a `@Bean` in [AgentosPluginConfiguration]
+ * with `@Component` — it is instantiated as a `@Bean` in [AgentosAgentsPluginConfiguration]
  * so that the operation lambdas can be wired without a circular Spring dependency.
  * [io.whozoss.agentos.tool.ToolRegistryService] collects it alongside PF4J-loaded
  * plugins via `List<ToolPlugin>` constructor injection.
@@ -24,7 +24,7 @@ import java.util.UUID
  * then available to that agent for managing other agents in the same namespace.
  *
  * This is a config-less plugin: the [configSchema] accepts no properties. All
- * access control is enforced by [AgentosPluginConfiguration] via [PermissionService].
+ * access control is enforced by [AgentosAgentsPluginConfiguration] via [PermissionService].
  *
  * Exposed tools:
  * - [ListAgentsTool] — list agents in the namespace (Namespace READ)
@@ -34,7 +34,7 @@ import java.util.UUID
  * - [EnableAgentTool] — enable an agent (AgentConfig WRITE)
  * - [DisableAgentTool] — disable an agent (AgentConfig WRITE)
  */
-class AgentosToolPlugin(
+class AgentosAgentsToolPlugin(
     private val listAgents: (namespaceId: UUID, userId: UUID?, withDisabled: Boolean) -> List<AgentConfig>?,
     private val getAgent: (namespaceId: UUID, userId: UUID?, name: String) -> AgentConfig?,
     private val createAgent: (namespaceId: UUID, userId: UUID?, input: CreateAgentTool.Input) -> AgentConfig?,
@@ -42,7 +42,6 @@ class AgentosToolPlugin(
     private val enableAgent: (namespaceId: UUID, userId: UUID?, name: String) -> AgentConfig?,
     private val disableAgent: (namespaceId: UUID, userId: UUID?, name: String) -> AgentConfig?,
 ) : ToolPlugin {
-
     override val integrationType: String = INTEGRATION_TYPE
     override val configSchema: JsonNode = CONFIG_SCHEMA
 
@@ -69,16 +68,17 @@ class AgentosToolPlugin(
     companion object : KLogging() {
         const val INTEGRATION_TYPE = "AGENTOS_AGENTS"
 
-        val CONFIG_SCHEMA: JsonNode = jacksonObjectMapper().readTree(
-            """
-            {
-                "type": "object",
-                "title": "AgentOS Plugin Configuration",
-                "description": "Allows an agent to list, create and update other agents in the same namespace.",
-                "properties": {},
-                "additionalProperties": false
-            }
-            """.trimIndent()
-        )
+        val CONFIG_SCHEMA: JsonNode =
+            jacksonObjectMapper().readTree(
+                """
+                {
+                    "type": "object",
+                    "title": "AgentOS Plugin Configuration",
+                    "description": "Allows an agent to list, create and update other agents in the same namespace.",
+                    "properties": {},
+                    "additionalProperties": false
+                }
+                """.trimIndent(),
+            )
     }
 }

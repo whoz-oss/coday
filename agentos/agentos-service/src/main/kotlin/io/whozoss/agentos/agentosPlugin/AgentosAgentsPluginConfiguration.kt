@@ -32,17 +32,17 @@ import java.util.UUID
  * no user identity to check against the permission graph.
  */
 @Configuration
-class AgentosPluginConfiguration(
+class AgentosAgentsPluginConfiguration(
     private val agentConfigRepository: AgentConfigRepository,
     private val permissionService: PermissionService,
 ) {
     @Bean
-    fun agentosToolPlugin(): ToolPlugin =
-        AgentosToolPlugin(
+    fun agentosAgentsToolPlugin(): ToolPlugin =
+        AgentosAgentsToolPlugin(
             listAgents = { namespaceId, userId, withDisabled ->
                 if (userId == null) {
                     logger.debug { "[AgentosPlugin] listAgents denied: no userId" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
                 if (!permissionService.hasPermission(
                         userId.toString(),
@@ -52,19 +52,20 @@ class AgentosPluginConfiguration(
                     )
                 ) {
                     logger.debug { "[AgentosPlugin] listAgents denied: user $userId lacks READ on namespace $namespaceId" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
                 agentConfigRepository.findByParent(namespaceId, withDisabled)
             },
             getAgent = { namespaceId, userId, name ->
                 if (userId == null) {
                     logger.debug { "[AgentosPlugin] getAgent denied: no userId" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
-                val agent = agentConfigRepository
-                    .findByParent(namespaceId, withDisabled = true)
-                    .firstOrNull { it.name.equals(name, ignoreCase = true) }
-                    ?: return@AgentosToolPlugin null
+                val agent =
+                    agentConfigRepository
+                        .findByParent(namespaceId, withDisabled = true)
+                        .firstOrNull { it.name.equals(name, ignoreCase = true) }
+                        ?: return@AgentosAgentsToolPlugin null
                 if (!permissionService.hasPermission(
                         userId.toString(),
                         EntityType.AGENT_CONFIG,
@@ -73,14 +74,14 @@ class AgentosPluginConfiguration(
                     )
                 ) {
                     logger.debug { "[AgentosPlugin] getAgent denied: user $userId lacks READ on agent ${agent.id}" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
                 agent
             },
             createAgent = { namespaceId, userId, input ->
                 if (userId == null) {
                     logger.debug { "[AgentosPlugin] createAgent denied: no userId" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
                 if (!permissionService.hasPermission(
                         userId.toString(),
@@ -90,15 +91,16 @@ class AgentosPluginConfiguration(
                     )
                 ) {
                     logger.debug { "[AgentosPlugin] createAgent denied: user $userId lacks WRITE on namespace $namespaceId" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
                 // Reject if an agent with the same name already exists (case-insensitive)
-                val existing = agentConfigRepository
-                    .findByParent(namespaceId, withDisabled = true)
-                    .any { it.name.equals(input.name, ignoreCase = true) }
+                val existing =
+                    agentConfigRepository
+                        .findByParent(namespaceId, withDisabled = true)
+                        .any { it.name.equals(input.name, ignoreCase = true) }
                 if (existing) {
                     logger.debug { "[AgentosPlugin] createAgent denied: name '${input.name}' already exists in namespace $namespaceId" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
                 agentConfigRepository.save(
                     AgentConfig(
@@ -111,18 +113,19 @@ class AgentosPluginConfiguration(
                         integrations = input.integrations,
                         subAgents = input.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
                         advancedExecution = input.advancedExecution,
-                    )
+                    ),
                 )
             },
             updateAgent = { namespaceId, userId, input ->
                 if (userId == null) {
                     logger.debug { "[AgentosPlugin] updateAgent denied: no userId" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
-                val agent = agentConfigRepository
-                    .findByParent(namespaceId, withDisabled = true)
-                    .firstOrNull { it.name.equals(input.name, ignoreCase = true) }
-                    ?: return@AgentosToolPlugin null
+                val agent =
+                    agentConfigRepository
+                        .findByParent(namespaceId, withDisabled = true)
+                        .firstOrNull { it.name.equals(input.name, ignoreCase = true) }
+                        ?: return@AgentosAgentsToolPlugin null
                 if (!permissionService.hasPermission(
                         userId.toString(),
                         EntityType.AGENT_CONFIG,
@@ -131,7 +134,7 @@ class AgentosPluginConfiguration(
                     )
                 ) {
                     logger.debug { "[AgentosPlugin] updateAgent denied: user $userId lacks WRITE on agent ${agent.id}" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
                 agentConfigRepository.save(
                     agent.copy(
@@ -139,21 +142,23 @@ class AgentosPluginConfiguration(
                         instructions = input.instructions ?: agent.instructions,
                         modelName = input.modelName ?: agent.modelName,
                         integrations = input.integrations ?: agent.integrations,
-                        subAgents = input.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }
-                            ?: agent.subAgents,
+                        subAgents =
+                            input.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }
+                                ?: agent.subAgents,
                         advancedExecution = input.advancedExecution ?: agent.advancedExecution,
-                    )
+                    ),
                 )
             },
             enableAgent = { namespaceId, userId, name ->
                 if (userId == null) {
                     logger.debug { "[AgentosPlugin] enableAgent denied: no userId" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
-                val agent = agentConfigRepository
-                    .findByParent(namespaceId, withDisabled = true)
-                    .firstOrNull { it.name.equals(name, ignoreCase = true) }
-                    ?: return@AgentosToolPlugin null
+                val agent =
+                    agentConfigRepository
+                        .findByParent(namespaceId, withDisabled = true)
+                        .firstOrNull { it.name.equals(name, ignoreCase = true) }
+                        ?: return@AgentosAgentsToolPlugin null
                 if (!permissionService.hasPermission(
                         userId.toString(),
                         EntityType.AGENT_CONFIG,
@@ -162,19 +167,20 @@ class AgentosPluginConfiguration(
                     )
                 ) {
                     logger.debug { "[AgentosPlugin] enableAgent denied: user $userId lacks WRITE on agent ${agent.id}" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
                 agentConfigRepository.save(agent.copy(enabled = true))
             },
             disableAgent = { namespaceId, userId, name ->
                 if (userId == null) {
                     logger.debug { "[AgentosPlugin] disableAgent denied: no userId" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
-                val agent = agentConfigRepository
-                    .findByParent(namespaceId, withDisabled = true)
-                    .firstOrNull { it.name.equals(name, ignoreCase = true) }
-                    ?: return@AgentosToolPlugin null
+                val agent =
+                    agentConfigRepository
+                        .findByParent(namespaceId, withDisabled = true)
+                        .firstOrNull { it.name.equals(name, ignoreCase = true) }
+                        ?: return@AgentosAgentsToolPlugin null
                 if (!permissionService.hasPermission(
                         userId.toString(),
                         EntityType.AGENT_CONFIG,
@@ -183,7 +189,7 @@ class AgentosPluginConfiguration(
                     )
                 ) {
                     logger.debug { "[AgentosPlugin] disableAgent denied: user $userId lacks WRITE on agent ${agent.id}" }
-                    return@AgentosToolPlugin null
+                    return@AgentosAgentsToolPlugin null
                 }
                 agentConfigRepository.save(agent.copy(enabled = false))
             },
