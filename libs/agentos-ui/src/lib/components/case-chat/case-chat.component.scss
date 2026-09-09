@@ -257,6 +257,15 @@
     .case-chat__turn--user & {
       color: var(--color-neutral-700);
     }
+
+    & .case-chat__role-model {
+      margin-left: 0.25rem;
+      font-size: 0.7rem;
+      font-weight: 400;
+      color: var(--color-text-tertiary);
+      text-transform: none;
+      letter-spacing: normal;
+    }
   }
 
   &__role-model {
