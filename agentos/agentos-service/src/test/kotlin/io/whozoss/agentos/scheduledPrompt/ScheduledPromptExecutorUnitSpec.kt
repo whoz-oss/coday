@@ -5,6 +5,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.spyk
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
@@ -27,6 +28,7 @@ import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -896,7 +898,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 // Poll until all 10 UserRuns are DONE (or timeout after 5 s real time).
                 withTimeout(5_000L) {
                     while (userRunRepo.all().count { it.status == UserRunStatus.DONE } < 10) {
-                        kotlinx.coroutines.delay(10L)
+                        delay(10L)
                     }
                 }
                 exec.stop()
@@ -1023,7 +1025,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 // Wait until all 6 UserRuns reach a terminal state (DONE or FAILED).
                 withTimeout(5_000L) {
                     while (userRunRepo.all().count { it.status == UserRunStatus.DONE || it.status == UserRunStatus.FAILED } < allUserIds.size) {
-                        kotlinx.coroutines.delay(10L)
+                        delay(10L)
                     }
                 }
                 exec.stop()
@@ -1035,6 +1037,67 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             // The failing UserRun must be FAILED.
             val failedRun = userRunRepo.all().first { it.userId == failingUserId }
             failedRun.status shouldBe UserRunStatus.FAILED
+        }
+
+        // -------------------------------------------------------------------------
+        // Consumer loop — execution window guard (Phase B)
+        // -------------------------------------------------------------------------
+
+        "consumer loop: poller does not claim any UserRun when outside the execution window" {
+            // Arrange: 3 PENDING UserRuns exist, but the clock is fixed to a time outside the
+            // configured window. The poller must delay on every iteration without ever calling
+            // claimBatch, so all UserRuns remain PENDING throughout.
+            //
+            // clock is fixed to 2026-01-01T09:00:00Z (Thursday 09:00 UTC).
+            // Window: FRIDAY 22:00 → MONDAY 05:00 (weekend only) — Thursday is outside.
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userIds = (1..3).map { UUID.randomUUID() }.toSet()
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> userIds }
+            userRunRepo.materialize(run.id, agentId, namespaceId)
+
+            // Spy on userRunRepo so we can assert claimBatch is never called.
+            val spyUserRunRepo = spyk(userRunRepo)
+
+            // Real ExecutionWindowService with the fixed clock — Thursday 09:00 is outside
+            // the weekend-only window, so isWithinExecutionWindow() returns false.
+            val closedWindowService = ExecutionWindowService(
+                properties = SchedulerProperties(windows = listOf("FRIDAY 22:00", "MONDAY 05:00")),
+                clock = clock,
+            )
+
+            val testDispatcher = UnconfinedTestDispatcher()
+            val exec = ScheduledPromptExecutor(
+                scheduledPromptRepository = makeSpRepo(sp),
+                runRepository = runRepo,
+                userRunRepository = spyUserRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+                properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, pausedPollDelayMs = 10L),
+                clock = clock,
+                dispatcher = testDispatcher,
+                executionWindowService = closedWindowService,
+            )
+
+            runTest(testDispatcher) {
+                exec.start()
+                // All coroutines (poller, workers, and this test body) share the same
+                // TestCoroutineScheduler because testDispatcher was created with
+                // UnconfinedTestDispatcher() and passed to runTest — runTest reuses its
+                // scheduler. delay() therefore advances virtual time, not real time:
+                // 200ms virtual = 200/10 = 20 poller iterations, instant in wall-clock time.
+                delay(200L)
+                exec.stop()
+            }
+
+            // claimBatch must never have been called — the poller only delayed.
+            verify(exactly = 0) { spyUserRunRepo.claimBatch(any(), any()) }
+            // All UserRuns must still be PENDING.
+            userRunRepo.all().all { it.status == UserRunStatus.PENDING } shouldBe true
         }
 
         "Phase B: agent config not found marks UserRun FAILED" {

@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import mu.KLogging
 import org.springframework.stereotype.Service
+import java.time.Clock
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.ZoneOffset
@@ -56,7 +57,7 @@ import java.time.ZonedDateTime
  *   cannot be ordered by weekly offset and may overlap undetected.
  */
 @Service
-class ExecutionWindowService(properties: SchedulerProperties) {
+class ExecutionWindowService(properties: SchedulerProperties, private val clock: Clock = Clock.systemUTC()) {
 
     /**
      * A parsed window boundary, retaining the original [day] and [time] for readability.
@@ -90,12 +91,20 @@ class ExecutionWindowService(properties: SchedulerProperties) {
     }
 
     /**
-     * Returns `true` when [now] falls within any configured execution window (execution allowed).
+     * Returns `true` when the current time (from the injected [clock]) falls within any
+     * configured execution window (execution allowed).
      *
      * Returns `true` unconditionally when no windows are configured (always-open behaviour)
      * or when configuration parsing failed (fail-open).
      */
-    fun isWithinExecutionWindow(now: ZonedDateTime = ZonedDateTime.now(ZoneOffset.UTC)): Boolean {
+    fun isWithinExecutionWindow(): Boolean = isWithinExecutionWindow(ZonedDateTime.now(clock))
+
+    /**
+     * Returns `true` when [now] falls within any configured execution window.
+     * Exposed for callers that already hold a [ZonedDateTime] (e.g. [SchedulerScanner]
+     * which derives [now] from its own injected clock).
+     */
+    fun isWithinExecutionWindow(now: ZonedDateTime): Boolean {
         val windows = parsedWindows ?: return true
         val current = minuteOfWeek(now)
         return windows.any { window -> isInWindow(current, window) }
