@@ -81,8 +81,9 @@ class ExecutionWindowService(properties: SchedulerProperties, private val clock:
 
     /**
      * Parsed and validated windows.
-     * - `null`  → no windows configured (always-open) OR config was invalid (fail-open).
-     * - non-null list → validated windows to evaluate.
+     * - `null`        → config was invalid (fail-open, warning logged).
+     * - `emptyList()` → no windows configured (always-open, intentional).
+     * - non-empty list → validated windows to evaluate.
      */
     private val parsedWindows: List<Window>?
 
@@ -104,9 +105,11 @@ class ExecutionWindowService(properties: SchedulerProperties, private val clock:
      * Exposed for callers that already hold an [Instant] (e.g. [SchedulerScanner]).
      */
     fun isWithinExecutionWindow(now: Instant): Boolean {
-        val windows = parsedWindows ?: return true
+        if (parsedWindows == null) {
+            logger.warn { "[ExecutionWindowService] Invalid windows config — running fail-open (always active)" }
+        }
         val current = minuteOfWeek(now)
-        return windows.any { window -> isInWindow(current, window) }
+        return parsedWindows.isNullOrEmpty() || parsedWindows.any { window -> isInWindow(current, window) }
     }
 
     // -------------------------------------------------------------------------
@@ -142,14 +145,17 @@ class ExecutionWindowService(properties: SchedulerProperties, private val clock:
     /**
      * Parses [raw] into a list of [Window]s, collecting all validation errors.
      *
-     * Returns `null` when [raw] is empty (no windows → always-open).
+     * Blank/empty entries (e.g. from stray commas in the env var) are silently filtered
+     * out before any validation, so `"MONDAY 22:00,,FRIDAY 05:00"` is treated the same
+     * as `"MONDAY 22:00,FRIDAY 05:00"`.
+     *
+     * Returns `emptyList()` when no non-blank entries remain (no windows → always-open).
      * Returns `null` on parse failure (fail-open — [isWithinExecutionWindow] returns true).
      * Returns the validated windows on success.
      */
     private fun parseAndValidate(raw: List<String>): List<Window>? {
-        if (raw.isEmpty()) return null
-
         val entries = raw.map { it.trim() }.filter { it.isNotEmpty() }
+        if (entries.isEmpty()) return emptyList()
         val errors = mutableListOf<String>()
 
         if (entries.size % 2 != 0) {
@@ -214,7 +220,7 @@ class ExecutionWindowService(properties: SchedulerProperties, private val clock:
      * Appends to [errors] on failure and returns `null`.
      */
     private fun parseBoundary(entry: String, index: Int, errors: MutableList<String>): WeeklyBoundary? {
-        val parts = entry.split(" ")
+        val parts = entry.trim().split(Regex("\\s+"))
         if (parts.size != 2) {
             errors += "entry[$index] '$entry': expected 'DAYOFWEEK HH:mm'"
             return null

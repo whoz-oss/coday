@@ -192,6 +192,52 @@ class ExecutionWindowServiceSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // Blank / empty entries from stray commas in the env var
+        //
+        // When Spring binds AGENTOS_PROMPT_SCHEDULER_WINDOWS from an env var, it splits
+        // on commas, so a stray double-comma (e.g. "MONDAY 22:00,,FRIDAY 05:00") produces
+        // an empty-string entry ("") in the list.  The filter step silently drops these.
+        // -------------------------------------------------------------------------
+
+        "blank entries: single empty string — treated as no windows (always active)" {
+            // Simulates WINDOWS=  (blank env var) → Spring may produce [""] or []
+            val svc = svc(listOf(""))
+            svc.isWithinExecutionWindow(at("MONDAY", 10)).shouldBeTrue()
+            svc.isWithinExecutionWindow(at("SATURDAY", 14)).shouldBeTrue()
+        }
+
+        "blank entries: whitespace-only entry — treated as no windows (always active)" {
+            val svc = svc(listOf("   "))
+            svc.isWithinExecutionWindow(at("MONDAY", 10)).shouldBeTrue()
+            svc.isWithinExecutionWindow(at("SATURDAY", 14)).shouldBeTrue()
+        }
+
+        "invalid config: single comma — fail-open" {
+            // listOf(",") → trim() → "," → isNotEmpty() → not filtered
+            // → parseBoundary fails (not a valid DAYOFWEEK HH:mm) → null → fail-open
+            val svc = svc(listOf(","))
+            svc.isWithinExecutionWindow(at("MONDAY", 10)).shouldBeTrue()
+            svc.isWithinExecutionWindow(at("WEDNESDAY", 14)).shouldBeTrue()
+            svc.isWithinExecutionWindow(at("SATURDAY", 3)).shouldBeTrue()
+        }
+
+        "blank entries: empty entry inside odd number of real entries — fail-open" {
+            // Double-comma in env var with 3 real entries: ["MONDAY 22:00", "", "FRIDAY 05:00", "FRIDAY 22:00", ""]
+            // After filtering: ["MONDAY 22:00", "FRIDAY 05:00", "FRIDAY 22:00"] — odd count → fail-open
+            val svc = svc(listOf("MONDAY 22:00", "", "FRIDAY 05:00", "FRIDAY 22:00", ""))
+            svc.isWithinExecutionWindow(at("WEDNESDAY", 14)).shouldBeTrue()
+        }
+
+        "blank entries: empty entries around a valid pair — parses correctly, window respected" {
+            // Simulates leading/trailing commas in env var: ",MONDAY 22:00,FRIDAY 05:00,"
+            // Spring produces: ["", "MONDAY 22:00", "FRIDAY 05:00", ""]
+            // After filtering: ["MONDAY 22:00", "FRIDAY 05:00"] — one valid window
+            val svc = svc(listOf("", "MONDAY 22:00", "FRIDAY 05:00", ""))
+            svc.isWithinExecutionWindow(at("MONDAY", 23)).shouldBeTrue()   // inside window
+            svc.isWithinExecutionWindow(at("MONDAY", 10)).shouldBeFalse()  // outside window
+        }
+
+        // -------------------------------------------------------------------------
         // Invalid configuration — fail-open
         // -------------------------------------------------------------------------
 
