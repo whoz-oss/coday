@@ -85,16 +85,32 @@
         </button>
         @if (isEditMode()) {
           <button
-            class="integration-form__btn integration-form__btn--export"
+            class="integration-form__btn integration-form__btn--secondary"
             type="button"
             [disabled]="isExporting()"
             (click)="exportYaml()"
           >
             {{ isExporting() ? 'Exporting…' : 'Export as YAML' }}
           </button>
+          <button
+            class="integration-form__btn integration-form__btn--secondary"
+            type="button"
+            [disabled]="!canPreviewTools() || toolPreview.isLoading()"
+            [title]="previewToolsTitle"
+            (click)="previewTools()"
+          >
+            {{ toolPreview.isLoading() ? 'Previewing…' : 'Preview tools' }}
+          </button>
         }
         <button class="integration-form__btn" type="button" (click)="cancel()">Cancel</button>
       </div>
+
+      @if (toolPreview.status() === 'error') {
+        <p class="integration-form__error" role="alert">{{ toolPreview.errorMessage() }}</p>
+      }
+      @if (toolPreview.preview(); as preview) {
+        <agentos-integration-tool-preview [preview]="preview" />
+      }
     </form>
   }
 </div>

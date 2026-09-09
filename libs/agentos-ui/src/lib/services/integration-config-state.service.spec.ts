@@ -55,6 +55,9 @@ describe('IntegrationConfigStateService', () => {
       updateIntegrationConfig: jest.fn().mockReturnValue(of(nsConfig)),
       deleteIntegrationConfig: jest.fn().mockReturnValue(of(undefined)),
       getByIdIntegrationConfig: jest.fn().mockReturnValue(of(nsConfig)),
+      previewToolsIntegrationConfig: jest
+        .fn()
+        .mockReturnValue(of({ integrationType: 'slack', configName: 'x', tools: [] })),
     } as unknown as jest.Mocked<IntegrationConfigControllerService>
 
     userStateMock = {
@@ -169,6 +172,18 @@ describe('IntegrationConfigStateService', () => {
     it('accepts the no-scope overload (form simplification, G10)', async () => {
       await firstValueFrom(service.getById(ITEM_ID))
       expect(nsController.getByIdIntegrationConfig).toHaveBeenCalledWith(ITEM_ID)
+    })
+  })
+
+  describe('previewTools', () => {
+    it('forwards the namespaceId as the query parameter of the preview endpoint', async () => {
+      await firstValueFrom(service.previewTools(ITEM_ID, NS_ID))
+      expect(nsController.previewToolsIntegrationConfig).toHaveBeenCalledWith(ITEM_ID, NS_ID)
+    })
+
+    it('omits the query parameter when the caller has no namespace context', async () => {
+      await firstValueFrom(service.previewTools(ITEM_ID, null))
+      expect(nsController.previewToolsIntegrationConfig).toHaveBeenCalledWith(ITEM_ID, undefined)
     })
   })
 })

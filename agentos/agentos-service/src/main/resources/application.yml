@@ -181,6 +181,11 @@ agentos:
     # configs are unaffected. Setting the list replaces the default entirely.
     # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
     # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP
+    # Milliseconds the tool preview (POST /api/integration-configs/{id}/preview-tools) waits for a
+    # plugin's describeNamespace line before reporting it as absent. Best effort: only a plugin that
+    # suspends cooperatively is actually cancelled.
+    # Override with env var: AGENTOS_INTEGRATIONS_PREVIEW_DESCRIBE_NAMESPACE_TIMEOUT_MS
+    # preview-describe-namespace-timeout-ms: 5000
   query-user:
     # Grant the built-in queryUser tool to every agent that does not mention QUERY_USER in its
     # integrations map. On by default: asking a question is a primitive of conversation, not an

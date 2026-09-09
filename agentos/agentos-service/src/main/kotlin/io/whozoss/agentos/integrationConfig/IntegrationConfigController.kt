@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Hidden
 import org.springframework.beans.factory.annotation.Qualifier
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.entity.ScopeParams
 import io.whozoss.agentos.entity.ScopedOwnershipCrudDelegate
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
@@ -65,6 +67,12 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * **User-scope denial** — both user scopes refuse the integration types listed in
  * [IntegrationsProperties.userScopeDeniedTypes] on `POST` and `PUT` (see
  * [IntegrationConfigScopePolicy]); shared scopes are unaffected.
+ *
+ * **Tool preview** — `POST /{id}/preview-tools` is UI-internal (not on the SDK
+ * [IntegrationConfigApi]) and resolves the tools of the stored row for the caller through
+ * [IntegrationConfigToolPreviewService]; see [previewTools]. Nothing is persisted, but the call
+ * resolves the caller's credential and lets the plugin dial out to third-party servers, so it is
+ * a `POST` (never prefetched or cached) rather than a read like `GET /{id}/export`.
  */
 @RestController
 @RequestMapping(
@@ -77,6 +85,7 @@ class IntegrationConfigController(
     private val userService: UserService,
     private val permissionService: PermissionService,
     private val scopePolicy: IntegrationConfigScopePolicy,
+    private val toolPreviewService: IntegrationConfigToolPreviewService,
     @Qualifier("yamlExportMapper") private val yamlExportMapper: ObjectMapper,
 ) : IntegrationConfigApi {
     private val scopedOwnershipCrudDelegate =
@@ -298,9 +307,88 @@ class IntegrationConfigController(
             .body(yaml)
     }
 
+    @Operation(
+        summary = "Preview the tools an IntegrationConfig yields",
+        description =
+            "Resolves the tools of the stored config for the calling user, without binding an agent " +
+                "and without a case, so a config can be checked right after saving it. " +
+                "The stored row is used as is: the user-level overlay merge applied by an agent run is " +
+                "NOT applied, no agent allowlist is applied and nothing is persisted.\n\n" +
+                "A POST, not a GET: nothing is persisted, but the call resolves the caller's credential and " +
+                "lets the plugin open outbound connections, so it must never be prefetched or cached.\n\n" +
+                "Requires WRITE on the config. The preview runs in a namespace: rows that carry a " +
+                "`namespaceId` use it (a supplied `namespaceId` must match it, 400 otherwise); platform " +
+                "and user-global rows have none, so `namespaceId` is required (400 when missing). " +
+                "A supplied `namespaceId` must be readable by the caller (404 otherwise, existence " +
+                "hidden). Platform rows additionally require Super Admin.\n\n" +
+                "422 when no plugin is loaded for the config's integration type. A plugin failure " +
+                "while building the tools is reported in `error` with an empty `tools` list (200).",
+    )
+    @PostMapping("/{id}/preview-tools")
+    @PreAuthorize(
+        "hasPermission(#id, 'IntegrationConfig', 'WRITE') and " +
+            "(#namespaceId == null or hasPermission(#namespaceId, 'Namespace', 'READ'))",
+    )
+    @HideOnAccessDenied
+    fun previewTools(
+        @PathVariable id: UUID,
+        @Parameter(
+            description =
+                "Namespace to preview in. Required for platform and user-global rows; must equal the " +
+                    "row's namespace when the row has one.",
+        )
+        @RequestParam(required = false) namespaceId: UUID?,
+    ): IntegrationConfigToolPreviewDto {
+        val existing =
+            integrationConfigService.findById(id)
+                ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
+        requireAdminForPlatform(existing.namespaceId, existing.userId)
+        val resolvedNamespaceId = resolvePreviewNamespace(existing, namespaceId)
+        val preview = toolPreviewService.preview(existing, resolvedNamespaceId, userService.getCurrentUser())
+        return IntegrationConfigToolPreviewDto(
+            integrationType = preview.integrationType,
+            configName = preview.configName,
+            namespaceDescription = preview.namespaceDescription,
+            tools =
+                preview.tools.map { tool ->
+                    IntegrationConfigToolPreviewDto.ToolPreviewDto(
+                        name = tool.name,
+                        description = tool.description,
+                        inputSchema = tool.inputSchema,
+                        confirmationMode = tool.confirmationMode,
+                    )
+                },
+            error = preview.error,
+        )
+    }
+
     // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------
+
+    /**
+     * The namespace a preview of [existing] runs in: the row's own namespace when it has one (a
+     * supplied [requested] must then match it), otherwise the [requested] one, which is mandatory
+     * because platform and user-global rows carry none.
+     */
+    private fun resolvePreviewNamespace(
+        existing: IntegrationConfig,
+        requested: UUID?,
+    ): UUID {
+        val own = existing.namespaceId
+        if (own == null) {
+            return requested
+                ?: throw BadRequestException(
+                    "namespaceId query parameter is required to preview an IntegrationConfig without a namespace",
+                )
+        }
+        if (requested != null && requested != own) {
+            throw BadRequestException(
+                "namespaceId $requested does not match the namespace $own of the IntegrationConfig",
+            )
+        }
+        return own
+    }
 
     /**
      * Throws [AccessDeniedException] when the entity is platform-scoped
