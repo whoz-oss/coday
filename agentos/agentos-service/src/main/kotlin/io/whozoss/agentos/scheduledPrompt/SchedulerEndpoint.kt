@@ -8,7 +8,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 
 /**
- * Actuator endpoint for operational control of the [SchedulerScanner].
+ * Actuator endpoint for operational control of the scheduler.
  *
  * Exposed both as an HTTP endpoint and as a JMX MBean by Spring Boot Actuator:
  * - **HTTP**: `GET /management/scheduler` (read), `POST /management/scheduler/{phase}` (write)
@@ -25,17 +25,19 @@ import org.springframework.stereotype.Component
  * - `phase`: `"claim"`, `"consume"`, or `"all"`
  * - `action`: `"pause"` or `"resume"`
  *
- * Pausing a phase causes the corresponding `@Scheduled` tick to return immediately
- * without processing. The Spring scheduling thread continues to fire ticks at the
- * configured interval; they simply become no-ops. Resuming restores normal processing
- * on the next tick. This is safe for crash recovery: sweeps resume naturally once
- * the phase is unpaused.
+ * The `claim` phase is managed by [SchedulerScanner]: pausing it causes the
+ * `@Scheduled` tick to return immediately without claiming new runs.
+ *
+ * The `consume` phase is managed by [ScheduledPromptExecutor]: pausing it causes the
+ * producer loop to skip `claimBatch` calls and delay instead. Workers continue
+ * to drain items already in the channel, then block on receive until resumed.
  */
 @Component
 @ConditionalOnProperty(name = ["agentos.prompt.scheduler.enabled"], havingValue = "true")
 @Endpoint(id = "scheduler")
 class SchedulerEndpoint(
     private val schedulerScanner: SchedulerScanner,
+    private val executor: ScheduledPromptExecutor,
 ) {
     /**
      * Read current scheduler status.
@@ -47,7 +49,7 @@ class SchedulerEndpoint(
     fun status(): Map<String, Any> =
         mapOf(
             "claimPaused" to schedulerScanner.isClaimPaused(),
-            "consumePaused" to schedulerScanner.isConsumePaused(),
+            "consumePaused" to executor.isConsumePaused(),
         )
 
     /**
@@ -68,21 +70,26 @@ class SchedulerEndpoint(
         val phases =
             when (claimOrConsumeOrAllPhase) {
                 "all" -> listOf("claim", "consume")
-
                 "claim" -> listOf("claim")
-
                 "consume" -> listOf("consume")
-
                 else -> throw IllegalArgumentException(
                     "Invalid phase '$claimOrConsumeOrAllPhase' (expected: claim, consume, all)",
                 )
             }
         val apply: (String) -> Unit =
             when (pauseOrResumeAction) {
-                "pause" -> { p -> if (p == "claim") schedulerScanner.pauseClaim() else schedulerScanner.pauseConsume() }
-
-                "resume" -> { p -> if (p == "claim") schedulerScanner.resumeClaim() else schedulerScanner.resumeConsume() }
-
+                "pause" -> { p ->
+                    when (p) {
+                        "claim" -> schedulerScanner.pauseClaim()
+                        else -> executor.pauseConsume()
+                    }
+                }
+                "resume" -> { p ->
+                    when (p) {
+                        "claim" -> schedulerScanner.resumeClaim()
+                        else -> executor.resumeConsume()
+                    }
+                }
                 else -> throw IllegalArgumentException(
                     "Invalid action '$pauseOrResumeAction' (expected: pause, resume)",
                 )

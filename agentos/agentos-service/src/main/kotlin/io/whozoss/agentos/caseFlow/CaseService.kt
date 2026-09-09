@@ -22,6 +22,21 @@ import java.util.UUID
  * Parent type is UUID representing the namespaceId.
  */
 interface CaseService : EntityService<Case, UUID> {
+
+    /**
+     * Override to give CGLIB a concrete virtual method to proxy.
+     *
+     * Kotlin interface default methods compile to static synthetic methods
+     * (e.g. `EntityService.findById$default`) that CGLIB cannot intercept.
+     * Without this override, calling `findById` through a Spring-proxied
+     * `CaseService` falls through to the static default, which erases the
+     * generic `T` to `Entity` and causes a `ClassCastException` at the call site.
+     *
+     * The concrete implementation is in [CaseServiceImpl] and delegates directly
+     * to the repository, bypassing the interface default entirely.
+     */
+    override fun findById(id: UUID, withRemoved: Boolean): Case?
+
     // ========================================
     // Permission-filtered listing
     // ========================================
@@ -139,5 +154,4 @@ interface CaseService : EntityService<Case, UUID> {
      * @param caseId The unique identifier of the case to kill
      */
     fun killCase(caseId: UUID)
-
 }

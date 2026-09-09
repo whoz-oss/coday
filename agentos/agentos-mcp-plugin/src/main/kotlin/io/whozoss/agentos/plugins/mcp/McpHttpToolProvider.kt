@@ -119,7 +119,7 @@ class McpHttpToolProvider : ToolPlugin {
                     "url": {
                         "type": "string",
                         "title": "Server URL",
-                        "description": "Base URL of the remote MCP server (e.g. https://mcp.example.com). The SDK appends /mcp as the default endpoint."
+                        "description": "Full URL of the MCP endpoint, path included. Use the URL exactly as documented by the server provider. Examples: 'https://mcp.hubspot.com/' (root endpoint), 'https://mcp.atlassian.net/v1/mcp' (path endpoint). No path is appended automatically."
                     },
                     "authToken": {
                         "type": "string",

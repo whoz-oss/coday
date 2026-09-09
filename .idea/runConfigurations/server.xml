@@ -6,7 +6,9 @@
       <script value="server" />
     </scripts>
     <node-interpreter value="project" />
-    <envs />
+    <envs>
+      <env name="AGENTOS_URL" value="http://localhost:8124" />
+    </envs>
     <method v="2" />
   </configuration>
 </component>
