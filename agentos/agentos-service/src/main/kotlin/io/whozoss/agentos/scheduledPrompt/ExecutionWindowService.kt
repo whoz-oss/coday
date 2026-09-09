@@ -7,7 +7,6 @@ import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneOffset
-import java.time.ZonedDateTime
 
 /**
  * Evaluates whether the current time falls within a configured execution window.
@@ -40,13 +39,13 @@ import java.time.ZonedDateTime
  *
  * ### No windows configured
  *
- * When the list is empty, [isWithinWindow] always returns `true` — the scheduler runs
+ * When the list is empty, [isWithinExecutionWindow] always returns `true` — the scheduler runs
  * continuously, preserving the existing behaviour.
  *
  * ### Validation
  *
  * [parseAndValidate] is called at construction time. If the configuration is malformed, all
- * errors are collected and logged; [isWithinWindow] then always returns `true` (fail-open)
+ * errors are collected and logged; [isWithinExecutionWindow] then always returns `true` (fail-open)
  * so that a misconfiguration does not silently halt all scheduled executions.
  *
  * Validation rules:
@@ -144,7 +143,7 @@ class ExecutionWindowService(properties: SchedulerProperties, private val clock:
      * Parses [raw] into a list of [Window]s, collecting all validation errors.
      *
      * Returns `null` when [raw] is empty (no windows → always-open).
-     * Returns `null` on parse failure (fail-open — [isWithinWindow] returns true).
+     * Returns `null` on parse failure (fail-open — [isWithinExecutionWindow] returns true).
      * Returns the validated windows on success.
      */
     private fun parseAndValidate(raw: List<String>): List<Window>? {
@@ -190,15 +189,13 @@ class ExecutionWindowService(properties: SchedulerProperties, private val clock:
         // Skipped when a wrap-around pair was already reported — raw offset comparison is
         // meaningless in that case and would emit a confusing secondary error.
         if (wrapAroundWindows.size <= 1) {
-            for (i in 1 until windows.size) {
-                val w = windows[i]
-                val prev = windows[i - 1]
-                if (w.open == w.close || prev.open == prev.close) continue // already reported above
-
-                if (w.open.minuteOfWeek <= prev.close.minuteOfWeek) {
-                    errors += "window[$i] open (${w.open}) must be strictly after window[${i - 1}] close (${prev.close})"
+            windows.zipWithNext()
+                .filterNot { (prev, w) -> prev.open == prev.close || w.open == w.close } // skip already-reported zero-length windows
+                .forEachIndexed { i, (prev, w) ->
+                    if (w.open.minuteOfWeek <= prev.close.minuteOfWeek) {
+                        errors += "window[${i + 1}] open (${w.open}) must be strictly after window[$i] close (${prev.close})"
+                    }
                 }
-            }
         }
 
         if (errors.isNotEmpty()) {
