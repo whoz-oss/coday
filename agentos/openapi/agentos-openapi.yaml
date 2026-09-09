@@ -4989,7 +4989,9 @@ components:
           type: integer
           format: int64
         cost:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
         inputTokens:
           type: integer
@@ -5040,7 +5042,9 @@ components:
           type: string
           format: uuid
         cost:
-          type: number
+          type:
+          - number
+          - "null"
           format: double
         createdOn:
           type: string

@@ -18,6 +18,7 @@ data class UsageAggregateDto(
     val totalTokens: Long,
     /** null = at least one record had unknown cost. */
     @Schema(nullable = true)
+    @field:Schema(types = ["number", "null"], format = "double")
     val cost: Double?,
 )
 

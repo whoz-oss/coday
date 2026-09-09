@@ -15,7 +15,7 @@ export interface UsageRecord {
   cacheReadTokens: number
   cacheWriteTokens: number
   caseId: string
-  cost?: number
+  cost?: number | null
   createdOn: string
   id: string
   inputTokens: number
