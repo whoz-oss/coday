@@ -14,7 +14,6 @@ import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
-import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -260,25 +259,7 @@ class AgentSimple(
             } catch (e: NonTransientAiException) {
                 emitProviderErrorAndFinishEvents(this@AgentSimple, e, namespaceId, caseId, logger)
             } catch (e: Exception) {
-                logger.error(e) { "Error during agent execution" }
-                emit(
-                    WarnEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        message = "Error during agent execution: ${e.message}",
-                    ),
-                )
-
-                emit(
-                    AgentFinishedEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        agentId = id,
-                        agentName = name,
-                        llmProvider = llmProvider,
-                        llmModel = llmModel,
-                    ),
-                )
+                handleGenericAgentException(this@AgentSimple, e, namespaceId, caseId, logger)
             }
         }
 
