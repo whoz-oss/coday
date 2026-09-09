@@ -197,6 +197,21 @@ class DefaultCaseEventEmitterUnitSpec :
             collectedEvents shouldHaveSize eventCount
         }
 
+        "signals a rejected runtime emission instead of silently dropping it" {
+            val emitter = DefaultCaseEventEmitter()
+            val slowCollector = launch {
+                emitter.events.collect { delay(Long.MAX_VALUE) }
+            }
+            emitter.awaitSubscribers()
+
+            repeat(102) { index ->
+                emitter.emit(createMessageEvent(timestamp = Instant.ofEpochMilli(index.toLong())))
+            }
+
+            emitter.deliveryFailureCount.value shouldBe 1L
+            slowCollector.cancel()
+        }
+
         "should handle different event types" {
             val emitter = DefaultCaseEventEmitter()
 
