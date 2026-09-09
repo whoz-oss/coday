@@ -4,12 +4,11 @@ Mandatory patterns for all code written in `apps/client`. No exceptions without 
 
 ## Standalone Components
 
-Every component is `standalone: true`. No NgModules. Imports are declared per-component.
+Every component is standalone (the default since Angular 19 — do **not** add `standalone: true` explicitly). No NgModules. Imports are declared per-component.
 
 ```typescript
 @Component({
   selector: 'app-my-component',
-  standalone: true,
   imports: [NgClass, RouterModule, MyOtherComponent],
   templateUrl: './my-component.html',
   styleUrl: './my-component.scss',

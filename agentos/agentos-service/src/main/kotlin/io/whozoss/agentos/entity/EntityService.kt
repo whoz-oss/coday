@@ -27,22 +27,20 @@ interface EntityService<EntityType : Entity, ParentIdentifier> {
      * Find a single entity by its identifier.
      * Convenience method that delegates to findByIds.
      *
-     * Excludes removed entities by default.
-     *
      * @param id The unique identifier
-     * @return The entity if found and not removed, null otherwise
+     * @param withRemoved when true, includes the entity even if soft-deleted; false by default
+     * @return The entity if found (and not removed unless [withRemoved] is true), null otherwise
      */
-    fun findById(id: UUID): EntityType? = findByIds(listOf(id)).firstOrNull()
+    fun findById(id: UUID, withRemoved: Boolean = false): EntityType? = findByIds(listOf(id), withRemoved).firstOrNull()
 
     /**
      * Find multiple entities by their identifiers.
      *
-     * Excludes removed entities by default.
-     *
      * @param ids Collection of unique identifiers
-     * @return List of found entities (may be smaller than input if some IDs don't exist or are removed)
+     * @param withRemoved when true, includes soft-deleted entities in the result; false by default
+     * @return List of found entities (may be smaller than input if some IDs don't exist)
      */
-    fun findByIds(ids: Collection<UUID>): List<EntityType>
+    fun findByIds(ids: Collection<UUID>, withRemoved: Boolean = false): List<EntityType>
 
     /**
      * Find all entities belonging to a parent.
@@ -55,14 +53,17 @@ interface EntityService<EntityType : Entity, ParentIdentifier> {
     fun findByParent(parentId: ParentIdentifier): List<EntityType>
 
     /**
-     * Get a single entity by its identifier.
-     * Excludes removed entities by default.
+     * Get a single entity by its identifier, including soft-deleted entities.
+     *
+     * Unlike [findById] (which excludes removed entities by default), this method
+     * always passes [withRemoved]=true — a direct GET by ID should resolve the entity
+     * regardless of its removal state, so that callers can inspect or act on it.
      *
      * @param id The unique identifier
      * @return The entity
      * @throws io.whozoss.agentos.exception.ResourceNotFoundException if not found
      */
-    fun getById(id: UUID): EntityType = findById(id) ?: throw ResourceNotFoundException("Entity $id not found")
+    fun getById(id: UUID): EntityType = findById(id, withRemoved = true) ?: throw ResourceNotFoundException("Entity $id not found")
 
     /**
      * Soft delete a single entity by its identifier.

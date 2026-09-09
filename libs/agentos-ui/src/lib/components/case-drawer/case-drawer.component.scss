@@ -1,51 +1,389 @@
+@use 'libs/design-system/src/styles' as ds;
+
 :host {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-divider);
+  }
 }
 
-// Scoped styles for the case item row rendered inside ds-entity-list
-.case-drawer-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  font-size: 0.875rem;
-  color: var(--color-text, #1d1d1f);
-  transition: background 0.12s ease;
-  gap: 0.5rem;
+// ── Expanded list container ─────────────────────────────────────────────
 
-  &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+.case-drawer-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 12px;
+
+  &__group-label {
+    padding: 12px 22px 4px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-neutral-700);
+    font-family: var(--font-heading);
+    font-weight: 600;
   }
 
-  &--active {
-    background: var(--color-primary, #007aff);
-    color: var(--color-text-inverse, #fff);
+  &__empty {
+    padding: 24px 20px;
+    font-size: 15px;
+    color: var(--color-neutral-500);
+    text-align: center;
+    margin: 0;
+  }
+}
 
-    .case-drawer-item__status {
-      color: rgba(255, 255, 255, 0.7);
+// ── Compact / icons mode ─────────────────────────────────────────────
+
+.case-drawer-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 0;
+  overflow-y: auto;
+
+  // Positioning context for the tooltip
+  &__item {
+    position: relative;
+    display: flex;
+    align-items: center;
+
+    // Show tooltip on hover of the wrapper (badge OR tooltip itself)
+    &:hover .case-drawer-compact__tooltip,
+    &:focus-within .case-drawer-compact__tooltip {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
     }
+  }
+
+  &__badge {
+    @include ds.button-reset;
+
+    width: 32px;
+    height: 32px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid var(--color-divider);
+    background: transparent;
+    color: var(--color-neutral-600);
+    cursor: pointer;
+    transition:
+      background 120ms,
+      border-color 120ms,
+      color 120ms;
 
     &:hover {
-      background: var(--color-primary-hover, #0051d5);
+      background: color-mix(in srgb, var(--color-text) 6%, transparent);
+      border-color: var(--color-accent-300);
+      color: var(--color-accent-700);
+    }
+
+    &--active {
+      background: var(--color-accent-100);
+      border-color: var(--color-accent-300);
+      color: var(--color-accent-700);
+
+      &:hover {
+        background: var(--color-accent-200);
+      }
     }
   }
 
+  &__group-sep {
+    width: 20px;
+    height: 1px;
+    background: var(--color-divider);
+    flex-shrink: 0;
+    margin: 2px 0;
+  }
+}
+
+.case-drawer-compact__tooltip-fixed {
+  position: fixed;
+  z-index: 500;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px 5px 18px;
+  margin-left: -10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  box-shadow: var(--shadow-lg);
+  white-space: nowrap;
+  pointer-events: auto;
+  animation: tooltip-in 80ms ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+  }
+}
+
+.case-drawer-compact__tooltip-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.case-drawer-compact__tooltip-status {
+  font-size: 9px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-neutral-500);
+  border: 1px solid currentColor;
+  padding: 1px 5px;
+
+  &--running {
+    color: var(--color-accent-700);
+  }
+  &--error {
+    color: var(--red-deep);
+  }
+  &--pending {
+    color: var(--status-pending-text);
+  }
+  &--killed {
+    color: var(--status-killed-text);
+  }
+}
+
+.case-drawer-compact__tooltip-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 2px;
+  padding-left: 6px;
+  border-left: 1px solid var(--color-divider);
+}
+
+.case-drawer-compact__tooltip-btn {
+  @include ds.action-btn(26px);
+}
+
+.case-drawer-compact__tooltip-confirm-yes {
+  @include ds.confirm-btn-danger(26px);
+}
+
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+// ── Tree node ────────────────────────────────────────────────────────────────
+
+.case-tree-node {
+  width: 100%;
+
+  &__row {
+    position: relative; // positioning context for absolute __actions
+    display: flex;
+    align-items: center;
+    margin: 1px 8px;
+    width: calc(100% - 16px);
+    padding: 8px 9px;
+    padding-left: calc(9px + var(--depth, 0) * 1.25rem);
+    gap: 9px;
+    color: var(--color-text);
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 0;
+    transition:
+      background 100ms,
+      border-color 100ms,
+      color 100ms;
+    box-sizing: border-box;
+
+    &:hover {
+      background: color-mix(in srgb, var(--color-text) 6%, transparent);
+    }
+
+    &--active {
+      background: var(--color-accent-100);
+      border-color: var(--color-accent-200);
+      color: var(--color-accent-900);
+
+      &:hover {
+        background: var(--color-accent-200);
+      }
+
+      .case-tree-node__name {
+        color: var(--color-accent-900);
+      }
+    }
+  }
+
+  // Toggle button for parent cases with children
+  &__toggle {
+    @include ds.button-reset;
+
+    flex: none;
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    color: var(--color-neutral-500);
+
+    &:hover {
+      color: var(--color-text);
+    }
+  }
+
+  // Glyph rendered by <agentos-case-status-glyph>
+
+  // Clickable title button
+  &__select {
+    @include ds.button-reset;
+
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    color: inherit;
+  }
+
+  // Case title text
   &__name {
     flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 500;
-    font-family: var(--font-mono, ui-monospace, 'SF Mono', monospace);
-    font-size: 0.8rem;
+    font-size: 15px;
+    font-weight: 400;
+  }
+
+  // Status tag — bordered, visible by default, hidden on hover to give room to actions
+  &__status-label {
+    @include ds.status-tag;
+
+    flex: none;
+    transition: opacity 0.12s;
+  }
+
+  // Hide label on hover / focus / active — actions take over
+  &__row:hover &__status-label,
+  &__row:focus-within &__status-label,
+  &__row--active &__status-label {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  // Inline actions: star + delete — revealed on hover / active
+  &__actions {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s;
+    // Positioned to overlap the status label slot
+    position: absolute;
+    right: 9px;
+  }
+
+  &__row:hover &__actions,
+  &__row:focus-within &__actions,
+  &__row--active &__actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  // Action buttons (star, rename, delete)
+  &__action-btn {
+    @include ds.action-btn(28px);
+  }
+
+  // ── Inline rename editor ──────────────────────────────────────────────
+  //
+  // The actions and the status label are absolutely positioned over the right end of the row,
+  // so they must be hidden while the editor is open or they would sit on top of the input.
+  // The reveal rules above carry a :hover / :focus-within pseudo-class, so these selectors need
+  // one of their own to win on specificity: source order alone would not be enough, and the
+  // focused input trips :focus-within for the whole duration of the edit.
+  &__row--editing:hover &__actions,
+  &__row--editing:focus-within &__actions,
+  &__row--editing:hover &__status-label,
+  &__row--editing:focus-within &__status-label {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  // Takes the place, and the flex share, of __select so the row keeps its layout.
+  // Relative so the validation message can anchor to it.
+  &__edit {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  &__name-input {
+    // __name is bare text; the input adds 1px of padding and 1px of border on each side, which
+    // box-sizing does not absorb with height:auto. The negative block margin lets that 4px grow
+    // outward into the row's own vertical padding, so the row keeps its height when the editor
+    // opens and the list below does not shift.
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    margin-block: -2px;
+    padding: 1px 6px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--color-text);
+    background: var(--color-bg-secondary, #fff);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+
+    &:focus-visible {
+      @include ds.focus-ring;
+    }
+  }
+
+  // Out of flow: rows are laid out in a scrolling list, so an in-flow message would grow the
+  // row and shift every row below it while the user is still clicking.
+  &__rename-error {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 2;
+    margin: 2px 0 0;
+    padding: 2px 6px;
+    font-size: 11px;
+    color: var(--color-error, #ff3b30);
+    background: var(--color-bg-secondary, #fff);
+    border-radius: 4px;
+    white-space: nowrap;
   }
 }

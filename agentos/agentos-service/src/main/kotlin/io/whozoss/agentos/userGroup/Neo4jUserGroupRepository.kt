@@ -26,10 +26,10 @@ open class Neo4jUserGroupRepository(
                 if (!entity.metadata.removed) neo4jRepository.setActive(it.id)
             }.toDomain()
 
-    override fun findByIds(ids: Collection<UUID>): List<UserGroup> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<UserGroup> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     override fun findByParent(parentId: UUID): List<UserGroup> =
@@ -51,6 +51,37 @@ open class Neo4jUserGroupRepository(
             paramValue = id.toString(),
         ).one().orElse(null)
 
+    // neo4jClient + mappedBy: SDN cannot project a multi-column RETURN (here incl. the computed
+    // `role` from collect(type(r))) onto a non-entity DTO via @Query — it rejects the multi-column
+    // result, the same limitation documented on CaseNodeNeo4jRepository.findDirectRelations. Mirrors
+    // the two sibling projections below (querySearchResults, findGroupsByUserExternalIds).
+    override fun findMembers(userGroupId: UUID): List<UserGroupMember> =
+        neo4jClient
+            .query(
+                $$"""
+                    MATCH (u:User)-[r:MEMBER|ADMIN]->(g:UserGroup {id: $userGroupId})
+                    WHERE NOT COALESCE(u.removed, false) AND NOT COALESCE(g.removed, false)
+                    WITH u, collect(type(r)) AS rels
+                    RETURN u.id AS userId, u.externalId AS externalId, u.email AS email,
+                           u.firstname AS firstname, u.lastname AS lastname,
+                           CASE WHEN 'ADMIN' IN rels THEN 'ADMIN' ELSE 'MEMBER' END AS role
+                    ORDER BY u.externalId ASC
+                """.trimIndent(),
+            ).bind(userGroupId.toString())
+            .to("userGroupId")
+            .fetchAs(UserGroupMember::class.java)
+            .mappedBy { _, record ->
+                UserGroupMember(
+                    userId = UUID.fromString(record["userId"].asString()),
+                    externalId = record["externalId"].asString(),
+                    role = record["role"].asString(),
+                    email = record["email"].takeUnless { it.isNull }?.asString(),
+                    firstname = record["firstname"].takeUnless { it.isNull }?.asString(),
+                    lastname = record["lastname"].takeUnless { it.isNull }?.asString(),
+                )
+            }.all()
+            .toList()
+
     private fun querySearchResults(
         whereClause: String,
         paramName: String,
@@ -62,11 +93,12 @@ open class Neo4jUserGroupRepository(
                 WHERE $whereClause
                 OPTIONAL MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
                   WHERE NOT COALESCE(a.removed, false)
-                OPTIONAL MATCH (u:User)-[:MEMBER]->(g)
+                OPTIONAL MATCH (u:User)-[:MEMBER|ADMIN]->(g)
                   WHERE NOT COALESCE(u.removed, false)
-                RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId, g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
+                RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId,
+                       g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
                 ORDER BY g.name ASC
-            """,
+            """.trimIndent(),
         ).bind(paramValue)
         .to(paramName)
         .fetchAs(UserGroupSearchResult::class.java)
@@ -106,19 +138,44 @@ open class Neo4jUserGroupRepository(
         neo4jRepository.removeUsers(userGroupId.toString(), userExternalIds.toList())
     }
 
-    override fun findGroupsByUserExternalIds(externalIds: Collection<String>): Map<String, List<UserGroupSummary>> {
+    override fun removeUserFromGroupsInNamespace(userId: String, namespaceId: UUID) {
+        neo4jRepository.removeUserFromGroupsInNamespace(userId, namespaceId.toString())
+    }
+
+    /**
+     * Returns groups for the given user external IDs, optionally scoped to a namespace.
+     * Both `[:MEMBER]` and `[:ADMIN]` links count as membership, so a group admin is still
+     * listed among their own groups.
+     *
+     * When [namespaceId] is null, groups from all namespaces are returned.
+     * When [namespaceId] is provided, the Cypher query adds an extra predicate
+     * `AND g.namespaceId = $$namespaceId` to scope results to a single federation.
+     */
+    override fun findGroupsByUserExternalIds(
+        externalIds: Collection<String>,
+        namespaceId: UUID?,
+    ): Map<String, List<UserGroupSummary>> {
         if (externalIds.isEmpty()) return emptyMap()
+        val params = mutableMapOf<String, Any>("externalIds" to externalIds.toList())
+        val namespaceClause: String
+        if (namespaceId != null) {
+            params["namespaceId"] = namespaceId.toString()
+            namespaceClause = $$"AND g.namespaceId = $namespaceId"
+        } else {
+            namespaceClause = ""
+        }
+        val query = $$"""
+            MATCH (u:User)-[:MEMBER|ADMIN]->(g:UserGroup)
+            WHERE u.externalId IN $externalIds
+              AND NOT COALESCE(g.removed, false)
+              AND NOT COALESCE(u.removed, false)
+              $$namespaceClause
+            RETURN u.externalId AS externalId, g.id AS groupId, g.name AS groupName
+            ORDER BY u.externalId ASC, g.name ASC
+        """.trimIndent()
         return neo4jClient
-            .query(
-                $$"""
-                    MATCH (u:User)-[:MEMBER]->(g:UserGroup)
-                    WHERE u.externalId IN $externalIds
-                      AND NOT COALESCE(g.removed, false)
-                      AND NOT COALESCE(u.removed, false)
-                    RETURN u.externalId AS externalId, g.id AS groupId, g.name AS groupName
-                    ORDER BY u.externalId ASC, g.name ASC
-                """.trimIndent(),
-            ).bindAll(mapOf("externalIds" to externalIds.toList()))
+            .query(query)
+            .bindAll(params)
             .fetchAs(UserExternalIdGroupRow::class.java)
             .mappedBy { _, record ->
                 UserExternalIdGroupRow(

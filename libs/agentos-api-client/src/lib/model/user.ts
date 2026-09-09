@@ -9,11 +9,11 @@
  */
 
 export interface User {
-  id?: string
+  bio?: string
   email?: string
   externalId?: string
   firstname?: string
-  lastname?: string
-  bio?: string
+  id?: string
   isAdmin: boolean
+  lastname?: string
 }

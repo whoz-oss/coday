@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, OnInit } from '@angular/core'
+import { Component, DestroyRef, computed, inject, OnInit, ChangeDetectionStrategy } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { BackendStatusComponent } from '../backend-status/backend-status.component'
@@ -18,9 +18,9 @@ import { UserStateService } from '../../services/user-state.service'
  */
 @Component({
   selector: 'agentos-header',
-  standalone: true,
   imports: [BackendStatusComponent],
   templateUrl: './header.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './header.component.scss',
 })
 export class HeaderComponent implements OnInit {
@@ -31,11 +31,13 @@ export class HeaderComponent implements OnInit {
   protected readonly currentUser = this.userState.currentUser
 
   protected navigateHome(): void {
-    this.router.navigate(['/agentos'])
+    this.router.navigate(['/agentos/home'])
   }
 
+  protected readonly isAdmin = computed(() => this.userState.currentUser()?.isAdmin === true)
+
   protected navigateToAdmin(): void {
-    this.router.navigate(['/agentos/admin/users'])
+    this.router.navigate(['/agentos/admin'])
   }
 
   ngOnInit(): void {

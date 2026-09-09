@@ -9,13 +9,19 @@
  */
 
 export interface AgentConfig {
-  id?: string
-  namespaceId: string
-  name: string
-  description?: string
-  instructions?: string
-  modelName?: string
-  integrations?: { [key: string]: Array<string> }
   advancedExecution?: boolean
+  createdBy?: string
+  createdOn?: string
+  description?: string
+  enabled?: boolean
   externalMetadata?: { [key: string]: any }
+  id?: string
+  instructions?: string
+  integrations?: { [key: string]: Array<string> }
+  modelName?: string
+  name: string
+  namespaceId?: string
+  subAgents?: Array<string>
+  updatedBy?: string
+  updatedOn?: string
 }

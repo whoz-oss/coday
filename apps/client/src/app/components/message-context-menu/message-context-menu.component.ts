@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core'
+import { Component, Input, ChangeDetectionStrategy } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { MatIconButton } from '@angular/material/button'
 import { MatIcon } from '@angular/material/icon'
@@ -17,6 +17,7 @@ export interface MenuAction {
   standalone: true,
   imports: [CommonModule, MatIconButton, MatIcon],
   templateUrl: './message-context-menu.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './message-context-menu.component.scss',
 })
 export class MessageContextMenuComponent {

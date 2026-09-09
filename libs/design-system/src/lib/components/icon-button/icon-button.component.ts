@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core'
+import { Component, EventEmitter, Input, Output, ChangeDetectionStrategy } from '@angular/core'
 import { MatIconButton } from '@angular/material/button'
 import { MatIcon } from '@angular/material/icon'
 
@@ -22,6 +22,7 @@ export type IconButtonVariant = 'default' | 'primary' | 'danger'
   selector: 'ds-icon-button',
   imports: [MatIconButton, MatIcon],
   templateUrl: './icon-button.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './icon-button.component.scss',
 })
 export class IconButtonComponent {

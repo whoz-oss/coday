@@ -1,12 +1,15 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
@@ -16,6 +19,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +35,7 @@ import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.DefaultToolDefinition
 import java.util.UUID
@@ -43,11 +48,16 @@ import kotlin.time.measureTime
  * Simple agent implementation with single LLM call.
  *
  * This agent delegates tool orchestration to the LLM itself:
- * 1. Converts events to messages (including tool calls/responses)
+ * 1. Converts events to messages (including tool calls/responses and image attachments)
  * 2. Makes a single LLM call with available tools
  * 3. LLM decides which tools to call and when
  * 4. Tools are wrapped to emit ToolRequestEvent and ToolResponseEvent
  * 5. Streams text progressively with TextChunkEvent
+ *
+ * Image handling mirrors AgentAdvanced: tool responses that produced images are injected
+ * as follow-up [UserMessage] with [org.springframework.ai.content.Media] attachments in
+ * [convertEventsToMessages]. Budget management (newest-first selection) is governed by
+ * [imageCharCost] and [maxAttachedImages].
  *
  * This is simpler but gives less control over the orchestration loop
  * compared to AgentAdvanced.
@@ -58,7 +68,9 @@ class AgentSimple(
     override val name: String,
     private val chatClient: ChatClient,
     private val tools: Collection<StandardTool<*>>,
-    /** The effective system instructions passed to the LLM, after namespace context injection. */
+    /** The namespace context block, sent as the first part of the system message. */
+    val systemPrompt: String? = null,
+    /** The effective system instructions passed to the LLM (agent instructions + integrations + user). */
     val instructions: String? = null,
     /** AgentOS UUID of the user who initiated the case, or null when unresolvable. */
     private val userId: UUID? = null,
@@ -66,6 +78,15 @@ class AgentSimple(
     private val userExternalId: String? = null,
     /** Returns the live event list of the current case at the moment of invocation. */
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
+    override val llmProvider: String,
+    override val llmModel: String,
+    /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
+    private val toolMetricsService: ToolMetricsService? = null,
+    /**
+     * Maximum images attached as Media across the whole prompt, newest first.
+     * Mirrors [AgentConfigProperties.maxAttachedImages] (default 20).
+     */
+    val maxAttachedImages: Int = 20,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -82,10 +103,15 @@ class AgentSimple(
                 // Convert events to messages
                 val messages = convertEventsToMessages(events)
 
-                // Add system instructions if provided
+                // Build the system message from systemPrompt + instructions (either or both may be null)
+                val effectiveSystemMessage =
+                    listOfNotNull(systemPrompt, instructions)
+                        .joinToString("\n")
+                        .takeUnless { it.isBlank() }
+                        ?.let { SystemMessage(it) }
                 val allMessages =
-                    if (instructions != null) {
-                        listOf(SystemMessage(instructions)) + messages
+                    if (effectiveSystemMessage != null) {
+                        listOf(effectiveSystemMessage) + messages
                     } else {
                         messages
                     }
@@ -105,6 +131,8 @@ class AgentSimple(
                             caseId = caseId,
                             agentId = id,
                             agentName = name,
+                            llmProvider = llmProvider,
+                            llmModel = llmModel,
                         ),
                     )
                     return@flow
@@ -206,6 +234,8 @@ class AgentSimple(
                             caseId = caseId,
                             actor = Actor(id.toString(), name, ActorRole.AGENT),
                             content = listOf(MessageContent.Text(content)),
+                            llmProvider = llmProvider,
+                            llmModel = llmModel,
                         ),
                     )
                 }
@@ -216,6 +246,8 @@ class AgentSimple(
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
+                        llmProvider = llmProvider,
+                        llmModel = llmModel,
                     ),
                 )
             } catch (e: AgentInterrupt) {
@@ -226,7 +258,9 @@ class AgentSimple(
                 for (toolEvent in toolEventChannel) {
                     emit(toolEvent)
                 }
-                emitInterruptEvents(this@AgentSimple, e, namespaceId, caseId, logger)
+                emitInterruptAndFinishEvents(this@AgentSimple, e, namespaceId, caseId, logger)
+            } catch (e: NonTransientAiException) {
+                emitProviderErrorAndFinishEvents(this@AgentSimple, e, namespaceId, caseId, logger)
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(
@@ -243,6 +277,8 @@ class AgentSimple(
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
+                        llmProvider = llmProvider,
+                        llmModel = llmModel,
                     ),
                 )
             }
@@ -257,8 +293,14 @@ class AgentSimple(
      * it is injected as an extra [UserMessage] immediately before that message.
      * Session context on earlier messages is ignored — only the current turn's context
      * is relevant to the LLM.
+     *
+     * Image handling: tool responses that include images are replayed with a follow-up
+     * [UserMessage] carrying [org.springframework.ai.content.Media] attachments, mirroring
+     * the pattern used by AgentAdvancedContext. Budget management (newest-first) is governed
+     * by [maxAttachedImages] and [imageCharCost]. Tool responses whose images exceed the budget
+     * receive a text marker instead.
      */
-    private fun convertEventsToMessages(events: List<CaseEvent>): List<Message> {
+    internal fun convertEventsToMessages(events: List<CaseEvent>): List<Message> {
         val messages = mutableListOf<Message>()
         val toolCallsForCurrentMessage = mutableListOf<AssistantMessage.ToolCall>()
         val toolResponses = mutableMapOf<String, ToolResponseEvent>()
@@ -267,6 +309,17 @@ class AgentSimple(
         events.filterIsInstance<ToolResponseEvent>().forEach { toolResponse ->
             toolResponses[toolResponse.toolRequestId] = toolResponse
         }
+
+        // Determine which tool responses get image Media attachments (newest-first budget walk).
+        // maxDetailedChars = Int.MAX_VALUE disables text compression — AgentSimple has no history
+        // compression; imageCharCost value is neutral since it is only multiplied when images are
+        // attached and the budget break never triggers.
+        val plan =
+            ToolReplayPlanner(
+                maxDetailedChars = Int.MAX_VALUE,
+                maxAttachedImages = maxAttachedImages,
+                imageCharCost = 0,
+            ).plan(events)
 
         val lastUserMessageIndex =
             events.indexOfLast {
@@ -281,37 +334,7 @@ class AgentSimple(
                     if (index == lastUserMessageIndex) {
                         event.sessionContextPromptText()?.let { messages.add(UserMessage(it)) }
                     }
-                    // If we have accumulated tool calls, create AssistantMessage with them
-                    if (toolCallsForCurrentMessage.isNotEmpty()) {
-                        messages.add(
-                            AssistantMessage
-                                .builder()
-                                .toolCalls(
-                                    toolCallsForCurrentMessage.toList(),
-                                ).build(),
-                        )
-
-                        // Every AssistantMessage with tool_calls MUST be followed by a
-                        // ToolResponseMessage for each tool_call_id — OpenAI returns 400
-                        // otherwise. Use the real response when available, or a placeholder.
-                        val toolResponseMessages =
-                            toolCallsForCurrentMessage.map { toolCall ->
-                                val response = toolResponses[toolCall.id()]
-                                val output =
-                                    response?.let {
-                                        when (val content = it.output) {
-                                            is MessageContent.Text -> content.content
-                                            else -> content.toString()
-                                        }
-                                    } ?: "[No response recorded]"
-                                ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
-                            }
-
-                        messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
-
-                        toolCallsForCurrentMessage.clear()
-                    }
-
+                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses, plan)
                     messages.add(event.toSpringAiMessage(id.toString()))
                 }
 
@@ -331,43 +354,88 @@ class AgentSimple(
                     )
                 }
 
+                // QuestionEvent: the agent asked the user a question and terminated its run.
+                // Rendered as AssistantMessage (the agent's own voice). Any accumulated tool
+                // calls are flushed first so the message list stays well-formed (every
+                // AssistantMessage with tool_calls must be followed by a ToolResponseMessage).
+                is QuestionEvent -> {
+                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses, plan)
+                    messages.add(AssistantMessage(event.toPromptText()))
+                }
+
+                // AnswerEvent: the user's reply to a QuestionEvent.
+                // Rendered as UserMessage, consistent with MessageEvent USER rendering.
+                // Tool calls are flushed first for the same well-formedness reason.
+                is AnswerEvent -> {
+                    flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses, plan)
+                    messages.add(UserMessage(event.answer))
+                }
+
                 else -> {
                     // Ignore other event types for message conversion
                 }
             }
         }
 
-        // Handle any remaining tool calls at the end.
-        // Note: args are already normalised to "{}" in the accumulation loop above.
-        if (toolCallsForCurrentMessage.isNotEmpty()) {
-            messages.add(
-                AssistantMessage
-                    .builder()
-                    .toolCalls(
-                        toolCallsForCurrentMessage.toList(),
-                    ).build(),
-            )
-
-            // Every AssistantMessage with tool_calls MUST be followed by a
-            // ToolResponseMessage for each tool_call_id — OpenAI returns 400
-            // otherwise. Use the real response when available, or a placeholder.
-            val toolResponseMessages =
-                toolCallsForCurrentMessage.map { toolCall ->
-                    val response = toolResponses[toolCall.id()]
-                    val output =
-                        response?.let {
-                            when (val content = it.output) {
-                                is MessageContent.Text -> content.content
-                                else -> content.toString()
-                            }
-                        } ?: "[No response recorded]"
-                    ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
-                }
-
-            messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
-        }
+        // Flush any tool calls that trail the end of the event list without a following
+        // conversational message (e.g. the last thing the agent did was call a tool, then
+        // the run was interrupted). Args are already normalised in the accumulation loop above.
+        flushPendingToolCalls(messages, toolCallsForCurrentMessage, toolResponses, plan)
 
         return messages
+    }
+
+    /**
+     * Flush accumulated tool calls into [messages] as a well-formed
+     * `AssistantMessage(tool_calls) + ToolResponseMessage` pair, then clear the accumulator.
+     *
+     * ## Why this invariant exists
+     *
+     * OpenAI (and Anthropic) require that every `AssistantMessage` carrying `tool_calls`
+     * is immediately followed by a `ToolResponseMessage` that covers **each** `tool_call_id`
+     * referenced in that assistant turn. Violating this constraint causes a hard HTTP 400
+     * from the provider. Because `convertEventsToMessages` accumulates tool calls across
+     * `ToolRequestEvent` entries and only materialises the `AssistantMessage` when a
+     * conversational boundary is reached (a `MessageEvent`, `QuestionEvent`, `AnswerEvent`,
+     * or the end of the list), this flush must be called at every such boundary — and only
+     * at those boundaries.
+     *
+     * When a response is missing (e.g. the run was interrupted mid-tool), a
+     * `[No response recorded]` placeholder is inserted so the message list remains
+     * syntactically valid even for incomplete histories.
+     *
+     * This function is a no-op when [pendingToolCalls] is empty.
+     */
+    private fun flushPendingToolCalls(
+        messages: MutableList<Message>,
+        pendingToolCalls: MutableList<AssistantMessage.ToolCall>,
+        toolResponses: Map<String, ToolResponseEvent>,
+        plan: ToolReplayPlan,
+    ) {
+        if (pendingToolCalls.isEmpty()) return
+
+        messages.add(
+            AssistantMessage
+                .builder()
+                .toolCalls(pendingToolCalls.toList())
+                .build(),
+        )
+        val toolResponseMessages =
+            pendingToolCalls.map { toolCall ->
+                val response = toolResponses[toolCall.id()]
+                val output = response?.let { toolResponseText(it, plan) } ?: "[No response recorded]"
+                ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
+            }
+        messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
+
+        // Inject image Media messages for tool calls within the image budget
+        pendingToolCalls.forEach { toolCall ->
+            val response = toolResponses[toolCall.id()]
+            if (response != null && plan.hasAttachedMedia(toolCall.id())) {
+                messages.add(toolImagesUserMessage(toolCall.name(), response.images))
+            }
+        }
+        pendingToolCalls.clear()
     }
 
     /**
@@ -461,7 +529,7 @@ class AgentSimple(
                     )
 
                 val executionResult: ToolExecutionResult
-                // TODO: time measurement inside the try to add info to the ToolResponseEvent
+                val sample = toolMetricsService?.startTimer()
                 val toolDuration =
                     measureTime {
                         executionResult =
@@ -470,9 +538,17 @@ class AgentSimple(
                             } catch (e: AgentInterrupt) {
                                 // Interrupt is not an error: emit a successful response so traces
                                 // are complete, then re-throw the signal for the flow catch block.
+                                toolMetricsService?.stopTimerAndSendMetrics(
+                                    sample,
+                                    tool.name,
+                                    name,
+                                    namespaceId,
+                                    success = true,
+                                )
                                 val message =
                                     when (e) {
                                         is AgentInterrupt.Redirect -> "Redirecting to agent '${e.targetAgentName}'."
+                                        is AgentInterrupt.AwaitAnswer -> "Waiting for the user's answer."
                                     }
                                 sendEvent(
                                     ToolResponseEvent(
@@ -484,23 +560,36 @@ class AgentSimple(
                                         success = true,
                                     ),
                                 )
-
                                 throw e
                             } catch (e: Exception) {
-                                sendEvent(
-                                    ToolResponseEvent(
-                                        namespaceId = namespaceId,
-                                        caseId = caseId,
-                                        toolRequestId = toolRequestId,
-                                        toolName = tool.name,
-                                        output = MessageContent.Text("Error: ${e.message}"),
-                                        success = false,
-                                    ),
+                                // Cancellation and thread interruption (runBlocking above) are signals,
+                                // not tool failures: keep unwinding the run instead of turning them
+                                // into a result the LLM would be re-prompted on.
+                                if (e is CancellationException || e is InterruptedException) throw e
+                                // A tool failure is a tool result, not a run failure: the message goes
+                                // back to the LLM so it can correct its call (same contract as
+                                // AgentAdvanced.executeTool). Spring AI only turns ToolExecutionException
+                                // into a tool result; any other exception escaping call() errors the
+                                // stream and ends the turn.
+                                logger.warn(e) { "[AgentSimple] error during tool execution for ${tool.name}" }
+                                val reason = e.message ?: e::class.simpleName ?: "unknown error"
+                                ToolExecutionResult.error(
+                                    "Error executing tool: $reason",
+                                    errorType = e::class.simpleName,
+                                    errorMessage = e.message,
                                 )
-                                throw e
                             }
                     }
                 logger.info { "tool '${tool.name}' executed in $toolDuration" }
+                // Success and tool-error paths stop the timer here. AgentInterrupt stops it before
+                // rethrowing; cancellation/interruption rethrow without recording a metric.
+                toolMetricsService?.stopTimerAndSendMetrics(
+                    sample,
+                    tool.name,
+                    name,
+                    namespaceId,
+                    success = executionResult.success,
+                )
 
                 // Reset the turn mark so the next measurement starts from when
                 // we hand the tool result back to the LLM.
@@ -517,9 +606,15 @@ class AgentSimple(
                         success = executionResult.success,
                         durationMs = toolDuration.inWholeMilliseconds,
                         toolMetadata = executionResult.metadata,
+                        // Images are preserved on the event (persistence, SSE).
+                        // They will be delivered to the LLM via the conversation history
+                        // on subsequent turns (convertEventsToMessages injects UserMessage+Media).
+                        images = executionResult.images,
                     ),
                 )
 
+                // ToolCallback.call() returns text only — images reach the LLM via the
+                // rebuilt conversation context in convertEventsToMessages(), not here.
                 return executionResult.output
             }
         }

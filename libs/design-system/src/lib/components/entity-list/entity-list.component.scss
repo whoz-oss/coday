@@ -1,8 +1,14 @@
+@use 'libs/design-system/src/styles/typography' as typo;
+
 :host {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+
+  &.ds-entity-list--toolbar-only {
+    flex: 0 0 auto;
+  }
 }
 
 .entity-list {
@@ -14,69 +20,123 @@
   box-sizing: border-box;
 }
 
-// ── Toolbar (full width) ───────────────────────────────────────────────────
+// ── Toolbar (full width) ───────────────────────────────────────────────
 
 .entity-list__toolbar {
   display: flex;
   align-items: center;
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
-  // Fixed height — the mat-form-field must not cause resize on focus
+  border-bottom: 1px solid var(--color-divider);
   height: 56px;
   width: 100%;
+  // Defaults to full width; a host can set --entity-list-toolbar-max-width to align the toolbar
+  // with the content column (e.g. when the list sits between other max-width sections).
+  max-width: var(--entity-list-toolbar-max-width, none);
+  margin: 0 auto;
   box-sizing: border-box;
+
+  &--centered {
+    justify-content: center;
+    height: auto;
+    padding: 8px 0;
+    border-bottom: none;
+  }
 }
 
 .entity-list__title {
-  // Intrinsic width — never shrinks, never truncates
   flex: 0 0 auto;
   margin: 0;
   font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text, #1d1d1f);
+  font-weight: 700;
+  color: var(--color-text);
   white-space: nowrap;
+  letter-spacing: -0.02em;
 }
 
-.entity-list__search-field {
-  // Pushed to the right by margin-left: auto, capped at 240px, shrinks before title
+.entity-list__search-wrap {
   margin-left: auto;
-  padding-left: 20px;
   flex: 0 1 240px;
   min-width: 80px;
-  // Compact height
-  --mat-form-field-container-height: 36px;
-  --mat-form-field-container-vertical-padding: 6px;
-  font-size: 0.875rem;
-  // Erase fill appearance: no background, no bottom border
-  --mat-form-field-filled-with-label-container-padding-top: 0;
-  --mdc-filled-text-field-container-color: transparent;
-  --mdc-filled-text-field-hover-container-color: transparent;
-  --mdc-filled-text-field-focus-container-color: transparent;
-  --mdc-filled-text-field-active-indicator-color: transparent;
-  --mdc-filled-text-field-hover-active-indicator-color: transparent;
-  --mdc-filled-text-field-focus-active-indicator-color: transparent;
-  --mdc-filled-text-field-active-indicator-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
+  transition: border-color 150ms;
+
+  &:focus-within {
+    border-color: var(--color-accent);
+    background: var(--color-bg);
+  }
 }
 
-.entity-list__toolbar-btn {
+.entity-list__search-icon {
+  font-size: 0.8rem;
+  color: var(--color-neutral-500);
   flex-shrink: 0;
-  color: var(--color-text-secondary, #6e6e73);
+  line-height: 1;
+}
+
+.entity-list__search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: typo.$font-ui;
+  font-size: 0.875rem;
+  color: var(--color-text);
+
+  &::placeholder {
+    color: var(--color-neutral-500);
+  }
+
+  &::-webkit-search-cancel-button {
+    display: none;
+  }
+}
+
+.entity-list__search-clear {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--color-neutral-500);
+  padding: 0;
+  line-height: 1;
 
   &:hover {
-    color: var(--color-text, #1d1d1f);
-  }
-
-  &--primary {
-    color: var(--color-primary, #007aff);
-
-    &:hover {
-      color: var(--color-primary-hover, #0051d5);
-    }
+    color: var(--color-text);
   }
 }
 
-// ── Content (max-width constrained) ─────────────────────────────────────
+.entity-list__create-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 0;
+  border: none;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 300;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 150ms;
+
+  &:hover {
+    background: var(--color-accent-700);
+  }
+}
+
+// ── Content (max-width constrained) ────────────────────────────────────────────
 
 .entity-list__content {
   flex: 1;
@@ -93,30 +153,42 @@
   margin: 0;
   padding: 2rem 0;
   text-align: center;
-  color: var(--color-text-secondary, #6e6e73);
+  color: var(--color-text-secondary);
   font-size: 0.9375rem;
 }
 
-// ── Expansion panels ────────────────────────────────────────────────────
+// ── Expansion panels ─────────────────────────────────────────────────────
 
 .entity-list__panel {
   background: transparent;
   box-shadow: none !important;
 
   & + .entity-list__panel {
-    border-top: 1px solid var(--color-border-light, rgba(40, 40, 40, 0.08));
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--color-divider);
   }
 }
 
 .entity-list__panel-title {
-  font-size: 0.8125rem;
+  font-family: var(--font-heading);
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-secondary, #6e6e73);
+  letter-spacing: 0.12em;
+  color: var(--color-neutral-500);
 }
 
-// ── Grid ─────────────────────────────────────────────────────────────────────
+// ── Infinite scroll sentinel ──────────────────────────────────────────────
+
+.entity-list__sentinel {
+  height: 40px;
+  width: 100%;
+  // Present in DOM always (when paged) so IntersectionObserver can attach on init.
+  // Acts as a trigger only when more items exist.
+}
+
+// ── Grid ───────────────────────────────────────────────────────────────────
 
 .entity-list__grid {
   display: grid;

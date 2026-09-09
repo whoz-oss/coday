@@ -38,3 +38,5 @@ eureka:
   client:
     enabled: true
     register-with-eureka: true
+    jersey:
+      enabled: false

@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk.caseEvent
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
+import io.swagger.v3.oas.annotations.media.Schema
 
 /**
  * Structured content for messages.
@@ -22,7 +23,12 @@ sealed interface MessageContent {
 
     /**
      * Image content (base64 encoded).
+     *
+     * The explicit allOf keeps the OpenAPI composition with [MessageContent] (and its
+     * `type` discriminator) even though the type is also referenced directly (outside
+     * the sealed-interface oneOf) by [ToolResponseEvent.images].
      */
+    @Schema(allOf = [MessageContent::class])
     data class Image(
         val content: String, // base64 encoded
         val mimeType: String,

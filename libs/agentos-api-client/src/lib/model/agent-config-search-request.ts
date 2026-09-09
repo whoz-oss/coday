@@ -11,4 +11,5 @@
 export interface AgentConfigSearchRequest {
   namespaceId: string
   userExternalId: string
+  userId?: string
 }

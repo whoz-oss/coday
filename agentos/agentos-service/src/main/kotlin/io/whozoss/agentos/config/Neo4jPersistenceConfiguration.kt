@@ -11,6 +11,9 @@ import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
 import io.whozoss.agentos.aiProvider.AiProviderNodeNeo4jRepository
 import io.whozoss.agentos.aiProvider.AiProviderRepository
 import io.whozoss.agentos.aiProvider.Neo4jAiProviderRepository
+import io.whozoss.agentos.authSetting.AuthSettingNodeNeo4jRepository
+import io.whozoss.agentos.authSetting.AuthSettingRepository
+import io.whozoss.agentos.authSetting.Neo4jAuthSettingRepository
 import io.whozoss.agentos.caseEvent.CaseEventNodeMapper
 import io.whozoss.agentos.caseEvent.CaseEventNodeNeo4jRepository
 import io.whozoss.agentos.caseEvent.CaseEventRepository
@@ -19,16 +22,39 @@ import io.whozoss.agentos.caseEvent.Neo4jCaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
+import io.whozoss.agentos.credential.CredentialNodeNeo4jRepository
+import io.whozoss.agentos.credential.CredentialRepository
+import io.whozoss.agentos.credential.Neo4jCredentialRepository
+import io.whozoss.agentos.encryption.FieldEncryptor
+import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
+import io.whozoss.agentos.feedback.FeedbackRepository
+import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
+import io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
 import io.whozoss.agentos.namespace.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
+import io.whozoss.agentos.permissions.FavoriteRepository
+import io.whozoss.agentos.permissions.Neo4jFavoriteRepository
 import io.whozoss.agentos.permissions.Neo4jPermissionRepository
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRepository
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
+import io.whozoss.agentos.prompt.FilesystemPromptRepository
+import io.whozoss.agentos.prompt.Neo4jPromptRepository
+import io.whozoss.agentos.prompt.PromptNodeNeo4jRepository
+import io.whozoss.agentos.prompt.PromptRepository
+import io.whozoss.agentos.scheduledPrompt.Neo4jScheduledPromptRepository
+import io.whozoss.agentos.scheduledPrompt.Neo4jScheduledPromptRunRepository
+import io.whozoss.agentos.scheduledPrompt.Neo4jScheduledPromptUserRunRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptNodeNeo4jRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunNodeNeo4jRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptUserRunNodeNeo4jRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptUserRunRepository
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
@@ -36,12 +62,19 @@ import io.whozoss.agentos.userGroup.Neo4jUserGroupRepository
 import io.whozoss.agentos.userGroup.UserGroupNodeNeo4jRepository
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
+import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
-import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Primary
+import org.springframework.data.neo4j.config.EnableNeo4jAuditing
+import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 /**
  * Registers Neo4j-backed repository beans.
@@ -59,6 +92,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
  *
  */
 @Configuration
+@EnableNeo4jAuditing
 @EnableConfigurationProperties(PersistenceConfigProperties::class)
 @ConditionalOnExpression(
     "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
@@ -73,9 +107,14 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.namespace",
         "io.whozoss.agentos.caseFlow",
         "io.whozoss.agentos.caseEvent",
+        "io.whozoss.agentos.feedback",
         "io.whozoss.agentos.integrationConfig",
         "io.whozoss.agentos.permissions",
+        "io.whozoss.agentos.prompt",
         "io.whozoss.agentos.userGroup",
+        "io.whozoss.agentos.authSetting",
+        "io.whozoss.agentos.credential",
+        "io.whozoss.agentos.scheduledPrompt",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -84,11 +123,13 @@ class Neo4jPersistenceConfiguration {
         agentConfigNodeNeo4jRepository: AgentConfigNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
         namespaceRepository: NamespaceRepository,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
     ): AgentConfigRepository {
         logger.info { "[Persistence] Neo4jAgentConfigRepository active (filesystem augmentation enabled)" }
         return FilesystemAgentConfigRepository(
             delegate = Neo4jAgentConfigRepository(agentConfigNodeNeo4jRepository, childLinkService),
             namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
         )
     }
 
@@ -102,9 +143,14 @@ class Neo4jPersistenceConfiguration {
     fun neo4jCaseRepository(
         caseNodeNeo4jRepository: CaseNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
+        clock: Clock,
     ): CaseRepository {
         logger.info { "[Persistence] Neo4jCaseRepository active" }
-        return Neo4jCaseRepository(caseNodeNeo4jRepository, childLinkService)
+        return Neo4jCaseRepository(
+            caseNodeNeo4jRepository = caseNodeNeo4jRepository,
+            childLinkService = childLinkService,
+            clock = clock,
+        )
     }
 
     @Bean
@@ -131,13 +177,61 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
-    fun neo4jIntegrationConfigRepository(
+    fun neo4jFavoriteRepository(caseNodeNeo4jRepository: CaseNodeNeo4jRepository): FavoriteRepository {
+        logger.info { "[Persistence] Neo4jFavoriteRepository active" }
+        return Neo4jFavoriteRepository(caseNodeNeo4jRepository)
+    }
+
+    /**
+     * Inner Neo4j-backed bean, declared explicitly so that Spring AOP can proxy it and honour
+     * the [org.springframework.transaction.annotation.Transactional] boundaries declared on
+     * [Neo4jIntegrationConfigRepository.save] and [Neo4jIntegrationConfigRepository.deleteByParent].
+     *
+     * If this bean were constructed inline (via `Neo4jIntegrationConfigRepository(...)` inside
+     * the outer factory method), it would not be managed by Spring and the AOP proxy would never
+     * be applied, silently disabling rollback semantics.
+     */
+    @Bean
+    fun neo4jIntegrationConfigRepositoryDelegate(
         integrationConfigNodeNeo4jRepository: IntegrationConfigNodeNeo4jRepository,
         objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
+    ): Neo4jIntegrationConfigRepository =
+        Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
+
+    @Bean
+    @Primary
+    fun neo4jIntegrationConfigRepository(
+        neo4jIntegrationConfigRepositoryDelegate: Neo4jIntegrationConfigRepository,
+        namespaceRepository: NamespaceRepository,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
     ): IntegrationConfigRepository {
-        logger.info { "[Persistence] Neo4jIntegrationConfigRepository active" }
-        return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
+        logger.info { "[Persistence] Neo4jIntegrationConfigRepository active (filesystem augmentation enabled)" }
+        return FilesystemIntegrationConfigRepository(
+            delegate = neo4jIntegrationConfigRepositoryDelegate,
+            namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
+        )
+    }
+
+    @Bean
+    fun neo4jCredentialRepository(
+        credentialNodeNeo4jRepository: CredentialNodeNeo4jRepository,
+        fieldEncryptor: FieldEncryptor,
+        objectMapper: ObjectMapper,
+    ): CredentialRepository {
+        logger.info { "[Persistence] Neo4jCredentialRepository active" }
+        return Neo4jCredentialRepository(credentialNodeNeo4jRepository, fieldEncryptor, objectMapper)
+    }
+
+    @Bean
+    fun neo4jAuthSettingRepository(
+        authSettingNodeNeo4jRepository: AuthSettingNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+        fieldEncryptor: FieldEncryptor,
+    ): AuthSettingRepository {
+        logger.info { "[Persistence] Neo4jAuthSettingRepository active" }
+        return Neo4jAuthSettingRepository(authSettingNodeNeo4jRepository, childLinkService, fieldEncryptor)
     }
 
     @Bean
@@ -160,6 +254,58 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
+    fun neo4jFeedbackRepository(
+        feedbackNodeNeo4jRepository: FeedbackNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): FeedbackRepository {
+        logger.info { "[Persistence] Neo4jFeedbackRepository active" }
+        return Neo4jFeedbackRepository(feedbackNodeNeo4jRepository, childLinkService)
+    }
+
+    /**
+     * Inner Neo4j-backed bean, declared explicitly so that Spring AOP can proxy it and honour
+     * the [org.springframework.transaction.annotation.Transactional] boundaries declared on
+     * [Neo4jPromptRepository.save] and [Neo4jPromptRepository.deleteByParent].
+     *
+     * If this bean were constructed inline (via `Neo4jPromptRepository(...)` inside the outer
+     * factory method), it would not be managed by Spring and the AOP proxy would never be
+     * applied, silently disabling rollback semantics. This matters for [Neo4jPromptRepository.save]
+     * in particular: it creates the Prompt node then the BELONGS_TO edges to the namespace and
+     * the agent as two separate Neo4j operations — without a transaction, a failure on the edge
+     * step would leave an orphan Prompt node behind.
+     */
+    @Bean
+    fun neo4jPromptRepositoryDelegate(
+        promptNodeNeo4jRepository: PromptNodeNeo4jRepository,
+        objectMapper: ObjectMapper,
+        childLinkService: Neo4jChildLinkService,
+    ): Neo4jPromptRepository = Neo4jPromptRepository(promptNodeNeo4jRepository, objectMapper, childLinkService)
+
+    @Bean
+    @Primary
+    fun neo4jPromptRepository(
+        neo4jPromptRepositoryDelegate: Neo4jPromptRepository,
+        namespaceRepository: NamespaceRepository,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
+    ): PromptRepository {
+        logger.info { "[Persistence] Neo4jPromptRepository active (filesystem augmentation enabled)" }
+        return FilesystemPromptRepository(
+            delegate = neo4jPromptRepositoryDelegate,
+            namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
+        )
+    }
+
+    @Bean
+    fun neo4jScheduledPromptRepository(
+        scheduledPromptNodeNeo4jRepository: ScheduledPromptNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): ScheduledPromptRepository {
+        logger.info { "[Persistence] Neo4jScheduledPromptRepository active" }
+        return Neo4jScheduledPromptRepository(scheduledPromptNodeNeo4jRepository, childLinkService)
+    }
+
+    @Bean
     fun neo4jAiModelRepository(
         aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
@@ -167,6 +313,117 @@ class Neo4jPersistenceConfiguration {
         logger.info { "[Persistence] Neo4jAiModelRepository active" }
         return Neo4JAiModelRepository(aiModelNodeNeo4JRepository, childLinkService)
     }
+
+    @Bean
+    fun neo4jScheduledPromptRunRepository(
+        scheduledPromptRunNodeNeo4jRepository: ScheduledPromptRunNodeNeo4jRepository,
+    ): ScheduledPromptRunRepository {
+        logger.info { "[Persistence] Neo4jScheduledPromptRunRepository active" }
+        return Neo4jScheduledPromptRunRepository(scheduledPromptRunNodeNeo4jRepository)
+    }
+
+    @Bean
+    fun neo4jScheduledPromptUserRunRepository(
+        scheduledPromptUserRunNodeNeo4jRepository: ScheduledPromptUserRunNodeNeo4jRepository,
+    ): ScheduledPromptUserRunRepository {
+        logger.info { "[Persistence] Neo4jScheduledPromptUserRunRepository active" }
+        return Neo4jScheduledPromptUserRunRepository(scheduledPromptUserRunNodeNeo4jRepository)
+    }
+
+    /**
+     * One-time migration: converts legacy `[:STARRED]` plain edges to
+     * `[:WATCHES]` relationship-with-properties edges.
+     *
+     * Sets `favorite = true` on the new edge (the original edge carried no properties).
+     * The migration is idempotent: `MERGE` on `[:WATCHES]` ensures that if the edge
+     * already exists (from a previous partial migration), only `favorite` is SET —
+     * `readAt` is left untouched.
+     * The legacy `[:STARRED]` edge is deleted after the merge.
+     *
+     * Runs once at startup and is a no-op when no `[:STARRED]` edges remain.
+     */
+    @Bean
+    fun migrateStarredEdges(neo4jClient: Neo4jClient): CommandLineRunner =
+        CommandLineRunner {
+            val result =
+                neo4jClient
+                    .query(
+                        """
+                        MATCH (u:User)-[s:STARRED]->(c:Case)
+                        MERGE (u)-[state:WATCHES]->(c)
+                        SET state.favorite = true
+                        DELETE s
+                        RETURN count(s) AS migrated
+                        """.trimIndent(),
+                    ).fetch()
+                    .one()
+            val count = result.map { it["migrated"] as Long }.orElse(0L) ?: 0L
+            if (count > 0L) {
+                logger.info { "[Migration] Converted $count [:STARRED] edges to [:WATCHES]" }
+            } else {
+                logger.debug { "[Migration] No legacy [:STARRED] edges found — nothing to migrate" }
+            }
+        }
+
+    /**
+     * One-time initialisation: creates `[:WATCHES]` edges with `readAt = now` for every
+     * `(User)-[:ADMIN|MEMBER]->(Case)` relation in the database that has no WATCHES edge yet.
+     *
+     * This prevents cases that existed before the read-state feature was introduced from
+     * appearing as "unread" for all their members on first startup.
+     *
+     * Idempotency is guaranteed by a `(:CompletedMigration {id: 'readAtFeat20260908'})` flag
+     * node in Neo4j: the node is created (MERGE ON CREATE) on the first run and the heavy
+     * WATCHES backfill only executes when the node is brand-new. On every subsequent startup
+     * the flag node already exists, the WITH/WHERE clause filters it out, and the body of the
+     * migration is never reached.
+     *
+     * Runs after [migrateStarredEdges] (via bean dependency) so that edges converted from
+     * `[:STARRED]` — which carry `readAt = null` — are also initialised here.
+     */
+    @Bean
+    fun initCaseReadAt(
+        neo4jClient: Neo4jClient,
+        clock: Clock,
+        @Suppress("UNUSED_PARAMETER") migrateStarredEdges: CommandLineRunner,
+    ): CommandLineRunner =
+        CommandLineRunner {
+            // Neo4j driver does not accept java.time.Instant directly — convert to ZonedDateTime
+            // (stored as a Neo4j DateTime value) so the driver can serialise it correctly.
+            val now = Instant.now(clock).atZone(ZoneOffset.UTC)
+            // The flag node ensures this migration runs exactly once across all restarts.
+            // ON CREATE SET flag.isNew = true marks the node as brand-new; the WITH/WHERE
+            // clause lets the rest of the query through only on that first creation.
+            // On every subsequent startup the MERGE matches the existing node (isNew absent),
+            // the WHERE filters it out, and the MATCH below never executes.
+            val result =
+                neo4jClient
+                    .query(
+                        $$"""
+                        MERGE (flag:CompletedMigration {id: 'readAtFeat20260908'})
+                        ON CREATE SET flag.isNew = true
+                        WITH flag
+                        WHERE flag.isNew = true
+                        REMOVE flag.isNew
+                        WITH count(flag) AS guard
+                        MATCH (u:User)-[:ADMIN|MEMBER]->(c:Case)
+                        WHERE (c.removed IS NULL OR c.removed = false) and guard > 0
+                        MERGE (u)-[s:WATCHES]->(c)
+                        ON CREATE SET s.readAt = $readAt
+                        ON MATCH SET s.readAt = CASE WHEN s.readAt IS NULL THEN $readAt ELSE s.readAt END
+                        RETURN count(c) AS initialised
+                        """.trimIndent(),
+                    ).bind(now)
+                    .to("readAt")
+                    .fetch()
+                    .one()
+            val count = result.map { it["initialised"] as Long }.orElse(0L) ?: 0L
+            if (count > 0L) {
+                logger.info { "[Migration] Initialised readAt on $count WATCHES edges" }
+            } else {
+                logger.debug { "[Migration] readAtFeat20260908 already applied — skipping" }
+            }
+        }
 
     companion object : KLogging()
 }

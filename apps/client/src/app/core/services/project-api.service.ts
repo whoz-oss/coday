@@ -135,6 +135,17 @@ export class ProjectApiService {
   }
 
   /**
+   * Mark multiple threads as done in a single batch call.
+   * @param projectName Project identifier
+   * @param threadIds   List of thread IDs to close
+   */
+  markThreadsBatchDone(projectName: string, threadIds: string[]): Observable<{ success: boolean; count: number }> {
+    return this.http.post<{ success: boolean; count: number }>(`${this.baseUrl}/${projectName}/threads/batch-done`, {
+      threadIds,
+    })
+  }
+
+  /**
    * Delete a project
    * @param projectName Project name
    * @param removeGitWorktree If true, also remove the git worktree from disk (worktree projects only)

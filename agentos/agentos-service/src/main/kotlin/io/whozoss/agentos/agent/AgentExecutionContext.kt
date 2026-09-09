@@ -1,6 +1,8 @@
 package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.tool.ToolContext
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -11,13 +13,36 @@ import java.util.UUID
  * its execution environment — namespace context injected into system instructions,
  * tool resolution scoped to the namespace and user, etc.
  *
+ * @param caseId The case this agent run belongs to, or null when the context is built
+ *   outside of a live case (e.g. definition resolution for a debug endpoint).
+ * @param caseCreatedAt The case's immutable creation timestamp, used to resolve the date-sharded
+ *   case file-exchange root. Null when [caseId] is null.
  * @param caseEventsProvider Returns the live event list of the current case at the moment
  *   of invocation. Evaluated lazily so tool calls during a single agent run see events
  *   produced by prior tool calls in the same turn (e.g. a read before a write).
+ *   Ignored when [caseId] is null.
+ * @param emitEvent Callback to persist and emit a [CaseEvent] into the live case's SSE stream.
+ *   Used by [io.whozoss.agentos.auth.OAuthFlowService] to emit [io.whozoss.agentos.sdk.caseEvent.QuestionEvent]s
+ *   during interactive OAuth flows. Returns the persisted event (with stable id).
+ *   Null when running outside a live case (e.g. definition resolution for a debug endpoint).
  */
 data class AgentExecutionContext(
     val namespaceId: UUID,
-    val caseId: UUID,
+    val caseId: UUID? = null,
+    val caseCreatedAt: Instant? = null,
     val userId: UUID? = null,
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
-)
+    val emitEvent: ((CaseEvent) -> CaseEvent)? = null,
+) {
+    fun toToolContext(
+        userExternalId: String?,
+        agentName: String?,
+    ): ToolContext =
+        ToolContext(
+            namespaceId = namespaceId,
+            userId = userId,
+            userExternalId = userExternalId,
+            caseEvents = caseEventsProvider(),
+            agentName = agentName,
+        )
+}

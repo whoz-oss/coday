@@ -16,6 +16,7 @@ export { setupEnv } from './lib/env-setup'
 // Server lifecycle
 export type { ServerConfig } from './lib/server-lifecycle'
 export { startCodayServer, stopCodayServer, isServerResponsive } from './lib/server-lifecycle'
+export { resolveCodayWebSpec } from './lib/coday-web-spec'
 
 // Window management
 export type { MainWindowConfig } from './lib/window-manager'

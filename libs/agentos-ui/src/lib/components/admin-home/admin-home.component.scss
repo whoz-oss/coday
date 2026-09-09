@@ -1,0 +1,36 @@
+@use '../../../../../design-system/src/styles' as ds;
+
+.admin-home {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+
+  &__header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--color-text);
+    font-family: var(--font-heading);
+  }
+
+  &__subtitle {
+    margin: 0;
+    font-size: 13px;
+    color: var(--color-neutral-600);
+  }
+
+  &__sections {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}

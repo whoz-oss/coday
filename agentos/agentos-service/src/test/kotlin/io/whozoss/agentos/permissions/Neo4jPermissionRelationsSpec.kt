@@ -170,11 +170,39 @@ class Neo4jPermissionRelationsSpec : StringSpec() {
             ).shouldBeFalse()
         }
 
-        "delete MEMBER relation preserves a pre-existing ADMIN relation for the same user" {
+        "granting ADMIN replaces an existing MEMBER relation (single-relation invariant)" {
             val user = createUser()
             val namespace = createNamespace()
 
-            // Grant both roles to the same user on the same namespace
+            permissionNodeRepository.createMemberPermission(
+                userId = user.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace"
+            )
+            permissionNodeRepository.createAdminPermission(
+                userId = user.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace"
+            )
+
+            permissionNodeRepository.hasAdminPermission(
+                userId = user.id.toString(),
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace"
+            ).shouldBeTrue()
+
+            // Exactly one edge remains — findUsersWithAnyPermission returns one row per relation,
+            // so a lingering [:MEMBER] edge would surface as a duplicate here.
+            permissionNodeRepository.findUsersWithAnyPermission(
+                entityId = namespace.id.toString(),
+                entityLabel = "Namespace"
+            ) shouldHaveSize 1
+        }
+
+        "granting MEMBER replaces an existing ADMIN relation (single-relation invariant)" {
+            val user = createUser()
+            val namespace = createNamespace()
+
             permissionNodeRepository.createAdminPermission(
                 userId = user.id.toString(),
                 entityId = namespace.id.toString(),
@@ -186,32 +214,22 @@ class Neo4jPermissionRelationsSpec : StringSpec() {
                 entityLabel = "Namespace"
             )
 
-            // Revoke only MEMBER
-            permissionNodeRepository.deleteMemberPermission(
+            // The user now holds the MEMBER role — the [:ADMIN] edge was replaced, not kept.
+            permissionNodeRepository.hasAdminPermission(
                 userId = user.id.toString(),
                 entityId = namespace.id.toString(),
                 entityLabel = "Namespace"
-            )
-
-            // ADMIN must remain — higher privilege retained
-            permissionNodeRepository.hasAdminPermission(
+            ).shouldBeFalse()
+            permissionNodeRepository.hasMemberOrAdminPermission(
                 userId = user.id.toString(),
                 entityId = namespace.id.toString(),
                 entityLabel = "Namespace"
             ).shouldBeTrue()
 
-            // Proof that MEMBER was actually removed (not a no-op):
-            // after deleting ADMIN, no permission relation of any kind should remain.
-            permissionNodeRepository.deleteAdminPermission(
-                userId = user.id.toString(),
+            permissionNodeRepository.findUsersWithAnyPermission(
                 entityId = namespace.id.toString(),
                 entityLabel = "Namespace"
-            )
-            permissionNodeRepository.hasMemberOrAdminPermission(
-                userId = user.id.toString(),
-                entityId = namespace.id.toString(),
-                entityLabel = "Namespace"
-            ).shouldBeFalse()
+            ) shouldHaveSize 1
         }
 
         "hasAdminPermission returns false when no relation exists" {

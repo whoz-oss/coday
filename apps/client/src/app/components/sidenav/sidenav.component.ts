@@ -10,6 +10,7 @@ import {
   Output,
   signal,
   ViewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 import { Router } from '@angular/router'
 import { FormsModule } from '@angular/forms'
@@ -32,6 +33,7 @@ import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { ProjectApiService } from '../../core/services/project-api.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
+import { ContextGaugeComponent } from '../context-gauge/context-gauge.component'
 
 @Component({
   selector: 'app-sidenav',
@@ -46,8 +48,10 @@ import { ThreadStateService } from '../../core/services/thread-state.service'
     OptionsPanelComponent,
     ThreadSelectorComponent,
     PreviewPanelComponent,
+    ContextGaugeComponent,
   ],
   templateUrl: './sidenav.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './sidenav.component.scss',
 })
 export class SidenavComponent implements OnInit, OnDestroy {

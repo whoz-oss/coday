@@ -11,6 +11,7 @@ import {
   TextChunkEvent,
   ToolRequestEvent,
   ToolResponseEvent,
+  UsageEvent,
 } from '@coday/model'
 import { Observable, of, Subject } from 'rxjs'
 import { AiThread, ThreadMessage } from '@coday/model'
@@ -31,6 +32,18 @@ interface RateLimitInfo {
 
 const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   {
+    name: 'claude-fable-5',
+    alias: 'FRONTIER',
+    contextWindow: 200000,
+    maxOutputTokens: 64000,
+    price: {
+      inputMTokens: 10,
+      cacheWrite: 12.5,
+      cacheRead: 1.0,
+      outputMTokens: 50,
+    },
+  },
+  {
     name: 'claude-sonnet-4-6',
     alias: 'BIG',
     contextWindow: 200000,
@@ -44,10 +57,9 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
     },
   },
   {
-    name: 'claude-opus-4-6',
+    name: 'claude-opus-5',
     alias: 'BIGGEST',
     contextWindow: 200000,
-    temperature: 0.8,
     maxOutputTokens: 64000,
     price: {
       inputMTokens: 5,
@@ -73,6 +85,11 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
 
 const MAX_THROTTLING_DELAY = 60
 const THROTTLING_THRESHOLD = 0.4
+
+// SDK blocks non-streaming calls when estimated duration > 10 min.
+// Formula: 3600 * max_tokens / 128000 > 600 → max_tokens > ~21333
+// Use a safe margin below that.
+const STREAMING_THRESHOLD_TOKENS = 16000
 
 // Cache marker strategy constants
 const CACHE_MARKER_PLACEMENT_RATIO = 0.9
@@ -263,6 +280,17 @@ export class AnthropicClient extends AiClient {
       cache_write: usage?.cache_creation_input_tokens ?? 0,
       price,
     })
+    this.interactor.sendEvent(
+      new UsageEvent({
+        inputTokens: usage?.input_tokens ?? 0,
+        outputTokens: thread.usage.output,
+        contextWindow: this.getModel(agent)?.contextWindow ?? 0,
+        price: thread.usage.price,
+        iterations: thread.usage.iterations,
+        cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
+        threadId: thread.id,
+      })
+    )
   }
 
   private isAnthropicReady(): Anthropic | undefined {
@@ -558,6 +586,7 @@ export class AnthropicClient extends AiClient {
 
     // Add cache_control to the last tool (covers all tools)
     if (tools.length > 0) {
+      // eslint-disable-next-line no-extra-semi
       ;(tools[tools.length - 1] as any).cache_control = { type: 'ephemeral' }
     }
 
@@ -600,7 +629,9 @@ export class AnthropicClient extends AiClient {
         },
       ] as unknown as Array<Anthropic.TextBlockParam>,
       tools: this.getClaudeTools(agent.tools),
-      temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
+      ...((agent.definition.temperature ?? model.temperature) !== undefined && {
+        temperature: agent.definition.temperature ?? model.temperature,
+      }),
       max_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? 8192,
     })
 
@@ -755,23 +786,40 @@ export class AnthropicClient extends AiClient {
 
     // Select model: options > SMALL alias > fallback
     const modelName = options?.model ?? this.models.find((m) => m.alias === 'SMALL')?.name ?? 'claude-3-5-haiku-latest'
+    const actualMaxTokens = options?.maxTokens ?? 100
+    const useStreaming = actualMaxTokens > STREAMING_THRESHOLD_TOKENS
 
     try {
-      const response = await anthropic.messages.create({
-        model: modelName,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: options?.maxTokens ?? 100,
-        temperature: options?.temperature ?? 0.5,
-        stop_sequences: options?.stopSequences,
-      })
+      let response: Anthropic.Messages.Message
+
+      if (useStreaming) {
+        // Use streaming for large max_tokens to avoid the SDK 10-minute timeout block
+        const stream = anthropic.messages.stream({
+          model: modelName,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: actualMaxTokens,
+          ...(options?.temperature !== undefined && { temperature: options.temperature }),
+          stop_sequences: options?.stopSequences,
+        })
+        response = await stream.finalMessage()
+      } else {
+        response = await anthropic.messages.create({
+          model: modelName,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: actualMaxTokens,
+          ...(options?.temperature !== undefined && { temperature: options.temperature }),
+          stop_sequences: options?.stopSequences,
+        })
+      }
 
       return response.content
         .filter((block) => block.type === 'text')
         .map((block) => block.text.trim())
         .join(' ')
     } catch (error: any) {
-      console.error('Anthropic completion error:', error)
-      throw new Error(`Anthropic completion failed: ${error.message}`)
+      const mode = useStreaming ? 'streaming' : 'non-streaming'
+      console.error(`Anthropic completion error (${mode}):`, error)
+      throw new Error(`Anthropic completion failed (${mode}): ${error.message}`)
     }
   }
 }

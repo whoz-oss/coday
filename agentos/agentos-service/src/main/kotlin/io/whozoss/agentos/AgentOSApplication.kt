@@ -1,11 +1,19 @@
 package io.whozoss.agentos
 
 import io.whozoss.agentos.agent.AgentConfigProperties
+import io.whozoss.agentos.chat.AnthropicProperties
+import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.config.PersistenceConfigProperties
+import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
+import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
+import io.whozoss.agentos.prompt.PromptTranslationCacheProperties
+import io.whozoss.agentos.queryUser.QueryUserConfigProperties
+import io.whozoss.agentos.scheduledPrompt.SchedulerProperties
 import io.whozoss.agentos.service.config.AgentOsPluginsConfigProperties
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.runApplication
+import org.springframework.scheduling.annotation.EnableScheduling
 
 /**
  * Main Spring Boot application for Agent OS.
@@ -15,7 +23,19 @@ import org.springframework.boot.runApplication
         org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration::class,
     ],
 )
-@EnableConfigurationProperties(AgentConfigProperties::class, AgentOsPluginsConfigProperties::class, PersistenceConfigProperties::class)
+@EnableScheduling
+@EnableConfigurationProperties(
+    AgentConfigProperties::class,
+    AnthropicProperties::class,
+    CaseConfigProperties::class,
+    AgentOsPluginsConfigProperties::class,
+    PersistenceConfigProperties::class,
+    ExchangeStorageConfigProperties::class,
+    ExchangeToolsConfigProperties::class,
+    PromptTranslationCacheProperties::class,
+    QueryUserConfigProperties::class,
+    SchedulerProperties::class,
+)
 class AgentOSApplication
 
 fun main(args: Array<String>) {

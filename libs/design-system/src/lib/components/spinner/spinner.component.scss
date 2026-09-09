@@ -1,0 +1,51 @@
+:host {
+  display: inline-flex;
+}
+
+.ds-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  --ds-spinner-size: 1.5rem;
+  --ds-spinner-thickness: 2px;
+
+  &--sm {
+    --ds-spinner-size: 1rem;
+    --ds-spinner-thickness: 2px;
+  }
+
+  &--md {
+    --ds-spinner-size: 1.5rem;
+    --ds-spinner-thickness: 2px;
+  }
+
+  &--lg {
+    --ds-spinner-size: 2.5rem;
+    --ds-spinner-thickness: 3px;
+  }
+}
+
+.ds-spinner__circle {
+  box-sizing: border-box;
+  display: block;
+  width: var(--ds-spinner-size);
+  height: var(--ds-spinner-size);
+  border-radius: 50%;
+  border: var(--ds-spinner-thickness) solid var(--color-border, rgba(0, 0, 0, 0.15));
+  border-top-color: var(--color-primary, #007aff);
+  animation: ds-spinner-spin 0.7s linear infinite;
+}
+
+@keyframes ds-spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Respect users who prefer reduced motion — slow the spin rather than removing feedback.
+@media (prefers-reduced-motion: reduce) {
+  .ds-spinner__circle {
+    animation-duration: 1.6s;
+  }
+}

@@ -9,7 +9,7 @@
  */
 
 export interface PluginUploadResponse {
-  success: boolean
   message: string
   pluginId?: string
+  success: boolean
 }

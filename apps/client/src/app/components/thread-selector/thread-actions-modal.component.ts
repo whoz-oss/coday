@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core'
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core'
 import {
   MAT_DIALOG_DATA,
   MatDialogActions,
@@ -29,6 +29,7 @@ import { MatButtonModule } from '@angular/material/button'
       </div>
     }
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       .delete-confirm {

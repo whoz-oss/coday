@@ -1,0 +1,63 @@
+package io.whozoss.agentos.sdk.api.user
+
+import io.whozoss.agentos.sdk.api.common.EntityCrudApi
+import io.whozoss.agentos.sdk.api.userGroup.UserGroupSummary
+import java.util.UUID
+
+/**
+ * HTTP API contract for User entities.
+ *
+ * Implemented by `UserController` in agentos-service. External consumers
+ * implement this interface as a Feign client, adding their own `@FeignClient` and
+ * routing annotations. AgentOS does not prescribe the client technology or configuration.
+ *
+ * Authorization summary (enforced server-side):
+ * - [listAll], [create], [delete], [getByIds], [listByExternalIds], [revokeNamespaceAccess], [revokeNamespaceAccessByExternalId]: SUPER_ADMIN only
+ * - [getById], [update]: SUPER_ADMIN or self (caller's own UUID)
+ * - [getMe], [getGroupsByExternalIds]: any authenticated user
+ */
+interface UserApi : EntityCrudApi<UserDto> {
+    /** GET /api/users — list all users. SUPER_ADMIN only. */
+    fun listAll(): List<UserDto>
+
+    /** GET /api/users/me — return the current caller's user record. */
+    fun getMe(): UserDto
+
+    /**
+     * POST /api/users/by-external-ids — look up users by IdP keys. SUPER_ADMIN only.
+     *
+     * Unknown external IDs are silently omitted. Result order is not guaranteed.
+     */
+    fun listByExternalIds(externalIds: List<String>): List<UserDto>
+
+    /**
+     * POST /api/users/groups-by-external-ids — return groups per user, scoped to a namespace.
+     *
+     *
+     * Returns a map from external ID to the list of groups the user belongs to within the
+     * requested namespace. Results are filtered to groups visible to the caller.
+     */
+    fun getGroupsByExternalIds(request: GroupsByExternalIdsRequest): Map<String, List<UserGroupSummary>>
+
+    /**
+     * DELETE /api/users/{id}/access?namespaceId=... — revoke a user's access to a single namespace.
+     * SUPER_ADMIN only.
+     *
+     * Revokes the UserGroup memberships and the Namespace ADMIN/MEMBER relation held by [id]
+     * within [namespaceId]. Does not touch any other namespace. Does not delete the user itself.
+     * Idempotent: a user with no remaining relations in that namespace is a no-op.
+     * Returns 404 if [id] does not resolve to a user.
+     */
+    fun revokeNamespaceAccess(id: UUID, namespaceId: UUID)
+
+    /**
+     * DELETE /api/users/by-external-id/{id}/access?namespaceId=... — revoke a user's access to a single namespace.
+     * SUPER_ADMIN only.
+     *
+     * Revokes the UserGroup memberships and the Namespace ADMIN/MEMBER relation held by [externalId]
+     * within [namespaceId]. Does not touch any other namespace. Does not delete the user itself.
+     * Idempotent: a user with no remaining relations in that namespace is a no-op.
+     * Returns 404 if [externalId] does not resolve to a user.
+     */
+    fun revokeNamespaceAccessByExternalId(externalId: String, namespaceId: UUID)
+}

@@ -28,6 +28,7 @@ import { MessageApiService } from './message-api.service'
 import { UserService } from './user.service'
 
 import { ChatMessage } from '../../components/chat-message/chat-message.component'
+import { buildToolRequestFullContent } from '../../components/chat-message/chat-message.utils'
 import { ChoiceOption } from '../../components/choice-select/choice-select.component'
 
 @Injectable({
@@ -516,6 +517,7 @@ export class CodayService implements OnDestroy {
       timestamp: event.date,
       type: 'technical',
       eventId: event.timestamp,
+      fullContent: buildToolRequestFullContent(event),
     }
 
     this.addMessage(message)

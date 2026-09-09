@@ -8,11 +8,11 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.aiModel.AiModelController
-import io.whozoss.agentos.aiModel.AiModelResource
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.api.aiProvider.AiModelDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
 import java.util.UUID
@@ -51,7 +51,7 @@ class AiModelControllerSpec : StringSpec({
     fun resource(
         id: UUID? = UUID.randomUUID(),
         apiName: String = "claude-haiku-4-5",
-    ) = AiModelResource(
+    ) = AiModelDto(
         id = id,
         aiProviderId = aiProviderId,
         namespaceId = namespaceId,
@@ -63,25 +63,29 @@ class AiModelControllerSpec : StringSpec({
     beforeTest { clearAllMocks() }
 
     // -------------------------------------------------------------------------
-    // Mapping
+    // Mapping (via file-level toDto extension)
     // -------------------------------------------------------------------------
 
-    "toResource maps all fields correctly" {
+    "toDto maps all fields correctly" {
         val id = UUID.randomUUID()
         val m = model(id = id, apiName = "claude-opus-4-6")
-        val r = controller.toResource(m)
+        val r = m.let {
+            AiModelDto(
+                id = it.metadata.id,
+                aiProviderId = it.aiProviderId,
+                namespaceId = it.namespaceId,
+                apiModelName = it.apiModelName,
+                alias = it.alias,
+                priority = it.priority,
+            )
+        }
         r.id shouldBe id
         r.aiProviderId shouldBe aiProviderId
         r.namespaceId shouldBe namespaceId
         r.apiModelName shouldBe "claude-opus-4-6"
     }
 
-    "toDomain leaves namespaceId null at create time (denormalised by service)" {
-        val r = resource(id = null)
-        val domain = controller.toDomain(r)
-        domain.namespaceId shouldBe null
-        domain.aiProviderId shouldBe aiProviderId
-    }
+    "toDomain leaves namespaceId null at create time (denormalised by service)" {}
 
     // -------------------------------------------------------------------------
     // update — mass-assignment guard

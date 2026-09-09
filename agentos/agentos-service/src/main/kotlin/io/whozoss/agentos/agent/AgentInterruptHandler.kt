@@ -4,25 +4,53 @@ import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import kotlinx.coroutines.flow.FlowCollector
 import mu.KLogger
+import org.springframework.ai.retry.NonTransientAiException
 import java.util.UUID
 
 /**
- * Emits the orchestration events for a structured agent interruption.
- *
- * Always emits [AgentFinishedEvent] to close the current agent's turn, then emits
- * the interrupt-specific follow-up event(s) — e.g. [AgentSelectedEvent] for a
- * [AgentInterrupt.Redirect]. The [when] is exhaustive over the sealed hierarchy:
- * adding a new [AgentInterrupt] subtype without handling it here is a compile error.
- *
- * @param agent The agent whose turn is ending.
- * @param e The interrupt signal thrown by a tool.
- * @param namespaceId Namespace of the current case.
- * @param caseId Current case identifier.
- * @param logger Logger of the calling agent, used to trace the redirect.
+ * Emits an [ErrorEvent] and [AgentFinishedEvent] when the LLM provider rejects a request
+ * with a non-transient error (4xx). Retrying with the same payload would produce the
+ * same result, so the run is terminated immediately rather than looping.
  */
-suspend fun FlowCollector<CaseEvent>.emitInterruptEvents(
+suspend fun FlowCollector<CaseEvent>.emitProviderErrorAndFinishEvents(
+    agent: Agent,
+    e: NonTransientAiException,
+    namespaceId: UUID,
+    caseId: UUID,
+    logger: KLogger,
+) {
+    logger.error(e) { "LLM provider rejected request for case $caseId" }
+    emit(
+        ErrorEvent(
+            namespaceId = namespaceId,
+            caseId = caseId,
+            message = "The AI provider rejected the request and the agent cannot continue: ${e.message}",
+        ),
+    )
+    emit(
+        AgentFinishedEvent(
+            namespaceId = namespaceId,
+            caseId = caseId,
+            agentId = agent.id,
+            agentName = agent.name,
+            llmProvider = agent.llmProvider,
+            llmModel = agent.llmModel,
+        ),
+    )
+}
+
+/**
+ * Emits [AgentFinishedEvent] to close the current agent's turn, then emits
+ * the interrupt-specific follow-up events.
+ *
+ * The [when] is exhaustive over the [AgentInterrupt] sealed hierarchy: adding a new
+ * subtype without handling it here is a compile error.
+ */
+suspend fun FlowCollector<CaseEvent>.emitInterruptAndFinishEvents(
     agent: Agent,
     e: AgentInterrupt,
     namespaceId: UUID,
@@ -35,6 +63,8 @@ suspend fun FlowCollector<CaseEvent>.emitInterruptEvents(
             caseId = caseId,
             agentId = agent.id,
             agentName = agent.name,
+            llmProvider = agent.llmProvider,
+            llmModel = agent.llmModel,
         ),
     )
     when (e) {
@@ -46,6 +76,27 @@ suspend fun FlowCollector<CaseEvent>.emitInterruptEvents(
                     caseId = caseId,
                     agentId = UUID.nameUUIDFromBytes(e.targetAgentName.toByteArray()),
                     agentName = e.targetAgentName,
+                ),
+            )
+        }
+
+        is AgentInterrupt.AwaitAnswer -> {
+            logger.info { "[${agent.name}] awaiting user answer: ${e.question}" }
+            emit(
+                QuestionEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agent.id,
+                    agentName = agent.name,
+                    question = e.question,
+                    options = e.options,
+                    questionType = e.questionType,
+                    // userId is the user for whom the agent is running — the one whose answer
+                    // is awaited. Null means the question is addressed to any user of the case.
+                    // The value comes from AgentInterrupt.AwaitAnswer, which receives it from
+                    // ToolContext.userId (set by AgentSimple/AgentAdvanced from their own userId
+                    // constructor parameter). No fallback: null in → null out.
+                    userId = e.userId,
                 ),
             )
         }

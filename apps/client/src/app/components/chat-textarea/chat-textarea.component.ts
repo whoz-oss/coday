@@ -12,6 +12,7 @@ import {
   Output,
   SimpleChanges,
   ViewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { Subscription } from 'rxjs'
@@ -31,6 +32,7 @@ import { PendingVoiceMessage } from '../../core/services/first-message-state.ser
   standalone: true,
   imports: [FormsModule, IconButtonComponent, HighlightPipe],
   templateUrl: './chat-textarea.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './chat-textarea.component.scss',
 })
 export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, OnChanges {

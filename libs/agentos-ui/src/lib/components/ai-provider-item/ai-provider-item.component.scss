@@ -2,18 +2,17 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-radius: 10px;
-  border: 1px solid var(--color-border);
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-backdrop-blur);
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
+  padding: 14px 16px;
+  position: relative;
+  border-radius: 0;
+  border: 1px solid var(--color-divider);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-sm);
+  overflow: visible;
+  transition: border-color 0.15s ease;
 
   &:hover {
-    background: var(--color-bg-hover);
-    border-color: var(--color-primary);
+    border-color: var(--color-accent);
   }
 
   &__body {
@@ -32,8 +31,8 @@
   }
 
   &__name {
-    font-size: 0.95rem;
-    font-weight: 500;
+    font-size: 15px;
+    font-weight: 600;
     color: var(--color-text);
     white-space: nowrap;
     overflow: hidden;
@@ -43,41 +42,45 @@
 
   &__badge {
     flex-shrink: 0;
-    font-size: 0.65rem;
+    font-family: var(--font-heading);
+    font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
+    border-radius: 0;
     padding: 0.1rem 0.4rem;
-    border-radius: 4px;
     line-height: 1.2;
+    white-space: nowrap;
 
     &[data-variant='neutral'] {
-      background: var(--color-bg-secondary);
-      color: var(--color-text-secondary);
+      border: 1px solid var(--color-divider);
+      color: var(--color-neutral-600);
+      background: transparent;
     }
 
     &[data-variant='info'] {
-      background: color-mix(in srgb, var(--color-info) 15%, transparent);
+      border: 1px solid color-mix(in srgb, var(--color-info) 40%, transparent);
       color: var(--color-info);
+      background: color-mix(in srgb, var(--color-info) 10%, transparent);
     }
 
     &[data-variant='warning'] {
-      background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+      border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
       color: var(--color-warning);
+      background: color-mix(in srgb, var(--color-warning) 10%, transparent);
     }
   }
 
   &__type {
-    font-size: 0.78rem;
+    font-size: 13px;
     color: var(--color-text-secondary);
-    font-family: monospace;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   &__url {
-    font-size: 0.75rem;
+    font-size: 13px;
     color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;
@@ -99,9 +102,12 @@
   }
 
   &__confirm-label {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: var(--color-error);
+    font-family: var(--font-heading);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--red-deep);
     margin-right: 0.25rem;
     white-space: nowrap;
   }

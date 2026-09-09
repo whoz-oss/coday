@@ -23,6 +23,7 @@ class ChatClientProvider(
     fun getChatClient(
         modelConfig: AiModel,
         providerConfig: AiProvider,
+        caseId: String? = null,
     ): ChatClient {
         val chatModel =
             chatModelFactory.createChatModel(
@@ -32,8 +33,12 @@ class ChatClientProvider(
                 modelName = modelConfig.apiModelName,
                 temperature = modelConfig.temperature,
                 maxTokens = modelConfig.maxTokens,
-                headers = providerConfig.headers,
+                headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
             )
         return ChatClient.builder(chatModel).build()
+    }
+
+    companion object {
+        const val X_SESSION_ID = "X-Session-Id"
     }
 }

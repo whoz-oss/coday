@@ -25,41 +25,50 @@ import java.util.UUID
 class PermissionServiceImpl(
     private val userService: UserService,
     private val permissionRepository: PermissionRepository,
-    private val permissionCache: PermissionCache
+    private val permissionCache: PermissionCache,
 ) : PermissionService {
-
     companion object : KLogging()
 
     override fun hasPermission(
         userId: String,
         entityType: EntityType,
-        entityId: String,
-        action: Action
+        entityId: String?,
+        action: Action,
     ): Boolean {
         return try {
             // 1. Super-admin bypass check
-            val user = try {
-                userService.findById(UUID.fromString(userId))
-            } catch (e: IllegalArgumentException) {
-                logger.debug { "Invalid UUID format for userId: $userId" }
-                null
-            }
+            val user =
+                try {
+                    userService.findById(UUID.fromString(userId))
+                } catch (e: IllegalArgumentException) {
+                    logger.debug { "Invalid UUID format for userId: $userId" }
+                    null
+                }
             if (user?.isAdmin == true) {
                 logger.debug { "Super-admin bypass: user=$userId has all permissions" }
                 return true
             }
 
-            // 2. Cache lookup
+            // 2. Platform-scope check (entityId = null means the entity belongs to no namespace).
+            //    READ is open to any authenticated user; WRITE/DELETE are super-admin only
+            //    (already handled by the bypass above, so we deny here for non-admins).
+            if (entityId == null) {
+                val granted = action == Action.READ
+                logger.debug { "Platform-scope check: user=$userId, action=$action -> $granted" }
+                return granted
+            }
+
+            // 3. Cache lookup
             val cacheKey = PermissionCache.generateKey(userId, entityType, entityId, action)
             permissionCache.get(cacheKey)?.let { cached ->
                 logger.debug { "Cache hit for permission check: $cacheKey -> $cached" }
                 return cached
             }
 
-            // 3. Evaluate permissions
+            // 4. Evaluate permissions
             val hasPermission = evaluatePermission(userId, entityType, entityId, action)
 
-            // 4. Cache the result
+            // 5. Cache the result
             permissionCache.put(cacheKey, hasPermission)
 
             hasPermission
@@ -76,13 +85,16 @@ class PermissionServiceImpl(
         userId: String,
         entityType: EntityType,
         entityId: String,
-        action: Action
+        action: Action,
     ): Boolean {
         // Determine required relation based on action
-        val requiredRelation = when (action) {
-            Action.READ -> PermissionRelation.MEMBER  // MEMBER or ADMIN can READ
-            Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN  // Only ADMIN can WRITE/DELETE
-        }
+        val requiredRelation =
+            when (action) {
+                Action.READ -> PermissionRelation.MEMBER
+
+                // MEMBER or ADMIN can READ
+                Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN // Only ADMIN can WRITE/DELETE
+            }
 
         // Check direct permission first
         if (permissionRepository.hasDirectPermission(userId, entityType, entityId, requiredRelation)) {
@@ -104,7 +116,7 @@ class PermissionServiceImpl(
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ) {
         try {
             permissionRepository.grantPermission(userId, entityType, entityId, relation)
@@ -121,7 +133,7 @@ class PermissionServiceImpl(
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ) {
         try {
             permissionRepository.revokePermission(userId, entityType, entityId, relation)
@@ -137,32 +149,31 @@ class PermissionServiceImpl(
     override fun listUsersWithPermission(
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation?
-    ): List<String> {
-        return try {
+        relation: PermissionRelation?,
+    ): List<String> =
+        try {
             permissionRepository.listUsersWithPermission(entityType, entityId, relation)
         } catch (e: Exception) {
             logger.error(e) { "Failed to list users with permission on $entityType:$entityId, relation=$relation" }
             emptyList() // Fail-closed: return empty list on error
         }
-    }
 
     override fun listEntitiesForUser(
         userId: String,
         entityType: EntityType,
-        action: Action
-    ): List<String> {
-        return try {
-            val requiredRelation = when (action) {
-                Action.READ -> PermissionRelation.MEMBER  // MEMBER or ADMIN can READ
-                Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN  // Only ADMIN can WRITE/DELETE
-            }
+        action: Action,
+    ): List<String> =
+        try {
+            val requiredRelation =
+                when (action) {
+                    Action.READ -> PermissionRelation.MEMBER
+                    Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN // Only ADMIN can WRITE/DELETE
+                }
             permissionRepository.listEntitiesForUser(userId, entityType, requiredRelation)
         } catch (e: Exception) {
             logger.error(e) { "Failed to list entities for user=$userId, type=$entityType, action=$action" }
             emptyList() // Fail-closed: return empty list on error
         }
-    }
 
     override fun filterVisibleIds(
         userId: String,
@@ -172,14 +183,77 @@ class PermissionServiceImpl(
     ): Set<String> {
         if (ids.isEmpty()) return emptySet()
         return try {
-            val requiredRelation = when (action) {
-                Action.READ -> PermissionRelation.MEMBER  // MEMBER or ADMIN can READ
-                Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN  // Only ADMIN can WRITE/DELETE
-            }
+            val requiredRelation =
+                when (action) {
+                    Action.READ -> PermissionRelation.MEMBER
+                    Action.WRITE, Action.DELETE -> PermissionRelation.ADMIN // Only ADMIN can WRITE/DELETE
+                }
             permissionRepository.filterVisibleIds(userId, entityType, ids, requiredRelation)
         } catch (e: Exception) {
             logger.error(e) { "Failed to filter visible ids for user=$userId, type=$entityType, action=$action" }
             emptySet() // Fail-closed: any error denies access
+        }
+    }
+
+    override fun promoteMemberToAdmin(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean {
+        return try {
+            val promoted = permissionRepository.promoteMemberToAdmin(userId, entityType, entityId)
+            permissionCache.clear()
+            logger.info { "Promoted MEMBER to ADMIN for user=$userId on $entityType:$entityId (hadMember=$promoted)" }
+            promoted
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to promote MEMBER to ADMIN: user=$userId, entity=$entityType:$entityId" }
+            throw e
+        }
+    }
+
+    override fun demoteAdminToMember(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean {
+        return try {
+            val demoted = permissionRepository.demoteAdminToMember(userId, entityType, entityId)
+            permissionCache.clear()
+            logger.info { "Demoted ADMIN to MEMBER for user=$userId on $entityType:$entityId (hadAdmin=$demoted)" }
+            demoted
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to demote ADMIN to MEMBER: user=$userId, entity=$entityType:$entityId" }
+            throw e
+        }
+    }
+
+    override fun listRelationsForUsers(
+        entityType: EntityType,
+        entityId: String,
+        userIds: Collection<String>,
+    ): Map<String, PermissionRelation> =
+        try {
+            permissionRepository.listRelationsForUsers(entityType, entityId, userIds)
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to list relations for users on $entityType:$entityId" }
+            emptyMap() // Fail-closed: return empty map on error
+        }
+
+    override fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String> {
+        if (entries.isEmpty()) return emptyList()
+        return try {
+            val result = permissionRepository.applyShareBatch(entityType, entityId, entries)
+            // Sharing affects multiple users — invalidate the whole cache.
+            permissionCache.clear()
+            logger.info { "applyShareBatch on $entityType:$entityId — ${result.size} user(s) affected" }
+            result
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to apply share batch on $entityType:$entityId" }
+            throw e
         }
     }
 
@@ -188,8 +262,7 @@ class PermissionServiceImpl(
             permissionCache.invalidateUser(userId)
             logger.info { "Cleared permission cache for user: $userId" }
         } catch (e: Exception) {
-            logger.error(e) { "Failed to clear cache for user: $userId" }
-            // Don't throw - cache clearing failure shouldn't break the flow
+            logger.warn(e) { "Failed to clear cache for user: $userId — cache clearing is best-effort, not rethrowing" }
         }
     }
 }

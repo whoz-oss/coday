@@ -70,6 +70,20 @@ class WarnEventNode(
     removed: Boolean? = null,
 ) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
+@Node("ErrorEvent")
+class ErrorEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
+    val message: String,
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
+
 @Node("AgentSelectedEvent")
 class AgentSelectedEventNode(
     id: String,
@@ -93,6 +107,8 @@ class AgentFinishedEventNode(
     timestamp: Instant,
     val agentId: String,
     val agentName: String,
+    val llmProvider: String? = null,
+    val llmModel: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -108,6 +124,8 @@ class AgentRunningEventNode(
     timestamp: Instant,
     val agentId: String,
     val agentName: String,
+    val llmProvider: String? = null,
+    val llmModel: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -131,6 +149,8 @@ class MessageEventNode(
      * or null when no context was provided.
      */
     val contextJson: String? = null,
+    val llmProvider: String? = null,
+    val llmModel: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -147,6 +167,12 @@ class ToolRequestEventNode(
     val toolRequestId: String,
     val toolName: String,
     val args: String?,
+    /**
+     * JSON-serialised [List]<[io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace]>, or null
+     * when the tool had no enrichment phases. Stored as a nullable string for backward
+     * compatibility with existing nodes that pre-date this field.
+     */
+    val enrichmentPhasesJson: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -172,6 +198,12 @@ class ToolResponseEventNode(
      */
     val metadataJson: String? = null,
     val durationMs: Long? = null,
+    /**
+     * JSON-serialised [List]<[io.whozoss.agentos.sdk.caseEvent.MessageContent.Image]> of images
+     * produced by the tool, or null when the tool produced no image. Stored as a nullable
+     * string for backward compatibility with existing nodes that pre-date this field.
+     */
+    val imagesJson: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -203,6 +235,16 @@ class QuestionEventNode(
     val question: String,
     /** JSON-serialised [List]<[String]>?, null when no options */
     val options: String? = null,
+    /**
+     * Stored as a String for forward compatibility. Defaults to "FREE_TEXT" so that
+     * existing nodes written before this field was introduced deserialise correctly.
+     */
+    val questionType: String = "FREE_TEXT",
+    /**
+     * UUID of the specific user this question is directed at, or null when addressed
+     * to any user of the case. Null default ensures backward compat with existing nodes.
+     */
+    val userId: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -267,6 +309,40 @@ class TextChunkEventNode(
     namespaceId: String,
     timestamp: Instant,
     val chunk: String,
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
+
+@Node("PendingConfirmationEvent")
+class PendingConfirmationEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
+    val toolRequestId: String,
+    val toolName: String,
+    val inputJson: String,
+    val toolConfirmationInstructions: String? = "",
+    created: Instant = Instant.now(),
+    createdBy: String? = null,
+    modified: Instant = Instant.now(),
+    modifiedBy: String? = null,
+    removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
+
+@Node("ConfirmationResolvedEvent")
+class ConfirmationResolvedEventNode(
+    id: String,
+    caseId: String,
+    namespaceId: String,
+    timestamp: Instant,
+    val pendingEventId: String,
+    val confirmed: Boolean,
+    /** Textual result of executeWithJson / onRejected, injected into the LLM history. */
+    val resultText: String = "",
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

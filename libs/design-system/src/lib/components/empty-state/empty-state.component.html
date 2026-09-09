@@ -1,0 +1,15 @@
+<div class="ds-empty-state" role="status">
+  @if (icon()) {
+    <mat-icon class="ds-empty-state__icon" aria-hidden="true">{{ icon() }}</mat-icon>
+  }
+  @if (title()) {
+    <p class="ds-empty-state__title">{{ title() }}</p>
+  }
+  @if (hint()) {
+    <p class="ds-empty-state__hint">{{ hint() }}</p>
+  }
+
+  <div class="ds-empty-state__actions">
+    <ng-content />
+  </div>
+</div>

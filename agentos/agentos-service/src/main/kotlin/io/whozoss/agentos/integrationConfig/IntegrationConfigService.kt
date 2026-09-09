@@ -18,8 +18,12 @@ import java.util.UUID
  * - [findByNamespaceAndName]: legacy two-key lookup that always assumes `userId = null`,
  *   preserved for Epic 4 callers and tests.
  */
-interface IntegrationConfigService : EntityService<IntegrationConfig, UUID>, ConfigLookup<IntegrationConfig>, OwnershipAware {
+interface IntegrationConfigService :
+    EntityService<IntegrationConfig, UUID>,
+    ConfigLookup<IntegrationConfig>,
+    OwnershipAware {
     override val ownershipEntityType: EntityType get() = EntityType.INTEGRATION_CONFIG
+
     override fun resolveOwner(targetId: UUID): UUID? = findById(targetId)?.userId
 
     /**
@@ -52,6 +56,43 @@ interface IntegrationConfigService : EntityService<IntegrationConfig, UUID>, Con
      * changes [findByParent] to filter `userId IS NULL`.
      */
     fun findByNamespaceShared(namespaceId: UUID): List<IntegrationConfig>
+
+    /**
+     * Find all non-removed platform-level [IntegrationConfig] entries
+     * (`namespaceId IS NULL AND userId IS NULL`).
+     *
+     * Used by [IntegrationConfigController.list] when called with no query params (Super Admin only).
+     */
+    fun findPlatform(): List<IntegrationConfig>
+
+    /**
+     * Enumerate the effective [IntegrationConfig] entries visible for a given execution context
+     * `(namespaceId, userId)`.
+     *
+     * Composes the four precedence layers from lowest to highest, keeping only the highest-
+     * precedence entry per [IntegrationConfig.name]:
+     *
+     * | Layer              | Condition                        |
+     * |--------------------|----------------------------------|
+     * | Platform           | always included                  |
+     * | Namespace-shared   | when `namespaceId != null`       |
+     * | User-global        | when `userId != null`            |
+     * | User × namespace   | when both are non-null           |
+     *
+     * This **is** a parameter-level merge across all applicable layers, ordered from lowest to
+     * highest precedence. Each layer's parameters are deep-merged on top of the previous via
+     * [io.whozoss.agentos.integrationConfig.IntegrationConfigMergeStrategy]. The result carries
+     * the identity (`id`, `namespaceId`, `userId`) of the platform layer (lowest), which is
+     * the stable provenance anchor for caching and logging. The merged config is a derived,
+     * runtime-only view and is never persisted.
+     *
+     * Intended for callers that need the effective parameter set at agent-run time
+     * (tool instantiation, system prompt).
+     */
+    fun findEffective(
+        namespaceId: UUID?,
+        userId: UUID?,
+    ): List<IntegrationConfig>
 
     /**
      * Scope-aware filtered listing used by [IntegrationConfigController.list].

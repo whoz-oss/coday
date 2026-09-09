@@ -9,19 +9,20 @@
  */
 
 export interface AiProvider {
-  id?: string
-  namespaceId?: string | null
-  userId?: string | null
-  name: string
-  description?: string
+  apiKey?: string
   apiType: AiProviderApiTypeEnum
   baseUrl?: string
-  apiKey?: string
+  description?: string
   headers?: { [key: string]: string }
+  id?: string
+  name: string
+  namespaceId?: string | null
+  userId?: string | null
 }
 export enum AiProviderApiTypeEnum {
   OpenAI = 'OpenAI',
   Anthropic = 'Anthropic',
   Gemini = 'Gemini',
   vLLM = 'vLLM',
+  Ollama = 'Ollama',
 }

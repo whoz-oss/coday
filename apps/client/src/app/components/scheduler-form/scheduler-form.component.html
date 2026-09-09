@@ -12,14 +12,17 @@
     <!-- Prompt Selection -->
     <mat-form-field appearance="outline" class="full-width">
       <mat-label>Prompt</mat-label>
-      <mat-select [(ngModel)]="promptId" required>
+      <mat-select [(ngModel)]="promptId" required [disabled]="isLoadingPrompts">
+        @if (isLoadingPrompts) {
+          <mat-option disabled>Loading prompts...</mat-option>
+        }
         @for (prompt of availablePrompts; track prompt.id) {
           <mat-option [value]="prompt.id">
             {{ prompt.name }}
           </mat-option>
         }
       </mat-select>
-      <mat-hint>Select the prompt to execute</mat-hint>
+      <mat-hint>{{ isLoadingPrompts ? 'Loading available prompts...' : 'Select the prompt to execute' }}</mat-hint>
     </mat-form-field>
 
     <!-- Start Date & Time -->

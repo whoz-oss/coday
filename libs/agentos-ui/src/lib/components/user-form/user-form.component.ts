@@ -21,7 +21,6 @@ import { UserStateService } from '../../services/user-state.service'
  */
 @Component({
   selector: 'agentos-user-form',
-  standalone: true,
   imports: [ReactiveFormsModule],
   templateUrl: './user-form.component.html',
   styleUrl: './user-form.component.scss',

@@ -23,6 +23,7 @@ import { JiraTools } from '@coday/integrations-jira'
 import { SlackTools } from '@coday/integrations-slack'
 import { BasecampTools } from '@coday/integrations-basecamp'
 import { HttpConfigTools, HttpTools } from '@coday/integrations-http'
+import { ExcelTools } from '@coday/integrations-excel'
 import { CodayServices } from '@coday/coday-services'
 
 export class Toolbox implements Killable {
@@ -106,6 +107,7 @@ export class Toolbox implements Killable {
       () => new HttpConfigTools(interactor, services.integrationConfig)
     )
     this.factoryConstructors.set(TmuxTools.TYPE, (name) => new TmuxTools(interactor, name))
+    this.factoryConstructors.set(ExcelTools.TYPE, (name, config) => new ExcelTools(interactor, name, config))
   }
 
   async kill(): Promise<void> {

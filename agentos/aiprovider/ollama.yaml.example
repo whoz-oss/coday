@@ -1,0 +1,4 @@
+name: ollama
+description: "Ollama local LLM server"
+apiType: Ollama
+baseUrl: "http://localhost:11434"

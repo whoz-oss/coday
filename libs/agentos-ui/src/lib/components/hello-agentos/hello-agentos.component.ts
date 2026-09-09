@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core'
+import { Component, signal, ChangeDetectionStrategy } from '@angular/core'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import { BackendStatusComponent } from '../backend-status/backend-status.component'
 
@@ -15,6 +15,7 @@ import { BackendStatusComponent } from '../backend-status/backend-status.compone
   selector: 'agentos-hello',
   imports: [IconButtonComponent, BackendStatusComponent],
   templateUrl: './hello-agentos.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './hello-agentos.component.scss',
 })
 export class HelloAgentosComponent {

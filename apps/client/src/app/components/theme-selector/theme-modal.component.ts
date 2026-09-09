@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core'
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import {
   MAT_DIALOG_DATA,
@@ -15,6 +15,7 @@ import { ThemeService } from '../../core/services/theme.service'
   selector: 'app-theme-modal',
   standalone: true,
   imports: [FormsModule, MatDialogTitle, MatDialogContent, MatDialogActions, MatButtonModule, MatRadioModule],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title>Theme</h2>
     <mat-dialog-content>

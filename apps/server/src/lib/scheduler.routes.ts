@@ -115,9 +115,11 @@ export function registerSchedulerRoutes(
         return
       }
 
-      const { name, promptId, schedule, parameters, enabled } = req.body as {
+      const { name, promptId, agentName, instruction, schedule, parameters, enabled } = req.body as {
         name: string
-        promptId: string
+        promptId?: string
+        agentName?: string
+        instruction?: string
         schedule: IntervalSchedule
         parameters?: Record<string, unknown>
         enabled?: boolean
@@ -129,8 +131,11 @@ export function registerSchedulerRoutes(
         return
       }
 
-      if (!promptId || typeof promptId !== 'string') {
-        res.status(400).json({ error: 'Prompt ID is required and must be a string' })
+      // Must have either promptId OR agentName+instruction
+      const hasPrompt = !!promptId && typeof promptId === 'string'
+      const hasAgent = !!agentName && typeof agentName === 'string' && !!instruction && typeof instruction === 'string'
+      if (!hasPrompt && !hasAgent) {
+        res.status(400).json({ error: 'Either promptId or both agentName and instruction are required' })
         return
       }
 
@@ -160,7 +165,7 @@ export function registerSchedulerRoutes(
 
       const scheduler = await schedulerService.createScheduler(
         projectName,
-        { name, promptId, schedule, parameters, enabled },
+        { name, promptId, agentName, instruction, schedule, parameters, enabled },
         username
       )
 
@@ -197,7 +202,7 @@ export function registerSchedulerRoutes(
         return
       }
 
-      const { name, enabled, promptId, schedule, parameters } = req.body
+      const { name, enabled, promptId, agentName, instruction, schedule, parameters } = req.body
 
       // Validation
       if (name !== undefined && typeof name !== 'string') {
@@ -243,6 +248,8 @@ export function registerSchedulerRoutes(
           name,
           enabled,
           promptId,
+          agentName,
+          instruction,
           schedule,
           parameters,
         },

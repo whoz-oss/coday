@@ -1,0 +1,16 @@
+name: process-pr-feedbacks
+description: Looks at the current PR and tries to act on the given feedbacks
+commands:
+  - |-
+    @{{agentName}} there are feedbacks on the PR {{prNumber}}, have a look on the non-answered or non-handled feedbacks, assess which ones need consideration and work on them.
+
+    Rules:
+    - Read the PR comments with github tools, if you can’t, stop and say so.
+    - work on the local files and DO NOT PUSH FILE CHANGES DIRECTLY ON GITHUB
+    - check you are on the correct git branch locally matching the one of the PR. If not, try to change branch. If you can’t, stop and say so.
+webhookEnabled: false
+source: project
+createdBy: vincent.audibert
+id: eb56ac3b-a818-4b4d-8c48-cc2702595243
+createdAt: 2026-06-26T09:50:04.702Z
+parameterFormat: agentName="" prNumber=""

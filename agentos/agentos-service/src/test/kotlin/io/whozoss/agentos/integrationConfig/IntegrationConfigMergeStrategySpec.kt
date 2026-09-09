@@ -98,7 +98,7 @@ class IntegrationConfigMergeStrategySpec : StringSpec({
 
     "primitive override on ObjectNode base — override replaces base wholesale" {
         val base = config("""{"a":1}""")
-        val override = config(""""plain string"""")
+        val override = config("\"plain string\"")
         val result = strategy.merge(base, override)
         result.parameters?.isTextual shouldBe true
         result.parameters?.asText() shouldBe "plain string"
@@ -211,10 +211,32 @@ class IntegrationConfigMergeStrategySpec : StringSpec({
     }
 
     "empty string in override DOES override (only JSON null inherits)" {
-        // Documented escape hatch: to clear a string value, send "" not null.
+        // Documented escape hatch: to clear a string value, send \"\" not null.
         val base = config("""{"hint":"old"}""")
         val override = config("""{"hint":""}""")
         val result = strategy.merge(base, override)
         result.parameters?.get("hint")?.asText() shouldBe ""
+    }
+
+    // -------------------------------------------------------------------------
+    // authSettingName — override-wins-when-non-null semantics
+    // -------------------------------------------------------------------------
+
+    "authSettingName: override wins when set" {
+        val base = config("""{}""").copy(authSettingName = "base-auth")
+        val override = config("""{}""").copy(authSettingName = "override-auth")
+        strategy.merge(base, override).authSettingName shouldBe "override-auth"
+    }
+
+    "authSettingName: base preserved when override is null" {
+        val base = config("""{}""").copy(authSettingName = "base-auth")
+        val override = config("""{}""").copy(authSettingName = null)
+        strategy.merge(base, override).authSettingName shouldBe "base-auth"
+    }
+
+    "authSettingName: both null yields null" {
+        val base = config("""{}""").copy(authSettingName = null)
+        val override = config("""{}""").copy(authSettingName = null)
+        strategy.merge(base, override).authSettingName.shouldBeNull()
     }
 })

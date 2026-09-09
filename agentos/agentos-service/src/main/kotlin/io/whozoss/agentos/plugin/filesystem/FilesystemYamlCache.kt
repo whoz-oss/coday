@@ -89,6 +89,12 @@ class FilesystemYamlCache<T>(
  * Manages one [FilesystemYamlCache] per namespace directory, keyed by the resolved
  * directory [Path]. Caches are created lazily on first access and reused across calls.
  *
+ * [parser] receives the cache's root [directory] alongside each file it contains.
+ * The root directory is what lets a parser recover the owning namespace's `configPath`
+ * (e.g. `directory.parent` when the cache is rooted at `<configPath>/integrations`)
+ * regardless of how deep the file sits under a recursive `Files.walk` scan — deriving
+ * it from `file.parent` instead would be wrong for any nested subdirectory.
+ *
  * Use this when a single Spring bean needs to serve multiple namespaces, each with
  * its own configPath:
  * ```kotlin
@@ -97,11 +103,13 @@ class FilesystemYamlCache<T>(
  * ```
  */
 class FilesystemYamlCacheRegistry<T>(
-    private val parser: (Path) -> T?,
+    private val parser: (Path, Path) -> T?,
     private val ttl: Duration = FilesystemYamlCache.DEFAULT_TTL,
 ) {
     private val caches = ConcurrentHashMap<Path, FilesystemYamlCache<T>>()
 
     fun getAll(directory: Path): List<T> =
-        caches.computeIfAbsent(directory) { FilesystemYamlCache(it, parser, ttl) }.getAll()
+        caches
+            .computeIfAbsent(directory) { dir -> FilesystemYamlCache(dir, { file -> parser(dir, file) }, ttl) }
+            .getAll()
 }

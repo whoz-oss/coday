@@ -1,8 +1,10 @@
 import { inject, Injectable, signal } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
+import { forkJoin, of } from 'rxjs'
 import { timeout } from 'rxjs/operators'
 import { ThreadSummary } from '@coday/model'
 import { ThreadApiService } from './thread-api.service'
+import { ProjectApiService } from './project-api.service'
 import { TaskStatus, TaskThread } from './task-status.service'
 import { IN_PROGRESS_THRESHOLD_MS, TASK_STATUS_PRIORITY } from './task.constants'
 
@@ -28,6 +30,7 @@ export interface GlobalTaskThread extends TaskThread {
 export class GlobalTaskService {
   private readonly http = inject(HttpClient)
   private readonly threadApi = inject(ThreadApiService)
+  private readonly projectApi = inject(ProjectApiService)
 
   readonly isLoading = signal(false)
   readonly tasks = signal<GlobalTaskThread[]>([])
@@ -143,6 +146,43 @@ export class GlobalTaskService {
     this.http.post(`/api/projects/${projectId}/threads/${threadId}/done`, {}).subscribe({
       next: () => this.refresh(),
       error: (err) => console.error('[GLOBAL-TC] Failed to mark task as done:', err),
+    })
+  }
+
+  /**
+   * Mark multiple paused threads as done in a single batch per project.
+   * Threads may belong to different projects — requests are grouped and sent in parallel.
+   *
+   * @param tasks Array of { id, projectId } pairs — typically the selected paused tasks
+   */
+  markTasksBatchDone(tasks: { id: string; projectId: string }[]): void {
+    if (tasks.length === 0) return
+
+    // Group thread IDs by project
+    const byProject = new Map<string, string[]>()
+    for (const { id, projectId } of tasks) {
+      const ids = byProject.get(projectId) ?? []
+      ids.push(id)
+      byProject.set(projectId, ids)
+    }
+
+    // Optimistic update: mark them as done locally
+    const doneIds = new Set(tasks.map((t) => t.id))
+    this.tasks.update((all) =>
+      this.sorted(all.map((t) => (doneIds.has(t.id) ? { ...t, status: 'done' as TaskStatus } : t)))
+    )
+
+    // Fire one batch request per project in parallel
+    const requests = [...byProject.entries()].map(([projectId, threadIds]) =>
+      this.projectApi.markThreadsBatchDone(projectId, threadIds)
+    )
+
+    forkJoin(requests.length > 0 ? requests : [of(null)]).subscribe({
+      next: () => this.refresh(),
+      error: (err) => {
+        console.error('[GLOBAL-TC] Failed to batch-mark tasks as done:', err)
+        this.refresh()
+      },
     })
   }
 

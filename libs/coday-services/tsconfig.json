@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "forceConsistentCasingInFileNames": true,
+    "ignoreDeprecations": "6.0",
     "importHelpers": true,
     "module": "ES2022",
     "noFallthroughCasesInSwitch": true,

@@ -1,0 +1,14 @@
+<ul class="exchange-file-list" role="list">
+  @for (row of rows(); track row.path) {
+    <li class="exchange-file-list__row" role="listitem">
+      <agentos-exchange-item
+        [row]="row"
+        [active]="isActive(row)"
+        [canWrite]="canWrite()"
+        (viewRequested)="onView(row)"
+        (downloadRequested)="onDownload(row)"
+        (deleteRequested)="onDelete(row)"
+      />
+    </li>
+  }
+</ul>

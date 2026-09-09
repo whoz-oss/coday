@@ -49,7 +49,7 @@ class AgentOsPermissionEvaluator(
         targetType: String?,
         permission: Any?,
     ): Boolean {
-        if (authentication == null || targetId == null || targetType == null || permission == null) return false
+        if (authentication == null || targetType == null || permission == null) return false
         val userId = authentication.name ?: return false
         val action = runCatching { Action.valueOf(permission.toString()) }.getOrNull() ?: return false
 
@@ -65,14 +65,17 @@ class AgentOsPermissionEvaluator(
         // 1) Try the membership/super-admin path first. Super-admins bypass here ; regular
         //    members succeed only when an explicit permission edge or namespace relation
         //    grants the action. This is the canonical path inherited from Epic 5.
-        if (permissionService.hasPermission(userId, entityType, targetId.toString(), action)) return true
+        //    targetId may be null for platform-scoped entities (namespaceId = null) —
+        //    PermissionService handles the null case explicitly.
+        if (permissionService.hasPermission(userId, entityType, targetId?.toString(), action)) return true
 
         // 2) Fall-through to ownership for the scope-aware entities (Epic 6 user-level
         //    overlays). The ownership check is intentionally placed AFTER the membership
         //    path : super-admin requests short-circuit without paying a findById Neo4j
         //    round-trip. The cache `PermissionServiceImpl.permissionCache` is NOT hit
         //    by this branch — owner-miss requests pay 1 extra DB read.
-        if (entityType in ownershipResolver.supportedTypes) {
+        //    Ownership resolution requires a concrete entityId — skip for platform scope.
+        if (targetId != null && entityType in ownershipResolver.supportedTypes) {
             val ownerUserId = runCatching { ownershipResolver.resolveOwner(entityType, UUID.fromString(targetId.toString())) }
                 .getOrNull()
             if (ownerUserId != null && ownerUserId.toString() == userId) return true

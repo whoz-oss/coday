@@ -12,9 +12,8 @@ import mu.KLogging
  * PermissionNodeNeo4jRepository with its @Query annotations.
  */
 class Neo4jPermissionRepository(
-    private val permissionNodeRepository: PermissionNodeNeo4jRepository
+    private val permissionNodeRepository: PermissionNodeNeo4jRepository,
 ) : PermissionRepository {
-
     companion object : KLogging() {
         /**
          * Entity types where a namespace MEMBER does NOT gain transitive READ
@@ -27,28 +26,53 @@ class Neo4jPermissionRepository(
          * break content isolation.
          */
         private val OWNER_PRIVATE_ENTITY_TYPES: Set<EntityType> = setOf(EntityType.CASE)
+
+        /**
+         * Entity types that can exist in "platform scope" (namespaceId = null) and
+         * for which platform-scoped instances are readable by any authenticated user.
+         *
+         * When [hasTransitivePermission] is called with READ on one of these types and
+         * the entity has no BELONGS_TO edge to any Namespace, the check returns true
+         * so that every authenticated caller can read platform-level content without
+         * requiring an explicit permission grant.
+         *
+         * Platform-scoped instances of these types carry no BELONGS_TO edge; the
+         * absence of that edge is the signal used by the Cypher query
+         * [PermissionNodeNeo4jRepository.isPlatformScoped].
+         *
+         * Covers: [EntityType.PROMPT], [EntityType.AGENT_CONFIG],
+         * [EntityType.INTEGRATION_CONFIG], [EntityType.AI_PROVIDER], [EntityType.AI_MODEL].
+         */
+        private val PLATFORM_SCOPABLE_ENTITY_TYPES: Set<EntityType> = setOf(
+                EntityType.PROMPT,
+                EntityType.AGENT_CONFIG,
+                EntityType.INTEGRATION_CONFIG,
+                EntityType.AI_PROVIDER,
+                EntityType.AI_MODEL,
+            )
     }
 
     override fun hasDirectPermission(
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
-    ): Boolean {
-        return try {
+        relation: PermissionRelation,
+    ): Boolean =
+        try {
             when (relation) {
                 PermissionRelation.ADMIN -> {
                     permissionNodeRepository.hasAdminPermission(
                         userId = userId,
                         entityId = entityId,
-                        entityLabel = entityType.label
+                        entityLabel = entityType.label,
                     )
                 }
+
                 PermissionRelation.MEMBER -> {
                     permissionNodeRepository.hasMemberOrAdminPermission(
                         userId = userId,
                         entityId = entityId,
-                        entityLabel = entityType.label
+                        entityLabel = entityType.label,
                     )
                 }
             }
@@ -56,13 +80,12 @@ class Neo4jPermissionRepository(
             logger.error(e) { "Error checking direct permission for user=$userId, entity=$entityType:$entityId, relation=$relation" }
             false // Fail-closed: any error returns false
         }
-    }
 
     override fun hasTransitivePermission(
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ): Boolean {
         return try {
             // Only check transitive permissions for namespace child entities
@@ -75,9 +98,10 @@ class Neo4jPermissionRepository(
                     permissionNodeRepository.hasAdminAccessViaNamespace(
                         userId = userId,
                         entityId = entityId,
-                        entityLabel = entityType.label
+                        entityLabel = entityType.label,
                     )
                 }
+
                 PermissionRelation.MEMBER -> {
                     if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
                         // Owner-private entities (e.g. Case, FR15): a namespace MEMBER
@@ -87,17 +111,27 @@ class Neo4jPermissionRepository(
                         permissionNodeRepository.hasAdminAccessViaNamespace(
                             userId = userId,
                             entityId = entityId,
-                            entityLabel = entityType.label
+                            entityLabel = entityType.label,
                         )
                     } else {
                         // Shared entities (AgentConfig, IntegrationConfig, AiProvider,
-                        // AiModel): namespace MEMBERs legitimately inherit READ through
-                        // the namespace (FR21, FR27, FR32, FR35).
-                        permissionNodeRepository.hasReadAccessViaNamespace(
+                        // AiModel, Prompt): namespace MEMBERs legitimately inherit READ
+                        // through the namespace (FR21, FR27, FR32, FR35).
+                        //
+                        // For platform-scopable types (e.g. Prompt), also grant READ
+                        // when the entity has no BELONGS_TO edge — i.e. it is
+                        // platform-scoped and readable by any authenticated user.
+                        val hasNamespaceAccess = permissionNodeRepository.hasReadAccessViaNamespace(
                             userId = userId,
                             entityId = entityId,
-                            entityLabel = entityType.label
+                            entityLabel = entityType.label,
                         )
+                        hasNamespaceAccess ||
+                            (entityType in PLATFORM_SCOPABLE_ENTITY_TYPES &&
+                                permissionNodeRepository.isPlatformScoped(
+                                    entityId = entityId,
+                                    entityLabel = entityType.label,
+                                ))
                     }
                 }
             }
@@ -111,20 +145,25 @@ class Neo4jPermissionRepository(
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ) {
         try {
             when (relation) {
-                PermissionRelation.ADMIN -> permissionNodeRepository.createAdminPermission(
-                    userId = userId,
-                    entityId = entityId,
-                    entityLabel = entityType.label
-                )
-                PermissionRelation.MEMBER -> permissionNodeRepository.createMemberPermission(
-                    userId = userId,
-                    entityId = entityId,
-                    entityLabel = entityType.label
-                )
+                PermissionRelation.ADMIN -> {
+                    permissionNodeRepository.createAdminPermission(
+                        userId = userId,
+                        entityId = entityId,
+                        entityLabel = entityType.label,
+                    )
+                }
+
+                PermissionRelation.MEMBER -> {
+                    permissionNodeRepository.createMemberPermission(
+                        userId = userId,
+                        entityId = entityId,
+                        entityLabel = entityType.label,
+                    )
+                }
             }
             logger.info { "Granted $relation permission to user=$userId on $entityType:$entityId" }
         } catch (e: Exception) {
@@ -137,20 +176,25 @@ class Neo4jPermissionRepository(
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ) {
         try {
             when (relation) {
-                PermissionRelation.ADMIN -> permissionNodeRepository.deleteAdminPermission(
-                    userId = userId,
-                    entityId = entityId,
-                    entityLabel = entityType.label
-                )
-                PermissionRelation.MEMBER -> permissionNodeRepository.deleteMemberPermission(
-                    userId = userId,
-                    entityId = entityId,
-                    entityLabel = entityType.label
-                )
+                PermissionRelation.ADMIN -> {
+                    permissionNodeRepository.deleteAdminPermission(
+                        userId = userId,
+                        entityId = entityId,
+                        entityLabel = entityType.label,
+                    )
+                }
+
+                PermissionRelation.MEMBER -> {
+                    permissionNodeRepository.deleteMemberPermission(
+                        userId = userId,
+                        entityId = entityId,
+                        entityLabel = entityType.label,
+                    )
+                }
             }
             logger.info { "Revoked $relation permission from user=$userId on $entityType:$entityId" }
         } catch (e: Exception) {
@@ -162,50 +206,59 @@ class Neo4jPermissionRepository(
     override fun listUsersWithPermission(
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation?
-    ): List<String> {
-        return try {
+        relation: PermissionRelation?,
+    ): List<String> =
+        try {
             when (relation) {
-                PermissionRelation.ADMIN -> permissionNodeRepository.findUsersWithAdminPermission(
-                    entityId = entityId,
-                    entityLabel = entityType.label
-                )
-                PermissionRelation.MEMBER -> permissionNodeRepository.findUsersWithMemberPermission(
-                    entityId = entityId,
-                    entityLabel = entityType.label
-                )
-                null -> permissionNodeRepository.findUsersWithAnyPermission(
-                    entityId = entityId,
-                    entityLabel = entityType.label
-                )
+                PermissionRelation.ADMIN -> {
+                    permissionNodeRepository.findUsersWithAdminPermission(
+                        entityId = entityId,
+                        entityLabel = entityType.label,
+                    )
+                }
+
+                PermissionRelation.MEMBER -> {
+                    permissionNodeRepository.findUsersWithMemberPermission(
+                        entityId = entityId,
+                        entityLabel = entityType.label,
+                    )
+                }
+
+                null -> {
+                    permissionNodeRepository.findUsersWithAnyPermission(
+                        entityId = entityId,
+                        entityLabel = entityType.label,
+                    )
+                }
             }
         } catch (e: Exception) {
             logger.error(e) { "Error listing users with permission on $entityType:$entityId, relation=$relation" }
             emptyList() // Fail-closed: return empty list on error
         }
-    }
 
+    // TODO: used only for namespace, to un-generalize ?
     override fun listEntitiesForUser(
         userId: String,
         entityType: EntityType,
-        relation: PermissionRelation
-    ): List<String> {
-        return try {
+        relation: PermissionRelation,
+    ): List<String> =
+        try {
             // Include both direct and transitive permissions
             when (relation) {
                 PermissionRelation.ADMIN -> {
                     if (isNamespaceChildEntity(entityType)) {
                         permissionNodeRepository.findEntitiesWhereUserIsAdminTransitive(
                             userId = userId,
-                            entityLabel = entityType.label
+                            entityLabel = entityType.label,
                         )
                     } else {
                         permissionNodeRepository.findEntitiesWhereUserIsAdmin(
                             userId = userId,
-                            entityLabel = entityType.label
+                            entityLabel = entityType.label,
                         )
                     }
                 }
+
                 PermissionRelation.MEMBER -> {
                     if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
                         // Owner-private entities: MEMBER transitivity via namespace-MEMBER
@@ -214,17 +267,17 @@ class Neo4jPermissionRepository(
                         // exact set a user is allowed to "see".
                         permissionNodeRepository.findEntitiesWhereUserIsAdminTransitive(
                             userId = userId,
-                            entityLabel = entityType.label
+                            entityLabel = entityType.label,
                         )
                     } else if (isNamespaceChildEntity(entityType)) {
                         permissionNodeRepository.findEntitiesWhereUserHasAccessTransitive(
                             userId = userId,
-                            entityLabel = entityType.label
+                            entityLabel = entityType.label,
                         )
                     } else {
                         permissionNodeRepository.findEntitiesWhereUserHasAccess(
                             userId = userId,
-                            entityLabel = entityType.label
+                            entityLabel = entityType.label,
                         )
                     }
                 }
@@ -233,7 +286,6 @@ class Neo4jPermissionRepository(
             logger.error(e) { "Error listing entities for user=$userId, type=$entityType, relation=$relation" }
             emptyList() // Fail-closed: return empty list on error
         }
-    }
 
     override fun filterVisibleIds(
         userId: String,
@@ -241,13 +293,18 @@ class Neo4jPermissionRepository(
         ids: Collection<String>,
         relation: PermissionRelation,
     ): Set<String> {
+        val checkPlatform = isNamespaceChildEntity(entityType)
         return try {
             when (relation) {
-                PermissionRelation.ADMIN -> permissionNodeRepository.filterIdsWhereUserIsAdmin(
-                    userId = userId,
-                    entityLabel = entityType.label,
-                    ids = ids,
-                )
+                PermissionRelation.ADMIN -> {
+                    permissionNodeRepository.filterIdsWhereUserIsAdmin(
+                        userId = userId,
+                        entityLabel = entityType.label,
+                        ids = ids,
+                        checkPlatform = checkPlatform,
+                    )
+                }
+
                 PermissionRelation.MEMBER -> {
                     if (entityType in OWNER_PRIVATE_ENTITY_TYPES) {
                         // Owner-private entities (Case, FR15) — MEMBER on the namespace does NOT
@@ -257,12 +314,18 @@ class Neo4jPermissionRepository(
                             userId = userId,
                             entityLabel = entityType.label,
                             ids = ids,
+                            checkPlatform = checkPlatform,
                         )
                     } else {
+                        // Namespace-child entities may have platform-scoped instances
+                        // (namespaceId IS NULL). Use the variant query that includes a
+                        // third UNION branch for those — safe because all types in
+                        // isNamespaceChildEntity have namespaceId as a node property.
                         permissionNodeRepository.filterIdsWhereUserHasAccess(
                             userId = userId,
                             entityLabel = entityType.label,
                             ids = ids,
+                            checkPlatform = checkPlatform,
                         )
                     }
                 }
@@ -273,18 +336,106 @@ class Neo4jPermissionRepository(
         }
     }
 
+    override fun promoteMemberToAdmin(userId: String, entityType: EntityType, entityId: String): Boolean =
+        try {
+            permissionNodeRepository.promoteMemberToAdmin(
+                userId = userId,
+                entityId = entityId,
+                entityLabel = entityType.label,
+            ) > 0
+        } catch (e: Exception) {
+            logger.error(e) { "Error promoting MEMBER to ADMIN for user=$userId on $entityType:$entityId" }
+            throw e
+        }
+
+    override fun demoteAdminToMember(userId: String, entityType: EntityType, entityId: String): Boolean =
+        try {
+            permissionNodeRepository.demoteAdminToMember(
+                userId = userId,
+                entityId = entityId,
+                entityLabel = entityType.label,
+            ) > 0
+        } catch (e: Exception) {
+            logger.error(e) { "Error demoting ADMIN to MEMBER for user=$userId on $entityType:$entityId" }
+            throw e
+        }
+
+    override fun listRelationsForUsers(
+        entityType: EntityType,
+        entityId: String,
+        userIds: Collection<String>,
+    ): Map<String, PermissionRelation> {
+        if (userIds.isEmpty()) return emptyMap()
+        return try {
+            permissionNodeRepository
+                .findRelationsForUsers(userIds, entityId, entityType.label)
+                .associate { row -> row.userId to row.relation }
+        } catch (e: Exception) {
+            logger.error(e) { "Error listing relations for users on $entityType:$entityId" }
+            emptyMap() // Fail-closed: return empty map on error
+        }
+    }
+
+    override fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String> {
+        if (entries.isEmpty()) return emptyList()
+        val label = entityType.label
+        val userIdsByRelation = entries.groupBy({ (_, relation) -> relation }, { (userId, _) -> userId })
+        val appliedUserIds =
+            userIdsByRelation
+                .flatMap { (relation, userIds) ->
+                    when (relation) {
+                        PermissionRelation.ADMIN ->
+                            permissionNodeRepository.batchSetAdminRole(
+                                userIds = userIds,
+                                entityId = entityId,
+                                entityLabel = label,
+                            )
+                        PermissionRelation.MEMBER ->
+                            permissionNodeRepository.batchSetMemberRole(
+                                userIds = userIds,
+                                entityId = entityId,
+                                entityLabel = label,
+                            )
+                        null ->
+                            permissionNodeRepository.batchRevoke(
+                                userIds = userIds,
+                                entityId = entityId,
+                                entityLabel = label,
+                            )
+                    }
+                }.distinct()
+
+        logger.info {
+            val sizes = userIdsByRelation.mapValues { (_, userIds) -> userIds.size }
+            "applyShareBatch on $entityType:$entityId — " +
+                "admin=${sizes[PermissionRelation.ADMIN] ?: 0}, member=${sizes[PermissionRelation.MEMBER] ?: 0}, " +
+                "revoke=${sizes[null] ?: 0}, applied=${appliedUserIds.size}"
+        }
+        return appliedUserIds
+    }
+
     /**
      * Checks if the entity type is a child of Namespace in the hierarchy.
      * These entities support transitive permissions through their parent namespace.
+     *
+     * [EntityType.PROMPT] is included because namespace-scoped prompts carry a
+     * BELONGS_TO edge to their parent Namespace and must be readable by namespace
+     * MEMBERs via transitive permission (the same rule as AgentConfig, etc.).
      */
-    private fun isNamespaceChildEntity(entityType: EntityType): Boolean {
-        return entityType in setOf(
-            EntityType.CASE,
-            EntityType.AGENT_CONFIG,
-            EntityType.INTEGRATION_CONFIG,
-            EntityType.AI_PROVIDER,
-            EntityType.AI_MODEL,
-            EntityType.USER_GROUP,
-        )
-    }
+    private fun isNamespaceChildEntity(entityType: EntityType): Boolean =
+        entityType in
+            setOf(
+                EntityType.CASE,
+                EntityType.AGENT_CONFIG,
+                EntityType.INTEGRATION_CONFIG,
+                EntityType.AI_PROVIDER,
+                EntityType.AI_MODEL,
+                EntityType.USER_GROUP,
+                EntityType.PROMPT,
+                EntityType.SCHEDULED_PROMPT,
+            )
 }

@@ -29,12 +29,46 @@
 
     <!-- Simplified layout for other message types -->
     @if (isSimplified) {
-      <div class="simple-content markdown-content">
-        <span [innerHTML]="renderedContent"></span>
-        @if (eventLink) {
-          <a [href]="eventLink" target="_blank" class="event-link">view</a>
+      @if (message.type === 'error' && isLongError) {
+        <div class="simple-content error-collapsible">
+          @if (isErrorExpanded()) {
+            <span [innerHTML]="renderedContent"></span>
+          } @else {
+            <span class="error-collapsed-text">{{ collapsedErrorText }}</span>
+          }
+          <button class="error-toggle" (click)="toggleErrorExpanded()" type="button">
+            @if (isErrorExpanded()) {
+              Show less ▲
+            } @else {
+              Show more ▼
+            }
+          </button>
+        </div>
+      } @else if (message.type === 'technical' && message.fullContent) {
+        <div class="simple-content technical-expandable">
+          <span [innerHTML]="renderedContent"></span>
+          <button class="technical-toggle" (click)="toggleTechnicalExpanded()" type="button">
+            @if (isTechnicalExpanded()) {
+              ▲
+            } @else {
+              ▼
+            }
+          </button>
+          @if (eventLink) {
+            <a [href]="eventLink" target="_blank" class="event-link">view</a>
+          }
+        </div>
+        @if (isTechnicalExpanded()) {
+          <pre class="technical-full-content">{{ message.fullContent }}</pre>
         }
-      </div>
+      } @else {
+        <div class="simple-content markdown-content">
+          <span [innerHTML]="renderedContent"></span>
+          @if (eventLink) {
+            <a [href]="eventLink" target="_blank" class="event-link">view</a>
+          }
+        </div>
+      }
     }
   </div>
 

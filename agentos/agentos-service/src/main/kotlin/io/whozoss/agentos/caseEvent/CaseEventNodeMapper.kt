@@ -8,14 +8,20 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
+import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
+import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -42,6 +48,7 @@ class CaseEventNodeMapper(
         when (node) {
             is CaseStatusEventNode -> toDomain(node)
             is WarnEventNode -> toDomain(node)
+            is ErrorEventNode -> toDomain(node)
             is AgentSelectedEventNode -> toDomain(node)
             is AgentFinishedEventNode -> toDomain(node)
             is AgentRunningEventNode -> toDomain(node)
@@ -54,12 +61,15 @@ class CaseEventNodeMapper(
             is IntentionGeneratedEventNode -> toDomain(node)
             is ToolSelectedEventNode -> toDomain(node)
             is TextChunkEventNode -> toDomain(node)
+            is PendingConfirmationEventNode -> toDomain(node)
+            is ConfirmationResolvedEventNode -> toDomain(node)
         }
 
     fun fromDomain(event: CaseEvent): CaseEventNode =
         when (event) {
             is CaseStatusEvent -> fromDomain(event)
             is WarnEvent -> fromDomain(event)
+            is ErrorEvent -> fromDomain(event)
             is AgentSelectedEvent -> fromDomain(event)
             is AgentFinishedEvent -> fromDomain(event)
             is AgentRunningEvent -> fromDomain(event)
@@ -72,6 +82,12 @@ class CaseEventNodeMapper(
             is IntentionGeneratedEvent -> fromDomain(event)
             is ToolSelectedEvent -> fromDomain(event)
             is TextChunkEvent -> fromDomain(event)
+            is PendingConfirmationEvent -> fromDomain(event)
+            is ConfirmationResolvedEvent -> fromDomain(event)
+            // CaseUpdatedEvent is transient — it must never reach the persistence layer.
+            // storeEvent() in CaseServiceImpl skips TransientCaseEvent instances, so this
+            // branch is a programming-error guard rather than a reachable path.
+            is CaseUpdatedEvent -> error("CaseUpdatedEvent is transient and must not be persisted")
         }
 
     fun withRemoved(
@@ -79,7 +95,7 @@ class CaseEventNodeMapper(
         removed: Boolean?,
     ): CaseEventNode =
         when (node) {
-            is CaseStatusEventNode ->
+            is CaseStatusEventNode -> {
                 CaseStatusEventNode(
                     node.id,
                     node.caseId,
@@ -92,7 +108,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is WarnEventNode ->
+            }
+
+            is WarnEventNode -> {
                 WarnEventNode(
                     node.id,
                     node.caseId,
@@ -105,7 +123,24 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is AgentSelectedEventNode ->
+            }
+
+            is ErrorEventNode -> {
+                ErrorEventNode(
+                    node.id,
+                    node.caseId,
+                    node.namespaceId,
+                    node.timestamp,
+                    node.message,
+                    node.created,
+                    node.createdBy,
+                    node.modified,
+                    node.modifiedBy,
+                    removed,
+                )
+            }
+
+            is AgentSelectedEventNode -> {
                 AgentSelectedEventNode(
                     node.id,
                     node.caseId,
@@ -119,7 +154,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is AgentFinishedEventNode ->
+            }
+
+            is AgentFinishedEventNode -> {
                 AgentFinishedEventNode(
                     node.id,
                     node.caseId,
@@ -127,13 +164,17 @@ class CaseEventNodeMapper(
                     node.timestamp,
                     node.agentId,
                     node.agentName,
+                    node.llmProvider,
+                    node.llmModel,
                     node.created,
                     node.createdBy,
                     node.modified,
                     node.modifiedBy,
                     removed,
                 )
-            is AgentRunningEventNode ->
+            }
+
+            is AgentRunningEventNode -> {
                 AgentRunningEventNode(
                     node.id,
                     node.caseId,
@@ -141,13 +182,17 @@ class CaseEventNodeMapper(
                     node.timestamp,
                     node.agentId,
                     node.agentName,
+                    node.llmProvider,
+                    node.llmModel,
                     node.created,
                     node.createdBy,
                     node.modified,
                     node.modifiedBy,
                     removed,
                 )
-            is MessageEventNode ->
+            }
+
+            is MessageEventNode -> {
                 MessageEventNode(
                     node.id,
                     node.caseId,
@@ -158,13 +203,17 @@ class CaseEventNodeMapper(
                     node.actorRole,
                     node.contentJson,
                     node.contextJson,
+                    node.llmProvider,
+                    node.llmModel,
                     node.created,
                     node.createdBy,
                     node.modified,
                     node.modifiedBy,
                     removed,
                 )
-            is ToolRequestEventNode ->
+            }
+
+            is ToolRequestEventNode -> {
                 ToolRequestEventNode(
                     node.id,
                     node.caseId,
@@ -173,13 +222,16 @@ class CaseEventNodeMapper(
                     node.toolRequestId,
                     node.toolName,
                     node.args,
+                    node.enrichmentPhasesJson,
                     node.created,
                     node.createdBy,
                     node.modified,
                     node.modifiedBy,
                     removed,
                 )
-            is ToolResponseEventNode ->
+            }
+
+            is ToolResponseEventNode -> {
                 ToolResponseEventNode(
                     node.id,
                     node.caseId,
@@ -191,13 +243,16 @@ class CaseEventNodeMapper(
                     node.success,
                     node.metadataJson,
                     node.durationMs,
+                    node.imagesJson,
                     node.created,
                     node.createdBy,
                     node.modified,
                     node.modifiedBy,
                     removed,
                 )
-            is ThinkingEventNode ->
+            }
+
+            is ThinkingEventNode -> {
                 ThinkingEventNode(
                     node.id,
                     node.caseId,
@@ -209,7 +264,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is QuestionEventNode ->
+            }
+
+            is QuestionEventNode -> {
                 QuestionEventNode(
                     node.id,
                     node.caseId,
@@ -219,13 +276,17 @@ class CaseEventNodeMapper(
                     node.agentName,
                     node.question,
                     node.options,
+                    node.questionType,
+                    node.userId,
                     node.created,
                     node.createdBy,
                     node.modified,
                     node.modifiedBy,
                     removed,
                 )
-            is AnswerEventNode ->
+            }
+
+            is AnswerEventNode -> {
                 AnswerEventNode(
                     node.id,
                     node.caseId,
@@ -242,7 +303,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is IntentionGeneratedEventNode ->
+            }
+
+            is IntentionGeneratedEventNode -> {
                 IntentionGeneratedEventNode(
                     node.id,
                     node.caseId,
@@ -257,7 +320,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is ToolSelectedEventNode ->
+            }
+
+            is ToolSelectedEventNode -> {
                 ToolSelectedEventNode(
                     node.id,
                     node.caseId,
@@ -271,7 +336,9 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
-            is TextChunkEventNode ->
+            }
+
+            is TextChunkEventNode -> {
                 TextChunkEventNode(
                     node.id,
                     node.caseId,
@@ -284,6 +351,42 @@ class CaseEventNodeMapper(
                     node.modifiedBy,
                     removed,
                 )
+            }
+
+            is PendingConfirmationEventNode -> {
+                PendingConfirmationEventNode(
+                    node.id,
+                    node.caseId,
+                    node.namespaceId,
+                    node.timestamp,
+                    node.toolRequestId,
+                    node.toolName,
+                    node.inputJson,
+                    node.toolConfirmationInstructions,
+                    node.created,
+                    node.createdBy,
+                    node.modified,
+                    node.modifiedBy,
+                    removed,
+                )
+            }
+
+            is ConfirmationResolvedEventNode -> {
+                ConfirmationResolvedEventNode(
+                    node.id,
+                    node.caseId,
+                    node.namespaceId,
+                    node.timestamp,
+                    node.pendingEventId,
+                    node.confirmed,
+                    node.resultText,
+                    node.created,
+                    node.createdBy,
+                    node.modified,
+                    node.modifiedBy,
+                    removed,
+                )
+            }
         }
 
     // ─── toDomain ──────────────────────────────────────────────────────────────────────────────────────
@@ -299,6 +402,15 @@ class CaseEventNodeMapper(
 
     private fun toDomain(n: WarnEventNode) =
         WarnEvent(
+            metadata = metadata(n),
+            namespaceId = UUID.fromString(n.namespaceId),
+            caseId = UUID.fromString(n.caseId),
+            timestamp = n.timestamp,
+            message = n.message,
+        )
+
+    private fun toDomain(n: ErrorEventNode) =
+        ErrorEvent(
             metadata = metadata(n),
             namespaceId = UUID.fromString(n.namespaceId),
             caseId = UUID.fromString(n.caseId),
@@ -324,6 +436,8 @@ class CaseEventNodeMapper(
             timestamp = n.timestamp,
             agentId = UUID.fromString(n.agentId),
             agentName = n.agentName,
+            llmProvider = n.llmProvider,
+            llmModel = n.llmModel,
         )
 
     private fun toDomain(n: AgentRunningEventNode) =
@@ -334,6 +448,8 @@ class CaseEventNodeMapper(
             timestamp = n.timestamp,
             agentId = UUID.fromString(n.agentId),
             agentName = n.agentName,
+            llmProvider = n.llmProvider,
+            llmModel = n.llmModel,
         )
 
     private fun toDomain(n: MessageEventNode) =
@@ -345,6 +461,8 @@ class CaseEventNodeMapper(
             actor = Actor(id = n.actorId, displayName = n.actorDisplayName, role = ActorRole.valueOf(n.actorRole)),
             content = serializer.deserialize(n.contentJson),
             sessionContext = n.contextJson?.let { serializer.deserializeMetadata(it) },
+            llmProvider = n.llmProvider,
+            llmModel = n.llmModel,
         )
 
     private fun toDomain(n: ToolRequestEventNode) =
@@ -356,6 +474,7 @@ class CaseEventNodeMapper(
             toolRequestId = n.toolRequestId,
             toolName = n.toolName,
             args = n.args,
+            enrichmentPhases = n.enrichmentPhasesJson?.let { serializer.deserializeEnrichmentPhases(it) },
         )
 
     private fun toDomain(n: ToolResponseEventNode) =
@@ -370,6 +489,9 @@ class CaseEventNodeMapper(
             success = n.success,
             durationMs = n.durationMs,
             toolMetadata = n.metadataJson?.let { serializer.deserializeMetadata(it) } ?: emptyMap(),
+            images = n.imagesJson
+                ?.let { serializer.deserialize(it).filterIsInstance<MessageContent.Image>() }
+                ?: emptyList(),
         )
 
     private fun toDomain(n: ThinkingEventNode) =
@@ -390,6 +512,8 @@ class CaseEventNodeMapper(
             agentName = n.agentName,
             question = n.question,
             options = n.options?.let { serializer.deserializeStringList(it) },
+            questionType = try { QuestionType.valueOf(n.questionType) } catch (_: Exception) { QuestionType.FREE_TEXT },
+            userId = n.userId?.let { UUID.fromString(it) },
         )
 
     private fun toDomain(n: AnswerEventNode) =
@@ -433,6 +557,29 @@ class CaseEventNodeMapper(
             chunk = n.chunk,
         )
 
+    private fun toDomain(n: PendingConfirmationEventNode) =
+        PendingConfirmationEvent(
+            metadata = metadata(n),
+            namespaceId = UUID.fromString(n.namespaceId),
+            caseId = UUID.fromString(n.caseId),
+            timestamp = n.timestamp,
+            toolRequestId = n.toolRequestId,
+            toolName = n.toolName,
+            inputJson = n.inputJson,
+            toolConfirmationInstructions = n.toolConfirmationInstructions ?: "",
+        )
+
+    private fun toDomain(n: ConfirmationResolvedEventNode) =
+        ConfirmationResolvedEvent(
+            metadata = metadata(n),
+            namespaceId = UUID.fromString(n.namespaceId),
+            caseId = UUID.fromString(n.caseId),
+            timestamp = n.timestamp,
+            pendingEventId = UUID.fromString(n.pendingEventId),
+            confirmed = n.confirmed,
+            resultText = n.resultText,
+        )
+
     // ─── fromDomain ─────────────────────────────────────────────────────────────────────────────────────
 
     private fun fromDomain(e: CaseStatusEvent) =
@@ -451,6 +598,20 @@ class CaseEventNodeMapper(
 
     private fun fromDomain(e: WarnEvent) =
         WarnEventNode(
+            id = e.id.toString(),
+            caseId = e.caseId.toString(),
+            namespaceId = e.namespaceId.toString(),
+            timestamp = e.timestamp,
+            message = e.message,
+            created = e.metadata.created,
+            createdBy = e.metadata.createdBy,
+            modified = e.metadata.modified,
+            modifiedBy = e.metadata.modifiedBy,
+            removed = e.metadata.removed.takeIf { it },
+        )
+
+    private fun fromDomain(e: ErrorEvent) =
+        ErrorEventNode(
             id = e.id.toString(),
             caseId = e.caseId.toString(),
             namespaceId = e.namespaceId.toString(),
@@ -486,6 +647,8 @@ class CaseEventNodeMapper(
             timestamp = e.timestamp,
             agentId = e.agentId.toString(),
             agentName = e.agentName,
+            llmProvider = e.llmProvider,
+            llmModel = e.llmModel,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -501,6 +664,8 @@ class CaseEventNodeMapper(
             timestamp = e.timestamp,
             agentId = e.agentId.toString(),
             agentName = e.agentName,
+            llmProvider = e.llmProvider,
+            llmModel = e.llmModel,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -519,6 +684,8 @@ class CaseEventNodeMapper(
             actorRole = e.actor.role.name,
             contentJson = serializer.serialize(e.content),
             contextJson = e.sessionContext?.let { serializer.serializeMetadata(it) },
+            llmProvider = e.llmProvider,
+            llmModel = e.llmModel,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -535,6 +702,7 @@ class CaseEventNodeMapper(
             toolRequestId = e.toolRequestId,
             toolName = e.toolName,
             args = e.args,
+            enrichmentPhasesJson = e.enrichmentPhases?.let { serializer.serializeEnrichmentPhases(it) },
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -554,6 +722,7 @@ class CaseEventNodeMapper(
             success = e.success,
             metadataJson = e.toolMetadata.takeIf { it.isNotEmpty() }?.let { serializer.serializeMetadata(it) },
             durationMs = e.durationMs,
+            imagesJson = e.images.takeIf { it.isNotEmpty() }?.let { serializer.serialize(it) },
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -584,6 +753,8 @@ class CaseEventNodeMapper(
             agentName = e.agentName,
             question = e.question,
             options = e.options?.let { serializer.serializeStringList(it) },
+            questionType = e.questionType.name,
+            userId = e.userId?.toString(),
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -647,6 +818,39 @@ class CaseEventNodeMapper(
             namespaceId = e.namespaceId.toString(),
             timestamp = e.timestamp,
             chunk = e.chunk,
+            created = e.metadata.created,
+            createdBy = e.metadata.createdBy,
+            modified = e.metadata.modified,
+            modifiedBy = e.metadata.modifiedBy,
+            removed = e.metadata.removed.takeIf { it },
+        )
+
+    private fun fromDomain(e: PendingConfirmationEvent) =
+        PendingConfirmationEventNode(
+            id = e.id.toString(),
+            caseId = e.caseId.toString(),
+            namespaceId = e.namespaceId.toString(),
+            timestamp = e.timestamp,
+            toolRequestId = e.toolRequestId,
+            toolName = e.toolName,
+            inputJson = e.inputJson,
+            toolConfirmationInstructions = e.toolConfirmationInstructions.ifEmpty { null },
+            created = e.metadata.created,
+            createdBy = e.metadata.createdBy,
+            modified = e.metadata.modified,
+            modifiedBy = e.metadata.modifiedBy,
+            removed = e.metadata.removed.takeIf { it },
+        )
+
+    private fun fromDomain(e: ConfirmationResolvedEvent) =
+        ConfirmationResolvedEventNode(
+            id = e.id.toString(),
+            caseId = e.caseId.toString(),
+            namespaceId = e.namespaceId.toString(),
+            timestamp = e.timestamp,
+            pendingEventId = e.pendingEventId.toString(),
+            confirmed = e.confirmed,
+            resultText = e.resultText,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

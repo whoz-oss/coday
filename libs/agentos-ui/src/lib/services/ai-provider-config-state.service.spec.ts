@@ -132,8 +132,15 @@ describe('AiProviderConfigStateService', () => {
       expect(payload.namespaceId).toBeUndefined()
     })
 
-    it('throws when creating a namespace-scoped provider without a namespaceId', () => {
-      expect(() => service.create(draft, 'namespace', null)).toThrow(/namespaceId/i)
+    it('routes platform creates to the unified controller with namespaceId omitted (null → platform scope)', async () => {
+      await firstValueFrom(service.create(draft, 'namespace', null))
+      const payload = nsController.createAiProvider.mock.calls[0][0]
+      expect(payload.namespaceId).toBeUndefined()
+      expect(payload.userId).toBeUndefined()
+    })
+
+    it('throws when creating a namespace-scoped provider with an empty namespaceId string', () => {
+      expect(() => service.create(draft, 'namespace', '')).toThrow(/namespaceId/i)
     })
 
     it('throws when creating a userOnNs provider without a namespaceId', () => {

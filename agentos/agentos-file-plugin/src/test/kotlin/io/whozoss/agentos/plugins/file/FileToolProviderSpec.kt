@@ -30,13 +30,17 @@ class FileToolProviderSpec : StringSpec() {
             provider.provideTools(null) shouldBe emptyList()
         }
 
-        "read-write config produces 6 tools" {
-            val config = jacksonObjectMapper().readTree("""{"rootPath": "${tempDir.pathString}"}""".trimIndent())
+        "read-write config produces 9 tools" {
+            val config = jacksonObjectMapper().readTree("""{"rootPath": "${tempDir.pathString}"}"""
+            .trimIndent())
             val tools = FileToolProvider().provideTools(config, "TEST")
-            tools.size shouldBe 6
+            tools.size shouldBe 9
             tools.map { it.name } shouldContainAll listOf(
                 "TEST__listFiles",
                 "TEST__readFile",
+                "TEST__readAsImage",
+                "TEST__readDocument",
+                "TEST__readSpreadsheet",
                 "TEST__searchFiles",
                 "TEST__editFiles",
                 "TEST__remove",
@@ -44,24 +48,25 @@ class FileToolProviderSpec : StringSpec() {
             )
         }
 
-        "read-only config produces 3 tools" {
+        "read-only config produces 6 tools" {
             val config = jacksonObjectMapper().readTree(
                 """{"rootPath": "${tempDir.pathString}", "readOnly": true}""",
             )
             val tools = FileToolProvider().provideTools(config, "TEST")
-            tools.size shouldBe 3
+            tools.size shouldBe 6
             tools.map { it.name } shouldContainAll listOf(
                 "TEST__listFiles",
                 "TEST__readFile",
+                "TEST__readAsImage",
+                "TEST__readDocument",
+                "TEST__readSpreadsheet",
                 "TEST__searchFiles",
             )
         }
 
         "readMaxSizeMb propagation to ReadFileTool" {
-            // Create a file > 1 MB but < 10 MB, configure readMaxSizeMb = 1
-            // Verify that ReadFileTool rejects the file
             val bigFile = tempDir.resolve("big.txt")
-            bigFile.writeText("x".repeat(2 * 1024 * 1024)) // 2 MB
+            bigFile.writeText("x".repeat(2 * 1024 * 1024))
 
             val config = jacksonObjectMapper().readTree(
                 """{"rootPath": "${tempDir.pathString}", "readMaxSizeMb": 1}""",
@@ -74,8 +79,6 @@ class FileToolProviderSpec : StringSpec() {
         }
 
         "extraDenyPatterns propagation to tools" {
-            // Create a .custom-secret file, configure extraDenyPatterns = ["*.custom-secret"]
-            // Verify ReadFileTool denies access
             val secretFile = tempDir.resolve("data.custom-secret")
             secretFile.writeText("secret data")
 
@@ -94,7 +97,63 @@ class FileToolProviderSpec : StringSpec() {
                 """{"rootPath": "${tempDir.pathString}", "extraDenyPatterns": null}""",
             )
             val tools = FileToolProvider().provideTools(config, "TEST")
-            tools.size shouldBe 6 // All tools created successfully
+            tools.size shouldBe 9
+        }
+
+        "readMaxSizeMb propagation to ReadAsImageTool" {
+            val bigFile = tempDir.resolve("big.png")
+            bigFile.toFile().writeBytes(ByteArray(2 * 1024 * 1024))
+
+            val config = jacksonObjectMapper().readTree(
+                """{"rootPath": "${tempDir.pathString}", "readMaxSizeMb": 1}""",
+            )
+            val tools = FileToolProvider().provideTools(config, "TEST")
+            val readAsImageTool = tools.first { it.name.contains("readAsImage") }
+
+            val result = readAsImageTool.executeWithJson("""{"filePath": "big.png"}""", ctx)
+            result.output shouldContain "exceeds maximum size"
+        }
+
+        "extraDenyPatterns propagation to ReadAsImageTool" {
+            val secretFile = tempDir.resolve("scan.secret-png")
+            secretFile.writeText("not really an image")
+
+            val config = jacksonObjectMapper().readTree(
+                """{"rootPath": "${tempDir.pathString}", "extraDenyPatterns": ["*.secret-png"]}""",
+            )
+            val tools = FileToolProvider().provideTools(config, "TEST")
+            val readAsImageTool = tools.first { it.name.contains("readAsImage") }
+
+            val result = readAsImageTool.executeWithJson("""{"filePath": "scan.secret-png"}""", ctx)
+            result.output shouldContain "Access denied"
+        }
+
+        "readMaxSizeMb propagation to ReadSpreadsheetTool" {
+            val bigFile = tempDir.resolve("big.xlsx")
+            bigFile.toFile().writeBytes(ByteArray(2 * 1024 * 1024))
+
+            val config = jacksonObjectMapper().readTree(
+                """{"rootPath": "${tempDir.pathString}", "readMaxSizeMb": 1}""",
+            )
+            val tools = FileToolProvider().provideTools(config, "TEST")
+            val readSpreadsheetTool = tools.first { it.name.contains("readSpreadsheet") }
+
+            val result = readSpreadsheetTool.executeWithJson("""{"filePath": "big.xlsx"}""", ctx)
+            result.output shouldContain "exceeds maximum size"
+        }
+
+        "extraDenyPatterns propagation to ReadSpreadsheetTool" {
+            val secretFile = tempDir.resolve("data.secret-xlsx")
+            secretFile.writeText("not really a workbook")
+
+            val config = jacksonObjectMapper().readTree(
+                """{"rootPath": "${tempDir.pathString}", "extraDenyPatterns": ["*.secret-xlsx"]}""",
+            )
+            val tools = FileToolProvider().provideTools(config, "TEST")
+            val readSpreadsheetTool = tools.first { it.name.contains("readSpreadsheet") }
+
+            val result = readSpreadsheetTool.executeWithJson("""{"filePath": "data.secret-xlsx"}""", ctx)
+            result.output shouldContain "Access denied"
         }
     }
 }

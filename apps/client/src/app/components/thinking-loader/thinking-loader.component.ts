@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core'
+import { Component, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core'
 import { CommonModule } from '@angular/common'
 
 @Component({
@@ -6,6 +6,7 @@ import { CommonModule } from '@angular/common'
   standalone: true,
   imports: [CommonModule],
   templateUrl: './thinking-loader.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './thinking-loader.component.scss',
 })
 export class ThinkingLoaderComponent implements OnInit, OnDestroy {

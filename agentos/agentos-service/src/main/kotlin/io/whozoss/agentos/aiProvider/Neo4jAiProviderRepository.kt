@@ -31,10 +31,10 @@ open class Neo4jAiProviderRepository(
             .toDomain()
             .also { logger.debug { "[Neo4jAiProviderRepository] Saved AiProvider ${it.id} ('${entity.name}')" } }
 
-    override fun findByIds(ids: Collection<UUID>): List<AiProvider> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<AiProvider> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     // findByParent by convention delegates to findByNamespaceId
@@ -58,6 +58,19 @@ open class Neo4jAiProviderRepository(
         neo4jRepository
             .findActiveByTripleKey(AiProviderNode.computeTripleKey(namespaceId, userId, name))
             ?.toDomain()
+
+    override fun findPlatformLevel(): List<AiProvider> =
+        neo4jRepository
+            .findActivePlatformLevel()
+            .map { it.toDomain() }
+
+    override fun findAllForScope(
+        namespaceId: UUID,
+        userId: UUID,
+    ): List<AiProvider> =
+        neo4jRepository
+            .findAllForNamespaceAndUser(namespaceId.toString(), userId.toString())
+            .map { it.toDomain() }
 
     @Transactional
     open override fun delete(id: UUID): Boolean =

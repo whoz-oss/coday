@@ -312,6 +312,76 @@ describe('interval-schedule.utils', () => {
       })
     })
 
+    describe('Phase stability (startTimestamp as anchor)', () => {
+      it('should schedule daily-at-8:30 correctly when fromDate is 11 PM', () => {
+        // Scheduler configured to run daily at 08:30 UTC
+        const schedule: IntervalSchedule = {
+          startTimestamp: '2025-01-01T08:30:00Z', // 8:30 AM anchor
+          interval: '1d',
+        }
+        // Coday restarts at 11 PM — next run should be 8:30 AM next day, not 11 PM next day
+        const fromDate = new Date('2025-06-15T23:00:00Z')
+        const nextRun = calculateNextRun(schedule, fromDate)
+
+        expect(nextRun).toBe('2025-06-16T08:30:00.000Z')
+        expect(new Date(nextRun!).getUTCHours()).toBe(8)
+        expect(new Date(nextRun!).getUTCMinutes()).toBe(30)
+      })
+
+      it('should maintain time-of-day after multiple missed days', () => {
+        // Daily at 08:30, but Coday was down for 5 days
+        const schedule: IntervalSchedule = {
+          startTimestamp: '2025-01-01T08:30:00Z',
+          interval: '1d',
+        }
+        // fromDate simulates "now" after 5 days of downtime (mid-afternoon)
+        const fromDate = new Date('2025-01-06T14:00:00Z')
+        const nextRun = calculateNextRun(schedule, fromDate)
+
+        // Should be Jan 7 at 08:30, not Jan 7 at 14:00
+        expect(nextRun).toBe('2025-01-07T08:30:00.000Z')
+      })
+
+      it('should phase-align hourly scheduler (every 2h from 08:00) when fromDate is 09:15', () => {
+        // Every 2h starting at 08:00: runs at 08:00, 10:00, 12:00, ...
+        const schedule: IntervalSchedule = {
+          startTimestamp: '2025-03-10T08:00:00Z',
+          interval: '2h',
+        }
+        const fromDate = new Date('2025-03-10T09:15:00Z')
+        const nextRun = calculateNextRun(schedule, fromDate)
+
+        // Next phase-aligned slot after 09:15 is 10:00, not 11:15
+        expect(nextRun).toBe('2025-03-10T10:00:00.000Z')
+      })
+
+      it('should phase-align monthly scheduler when fromDate is mid-month', () => {
+        // Monthly on the 1st at 08:00 AM
+        const schedule: IntervalSchedule = {
+          startTimestamp: '2025-01-01T08:00:00Z',
+          interval: '1M',
+        }
+        const fromDate = new Date('2025-03-15T12:00:00Z') // mid-March
+        const nextRun = calculateNextRun(schedule, fromDate)
+
+        // Next occurrence should be April 1st at 08:00, not April 15th at 12:00
+        expect(nextRun).toBe('2025-04-01T08:00:00.000Z')
+      })
+
+      it('should return correct next slot when fromDate exactly equals a phase point', () => {
+        // Every 30min from 10:00; fromDate is exactly 10:30 (a phase point)
+        const schedule: IntervalSchedule = {
+          startTimestamp: '2025-01-01T10:00:00Z',
+          interval: '30min',
+        }
+        const fromDate = new Date('2025-01-01T10:30:00Z')
+        const nextRun = calculateNextRun(schedule, fromDate)
+
+        // Must be strictly AFTER 10:30, so next is 11:00
+        expect(nextRun).toBe('2025-01-01T11:00:00.000Z')
+      })
+    })
+
     describe('Edge cases', () => {
       it('should return start time when fromDate is before start', () => {
         const schedule: IntervalSchedule = {
@@ -358,15 +428,15 @@ describe('interval-schedule.utils', () => {
         expect(nextRun).toBe('2025-01-06T12:00:00.000Z')
         expect(new Date(nextRun!).getUTCDay()).toBe(1) // Monday
 
-        // From Monday 23:00, +2h = Tuesday 01:00 (not Monday)
+        // From Monday 23:00, phase anchor: start=10:00, diff=13h, n=7, candidate=Jan 7 00:00 (Tue)
         const fromLateMonday = new Date('2025-01-06T23:00:00Z')
         const nextRunFromLate = calculateNextRun(schedule, fromLateMonday)
 
         // Should skip Tuesday-Sunday and land on next Monday
-        // +2h = Tue 01:00 (skip), +2h = Tue 03:00 (skip), ...
-        // Eventually reaches Monday Jan 13th
+        // Phase-anchored candidate: Jan 7 00:00 (Tue)
+        // daysOfWeek=[1]: keep adding 2h until Monday Jan 13 00:00
         expect(new Date(nextRunFromLate!).getUTCDay()).toBe(1) // Monday
-        expect(nextRunFromLate).toBe('2025-01-13T01:00:00.000Z') // Next Monday 01:00
+        expect(nextRunFromLate).toBe('2025-01-13T00:00:00.000Z') // Next Monday 00:00
       })
 
       it('should skip to next valid day when 3d interval lands on non-selected day', () => {

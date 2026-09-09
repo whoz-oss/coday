@@ -1,0 +1,25 @@
+<svg [attr.width]="size()" [attr.height]="size()" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+  @switch (status()) {
+    @case (Status.RUNNING) {
+      <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.6" opacity="0.25" />
+      <path class="arc" d="M8 2 A6 6 0 0 1 14 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+    }
+    @case (Status.PENDING) {
+      <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4" opacity="0.5" />
+      <circle class="dot" cx="8" cy="8" r="2.4" fill="currentColor" />
+    }
+    @case (Status.KILLED) {
+      <circle cx="8" cy="8" r="6.2" fill="currentColor" opacity="0.9" />
+      <rect x="4.6" y="7.1" width="6.8" height="1.8" fill="var(--color-bg)" />
+    }
+    @case (Status.ERROR) {
+      <circle cx="8" cy="8" r="6.2" fill="currentColor" />
+      <line x1="8" y1="4.6" x2="8" y2="8.8" stroke="var(--color-bg)" stroke-width="1.7" stroke-linecap="round" />
+      <circle cx="8" cy="11.2" r="1" fill="var(--color-bg)" />
+    }
+    @default {
+      <!-- IDLE -->
+      <circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.6" />
+    }
+  }
+</svg>

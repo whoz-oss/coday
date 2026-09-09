@@ -9,6 +9,6 @@
  */
 
 export interface PluginActionResponse {
-  success: boolean
   message: string
+  success: boolean
 }

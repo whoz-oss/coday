@@ -15,7 +15,6 @@ import { marked, Renderer } from 'marked'
  */
 @Pipe({
   name: 'agentosMarkdown',
-  standalone: true,
   pure: true,
 })
 export class MarkdownPipe implements PipeTransform {

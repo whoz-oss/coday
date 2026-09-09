@@ -7,6 +7,7 @@
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,
     "experimentalDecorators": true,
+    "ignoreDeprecations": "6.0",
     "importHelpers": true,
     "lib": ["ESNext", "dom"],
     "module": "esnext",
@@ -15,6 +16,7 @@
     "noImplicitReturns": true,
     "noImplicitThis": true,
     "noUncheckedIndexedAccess": true,
+    "noUncheckedSideEffectImports": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "paths": {
@@ -43,6 +45,7 @@
       "@coday/integrations-ai": ["libs/integrations/ai/src/index.ts"],
       "@coday/integrations-basecamp": ["libs/integrations/basecamp/src/index.ts"],
       "@coday/integrations-confluence": ["libs/integrations/confluence/src/index.ts"],
+      "@coday/integrations-excel": ["libs/integrations/excel/src/index.ts"],
       "@coday/integrations-file": ["libs/integrations/file/src/index.ts"],
       "@coday/integrations-git": ["libs/integrations/git/src/index.ts"],
       "@coday/integrations-gitlab": ["libs/integrations/gitlab/src/index.ts"],
@@ -75,7 +78,8 @@
     "sourceMap": true,
     "strict": true,
     "target": "ESNext",
-    "typeRoots": ["node_modules/@types"]
+    "typeRoots": ["node_modules/@types"],
+    "types": ["*"]
   },
   "exclude": ["node_modules", "tmp", "dist"]
 }

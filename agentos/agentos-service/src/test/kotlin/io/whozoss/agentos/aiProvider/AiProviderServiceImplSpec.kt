@@ -7,14 +7,26 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.mockk
+import io.whozoss.agentos.exception.ConfigNotFoundException
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.user.UserService
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 class AiProviderServiceImplSpec : StringSpec() {
-    private fun newService() = AiProviderServiceImpl(InMemoryAiProviderRepository())
+    // PermissionService and UserService are only used by findFiltered, which is not
+    // exercised in this spec (tested via AiProviderControllerSpec + integration tests).
+    // Relaxed mocks satisfy the constructor without interfering with the tested methods.
+    private fun newService() = AiProviderServiceImpl(
+        InMemoryAiProviderRepository(),
+        AiProviderMergeStrategy(),
+        mockk<PermissionService>(relaxed = true),
+        mockk<UserService>(relaxed = true),
+    )
 
     private fun config(
         namespaceId: UUID? = UUID.randomUUID(),
@@ -38,11 +50,13 @@ class AiProviderServiceImplSpec : StringSpec() {
         // Scope invariant
         // -------------------------------------------------------------------------
 
-        "create throws 400 when both namespaceId and userId are null" {
+        "create succeeds with both namespaceId and userId null (platform scope)" {
             val service = newService()
-            shouldThrow<ResponseStatusException> {
-                service.create(config(namespaceId = null, userId = null))
-            }.statusCode.value() shouldBe 400
+            // Platform-level entities have namespaceId=null AND userId=null.
+            // The controller enforces the super-admin permission check; the service
+            // itself allows all scope combinations.
+            val saved = service.create(config(namespaceId = null, userId = null))
+            saved.shouldNotBeNull()
         }
 
         "create succeeds with namespaceId only" {
@@ -285,6 +299,85 @@ class AiProviderServiceImplSpec : StringSpec() {
             // Different user → no overlap at reconciliation, no conflict.
             val saved = service.create(config(namespaceId = null, userId = userB, name = "primary", apiType = AiApiType.OpenAI))
             saved.shouldNotBeNull()
+        }
+
+        // -------------------------------------------------------------------------
+        // resolveProvider — single-query fold replacing ConfigMergeService
+        // -------------------------------------------------------------------------
+
+        "resolveProvider returns platform layer when no other layer exists" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = null, userId = null, name = "anthropic", apiKey = "platform-key"))
+
+            val resolved = service.resolveProvider(nsId, userId, "anthropic")
+            resolved.apiKey shouldBe "platform-key"
+            resolved.namespaceId shouldBe null
+            resolved.userId shouldBe null
+        }
+
+        "resolveProvider namespace-shared overrides platform" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = null,  userId = null,  name = "anthropic", apiKey = "platform-key"))
+            service.create(config(namespaceId = nsId,  userId = null,  name = "anthropic", apiKey = "ns-key"))
+
+            val resolved = service.resolveProvider(nsId, userId, "anthropic")
+            resolved.apiKey shouldBe "ns-key"
+        }
+
+        "resolveProvider user-global overrides platform but namespace-shared overrides user-global" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = null, userId = null,   name = "anthropic", apiKey = "platform-key"))
+            service.create(config(namespaceId = null, userId = userId,  name = "anthropic", apiKey = "user-key"))
+            service.create(config(namespaceId = nsId, userId = null,   name = "anthropic", apiKey = "ns-key"))
+
+            // namespace-shared (rank 2) wins over user-global (rank 1)
+            val resolved = service.resolveProvider(nsId, userId, "anthropic")
+            resolved.apiKey shouldBe "ns-key"
+        }
+
+        "resolveProvider user×namespace is highest precedence" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = null, userId = null,   name = "anthropic", apiKey = "platform-key"))
+            service.create(config(namespaceId = nsId, userId = null,   name = "anthropic", apiKey = "ns-key"))
+            service.create(config(namespaceId = null, userId = userId,  name = "anthropic", apiKey = "user-key"))
+            service.create(config(namespaceId = nsId, userId = userId,  name = "anthropic", apiKey = "user-ns-key"))
+
+            val resolved = service.resolveProvider(nsId, userId, "anthropic")
+            resolved.apiKey shouldBe "user-ns-key"
+        }
+
+        "resolveProvider merges fields — base fills keys absent from override" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            // Platform provides baseUrl; namespace-shared provides apiKey
+            service.create(config(namespaceId = null, userId = null,  name = "anthropic",
+                apiKey = null, apiType = AiApiType.Anthropic).copy(baseUrl = "https://platform.api"))
+            service.create(config(namespaceId = nsId, userId = null,  name = "anthropic",
+                apiKey = "ns-key", apiType = AiApiType.Anthropic))
+
+            val resolved = service.resolveProvider(nsId, userId, "anthropic")
+            resolved.apiKey shouldBe "ns-key"
+            resolved.baseUrl shouldBe "https://platform.api"
+        }
+
+        "resolveProvider throws ConfigNotFoundException when no layer has the requested name" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val userId = UUID.randomUUID()
+            service.create(config(namespaceId = nsId, userId = null, name = "other-provider"))
+
+            shouldThrow<ConfigNotFoundException> {
+                service.resolveProvider(nsId, userId, "anthropic")
+            }
         }
 
         "update rejects when renaming would collide with a different-apiType layer" {

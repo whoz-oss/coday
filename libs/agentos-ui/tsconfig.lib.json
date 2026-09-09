@@ -2,6 +2,7 @@
   "compilerOptions": {
     "declaration": true,
     "outDir": "../../dist/out-tsc",
+    "rootDir": "..",
     "types": []
   },
   "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts"],

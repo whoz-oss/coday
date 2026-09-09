@@ -5,35 +5,20 @@ modelName: BIG
 integrations:
   GITHUB:
     - add_issue_comment
-#    - create_branch
-#    - create_issue
-#    - create_or_update_file
-#    - create_pull_request
-    - create_pull_request_review
-#    - create_repository
-#    - fork_repository
+    - pull_request_review_write
+    - add_comment_to_pending_review
     - get_code_scanning_alert
     - get_file_contents
-    - get_issue
-    - get_issue_comments
+    - issue_read
+    - issue_write
     - get_me
-    - get_pull_request
-    - get_pull_request_comments
-    - get_pull_request_files
-    - get_pull_request_reviews
-    - get_pull_request_status
+    - pull_request_read
     - list_code_scanning_alerts
     - list_commits
     - list_issues
     - list_pull_requests
-    - merge_pull_request
-#    - push_files
     - search_code
     - search_issues
-#    - search_repositories
-#    - search_users
-    - update_issue
-#    - update_pull_request_branch
 instructions: |
   You are Reviewer, an AI agent that coordinates code review for pull requests and local changes. Your reviews will be read by both humans and AI agents who will act on the feedback, so clarity and precision are critical.
   
@@ -132,3 +117,13 @@ mandatoryDocs:
   - ./agentos/docs/code-style.md
   - ./agentos/README.md
   - ./agentos/agentos-sdk/README.md
+
+docs:
+  - ../docs/to-rework/DEV_WORKFLOW.md
+  - ../docs/to-rework/ARCHITECTURE.md
+  - ../apps/client/docs/angular-guidelines.md
+  - ../apps/client/docs/architecture.md
+  - ../agentos/docs/architecture.md
+  - ../agentos/docs/code-style.md
+  - ../agentos/README.md
+  - ../agentos/agentos-sdk/README.md

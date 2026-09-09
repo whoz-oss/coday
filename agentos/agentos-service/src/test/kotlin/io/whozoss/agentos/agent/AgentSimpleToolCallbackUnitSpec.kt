@@ -2,28 +2,40 @@ package io.whozoss.agentos.agent
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldHaveSize as mediaHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.slot
+import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.tool.ToolCallback
 import reactor.core.publisher.Flux
 import java.util.UUID
@@ -55,12 +67,18 @@ class AgentSimpleToolCallbackUnitSpec :
             agentId: UUID,
             chatClient: ChatClient,
             tools: Collection<StandardTool<*>>,
+            maxAttachedImages: Int = 20,
+            toolMetricsService: ToolMetricsService? = null,
         ): AgentSimple =
             AgentSimple(
                 metadata = EntityMetadata(id = agentId),
                 name = "TestAgent",
                 chatClient = chatClient,
                 tools = tools,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
+                maxAttachedImages = maxAttachedImages,
+                toolMetricsService = toolMetricsService,
             )
 
         fun userMessage(
@@ -165,7 +183,7 @@ class AgentSimpleToolCallbackUnitSpec :
                     ): ToolExecutionResult {
                         receivedArgs += json
                         return ToolExecutionResult.success(
-                            """{"success":true,"datetime":"2026-02-27T11:02:37-05:00","timezone":"America/New_York"}"""
+                            """{"success":true,"datetime":"2026-02-27T11:02:37-05:00","timezone":"America/New_York"}""",
                         )
                     }
                 }
@@ -349,6 +367,145 @@ class AgentSimpleToolCallbackUnitSpec :
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
         }
 
+        "image-producing tool: images are kept on the event and the callback returns plain text (images go via history)" {
+            // AgentSimple now supports image delivery via the conversation history.
+            // The ToolCallback.call() return value must be plain text only — images reach
+            // the LLM on subsequent turns via convertEventsToMessages() injecting UserMessage+Media.
+            // The images must still be preserved on the ToolResponseEvent (persistence, SSE).
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val images = listOf(
+                MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 791, height = 1024),
+            )
+
+            val fakeTool =
+                object : StandardTool<Nothing> {
+                    override val name = "FILES__readAsImage"
+                    override val description = "Render a file visually"
+                    override val inputSchema = """{"type":"object","properties":{}}"""
+                    override val version = "1.0.0"
+                    override val paramType: Class<Nothing>? = null
+
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.successWithImages("Rendered PDF cv.pdf: page(s) 1 of 1", images)
+                }
+
+            var callbackReturn: String? = null
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "FILES__readAsImage" }
+                callbackReturn = cb.call("{}")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.just("done")
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(fakeTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "read my cv"))).toList()
+
+            val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
+            toolResponse.images shouldBe images
+            (toolResponse.output as MessageContent.Text).content shouldBe "Rendered PDF cv.pdf: page(s) 1 of 1"
+
+            // The callback returns only the text output — no "not supported" note
+            callbackReturn shouldNotBe null
+            callbackReturn!! shouldBe "Rendered PDF cv.pdf: page(s) 1 of 1"
+            callbackReturn!! shouldNotContain "does not support image attachments"
+        }
+
+        "history replay injects UserMessage with Media for image tool responses, never base64 in ToolResponseMessage" {
+            // When the conversation history contains a ToolResponseEvent with images,
+            // convertEventsToMessages() must:
+            // 1. Put plain text (no note) in the ToolResponseMessage
+            // 2. Inject a follow-up UserMessage with Media attachments (base64 decoded)
+            // 3. Never put raw base64 directly in the ToolResponseMessage text
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val promptSlot = slot<Prompt>()
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(capture(promptSlot)).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } returns Flux.just("response")
+
+            val agent = makeAgent(agentId, mockChatClient, emptyList())
+
+            val history =
+                listOf(
+                    userMessage(namespaceId, caseId, "read my cv"),
+                    ToolRequestEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-img-1",
+                        toolName = "FILES__readAsImage",
+                        args = """{"filePath":"cv.pdf"}""",
+                    ),
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        toolRequestId = "req-img-1",
+                        toolName = "FILES__readAsImage",
+                        output = MessageContent.Text("Rendered PDF cv.pdf: page(s) 1 of 1"),
+                        images = listOf(
+                            MessageContent.Image(content = "aGVsbG8=", mimeType = "image/jpeg", width = 10, height = 10),
+                        ),
+                    ),
+                    userMessage(namespaceId, caseId, "so what does it say?"),
+                )
+
+            agent.run(history).toList()
+
+            val promptMessages = promptSlot.captured.instructions
+
+            // ToolResponseMessage must have plain text only — no base64, no "not supported" note
+            val toolResponseMessage =
+                promptMessages
+                    .filterIsInstance<org.springframework.ai.chat.messages.ToolResponseMessage>()
+                    .single()
+            val responseData = toolResponseMessage.responses.single().responseData()
+            responseData shouldContain "Rendered PDF cv.pdf"
+            responseData shouldNotContain "aGVsbG8="
+            responseData shouldNotContain "does not support image attachments"
+            responseData shouldNotContain "no longer attached"
+
+            // A follow-up UserMessage with Media must have been injected after the ToolResponseMessage
+            val toolResponseIdx = promptMessages.indexOf(toolResponseMessage)
+            val imageUserMsg = promptMessages
+                .drop(toolResponseIdx + 1)
+                .filterIsInstance<UserMessage>()
+                .firstOrNull { it.text.contains("FILES__readAsImage") }
+            imageUserMsg shouldNotBe null
+            imageUserMsg!!.text shouldContain "Attached"
+            imageUserMsg.media shouldHaveSize 1
+        }
+
+        "NonTransientAiException from LLM provider surfaces as ErrorEvent + AgentFinishedEvent, no generic error" {
+            // Regression guard for WZ-32274: a 4xx from the provider must be caught
+            // specifically so the agent terminates cleanly and the user gets a clear message.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(any<List<ToolCallback>>()).stream() } returns mockStreamSpec
+            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+            every { mockStreamSpec.content() } throws NonTransientAiException("400 - invalid_request_error")
+
+            val agent = makeAgent(agentId, mockChatClient, emptyList())
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "hello"))).toList()
+
+            val errorEvents = events.filterIsInstance<ErrorEvent>()
+            errorEvents shouldHaveSize 1
+            errorEvents[0].message shouldContain "AI provider rejected"
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
         "convertEventsToMessages should not crash when history contains a ToolRequestEvent with null args" {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
@@ -393,4 +550,262 @@ class AgentSimpleToolCallbackUnitSpec :
             events shouldHaveAtLeastSize 3
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
         }
+
+        // -------------------------------------------------------------------------
+        // Tool failures are tool results, not run failures
+        // -------------------------------------------------------------------------
+
+        "the exact production payload is returned as a tool error instead of aborting the run" {
+            // Regression (prod): the LLM sent "fileTypes": "kt" (a scalar) to FILES__searchFiles.
+            // The SDK mapper rejects it before execute(), and the raw MismatchedInputException
+            // escaping the ToolCallback killed the whole turn. It must come back to the model as
+            // an explicit tool error it can correct on the next call.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val arrayTool =
+                object : StandardTool<ArrayInput> {
+                    override val name = "FILES__searchFiles"
+                    override val description = "Search files"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType: Class<ArrayInput> = ArrayInput::class.java
+
+                    override suspend fun execute(
+                        input: ArrayInput?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("should not be reached")
+                }
+
+            var returnedToLlm: String? = null
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "FILES__searchFiles" }
+                // Exact shape sent by the LLM in production
+                returnedToLlm = cb.call("""{"path":"agentos","fileName":"Repo","fileTypes":"kt"}""")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.just("Let me fix the call")
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(arrayTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "find the repo"))).toList()
+
+            val returned = returnedToLlm
+            returned shouldNotBe null
+            returned shouldContain "Error executing tool"
+            returned shouldContain "'kt'"
+
+            // Request and response are paired and both reach the stream — master lost both.
+            val toolRequest = events.filterIsInstance<ToolRequestEvent>().single()
+            val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
+            toolResponse.toolRequestId shouldBe toolRequest.toolRequestId
+            toolResponse.success shouldBe false
+            (toolResponse.output as MessageContent.Text).content shouldBe returned
+
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            events.filterIsInstance<ErrorEvent>() shouldHaveSize 0
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "a deserialization failure is returned to the LLM instead of aborting the run" {
+            // Spring AI only turns ToolExecutionException into a tool result; any other exception
+            // escaping ToolCallback.call() errors the stream and ends the turn. A malformed
+            // argument must come back to the model as a tool error so it can correct its call.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val arrayTool =
+                object : StandardTool<ArrayInput> {
+                    override val name = "FILES__searchFiles"
+                    override val description = "Search files"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType: Class<ArrayInput> = ArrayInput::class.java
+
+                    override suspend fun execute(
+                        input: ArrayInput?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = ToolExecutionResult.success("should not be reached")
+                }
+
+            var returnedToLlm: String? = null
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "FILES__searchFiles" }
+                // Misnamed property: FAIL_ON_UNKNOWN_PROPERTIES stays on, Jackson must reject it
+                returnedToLlm = cb.call("""{"file_types":"kt"}""")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.just("Let me retry")
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(arrayTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "find the repo"))).toList()
+
+            val returned = returnedToLlm
+            returned shouldNotBe null
+            returned shouldContain "Error executing tool"
+            returned shouldContain "file_types"
+
+            val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
+            toolResponse.success shouldBe false
+            (toolResponse.output as MessageContent.Text).content shouldBe returned
+            toolResponse.durationMs shouldNotBe null
+
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "a tool that throws during execute returns an error result instead of aborting the run" {
+            // Same contract for any failure, not only Jackson: parity with AgentAdvanced.executeTool.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val throwingTool =
+                object : StandardTool<Nothing> {
+                    override val name = "Boom"
+                    override val description = "Always fails"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType: Class<Nothing>? = null
+
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = throw IllegalStateException("boom")
+                }
+
+            var returnedToLlm: String? = null
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "Boom" }
+                returnedToLlm = cb.call("{}")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.just("That failed")
+
+            val meterRegistry = SimpleMeterRegistry()
+            val agent =
+                makeAgent(
+                    agentId,
+                    mockChatClient,
+                    listOf(throwingTool),
+                    toolMetricsService = ToolMetricsService(meterRegistry),
+                )
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "go"))).toList()
+
+            returnedToLlm shouldBe "Error executing tool: boom"
+
+            // The catch no longer stops the timer itself: the shared tail does, from
+            // executionResult.success. Pin the failure tag so a regression there cannot
+            // silently report tool failures as successes.
+            val timer =
+                meterRegistry
+                    .find(ToolMetricsService.METRIC_TOOL_CALLS_DURATION)
+                    .tag(ToolMetricsService.TAG_TOOL_NAME, "Boom")
+                    .tag(ToolMetricsService.TAG_STATUS, ToolMetricsService.STATUS_FAILURE)
+                    .timer()
+            timer.shouldNotBeNull()
+            timer.count() shouldBe 1L
+
+            val toolResponse = events.filterIsInstance<ToolResponseEvent>().single()
+            toolResponse.success shouldBe false
+            (toolResponse.output as MessageContent.Text).content shouldBe "Error executing tool: boom"
+            toolResponse.durationMs shouldNotBe null
+
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+        }
+
+        "cancellation inside a tool is rethrown, not turned into a tool result" {
+            // The guard at the top of the generic catch: a cancellation signal must keep
+            // unwinding the run (as on master) instead of becoming a result the model is
+            // re-prompted on.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val cancellingTool =
+                object : StandardTool<Nothing> {
+                    override val name = "Cancel"
+                    override val description = "Cancels the run"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType: Class<Nothing>? = null
+
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = throw CancellationException("stop")
+                }
+
+            var thrown: Throwable? = null
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "Cancel" }
+                thrown = runCatching { cb.call("{}") }.exceptionOrNull()
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.empty()
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(cancellingTool))
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "go"))).toList()
+
+            thrown.shouldBeInstanceOf<CancellationException>()
+            events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 0
+        }
+
+        "an exception without a message falls back to the exception class name" {
+            // Otherwise the model would receive "Error executing tool: null" and have nothing to act on.
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+
+            val messagelessTool =
+                object : StandardTool<Nothing> {
+                    override val name = "Silent"
+                    override val description = "Fails without a message"
+                    override val inputSchema = "{}"
+                    override val version = "1.0.0"
+                    override val paramType: Class<Nothing>? = null
+
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): ToolExecutionResult = throw IllegalStateException()
+                }
+
+            var returnedToLlm: String? = null
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallbackSlot = slot<List<ToolCallback>>()
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
+                val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "Silent" }
+                returnedToLlm = cb.call("{}")
+                mockStreamSpec
+            }
+            every { mockStreamSpec.content() } returns Flux.just("That failed")
+
+            val agent = makeAgent(agentId, mockChatClient, listOf(messagelessTool))
+            agent.run(listOf(userMessage(namespaceId, caseId, "go"))).toList()
+
+            returnedToLlm shouldBe "Error executing tool: IllegalStateException"
+        }
     })
+
+/** Mirrors the three properties the LLM sent to FILES__searchFiles in production. */
+private data class ArrayInput(
+    val fileName: String? = null,
+    val path: String? = null,
+    val fileTypes: List<String>? = null,
+)

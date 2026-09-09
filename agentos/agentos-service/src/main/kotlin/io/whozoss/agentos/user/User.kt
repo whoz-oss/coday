@@ -24,4 +24,10 @@ data class User(
     val lastname: String? = null,
     val bio: String? = null,
     val isAdmin: Boolean = false,
-) : Entity
+) : Entity {
+    /** Full name when available, falling back to the UUID string for a guaranteed non-blank identity label. */
+    fun displayName(): String =
+        listOfNotNull(firstname, lastname)
+            .joinToString(" ")
+            .ifBlank { id.toString() }
+}

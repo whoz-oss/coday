@@ -14,18 +14,8 @@ import java.util.UUID
 
 /**
  * Decorator over a delegate [AgentConfigRepository] that augments [findByParent]
- * with [AgentConfig] entries loaded from YAML files on the filesystem.
- *
- * When the namespace resolved from [parentId] has a non-null [configPath], the
- * directory `<configPath>/agents/` is scanned for `.yaml` / `.yml` files. Each
- * file is parsed as an [AgentConfigYamlModel] and converted to an [AgentConfig]
- * using the `name` field inside the file as identity (not the filename).
- *
- * Results from the filesystem are merged with those from the delegate:
- * - Filesystem configs whose [AgentConfig.name] already exists in the delegate
- *   result are silently dropped (persisted configs always win).
- * - The merged list preserves delegate ordering first, then filesystem entries
- *   sorted by name.
+ * and [findDeployedByNamespaceIdAndUserIdAndName] with [AgentConfig] entries loaded from
+ * YAML files on the filesystem.
  *
  * All write operations ([save], [delete], [deleteByParent]) are forwarded to the
  * delegate unchanged — the filesystem is never written.
@@ -36,46 +26,144 @@ import java.util.UUID
 class FilesystemAgentConfigRepository(
     private val delegate: AgentConfigRepository,
     private val namespaceRepository: NamespaceRepository,
+    private val yamlMapper: ObjectMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build()),
     ttl: Duration = Duration.ofMinutes(5),
 ) : AgentConfigRepository by delegate {
-
-    private val yamlMapper =
-        ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
-
     private val cacheRegistry =
         FilesystemYamlCacheRegistry(
             parser = ::parseYamlFile,
             ttl = ttl,
         )
 
-    override fun findAvailableByNamespaceIdAndUserId(namespaceId: UUID, userId: UUID, agentName: String?): List<AgentConfig> =
-        delegate.findAvailableByNamespaceIdAndUserId(namespaceId = namespaceId, userId = userId, agentName = agentName)
+    override fun findDeployedByNamespaceIdAndUserIdAndName(
+        namespaceId: UUID?,
+        userId: UUID?,
+        agentName: String?,
+        withDisabled: Boolean,
+    ): List<AgentConfig> {
+        val fromDelegate =
+            delegate.findDeployedByNamespaceIdAndUserIdAndName(
+                namespaceId = namespaceId,
+                userId = userId,
+                agentName = agentName,
+                withDisabled = withDisabled,
+            )
 
-    override fun findByParent(parentId: UUID): List<AgentConfig> {
-        val persisted = delegate.findByParent(parentId)
+        val fromFilesystem = namespaceId?.let { retrieveFilesystemAgentConfigs(namespaceId) } ?: emptyList()
 
-        val configPath = namespaceRepository.findByIds(listOf(parentId)).firstOrNull()?.configPath
-            ?: return persisted
-
-        val directory = Path.of(configPath, AGENTS_SUBDIR)
-        val fromFilesystem = cacheRegistry.getAll(directory)
-
-        if (fromFilesystem.isEmpty()) return persisted
-
-        val persistedNames = persisted.mapTo(HashSet()) { it.name.lowercase() }
+        // Filesystem agents are implicitly deployed on the namespace — include them
+        // in the available set, applying the same merge rules as findByParent:
+        // persisted (delegate) results always win on name collision.
+        val delegateNames = fromDelegate.mapTo(HashSet()) { it.name.lowercase() }
         val filesystemAdditions =
             fromFilesystem
-                .filter { it.name.lowercase() !in persistedNames }
-                .map { it.copy(namespaceId = parentId) }
+                .filter { it.name.lowercase() !in delegateNames }
+                .filter { agentName == null || it.name.startsWith(agentName, ignoreCase = true) }
+                .map { it.copy(namespaceId = namespaceId) }
                 .sortedBy { it.name }
-        val merged = persisted + filesystemAdditions
 
-        val added = merged.size - persisted.size
-        logger.debug { "[FilesystemAgentConfigRepository] namespace=$parentId: ${persisted.size} persisted + $added filesystem = ${merged.size} total" }
+        return fromDelegate + filesystemAdditions
+    }
+
+    private fun retrieveFilesystemAgentConfigs(namespaceId: UUID): List<AgentConfig> {
+        val configPath = namespaceRepository.findByIds(listOf(namespaceId)).firstOrNull()?.configPath
+        return if (configPath == null) {
+            emptyList()
+        } else {
+            val directory = Path.of(configPath, AGENTS_SUBDIR)
+            cacheRegistry.getAll(directory)
+        }
+    }
+
+    /**
+     * Returns agents for [parentId], optionally filtered to published ones.
+     *
+     * When [parentId] is null (platform-level agents), delegates directly without
+     * filesystem augmentation — platform agents have no namespace configPath.
+     *
+     * When [parentId] is a namespace UUID, delegates to the underlying repository
+     * with [withDisabled], then merges filesystem agents (always published by definition).
+     */
+    override fun findByParent(
+        parentId: UUID?,
+        withDisabled: Boolean,
+    ): List<AgentConfig> {
+        val persisted = delegate.findByParent(parentId, withDisabled)
+        val fromFilesystem =
+            parentId?.let { filesystemAgents(parentId, excludeNames = persisted.mapTo(HashSet()) { it.name.lowercase() }) } ?: emptyList()
+        val merged = persisted + fromFilesystem
+        logger.debug {
+            "[FilesystemAgentConfigRepository] namespace=$parentId: ${persisted.size} persisted + ${fromFilesystem.size} filesystem = ${merged.size} total"
+        }
         return merged
     }
 
-    private fun parseYamlFile(file: Path): AgentConfig? {
+    override fun findByParent(parentId: UUID?): List<AgentConfig> = findByParent(parentId, withDisabled = true)
+
+    /**
+     * Augments the delegate lookup with filesystem agents.
+     *
+     * For IDs that Neo4j does not know about, scans every namespace that has a
+     * [configPath] and checks whether the synthetic filesystem ID matches.  The
+     * scan is cheap because [FilesystemYamlCacheRegistry] caches per directory.
+     */
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<AgentConfig> {
+        val fromDelegate = delegate.findByIds(ids, withRemoved)
+        val foundIds = fromDelegate.mapTo(HashSet()) { it.metadata.id }
+        val missing = ids.filter { it !in foundIds }
+        if (missing.isEmpty()) return fromDelegate
+
+        val missingSet = missing.toHashSet()
+        val fromFilesystem =
+            namespaceRepository
+                .findByParent(NamespaceRepository.NAMESPACE_PARENT_KEY)
+                .filter { it.configPath != null }
+                .flatMap { namespace ->
+                    filesystemAgents(namespace.metadata.id)
+                        .filter { it.metadata.id in missingSet }
+                }
+
+        return fromDelegate + fromFilesystem
+    }
+
+    /**
+     * Loads and returns agent configs from the filesystem for [parentId].
+     *
+     * When [excludeNames] is provided, any filesystem agent whose lowercased name
+     * is in that set is dropped (persisted configs always win over filesystem ones).
+     */
+    private fun filesystemAgents(
+        parentId: UUID,
+        excludeNames: Set<String> = emptySet(),
+    ): List<AgentConfig> {
+        val configPath =
+            namespaceRepository.findByIds(listOf(parentId)).firstOrNull()?.configPath
+                ?: return emptyList()
+        val directory = Path.of(configPath, AGENTS_SUBDIR)
+        return cacheRegistry
+            .getAll(directory)
+            .filter { it.name.lowercase() !in excludeNames }
+            .map { it.copy(namespaceId = parentId) }
+            .sortedBy { it.name }
+    }
+
+    /**
+     * [directory] (the cache's root, i.e. `<configPath>/agents`) is unused here —
+     * agent `docs` entries resolve relative to the YAML file itself ([file].parent),
+     * a deliberately distinct mechanism from the `{{NAMESPACE_CONFIG_PATH}}` token used
+     * for [io.whozoss.agentos.integrationConfig.IntegrationConfig] parameters. `docs` has a
+     * known, fixed semantics (file / directory listing) inherited from Coday, so it keeps
+     * its own path-resolution rule rather than being unified with the free-form
+     * `parameters` substitution.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun parseYamlFile(
+        directory: Path,
+        file: Path,
+    ): AgentConfig? {
         val model = yamlMapper.readValue(file.toFile(), AgentConfigYamlModel::class.java)
         if (model.name.isBlank()) {
             logger.warn { "[FilesystemAgentConfigRepository] Skipping $file: 'name' is blank" }
@@ -83,25 +171,43 @@ class FilesystemAgentConfigRepository(
         }
         return AgentConfig(
             // Stable UUID derived from the name so identity survives restarts.
-            // namespaceId is a placeholder here; it is overwritten in findByParent.
+            // namespaceId is null here; it is overwritten in findByParent.
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("filesystem-agent:${model.name}".toByteArray())),
-            namespaceId = PLACEHOLDER_NAMESPACE_ID,
+            namespaceId = null,
             name = model.name,
             description = model.description,
             instructions = model.instructions,
             modelName = model.modelName,
             integrations = model.integrations,
+            advancedExecution = model.advancedExecution,
+            subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
+            docs =
+                model.docs
+                    ?.filter { it.isNotBlank() }
+                    ?.map { entry ->
+                        // Preserve the trailing pattern marker ('/' or '/*') before normalization:
+                        // Path.normalize() strips trailing slashes, which would make the
+                        // directory-listing pattern (endsWith("/")) undetectable downstream.
+                        val suffix =
+                            when {
+                                entry.endsWith("/*") -> "/*"
+                                entry.endsWith("/") -> "/"
+                                else -> ""
+                            }
+                        val rawPath = entry.removeSuffix(suffix)
+                        file.parent
+                            .resolve(rawPath)
+                            .toAbsolutePath()
+                            .normalize()
+                            .toString() + suffix
+                    }?.takeIf { it.isNotEmpty() },
+            // Filesystem agents have no lifecycle — they are always published.
+            enabled = true,
         )
     }
 
     companion object : KLogging() {
         private const val AGENTS_SUBDIR = "agents"
-
-        /**
-         * Placeholder used during YAML parsing before the real namespaceId is known.
-         * Always overwritten in [findByParent] before the config is returned.
-         */
-        private val PLACEHOLDER_NAMESPACE_ID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000")
     }
 }
 
@@ -125,6 +231,11 @@ private data class AgentConfigYamlModel(
     val name: String = "",
     val description: String? = null,
     val instructions: String? = null,
+    val advancedExecution: Boolean = false,
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
+    val subAgents: List<String>? = null,
+    val docs: List<String>? = null,
+    // mandatoryDocs kept for backward compat with existing YAML files
+    val mandatoryDocs: List<String>? = null,
 )

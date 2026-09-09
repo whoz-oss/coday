@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.sdk.agent.Agent
 import java.util.UUID
 
@@ -21,21 +22,57 @@ interface AgentService {
      * Find and instantiate an agent by exact or partial name match.
      * The agent is built with [context] so its instructions and tool set
      * are scoped to the given namespace and case.
+     *
+     * When [subCaseManager] is non-null and the resolved [AgentConfig] declares
+     * [io.whozoss.agentos.agentConfig.AgentConfig.subAgents], a
+     * [io.whozoss.agentos.delegation.DelegationTool] is added to the agent's tool set.
+     * The allowed agents list is computed by resolving the subAgents patterns against
+     * the agents actually accessible to the current user in the namespace.
+     *
      * Throws if no model matches [namePart].
      */
-    fun findAgentByName(
+    suspend fun findAgentByName(
         namePart: String,
         context: AgentExecutionContext,
+        subCaseManager: SubCaseManager? = null,
     ): Agent
+
+    /**
+     * Resolve the fully-computed definition for an agent config, without instantiating
+     * a live [Agent].
+     *
+     * Runs the same resolution pipeline as [findAgentByName] — model overlay, provider
+     * overlay, instruction building, tool resolution — but stops before constructing the
+     * Spring AI chat client and agent objects. The returned [ResolvedAgentDefinition]
+     * captures everything the instantiation phase would consume.
+     *
+     * Useful for inspection (e.g. a debug endpoint) and as the shared intermediate
+     * representation between the two phases of agent construction.
+     *
+     * Throws [IllegalArgumentException] if the config is not found or no model can be resolved.
+     */
+    suspend fun resolveDefinition(
+        agentConfigId: UUID,
+        namespaceId: UUID,
+        userId: UUID? = null,
+    ): ResolvedAgentDefinition
 
     /**
      * Resolve the canonical name for [namePart] within [namespaceId] by
      * [io.whozoss.agentos.agentConfig.AgentConfig] name matching,
      * without instantiating a full Agent.
-     * Returns null if no [io.whozoss.agentos.agentConfig.AgentConfig] matches.
+     *
+     * When [userId] is non-null, only agents accessible to that user
+     * (via group or namespace membership) are considered — same semantics as
+     * [io.whozoss.agentos.agentConfig.AgentConfigService.findDeployedByNamespaceIdAndUserIdAndName].
+     * When [userId] is null (system / anonymous call), falls back to a plain
+     * namespace-wide name lookup.
+     *
+     * Returns null if no matching [io.whozoss.agentos.agentConfig.AgentConfig] is found.
      */
     fun resolveAgentName(
         namePart: String,
-        namespaceId: UUID,
+        namespaceId: UUID?,
+        userId: UUID? = null,
     ): String?
 }

@@ -152,14 +152,24 @@ class IntegrationConfigCrossUserIsolationSpec : StringSpec() {
         // ---------------------------------------------------------------------
         // LIST
         // ---------------------------------------------------------------------
-        "LIST as alice never includes bob's rows (either mode)" {
+        "LIST as alice with ?userId=me never includes bob's rows" {
             createBobRow(namespaceId = null, name = "BOB_GLOBAL_${UUID.randomUUID()}")
             createBobRow(namespaceId = sharedNamespaceId, name = "BOB_NS_${UUID.randomUUID()}")
             every { userService.getCurrentUser() } returns alice
 
-            mockMvc.perform(get("/api/integration-configs"))
+            mockMvc.perform(get("/api/integration-configs?userId=me"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$[?(@.userId != '$aliceId')]").isEmpty)
+        }
+
+        "LIST without params (platform scope) returns only platform configs, never user-scoped rows" {
+            createBobRow(namespaceId = null, name = "BOB_GLOBAL_${UUID.randomUUID()}")
+            every { userService.getCurrentUser() } returns alice
+
+            // Platform configs have userId=null AND namespaceId=null; user-scoped rows must not appear
+            mockMvc.perform(get("/api/integration-configs"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.userId != null)]").isEmpty)
         }
 
         "LIST as alice with ?userId=<bob.id> returns 400 (only 'me' sentinel exposed)" {

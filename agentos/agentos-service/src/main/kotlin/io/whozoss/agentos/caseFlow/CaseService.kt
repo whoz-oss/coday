@@ -1,7 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.entity.EntityService
-import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.actor.Actor
 import java.util.UUID
 
@@ -23,6 +22,21 @@ import java.util.UUID
  * Parent type is UUID representing the namespaceId.
  */
 interface CaseService : EntityService<Case, UUID> {
+
+    /**
+     * Override to give CGLIB a concrete virtual method to proxy.
+     *
+     * Kotlin interface default methods compile to static synthetic methods
+     * (e.g. `EntityService.findById$default`) that CGLIB cannot intercept.
+     * Without this override, calling `findById` through a Spring-proxied
+     * `CaseService` falls through to the static default, which erases the
+     * generic `T` to `Entity` and causes a `ClassCastException` at the call site.
+     *
+     * The concrete implementation is in [CaseServiceImpl] and delegates directly
+     * to the repository, bypassing the interface default entirely.
+     */
+    override fun findById(id: UUID, withRemoved: Boolean): Case?
+
     // ========================================
     // Permission-filtered listing
     // ========================================
@@ -45,6 +59,13 @@ interface CaseService : EntityService<Case, UUID> {
      * ADMIN is intentionally excluded.
      */
     fun findConcerningUser(userId: UUID): List<Case>
+
+    /**
+     * List all cases concerning [userId] scoped to a single [namespaceId].
+     *
+     * Same permission rule as [findConcerningUser] but restricted to one namespace.
+     */
+    fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
 
     // ========================================
     // Runtime Instance Management

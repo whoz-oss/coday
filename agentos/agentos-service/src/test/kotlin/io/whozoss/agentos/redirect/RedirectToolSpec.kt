@@ -16,6 +16,127 @@ class RedirectToolSpec : StringSpec({
         names.map { RedirectTool.EligibleAgent(name = it, description = "Agent $it") }
 
     // -------------------------------------------------------------------------
+    // description - integration rendering
+    // -------------------------------------------------------------------------
+
+    "description is the no-agents warning when eligible agents list is empty" {
+        val tool = RedirectTool(configName = null, eligibleAgents = emptyList())
+        tool.description shouldBe
+            "No other agents are currently available for redirection. Do not attempt to delegate — handle the request yourself or inform the user that no other agent can address it."
+    }
+
+    "description includes relevance instructions and agent list when agents are available" {
+        val tool = RedirectTool(
+            configName = null,
+            eligibleAgents = listOf(RedirectTool.EligibleAgent(name = "AgentA", description = "Does A")),
+        )
+        tool.description shouldBe """
+            Route the current request to another agent.
+            Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
+            If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
+            Available agents:<AvailableAgents>
+              - AgentA: Does A
+            </AvailableAgents>
+        """.trimIndent()
+    }
+
+    "description includes integration names when agent has integrations" {
+        val tool = RedirectTool(
+            configName = null,
+            eligibleAgents = listOf(
+                RedirectTool.EligibleAgent(
+                    name = "AgentA",
+                    description = "Does A",
+                    integrations = listOf(
+                        RedirectTool.Integration(name = "JIRA", allowedTools = null),
+                        RedirectTool.Integration(name = "FILES", allowedTools = null),
+                    ),
+                ),
+            ),
+        )
+        tool.description shouldBe """
+            Route the current request to another agent.
+            Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
+            If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
+            Available agents:<AvailableAgents>
+              - AgentA: Does A
+                Integrations:
+                  - JIRA
+                  - FILES
+            </AvailableAgents>
+        """.trimIndent()
+    }
+
+    "description includes allowed tools when integration has a whitelist" {
+        val tool = RedirectTool(
+            configName = null,
+            eligibleAgents = listOf(
+                RedirectTool.EligibleAgent(
+                    name = "AgentA",
+                    description = "Does A",
+                    integrations = listOf(
+                        RedirectTool.Integration(name = "JIRA", allowedTools = listOf("GetIssue", "PostComment")),
+                    ),
+                ),
+            ),
+        )
+        tool.description shouldBe """
+            Route the current request to another agent.
+            Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
+            If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
+            Available agents:<AvailableAgents>
+              - AgentA: Does A
+                Integrations:
+                  - JIRA: GetIssue, PostComment
+            </AvailableAgents>
+        """.trimIndent()
+    }
+
+    "description omits integrations section when agent has no integrations" {
+        val tool = RedirectTool(
+            configName = null,
+            eligibleAgents = listOf(
+                RedirectTool.EligibleAgent(name = "AgentA", description = "Does A"),
+            ),
+        )
+        tool.description shouldBe """
+            Route the current request to another agent.
+            Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
+            If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
+            Available agents:<AvailableAgents>
+              - AgentA: Does A
+            </AvailableAgents>
+        """.trimIndent()
+    }
+
+    "description mixes agents with and without integrations" {
+        val tool = RedirectTool(
+            configName = null,
+            eligibleAgents = listOf(
+                RedirectTool.EligibleAgent(
+                    name = "AgentA",
+                    description = "Does A",
+                    integrations = listOf(
+                        RedirectTool.Integration(name = "JIRA", allowedTools = listOf("GetIssue")),
+                    ),
+                ),
+                RedirectTool.EligibleAgent(name = "AgentB", description = "Does B"),
+            ),
+        )
+        tool.description shouldBe """
+            Route the current request to another agent.
+            Only use this tool if at least one of the available agents below is clearly relevant to the user's request.
+            If no available agent is relevant, do NOT call this tool — instead, respond directly to the user explaining that no agent can handle the request.
+            Available agents:<AvailableAgents>
+              - AgentA: Does A
+                Integrations:
+                  - JIRA: GetIssue
+              - AgentB: Does B
+            </AvailableAgents>
+        """.trimIndent()
+    }
+
+    // -------------------------------------------------------------------------
     // execute - null input
     // WZ-31894: previously threw error("RedirectTool: agentName is required but was not provided by the LLM")
     // now returns a human-readable string so the LLM can surface it gracefully

@@ -1,0 +1,249 @@
+<div class="scheduled-prompt-form">
+  <header class="scheduled-prompt-form__header">
+    <button class="scheduled-prompt-form__back" type="button" (click)="cancel()" title="Back to scheduled prompts">
+      <span class="scheduled-prompt-form__back-icon">&#8592;</span>
+      {{ isPlatformMode ? 'Platform Scheduled Prompts' : 'Scheduled Prompts' }}
+    </button>
+    <h1 class="scheduled-prompt-form__title">
+      {{ isEditMode() ? 'Edit scheduled prompt' : 'New scheduled prompt' }}
+    </h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="scheduled-prompt-form__loading">Loading&hellip;</p>
+  } @else {
+    <form class="scheduled-prompt-form__form" [formGroup]="form" (ngSubmit)="submit()">
+      <!-- Name (slug) -->
+      <div class="scheduled-prompt-form__field">
+        <label class="scheduled-prompt-form__label" for="sp-name"> Name <span aria-hidden="true">*</span> </label>
+        <input
+          id="sp-name"
+          class="scheduled-prompt-form__input"
+          [class.scheduled-prompt-form__input--invalid]="nameControl.invalid && nameControl.touched"
+          type="text"
+          placeholder="e.g. Weekly Report"
+          [formControl]="nameControl"
+          autocomplete="off"
+        />
+        @if (nameControl.invalid && nameControl.touched) {
+          <span class="scheduled-prompt-form__field-error"> Name is required. </span>
+        }
+        <span class="scheduled-prompt-form__field-hint"
+          >Free-form name (e.g. "Weekly Report"). Cannot be changed after creation.</span
+        >
+      </div>
+
+      <!-- Description -->
+      <div class="scheduled-prompt-form__field">
+        <label class="scheduled-prompt-form__label" for="sp-description">Description</label>
+        <input
+          id="sp-description"
+          class="scheduled-prompt-form__input"
+          type="text"
+          placeholder="Optional — short description"
+          [formControl]="descriptionControl"
+          autocomplete="off"
+        />
+      </div>
+
+      <!-- Agent Config (required, immutable post-creation) -->
+      <div class="scheduled-prompt-form__field">
+        <label class="scheduled-prompt-form__label" for="sp-agent-config">
+          Agent Config <span aria-hidden="true">*</span>
+        </label>
+        @if (isEditMode()) {
+          <p class="scheduled-prompt-form__readonly-value">{{ resolveAgentConfigName(agentConfigIdControl.value) }}</p>
+          <span class="scheduled-prompt-form__field-hint">Agent Config cannot be changed after creation.</span>
+        } @else if (availableAgentConfigs().length === 0) {
+          <p class="scheduled-prompt-form__field-hint">
+            No agent configs available in this scope yet.
+            @if (!isPlatformMode) {
+              <a [href]="'/agentos/' + namespaceId + '/agent-configs/new'">Add an agent config</a> first.
+            }
+          </p>
+        } @else {
+          <select id="sp-agent-config" class="scheduled-prompt-form__select" [formControl]="agentConfigIdControl">
+            <option value="" disabled>Select an agent config&hellip;</option>
+            @for (agent of availableAgentConfigs(); track agent.id) {
+              <option [value]="agent.id">{{ agent.name }}</option>
+            }
+          </select>
+          @if (agentConfigIdControl.invalid && agentConfigIdControl.touched) {
+            <span class="scheduled-prompt-form__field-error">Agent Config is required.</span>
+          }
+          <span class="scheduled-prompt-form__field-hint">Immutable after creation.</span>
+        }
+      </div>
+
+      <!-- Opening message -->
+      <div class="scheduled-prompt-form__field">
+        <label class="scheduled-prompt-form__label" for="sp-prompt-content">
+          Opening message <span aria-hidden="true">*</span>
+        </label>
+        <textarea
+          id="sp-prompt-content"
+          class="scheduled-prompt-form__textarea"
+          [class.scheduled-prompt-form__textarea--invalid]="
+            promptContentControl.invalid && promptContentControl.touched
+          "
+          rows="6"
+          placeholder="Enter the message sent to the agent when the scheduled prompt fires&hellip;"
+          [formControl]="promptContentControl"
+        ></textarea>
+        @if (promptContentControl.invalid && promptContentControl.touched) {
+          <span class="scheduled-prompt-form__field-error">Opening message is required.</span>
+        }
+        <span class="scheduled-prompt-form__field-hint">
+          The message sent to the agent when the scheduled prompt fires.
+        </span>
+      </div>
+
+      <!-- ═══════════════════════ RECURRENCE ═══════════════════════ -->
+      <fieldset class="scheduled-prompt-form__fieldset">
+        <legend class="scheduled-prompt-form__legend">Recurrence</legend>
+
+        <div class="scheduled-prompt-form__field">
+          <label class="scheduled-prompt-form__label" for="sp-unit"> Unit <span aria-hidden="true">*</span> </label>
+          <select id="sp-unit" class="scheduled-prompt-form__select" [formControl]="unitControl">
+            @for (u of schedulerUnits; track u.value) {
+              <option [value]="u.value">{{ u.label }}</option>
+            }
+          </select>
+        </div>
+
+        @if (showDayFilter()) {
+          <div class="scheduled-prompt-form__field">
+            <span class="scheduled-prompt-form__label">Days of week</span>
+            <div class="scheduled-prompt-form__day-grid">
+              @for (day of dayOptions; track day.value) {
+                <label class="scheduled-prompt-form__day-label">
+                  <input
+                    class="scheduled-prompt-form__day-checkbox"
+                    type="checkbox"
+                    [checked]="isDaySelected(day.value)"
+                    (change)="toggleDay(day.value)"
+                  />
+                  <span class="scheduled-prompt-form__day-text">{{ day.label }}</span>
+                </label>
+              }
+            </div>
+            <span class="scheduled-prompt-form__field-hint">Leave empty to run every day of the week.</span>
+          </div>
+        }
+
+        <div class="scheduled-prompt-form__field">
+          <label class="scheduled-prompt-form__label" for="sp-time">
+            Time (UTC) <span aria-hidden="true">*</span>
+          </label>
+          <div class="scheduled-prompt-form__time-wrapper">
+            <input
+              id="sp-time"
+              class="scheduled-prompt-form__input scheduled-prompt-form__input--time"
+              type="time"
+              [formControl]="timeUtcControl"
+            />
+            <span class="scheduled-prompt-form__utc-badge">UTC</span>
+          </div>
+          @if (timeUtcControl.invalid && timeUtcControl.touched) {
+            <span class="scheduled-prompt-form__field-error">Valid time is required (HH:mm).</span>
+          }
+        </div>
+      </fieldset>
+
+      <!-- ═══════════════════════ PLANNING ═══════════════════════ -->
+      <fieldset class="scheduled-prompt-form__fieldset">
+        <legend class="scheduled-prompt-form__legend">Planning</legend>
+
+        <div class="scheduled-prompt-form__field">
+          <label class="scheduled-prompt-form__label" for="sp-start-date">
+            Start date <span aria-hidden="true">*</span>
+          </label>
+          <input
+            id="sp-start-date"
+            class="scheduled-prompt-form__input"
+            [class.scheduled-prompt-form__input--invalid]="startDateControl.invalid && startDateControl.touched"
+            type="date"
+            [formControl]="startDateControl"
+          />
+          @if (startDateControl.invalid && startDateControl.touched) {
+            <span class="scheduled-prompt-form__field-error">Start date is required.</span>
+          }
+        </div>
+
+        <div class="scheduled-prompt-form__field">
+          <label class="scheduled-prompt-form__label" for="sp-end-type"> Ends <span aria-hidden="true">*</span> </label>
+          <select id="sp-end-type" class="scheduled-prompt-form__select" [formControl]="endTypeControl">
+            @for (et of endTypes; track et.value) {
+              <option [value]="et.value">{{ et.label }}</option>
+            }
+          </select>
+        </div>
+
+        @if (showEndDate()) {
+          <div class="scheduled-prompt-form__field">
+            <label class="scheduled-prompt-form__label" for="sp-end-date">
+              End date <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="sp-end-date"
+              class="scheduled-prompt-form__input"
+              [class.scheduled-prompt-form__input--invalid]="form.hasError('endDateRequired') && endDateControl.touched"
+              type="date"
+              [formControl]="endDateControl"
+            />
+            @if (form.hasError('endDateRequired') && endDateControl.touched) {
+              <span class="scheduled-prompt-form__field-error">End date is required.</span>
+            }
+          </div>
+        }
+
+        @if (showOccurrenceCount()) {
+          <div class="scheduled-prompt-form__field">
+            <label class="scheduled-prompt-form__label" for="sp-occurrence-count">
+              Number of occurrences <span aria-hidden="true">*</span>
+            </label>
+            <input
+              id="sp-occurrence-count"
+              class="scheduled-prompt-form__input scheduled-prompt-form__input--number"
+              [class.scheduled-prompt-form__input--invalid]="
+                form.hasError('occurrenceCountRequired') && occurrenceCountControl.touched
+              "
+              type="number"
+              min="1"
+              [formControl]="occurrenceCountControl"
+            />
+            @if (form.hasError('occurrenceCountRequired') && occurrenceCountControl.touched) {
+              <span class="scheduled-prompt-form__field-error">Must be at least 1.</span>
+            }
+          </div>
+        }
+      </fieldset>
+
+      <!-- Enabled toggle -->
+      <div class="scheduled-prompt-form__field">
+        <label class="scheduled-prompt-form__toggle-label">
+          <input class="scheduled-prompt-form__toggle-checkbox" type="checkbox" [formControl]="enabledControl" />
+          <span class="scheduled-prompt-form__toggle-text">Enabled</span>
+        </label>
+        <p class="scheduled-prompt-form__toggle-hint">
+          When disabled, the scheduled prompt is saved but will not run on schedule.
+        </p>
+      </div>
+
+      @if (errorMessage()) {
+        <p class="scheduled-prompt-form__error">{{ errorMessage() }}</p>
+      }
+
+      <div class="scheduled-prompt-form__actions">
+        <button
+          class="scheduled-prompt-form__btn scheduled-prompt-form__btn--primary"
+          type="submit"
+          [disabled]="form.invalid || isSubmitting()"
+        >
+          {{ isEditMode() ? 'Save changes' : 'Create scheduled prompt' }}
+        </button>
+        <button class="scheduled-prompt-form__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+</div>

@@ -1,3 +1,12 @@
+@userId=042c7eeb-6c12-425d-8b1e-c52af88b95c6
+@token=Bearer
+
 ### List users
 GET {{apiBaseUrl}}/api/users
 Content-Type: application/json
+Authorization: {{token}}
+
+### Delete user access
+DELETE {{apiBaseUrl}}/api/users/{{userId}}/access
+Content-Type: application/json
+Authorization: {{token}}

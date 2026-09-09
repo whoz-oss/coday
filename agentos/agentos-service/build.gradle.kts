@@ -90,6 +90,11 @@ dependencies {
     // Also used by Feign when the whoz profile activates feign.okhttp.enabled=true.
     implementation(libs.bundles.okhttp)
 
+    // Jolokia — HTTP/JSON bridge over JMX so Spring Boot Admin can invoke JMX operations
+    // (e.g. SchedulerEndpoint pause/resume) via its Jolokia integration.
+    // Version kept in sync with libs.versions.toml jolokia entry.
+    implementation(libs.jolokia.spring)
+
     // Spring Boot dependencies
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
@@ -102,26 +107,14 @@ dependencies {
     // spring-cloud-starter-eureka-client registers the service on Eureka.
     // All three are always on the classpath but disabled by default via
     // application-test.yml (tests) and absent of 'whoz' profile (standalone).
-    // Spring Cloud BOM — imported via platform() so Gradle's native dependency resolution
-    // picks up the managed versions. The spring-dependency-management plugin's
-    // dependencyManagement {} block does not reliably propagate BOM versions for
+    // Spring Cloud BOM (Northfields 2025.0.x) — imported via platform() so Gradle's native
+    // dependency resolution picks up the managed versions. The spring-dependency-management
+    // plugin's dependencyManagement {} block does not reliably propagate BOM versions for
     // artifacts without an explicit version in composite builds.
     implementation(platform(libs.spring.cloud.bom))
     implementation(libs.spring.cloud.starter.config)
     // Eureka client.
-    // Spring Cloud 2024.0.x uses eureka-client 2.0.x which ships eureka-client-jersey3
-    // as its sole HTTP transport. EurekaClientAutoConfiguration requires a
-    // TransportClientFactories bean which is provided exclusively by that module.
-    // Jersey3 in turn needs the Jakarta EE 10 JAX-RS API and a Jersey runtime;
-    // we pull in jersey-client + jersey-hk2 (the DI bridge) so the factory can
-    // instantiate its internal components without a full JAX-RS server on the classpath.
     implementation(libs.spring.cloud.starter.eureka.client)
-    // eureka-client-jersey3 provides the TransportClientFactories bean required by
-    // EurekaClientAutoConfiguration. Spring Cloud 2024.0.x does not pull it in
-    // automatically — it must be declared explicitly.
-    implementation(libs.eureka.client.jersey3)
-    implementation(libs.jersey.client)
-    implementation(libs.jersey.hk2)
 
     // OpenAPI / Swagger UI
     implementation(libs.springdoc.openapi.starter)
@@ -129,6 +122,10 @@ dependencies {
 
     // Logstash Logback Encoder — JSON structured logging (used by logback-spring.xml docker profile)
     runtimeOnly(libs.logstash.logback.encoder)
+
+    // Micrometer Datadog registry — exports tool-call metrics to Datadog.
+    // Disabled by default (requires DATADOG_API_KEY + management.datadog.metrics.export.enabled=true).
+    implementation(libs.micrometer.registry.statsd)
 
     // Jackson for JSON processing
     implementation(libs.jackson.module.kotlin)
@@ -205,6 +202,10 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
     testImplementation(libs.testcontainers.neo4j)
     testImplementation(libs.testcontainers.junit)
+    // kotlinx-coroutines-test — UnconfinedTestDispatcher / runTest for coroutine loop tests.
+    // The resolutionStrategy below pins it to kotlinCoroutines version (same as production coroutines).
+    testImplementation(libs.kotlinx.coroutines.test)
+
     // Neo4j test harness: starts an embedded Neo4j in-process for testing.
     // neo4j-harness 2026.x requires Netty 4.2.x (BoltServer uses 4.2 APIs).
     // Spring Boot BOM pins Netty 4.1.x, which Gradle's conflict resolution selects
@@ -227,8 +228,8 @@ dependencyManagement {
                 .get()
                 .toString(),
         )
-        // Spring Cloud BOM (Moore / 2024.0.x) — manages all spring-cloud-* dependency versions.
-        // Moore is the release train compatible with Spring Boot 3.4.x / 3.5.x.
+        // Spring Cloud BOM (Northfields / 2025.0.x) — manages all spring-cloud-* dependency versions.
+        // Northfields is the release train compatible with Spring Boot 3.5.x.
         // Must come after spring-ai-bom so that Spring Cloud wins for shared
         // artifacts (e.g. spring-cloud-commons) over any Spring AI transitive pulls.
         mavenBom(
@@ -241,7 +242,7 @@ dependencyManagement {
 
 kotlin {
     compilerOptions {
-        freeCompilerArgs.addAll("-Xjsr305=strict")
+        freeCompilerArgs.addAll("-Xjsr305=strict", "-Xemit-jvm-type-annotations")
         jvmTarget.set(
             org.jetbrains.kotlin.gradle.dsl.JvmTarget
                 .fromTarget(libs.versions.kotlinJvmTarget.get()),
@@ -251,11 +252,18 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Neo4j embedded + Spring context caching across 2500+ tests requires more heap
+    // than Gradle's default 512m. 2g gives comfortable headroom for the embedded engine,
+    // cached Spring contexts, and parallel coroutine execution (Dispatchers.IO).
+    maxHeapSize = "2g"
     // Docker Engine 29.x raised its minimum API version to 1.40.
     // Testcontainers 1.x / docker-java 3.4.x defaults to API v1.32 which is
     // rejected with HTTP 400. Force a supported version until Testcontainers
     // is upgraded to 2.x (which ships docker-java 3.7+ defaulting to 1.44).
     systemProperty("api.version", "1.44")
+    // Disable JVM fast-throw optimisation so MockK can read the ClassCastException
+    // message and auto-hint the correct type for mocked calls.
+    jvmArgs("-XX:-OmitStackTraceInFastThrow")
 }
 
 // Neo4j 2026.x ships org.neo4j:neo4j-slf4j-provider which registers SLF4JLogBridge
@@ -309,6 +317,17 @@ configurations.all {
             useVersion(libs.versions.netty.get())
             because("neo4j-embedded 2026.x requires Netty 4.2.x; Spring Boot BOM pins 4.1.x")
         }
+        // The file plugin's ReadAsImageTool compiles against kotlinx-coroutines from the version
+        // catalog, whose CoroutineDispatcher.limitedParallelism(parallelism, name) overload only
+        // exists since 1.9. Spring Boot's BOM downgrades coroutines to 1.8.x at runtime, so the
+        // compiled call resolves to a method missing at runtime -> NoSuchMethodError when the
+        // plugin is loaded under PF4J. Pin coroutines to the compiled-against version.
+        if (requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-coroutines")) {
+            useVersion(libs.versions.kotlinCoroutines.get())
+            because(
+                "code compiles against coroutines ${libs.versions.kotlinCoroutines.get()}; Spring Boot BOM downgrades it to 1.8.x at runtime",
+            )
+        }
     }
 }
 
@@ -343,18 +362,33 @@ listOf("forkedSpringBootRun", "forkedSpringBootStop", "generateOpenApiDocs").for
     }
 }
 
-val agentosPort = 8124
+// Dedicated port for the OpenAPI spec generation fork.
+// Must differ from agentosPort so that generateOpenApiDocs can start its own
+// forked JVM even when a dev instance is already running on agentosPort.
+// apiDocsUrl must point to the same port so the plugin reads from the forked
+// JVM, not from the live dev instance (which would produce a stale/wrong spec).
+val openApiGenPort = 18124
 
 openApi {
     // Output the spec alongside the agentos root so it can be committed
     outputDir.set(file("$rootDir/../openapi"))
     outputFileName.set("agentos-openapi.yaml")
-    apiDocsUrl.set("http://localhost:$agentosPort/v3/api-docs.yaml")
+    apiDocsUrl.set("http://localhost:$openApiGenPort/v3/api-docs.yaml")
     // Wait up to 60s for the app to be ready
     waitTimeInSeconds.set(60)
-    // Activate the openapi profile so the app starts without real AI API keys
+    // Activate the openapi profile so the app starts without real AI API keys.
+    // embedded-bolt-port=0 (random OS-assigned port) as a command-line arg because it must
+    // beat application-embedded-neo4j.yml (last active profile wins over the openapi one):
+    // spec generation must not fail when a locally running dev stack already binds the
+    // default embedded port 7688. The driver resolves the actual port at runtime.
     customBootRun {
-        args.set(listOf("--spring.profiles.active=openapi,embedded-neo4j", "--server.port=$agentosPort"))
+        args.set(
+            listOf(
+                "--spring.profiles.active=openapi,embedded-neo4j",
+                "--server.port=$openApiGenPort",
+                "--agentos.persistence.embedded-bolt-port=0",
+            ),
+        )
     }
 }
 

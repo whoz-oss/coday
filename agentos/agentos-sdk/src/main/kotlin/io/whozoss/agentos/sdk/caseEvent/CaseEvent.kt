@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.caseEvent
 
 import com.fasterxml.jackson.annotation.JsonCreator
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonPropertyOrder
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
@@ -9,6 +10,7 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
 import java.time.Instant
 import java.util.UUID
 
@@ -35,7 +37,12 @@ enum class CaseEventType(
     INTENTION_GENERATED("IntentionGeneratedEvent"),
     TOOL_SELECTED("ToolSelectedEvent"),
     TEXT_CHUNK("TextChunkEvent"),
+    PENDING_CONFIRMATION("PendingConfirmationEvent"),
+    CONFIRMATION_RESOLVED("ConfirmationResolvedEvent"),
+    CASE_UPDATED("CaseUpdatedEvent"),
     ;
+
+    fun isFirstLevel(): Boolean = this in listOf(MESSAGE, QUESTION, ANSWER)
 
     companion object {
         @JvmStatic
@@ -67,11 +74,15 @@ enum class CaseEventType(
     JsonSubTypes.Type(value = AgentFinishedEvent::class, name = "AgentFinishedEvent"),
     JsonSubTypes.Type(value = AgentRunningEvent::class, name = "AgentRunningEvent"),
     JsonSubTypes.Type(value = WarnEvent::class, name = "WarnEvent"),
+    JsonSubTypes.Type(value = ErrorEvent::class, name = "ErrorEvent"),
     JsonSubTypes.Type(value = QuestionEvent::class, name = "QuestionEvent"),
     JsonSubTypes.Type(value = AnswerEvent::class, name = "AnswerEvent"),
     JsonSubTypes.Type(value = IntentionGeneratedEvent::class, name = "IntentionGeneratedEvent"),
     JsonSubTypes.Type(value = ToolSelectedEvent::class, name = "ToolSelectedEvent"),
     JsonSubTypes.Type(value = TextChunkEvent::class, name = "TextChunkEvent"),
+    JsonSubTypes.Type(value = PendingConfirmationEvent::class, name = "PendingConfirmationEvent"),
+    JsonSubTypes.Type(value = ConfirmationResolvedEvent::class, name = "ConfirmationResolvedEvent"),
+    JsonSubTypes.Type(value = CaseUpdatedEvent::class, name = "CaseUpdatedEvent"),
 )
 sealed interface CaseEvent : Entity {
     val namespaceId: UUID
@@ -120,6 +131,16 @@ data class WarnEvent(
     override val type: CaseEventType = CaseEventType.WARN
 }
 
+data class ErrorEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val message: String,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.ERROR
+}
+
 /**
  * Emitted when an agent is selected to process the case.
  */
@@ -141,6 +162,8 @@ data class AgentFinishedEvent(
     override val timestamp: Instant = Instant.now(),
     val agentId: UUID,
     val agentName: String,
+    val llmProvider: String? = null,
+    val llmModel: String? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_FINISHED
 }
@@ -152,6 +175,8 @@ data class AgentRunningEvent(
     override val timestamp: Instant = Instant.now(),
     val agentId: UUID,
     val agentName: String,
+    val llmProvider: String? = null,
+    val llmModel: String? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_RUNNING
 }
@@ -174,12 +199,22 @@ data class MessageEvent(
     val content: List<MessageContent>,
     /** Opaque application context at send time. Null when no context was provided. */
     val sessionContext: Map<String, Any?>? = null,
+    /** Durable execution attribution for agent-authored messages; null for user messages. */
+    val llmProvider: String? = null,
+    /** Durable execution attribution for agent-authored messages; null for user messages. */
+    val llmModel: String? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.MESSAGE
 }
 
 /**
  * Emitted when a tool is requested.
+ *
+ * [enrichmentPhases] carries the per-phase trace produced by
+ * [AgentAdvanced.runEnrichmentPhases] when the tool declares intermediate enrichment
+ * phases. Null when the tool has no enrichment phases (the common case), so that
+ * existing [ToolRequestEvent] construction sites that do not pass this parameter
+ * continue to work without change.
  */
 data class ToolRequestEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -189,6 +224,8 @@ data class ToolRequestEvent(
     val toolRequestId: String,
     val toolName: String,
     val args: String?,
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val enrichmentPhases: List<EnrichmentPhaseTrace>? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_REQUEST
 }
@@ -201,6 +238,11 @@ data class ToolRequestEvent(
  * [io.whozoss.agentos.sdk.tool.ToolContext.caseEvents] to perform coherence checks
  * (e.g. verifying that a referenced entity was fetched before being mutated).
  * The map is empty when the tool returned no metadata.
+ *
+ * [images] carries the visual attachments produced by the tool (see
+ * [io.whozoss.agentos.sdk.tool.ToolExecutionResult.images]). [output] stays the textual
+ * summary of the execution; provider tool responses are text-only, so images are delivered
+ * to the LLM separately at prompt-build time.
  */
 data class ToolResponseEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -215,6 +257,8 @@ data class ToolResponseEvent(
     val durationMs: Long? = null,
     /** Opaque metadata returned by the tool. Empty map when the tool produced no metadata. */
     val toolMetadata: Map<String, Any?> = emptyMap(),
+    /** Images produced by the tool. Empty list when the tool produced no image. */
+    val images: List<MessageContent.Image> = emptyList(),
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_RESPONSE
 }
@@ -228,13 +272,19 @@ data class ThinkingEvent(
     override val namespaceId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
-) : CaseEvent, TransientCaseEvent {
+) : CaseEvent,
+    TransientCaseEvent {
     override val type: CaseEventType = CaseEventType.THINKING
 }
 
 /**
  * Emitted when an agent asks a question to the user via a tool.
  * The user can respond asynchronously via an AnswerEvent.
+ *
+ * @param userId When non-null, identifies the specific user this question is directed at.
+ *   Null means the question is addressed to any user of the case.
+ * @param questionType Controls how the UI should render the response input.
+ *   [QuestionType.OPEN_CHOICE] requires [options] to be non-null and non-empty.
  */
 data class QuestionEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -245,6 +295,9 @@ data class QuestionEvent(
     val agentName: String,
     val question: String,
     val options: List<String>? = null,
+    val questionType: QuestionType = QuestionType.FREE_TEXT,
+    /** Identifies the specific user this question is directed at. Null = any user. */
+    val userId: UUID? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.QUESTION
 
@@ -295,6 +348,14 @@ data class IntentionGeneratedEvent(
     val intention: String,
     /** Name of the tool selected by the LLM in the same call that produced [intention]. */
     val toolName: String,
+    /**
+     * When `true`, this event was produced by the fallback path of [AgentIntentionGenerator]
+     * after all retry attempts were exhausted. The [intention] describes the failure reason
+     * and the [toolName] is always [AgentIntentionGenerator.ANSWER_TOOL].
+     * [AgentAdvanced.generateFinalResponse] uses this flag to instruct the LLM to inform
+     * the user that the requested action was NOT performed.
+     */
+    val isFailedIntention: Boolean = false,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.INTENTION_GENERATED
 }
@@ -325,6 +386,92 @@ data class TextChunkEvent(
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
     val chunk: String,
-) : CaseEvent, TransientCaseEvent {
+) : CaseEvent,
+    TransientCaseEvent {
     override val type: CaseEventType = CaseEventType.TEXT_CHUNK
+}
+
+/**
+ * Emitted when a tool execution was deferred awaiting explicit user confirmation.
+ *
+ * The pairing with [ConfirmationResolvedEvent] (matched on
+ * [ConfirmationResolvedEvent.pendingEventId]) is what `AgentAdvanced` uses to detect
+ * unresolved confirmations on case re-entry — including after a server restart.
+ *
+ * @param toolRequestId The id of the [ToolRequestEvent] that triggered this pending
+ *   (kept for traceability with the LLM-visible tool-call cycle).
+ * @param toolName The qualified tool name (e.g. `FILES__remove`).
+ * @param inputJson The tool input, serialized as JSON. Stored as a String to stay
+ *   classloader-safe across plugin/service boundaries (no `Class.forName`). The owning
+ *   tool receives it as-is via `StandardTool.executeWithJson(argsJson, ctx)` and
+ *   parses on its own terms inside the plugin classloader.
+ * @param toolConfirmationInstructions Optional tool-supplied instructions appended to the
+ *   `ConfirmationManager.analyzeConfirmation` prompt.
+ */
+data class PendingConfirmationEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val toolRequestId: String,
+    val toolName: String,
+    val inputJson: String,
+    val toolConfirmationInstructions: String = "",
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.PENDING_CONFIRMATION
+}
+
+/**
+ * Marker that closes a [PendingConfirmationEvent].
+ *
+ * Carries the resolution outcome and a back-reference to the pending event id, so the
+ * orchestrator can detect "all confirmations for this case are resolved" without
+ * scanning tool-call ids.
+ *
+ * Note (WZ-31596 F4): the [ToolResponseEvent] emitted post-resolution and paired on
+ * the originating [PendingConfirmationEvent.toolRequestId] is a synthetic re-emission.
+ * The original [ToolRequestEvent] never produced a native tool response at its turn;
+ * this synthetic response exists solely to feed `lastToolResponse` for
+ * `AgentIntentionGenerator` on the next intention turn. Audit / replay consumers that
+ * pair `ToolRequestEvent ↔ ToolResponseEvent` via `toolRequestId` will see an
+ * artificially coherent pair — the actual side-effect happened during confirmation
+ * resolution, not at the original tool-call turn.
+ */
+data class ConfirmationResolvedEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val pendingEventId: UUID,
+    val confirmed: Boolean,
+    /**
+     * WZ-31596: textual result of [StandardTool.executeWithJson] (when confirmed) or
+     * [StandardTool.onRejected] (when rejected). Stored on the marker so that
+     * `convertEventsToMessages` can inject a synthetic tool_result for the LLM without
+     * having to re-execute the tool.
+     */
+    val resultText: String = "",
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.CONFIRMATION_RESOLVED
+}
+
+/**
+ * Emitted when a [io.whozoss.agentos.sdk.caseFlow.Case] is updated outside of the normal
+ * agent execution flow (e.g. automatic title generation).
+ *
+ * Transient: streamed to SSE clients for real-time UI refresh but never persisted —
+ * the durable state is already written directly on the Case entity before this event
+ * is emitted.
+ *
+ * @param title New case title when it was updated, null when unchanged.
+ */
+data class CaseUpdatedEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val title: String? = null,
+) : CaseEvent,
+    TransientCaseEvent {
+    override val type: CaseEventType = CaseEventType.CASE_UPDATED
 }

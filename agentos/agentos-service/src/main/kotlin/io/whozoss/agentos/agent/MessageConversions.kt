@@ -3,10 +3,16 @@ package io.whozoss.agentos.agent
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import org.springframework.web.util.HtmlUtils
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.content.Media
+import org.springframework.core.io.ByteArrayResource
+import org.springframework.util.MimeType
+import java.util.Base64
 
 /**
  * Regex patterns for the XML conversation tags injected by [MessageEvent.toSpringAiMessage].
@@ -42,8 +48,9 @@ internal fun MessageEvent.sessionContextPromptText(): String? =
     sessionContext?.let { ctx ->
         val entries = ctx.entries.joinToString("\n") { (k, v) -> "  ${escapeXml(k)}: ${escapeXml(v.toString())}" }
         "<$SESSION_CONTEXT_TAG>\n$entries\n</$SESSION_CONTEXT_TAG>"
-}
-    /** Escapes XML special characters to prevent prompt injection. Delegates to Spring's [HtmlUtils.htmlEscape]. */
+    }
+
+/** Escapes XML special characters to prevent prompt injection. Delegates to Spring's [HtmlUtils.htmlEscape]. */
 private fun escapeXml(value: String): String = HtmlUtils.htmlEscape(value)
 
 /**
@@ -60,6 +67,81 @@ private fun escapeXml(value: String): String = HtmlUtils.htmlEscape(value)
  * The XML tagging convention (`<agent=Name>`, `<user name="...">`) is deliberately kept
  * consistent with the Coday `AiClient.convertAgentMessages` implementation.
  */
+/**
+ * Convert a [MessageContent.Image] (base64 payload) to a Spring AI [Media],
+ * mapped by every supported ChatModel to its native image block format.
+ */
+internal fun MessageContent.Image.toSpringAiMedia(): Media =
+    Media
+        .builder()
+        .mimeType(MimeType.valueOf(mimeType))
+        .data(ByteArrayResource(Base64.getDecoder().decode(content)))
+        .build()
+
+/**
+ * Build the follow-up [UserMessage] carrying the [images] produced by a tool.
+ *
+ * Provider tool responses are text-only (Spring AI [org.springframework.ai.chat.messages.ToolResponseMessage]
+ * carries a String), so images are delivered right after the tool response as a user
+ * message with [Media] attachments, which all supported ChatModels map natively.
+ */
+internal fun toolImagesUserMessage(
+    toolName: String,
+    images: List<MessageContent.Image>,
+): UserMessage =
+    UserMessage
+        .builder()
+        .text("[Attached: ${images.size} image(s) produced by tool $toolName, see tool result above]")
+        .media(images.map { it.toSpringAiMedia() })
+        .build()
+
+/**
+ * Render a [ToolResponseEvent] as the text for its [ToolResponseMessage] slot.
+ *
+ * When the response has images within [plan]'s media budget, the text is left plain —
+ * the LLM will see them via the follow-up [UserMessage] with [Media] attachments.
+ * When images fall outside the budget (oldest, evicted), a marker is appended telling
+ * the LLM the images are no longer attached and it should re-call the tool if needed.
+ *
+ * Shared by both runtimes so the marker text cannot drift between them.
+ */
+internal fun toolResponseText(
+    response: ToolResponseEvent,
+    plan: ToolReplayPlan,
+): String {
+    val text =
+        when (val content = response.output) {
+            is MessageContent.Text -> content.content
+            is MessageContent.Image -> "[image ${content.mimeType} ${content.width}x${content.height}]"
+        }
+    return when {
+        response.images.isEmpty() -> text
+        plan.hasAttachedMedia(response.toolRequestId) -> text
+        // images come via follow-up UserMessage
+        else -> text + "\n[${response.images.size} image(s) no longer attached, call the tool again if needed]"
+    }
+}
+
+/**
+ * Render a [QuestionEvent] as the text of the [AssistantMessage] replayed to the LLM.
+ *
+ * The question is the agent's own voice, so it is rendered plain — no XML tagging, unlike
+ * the `<user>` / `<agent>` wrapping applied by [toSpringAiMessage] to foreign messages.
+ * Closed-choice options are appended so the resuming agent sees the exact set it offered.
+ *
+ * Shared by both runtimes ([AgentSimple.convertEventsToMessages] and
+ * [AgentAdvancedContext.convertEventsToMessages]) so the two cannot drift apart.
+ */
+internal fun QuestionEvent.toPromptText(): String =
+    buildString {
+        append(question)
+        val opts = options
+        if (!opts.isNullOrEmpty()) {
+            append("\nOptions: ")
+            append(opts.joinToString(", ") { "\"$it\"" })
+        }
+    }
+
 internal fun MessageEvent.toSpringAiMessage(currentAgentId: String): Message {
     val textContent =
         content

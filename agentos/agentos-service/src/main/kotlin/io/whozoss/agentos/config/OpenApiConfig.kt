@@ -22,7 +22,7 @@ class OpenApiConfig {
      * Override operationId to produce globally-unique, readable names.
      *
      * By default, springdoc appends numeric suffixes (_1, _2…) when multiple controllers
-     * inherit the same @Operation(operationId) from a base class (e.g. EntityController).
+     * share the same method name (e.g. getById, create).
      *
      * The OpenAPI spec requires operationIds to be globally unique across the entire document,
      * so we build them as "{methodName}{EntityName}" in camelCase — e.g. getByIdUser,

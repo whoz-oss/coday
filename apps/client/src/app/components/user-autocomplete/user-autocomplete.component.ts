@@ -1,4 +1,4 @@
-import { Component, EventEmitter, inject, Input, Output } from '@angular/core'
+import { Component, EventEmitter, inject, Input, Output, ChangeDetectionStrategy } from '@angular/core'
 import { Observable, map } from 'rxjs'
 import { AutocompleteDataSource, AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-system'
 import { UserApiService } from '../../core/services/user-api.service'
@@ -20,6 +20,7 @@ import { UserApiService } from '../../core/services/user-api.service'
   standalone: true,
   imports: [AutocompleteInputComponent],
   styles: [':host { display: block; }'],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <ds-autocomplete-input
       [dataSource]="this"

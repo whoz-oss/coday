@@ -16,7 +16,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 nx bootRun agentos-service
 ```
 
-The service starts on **port 8080**. Ready signal in logs: `Started AgentOSApplication`.
+The service starts on **port 8124** by default (see `server.port` in `application.yml`). Ready signal in logs: `Started AgentOSApplication`.
 
 ## Filesystem Plugin Directories
 

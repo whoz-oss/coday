@@ -1,10 +1,15 @@
 package io.whozoss.agentos.integrationConfig
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldStartWith
 import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -12,16 +17,17 @@ import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
-import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContextHolder
 import java.util.UUID
 
@@ -46,20 +52,21 @@ class IntegrationConfigControllerSpec : StringSpec({
     val namespaceService = mockk<NamespaceService>(relaxed = true)
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
-    val controller = IntegrationConfigController(service, namespaceService, userService, permissionService)
+    val controller = IntegrationConfigController(service, namespaceService, userService, permissionService, yamlExportMapper())
 
     val namespaceId = UUID.randomUUID()
     val aliceId = UUID.randomUUID()
     val bobId = UUID.randomUUID()
     val params = JsonNodeFactory.instance.objectNode().put("apiUrl", "https://example.com")
 
-    fun aliceUser() = User(
+    fun aliceUser(isAdmin: Boolean = false) = User(
         metadata = EntityMetadata(id = aliceId),
         externalId = "alice@example.com",
         email = "alice@example.com",
+        isAdmin = isAdmin,
     )
 
-    fun authFor(userId: UUID): Authentication =
+    fun authFor(userId: UUID) =
         UsernamePasswordAuthenticationToken(userId.toString(), "n/a", emptyList())
 
     fun <T> withAuth(userId: UUID, block: () -> T): T {
@@ -94,7 +101,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         userId: UUID? = null,
         name: String = "JIRA_PROD",
         integrationType: String = "JIRA",
-    ) = IntegrationConfigResource(
+    ) = IntegrationConfigDto(
         id = id,
         namespaceId = nsId,
         userId = userId,
@@ -117,12 +124,22 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // toResource — mapping
+    // toDto — mapping (file-level extension)
     // -------------------------------------------------------------------------
 
-    "toResource maps id, namespaceId, userId, name, integrationType, description, parameters" {
-        val cfg = config(name = "SLACK_DEV", integrationType = "SLACK", userId = aliceId).copy(description = "Dev Slack")
-        val r = controller.toResource(cfg)
+    "toDto maps id, namespaceId, userId, name, integrationType, description, parameters, authSettingName" {
+        val cfg = config(name = "SLACK_DEV", integrationType = "SLACK", userId = aliceId)
+            .copy(description = "Dev Slack", authSettingName = "my-auth")
+        val r = IntegrationConfigDto(
+            id = cfg.metadata.id,
+            namespaceId = cfg.namespaceId,
+            userId = cfg.userId,
+            name = cfg.name,
+            integrationType = cfg.integrationType,
+            description = cfg.description,
+            parameters = cfg.parameters,
+            authSettingName = cfg.authSettingName,
+        )
 
         r.id shouldBe cfg.metadata.id
         r.namespaceId shouldBe namespaceId
@@ -131,23 +148,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         r.integrationType shouldBe "SLACK"
         r.description shouldBe "Dev Slack"
         r.parameters shouldBe params
-    }
-
-    "toResource maps all fields" {
-        val c = config(name = "SLACK_DEV", integrationType = "SLACK").copy(description = "Dev Slack")
-        val r = controller.toResource(c)
-
-        r.name shouldBe "SLACK_DEV"
-        r.integrationType shouldBe "SLACK"
-        r.description shouldBe "Dev Slack"
-        r.parameters shouldBe params
-    }
-
-    "toDomain maps all fields and generates UUID when id is null" {
-        val first = controller.toDomain(resource(id = null))
-        val second = controller.toDomain(resource(id = null))
-
-        (first.metadata.id == second.metadata.id) shouldBe false
+        r.authSettingName shouldBe "my-auth"
     }
 
     // -------------------------------------------------------------------------
@@ -163,12 +164,25 @@ class IntegrationConfigControllerSpec : StringSpec({
         verify(exactly = 0) { service.create(any()) }
     }
 
-    "create rejects payload with neither namespaceId nor userId with 400" {
+    "create with neither namespaceId nor userId and non-admin user throws AccessDeniedException (platform scope)" {
         withAuth(aliceId) {
-            shouldThrow<BadRequestException> {
+            shouldThrow<org.springframework.security.access.AccessDeniedException> {
                 controller.create(resource(id = null, nsId = null, userId = null))
             }
         }
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "create platform scope (null, null) succeeds for Super Admin" {
+        every { userService.getCurrentUser() } returns aliceUser(isAdmin = true)
+        val captured = slot<IntegrationConfig>()
+        every { service.create(capture(captured)) } answers { firstArg() }
+
+        withAuth(aliceId) { controller.create(resource(id = null, nsId = null, userId = null)) }
+
+        captured.captured.namespaceId shouldBe null
+        captured.captured.userId shouldBe null
+        verify(exactly = 0) { permissionService.hasPermission(any(), any(), any(), any()) }
     }
 
     // -------------------------------------------------------------------------
@@ -332,17 +346,28 @@ class IntegrationConfigControllerSpec : StringSpec({
     // list — three modes, mass-assignment guard
     // -------------------------------------------------------------------------
 
-    "list without namespace filter returns rows for both modes" {
+    "list without namespace filter and userId=me returns caller's own rows" {
         val rows = listOf(
             config(nsId = null, userId = aliceId, name = "GLOBAL_JIRA"),
             config(nsId = namespaceId, userId = aliceId, name = "NS_JIRA"),
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = null, userId = null, auth = authFor(aliceId))
+        val resp = controller.list(namespaceId = null, userId = "me")
 
         resp.size shouldBe 2
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL_JIRA", "NS_JIRA")
+    }
+
+    "list without any param returns platform configs for any authenticated user" {
+        val rows = listOf(
+            config(nsId = null, userId = null, name = "PLATFORM_JIRA"),
+        )
+        every { service.findPlatform() } returns rows
+
+        val resp = controller.list(namespaceId = null, userId = null)
+
+        resp.map { it.name } shouldBe listOf("PLATFORM_JIRA")
     }
 
     "list with namespaceId=none returns only user-global rows" {
@@ -351,7 +376,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = "none", userId = "me", auth = authFor(aliceId))
+        val resp = controller.list(namespaceId = "none", userId = "me")
 
         resp.map { it.name } shouldBe listOf("GLOBAL")
     }
@@ -362,7 +387,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         )
         every { service.findFiltered(any(), any(), any(), any(), any()) } returns rows
 
-        val resp = controller.list(namespaceId = "NONE", userId = "me", auth = authFor(aliceId))
+        val resp = controller.list(namespaceId = "NONE", userId = "me")
 
         resp.map { it.name } shouldBe listOf("GLOBAL")
     }
@@ -376,7 +401,6 @@ class IntegrationConfigControllerSpec : StringSpec({
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = "me",
-            auth = authFor(aliceId),
         )
 
         resp.map { it.name } shouldBe listOf("NS")
@@ -392,7 +416,6 @@ class IntegrationConfigControllerSpec : StringSpec({
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = null,
-            auth = authFor(aliceId),
         )
 
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("NS-A", "NS-B")
@@ -404,7 +427,6 @@ class IntegrationConfigControllerSpec : StringSpec({
         val resp = controller.list(
             namespaceId = namespaceId.toString(),
             userId = null,
-            auth = authFor(aliceId),
         )
 
         resp shouldBe emptyList()
@@ -412,13 +434,98 @@ class IntegrationConfigControllerSpec : StringSpec({
 
     "list rejects ?userId=<uuid> with 400 (only the 'me' sentinel is exposed)" {
         shouldThrow<BadRequestException> {
-            controller.list(namespaceId = null, userId = bobId.toString(), auth = authFor(aliceId))
+            controller.list(namespaceId = null, userId = bobId.toString())
         }
     }
 
     "list with invalid namespaceId throws 400 BAD_REQUEST" {
         shouldThrow<BadRequestException> {
-            controller.list(namespaceId = "not-a-uuid-and-not-none", userId = null, auth = authFor(aliceId))
+            controller.list(namespaceId = "not-a-uuid-and-not-none", userId = null)
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // export — portability comment block
+    // -------------------------------------------------------------------------
+
+    "export prefixes the YAML body with a portability comment block mentioning the token" {
+        val exportParams = JsonNodeFactory.instance.objectNode().put("workingDirectory", "/home/alice/repos/myproject")
+        val cfg = config(name = "BASH_LOCAL", integrationType = "BASH").let {
+            it.copy(parameters = exportParams)
+        }
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val response = controller.export(cfg.metadata.id)
+        val body = response.body!!
+
+        body shouldStartWith "# "
+        body shouldContain "{{NAMESPACE_CONFIG_PATH}}"
+    }
+
+    "export produces a body that re-parses to a valid YAML document with name, integrationType, parameters" {
+        val exportParams = JsonNodeFactory.instance.objectNode().put("workingDirectory", "/home/alice/repos/myproject")
+        val cfg = config(name = "BASH_LOCAL", integrationType = "BASH").let {
+            it.copy(parameters = exportParams)
+        }
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val response = controller.export(cfg.metadata.id)
+        val body = response.body!!
+
+        val yamlMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
+        val tree = yamlMapper.readTree(body)
+
+        tree.get("name").asText() shouldBe "BASH_LOCAL"
+        tree.get("integrationType").asText() shouldBe "BASH"
+        tree.get("parameters").get("workingDirectory").asText() shouldBe "/home/alice/repos/myproject"
+    }
+
+    "export serialises parameters as indented YAML, not as a JSON blob on a single line" {
+        val exportParams = JsonNodeFactory.instance.objectNode()
+            .put("url", "https://mcp.example.com/mcp")
+            .put("timeoutSeconds", 30)
+        val cfg = config(name = "MCP_HTTP", integrationType = "MCP_HTTP").let {
+            it.copy(parameters = exportParams)
+        }
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val body = controller.export(cfg.metadata.id).body!!
+
+        // Parameters must appear as separate YAML keys, not as a single-line JSON blob.
+        body shouldContain "url:"
+        body shouldContain "timeoutSeconds:"
+        // A JSON blob would look like: parameters: {"url":"...","timeoutSeconds":30}
+        body.lines().none { it.trim().startsWith("parameters:") && it.contains("{") } shouldBe true
+    }
+
+    "export includes authSettingName when present" {
+        val cfg = config(name = "JIRA_PROD", integrationType = "JIRA").copy(authSettingName = "my-oauth")
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val response = controller.export(cfg.metadata.id)
+        val body = response.body!!
+
+        body shouldContain "authSettingName"
+        body shouldContain "my-oauth"
+    }
+
+    "export omits authSettingName when null" {
+        val cfg = config(name = "JIRA_PROD", integrationType = "JIRA").copy(authSettingName = null)
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val response = controller.export(cfg.metadata.id)
+        val body = response.body!!
+
+        (body.contains("authSettingName")) shouldBe false
+    }
+
+    "export keeps the existing Content-Disposition header and application/yaml content type" {
+        val cfg = config(name = "BASH_LOCAL", integrationType = "BASH")
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        val response = controller.export(cfg.metadata.id)
+
+        response.headers.contentDisposition.toString() shouldContain "bash-local.yaml"
+        response.headers.contentType.toString() shouldBe org.springframework.http.MediaType.APPLICATION_YAML_VALUE
     }
 })

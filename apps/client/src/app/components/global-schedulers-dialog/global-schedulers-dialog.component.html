@@ -1,0 +1,79 @@
+<h2 mat-dialog-title>
+  <mat-icon>schedule</mat-icon>
+  Scheduled tasks
+  <span class="gsd-count">{{ filteredSchedulers().length }}</span>
+</h2>
+
+<mat-dialog-content>
+  <!-- Project filter -->
+  @if (projects().length > 1) {
+    <nav class="gsd-project-filters">
+      <button class="proj-chip" [class.active]="activeProject() === null" (click)="setProject(null)">
+        All projects
+      </button>
+      @for (p of projects(); track p) {
+        <button class="proj-chip" [class.active]="activeProject() === p" (click)="setProject(p)">
+          {{ p }}
+        </button>
+      }
+    </nav>
+  }
+
+  @if (isLoading()) {
+    <div class="gsd-loading">
+      <mat-spinner diameter="32" />
+    </div>
+  } @else if (errorMessage()) {
+    <div class="gsd-error">
+      <mat-icon>error</mat-icon>
+      {{ errorMessage() }}
+    </div>
+  } @else if (filteredSchedulers().length === 0) {
+    <div class="gsd-empty">
+      <mat-icon>schedule</mat-icon>
+      <p>No scheduled tasks yet.</p>
+      <button mat-flat-button (click)="openCreate()">
+        <mat-icon>add</mat-icon>
+        Create one
+      </button>
+    </div>
+  } @else {
+    <ul class="gsd-list">
+      @for (s of filteredSchedulers(); track s.id) {
+        <li class="gsd-item" [class.disabled]="!s.enabled">
+          <div class="gsd-item-main">
+            <span class="gsd-item-name">{{ s.name }}</span>
+            @if (projects().length > 1) {
+              <span class="gsd-item-project">{{ s.projectName }}</span>
+            }
+            <span class="gsd-item-source">{{ getSource(s) }}</span>
+          </div>
+          <div class="gsd-item-meta">
+            <span class="gsd-interval">{{ formatInterval(s.schedule.interval) }}</span>
+            <span class="gsd-next" [class.due]="!s.nextRun">{{ formatNextRun(s.nextRun) }}</span>
+          </div>
+          <div class="gsd-item-actions">
+            <mat-slide-toggle [checked]="s.enabled" (change)="toggleEnabled(s)" matTooltip="Enable / Disable" />
+            <button mat-icon-button (click)="runNow(s)" matTooltip="Run now">
+              <mat-icon>play_arrow</mat-icon>
+            </button>
+            <button mat-icon-button (click)="edit(s)" matTooltip="Edit">
+              <mat-icon>edit</mat-icon>
+            </button>
+            <button mat-icon-button (click)="delete(s)" matTooltip="Delete" class="delete-btn">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="openCreate()">
+    <mat-icon>add</mat-icon>
+    New scheduler
+  </button>
+  <button mat-button (click)="close()">Close</button>
+</mat-dialog-actions>

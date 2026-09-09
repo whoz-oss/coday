@@ -6,21 +6,50 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.anthropic.AnthropicChatOptions
 import org.springframework.ai.anthropic.api.AnthropicApi
+import org.springframework.ai.anthropic.api.AnthropicCacheOptions
+import org.springframework.ai.anthropic.api.AnthropicCacheStrategy
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.google.genai.GoogleGenAiChatModel
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions
 import org.springframework.ai.model.tool.DefaultToolCallingManager
 import org.springframework.ai.model.tool.DefaultToolExecutionEligibilityPredicate
+import org.springframework.ai.ollama.OllamaChatModel
+import org.springframework.ai.ollama.api.OllamaApi
+import org.springframework.ai.ollama.api.OllamaChatOptions
+import org.springframework.ai.ollama.management.ModelManagementOptions
+import org.springframework.ai.ollama.management.PullModelStrategy
 import org.springframework.ai.openai.OpenAiChatModel
 import org.springframework.ai.openai.OpenAiChatOptions
 import org.springframework.ai.openai.api.OpenAiApi
 import org.springframework.ai.retry.RetryUtils
+import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.boot.context.properties.bind.DefaultValue
 import org.springframework.stereotype.Component
 import org.springframework.util.LinkedMultiValueMap
+
+/**
+ * Configuration for Anthropic-specific features.
+ *
+ * [promptCachingEnabled] activates the `CONVERSATION_HISTORY` caching strategy on every
+ * Anthropic chat model instance created by [ChatModelFactory]. When enabled, Anthropic
+ * caches the system prompt, tool definitions, and the growing conversation history across
+ * API calls. This is the optimal strategy for agent runs: each turn reuses the cached
+ * prefix built by previous turns, yielding significant cost and latency savings on
+ * multi-turn interactions.
+ *
+ * Default: `true`. Disable via `agentos.anthropic.prompt-caching-enabled=false` or
+ * `AGENTOS_ANTHROPIC_PROMPT_CACHING_ENABLED=false`.
+ */
+@ConfigurationProperties(prefix = "agentos.anthropic")
+data class AnthropicProperties(
+    @DefaultValue("true")
+    val promptCachingEnabled: Boolean,
+)
 
 @Component
 class ChatModelFactory(
     private val observationRegistry: ObservationRegistry,
+    private val anthropicProperties: AnthropicProperties,
 ) {
     fun createChatModel(
         apiType: AiApiType,
@@ -31,10 +60,7 @@ class ChatModelFactory(
         maxTokens: Int? = null,
         headers: Map<String, String> = emptyMap(),
     ): ChatModel {
-        val resolvedApiKey =
-            apiKey?.takeIf { it.isNotBlank() }
-                ?: throw IllegalArgumentException("No API key configured for provider (apiType=$apiType).")
-
+        val resolvedApiKey = apiKey ?: ""
         return when (apiType) {
             AiApiType.OpenAI -> {
                 createOpenAiModel(
@@ -75,8 +101,18 @@ class ChatModelFactory(
                     maxTokens = maxTokens,
                 )
             }
+
+            AiApiType.Ollama -> {
+                createOllamaModel(
+                    baseUrl = baseUrl ?: OLLAMA_DEFAULT_BASE_URL,
+                    model = modelName,
+                    temp = temperature ?: DEFAULT_TEMPERATURE,
+                    maxTokens = maxTokens,
+                )
+            }
         }
     }
+
     private fun createOpenAiModel(
         baseUrl: String,
         apiKey: String,
@@ -84,7 +120,12 @@ class ChatModelFactory(
         temp: Double,
         maxTokens: Int?,
     ): ChatModel {
-        val api = OpenAiApi.Builder().baseUrl(baseUrl).apiKey(apiKey).build()
+        val api =
+            OpenAiApi
+                .Builder()
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .build()
 
         val optionsBuilder =
             OpenAiChatOptions
@@ -116,9 +157,10 @@ class ChatModelFactory(
     ): ChatModel {
         var builder = OpenAiApi.Builder().baseUrl(baseUrl).apiKey(apiKey)
         if (headers.isNotEmpty()) {
-            val multiValueHeaders = LinkedMultiValueMap<String, String>(
-                headers.mapValues { (_, value) -> listOf(value) }
-            )
+            val multiValueHeaders =
+                LinkedMultiValueMap<String, String>(
+                    headers.mapValues { (_, value) -> listOf(value) },
+                )
             builder = builder.headers(multiValueHeaders)
         }
         val api = builder.build()
@@ -163,6 +205,15 @@ class ChatModelFactory(
             options.maxTokens(maxTokens)
         }
 
+        if (anthropicProperties.promptCachingEnabled) {
+            options.cacheOptions(
+                AnthropicCacheOptions
+                    .builder()
+                    .strategy(AnthropicCacheStrategy.CONVERSATION_HISTORY)
+                    .build(),
+            )
+        }
+
         return AnthropicChatModel(
             api,
             options.build(),
@@ -199,9 +250,41 @@ class ChatModelFactory(
         )
     }
 
+    private fun createOllamaModel(
+        baseUrl: String,
+        model: String,
+        temp: Double,
+        maxTokens: Int?,
+    ): ChatModel {
+        val api = OllamaApi.builder().baseUrl(baseUrl).build()
+
+        val optionsBuilder =
+            OllamaChatOptions
+                .builder()
+                .model(model)
+                .temperature(temp)
+        if (maxTokens != null) {
+            optionsBuilder.numPredict(maxTokens)
+        }
+        optionsBuilder.disableThinking()
+        val options = optionsBuilder.build()
+
+        return OllamaChatModel(
+            api,
+            options,
+            DefaultToolCallingManager.builder().build(),
+            observationRegistry,
+            ModelManagementOptions
+                .builder()
+                .pullModelStrategy(PullModelStrategy.NEVER)
+                .build(),
+        )
+    }
+
     companion object {
         private const val DEFAULT_TEMPERATURE = 1.0
         private const val OPENAI_DEFAULT_BASE_URL = "https://api.openai.com"
         private const val ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com"
+        private const val OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434"
     }
 }

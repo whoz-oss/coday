@@ -6,7 +6,6 @@ package io.whozoss.agentos.permissions
  * (Neo4j, in-memory, etc.).
  */
 interface PermissionRepository {
-
     /**
      * Checks if a user has a direct permission relationship with an entity.
      * Does not check transitive permissions through namespace hierarchy.
@@ -21,7 +20,7 @@ interface PermissionRepository {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ): Boolean
 
     /**
@@ -37,7 +36,7 @@ interface PermissionRepository {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ): Boolean
 
     /**
@@ -52,7 +51,7 @@ interface PermissionRepository {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     )
 
     /**
@@ -67,7 +66,7 @@ interface PermissionRepository {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     )
 
     /**
@@ -81,7 +80,7 @@ interface PermissionRepository {
     fun listUsersWithPermission(
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation? = null
+        relation: PermissionRelation? = null,
     ): List<String>
 
     /**
@@ -96,7 +95,7 @@ interface PermissionRepository {
     fun listEntitiesForUser(
         userId: String,
         entityType: EntityType,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     ): List<String>
 
     /**
@@ -123,4 +122,72 @@ interface PermissionRepository {
         ids: Collection<String>,
         relation: PermissionRelation,
     ): Set<String>
+
+    /**
+     * Atomically promotes a [:MEMBER] relation to [:ADMIN].
+     *
+     * The [:STARRED] edge (if any) is a separate relationship and survives untouched —
+     * no property-preservation logic is needed.
+     *
+     * @return true if a [:MEMBER] edge was found and promoted; false if the user had
+     *   no MEMBER relation on the entity (no-op: no [:ADMIN] edge is created).
+     */
+    fun promoteMemberToAdmin(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean
+
+    /**
+     * Atomically demotes a [:ADMIN] relation to [:MEMBER].
+     *
+     * The [:STARRED] edge (if any) is a separate relationship and survives untouched —
+     * no property-preservation logic is needed.
+     *
+     * @return true if a [:ADMIN] edge was found and demoted; false if the user had
+     *   no ADMIN relation on the entity (no-op: no [:MEMBER] edge is created).
+     */
+    fun demoteAdminToMember(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean
+
+    /**
+     * Returns the current [PermissionRelation] for each of the given [userIds] on [entityId].
+     *
+     * Only direct relations are considered (no transitive namespace lookup). Users in [userIds]
+     * that hold no relation on the entity are absent from the returned map (not mapped to null).
+     * Unknown user ids are silently ignored.
+     *
+     * Designed for targeted membership lookups where only a small, known set of users is
+     * relevant — avoids loading the entire entity membership to inspect a handful of entries.
+     *
+     * @param entityType The type of entity
+     * @param entityId The ID of the entity
+     * @param userIds The user ids to look up (by internal string UUID)
+     * @return Map of userId → [PermissionRelation] for users that have any relation
+     */
+    fun listRelationsForUsers(
+        entityType: EntityType,
+        entityId: String,
+        userIds: Collection<String>,
+    ): Map<String, PermissionRelation>
+
+    /**
+     * Batch-apply share entries on an entity. Each entry is a (userId, targetRole) pair:
+     * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER,
+     *   or create directly)
+     * - targetRole = [PermissionRelation.MEMBER] → ensure user has MEMBER (demote from ADMIN,
+     *   or create directly)
+     * - targetRole = null → revoke all relations (ADMIN and MEMBER)
+     *
+     * Non-existent User nodes are silently skipped by the Cypher MATCH.
+     * Returns the list of userIds for which at least one operation was applied.
+     */
+    fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String>
 }

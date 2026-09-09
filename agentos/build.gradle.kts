@@ -32,6 +32,7 @@ val pluginBuilds =
         "agentos-tmux-plugin",
         "agentos-bash-plugin",
         "agentos-file-plugin",
+        "agentos-mcp-plugin",
     )
 
 // Resolve all paths at configuration time into plain File values

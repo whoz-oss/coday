@@ -1,0 +1,30 @@
+<div class="auth-setting-item" role="listitem">
+  <div class="auth-setting-item__body">
+    <div class="auth-setting-item__heading">
+      <span class="auth-setting-item__name">{{ config().name }}</span>
+      @if (showBadge()) {
+        <span
+          class="auth-setting-item__badge"
+          [attr.data-variant]="badge().variant"
+          [attr.aria-label]="badge().ariaLabel"
+        >
+          {{ badge().label }}
+        </span>
+      }
+    </div>
+    <span class="auth-setting-item__type">{{ config().authType }}</span>
+  </div>
+
+  <div class="auth-setting-item__actions">
+    @if (pendingDelete()) {
+      <span class="auth-setting-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else {
+      <ds-icon-button icon="content_copy" title="Duplicate this auth setting" (action)="onDuplicate()" />
+      @if (!readOnly()) {
+        <ds-kebab-menu [items]="menuItems()" (itemSelected)="onMenuAction($event)" />
+      }
+    }
+  </div>
+</div>

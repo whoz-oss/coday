@@ -44,3 +44,11 @@ mandatoryDocs:
   - ./libs/agentos-ui/GUIDELINES.md
   - ./libs/design-system/GUIDELINES.md
   - ./product/03-glossary.md
+
+docs:
+  - ../apps/client/docs/architecture.md
+  - ../agentos/docs/architecture.md
+  - ../libs/agentos-api-client/GUIDELINES.md
+  - ../libs/agentos-ui/GUIDELINES.md
+  - ../libs/design-system/GUIDELINES.md
+  - ../product/03-glossary.md

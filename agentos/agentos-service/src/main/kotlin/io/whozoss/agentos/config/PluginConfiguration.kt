@@ -2,7 +2,14 @@ package io.whozoss.agentos.config
 
 import io.whozoss.agentos.service.config.AgentOsPluginsConfigProperties
 import mu.KLogging
+import org.pf4j.ClassLoadingStrategy
+import org.pf4j.CompoundPluginLoader
+import org.pf4j.DefaultPluginLoader
 import org.pf4j.ExtensionFactory
+import org.pf4j.JarPluginLoader
+import org.pf4j.PluginClassLoader
+import org.pf4j.PluginDescriptor
+import org.pf4j.PluginLoader
 import org.pf4j.PluginManager
 import org.pf4j.spring.SpringExtensionFactory
 import org.pf4j.spring.SpringPluginManager
@@ -37,21 +44,61 @@ class PluginConfiguration {
 }
 
 /**
- * [SpringPluginManager] subclass that overrides the extension factory with a
- * null-safe variant.
+ * [SpringPluginManager] subclass that:
+ * 1. Overrides the extension factory with a null-safe variant (see [NullSafeSpringExtensionFactory]).
+ * 2. Overrides the plugin loader to use [ClassLoadingStrategy.APD] (Application → Plugin → Dependencies)
+ *    instead of the PF4J default [ClassLoadingStrategy.PDA] (Plugin → Dependencies → Application).
  *
- * ## Why this is needed
- * [SpringExtensionFactory] calls [org.pf4j.Plugin.getWrapper] when resolving the
- * application context for an extension class. When PF4J discovers an extension on
- * the application classpath (rather than inside a plugin JAR), the wrapper is null
- * and [SpringExtensionFactory.nameOf] throws [NullPointerException].
+ * ## Why APD matters
  *
- * This override returns the root [ApplicationContext] for any extension whose plugin
- * wrapper is null, which is the correct behaviour for app-classpath extensions.
+ * With the default PDA strategy, a plugin JAR that bundles a library already present on the
+ * service classpath (e.g. Jackson, which the MCP SDK pulls in transitively) causes the JVM to
+ * load two distinct copies of the same class — one from the service classloader, one from the
+ * [PluginClassLoader]. Any type that crosses the plugin/service boundary (e.g. via a shared
+ * interface in the SDK) then triggers a [LinkageError] (loader constraint violation).
+ *
+ * APD inverts the lookup order: the [PluginClassLoader] delegates to the service classloader
+ * first. If the service already provides a class, the plugin uses that shared instance.
+ * Only classes absent from the service classpath are loaded from the plugin JAR itself.
+ * This is the standard behaviour of managed runtimes (OSGi, JEE) and eliminates the
+ * duplicate-class problem without requiring plugins to carefully exclude every shared lib.
  */
 private class NullSafeSpringPluginManager(pluginsRoot: Path) : SpringPluginManager(pluginsRoot) {
     override fun createExtensionFactory(): ExtensionFactory =
         NullSafeSpringExtensionFactory(this)
+
+    override fun createPluginLoader(): PluginLoader =
+        CompoundPluginLoader()
+            .add(ApdJarPluginLoader(this))
+            .add(ApdDefaultPluginLoader(this))
+}
+
+/**
+ * [JarPluginLoader] subclass that overrides [loadPlugin] to use
+ * [ClassLoadingStrategy.APD] (Application first) instead of the default PDA.
+ *
+ * [JarPluginLoader.loadPlugin] creates a [PluginClassLoader] with the 3-argument
+ * constructor (which defaults to PDA), then adds the JAR file. We replicate this
+ * logic but pass [ClassLoadingStrategy.APD] via the 4-argument constructor.
+ */
+private class ApdJarPluginLoader(private val manager: PluginManager) : JarPluginLoader(manager) {
+    override fun loadPlugin(pluginPath: Path, pluginDescriptor: PluginDescriptor): ClassLoader {
+        val classLoader = PluginClassLoader(manager, pluginDescriptor, javaClass.classLoader, ClassLoadingStrategy.APD)
+        classLoader.addFile(pluginPath.toFile())
+        return classLoader
+    }
+}
+
+/**
+ * [DefaultPluginLoader] subclass that overrides [createPluginClassLoader] to use
+ * [ClassLoadingStrategy.APD] (Application first).
+ *
+ * This loader handles "exploded" plugin directories (development mode) where classes
+ * live in a `classes/` subdirectory and JARs in a `lib/` subdirectory.
+ */
+private class ApdDefaultPluginLoader(pluginManager: PluginManager) : DefaultPluginLoader(pluginManager) {
+    override fun createPluginClassLoader(pluginPath: Path, pluginDescriptor: PluginDescriptor): PluginClassLoader =
+        PluginClassLoader(pluginManager, pluginDescriptor, javaClass.classLoader, ClassLoadingStrategy.APD)
 }
 
 /**

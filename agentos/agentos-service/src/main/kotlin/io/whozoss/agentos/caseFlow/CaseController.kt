@@ -1,18 +1,27 @@
 package io.whozoss.agentos.caseFlow
 
-import io.whozoss.agentos.entity.EntityController
+import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.api.case.AddMessageRequest
+import io.whozoss.agentos.sdk.api.case.CaseApi
+import io.whozoss.agentos.sdk.api.case.CaseDto
+import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
+import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -22,11 +31,16 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
+import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 
 /**
- * REST API for managing [Case] entities.
+ * REST API for managing [Case] entities. Implements [CaseApi] so external consumers
+ * can declare a Feign client against the SDK interface.
  *
  * Authorization declared via `@PreAuthorize`:
  * - READ on Case: namespace ADMIN (transitive) OR direct ADMIN/MEMBER on the case (FR15)
@@ -34,10 +48,9 @@ import java.util.UUID
  * - CREATE: namespace **READ** (FR — a MEMBER can create their own case;
  *   the ADMIN/MEMBER grant on the new case is auto-applied in the body)
  *
- * `userService` and `permissionService` are still injected for two non-authorization
- * concerns: (1) the auto-ADMIN grant on the new case after create, (2) the fast-path
- * branch in `listByParent` (namespace ADMIN → unfiltered listing) which is a
- * performance optimization, not an authorization check.
+ * [userService] and [permissionService] are used for two non-authorization concerns:
+ * (1) the auto-ADMIN grant on the new case after create, (2) the fast-path branch in
+ * [listByParent] (namespace ADMIN → unfiltered listing).
  */
 @RestController
 @RequestMapping(
@@ -46,174 +59,236 @@ import java.util.UUID
 )
 class CaseController(
     private val caseService: CaseService,
-    userService: UserService,
-    permissionService: PermissionService,
-) : EntityController<Case, UUID, CaseResource>(caseService, userService, permissionService) {
-    override val entityType = EntityType.CASE
-
-    override fun toResource(entity: Case): CaseResource =
-        CaseResource(
-            id = entity.metadata.id,
-            namespaceId = entity.namespaceId,
-            status = entity.status,
-            title = entity.title,
-            created = entity.metadata.created,
-        )
-
-    override fun toDomain(resource: CaseResource): Case {
-        val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
-        return Case(
-            metadata = metadata,
-            namespaceId = resource.namespaceId,
-            status = resource.status,
-            title = resource.title ?: "Case ${metadata.id}",
-        )
-    }
-
-    /**
-     * Merge an update resource onto an existing persisted entity. The persisted
-     * [Case.namespaceId] and [Case.status] are preserved (mass-assignment guard):
-     * - `namespaceId` is the transitivity key for permissions (FR15) — clients
-     *   must not relocate a Case across namespaces via PUT.
-     * - `status` is a lifecycle field driven by the runtime (`interruptCase`,
-     *   `killCase`, agent execution) — clients must not transition state via PUT.
-     */
-    private fun toDomainForUpdate(
-        resource: CaseResource,
-        existing: Case,
-    ): Case =
-        existing.copy(
-            title = resource.title ?: existing.title,
-        )
-
+    private val caseEventService: CaseEventService,
+    private val namespaceService: NamespaceService,
+    private val userService: UserService,
+    private val permissionService: PermissionService,
+    private val favoriteService: FavoriteService,
+    private val caseReadService: CaseReadService,
+) : CaseApi {
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
     @HideOnAccessDenied
     override fun getById(
         @PathVariable id: UUID,
-    ): CaseResource = super.getById(id)
+    ): CaseDto = caseService.getById(id).withCallerMeta(userService.getCurrentUser().id.toString())
 
-    // POST /by-ids — inherited from EntityController.getByIds (story 5-4 factorisation).
+    @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("isAuthenticated()")
+    override fun getByIds(
+        @RequestBody request: SdkGetByIdsRequest,
+    ): List<CaseDto> =
+        caseService
+            .findByIds(request.ids, request.withRemoved)
+            .withCallerMeta(userService.getCurrentUser().id.toString())
 
     /**
-     * GET /api/cases/by-parentId/{parentId} — list cases in a namespace (/3.3).
+     * GET /api/cases/by-parentId/{parentId} — list cases in a namespace.
      *
-     * `@PreAuthorize` gates on namespace READ ; inside the body, two perf paths:
+     * Two performance paths:
      * 1. Namespace ADMIN → unfiltered listing (single query, no per-case check).
-     * 2. Otherwise → permission-filtered listing via dedicated Cypher
-     *    (`findAccessibleByUserInNamespace`) which respects FR15 (MEMBERs see only
-     *    their own cases or those they were directly granted READ on).
+     * 2. Otherwise → permission-filtered listing via [CaseService.findAccessibleByUserInNamespace]
+     *    which respects FR15 (MEMBERs see only their own cases or those they were directly
+     *    granted READ on).
      */
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
     override fun listByParent(
         @PathVariable parentId: UUID,
-    ): List<CaseResource> {
+    ): List<CaseDto> {
         val user = userService.getCurrentUser()
         val userId = user.id.toString()
         val isNamespaceAdmin =
             permissionService.hasPermission(
-                userId,
-                EntityType.NAMESPACE,
-                parentId.toString(),
-                Action.WRITE,
+                userId = userId,
+                entityType = EntityType.NAMESPACE,
+                entityId = parentId.toString(),
+                action = Action.WRITE,
             )
-        return if (isNamespaceAdmin) {
-            logger.debug { "User $userId is namespace-ADMIN on $parentId — short-circuit list (no filtering)" }
-            caseService.findByParent(parentId).map { toResource(it) }
-        } else {
-            logger.debug { "User $userId not namespace-ADMIN on $parentId — using permission-filtered listing" }
-            caseService.findAccessibleByUserInNamespace(user.id, parentId).map { toResource(it) }
-        }
+        val cases =
+            if (isNamespaceAdmin) {
+                logger.debug { "User $userId is namespace-ADMIN on $parentId — short-circuit list (no filtering)" }
+                caseService.findByParent(parentId)
+            } else {
+                logger.debug { "User $userId not namespace-ADMIN on $parentId — using permission-filtered listing" }
+                caseService.findAccessibleByUserInNamespace(user.id, parentId)
+            }
+        return cases.withCallerMeta(userId)
     }
 
     /**
-     * POST /api/cases — create a Case. Permission gate is namespace READ
-     * (a MEMBER may create their own cases). The body delegates to the standard
-     * `EntityController.create`, then auto-grants ADMIN on the new case to the
-     * creator. The grant is best-effort (non-transactional).
+     * GET /api/cases/by-parentId/{parentId}/mine — list ONLY the cases in [parentId]
+     * that the CURRENT user has a DIRECT [:ADMIN|MEMBER] relation with.
+     *
+     * Deliberately excludes the namespace-admin fast path AND namespace-admin
+     * transitivity used by [listByParent]: every returned case is one the user can
+     * star (star requires a direct user↔case edge). This powers the AgentOS drawer.
+     *
+     * Single-case access by URL is unchanged ([getById] gates on `hasPermission(#id,'Case','READ')`),
+     * so admins/super-admins can still open a case they don't own.
+     */
+    @GetMapping("/by-parentId/{parentId}/mine")
+    @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")
+    override fun listMineByParent(
+        @PathVariable parentId: UUID,
+    ): List<CaseDto> {
+        val user = userService.getCurrentUser()
+        logger.debug { "Listing directly-related cases for user ${user.id} in namespace $parentId" }
+        val cases = caseService.findConcerningUserInNamespace(user.id, parentId)
+        return cases.withCallerMeta(user.id.toString())
+    }
+
+    /**
+     * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
+     * relation (`role`), favorite flag, [CaseDto.readAt], and [CaseDto.lastMessageAt].
+     *
+     * Two batch queries resolve the whole set (no per-case round-trips):
+     * - [FavoriteService.listDirectRelations] for role/favorite/readAt metadata
+     * - [CaseEventService.findLastMessageTimestamps] for the last-message timestamp
+     *   used by the frontend to sort and group conversations.
+     *
+     * Cases the user has no direct edge on get `role = null`, `favorite = false`,
+     * and `readAt = null` (e.g. the namespace-admin fast path in [listByParent]).
+     */
+    private fun List<Case>.withCallerMeta(userId: String): List<CaseDto> {
+        val starred = favoriteService.listDirectRelations(userId, EntityType.CASE)
+        val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(this.map { it.id })
+        return this.map {
+            val meta = starred[it.metadata.id.toString()]
+            toDto(it).copy(
+                favorite = meta?.favorite ?: false,
+                role = meta?.relation?.name,
+                readAt = meta?.readAt,
+                lastMessageAt = lastMessageTimestamps[it.id],
+            )
+        }
+    }
+
+    private fun Case.withCallerMeta(userId: String): CaseDto = listOf(this).withCallerMeta(userId).first()
+
+    /**
+     * POST /api/cases — create a Case. Permission gate is namespace READ (a MEMBER may
+     * create their own cases). After persistence, auto-grants ADMIN on the new case to
+     * the creator (best-effort, non-transactional).
      */
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#resource.namespaceId, 'Namespace', 'READ')")
+    @ResponseStatus(HttpStatus.CREATED)
     override fun create(
-        @Valid @RequestBody resource: CaseResource,
-    ): CaseResource {
-        val created = super.create(resource)
-        val caseId = created.id ?: error("Created case must have an id")
-        val userId = userService.getCurrentUser().id.toString()
-        runCatching {
-            permissionService.grantPermission(
-                userId,
-                EntityType.CASE,
-                caseId.toString(),
-                PermissionRelation.ADMIN,
+        @Valid @RequestBody resource: CaseDto,
+    ): CaseDto {
+        val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
+        val domain =
+            Case(
+                metadata = metadata,
+                namespaceId = resource.namespaceId,
+                status = resource.status,
+                title = resource.title ?: "Case ${metadata.id}",
             )
-            logger.info { "User $userId created case $caseId with auto-ADMIN grant" }
-        }.onFailure { e ->
-            logger.warn(e) {
-                "Auto-ADMIN grant failed for case $caseId (user $userId) — case persisted. " +
-                    "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
-            }
-        }
-        return created
+        val saved = caseService.create(domain)
+        val userId = userService.getCurrentUser().id.toString()
+        val granted =
+            runCatching {
+                permissionService.grantPermission(
+                    userId = userId,
+                    entityType = EntityType.CASE,
+                    entityId = saved.id.toString(),
+                    relation = PermissionRelation.ADMIN,
+                )
+                logger.info { "User $userId created case ${saved.id} with auto-ADMIN grant" }
+            }.onFailure { e ->
+                logger.warn(e) {
+                    "Auto-ADMIN grant failed for case ${saved.id} (user $userId) — case persisted. " +
+                        "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
+                }
+            }.isSuccess
+
+        // Surface the creator's fresh direct relation so the UI enables ADMIN-only actions
+        // (delete) on the new case immediately, without waiting for a list refresh to enrich it.
+        // lastMessageAt is intentionally omitted: a newly created case has no messages yet,
+        // so the field is always null and the query would be a wasted round-trip.
+        val dto = toDto(saved)
+        return if (granted) dto.copy(role = PermissionRelation.ADMIN.name) else dto
     }
 
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#id, 'Case', 'WRITE')")
     override fun update(
         @PathVariable id: UUID,
-        @Valid @RequestBody resource: CaseResource,
-    ): CaseResource {
+        @Valid @RequestBody resource: CaseDto,
+    ): CaseDto {
         val existing =
             caseService.findById(id)
-                ?: throw io.whozoss.agentos.exception
-                    .ResourceNotFoundException("Case not found: $id")
-        return toResource(caseService.update(toDomainForUpdate(resource, existing)))
+                ?: throw ResourceNotFoundException("Case not found: $id")
+        val updated =
+            caseService.update(
+                existing.copy(
+                    // namespaceId and status are mass-assignment-guarded:
+                    // namespaceId is the transitivity key for permissions;
+                    // status is driven by the runtime lifecycle, not PUT.
+                    title = resource.title ?: existing.title,
+                ),
+            )
+        return updated.withCallerMeta(userService.getCurrentUser().id.toString())
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'DELETE')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     override fun delete(
         @PathVariable id: UUID,
-    ) = super.delete(id)
-
-    /**
-     * GET /api/cases/by-user/{userId} — list all cases concerning a specific user
-     * across every namespace.
-     *
-     * A case concerns a user when they have a direct ADMIN or MEMBER relation on it.
-     */
-    @GetMapping("/by-user/{userId}")
-    fun listByUser(
-        @PathVariable userId: UUID,
-    ): List<CaseResource> {
-        logger.debug { "Listing cases for user $userId" }
-        return caseService.findConcerningUser(userId).map { toResource(it) }
+    ) {
+        if (!caseService.delete(id)) throw ResourceNotFoundException("Case not found: $id")
     }
 
-    /**
-     * GET /api/cases/by-user/external/{externalId} — list all cases concerning a user
-     * identified by their external identity-provider key, across every namespace.
-     *
-     * Resolves the user from [externalId], then delegates to [listByUser] logic.
-     * Returns 404 if no user matches the external id.
-     */
+    @GetMapping("/by-user/{userId}")
+    override fun listByUser(
+        @PathVariable userId: UUID,
+    ): List<CaseDto> {
+        logger.debug { "Listing cases for user $userId" }
+        val caller = userService.getCurrentUser()
+        val cases = caseService.findConcerningUser(userId)
+        // Enrich with caller's meta only when the caller is the target user;
+        // otherwise the caller has no direct relation on these cases so favorite would always be false.
+        return if (caller.id == userId) cases.withCallerMeta(caller.id.toString()) else cases.withLastMessageAt()
+    }
+
     @GetMapping("/by-user/external/{externalId}")
-    fun listByUserExternalId(
+    override fun listByUserExternalId(
         @PathVariable externalId: String,
-    ): List<CaseResource> {
+    ): List<CaseDto> {
         val user =
             userService.findByExternalId(externalId)
-                ?: throw io.whozoss.agentos.exception
-                    .ResourceNotFoundException("User not found: $externalId")
+                ?: throw ResourceNotFoundException("User not found: $externalId")
         logger.debug { "Listing cases for user ${user.id} (externalId=$externalId)" }
-        return caseService.findConcerningUser(user.id).map { toResource(it) }
+        val caller = userService.getCurrentUser()
+        val cases = caseService.findConcerningUser(user.id)
+        // Enrich with caller's meta only when the caller is the target user;
+        // otherwise the caller has no direct relation on these cases so favorite would always be false.
+        return if (caller.id == user.id) cases.withCallerMeta(caller.id.toString()) else cases.withLastMessageAt()
     }
 
-    /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
+    @PostMapping("/by-user/in-namespace", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    override fun listByUserInNamespace(
+        @RequestBody request: ListByUserInNamespaceRequest,
+    ): List<CaseDto> {
+        val user =
+            userService.findByExternalId(request.userExternalId)
+                ?: throw ResourceNotFoundException("User not found: ${request.userExternalId}")
+        val namespace =
+            namespaceService.findByExternalId(request.namespaceExternalId)
+                ?: throw ResourceNotFoundException("Namespace not found: ${request.namespaceExternalId}")
+        logger.debug { "Listing cases for user ${user.id} in namespace ${namespace.id}" }
+        val caller = userService.getCurrentUser()
+        val cases = caseService.findConcerningUserInNamespace(user.id, namespace.id)
+        // Enrich with caller's meta only when the caller is the target user;
+        // otherwise the caller has no direct relation on these cases so favorite would always be false.
+        return if (caller.id == user.id) cases.withCallerMeta(caller.id.toString()) else cases.withLastMessageAt()
+    }
+
     @PostMapping("/{caseId}/messages")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
-    fun addMessage(
+    override fun addMessage(
         @PathVariable caseId: UUID,
         @RequestBody request: AddMessageRequest,
     ) {
@@ -234,13 +309,9 @@ class CaseController(
         logger.info { "Message added to case: $caseId" }
     }
 
-    /**
-     * POST /api/cases/{caseId}/interrupt — interrupt the current agent turn and
-     * return the case to IDLE. Requires WRITE on the case.
-     */
     @PostMapping("/{caseId}/interrupt")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
-    fun interruptCase(
+    override fun interruptCase(
         @PathVariable caseId: UUID,
     ) {
         logger.info { "Interrupting case: $caseId" }
@@ -248,10 +319,9 @@ class CaseController(
         logger.info { "Case interrupted: $caseId" }
     }
 
-    /** POST /api/cases/{caseId}/kill — permanently terminate a case. Requires DELETE. */
     @PostMapping("/{caseId}/kill")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'DELETE')")
-    fun killCase(
+    override fun killCase(
         @PathVariable caseId: UUID,
     ) {
         logger.info { "Killing case: $caseId" }
@@ -259,12 +329,99 @@ class CaseController(
         logger.info { "Case killed: $caseId" }
     }
 
+    /** POST /api/cases/{caseId}/read — record that the current user has read this case. Returns the updated case. */
+    @PostMapping("/{caseId}/read", consumes = [MediaType.APPLICATION_JSON_VALUE, MediaType.ALL_VALUE])
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    override fun markCaseRead(
+        @PathVariable caseId: UUID,
+    ): CaseDto {
+        val userId = userService.getCurrentUser().id.toString()
+        caseReadService.markRead(userId, caseId)
+        logger.debug { "User $userId marked case $caseId as read" }
+        return caseService.getById(caseId).withCallerMeta(userId)
+    }
+
+    /** GET /api/cases/unread-count?namespaceId= — count of unread cases for the current user. */
+    @GetMapping("/unread-count")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    override fun countUnread(
+        @RequestParam namespaceId: UUID,
+    ): UnreadCountResponse {
+        val userId = userService.getCurrentUser().id.toString()
+        return UnreadCountResponse(unreadCount = caseReadService.countUnread(userId, namespaceId))
+    }
+
+    /** PUT /api/cases/{id}/star — mark the case as favorite for the current user. */
+    @PutMapping("/{id}/star")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
+    override fun starCase(
+        @PathVariable id: UUID,
+    ) {
+        val userId = userService.getCurrentUser().id.toString()
+        callFavoriteService(userId = userId, id = id, favorite = true)
+        logger.info { "User $userId favorited case $id" }
+    }
+
+    /** DELETE /api/cases/{id}/star — remove the case from the current user's favorites. */
+    @DeleteMapping("/{id}/star")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
+    override fun unstarCase(
+        @PathVariable id: UUID,
+    ) {
+        val userId = userService.getCurrentUser().id.toString()
+        callFavoriteService(userId = userId, id = id, favorite = false)
+        logger.info { "User $userId unfavorited case $id" }
+    }
+
+    private fun callFavoriteService(
+        userId: String,
+        id: UUID,
+        favorite: Boolean,
+    ) {
+        if (!favoriteService.setFavorite(
+                userId = userId,
+                entityType = EntityType.CASE,
+                entityId = id.toString(),
+                favorite = favorite,
+            )
+        ) {
+            val action = if (favorite) "favorite" else "unfavorite"
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Cannot $action case $id: the caller has no direct relation on it",
+            )
+        }
+    }
+
+    /**
+     * Enrich a list of [Case]s with [CaseDto.lastMessageAt] only — no role/favorite.
+     *
+     * Used by the "list by target user" endpoints where role and favorite are caller-relative
+     * and would be misleading, but [CaseDto.lastMessageAt] is objective and always useful.
+     */
+    private fun List<Case>.withLastMessageAt(): List<CaseDto> {
+        val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(map { it.id })
+        return map { toDto(it).copy(lastMessageAt = lastMessageTimestamps[it.id]) }
+    }
+
     companion object : KLogging()
 }
 
-data class AddMessageRequest(
-    val content: String,
-    val answerToEventId: UUID? = null,
-    /** Opaque application context at the time the user sent this message. Embedded on [io.whozoss.agentos.sdk.caseEvent.MessageEvent.sessionContext]. */
-    val sessionContext: Map<String, Any?>? = null,
-)
+internal fun toDto(entity: Case) =
+    CaseDto(
+        id = entity.metadata.id,
+        namespaceId = entity.namespaceId,
+        status = entity.status,
+        title = entity.title,
+        parentCaseId = entity.parentCaseId,
+        scheduledPromptId = entity.scheduledPromptId,
+        created = entity.metadata.created,
+        modified = entity.metadata.modified,
+        // lastMessageAt is not stored on Case — it is resolved at list time by
+        // withCallerMeta via CaseEventService.findLastMessageTimestamps and injected
+        // via .copy() after this mapping. Single-case endpoints leave it null.
+        removed = entity.metadata.removed,
+    )

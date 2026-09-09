@@ -20,17 +20,21 @@ interface PermissionService {
      * 3. Direct permission check
      * 4. Transitive permission check (namespace → child entities)
      *
+     * **Platform-scoped entities** ([entityId] = null): these entities have no parent namespace.
+     * - READ is granted to any authenticated user.
+     * - WRITE / DELETE require super-admin (`user.isAdmin`).
+     *
      * @param userId The ID of the user to check permissions for
      * @param entityType The type of entity (e.g., "Namespace", "Case", "AgentConfig")
-     * @param entityId The ID of the specific entity
+     * @param entityId The ID of the specific entity, or null for platform-scoped entities
      * @param action The action to perform (READ, WRITE, DELETE)
      * @return true if permission is granted, false otherwise (fail-closed)
      */
     fun hasPermission(
         userId: String,
         entityType: EntityType,
-        entityId: String,
-        action: Action
+        entityId: String?,
+        action: Action,
     ): Boolean
 
     /**
@@ -45,7 +49,7 @@ interface PermissionService {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     )
 
     /**
@@ -60,7 +64,7 @@ interface PermissionService {
         userId: String,
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation
+        relation: PermissionRelation,
     )
 
     /**
@@ -74,7 +78,7 @@ interface PermissionService {
     fun listUsersWithPermission(
         entityType: EntityType,
         entityId: String,
-        relation: PermissionRelation? = null
+        relation: PermissionRelation? = null,
     ): List<String>
 
     /**
@@ -88,7 +92,7 @@ interface PermissionService {
     fun listEntitiesForUser(
         userId: String,
         entityType: EntityType,
-        action: Action
+        action: Action,
     ): List<String>
 
     /**
@@ -125,10 +129,81 @@ interface PermissionService {
     ): Set<String>
 
     /**
+     * Atomically promotes a [:MEMBER] relation to [:ADMIN].
+     *
+     * The [:STARRED] edge (if any) is a separate relationship and survives untouched.
+     *
+     * @return true if a [:MEMBER] edge was found and promoted; false if the user had
+     *   no MEMBER relation (no-op: no [:ADMIN] edge is created).
+     */
+    fun promoteMemberToAdmin(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean
+
+    /**
+     * Atomically demotes a [:ADMIN] relation to [:MEMBER].
+     *
+     * The [:STARRED] edge (if any) is a separate relationship and survives untouched.
+     *
+     * @return true if a [:ADMIN] edge was found and demoted; false if the user had
+     *   no ADMIN relation (no-op: no [:MEMBER] edge is created).
+     */
+    fun demoteAdminToMember(
+        userId: String,
+        entityType: EntityType,
+        entityId: String,
+    ): Boolean
+
+    /**
      * Clears the permission cache for a specific user.
      * Should be called when user permissions change.
      *
      * @param userId The ID of the user to clear cache for
      */
     fun clearUserCache(userId: String)
+
+    /**
+     * Returns the current [PermissionRelation] for each of the given [userIds] on [entityId].
+     *
+     * Only direct relations are considered (no transitive namespace lookup). Users in [userIds]
+     * that hold no relation on the entity are absent from the returned map.
+     * Unknown user ids are silently ignored.
+     *
+     * Fail-closed: returns an empty map on error.
+     *
+     * @param entityType The type of entity
+     * @param entityId The ID of the entity
+     * @param userIds The user ids to look up (by internal string UUID)
+     * @return Map of userId → [PermissionRelation] for users that have any direct relation
+     */
+    fun listRelationsForUsers(
+        entityType: EntityType,
+        entityId: String,
+        userIds: Collection<String>,
+    ): Map<String, PermissionRelation>
+
+    /**
+     * Batch-apply share entries on an entity in a single Cypher round-trip per role group.
+     * Each entry is a (userId, targetRole?) pair:
+     * - targetRole = [PermissionRelation.ADMIN] → ensure user has ADMIN (promote from MEMBER,
+     *   or create directly)
+     * - targetRole = [PermissionRelation.MEMBER] → ensure user has MEMBER (demote from ADMIN,
+     *   or create directly)
+     * - targetRole = null → revoke all relations (ADMIN and MEMBER)
+     *
+     * Non-existent User nodes are silently skipped — the Cypher MATCH filters them out.
+     * Invalidates the permission cache after a successful write.
+     *
+     * @param entityType The type of entity being shared
+     * @param entityId The ID of the entity
+     * @param entries List of (userId, targetRole?) pairs
+     * @return List of userIds that were successfully processed
+     */
+    fun applyShareBatch(
+        entityType: EntityType,
+        entityId: String,
+        entries: List<Pair<String, PermissionRelation?>>,
+    ): List<String>
 }

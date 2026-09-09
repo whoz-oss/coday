@@ -1,28 +1,100 @@
 <div class="case-shell">
-  <agentos-header class="case-shell__header" />
+  <!-- ═══ MOBILE TOP BAR ═══
+       hamburger | {C} | NS picker | spacer | + New case
+  -->
+  <agentos-shell-topbar-mobile
+    [selectedNamespace]="selectedNamespace()"
+    [namespaces]="namespaces()"
+    [nsMenuOpen]="nsMenuOpen()"
+    (drawerToggled)="toggleMobileDrawer()"
+    (createRequested)="onMobileCreateCase()"
+    (namespaceSelected)="onNamespaceSelected($event)"
+    (nsMenuToggled)="toggleNsMenu($event)"
+    (nsMenuClosed)="closeNsMenu($event)"
+  />
 
-  <div class="case-shell__body">
-    <ds-drawer [(open)]="drawerOpen" drawerWidth="400px">
-      <!-- Sidenav: case list with close button injected into ds-entity-list toolbar -->
-      <div dsDrawerSide class="case-shell__sidenav">
-        <agentos-case-drawer
-          [cases]="cases()"
-          [activeCaseId]="activeCaseId()"
-          (caseSelected)="onCaseSelected($event)"
-          (createRequested)="onCreateRequested()"
-          (closeRequested)="toggleDrawer()"
-        />
-      </div>
+  <!-- ═══ MOBILE CASE DRAWER (overlay slide-in) ═══ -->
+  <agentos-shell-case-switcher-mobile
+    [open]="mobileDrawerOpen()"
+    [cases]="cases()"
+    [activeCaseId]="activeCaseId()"
+    [userInitials]="userInitials()"
+    [userName]="userName()"
+    [isAdmin]="isAdmin()"
+    [isDark]="isDark()"
+    (closed)="mobileDrawerOpen.set(false)"
+    (caseSelected)="onMobileCaseSelect($event)"
+    (starToggled)="onStarToggled($event)"
+    (deleteRequested)="onDeleteRequested($event)"
+    (navigateTo)="onMenuNavigate($event)"
+    (themeToggled)="onMenuToggleTheme()"
+    (logsToggled)="onMenuToggleLogs()"
+  />
 
-      <!-- Main content: routed child (CaseHomeComponent or CaseChatComponent) -->
-      <div dsDrawerContent class="case-shell__content">
-        @if (!drawerOpen()) {
-          <div class="case-shell__toggle">
-            <ds-icon-button icon="menu" variant="default" title="Open drawer" (action)="toggleDrawer()" />
-          </div>
-        }
-        <router-outlet />
-      </div>
-    </ds-drawer>
-  </div>
+  <!-- ═══ DESKTOP SIDEBAR ═══ -->
+  <agentos-shell-sidebar
+    [sidebarWidth]="sidebarWidth()"
+    [sidebarOpen]="sidebarOpen()"
+    [selectedNamespace]="selectedNamespace()"
+    [namespaces]="namespaces()"
+    [showNsPicker]="showNsPicker()"
+    [nsMenuOpen]="nsMenuOpen()"
+    [cases]="cases()"
+    [activeCaseId]="activeCaseId()"
+    [userInitials]="userInitials()"
+    [userName]="userName()"
+    [menuOpen]="menuOpen()"
+    [isAdmin]="isAdmin()"
+    [isDark]="isDark()"
+    [themeVariant]="themeVariant()"
+    [showTechnical]="showTechnical()"
+    (collapseRequested)="collapseSidebar()"
+    (homeClicked)="navigateHome()"
+    (namespaceSelected)="onNamespaceSelected($event)"
+    (nsMenuToggled)="toggleNsMenu()"
+    (nsMenuClosed)="closeNsMenu($event)"
+    (caseSelected)="onCaseSelected($event)"
+    (createRequested)="onCreateRequested()"
+    (deleteRequested)="onDeleteRequested($event)"
+    (starToggled)="onStarToggled($event)"
+    (renameRequested)="onRenameRequested($event)"
+    (menuToggled)="toggleMenu($event)"
+    (menuClosed)="closeMenu($event)"
+    (navigateTo)="onMenuNavigate($event)"
+    (themeToggled)="onMenuToggleTheme()"
+    (themeVariantChanged)="onMenuThemeVariantChanged($event)"
+    (logsToggled)="onMenuToggleLogs()"
+  />
+
+  <!-- Resize handle (hidden when sidebar is collapsed) -->
+  @if (sidebarOpen()) {
+    <div
+      class="case-shell__resize-handle"
+      role="separator"
+      tabindex="-1"
+      aria-label="Resize sidebar"
+      (mousedown)="onResizeStart($event)"
+    ></div>
+  }
+
+  <!-- Expand button — floats top-left when sidebar is collapsed -->
+  @if (!sidebarOpen()) {
+    <button class="case-shell__expand-btn" type="button" title="Open sidebar" (click)="expandSidebar()">
+      <span class="material-icons">menu</span>
+    </button>
+  }
+
+  <!-- ═══ MAIN ═══ -->
+  <main class="case-shell__main">
+    @if (activeCaseId()) {
+      <agentos-case-chat
+        [showTechnicalOverride]="showTechnical()"
+        (starToggled)="onStarToggled($event)"
+        (deleteRequested)="onDeleteRequested($event)"
+        (logsToggled)="onMenuToggleLogs()"
+      />
+    } @else {
+      <agentos-case-home [namespaceName]="selectedNamespace()?.name ?? null" />
+    }
+  </main>
 </div>

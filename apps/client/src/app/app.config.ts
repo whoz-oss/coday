@@ -1,9 +1,12 @@
 import {
   APP_INITIALIZER,
   ApplicationConfig,
+  Injector,
   provideBrowserGlobalErrorListeners,
   provideZoneChangeDetection,
 } from '@angular/core'
+import { firstValueFrom, of } from 'rxjs'
+import { catchError } from 'rxjs/operators'
 import { provideRouter } from '@angular/router'
 import { provideHttpClient } from '@angular/common/http'
 import { provideAnimations } from '@angular/platform-browser/animations'
@@ -34,6 +37,34 @@ function initializeOAuthService(_oauthService: OAuthService) {
   }
 }
 
+/**
+ * Load the current user once at app startup so that UserStateService.currentUser() is
+ * populated before any AgentOS component mounts. Without this, NamespaceRoleStateService
+ * receives null from currentUser$ and caches a stale `false` for admin checks, causing
+ * edit/delete buttons to remain hidden on namespace config pages.
+ *
+ * UserStateService lives in agentos-ui which is lazy-loaded, so we cannot import it
+ * statically here. We use a dynamic import inside the factory instead — Angular's DI
+ * resolves the service at runtime regardless, because it is providedIn: 'root'.
+ *
+ * Errors are caught and logged — an unauthenticated or anonymous session should not block
+ * the app from rendering; components that need the user will degrade gracefully.
+ */
+function initializeCurrentUser(injector: Injector) {
+  return async () => {
+    const { UserStateService } = await import('@whoz-oss/agentos-ui')
+    const userState = injector.get(UserStateService)
+    await firstValueFrom(
+      userState.loadMe().pipe(
+        catchError((err) => {
+          console.warn('Failed to load current user', err)
+          return of(null)
+        })
+      )
+    )
+  }
+}
+
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
@@ -55,6 +86,12 @@ export const appConfig: ApplicationConfig = {
       provide: APP_INITIALIZER,
       useFactory: initializeOAuthService,
       deps: [OAuthService],
+      multi: true,
+    },
+    {
+      provide: APP_INITIALIZER,
+      useFactory: initializeCurrentUser,
+      deps: [Injector],
       multi: true,
     },
     provideApi({ basePath: '/api/agentos' }),

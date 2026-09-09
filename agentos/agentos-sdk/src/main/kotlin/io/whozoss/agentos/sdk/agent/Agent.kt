@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.Flow
 
 interface Agent : Entity {
     val name: String
+    val llmProvider: String
+    val llmModel: String
 
     /**
      * Run the agent with the given case events.

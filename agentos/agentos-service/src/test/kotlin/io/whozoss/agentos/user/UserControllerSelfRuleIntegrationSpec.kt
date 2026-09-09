@@ -122,7 +122,7 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
             )
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns superAdmin
-            every { userService.findById(targetUserId) } returns target
+            every { userService.findByIds(listOf(targetUserId), false) } returns listOf(target)
             every { userService.update(capture(captured)) } answers { firstArg() }
 
             mockMvc.perform(
@@ -147,7 +147,7 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
             )
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns superAdmin
-            every { userService.findById(targetUserId) } returns target
+            every { userService.findByIds(listOf(targetUserId), false) } returns listOf(target)
             every { userService.update(capture(captured)) } answers { firstArg() }
 
             mockMvc.perform(
@@ -166,7 +166,7 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
         "PUT with isAdmin=false on SELF (caller=super-admin, existing isAdmin=true) preserves isAdmin=true" {
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns superAdmin
-            every { userService.findById(superAdminId) } returns superAdmin
+            every { userService.findByIds(listOf(superAdminId), false) } returns listOf(superAdmin)
             every { userService.update(capture(captured)) } answers { firstArg() }
 
             mockMvc.perform(
@@ -185,7 +185,7 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
         "PUT with isAdmin=true on SELF (caller=non-admin, existing isAdmin=false) preserves isAdmin=false" {
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns regularUser
-            every { userService.findById(regularUserId) } returns regularUser
+            every { userService.findByIds(listOf(regularUserId), false) } returns listOf(regularUser)
             every { userService.update(capture(captured)) } answers { firstArg() }
 
             mockMvc.perform(
@@ -213,7 +213,7 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
             )
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns superAdmin
-            every { userService.findById(targetUserId) } returns target
+            every { userService.findByIds(listOf(targetUserId), false) } returns listOf(target)
             every { userService.update(capture(captured)) } answers { firstArg() }
 
             mockMvc.perform(
@@ -242,9 +242,9 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
             ).andExpect(status().isForbidden)
 
             // Pin: the 403 must come from @PreAuthorize, not from a relaxed-mock
-            // findById returning null (which would yield 404). If the annotation
+            // findByIds returning empty (which would yield 404). If the annotation
             // were ever removed, this assertion would fail.
-            verify(exactly = 0) { userService.findById(targetUserId) }
+            verify(exactly = 0) { userService.findByIds(listOf(targetUserId), false) }
         }
     }
 }

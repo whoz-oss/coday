@@ -2,6 +2,7 @@ name: Gradlay
 description: Task runner agent specialized in executing Gradle build, lint and test commands and returning synthesized results.
 modelName: SMALL
 integrations:
+  FILES:
   PROJECT_SCRIPTS:
     - gradle
 instructions: |

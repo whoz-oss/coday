@@ -1,4 +1,4 @@
-import { inject, Injectable } from '@angular/core'
+import { inject, Injectable, signal } from '@angular/core'
 import { BehaviorSubject, Observable, shareReplay } from 'rxjs'
 import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
 import { NamespaceState } from './namespace.state'
@@ -20,6 +20,13 @@ export class NamespaceStateService {
 
   /** Emits true once the initial namespace list has been loaded. */
   readonly initialized$: Observable<boolean> = this._initialized$.asObservable()
+
+  /**
+   * The id of the currently active namespace, set by CaseShellComponent
+   * whenever the ?ns query param is resolved. Used by ShellTopbarComponent
+   * to restore the namespace when navigating back from admin pages.
+   */
+  readonly activeNamespaceId = signal<string | null>(null)
 
   private state: NamespaceState | null = null
 
@@ -58,6 +65,7 @@ export class NamespaceStateService {
   }
 
   selectNamespace(id: string): void {
+    this.activeNamespaceId.set(id)
     this.getState().selectNamespace(id)
   }
 

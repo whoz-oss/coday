@@ -44,6 +44,8 @@ class AgentSimpleUnitSpec :
                 chatClient = chatClient,
                 tools = tools,
                 instructions = instructions,
+                llmProvider = "test-provider",
+                llmModel = "test-model",
             )
 
         fun userMessage(

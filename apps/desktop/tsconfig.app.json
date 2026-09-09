@@ -1,4 +1,7 @@
 {
+  "angularCompilerOptions": {
+    "strictTemplates": false
+  },
   "compilerOptions": {
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
@@ -7,6 +10,7 @@
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,
     "outDir": "../../dist/out-tsc",
+    "rootDir": "../..",
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2021",

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
+import io.whozoss.agentos.sdk.tool.EnrichmentResult
+import io.whozoss.agentos.sdk.tool.IntermediatePhaseDescriptor
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -56,9 +58,9 @@ class EditFilesTool(
 
     // language=JSON
     override val inputSchema: String =
-        """
+        $$"""
         {
-            "${'$'}schema": "https://json-schema.org/draft/2020-12/schema",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
             "properties": {
                 "edits": {
@@ -133,6 +135,62 @@ class EditFilesTool(
     data class Input(
         val edits: List<Edit> = emptyList(),
     )
+
+    override suspend fun getIntermediatePhaseCount(): Int = 1
+
+    override suspend fun getIntermediatePhaseDescriptor(
+        phaseIndex: Int,
+        previousContent: String?,
+    ): IntermediatePhaseDescriptor =
+        IntermediatePhaseDescriptor(
+            inputSchema =
+                """
+                {
+                    "type": "object",
+                    "properties": {
+                        "filePaths": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Relative paths of the files that need to be edited"
+                        }
+                    },
+                    "required": ["filePaths"],
+                    "additionalProperties": false
+                }
+                """.trimIndent(),
+            prompt = "Identify the relative file paths that need to be edited to fulfill the user's intention.",
+        )
+
+    override suspend fun enrich(
+        phaseIndex: Int,
+        phaseParametersJson: String,
+        context: ToolContext,
+    ): EnrichmentResult {
+        return try {
+            val input = objectMapper.readTree(phaseParametersJson)
+            val paths = input.get("filePaths")?.map { it.asText() } ?: emptyList()
+            if (paths.isEmpty()) {
+                return EnrichmentResult(success = false, errorMessage = "No file paths provided")
+            }
+            val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
+            val contents =
+                paths.map { path ->
+                    try {
+                        val resolved = resolver.resolve(path, createIntent = false)
+                        val content = Files.readString(resolved, StandardCharsets.UTF_8)
+                        "=== $path ===\n$content"
+                    } catch (e: Exception) {
+                        "=== $path === [Error: ${e.message}]"
+                    }
+                }
+            EnrichmentResult(
+                success = true,
+                content = "Current file contents:\n${contents.joinToString("\n\n")}",
+            )
+        } catch (e: Exception) {
+            EnrichmentResult(success = false, errorMessage = "Failed to read files: ${e.message}")
+        }
+    }
 
     override suspend fun execute(
         input: Input?,
@@ -282,5 +340,4 @@ class EditFilesTool(
     }
 
     private fun formatChunks(chunks: List<String>): String = chunks.joinToString(" ") { "\n- \"\"\"$it\"\"\"" } + "\n"
-
 }

@@ -10,6 +10,6 @@
 import { NamespaceRoleEntry } from './namespace-role-entry'
 
 export interface SyncUserRolesRequest {
-  userExternalId: string
   namespaceRoles: Array<NamespaceRoleEntry>
+  userExternalId: string
 }

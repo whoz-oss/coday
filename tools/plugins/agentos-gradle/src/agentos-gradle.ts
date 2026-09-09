@@ -1,4 +1,4 @@
-import { CreateNodesContextV2, CreateNodesResult, CreateNodesV2, createNodesFromFiles } from '@nx/devkit'
+import { CreateNodesContext, CreateNodesResult, CreateNodes, createNodesFromFiles } from '@nx/devkit'
 import { existsSync } from 'fs'
 import { basename, dirname } from 'path'
 
@@ -9,14 +9,20 @@ const GRADLE_INPUTS = [
   '{workspaceRoot}/agentos/settings.gradle.kts',
 ]
 
-const SDK_DEPENDENCY = { target: 'build', projects: ['agentos-sdk'] }
+// For build/test targets: depend on agentos-sdk:build (compile + test) to ensure
+// the SDK is fully verified before downstream compilation or testing.
+const SDK_BUILD_DEPENDENCY = { target: 'build', projects: ['agentos-sdk'] }
+
+// For assemble/publish targets: depend on agentos-sdk:assemble only.
+// SDK tests already ran in validate.yml on every PR — no need to re-run them at publish time.
+const SDK_ASSEMBLE_DEPENDENCY = { target: 'assemble', projects: ['agentos-sdk'] }
 
 // Matches all build.gradle.kts files one level deep under agentos/
 // e.g. agentos/agentos-service/build.gradle.kts
 // Excludes the composite root agentos/build.gradle.kts (no parent subdir)
-export const createNodesV2: CreateNodesV2 = [
+export const createNodesV2: CreateNodes = [
   'agentos/*/build.gradle.kts',
-  async (configFiles, _options, context: CreateNodesContextV2) => {
+  async (configFiles, _options, context: CreateNodesContext) => {
     return await createNodesFromFiles(
       (configFile) => createNodesInternal(configFile, context),
       configFiles,
@@ -26,7 +32,7 @@ export const createNodesV2: CreateNodesV2 = [
   },
 ]
 
-function createNodesInternal(configFilePath: string, context: CreateNodesContextV2): CreateNodesResult {
+function createNodesInternal(configFilePath: string, context: CreateNodesContext): CreateNodesResult {
   const projectDir = dirname(configFilePath)
   const projectName = basename(projectDir)
 
@@ -58,7 +64,7 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
               command: `./gradlew :${projectName}:build`,
               cwd: 'agentos',
             },
-            dependsOn: [SDK_DEPENDENCY],
+            dependsOn: [SDK_BUILD_DEPENDENCY],
           },
           assemble: {
             executor: 'nx:run-commands',
@@ -69,7 +75,7 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
               command: `./gradlew :${projectName}:assemble`,
               cwd: 'agentos',
             },
-            dependsOn: [SDK_DEPENDENCY],
+            dependsOn: [SDK_ASSEMBLE_DEPENDENCY],
           },
           test: {
             executor: 'nx:run-commands',
@@ -81,7 +87,7 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
               cwd: 'agentos',
               passWithNoTests: null,
             },
-            dependsOn: ['build', SDK_DEPENDENCY],
+            dependsOn: ['build', SDK_BUILD_DEPENDENCY],
           },
           clean: {
             executor: 'nx:run-commands',
@@ -93,6 +99,8 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
           },
           'nx-release-publish': {
             executor: 'nx:run-commands',
+            // No-op: real publishing happens via the `publish` target below, called by publish-agentos-artifacts in validate.yml CI workflow.
+            dependsOn: [],
             options: {
               command: `echo '${projectName} published via Gradle in CI'`,
             },
@@ -104,7 +112,9 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
               command: `./gradlew :${projectName}:publish`,
               cwd: 'agentos',
             },
-            dependsOn: ['build'],
+            // `assemble` (no tests) is sufficient — tests already ran in validate.yml on every PR.
+            // Gradle's own `publish` task already depends on `assemble` internally.
+            dependsOn: ['assemble'],
           },
         },
       },

@@ -61,11 +61,12 @@ describe('buildProjectConfig', () => {
   })
 
   describe('nx-release-publish target', () => {
-    it('infers a no-op echo command', () => {
+    it('infers a no-op echo command with empty dependsOn', () => {
       const result = buildProjectConfig('agentos/agentos-service', 'agentos-service')
       const target = result.projects?.['agentos/agentos-service']?.targets?.['nx-release-publish']
       expect(target).toMatchObject({
         executor: 'nx:run-commands',
+        dependsOn: [],
         options: { command: "echo 'agentos-service published via Gradle in CI'" },
       })
     })
@@ -88,7 +89,7 @@ describe('buildProjectConfig', () => {
           command: './gradlew :agentos-service:publish',
           cwd: 'agentos',
         },
-        dependsOn: ['build'],
+        dependsOn: ['assemble'],
       })
     })
 

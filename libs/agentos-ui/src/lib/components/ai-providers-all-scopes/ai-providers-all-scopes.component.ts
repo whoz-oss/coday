@@ -15,6 +15,7 @@ import { defaultCreateScope } from '../_shared/default-create-scope'
 import { AiProviderItemComponent } from '../ai-provider-item/ai-provider-item.component'
 
 const SECTION_LABEL: Readonly<Record<AiProviderScope, string>> = Object.freeze({
+  platform: 'Platform (read-only)',
   namespace: 'AI Providers du namespace',
   userOnNs: 'Mes overrides sur ce namespace',
   userGlobal: 'Mes overrides globaux',
@@ -45,7 +46,6 @@ interface ResolvedItem {
  */
 @Component({
   selector: 'agentos-ai-providers-all-scopes',
-  standalone: true,
   imports: [AsyncPipe, EntityListComponent, AiProviderItemComponent, IconButtonComponent],
   templateUrl: './ai-providers-all-scopes.component.html',
   styleUrl: './ai-providers-all-scopes.component.scss',
@@ -89,6 +89,9 @@ export class AiProvidersAllScopesComponent implements OnInit {
 
     this.state.vm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((vm) => {
       const next = new Map<string, ResolvedItem>()
+      vm.platform.forEach((c) => {
+        if (c.id) next.set(this.itemKey('platform', c.id), { config: c, scope: 'platform' })
+      })
       vm.namespace.forEach((c) => {
         if (c.id) next.set(this.itemKey('namespace', c.id), { config: c, scope: 'namespace' })
       })
@@ -160,6 +163,7 @@ export class AiProvidersAllScopesComponent implements OnInit {
 
   private toListItems(vm: AiProviderConfigViewModel): EntityListItem[] {
     const items: EntityListItem[] = []
+    items.push(...this.sectionItems('platform', vm.platform))
     items.push(...this.sectionItems('namespace', vm.namespace))
     items.push(...this.sectionItems('userOnNs', vm.userOnNs))
     items.push(...this.sectionItems('userGlobal', vm.userGlobal))

@@ -9,7 +9,7 @@
  */
 
 export interface AddMessageRequest {
-  content: string
   answerToEventId?: string
+  content: string
   sessionContext?: { [key: string]: any }
 }

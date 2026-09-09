@@ -21,10 +21,8 @@ import java.util.UUID
 /**
  * Unit tests for [NamespacePermissionEndpoints].
  *
- * Covers HTTP-layer concerns only: existence gates, delegation to collaborators,
- * and idempotency of individual grant/revoke endpoints.
- * Business logic for [NamespacePermissionEndpoints.updateRolesByExternalId] is
- * tested in [NamespacePermissionServiceImplSpec].
+ * Covers the fine-grained per-user grant/revoke endpoints and [updateRolesByExternalId].
+ * Membership listing and batch update are tested in [NamespaceMembershipControllerSpec].
  */
 class NamespacePermissionEndpointsSpec :
     StringSpec({
@@ -67,8 +65,8 @@ class NamespacePermissionEndpointsSpec :
             )
 
         fun stubExistence() {
-            every { namespaceService.findById(namespaceId) } returns namespace
-            every { userService.findById(targetUserId) } returns target
+            every { namespaceService.getById(namespaceId) } returns namespace
+            every { userService.getById(targetUserId) } returns target
             every { userService.getCurrentUser() } returns caller
         }
 
@@ -95,15 +93,15 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "grantAdmin returns 404 when namespace not found" {
-            every { namespaceService.findById(namespaceId) } returns null
+            every { namespaceService.getById(namespaceId) } throws ResourceNotFoundException("Namespace not found: $namespaceId")
 
             shouldThrow<ResourceNotFoundException> { controller.grantAdmin(namespaceId, targetUserId) }
             verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
         }
 
         "grantAdmin returns 404 when target user not found" {
-            every { namespaceService.findById(namespaceId) } returns namespace
-            every { userService.findById(targetUserId) } returns null
+            every { namespaceService.getById(namespaceId) } returns namespace
+            every { userService.getById(targetUserId) } throws ResourceNotFoundException("User not found: $targetUserId")
 
             shouldThrow<ResourceNotFoundException> { controller.grantAdmin(namespaceId, targetUserId) }
             verify(exactly = 0) { permissionService.grantPermission(any(), any(), any(), any()) }
@@ -140,7 +138,7 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "revokeAdmin returns 404 when namespace not found" {
-            every { namespaceService.findById(namespaceId) } returns null
+            every { namespaceService.getById(namespaceId) } throws ResourceNotFoundException("Namespace not found: $namespaceId")
 
             shouldThrow<ResourceNotFoundException> { controller.revokeAdmin(namespaceId, targetUserId) }
         }
@@ -175,8 +173,8 @@ class NamespacePermissionEndpointsSpec :
         }
 
         "grantMember returns 404 when target user not found" {
-            every { namespaceService.findById(namespaceId) } returns namespace
-            every { userService.findById(targetUserId) } returns null
+            every { namespaceService.getById(namespaceId) } returns namespace
+            every { userService.getById(targetUserId) } throws ResourceNotFoundException("User not found: $targetUserId")
 
             shouldThrow<ResourceNotFoundException> { controller.grantMember(namespaceId, targetUserId) }
         }
@@ -217,91 +215,6 @@ class NamespacePermissionEndpointsSpec :
             controller.revokeMember(namespaceId, targetUserId)
 
             verify(exactly = 2) { permissionService.revokePermission(any(), any(), any(), any()) }
-        }
-
-        // -------------------------------------------------------------------------
-        // GET users — listing with role precedence
-        // -------------------------------------------------------------------------
-
-        "listNamespaceUsers returns list with ADMIN/MEMBER roles" {
-            every { namespaceService.findById(namespaceId) } returns namespace
-            val adminId = UUID.randomUUID()
-            val memberId = UUID.randomUUID()
-            val adminUser = User(metadata = EntityMetadata(id = adminId), externalId = "a", email = "a")
-            val memberUser = User(metadata = EntityMetadata(id = memberId), externalId = "m", email = "m")
-            every {
-                permissionService.listUsersWithPermission(
-                    EntityType.NAMESPACE,
-                    namespaceId.toString(),
-                    PermissionRelation.ADMIN,
-                )
-            } returns listOf(adminId.toString())
-            every {
-                permissionService.listUsersWithPermission(
-                    EntityType.NAMESPACE,
-                    namespaceId.toString(),
-                    PermissionRelation.MEMBER,
-                )
-            } returns listOf(memberId.toString())
-            every { userService.findByIds(any()) } returns listOf(adminUser, memberUser)
-
-            val result = controller.listNamespaceUsers(namespaceId).associate { it.id to it.role }
-
-            result[adminId] shouldBe "ADMIN"
-            result[memberId] shouldBe "MEMBER"
-        }
-
-        "listNamespaceUsers deduplicates users with both ADMIN and MEMBER (role=ADMIN)" {
-            every { namespaceService.findById(namespaceId) } returns namespace
-            val dualId = UUID.randomUUID()
-            val dualUser = User(metadata = EntityMetadata(id = dualId), externalId = "d", email = "d")
-            every {
-                permissionService.listUsersWithPermission(
-                    EntityType.NAMESPACE,
-                    namespaceId.toString(),
-                    PermissionRelation.ADMIN,
-                )
-            } returns listOf(dualId.toString())
-            every {
-                permissionService.listUsersWithPermission(
-                    EntityType.NAMESPACE,
-                    namespaceId.toString(),
-                    PermissionRelation.MEMBER,
-                )
-            } returns listOf(dualId.toString())
-            every { userService.findByIds(listOf(dualId)) } returns listOf(dualUser)
-
-            val result = controller.listNamespaceUsers(namespaceId)
-
-            result.size shouldBe 1
-            result[0].id shouldBe dualId
-            result[0].role shouldBe "ADMIN"
-        }
-
-        "listNamespaceUsers returns empty list when no user has a direct relation" {
-            every { namespaceService.findById(namespaceId) } returns namespace
-            every {
-                permissionService.listUsersWithPermission(
-                    EntityType.NAMESPACE,
-                    namespaceId.toString(),
-                    PermissionRelation.ADMIN,
-                )
-            } returns emptyList()
-            every {
-                permissionService.listUsersWithPermission(
-                    EntityType.NAMESPACE,
-                    namespaceId.toString(),
-                    PermissionRelation.MEMBER,
-                )
-            } returns emptyList()
-
-            controller.listNamespaceUsers(namespaceId) shouldBe emptyList()
-        }
-
-        "listNamespaceUsers returns 404 when namespace not found" {
-            every { namespaceService.findById(namespaceId) } returns null
-
-            shouldThrow<ResourceNotFoundException> { controller.listNamespaceUsers(namespaceId) }
         }
 
         // -------------------------------------------------------------------------

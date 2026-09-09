@@ -63,6 +63,23 @@ class UserServiceImplSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // createByExternalIds
+    // -------------------------------------------------------------------------
+
+    "createByExternalIds creates a user for each given externalId" {
+        val ids = setOf("dave@example.com", "eve@example.com")
+        val userRepository = mockk<UserRepository>()
+        every { userRepository.save(match { it.externalId == "dave@example.com" }) } returns makeUser("dave@example.com")
+        every { userRepository.save(match { it.externalId == "eve@example.com" }) } returns makeUser("eve@example.com")
+
+        val service = UserServiceImpl(userRepository, mockk())
+        val result = service.createByExternalIds(ids)
+
+        result.map { it.externalId }.toSet() shouldBe ids
+        verify(exactly = 2) { userRepository.save(any()) }
+    }
+
+    // -------------------------------------------------------------------------
     // resolveOrCreateByExternalId
     // -------------------------------------------------------------------------
 

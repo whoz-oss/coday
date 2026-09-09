@@ -6,7 +6,10 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import org.springframework.context.annotation.Import
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.sdk.api.userGroup.UserGroupCreateRequest
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import org.hamcrest.Matchers.contains
+import org.hamcrest.Matchers.containsInAnyOrder
 import org.hamcrest.Matchers.hasSize
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
@@ -99,6 +102,63 @@ class UserGroupControllerIntegrationSpec : StringSpec() {
             mockMvc
                 .perform(get("/api/user-groups").param("namespaceId", namespace.id.toString()))
                 .andExpect(status().isOk)
+        }
+
+        // -------------------------------------------------------------------------
+        // GET /api/user-groups/{userGroupId}/members
+        // -------------------------------------------------------------------------
+
+        "GET /api/user-groups/{id}/members returns the group members" {
+            val externalId = "federation-${UUID.randomUUID()}"
+            val namespace =
+                namespaceService.create(
+                    Namespace(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        name = "test-namespace",
+                        externalId = externalId,
+                    ),
+                )
+            val group =
+                userGroupService.createFromRequest(
+                    UserGroupCreateRequest(
+                        namespaceId = namespace.id,
+                        name = "Group With Members",
+                        userExternalIdsToAdd = setOf("alice@example.com", "bob@example.com"),
+                    ),
+                )
+
+            mockMvc
+                .perform(get("/api/user-groups/${group.userGroupId}/members"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$", hasSize<Any>(2)))
+                .andExpect(jsonPath("$[*].externalId", containsInAnyOrder("alice@example.com", "bob@example.com")))
+        }
+
+        "GET /api/user-groups/{id}/members reflects adminExternalIds roles" {
+            val externalId = "federation-${UUID.randomUUID()}"
+            val namespace =
+                namespaceService.create(
+                    Namespace(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        name = "test-namespace",
+                        externalId = externalId,
+                    ),
+                )
+            val group =
+                userGroupService.createFromRequest(
+                    UserGroupCreateRequest(
+                        namespaceId = namespace.id,
+                        name = "Group With Admin",
+                        userExternalIdsToAdd = setOf("alice@example.com", "bob@example.com"),
+                        adminExternalIds = setOf("alice@example.com"),
+                    ),
+                )
+
+            mockMvc
+                .perform(get("/api/user-groups/${group.userGroupId}/members"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.externalId=='alice@example.com')].role", contains("ADMIN")))
+                .andExpect(jsonPath("$[?(@.externalId=='bob@example.com')].role", contains("MEMBER")))
         }
     }
 }

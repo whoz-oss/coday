@@ -18,4 +18,6 @@ export interface AgentFinishedEvent {
   type: 'AgentFinishedEvent'
   agentId: string
   agentName: string
+  llmModel?: string
+  llmProvider?: string
 }

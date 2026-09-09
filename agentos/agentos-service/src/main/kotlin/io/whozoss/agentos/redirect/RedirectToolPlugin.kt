@@ -74,16 +74,35 @@ class RedirectToolPlugin(
             ?: listOf("*")
 
         val userId = context.userId
+        val callingAgentName = context.agentName
         val eligibleAgents = agentResolver(namespaceId, userId, patterns)
-            .map { RedirectTool.EligibleAgent(name = it.name, description = it.description) }
+            .filter { agentConfig -> agentConfig.name != callingAgentName }
+            .map { agentConfig ->
+                RedirectTool.EligibleAgent(
+                    name = agentConfig.name,
+                    description = agentConfig.description,
+                    integrations = agentConfig.integrations
+                        ?.map { (integrationName, allowedTools) ->
+                            RedirectTool.Integration(name = integrationName, allowedTools = allowedTools)
+                        }
+                        ?: emptyList(),
+                )
+            }
 
         if (eligibleAgents.isEmpty()) {
             logger.warn { "[RedirectToolPlugin] No eligible agents found for namespace $namespaceId with patterns $patterns" }
-            return emptyList()
+        } else {
+            logger.info { "[RedirectToolPlugin] Resolved ${eligibleAgents.size} eligible agent(s) for namespace $namespaceId" }
         }
 
-        logger.info { "[RedirectToolPlugin] Resolved ${eligibleAgents.size} eligible agent(s) for namespace $namespaceId" }
-        return listOf(RedirectTool(configName = configName, eligibleAgents = eligibleAgents))
+        val redirectTool = RedirectTool(configName = configName, eligibleAgents = eligibleAgents)
+        val guideline = config?.get("guideline")?.asText()?.takeIf { it.isNotBlank() }
+        return if (guideline != null) {
+            logger.info { "[RedirectToolPlugin] Guideline present — adding WhatsNextTool for namespace $namespaceId" }
+            listOf(redirectTool, WhatsNextTool(configName = configName, guideline = guideline))
+        } else {
+            listOf(redirectTool)
+        }
     }
 
     companion object : KLogging() {
@@ -102,6 +121,12 @@ class RedirectToolPlugin(
                         "description": "Glob patterns matching agent names this integration may redirect to. Use \"*\" for all agents. Examples: [\"*\"], [\"Github*\", \"Jira*\"].",
                         "items": { "type": "string" },
                         "default": ["*"]
+                    },
+                    "guideline": {
+                        "type": "string",
+                        "title": "Process Guideline",
+                        "description": "Optional process guideline returned verbatim by the WhatsNext tool. When present, a WhatsNextTool is added to the agent's tool set so the agent can consult the guideline at the end of its turn and decide whether to hand off to another agent.",
+                        "x-ui-widget": "textarea"
                     }
                 },
                 "additionalProperties": false

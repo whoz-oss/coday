@@ -9,8 +9,13 @@
  */
 
 export interface IntegrationTypeDescriptor {
-  type: string
-  displayName: string
+  builtIn: boolean
+  configSchema?: any | null
   description: string
-  configSchema: any | null
+  displayName: string
+  /**
+   * What this instance grants an agent whose integrations map does not mention this type at all. An agent\'s own choice always wins, in both directions; this only fills the gap, so a client can label the \"platform default\" state of a toggle. Always false for non-built-in types.
+   */
+  enabledByDefault: boolean
+  type: string
 }

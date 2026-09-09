@@ -169,25 +169,25 @@ class NamespacePermissionEndpointsMvcIntegrationSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // GET /api/namespaces/{id}/users
+        // GET /api/namespaces/{id}/members  (now in NamespaceMembershipController)
         // -------------------------------------------------------------------------
 
-        "GET /api/namespaces/{id}/users returns 200 with empty list for newly-created namespace" {
+        "GET /api/namespaces/{id}/members returns 200 with empty list for newly-created namespace" {
             val namespace = namespaceService.create(
-                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-get-users-empty"),
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-get-members-empty"),
             )
 
             // InMemoryPermissionServiceImpl.listUsersWithPermission returns emptyList always,
             // so any newly-created namespace (regardless of Neo4j state) will surface as empty here.
-            mockMvc.perform(get("/api/namespaces/${namespace.id}/users"))
+            mockMvc.perform(get("/api/namespaces/${namespace.id}/members"))
                 .andExpect(status().isOk)
                 .andExpect(content().json("[]"))
         }
 
-        "GET /api/namespaces/{id}/users returns 404 when namespace does not exist" {
+        "GET /api/namespaces/{id}/members returns 404 when namespace does not exist" {
             val missingNamespaceId = UUID.randomUUID()
 
-            mockMvc.perform(get("/api/namespaces/$missingNamespaceId/users"))
+            mockMvc.perform(get("/api/namespaces/$missingNamespaceId/members"))
                 .andExpect(status().isNotFound)
         }
     }

@@ -1,0 +1,209 @@
+@use 'libs/design-system/src/styles' as ds;
+
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.case-members {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.case-members__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-divider);
+  flex-shrink: 0;
+}
+
+.case-members__title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.case-members__close {
+  @include ds.icon-button(28px);
+
+  .material-icons {
+    font-size: 18px;
+  }
+}
+
+.case-members__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.case-members__hint,
+.case-members__loading,
+.case-members__empty-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.case-members__section {
+  border: 1px solid var(--color-divider);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.case-members__label {
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.case-members__label-hint {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.case-members__members {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.case-members__member {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-divider);
+
+  &--self {
+    border-color: var(--color-accent-300);
+  }
+}
+
+.case-members__member-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.case-members__member-name {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.case-members__member-email {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.case-members__member-role {
+  flex-shrink: 0;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--color-divider);
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-accent);
+  }
+}
+
+.case-members__member-role-badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--color-divider);
+}
+
+.case-members__member-remove {
+  @include ds.action-btn(22px);
+
+  &:hover {
+    color: var(--red);
+    background: color-mix(in srgb, var(--red) 12%, transparent);
+  }
+}
+
+.case-members__warning {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-warning);
+}
+
+.case-members__error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-error);
+}
+
+.case-members__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.case-members__btn {
+  @include ds.button-reset;
+
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--color-divider);
+  font-size: 0.875rem;
+  font-family: var(--font-heading);
+  color: var(--color-text);
+  transition: background 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--color-bg-hover);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  &--primary {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-text-inverse);
+
+    &:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+  }
+}

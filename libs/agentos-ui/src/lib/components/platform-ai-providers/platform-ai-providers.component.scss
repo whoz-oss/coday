@@ -1,0 +1,15 @@
+.platform-ai-providers__back {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #6e6e73);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+
+  &:hover {
+    color: var(--color-primary, #007aff);
+  }
+}

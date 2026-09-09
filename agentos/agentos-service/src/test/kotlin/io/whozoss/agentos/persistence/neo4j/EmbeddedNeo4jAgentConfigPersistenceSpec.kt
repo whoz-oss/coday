@@ -1,5 +1,6 @@
 package io.whozoss.agentos.persistence.neo4j
 
+import io.whozoss.agentos.config.TestAuditConfiguration
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
@@ -10,5 +11,5 @@ import org.springframework.test.context.ActiveProfiles
  */
 @SpringBootTest
 @ActiveProfiles("test", "embedded-neo4j")
-@Import(EmbeddedNeo4jTestConfiguration::class)
+@Import(EmbeddedNeo4jTestConfiguration::class, TestAuditConfiguration::class)
 class EmbeddedNeo4jAgentConfigPersistenceSpec : AbstractAgentConfigPersistenceSpec()

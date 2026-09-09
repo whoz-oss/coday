@@ -18,4 +18,6 @@ export interface AgentRunningEvent {
   type: 'AgentRunningEvent'
   agentId: string
   agentName: string
+  llmModel?: string
+  llmProvider?: string
 }

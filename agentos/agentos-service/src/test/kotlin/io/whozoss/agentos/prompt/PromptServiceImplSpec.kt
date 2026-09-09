@@ -1,0 +1,932 @@
+package io.whozoss.agentos.prompt
+
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import io.whozoss.agentos.agentConfig.AgentConfig
+import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.sdk.entity.EntityMetadata
+import java.util.UUID
+
+/**
+ * Unit tests for [PromptServiceImpl].
+ *
+ * Uses [InMemoryPromptRepository] to keep tests fast and isolated.
+ * Each test builds its own service instance to guarantee full isolation.
+ *
+ * Blank content element validation is enforced by Bean Validation at the controller
+ * layer (List<@NotBlank String> with -Xemit-jvm-type-annotations) and is not tested here.
+ */
+class PromptServiceImplSpec : StringSpec() {
+    private val agentConfigService = mockk<AgentConfigService>(relaxed = true)
+    private val translationService = mockk<PromptTranslationService>(relaxed = true)
+
+    private fun newService(): PromptServiceImpl =
+        PromptServiceImpl(InMemoryPromptRepository(), agentConfigService, translationService)
+
+    /** Returns both the service and its backing repository, for tests that need to seed a
+     *  filesystem-backed prompt (version == null) directly via [InMemoryPromptRepository.seedRaw]. */
+    private data class StaleCaseFixture(
+        val service: PromptServiceImpl,
+        val saved: Prompt,
+        val existingTitles: Map<String, String>,
+        val existingContent: Map<String, List<String>>,
+    )
+
+    private fun staleCaseSetup(): StaleCaseFixture {
+        val service = newService()
+        val existingTitles = mapOf("fr" to "Revoir le profil")
+        val existingContent = mapOf("fr" to listOf("Bonjour"))
+        val saved = service.create(
+            prompt(
+                title = "Review profile",
+                content = listOf("Hello"),
+                sourceLanguage = "en",
+                translatedTitles = existingTitles,
+                translatedContent = existingContent,
+            ),
+        )
+        return StaleCaseFixture(service, saved, existingTitles, existingContent)
+    }
+
+    private fun newServiceWithRepo(): Pair<PromptServiceImpl, InMemoryPromptRepository> {
+        val repo = InMemoryPromptRepository()
+        return PromptServiceImpl(repo, agentConfigService, translationService) to repo
+    }
+
+    private fun prompt(
+        namespaceId: UUID? = UUID.randomUUID(),
+        userId: UUID? = null,
+        agentConfigId: UUID? = null,
+        name: String = "My Prompt",
+        content: List<String> = listOf("Hello {{name}}"),
+        parameters: List<PromptParameter> = emptyList(),
+        description: String? = null,
+        title: String? = null,
+        sourceLanguage: String = "en",
+        translatedTitles: Map<String, String>? = null,
+        translatedContent: Map<String, List<String>>? = null,
+    ) = Prompt(
+        metadata = EntityMetadata(),
+        namespaceId = namespaceId,
+        userId = userId,
+        agentConfigId = agentConfigId,
+        name = name,
+        description = description,
+        content = content,
+        parameters = parameters,
+        title = title,
+        sourceLanguage = sourceLanguage,
+        translatedTitles = translatedTitles,
+        translatedContent = translatedContent,
+    )
+
+    init {
+        // -------------------------------------------------------------------------
+        // Create / Read
+        // -------------------------------------------------------------------------
+
+        "create and findById returns the same prompt" {
+            val service = newService()
+            val saved = service.create(prompt())
+
+            val found = service.findById(saved.id)
+
+            found.shouldNotBeNull()
+            found.id shouldBe saved.id
+            found.name shouldBe saved.name
+        }
+
+        "findById returns null for unknown id" {
+            val service = newService()
+            service.findById(UUID.randomUUID()).shouldBeNull()
+        }
+
+        // -------------------------------------------------------------------------
+        // Scope queries
+        // -------------------------------------------------------------------------
+
+        "findPlatform returns only platform-level prompts (namespaceId == null)" {
+            val service = newService()
+            service.create(prompt(namespaceId = null, name = "Platform Prompt"))
+            service.create(prompt(namespaceId = UUID.randomUUID(), name = "NS Prompt"))
+
+            val platform = service.findPlatform()
+            platform shouldHaveSize 1
+            platform.first().name shouldBe "Platform Prompt"
+            platform.first().namespaceId shouldBe null
+        }
+
+        "findByParent returns only prompts for the given namespace" {
+            val service = newService()
+            val nsA = UUID.randomUUID()
+            val nsB = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = nsA, name = "Alpha"))
+            service.create(prompt(namespaceId = nsA, name = "Beta"))
+            service.create(prompt(namespaceId = nsB, name = "Gamma"))
+
+            service.findByParent(nsA) shouldHaveSize 2
+            service.findByParent(nsB) shouldHaveSize 1
+            service.findByParent(UUID.randomUUID()).shouldBeEmpty()
+        }
+
+        // -------------------------------------------------------------------------
+        // Content
+        // -------------------------------------------------------------------------
+
+        "create accepts prompt with a single non-blank content element" {
+            val service = newService()
+            val saved = service.create(prompt(content = listOf("Single line prompt")))
+            saved.content shouldBe listOf("Single line prompt")
+        }
+
+        "create accepts prompt with multiple non-blank content elements" {
+            val service = newService()
+            val saved = service.create(prompt(content = listOf("Line one", "Line two", "Line three")))
+            saved.content shouldHaveSize 3
+        }
+
+        // -------------------------------------------------------------------------
+        // Parameter name uniqueness
+        // -------------------------------------------------------------------------
+
+        "create rejects prompt with duplicate parameter names" {
+            val service = newService()
+            val params = listOf(
+                PromptParameter(name = "name", defaultValue = ""),
+                PromptParameter(name = "language", defaultValue = "English"),
+                PromptParameter(name = "name", defaultValue = ""),
+            )
+
+            val ex = shouldThrow<BadRequestException> {
+                service.create(prompt(parameters = params))
+            }
+            ex.message shouldContain "name"
+        }
+
+        "create accepts prompt with empty parameters list" {
+            val service = newService()
+            val saved = service.create(prompt(parameters = emptyList()))
+            saved.parameters.shouldBeEmpty()
+        }
+
+        "create accepts prompt with unique parameter names" {
+            val service = newService()
+            val params = listOf(
+                PromptParameter(name = "name", description = "The name", defaultValue = ""),
+                PromptParameter(name = "language", defaultValue = "English"),
+            )
+            val saved = service.create(prompt(parameters = params))
+            saved.parameters shouldHaveSize 2
+        }
+
+        // -------------------------------------------------------------------------
+        // agentConfigId validation
+        // -------------------------------------------------------------------------
+
+        "create with non-existent agentConfigId throws ResourceNotFoundException" {
+            val service = newService()
+            val unknownId = UUID.randomUUID()
+            every { agentConfigService.findById(unknownId) } returns null
+
+            shouldThrow<ResourceNotFoundException> {
+                service.create(prompt(agentConfigId = unknownId))
+            }
+        }
+
+        "create with existing agentConfigId succeeds" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = null,
+                name = "agent",
+            )
+
+            val saved = service.create(prompt(agentConfigId = agentId))
+            saved.agentConfigId shouldBe agentId
+        }
+
+        "create with agentConfigId from different namespace throws BadRequestException" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            val agentNs = UUID.randomUUID()
+            val promptNs = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = agentNs,
+                name = "foreign-agent",
+            )
+
+            shouldThrow<BadRequestException> {
+                service.create(prompt(namespaceId = promptNs, agentConfigId = agentId))
+            }
+        }
+
+        "create with agentConfigId from same namespace succeeds" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            val ns = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = ns,
+                name = "same-ns-agent",
+            )
+
+            val saved = service.create(prompt(namespaceId = ns, agentConfigId = agentId))
+            saved.agentConfigId shouldBe agentId
+        }
+
+        "create with platform agentConfigId from namespace prompt succeeds" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = null,
+                name = "platform-agent",
+            )
+
+            val saved = service.create(prompt(namespaceId = UUID.randomUUID(), agentConfigId = agentId))
+            saved.agentConfigId shouldBe agentId
+        }
+
+        "create with filesystem-only agentConfigId (version == null) throws UnprocessableEntityException" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            // Filesystem agents are built in-memory: EntityMetadata.version is null
+            // because they never go through SDN save.  Linking one would produce a
+            // dangling BELONGS_TO edge in Neo4j and silently hide the prompt from
+            // findEffective.  The service must reject such associations explicitly.
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = null),
+                namespaceId = UUID.randomUUID(),
+                name = "fs-agent",
+            )
+
+            shouldThrow<UnprocessableEntityException> {
+                service.create(prompt(namespaceId = UUID.randomUUID(), agentConfigId = agentId))
+            }
+        }
+
+        "create platform prompt with namespace agentConfigId throws BadRequestException" {
+            val service = newService()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = UUID.randomUUID(),
+                name = "ns-agent",
+            )
+
+            shouldThrow<BadRequestException> {
+                service.create(prompt(namespaceId = null, agentConfigId = agentId))
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // Update validation
+        // -------------------------------------------------------------------------
+
+        "update rejects duplicate parameter names" {
+            val service = newService()
+            val saved = service.create(prompt())
+
+            shouldThrow<BadRequestException> {
+                service.update(
+                    saved.copy(
+                        parameters = listOf(
+                            PromptParameter(name = "city", defaultValue = ""),
+                            PromptParameter(name = "city", defaultValue = ""),
+                        ),
+                    ),
+                )
+            }
+        }
+
+        "update with valid data persists changes" {
+            val service = newService()
+            val saved = service.create(prompt(name = "Original"))
+
+            val updated = service.update(saved.copy(name = "Renamed", description = "Now described"))
+
+            updated.name shouldBe "Renamed"
+            updated.description shouldBe "Now described"
+            service.findById(saved.id)?.name shouldBe "Renamed"
+        }
+
+        "update on a filesystem-backed prompt (version == null) throws UnprocessableEntityException" {
+            val (service, repo) = newServiceWithRepo()
+            val fsPrompt = repo.seedRaw(prompt(name = "fs-prompt"))
+
+            shouldThrow<UnprocessableEntityException> {
+                service.update(fsPrompt.copy(description = "attempted edit"))
+            }
+        }
+
+        "update on a normal persisted prompt is unaffected by the filesystem guard" {
+            val service = newService()
+            val saved = service.create(prompt(name = "Persisted"))
+
+            val updated = service.update(saved.copy(description = "edited"))
+
+            updated.description shouldBe "edited"
+        }
+
+        // -------------------------------------------------------------------------
+        // Delete
+        // -------------------------------------------------------------------------
+
+        "delete soft-deletes the prompt" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val saved = service.create(prompt(namespaceId = nsId))
+
+            service.delete(saved.id) shouldBe true
+
+            service.findById(saved.id).shouldBeNull()
+            service.findByParent(nsId).shouldBeEmpty()
+        }
+
+        "delete returns false for unknown id" {
+            val service = newService()
+            service.delete(UUID.randomUUID()) shouldBe false
+        }
+
+        "delete on a filesystem-backed prompt (version == null) throws UnprocessableEntityException" {
+            val (service, repo) = newServiceWithRepo()
+            val fsPrompt = repo.seedRaw(prompt(name = "fs-prompt-to-delete"))
+
+            shouldThrow<UnprocessableEntityException> {
+                service.delete(fsPrompt.id)
+            }
+        }
+
+        "delete on a normal persisted prompt is unaffected by the filesystem guard" {
+            val service = newService()
+            val saved = service.create(prompt(name = "Persisted"))
+
+            service.delete(saved.id) shouldBe true
+            service.findById(saved.id).shouldBeNull()
+        }
+
+        "deleteByParent removes all prompts for a namespace" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            service.create(prompt(namespaceId = nsId, name = "A"))
+            service.create(prompt(namespaceId = nsId, name = "B"))
+
+            val count = service.deleteByParent(nsId)
+
+            count shouldBe 2
+            service.findByParent(nsId).shouldBeEmpty()
+        }
+
+        "deleteByParent does not affect other namespaces" {
+            val service = newService()
+            val nsA = UUID.randomUUID()
+            val nsB = UUID.randomUUID()
+            service.create(prompt(namespaceId = nsA, name = "A"))
+            service.create(prompt(namespaceId = nsB, name = "B"))
+
+            service.deleteByParent(nsA)
+
+            service.findByParent(nsA).shouldBeEmpty()
+            service.findByParent(nsB) shouldHaveSize 1
+        }
+
+        // -------------------------------------------------------------------------
+        // findEffective — overlay fold
+        // -------------------------------------------------------------------------
+
+        "findEffective returns all four layers when names are distinct" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "platform-only"))
+            service.create(prompt(namespaceId = null, userId = user, name = "user-only"))
+            service.create(prompt(namespaceId = ns, userId = null, name = "ns-only"))
+            service.create(prompt(namespaceId = ns, userId = user, name = "user-ns-only"))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 4
+            effective.map { it.name } shouldBe listOf("ns-only", "platform-only", "user-ns-only", "user-only")
+        }
+
+        "findEffective higher layer overrides lower layer by name" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "deploy", content = listOf("platform")))
+            val nsPrompt = service.create(prompt(namespaceId = ns, userId = null, name = "deploy", content = listOf("namespace")))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 1
+            effective.first().name shouldBe "deploy"
+            effective.first().content shouldBe listOf("namespace")
+            effective.first().id shouldBe nsPrompt.id
+        }
+
+        "findEffective user x namespace wins over all other layers" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "deploy", content = listOf("platform")))
+            service.create(prompt(namespaceId = null, userId = user, name = "deploy", content = listOf("user-global")))
+            service.create(prompt(namespaceId = ns, userId = null, name = "deploy", content = listOf("namespace")))
+            val winner = service.create(prompt(namespaceId = ns, userId = user, name = "deploy", content = listOf("user-ns")))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 1
+            effective.first().content shouldBe listOf("user-ns")
+            effective.first().id shouldBe winner.id
+        }
+
+        "findEffective priority: user-global overrides platform" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "a", content = listOf("platform")))
+            service.create(prompt(namespaceId = null, userId = user, name = "a", content = listOf("user-global")))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 1
+            effective.first().content shouldBe listOf("user-global")
+        }
+
+        "findEffective priority: namespace overrides user-global" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = user, name = "a", content = listOf("user-global")))
+            service.create(prompt(namespaceId = ns, userId = null, name = "a", content = listOf("namespace")))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 1
+            effective.first().content shouldBe listOf("namespace")
+        }
+
+        "findEffective excludes prompts from other namespaces" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val otherNs = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = otherNs, userId = null, name = "foreign"))
+            service.create(prompt(namespaceId = otherNs, userId = user, name = "foreign-user"))
+
+            val effective = service.findEffective(ns, user)
+            effective.shouldBeEmpty()
+        }
+
+        "findEffective excludes prompts from other users" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+            val otherUser = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = otherUser, name = "other-user-global"))
+            service.create(prompt(namespaceId = ns, userId = otherUser, name = "other-user-ns"))
+
+            val effective = service.findEffective(ns, user)
+            effective.shouldBeEmpty()
+        }
+
+        "findEffective returns results sorted by name" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "zebra"))
+            service.create(prompt(namespaceId = ns, userId = null, name = "alpha"))
+            service.create(prompt(namespaceId = null, userId = user, name = "middle"))
+
+            val effective = service.findEffective(ns, user)
+            effective.map { it.name } shouldBe listOf("alpha", "middle", "zebra")
+        }
+
+        "findEffective returns empty when no prompts exist" {
+            val service = newService()
+            service.findEffective(UUID.randomUUID(), UUID.randomUUID()).shouldBeEmpty()
+        }
+
+        "findEffective partial override leaves non-overridden prompts intact" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = null, userId = null, name = "shared", content = listOf("platform")))
+            service.create(prompt(namespaceId = null, userId = null, name = "only-platform", content = listOf("stays")))
+            service.create(prompt(namespaceId = ns, userId = user, name = "shared", content = listOf("user-ns override")))
+
+            val effective = service.findEffective(ns, user)
+            effective shouldHaveSize 2
+            val byName = effective.associateBy { it.name }
+            byName["shared"]!!.content shouldBe listOf("user-ns override")
+            byName["only-platform"]!!.content shouldBe listOf("stays")
+        }
+
+        // -------------------------------------------------------------------------
+        // findEffective — agentConfigId post-merge filter
+        // -------------------------------------------------------------------------
+
+        "findEffective with agentConfigId returns only prompts linked to that agent" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = null,
+                name = "agent",
+            )
+
+            service.create(prompt(namespaceId = ns, userId = null, name = "linked", agentConfigId = agentId))
+            service.create(prompt(namespaceId = ns, userId = null, name = "autonomous", agentConfigId = null))
+
+            val effective = service.findEffective(ns, user, agentConfigId = agentId)
+            effective shouldHaveSize 1
+            effective.first().name shouldBe "linked"
+        }
+
+        "findEffective with null agentConfigId returns both agent-linked and autonomous prompts" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = null,
+                name = "agent",
+            )
+
+            service.create(prompt(namespaceId = ns, userId = null, name = "linked", agentConfigId = agentId))
+            service.create(prompt(namespaceId = ns, userId = null, name = "autonomous", agentConfigId = null))
+
+            val effective = service.findEffective(ns, user, agentConfigId = null)
+            effective shouldHaveSize 2
+        }
+
+        "findEffective with agentConfigId matching no prompt returns empty" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+
+            service.create(prompt(namespaceId = ns, userId = null, name = "autonomous", agentConfigId = null))
+
+            val effective = service.findEffective(ns, user, agentConfigId = UUID.randomUUID())
+            effective.shouldBeEmpty()
+        }
+
+        // -------------------------------------------------------------------------
+        // title
+        // -------------------------------------------------------------------------
+
+        "create persists title when set" {
+            val service = newService()
+            val saved = service.create(prompt(title = "Review my profile"))
+            saved.title shouldBe "Review my profile"
+        }
+
+        "create persists null title when not set" {
+            val service = newService()
+            val saved = service.create(prompt(title = null))
+            saved.title shouldBe null
+        }
+
+        "update persists new title" {
+            val service = newService()
+            val saved = service.create(prompt(title = "Old title"))
+            val updated = service.update(saved.copy(title = "New title"))
+            updated.title shouldBe "New title"
+        }
+
+        "update can clear title to null" {
+            val service = newService()
+            val saved = service.create(prompt(title = "Had a title"))
+            val updated = service.update(saved.copy(title = null))
+            updated.title shouldBe null
+        }
+
+        // -------------------------------------------------------------------------
+        // sourceLanguage
+        // -------------------------------------------------------------------------
+
+        "create persists sourceLanguage and defaults to en" {
+            val service = newService()
+            val saved = service.create(prompt())
+            saved.sourceLanguage shouldBe "en"
+        }
+
+        "create persists non-default sourceLanguage" {
+            val service = newService()
+            val saved = service.create(prompt(sourceLanguage = "fr"))
+            saved.sourceLanguage shouldBe "fr"
+        }
+
+        "update preserves sourceLanguage when not changed" {
+            val service = newService()
+            val saved = service.create(prompt(sourceLanguage = "de"))
+            val updated = service.update(saved.copy(description = "touched"))
+            updated.sourceLanguage shouldBe "de"
+        }
+
+        // -------------------------------------------------------------------------
+        // clearTranslationsIfStale — translatedContent
+        // -------------------------------------------------------------------------
+
+        "update clears translatedContent when content changes" {
+            val service = newService()
+            val saved = service.create(
+                prompt(
+                    content = listOf("Original"),
+                    translatedContent = mapOf("fr" to listOf("Original en français")),
+                ),
+            )
+            val updated = service.update(saved.copy(content = listOf("Updated")))
+            updated.translatedContent shouldBe null
+        }
+
+        "update clears translatedContent when sourceLanguage changes" {
+            val service = newService()
+            val saved = service.create(
+                prompt(
+                    sourceLanguage = "en",
+                    translatedContent = mapOf("fr" to listOf("Bonjour")),
+                ),
+            )
+            val updated = service.update(saved.copy(sourceLanguage = "de"))
+            updated.translatedContent shouldBe null
+        }
+
+        "update preserves translatedContent when content and sourceLanguage are unchanged" {
+            val service = newService()
+            val existingContent = mapOf("fr" to listOf("Bonjour"), "de" to listOf("Hallo"))
+            val saved = service.create(
+                prompt(
+                    content = listOf("Hello"),
+                    sourceLanguage = "en",
+                    translatedContent = existingContent,
+                ),
+            )
+            val updated = service.update(saved.copy(description = "touched"))
+            updated.translatedContent shouldBe existingContent
+        }
+
+        "update with null translatedContent stays null when content changes" {
+            val service = newService()
+            val saved = service.create(prompt(content = listOf("Original"), translatedContent = null))
+            val updated = service.update(saved.copy(content = listOf("Updated")))
+            updated.translatedContent shouldBe null
+        }
+
+        // -------------------------------------------------------------------------
+        // clearTranslationsIfStale — translatedTitles
+        // -------------------------------------------------------------------------
+
+        "update clears translatedTitles when title changes" {
+            val service = newService()
+            val saved = service.create(
+                prompt(
+                    title = "Review profile",
+                    translatedTitles = mapOf("fr" to "Revoir le profil"),
+                ),
+            )
+            val updated = service.update(saved.copy(title = "Analyse profile"))
+            updated.translatedTitles shouldBe null
+        }
+
+        "update clears translatedTitles when sourceLanguage changes" {
+            val service = newService()
+            val saved = service.create(
+                prompt(
+                    title = "Review profile",
+                    sourceLanguage = "en",
+                    translatedTitles = mapOf("fr" to "Revoir le profil"),
+                ),
+            )
+            val updated = service.update(saved.copy(sourceLanguage = "de"))
+            updated.translatedTitles shouldBe null
+        }
+
+        "update preserves translatedTitles when title and sourceLanguage are unchanged" {
+            val service = newService()
+            val existingTitles = mapOf("fr" to "Revoir le profil", "de" to "Profil überprüfen")
+            val saved = service.create(
+                prompt(
+                    title = "Review profile",
+                    sourceLanguage = "en",
+                    translatedTitles = existingTitles,
+                ),
+            )
+            val updated = service.update(saved.copy(description = "touched"))
+            updated.translatedTitles shouldBe existingTitles
+        }
+
+        // -------------------------------------------------------------------------
+        // clearTranslationsIfStale — independence of the two maps
+        // -------------------------------------------------------------------------
+
+        "update clears translatedContent but preserves translatedTitles when only content changes" {
+            val (service, saved, existingTitles, existingContent) = staleCaseSetup()
+            val updated = service.update(saved.copy(content = listOf("Updated")))
+            updated.translatedTitles shouldBe existingTitles
+            updated.translatedContent shouldBe null
+        }
+
+        "update clears translatedTitles but preserves translatedContent when only title changes" {
+            val (service, saved, existingTitles, existingContent) = staleCaseSetup()
+            val updated = service.update(saved.copy(title = "New title"))
+            updated.translatedTitles shouldBe null
+            updated.translatedContent shouldBe existingContent
+        }
+
+        "update clears both maps when sourceLanguage changes" {
+            val (service, saved) = staleCaseSetup()
+            val updated = service.update(saved.copy(sourceLanguage = "es"))
+            updated.translatedTitles shouldBe null
+            updated.translatedContent shouldBe null
+        }
+
+        "update preserves both maps when only description changes" {
+            val (service, saved, existingTitles, existingContent) = staleCaseSetup()
+            val updated = service.update(saved.copy(description = "touched"))
+            updated.translatedTitles shouldBe existingTitles
+            updated.translatedContent shouldBe existingContent
+        }
+
+        // -------------------------------------------------------------------------
+        // translate — PromptService.translate
+        // -------------------------------------------------------------------------
+
+        "translate returns source fields unchanged when targetLanguage matches sourceLanguage" {
+            val service = newService()
+            val saved = service.create(
+                prompt(title = "Review profile", content = listOf("Hello"), sourceLanguage = "en"),
+            )
+
+            val result = service.translate(saved.id, "en", callerNamespaceId = UUID.randomUUID())
+
+            result.title shouldBe "Review profile"
+            result.content shouldBe listOf("Hello")
+            // No LLM call should have been made
+            verify(exactly = 0) { translationService.translateContent(any(), any(), any(), any()) }
+            verify(exactly = 0) { translationService.translateTitle(any(), any(), any(), any()) }
+        }
+
+        "translate returns null title when prompt has no title (source language match)" {
+            val service = newService()
+            val saved = service.create(prompt(title = null, content = listOf("Hello"), sourceLanguage = "en"))
+
+            val result = service.translate(saved.id, "en", callerNamespaceId = UUID.randomUUID())
+
+            result.title shouldBe null
+            result.content shouldBe listOf("Hello")
+        }
+
+        "translate calls LLM and returns translated content and title on cache miss" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            // Use the same nsId for the prompt so the service routes the LLM call to it
+            val saved = service.create(
+                prompt(namespaceId = nsId, title = "Review profile", content = listOf("Hello"), sourceLanguage = "en"),
+            )
+            every {
+                translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
+            } returns listOf("Bonjour")
+            every {
+                translationService.translateTitle("Review profile", "en", "fr", nsId)
+            } returns "Revoir le profil"
+
+            val result = service.translate(saved.id, "fr", callerNamespaceId = null)
+
+            result.content shouldBe listOf("Bonjour")
+            result.title shouldBe "Revoir le profil"
+        }
+
+        "translate persists new translations so subsequent calls are cache hits" {
+            val repo = InMemoryPromptRepository()
+            val service = PromptServiceImpl(repo, agentConfigService, translationService)
+            val nsId = UUID.randomUUID()
+            val saved = service.create(
+                prompt(namespaceId = nsId, title = "Review profile", content = listOf("Hello"), sourceLanguage = "en"),
+            )
+            every {
+                translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
+            } returns listOf("Bonjour")
+            every {
+                translationService.translateTitle("Review profile", "en", "fr", nsId)
+            } returns "Revoir le profil"
+
+            // First call — cache miss, LLM called
+            service.translate(saved.id, "fr", callerNamespaceId = null)
+
+            // Second call — should be a full cache hit
+            val result = service.translate(saved.id, "fr", callerNamespaceId = null)
+
+            result.content shouldBe listOf("Bonjour")
+            result.title shouldBe "Revoir le profil"
+            // LLM called exactly once total (first call only)
+            verify(exactly = 1) { translationService.translateContent(any(), any(), any(), any()) }
+            verify(exactly = 1) { translationService.translateTitle(any(), any(), any(), any()) }
+        }
+
+        "translate returns null title without calling translateTitle when prompt has no title" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val saved = service.create(prompt(namespaceId = nsId, title = null, content = listOf("Hello"), sourceLanguage = "en"))
+            every {
+                translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
+            } returns listOf("Bonjour")
+
+            val result = service.translate(saved.id, "fr", callerNamespaceId = null)
+
+            result.title shouldBe null
+            result.content shouldBe listOf("Bonjour")
+            verify(exactly = 0) { translationService.translateTitle(any(), any(), any(), any()) }
+        }
+
+        "translate uses cached content and only calls LLM for title when content is already cached" {
+            val repo = InMemoryPromptRepository()
+            val service = PromptServiceImpl(repo, agentConfigService, translationService)
+            val nsId = UUID.randomUUID()
+            val cachedContent = mapOf("fr" to listOf("Bonjour"))
+            val saved = service.create(
+                prompt(
+                    namespaceId = nsId,
+                    title = "Review profile",
+                    content = listOf("Hello"),
+                    sourceLanguage = "en",
+                    translatedContent = cachedContent,
+                    translatedTitles = null,
+                ),
+            )
+            every {
+                translationService.translateTitle("Review profile", "en", "fr", nsId)
+            } returns "Revoir le profil"
+
+            val result = service.translate(saved.id, "fr", callerNamespaceId = null)
+
+            result.content shouldBe listOf("Bonjour")
+            result.title shouldBe "Revoir le profil"
+            verify(exactly = 0) { translationService.translateContent(any(), any(), any(), any()) }
+            verify(exactly = 1) { translationService.translateTitle(any(), any(), any(), any()) }
+        }
+
+        "translate accumulates translations for multiple languages" {
+            val repo = InMemoryPromptRepository()
+            val service = PromptServiceImpl(repo, agentConfigService, translationService)
+            val nsId = UUID.randomUUID()
+            val saved = service.create(
+                prompt(namespaceId = nsId, title = null, content = listOf("Hello"), sourceLanguage = "en"),
+            )
+            every {
+                translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
+            } returns listOf("Bonjour")
+            every {
+                translationService.translateContent(listOf("Hello"), "en", "de", nsId)
+            } returns listOf("Hallo")
+
+            service.translate(saved.id, "fr", callerNamespaceId = null)
+            service.translate(saved.id, "de", callerNamespaceId = null)
+
+            val persisted = service.findById(saved.id)!!
+            persisted.translatedContent shouldBe mapOf("fr" to listOf("Bonjour"), "de" to listOf("Hallo"))
+        }
+
+        "findEffective agentConfigId filter is applied after the layer merge, not before" {
+            val service = newService()
+            val ns = UUID.randomUUID()
+            val user = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            every { agentConfigService.findById(agentId) } returns AgentConfig(
+                metadata = EntityMetadata(id = agentId, version = 0L),
+                namespaceId = null,
+                name = "agent",
+            )
+
+            // Platform layer is agent-linked, namespace layer (higher priority, same name) is autonomous.
+            service.create(prompt(namespaceId = null, userId = null, name = "deploy", agentConfigId = agentId))
+            service.create(prompt(namespaceId = ns, userId = null, name = "deploy", agentConfigId = null))
+
+            // The winning (namespace) layer has no agentConfigId, so filtering by agentId excludes it
+            // even though a lower-priority layer with that name was agent-linked.
+            service.findEffective(ns, user, agentConfigId = agentId).shouldBeEmpty()
+        }
+    }
+}

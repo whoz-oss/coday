@@ -1,10 +1,12 @@
 import { Response } from 'express'
+import { filter } from 'rxjs'
 import { Coday } from '@coday/core'
 import { AiClientProvider } from '@coday/integrations-ai'
 import {
   ServerInteractor,
   CodayOptions,
   CodayLogger,
+  CodayEvent,
   HeartBeatEvent,
   InviteEvent,
   InviteEventDefault,
@@ -40,6 +42,7 @@ class ThreadCodayInstance {
   private inactivityTimeout?: NodeJS.Timeout
   private isOneshot: boolean = false
   private isReplaying: boolean = false
+  private isCleaningUp: boolean = false
   coday?: Coday
 
   // Timeouts configuration
@@ -80,31 +83,36 @@ class ThreadCodayInstance {
     this.isOneshot = false // Mark as interactive session
     debugLog('THREAD_CODAY', `Added SSE connection to thread ${this.threadId} (total: ${this.connections.size})`)
 
-    // If Coday is already running, replay the thread history for this new connection
-    if (this.coday) {
-      debugLog('THREAD_CODAY', `Replaying thread history for new connection to ${this.threadId}`)
-      this.replayThreadHistory(response)
-    }
+    // Always replay thread history for new connections — even if the one-shot Coday
+    // instance has already been cleaned up. In that case we read directly from ThreadService.
+    debugLog('THREAD_CODAY', `Replaying thread history for new connection to ${this.threadId}`)
+    this.replayThreadHistory(response)
   }
 
   /**
-   * Replay the thread history for a specific connection
-   * @param response Express response object for SSE
+   * Replay the thread history for a specific connection.
+   * Works whether or not the Coday instance is still alive:
+   * - If alive: reads from the in-memory AiThread (most up-to-date)
+   * - If cleaned up (one-shot finished): reads directly from ThreadService on disk
    */
   private async replayThreadHistory(response: Response): Promise<void> {
-    if (!this.coday) return
-
     try {
-      // Get the thread from Coday
-      const thread = this.coday.context?.aiThread
-      if (!thread) {
-        debugLog('THREAD_CODAY', `No thread found for replay in ${this.threadId}`)
-        return
+      let messages: any[]
+
+      if (this.coday?.context?.aiThread) {
+        // Live instance — read from in-memory thread
+        const result = await this.coday.context.aiThread.getMessages(undefined, undefined)
+        messages = result.messages
+      } else {
+        // Instance already cleaned up (e.g. one-shot finished) — read from disk
+        const thread = await this.threadService.getThread(this.projectName, this.threadId)
+        if (!thread) {
+          debugLog('THREAD_CODAY', `No thread found on disk for replay in ${this.threadId}`)
+          return
+        }
+        messages = thread.getAllMessages()
       }
 
-      // Get all messages from the thread (it's async)
-      const result = await thread.getMessages(undefined, undefined)
-      const messages = result.messages
       debugLog('THREAD_CODAY', `Replaying ${messages.length} messages for thread ${this.threadId}`)
 
       // Send each message to the new connection.
@@ -128,7 +136,7 @@ class ThreadCodayInstance {
         // the registry already knows about this invite, we're just re-sending it to the new SSE client.
         this.isReplaying = true
         try {
-          this.coday.interactor.replayLastQuestion()
+          this.coday?.interactor.replayLastQuestion()
         } finally {
           this.isReplaying = false
         }
@@ -257,6 +265,58 @@ class ThreadCodayInstance {
   }
 
   /**
+   * Run a oneshot execution (scheduler, webhook, direct prompt).
+   * Encapsulates prepareCoday() + coday.run() + lifecycle management.
+   *
+   * @param options.awaitFinalAnswer If true, waits for completion and returns the last assistant MessageEvent
+   * @returns The last assistant MessageEvent if awaitFinalAnswer is true, undefined otherwise
+   */
+  async runOneshot(options?: { awaitFinalAnswer?: boolean }): Promise<MessageEvent | undefined> {
+    this.prepareCoday()
+
+    if (!this.coday) {
+      throw new Error(`prepareCoday() failed for thread ${this.threadId} — coday instance is undefined`)
+    }
+
+    // Notify project-level SSE clients that a new thread is starting.
+    // Without this, the frontend would not discover scheduler/webhook threads
+    // until the agent emits an InviteEvent or the thread name is set.
+    this.projectEventManager?.broadcast(this.projectName, new ThreadUpdateEvent({ threadId: this.threadId }))
+
+    if (options?.awaitFinalAnswer) {
+      // Synchronous mode: wait for completion, collect assistant messages
+      const assistantMessages: MessageEvent[] = []
+      const subscription = this.coday.interactor.events
+        .pipe(
+          filter(
+            (event: CodayEvent) =>
+              event instanceof MessageEvent &&
+              (event as MessageEvent).role === 'assistant' &&
+              !!(event as MessageEvent).name
+          )
+        )
+        .subscribe((event) => assistantMessages.push(event as MessageEvent))
+
+      try {
+        await this.coday.run()
+        subscription.unsubscribe()
+        return assistantMessages[assistantMessages.length - 1]
+      } catch (error) {
+        subscription.unsubscribe()
+        throw error
+      }
+    } else {
+      // Fire-and-forget: start run in background, don't block caller.
+      // Cleanup is handled by the caller via .finally() on the returned promise.
+      this.coday.run().catch((error) => {
+        debugLog('THREAD_CODAY', `Error during oneshot run for thread ${this.threadId}:`, error)
+        console.error(`Oneshot run failed for thread ${this.threadId}:`, error)
+      })
+      return undefined
+    }
+  }
+
+  /**
    * Start the Coday instance for this thread
    * @returns true if new instance was created and started, false if already running
    */
@@ -343,15 +403,37 @@ class ThreadCodayInstance {
       }
     }
 
-    // If this is a ThreadUpdateEvent with a name, update the thread service cache
-    if (event instanceof ThreadUpdateEvent && (event.name || event.summary)) {
+    // If this is a ThreadUpdateEvent with a name, update the thread service cache.
+    // Skip during cleanup — autoSave is writing the file concurrently, and this
+    // fire-and-forget IIFE would race with it (read-modify-write vs full write).
+    // The ThreadPostProcessor handles name/summary updates after autoSave completes.
+    if (event instanceof ThreadUpdateEvent && (event.name || event.summary) && !this.isCleaningUp) {
       debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} name/summary`)
-      // Update the thread service cache asynchronously (don't block event broadcasting)
-      this.threadService
-        .updateThread(this.projectName, this.threadId, { name: event.name, summary: event.summary })
-        .catch((error) => {
+      // Update only the metadata (name/summary) in the thread service cache.
+      // IMPORTANT: do NOT reload from disk and re-save — that would overwrite the in-memory
+      // messages with the empty disk version if the thread hasn't been saved yet.
+      // Instead, update the cache entry directly and patch the on-disk file only if it
+      // already has messages (i.e. autoSave has already run).
+      ;(async () => {
+        try {
+          const thread = await this.threadService.getThread(this.projectName, this.threadId)
+          if (!thread) return
+          if (event.name) thread.name = event.name
+          if (event.summary) thread.summary = event.summary
+          // Only persist if the thread already has messages on disk — avoids overwriting
+          // a future autoSave with an empty-messages snapshot.
+          if (thread.messagesLength > 0) {
+            await this.threadService.updateThread(this.projectName, this.threadId, {
+              name: event.name,
+              summary: event.summary,
+            })
+          }
+          // Thread has no messages yet — just update the in-memory cache without disk write
+          // autoSave() will persist both messages and name/summary later.
+        } catch (error) {
           debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
-        })
+        }
+      })()
       // Notify project-level SSE clients so Mission Control refreshes automatically
       this.projectEventManager?.broadcast(this.projectName, event)
     }
@@ -420,6 +502,10 @@ class ThreadCodayInstance {
    * Cleanup and destroy the Coday instance
    */
   async cleanup(): Promise<void> {
+    // Set cleanup flag FIRST — prevents broadcastEvent's fire-and-forget IIFE from
+    // launching concurrent read-modify-write operations on the YAML file while
+    // autoSave (triggered by coday.kill()) is writing it.
+    this.isCleaningUp = true
     debugLog('THREAD_CODAY', `Cleaning up thread ${this.threadId}`)
 
     // Clear all timeouts
@@ -438,20 +524,22 @@ class ThreadCodayInstance {
     }
     this.connections.clear()
 
-    // Run post-processing before killing Coday (need AiClient + thread still alive)
+    // Grab thread and AI client BEFORE killing Coday (kill() nullifies context)
+    let threadForPostProcessing: any | undefined
+    let aiClientForPostProcessing: any | undefined
     if (this.coday) {
-      const thread = this.coday.context?.aiThread
+      const aiThreadService = this.coday.aiThreadService
+      threadForPostProcessing = this.coday.context?.aiThread ?? aiThreadService?.getCurrentThread()
       const aiClientProvider: AiClientProvider | undefined = this.coday.aiClientProvider
-      const aiClient = aiClientProvider?.getClient(undefined, 'SMALL') ?? aiClientProvider?.getClient(undefined)
-      if (thread && aiClient) {
-        const processor = new ThreadPostProcessor(aiClient, this.threadService)
-        processor.process(thread, this.projectName)
-      } else {
-        debugLog('THREAD_CODAY', `Skipping post-processing for thread ${this.threadId}: no thread or AI client`)
-      }
+      aiClientForPostProcessing =
+        aiClientProvider?.getClient(undefined, 'SMALL') ?? aiClientProvider?.getClient(undefined)
+      debugLog(
+        'THREAD_CODAY',
+        `Pre-kill snapshot for ${this.threadId}: thread=${!!threadForPostProcessing} (${threadForPostProcessing?.messagesLength ?? 0} msgs), aiClient=${!!aiClientForPostProcessing}`
+      )
     }
 
-    // Kill Coday instance (this will trigger cleanup of agents and MCP servers)
+    // Kill Coday FIRST — this triggers autoSave, persisting the full thread to disk
     if (this.coday) {
       try {
         await this.coday.kill()
@@ -459,6 +547,34 @@ class ThreadCodayInstance {
         debugLog('THREAD_CODAY', `Error during Coday kill:`, error)
       }
       this.coday = undefined
+    }
+
+    // THEN run post-processing (reads from disk after autoSave, so no stale overwrite)
+    // Await with a 10s timeout to not block shutdown indefinitely
+    if (threadForPostProcessing && aiClientForPostProcessing) {
+      const processor = new ThreadPostProcessor(aiClientForPostProcessing, this.threadService)
+      try {
+        const postProcessStart = Date.now()
+        const result = await Promise.race([
+          processor.process(threadForPostProcessing, this.projectName).then(() => 'completed' as const),
+          new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 10_000)),
+        ])
+        if (result === 'timeout') {
+          debugLog(
+            'THREAD_CODAY',
+            `Post-processing TIMED OUT for thread ${this.threadId} after 10s (thread data is safe, only name/summary may be missing)`
+          )
+        } else {
+          debugLog(
+            'THREAD_CODAY',
+            `Post-processing completed for thread ${this.threadId} in ${Date.now() - postProcessStart}ms`
+          )
+        }
+      } catch (err) {
+        debugLog('THREAD_CODAY', `Post-processing error for thread ${this.threadId}:`, err)
+      }
+    } else {
+      debugLog('THREAD_CODAY', `Skipping post-processing for thread ${this.threadId}: no thread or AI client`)
     }
   }
 }

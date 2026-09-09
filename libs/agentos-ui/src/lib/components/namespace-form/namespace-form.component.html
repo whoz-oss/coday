@@ -25,14 +25,13 @@
 
       <div class="namespace-form__field">
         <label class="namespace-form__label" for="ns-description">Description</label>
-        <input
+        <textarea
           id="ns-description"
-          class="namespace-form__input"
-          type="text"
+          class="namespace-form__textarea"
+          rows="4"
           placeholder="Optional description"
           [formControl]="descriptionControl"
-          autocomplete="off"
-        />
+        ></textarea>
       </div>
 
       <div class="namespace-form__field">

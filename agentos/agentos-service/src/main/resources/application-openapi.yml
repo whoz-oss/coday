@@ -22,3 +22,8 @@ agentos:
     data-dir: build/openapi-neo4j-data/
   bootstrap:
     enabled: false
+  # OpenAPI spec generation does not need encryption — disable it explicitly.
+  # FieldEncryptorConfiguration requires both values to be set; NONE opts out.
+  encryption:
+    key: NONE
+    salt: NONE

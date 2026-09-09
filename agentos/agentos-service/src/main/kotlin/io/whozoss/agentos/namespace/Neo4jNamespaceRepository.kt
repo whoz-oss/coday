@@ -24,10 +24,10 @@ open class Neo4jNamespaceRepository(
             .toDomain()
             .also { logger.debug { "[Neo4jNamespaceRepository] Saved namespace ${it.id}" } }
 
-    override fun findByIds(ids: Collection<UUID>): List<Namespace> =
+    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<Namespace> =
         namespaceNodeNeo4jRepository
             .findAllById(ids.map { it.toString() })
-            .filter { it.removed != true }
+            .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
     /**

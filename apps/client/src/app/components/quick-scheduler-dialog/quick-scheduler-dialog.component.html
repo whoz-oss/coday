@@ -1,0 +1,173 @@
+<h2 mat-dialog-title>
+  <mat-icon>schedule</mat-icon>
+  {{ isEditMode ? 'Edit scheduled task' : 'New scheduled task' }}
+</h2>
+
+<mat-dialog-content>
+  <div class="qsd-form">
+    <!-- Name -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Name</mat-label>
+      <input
+        matInput
+        [ngModel]="name()"
+        (ngModelChange)="name.set($event)"
+        placeholder="Optional — auto-generated if empty"
+      />
+    </mat-form-field>
+
+    <!-- Project -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Project</mat-label>
+      <input
+        matInput
+        [ngModel]="selectedProject()"
+        (ngModelChange)="onProjectSelected($event)"
+        [matAutocomplete]="projectAuto"
+        placeholder="Select a project"
+        (focus)="selectedProject.set(selectedProject())"
+      />
+      <mat-autocomplete #projectAuto="matAutocomplete" (optionSelected)="onProjectSelected($event.option.value)">
+        @for (project of filteredProjects(); track project) {
+          <mat-option [value]="project">{{ project }}</mat-option>
+        }
+      </mat-autocomplete>
+    </mat-form-field>
+
+    <!-- Agent -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Agent</mat-label>
+      @if (isLoadingAgents()) {
+        <mat-spinner matSuffix diameter="18" />
+      }
+      <input
+        matInput
+        [ngModel]="selectedAgent()"
+        (ngModelChange)="selectedAgent.set($event)"
+        [matAutocomplete]="agentAuto"
+        placeholder="Select an agent"
+        [disabled]="!projects().includes(selectedProject())"
+        (focus)="selectedAgent.set(selectedAgent())"
+      />
+      <mat-autocomplete #agentAuto="matAutocomplete" (optionSelected)="selectedAgent.set($event.option.value)">
+        @for (agent of filteredAgents(); track agent.name) {
+          <mat-option [value]="agent.name">{{ agent.name }}</mat-option>
+        }
+      </mat-autocomplete>
+    </mat-form-field>
+
+    <!-- Instruction -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>What should the agent do?</mat-label>
+      <textarea
+        matInput
+        [ngModel]="instruction()"
+        (ngModelChange)="instruction.set($event)"
+        placeholder="e.g. Review open PRs and summarize what needs attention"
+        rows="3"
+      ></textarea>
+    </mat-form-field>
+
+    <div class="qsd-divider"><span>Scheduling</span></div>
+
+    <!-- Start date -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Starts on</mat-label>
+      <input matInput type="datetime-local" [ngModel]="startTimestamp()" (ngModelChange)="startTimestamp.set($event)" />
+    </mat-form-field>
+
+    <!-- Interval -->
+    <div class="qsd-interval">
+      <span class="qsd-label">Every</span>
+      <mat-form-field appearance="outline" class="interval-value">
+        <input matInput type="number" [ngModel]="intervalValue()" (ngModelChange)="intervalValue.set($event)" min="1" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="interval-unit">
+        <mat-select [ngModel]="intervalUnit()" (ngModelChange)="intervalUnit.set($event)">
+          <mat-option value="min">minutes</mat-option>
+          <mat-option value="h">hours</mat-option>
+          <mat-option value="d">days</mat-option>
+          <mat-option value="M">months</mat-option>
+        </mat-select>
+      </mat-form-field>
+    </div>
+
+    <!-- Days of week -->
+    <div class="qsd-days">
+      <span class="qsd-label">Days</span>
+      <div class="qsd-day-chips">
+        @for (day of daysOfWeekOptions; track day.value) {
+          <button
+            type="button"
+            class="day-chip"
+            [class.selected]="isDaySelected(day.value)"
+            (click)="toggleDay(day.value)"
+          >
+            {{ day.label }}
+          </button>
+        }
+      </div>
+      <span class="qsd-hint">Leave empty for every day</span>
+    </div>
+
+    <!-- End condition -->
+    <div class="qsd-end">
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Ends on</mat-label>
+        <mat-select [ngModel]="endConditionType()" (ngModelChange)="endConditionType.set($event)">
+          <mat-option value="none">Never</mat-option>
+          <mat-option value="occurrences">After N runs</mat-option>
+          <mat-option value="endTimestamp">On a date</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      @if (endConditionType() === 'occurrences') {
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Number of runs</mat-label>
+          <input
+            matInput
+            type="number"
+            [ngModel]="endOccurrences()"
+            (ngModelChange)="endOccurrences.set($event)"
+            min="1"
+          />
+        </mat-form-field>
+      }
+
+      @if (endConditionType() === 'endTimestamp') {
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>End date</mat-label>
+          <input
+            matInput
+            type="datetime-local"
+            [ngModel]="endTimestamp()"
+            (ngModelChange)="endTimestamp.set($event)"
+            [min]="startTimestamp()"
+          />
+        </mat-form-field>
+      }
+    </div>
+
+    <!-- Enabled -->
+    <mat-checkbox [ngModel]="enabled()" (ngModelChange)="enabled.set($event)">Enable immediately</mat-checkbox>
+
+    @if (errorMessage()) {
+      <div class="qsd-error">
+        <mat-icon>error</mat-icon>
+        <span>{{ errorMessage() }}</span>
+      </div>
+    }
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()" [disabled]="isSaving()">Cancel</button>
+  <button mat-flat-button (click)="submit()" [disabled]="!isValid() || isSaving()">
+    @if (isSaving()) {
+      <mat-spinner diameter="18" />
+    } @else {
+      <mat-icon>schedule</mat-icon>
+    }
+    Schedule
+  </button>
+</mat-dialog-actions>

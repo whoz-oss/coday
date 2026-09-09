@@ -9,6 +9,7 @@ import {
   OnDestroy,
   signal,
   ViewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { forkJoin } from 'rxjs'
@@ -30,6 +31,7 @@ interface EntryState {
   selector: 'app-preview-panel',
   imports: [MatButtonModule, MatIconModule],
   templateUrl: './preview-panel.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './preview-panel.component.scss',
 })
 export class PreviewPanelComponent implements OnDestroy {

@@ -13,19 +13,55 @@ type SearchFilesResult = {
   files: string[] // relative paths from root
 }
 
-const runRg = (args: string[], root: string, timeout: number, interactor: Interactor): Promise<SearchFilesResult> =>
-  execFileAsync('rg', args, { cwd: root, maxBuffer: defaultMaxBuffer, timeout })
+/**
+ * Detect the ripgrep binary name based on platform.
+ * On Windows, 'rg' may not be found by execFile without shell; try 'rg.exe' as fallback.
+ */
+const getRgBinary = (): string => (process.platform === 'win32' ? 'rg.exe' : 'rg')
+
+const runRg = (args: string[], root: string, timeout: number, interactor: Interactor): Promise<SearchFilesResult> => {
+  const rgBinary = getRgBinary()
+  interactor.debug(`searchFiles: running '${rgBinary} ${args.join(' ')}' in '${root}'`)
+  return execFileAsync(rgBinary, args, {
+    cwd: root,
+    maxBuffer: defaultMaxBuffer,
+    timeout,
+    // On Windows, execFile without shell may fail to resolve binaries installed via PATH.
+    // Using shell:true on Windows lets the OS find rg/rg.exe through standard PATH resolution.
+    shell: process.platform === 'win32',
+  })
     .then(({ stdout }) => ({
       files: stdout
         .trim()
         .split('\n')
-        .filter((f) => f.length > 0),
+        .filter((f) => f.length > 0)
+        // Normalize path separators: ripgrep may return backslashes on Windows
+        .map((f) => f.replace(/\\/g, '/')),
     }))
     .catch((err: any) => {
-      if (err.code === 1) return { files: [] }
-      interactor.error(`searchFiles ripgrep error: ${err.stderr}`)
-      throw new Error(`Search error: ${err.stderr}`)
+      // Exit code 1 from ripgrep means "no matches found" — not an error
+      if (err.code === 1) {
+        interactor.debug(`searchFiles: no matches found (ripgrep exit code 1)`)
+        return { files: [] }
+      }
+      // ripgrep not found in PATH
+      if (err.code === 'ENOENT') {
+        interactor.error(
+          `searchFiles: '${rgBinary}' not found. Please install ripgrep (https://github.com/BurntSushi/ripgrep#installation) and ensure it is in your PATH.`
+        )
+        throw new Error(`ripgrep ('${rgBinary}') not found in PATH`)
+      }
+      // Timeout
+      if (err.killed || err.signal === 'SIGTERM') {
+        interactor.error(`searchFiles: ripgrep timed out after ${timeout}ms`)
+        throw new Error(`Search timed out after ${timeout}ms`)
+      }
+      // Generic error — include both stderr and message for diagnostics
+      const detail = err.stderr || err.message || String(err)
+      interactor.error(`searchFiles ripgrep error (code=${err.code}): ${detail}`)
+      throw new Error(`Search error: ${detail}`)
     })
+}
 
 type SearchFilesInput = {
   fileName?: string
@@ -57,14 +93,29 @@ export const searchFiles = async ({
     // Use execFile (not exec) to bypass shell interpretation of glob characters.
     const args = [fileContent, resolvedSearchPath, '--color', 'never', '-l', '--fixed-strings']
     if (fileName) args.push('--glob', `*${fileName}*`)
-    for (const t of fileTypes ?? []) args.push('--glob', `*.${t}`)
-    return runRg(args, root, timeout, interactor)
+    // fileTypes: use a single brace-expansion glob for AND semantics with fileName
+    if (fileTypes && fileTypes.length > 0) {
+      const extPattern = fileTypes.length === 1 ? `*.${fileTypes[0]}` : `*.{${fileTypes.join(',')}}`
+      args.push('--glob', extPattern)
+    }
+    const result = await runRg(args, root, timeout, interactor)
+    // Post-filter by extension for AND semantics (ripgrep treats multiple --glob as OR)
+    if (fileTypes && fileTypes.length > 0) {
+      const extensions = new Set(fileTypes.map((t) => `.${t}`))
+      return { files: result.files.filter((f) => extensions.has(path.extname(f))) }
+    }
+    return result
   }
 
   // fileName only: use ripgrep --files with glob pattern (faster and timeout-reliable)
   const args = ['--files', resolvedSearchPath, '--color', 'never', '--glob', `*${fileName}*`]
-  for (const t of fileTypes ?? []) args.push('--glob', `*.${t}`)
-  return runRg(args, root, timeout, interactor)
+  const result = await runRg(args, root, timeout, interactor)
+  // If fileTypes are specified, filter results to only include matching extensions (AND logic)
+  if (fileTypes && fileTypes.length > 0) {
+    const extensions = new Set(fileTypes.map((t) => `.${t}`))
+    return { files: result.files.filter((f) => extensions.has(path.extname(f))) }
+  }
+  return result
 }
 
 /**

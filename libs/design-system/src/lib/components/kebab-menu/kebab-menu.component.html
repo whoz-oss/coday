@@ -2,16 +2,20 @@
 
 <mat-menu #menu="matMenu">
   @for (item of items; track item.key) {
-    <button
-      mat-menu-item
-      [disabled]="item.disabled ?? false"
-      [attr.data-variant]="item.variant ?? 'default'"
-      (click)="onItemClick(item.key)"
-    >
-      @if (item.icon) {
-        <mat-icon>{{ item.icon }}</mat-icon>
-      }
-      <span>{{ item.label }}</span>
-    </button>
+    @if (item.variant === 'separator') {
+      <mat-divider />
+    } @else {
+      <button
+        mat-menu-item
+        [disabled]="item.disabled ?? false"
+        [attr.data-variant]="item.variant ?? 'default'"
+        (click)="onItemClick(item.key)"
+      >
+        @if (item.icon) {
+          <mat-icon>{{ item.icon }}</mat-icon>
+        }
+        <span>{{ item.label }}</span>
+      </button>
+    }
   }
 </mat-menu>

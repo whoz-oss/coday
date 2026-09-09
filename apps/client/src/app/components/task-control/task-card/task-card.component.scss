@@ -74,6 +74,26 @@
   }
 }
 
+// --- Selection checkbox ---
+
+.selection-checkbox {
+  position: absolute;
+  right: 0.875rem;
+  top: 1.125rem;
+  z-index: 2;
+}
+
+.task-card.is-selected {
+  border-color: var(--color-primary);
+  box-shadow:
+    var(--glass-shadow),
+    0 0 0 2px var(--color-primary);
+
+  &::before {
+    background: var(--color-primary);
+  }
+}
+
 // --- Starred indicator ---
 
 .starred-indicator {

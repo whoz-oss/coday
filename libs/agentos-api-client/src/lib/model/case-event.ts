@@ -8,6 +8,7 @@
  * Do not edit the class manually.
  */
 import { AgentRunningEvent } from './agent-running-event'
+import { ConfirmationResolvedEvent } from './confirmation-resolved-event'
 import { AgentFinishedEvent } from './agent-finished-event'
 import { AgentSelectedEvent } from './agent-selected-event'
 import { IntentionGeneratedEvent } from './intention-generated-event'
@@ -15,11 +16,14 @@ import { ThinkingEvent } from './thinking-event'
 import { MessageEvent } from './message-event'
 import { WarnEvent } from './warn-event'
 import { TextChunkEvent } from './text-chunk-event'
+import { PendingConfirmationEvent } from './pending-confirmation-event'
 import { ToolResponseEvent } from './tool-response-event'
 import { QuestionEvent } from './question-event'
 import { ToolSelectedEvent } from './tool-selected-event'
 import { AnswerEvent } from './answer-event'
+import { ErrorEvent } from './error-event'
 import { CaseStatusEvent } from './case-status-event'
+import { CaseUpdatedEvent } from './case-updated-event'
 import { ToolRequestEvent } from './tool-request-event'
 
 export type CaseEvent =
@@ -28,8 +32,12 @@ export type CaseEvent =
   | AgentSelectedEvent
   | AnswerEvent
   | CaseStatusEvent
+  | CaseUpdatedEvent
+  | ConfirmationResolvedEvent
+  | ErrorEvent
   | IntentionGeneratedEvent
   | MessageEvent
+  | PendingConfirmationEvent
   | QuestionEvent
   | TextChunkEvent
   | ThinkingEvent

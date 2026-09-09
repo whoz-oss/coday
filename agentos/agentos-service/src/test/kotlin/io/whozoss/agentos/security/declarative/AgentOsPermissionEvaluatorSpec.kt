@@ -140,8 +140,30 @@ class AgentOsPermissionEvaluatorSpec : StringSpec({
         evaluator.hasPermission(null, UUID.randomUUID(), "Case", "READ") shouldBe false
     }
 
-    "hasPermission returns false when targetId is null" {
-        evaluator.hasPermission(auth, null, "Case", "READ") shouldBe false
+    "hasPermission returns false when targetId is null and targetType is null" {
+        evaluator.hasPermission(auth, null, null, "READ") shouldBe false
+    }
+
+    "hasPermission delegates null targetId to PermissionService for platform-scoped READ" {
+        every {
+            permissionService.hasPermission(userId, EntityType.AGENT_CONFIG, null, Action.READ)
+        } returns true
+
+        evaluator.hasPermission(auth, null, "AgentConfig", "READ") shouldBe true
+
+        verify(exactly = 1) {
+            permissionService.hasPermission(userId, EntityType.AGENT_CONFIG, null, Action.READ)
+        }
+        // Ownership branch must NOT be consulted when targetId is null.
+        verify(exactly = 0) { ownershipResolver.resolveOwner(any(), any()) }
+    }
+
+    "hasPermission delegates null targetId to PermissionService for platform-scoped WRITE (denied for non-admin)" {
+        every {
+            permissionService.hasPermission(userId, EntityType.AGENT_CONFIG, null, Action.WRITE)
+        } returns false
+
+        evaluator.hasPermission(auth, null, "AgentConfig", "WRITE") shouldBe false
     }
 
     "hasPermission returns false when targetType is null" {

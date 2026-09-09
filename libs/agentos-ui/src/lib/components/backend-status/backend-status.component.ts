@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core'
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core'
 import { PluginControllerService } from '@whoz-oss/agentos-api-client'
 
 /**
@@ -11,9 +11,9 @@ import { PluginControllerService } from '@whoz-oss/agentos-api-client'
  */
 @Component({
   selector: 'agentos-backend-status',
-  standalone: true,
   imports: [],
   templateUrl: './backend-status.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './backend-status.component.scss',
 })
 export class BackendStatusComponent implements OnInit {

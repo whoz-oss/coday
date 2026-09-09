@@ -1,0 +1,93 @@
+<div class="namespace-members">
+  <header class="namespace-members__header">
+    <button class="namespace-members__back" type="button" (click)="cancel()" title="Back to namespaces">
+      <span class="namespace-members__back-icon">&#8592;</span>
+      Namespaces
+    </button>
+    <h1 class="namespace-members__title">Members</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="namespace-members__loading">Loading&hellip;</p>
+  } @else {
+    <div class="namespace-members__body">
+      @if (!isSuperAdmin()) {
+        <p class="namespace-members__hint">
+          You can change roles or remove existing members. Only a platform super-admin can add a new user to this
+          namespace.
+        </p>
+      }
+
+      <fieldset class="namespace-members__section">
+        <legend class="namespace-members__label">
+          Roster
+          <span class="namespace-members__label-hint">Exactly one role per user: ADMIN or MEMBER</span>
+        </legend>
+
+        @if (selectedMembers().length === 0) {
+          <p class="namespace-members__empty-hint">No members yet.</p>
+        } @else {
+          <ul class="namespace-members__members">
+            @for (member of selectedMembers(); track member.userId) {
+              <li class="namespace-members__member">
+                <div class="namespace-members__member-info">
+                  <span class="namespace-members__member-name">{{ member.label }}</span>
+                  @if (member.email && member.email !== member.label) {
+                    <span class="namespace-members__member-email">{{ member.email }}</span>
+                  }
+                </div>
+                <select
+                  class="namespace-members__member-role"
+                  [value]="member.role"
+                  [attr.aria-label]="'Role of ' + member.label"
+                  (change)="setMemberRole(member.userId, $any($event.target).value)"
+                >
+                  <option value="MEMBER">Member</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+                <button
+                  class="namespace-members__member-remove"
+                  type="button"
+                  [title]="'Remove ' + member.label"
+                  (click)="removeMember(member.userId)"
+                >
+                  &#215;
+                </button>
+              </li>
+            }
+          </ul>
+        }
+
+        @if (wouldLockOutAdmins()) {
+          <p class="namespace-members__warning">
+            At least one ADMIN must remain on the namespace. Assign ADMIN to someone before saving.
+          </p>
+        }
+
+        @if (isSuperAdmin()) {
+          <ds-autocomplete-input
+            [dataSource]="memberDataSource"
+            placeholder="Add a member…"
+            (itemSelected)="onMemberSelected($event)"
+          />
+        }
+      </fieldset>
+
+      @if (errorMessage()) {
+        <p class="namespace-members__error">{{ errorMessage() }}</p>
+      }
+
+      <div class="namespace-members__actions">
+        <button
+          class="namespace-members__btn namespace-members__btn--primary"
+          type="button"
+          [disabled]="isSubmitting() || wouldLockOutAdmins()"
+          (click)="submit()"
+        >
+          Save changes
+        </button>
+        <button class="namespace-members__btn" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </div>
+  }
+</div>

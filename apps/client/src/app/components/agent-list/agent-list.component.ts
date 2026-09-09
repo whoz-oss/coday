@@ -1,5 +1,5 @@
 import { Location } from '@angular/common'
-import { Component, computed, inject, OnInit, signal } from '@angular/core'
+import { Component, computed, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 import { MatMenuModule } from '@angular/material/menu'
@@ -27,6 +27,7 @@ import { AgentFormComponent, AgentFormData } from '../agent-form/agent-form.comp
     MatMenuModule,
   ],
   templateUrl: './agent-list.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './agent-list.component.scss',
 })
 export class AgentListComponent implements OnInit {

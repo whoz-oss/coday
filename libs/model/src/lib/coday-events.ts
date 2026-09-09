@@ -334,7 +334,19 @@ export class MessageEvent extends CodayEvent {
     super(event, MessageEvent.type)
     this.role = event.role!
     this.name = event.name!
-    this.content = event.content!
+    // Defensive: YAML round-trip can produce a string or single object instead of array
+    const rawContent = event.content
+    if (Array.isArray(rawContent)) {
+      this.content = rawContent.map((item) =>
+        typeof item === 'string' ? { type: 'text' as const, content: item } : item
+      )
+    } else if (typeof rawContent === 'string') {
+      this.content = [{ type: 'text', content: rawContent }]
+    } else if (rawContent && typeof rawContent === 'object' && 'type' in rawContent) {
+      this.content = [rawContent as MessageContent]
+    } else {
+      this.content = []
+    }
 
     this.length = this.content
       .map((content) => {
@@ -434,6 +446,27 @@ export class DelegationEvent extends CodayEvent {
   }
 }
 
+export class UsageEvent extends CodayEvent {
+  static override type = 'usage'
+
+  inputTokens: number
+  outputTokens: number
+  contextWindow: number
+  price: number
+  iterations: number
+  cacheReadTokens: number
+
+  constructor(event: Partial<UsageEvent>) {
+    super(event, UsageEvent.type)
+    this.inputTokens = event.inputTokens ?? 0
+    this.outputTokens = event.outputTokens ?? 0
+    this.contextWindow = event.contextWindow ?? 0
+    this.price = event.price ?? 0
+    this.iterations = event.iterations ?? 0
+    this.cacheReadTokens = event.cacheReadTokens ?? 0
+  }
+}
+
 export class OAuthCallbackEvent extends CodayEvent {
   code?: string
   state: string
@@ -472,6 +505,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [FileEvent.type]: FileEvent,
   [OAuthRequestEvent.type]: OAuthRequestEvent,
   [OAuthCallbackEvent.type]: OAuthCallbackEvent,
+  [UsageEvent.type]: UsageEvent,
 }
 
 export function buildCodayEvent(data: any): CodayEvent | undefined {

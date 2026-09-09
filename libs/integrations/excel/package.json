@@ -1,0 +1,15 @@
+{
+  "name": "@coday/integrations-excel",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "exceljs": "4.4.0",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:dev"
+  }
+}

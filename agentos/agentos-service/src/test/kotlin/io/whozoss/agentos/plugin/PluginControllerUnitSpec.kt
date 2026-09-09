@@ -3,7 +3,6 @@ package io.whozoss.agentos.plugin
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
-import io.whozoss.agentos.agent.AgentRegistry
 import io.whozoss.agentos.plugin.api.PluginController
 import org.springframework.http.HttpStatus
 import org.springframework.mock.web.MockMultipartFile
@@ -13,8 +12,7 @@ import java.nio.file.Paths
 class PluginControllerUnitSpec : StringSpec({
 
     val pluginService = mockk<PluginService>(relaxed = true)
-    val agentRegistry = mockk<AgentRegistry>(relaxed = true)
-    val controller = PluginController(pluginService, agentRegistry)
+    val controller = PluginController(pluginService)
 
     val testJarFilename = "test-plugin-upload.jar"
     val testNonJarFilename = "test-plugin-upload.txt"

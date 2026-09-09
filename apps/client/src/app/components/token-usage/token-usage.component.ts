@@ -1,6 +1,6 @@
 import { DecimalPipe, Location } from '@angular/common'
 import { FormsModule } from '@angular/forms'
-import { Component, computed, inject, OnInit, signal } from '@angular/core'
+import { Component, computed, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 import { ModelUsageSummaryDto, TimeSeriesPointDto } from '../../core/services/token-usage-api.service'
@@ -15,6 +15,7 @@ const EM_DASH = '\u2014'
   standalone: true,
   imports: [FormsModule, CallPipe, ApplyPipe, DailySeriesChartComponent, MatButtonModule, MatIconModule],
   templateUrl: './token-usage.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './token-usage.component.scss',
 })
 export class TokenUsageComponent implements OnInit {

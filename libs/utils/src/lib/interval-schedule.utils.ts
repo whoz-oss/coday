@@ -162,12 +162,15 @@ export function validateIntervalSchedule(schedule: IntervalSchedule): { valid: b
  * - End timestamp (stops if exceeded)
  *
  * Logic:
- * - If no daysOfWeek constraint: simply add interval to fromDate
- * - If daysOfWeek constraint: add interval repeatedly until we land on a valid day
- *   This ensures the interval is respected while filtering by day of week
+ * - Uses startTimestamp as a phase anchor: next run = startTimestamp + N × interval
+ *   where N is the smallest integer such that the result is strictly after fromDate.
+ * - This prevents time-of-day drift after missed executions or restarts.
+ * - If no daysOfWeek constraint: return the phase-aligned next slot.
+ * - If daysOfWeek constraint: add interval repeatedly from the phase-aligned candidate
+ *   until we land on a valid day.
  *
  * @param schedule - Interval schedule configuration
- * @param fromDate - Starting date (default: now)
+ * @param fromDate - Threshold date: returned time must be strictly after this (default: now)
  * @param currentOccurrences - Current occurrence count (default: 0)
  * @returns ISO 8601 timestamp of next run, or null if no more occurrences
  *
@@ -188,14 +191,14 @@ export function calculateNextRun(
   if (!parsed) throw new Error(`Invalid interval: ${schedule.interval}`)
 
   const start = new Date(schedule.startTimestamp)
-  let next = new Date(fromDate)
+  let next: Date
 
-  // If we're before start, next run is start time
-  if (next < start) {
+  // If we're before start, next run is the start time itself
+  if (fromDate < start) {
     next = new Date(start)
   } else {
-    // Calculate next occurrence based on interval
-    next = addInterval(next, parsed)
+    // Phase-anchor: find the smallest N such that start + N × interval > fromDate
+    next = calculatePhaseAnchoredNext(start, parsed, fromDate)
   }
 
   // Check end conditions before searching for valid day
@@ -251,6 +254,53 @@ export function calculateNextRun(
   }
 
   return next.toISOString()
+}
+
+/**
+ * Compute the next phase-anchored occurrence strictly after fromDate.
+ *
+ * For uniform-duration units (min, h, d): uses arithmetic to jump directly to
+ * the correct N in O(1). For months (non-uniform): iterates forward from start.
+ *
+ * @param start - Phase anchor (startTimestamp)
+ * @param interval - Parsed interval
+ * @param fromDate - The result must be strictly after this date
+ * @returns Next occurrence strictly after fromDate
+ */
+function calculatePhaseAnchoredNext(start: Date, interval: ParsedInterval, fromDate: Date): Date {
+  if (interval.unit === 'M') {
+    // Months are non-uniform — iterate forward from start
+    let candidate = new Date(start)
+    while (candidate <= fromDate) {
+      candidate = addInterval(candidate, interval)
+    }
+    return candidate
+  }
+
+  // Uniform-duration units: compute N arithmetically
+  const intervalMs = intervalToMs(interval)
+  const diff = fromDate.getTime() - start.getTime()
+  // N is the smallest integer such that start + N * intervalMs > fromDate
+  const n = Math.floor(diff / intervalMs) + 1
+  const candidate = new Date(start.getTime() + n * intervalMs)
+  return candidate
+}
+
+/**
+ * Convert a parsed interval to milliseconds (only for uniform units: min, h, d).
+ * Months are not supported here — use addInterval iteratively instead.
+ */
+function intervalToMs(interval: ParsedInterval): number {
+  switch (interval.unit) {
+    case 'min':
+      return interval.value * 60 * 1000
+    case 'h':
+      return interval.value * 60 * 60 * 1000
+    case 'd':
+      return interval.value * 24 * 60 * 60 * 1000
+    default:
+      throw new Error(`intervalToMs does not support unit: ${interval.unit}`)
+  }
 }
 
 /**

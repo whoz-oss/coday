@@ -1,0 +1,146 @@
+:host {
+  display: block;
+}
+
+h2[mat-dialog-title] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qsd-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+// Interval row
+.qsd-interval {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .qsd-label {
+    font-size: 14px;
+    color: var(--mat-sys-on-surface-variant);
+    white-space: nowrap;
+  }
+
+  .interval-value {
+    width: 80px;
+  }
+
+  .interval-unit {
+    flex: 1;
+  }
+}
+
+// Days of week
+.qsd-days {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  .qsd-label {
+    font-size: 14px;
+    color: var(--mat-sys-on-surface-variant);
+    white-space: nowrap;
+  }
+
+  .qsd-hint {
+    font-size: 12px;
+    color: var(--mat-sys-on-surface-variant);
+    opacity: 0.7;
+    width: 100%;
+    margin-top: -4px;
+    padding-left: 36px;
+  }
+}
+
+.qsd-day-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.day-chip {
+  padding: 4px 10px;
+  border-radius: 16px;
+  border: 1px solid var(--mat-sys-outline);
+  background: transparent;
+  color: var(--mat-sys-on-surface);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+
+  &.selected {
+    background: var(--mat-sys-primary);
+    color: var(--mat-sys-on-primary);
+    border-color: var(--mat-sys-primary);
+  }
+
+  &:hover:not(.selected) {
+    background: var(--mat-sys-surface-variant);
+  }
+}
+
+// Divider with label
+.qsd-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--mat-sys-outline-variant);
+  }
+
+  span {
+    font-size: 12px;
+    color: var(--mat-sys-on-surface-variant);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+}
+
+.qsd-end {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qsd-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--mat-sys-error);
+  font-size: 14px;
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+mat-dialog-actions {
+  gap: 8px;
+
+  button[mat-flat-button] {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+}

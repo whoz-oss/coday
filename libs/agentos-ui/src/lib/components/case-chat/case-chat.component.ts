@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http'
 import { JsonPipe } from '@angular/common'
+import { firstValueFrom } from 'rxjs'
 import {
   afterNextRender,
   Component,
@@ -8,11 +9,14 @@ import {
   effect,
   ElementRef,
   inject,
+  input,
   NgZone,
   OnDestroy,
   OnInit,
+  output,
   signal,
-  ViewChild,
+  viewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
@@ -21,18 +25,41 @@ import {
   AgentFinishedEvent,
   AgentRunningEvent,
   AgentSelectedEvent,
+  AnswerEvent,
   CaseEvent,
+  CaseStatusEnum,
   CaseStatusEvent,
+  CaseUpdatedEvent,
   Configuration,
+  EnrichmentPhaseTrace,
+  ErrorEvent,
   IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
+  QuestionEvent,
+  QuestionEventQuestionTypeEnum,
   ToolRequestEvent,
   ToolResponseEvent,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
-import { IconButtonComponent } from '@whoz-oss/design-system'
+import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
+import { BlueprintDirective, CopyButtonComponent, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
+import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
+import { CaseStateService } from '../../services/case-state.service'
+import { OAuthAgentosService } from '../../services/oauth-agentos.service'
+import { QuestionPanelComponent } from '../question-panel/question-panel.component'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
+import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
+import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
+import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
+import { ExchangeStateService } from '../../services/exchange-state.service'
+import { exchangeMutationScope } from '../../services/exchange-content.utils'
+import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
+import { CaseMembersComponent } from '../case-members/case-members.component'
+import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
+import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
+import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 
 export interface ToolCall {
   requestId: string
@@ -40,12 +67,15 @@ export interface ToolCall {
   args: string | null
   /** undefined = pending, defined = done */
   response?: ToolResponseEvent
+  /** Enrichment phase traces from multi-step parameter generation (null when no enrichment). */
+  enrichmentPhases?: EnrichmentPhaseTrace[] | null
 }
 
 /** A technical event displayed only when showTechnical is enabled. */
 export interface TechnicalItem {
   type:
     | 'WarnEvent'
+    | 'ErrorEvent'
     | 'CaseStatusEvent'
     | 'AgentRunningEvent'
     | 'AgentFinishedEvent'
@@ -56,20 +86,26 @@ export interface TechnicalItem {
 }
 
 export type TimelineItem =
-  | { kind: 'message'; event: CaseMessageEvent; html: SafeHtml }
+  | { kind: 'message'; event: CaseMessageEvent; html: SafeHtml; isFirstInGroup: boolean }
   | { kind: 'tool'; call: ToolCall }
-  | { kind: 'streaming'; text: string }
+  | { kind: 'streaming' }
   | { kind: 'technical'; item: TechnicalItem; eventId: string }
+  | { kind: 'question'; event: QuestionEvent; answered: boolean }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
 
+/** True when the user has an active text selection (e.g. preparing to copy). */
+function hasActiveSelection(): boolean {
+  const selection = window.getSelection()
+  return !!selection && selection.toString().length > 0
+}
+
 /**
  * CaseChatComponent — real-time chat view for an active case.
  *
- * Connexion SSE directe sur /api/agentos/api/cases/:caseId/events.
- * Accumule tous les CaseEvent reçus, affiche les MessageEvent
- * et les ToolRequestEvent/ToolResponseEvent intercalés chronologiquement.
+ * Direct SSE connection to /api/cases/:caseId/events.
+ * Accumulates all CaseEvents, renders MessageEvents and ToolRequest/Response items in order.
  *
  * Scroll behaviour:
  * - The messages area fills available height and scrolls independently.
@@ -80,9 +116,23 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  */
 @Component({
   selector: 'agentos-case-chat',
-  standalone: true,
-  imports: [IconButtonComponent, JsonPipe],
+  imports: [
+    IconButtonComponent,
+    JsonPipe,
+    DrawerComponent,
+    ExchangeShellComponent,
+    CaseMembersComponent,
+    PromptAutocompleteComponent,
+    AgentAutocompleteComponent,
+    BlueprintDirective,
+    CaseStatusGlyphComponent,
+    CopyButtonComponent,
+    ComposerAttachmentsComponent,
+    QuestionPanelComponent,
+  ],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-chat.component.scss',
 })
 export class CaseChatComponent implements OnInit, OnDestroy {
@@ -91,12 +141,40 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly zone = inject(NgZone)
   private readonly destroyRef = inject(DestroyRef)
   private readonly domSanitizer = inject(DomSanitizer)
+  private readonly exchangeState = inject(ExchangeStateService)
 
   private readonly config = inject(Configuration)
+  protected readonly preferences = inject(USER_PREFERENCES_PORT)
+  private readonly caseState = inject(CaseStateService)
+  private readonly oauthService = inject(OAuthAgentosService)
 
-  // Read from snapshot initially; updated reactively in ngOnInit via route.params
-  private caseId = this.route.snapshot.params['caseId'] as string
-  private readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
+  /** Right-side file-exchange drawer open state + entry-point badge count. */
+  protected readonly exchangeOpen = signal(false)
+  protected readonly exchangeFileCount = this.exchangeState.fileCount
+
+  /** Files staged on the next message (component-scoped instance, see providers). */
+  protected readonly attachments = inject(ComposerAttachmentsService)
+  protected readonly autocomplete = inject(ComposerAutocompleteService)
+  /** Attaching goes through the case exchange: same write gate as the drawer's upload button. */
+  protected readonly canAttach = this.exchangeState.canWriteCase
+  /**
+   * Files can be staged (picker + drop) only when the composer itself is usable: staging on
+   * a terminal case would be a dead end, and staging during an upload batch would be
+   * silently skipped by the in-flight loop.
+   */
+  protected readonly canStageFiles = computed(
+    () => this.canAttach() && !this.isRunning() && !this.isTerminal() && !this.attachments.isUploading()
+  )
+
+  protected toggleExchange(): void {
+    this.exchangeOpen.update((v) => !v)
+  }
+
+  // caseId and namespaceId are read from query params (?case=...&ns=...).
+  // The case-shell renders this component directly (not via router-outlet),
+  // so route params are empty — all context comes through query params.
+  protected caseId = this.route.snapshot.queryParams['case'] as string
+  private readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
 
   /** Markdown renderer shared across all message pre-computations. */
   private readonly markdownRenderer = this.buildMarkdownRenderer()
@@ -111,13 +189,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       if (!e) continue
 
       if (e.type === 'AgentRunningEvent' || e.type === 'AgentSelectedEvent' || e.type === 'AgentFinishedEvent') {
-        const name = (e as unknown as { agentName?: string }).agentName
+        const name = e.agentName
         if (name && name.trim().length > 0) return name
       }
 
-      if (e.type === 'MessageEvent') {
-        const msg = e as unknown as { actor?: { role?: string; displayName?: string } }
-        if (msg.actor?.role === 'AGENT' && msg.actor.displayName) return msg.actor.displayName
+      if (e.type === 'MessageEvent' && e.actor.role === 'AGENT' && e.actor.displayName) {
+        return e.actor.displayName
       }
     }
     return 'Assistant'
@@ -125,8 +202,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private eventSource: EventSource | null = null
 
-  @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
-  @ViewChild('messagesContainer') private messagesContainer?: ElementRef<HTMLDivElement>
+  private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
+  private readonly messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer')
+  private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
+  private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
 
@@ -140,17 +219,62 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected isRunning = signal(false)
   protected isTerminal = signal(false)
 
-  /** When true, technical events are shown in the timeline. */
-  protected readonly showTechnical = signal(false)
+  /** Active case from the shared case list (title + stored status). */
+  protected readonly activeCase = computed(() => this.caseState.cases().find((c) => c.id === this.caseId) ?? null)
+
+  /**
+   * Raw SSE status — empty string until a CaseStatusEvent arrives for this case.
+   * Resets to '' on case switch so the stored status takes over immediately.
+   */
+  private readonly _sseStatus = signal<string>('')
+
+  /**
+   * Effective status driving the header glyph + badge.
+   * Priority: SSE event > stored case status > 'IDLE'.
+   */
+  protected readonly caseStatus = computed(() => this._sseStatus() || this.activeCase()?.status || 'IDLE')
+
+  /** Whether the delete confirmation inline is showing. */
+  protected readonly confirmingDelete = signal(false)
+
+  /** Which panel is active in the right drawer: files exchange or case members. */
+  protected readonly drawerPanel = signal<'files' | 'members'>('files')
+
+  protected openFilesPanel(): void {
+    this.drawerPanel.set('files')
+    this.exchangeOpen.set(true)
+  }
+
+  protected openMembersPanel(): void {
+    this.drawerPanel.set('members')
+    this.exchangeOpen.set(true)
+  }
+
+  // Header action outputs — handled by CaseShellComponent
+  readonly starToggled = output<{ id: string; starred: boolean }>()
+  readonly deleteRequested = output<string>()
+  readonly logsToggled = output<void>()
+
+  readonly showTechnicalOverride = input(false)
+  protected readonly showTechnical = computed(() => this.showTechnicalOverride())
 
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
 
+  /** Markdown-rendered SafeHtml of the streaming text — updated on every chunk. */
+  protected readonly streamingHtml = computed<SafeHtml>(() => {
+    const text = this.streamingText()
+    if (!text) return ''
+    return this.renderMarkdown(text)
+  })
+
+  /** True when the message text targets the namespace exchange (previewed on the chips). */
+  protected readonly namespaceTargeted = computed(() =>
+    isNamespaceTargeted(this.inputValue(), this.exchangeState.canWriteNamespace())
+  )
+
   /** Collapsed state per toolRequestId */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
-
-  /** Expanded state per technical eventId — collapsed by default */
-  protected readonly expandedTechnicals = signal<Set<string>>(new Set())
 
   /**
    * Whether the user is currently scrolled to (or near) the bottom of the messages area.
@@ -163,46 +287,59 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private scrollListenerCleanup: (() => void) | null = null
 
   constructor() {
-    // Restore focus to the composer whenever we return to an interactive state.
+    this.autocomplete.init(this.namespaceId)
+
+    // Restore focus to the composer whenever we return to an interactive state,
+    // but only when the user has no active text selection (avoid clearing copy intent).
     effect(() => {
       if (this.isRunning() || this.isTerminal()) return
-      queueMicrotask(() => this.composerInput?.nativeElement.focus())
+      queueMicrotask(() => {
+        if (hasActiveSelection()) return
+        this.composerInput()?.nativeElement.focus()
+      })
+    })
+
+    // Keep the composer sized to its current content, including after a message is sent
+    // or an autocomplete selection changes the input programmatically.
+    effect(() => {
+      this.inputValue()
+      queueMicrotask(() => this.resizeComposer())
     })
 
     // Auto-scroll to bottom whenever the timeline or streaming text changes,
     // but only when the user is already at the bottom (magnetic behaviour).
+    // Skip when the user has an active text selection to avoid disrupting copy intent.
     effect(() => {
-      // Depend on timeline and streamingText so the effect re-runs on content changes.
       this.timeline()
       this.streamingText()
 
       if (this.isAtBottom()) {
-        // Defer to next microtask so the DOM has updated before we measure.
-        queueMicrotask(() => this.scrollToBottom())
+        queueMicrotask(() => {
+          if (hasActiveSelection()) return
+          this.scrollToBottom()
+        })
       }
     })
 
-    // Register scroll listener after the first render so the ViewChild is available.
+    // Register DOM-dependent behaviour after the first render.
     afterNextRender(() => {
       this.attachScrollListener()
+      this.resizeComposer()
     })
   }
 
   /**
-   * Unified chronological timeline: messages, tool calls, and (optionally) technical
-   * events interleaved in the order they first appeared in the event stream.
+   * Static timeline derived from persisted events only — does NOT depend on streamingText.
+   * Splitting from `timeline` avoids rebuilding the full reconciliation on every TextChunkEvent
+   * during a streaming turn (dozens per second).
    *
    * Two-pass approach:
    * 1. Build a complete ToolCall map (request merged with its response)
    * 2. Walk events in order to emit timeline items, deduplicating tool entries
-   *    so TOOL_RESPONSE doesn’t create a second item — it’s already merged.
-   *
-   * The computed re-runs fully on every events() change, so the merged
-   * ToolCall objects are always fresh — no mutation needed.
+   *    so TOOL_RESPONSE doesn't create a second item — it's already merged.
    */
-  protected readonly timeline = computed<TimelineItem[]>(() => {
+  private readonly baseTimeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()
-    const streamingText = this.streamingText()
     const showTechnical = this.showTechnical()
 
     // Pass 1: build complete tool call map (request + optional response)
@@ -217,6 +354,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           toolName: req.toolName ?? 'unknown',
           args: req.args ?? null,
           response: existing?.response,
+          enrichmentPhases: (req as ToolRequestEvent).enrichmentPhases ?? null,
         })
       } else if (e.type === 'ToolResponseEvent') {
         const res = e as ToolResponseEvent
@@ -227,55 +365,118 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           toolName: existing?.toolName ?? res.toolName ?? 'unknown',
           args: existing?.args ?? null,
           response: res,
+          enrichmentPhases: existing?.enrichmentPhases ?? null,
         })
       }
     }
 
-    // Pass 2: walk events in order, emit one timeline item per message or tool call
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
+    // Track the last role to detect group boundaries (consecutive same-role messages).
+    // Any non-message item (tool call, technical event) resets the group.
+    let lastMessageRole: string | null = null
     for (const e of allEvents) {
       if (e.type === 'MessageEvent') {
         const msg = e as CaseMessageEvent
+        const role = msg.actor.role
+        const isFirstInGroup = role !== lastMessageRole
+        lastMessageRole = role
         items.push({
           kind: 'message',
           event: msg,
           html: this.messageHtmlCache.get(e.id) ?? '',
+          isFirstInGroup,
         })
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
-        const raw = e as ToolRequestEvent | ToolResponseEvent
-        const requestId = raw.toolRequestId ?? e.id
+        const requestId = e.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
           seenToolIds.add(requestId)
           items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
         }
+        lastMessageRole = null
+      } else if (e.type === 'QuestionEvent') {
+        const qe = e as QuestionEvent
+        // A question is answered when there is a corresponding AnswerEvent in the stream.
+        const answered = allEvents.some((ae) => ae.type === 'AnswerEvent' && (ae as AnswerEvent).questionId === qe.id)
+        items.push({ kind: 'question', event: qe, answered })
       } else if (showTechnical) {
         const technical = this.toTechnicalItem(e)
         if (technical) {
           items.push({ kind: 'technical', item: technical, eventId: e.id })
+          lastMessageRole = null
         }
       }
-    }
-
-    // Append the streaming assistant message at the end while running.
-    // We keep it separate from MessageEvent so we don’t create dozens of timeline rows.
-    if (streamingText.trim().length > 0) {
-      items.push({ kind: 'streaming', text: streamingText })
     }
 
     return items
   })
 
+  /** Final timeline: base + trailing streaming assistant bubble during a RUNNING turn. */
+  protected readonly timeline = computed<TimelineItem[]>(() => {
+    const base = this.baseTimeline()
+    const streamingText = this.streamingText()
+    if (streamingText.trim().length === 0) return base
+    return [...base, { kind: 'streaming' }]
+  })
+
+  protected trackTimelineItem(_index: number, item: TimelineItem): string {
+    switch (item.kind) {
+      case 'message':
+        return item.event.id
+      case 'tool':
+        return item.call.requestId
+      case 'technical':
+        return item.eventId
+      case 'streaming':
+        return 'streaming'
+      case 'question':
+        return `question-${item.event.id}`
+    }
+  }
+
+  /** Exposed so the template can check if the OAuth panel should be suppressed after popup opens. */
+  protected readonly oauthPendingQuestion = this.oauthService.pendingQuestion
+
+  /** Called by question-panel when the user cancels a non-OAuth question. */
+  protected onQuestionCancelled(): void {
+    // For OAUTH_AUTHORIZE, cancelRequest() was already called inside the panel.
+    // Nothing else to do here for non-OAuth types (no backend call needed for cancel).
+  }
+
+  /**
+   * Called by question-panel when the user submits a non-OAuth answer.
+   * Posts to POST /api/cases/{caseId}/messages with answerToEventId.
+   */
+  protected onQuestionAnswered(questionEvent: QuestionEvent, answer: string): void {
+    this.isRunning.set(true)
+    this.http
+      .post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
+        content: answer,
+        answerToEventId: questionEvent.id,
+      })
+      .subscribe({
+        error: (err) => {
+          console.error('[CaseChat] Failed to post answer', err)
+          this.isRunning.set(false)
+        },
+      })
+  }
+
   protected get canSend(): boolean {
-    return !!this.inputValue().trim() && !this.isRunning() && !this.isTerminal()
+    return (
+      (!!this.inputValue().trim() || this.attachments.hasAttachments()) &&
+      !this.isRunning() &&
+      !this.isTerminal() &&
+      !this.attachments.isUploading()
+    )
   }
 
   ngOnInit(): void {
     this.connectSse()
 
-    // Re-initialise when navigating between cases (same component instance reused by the router)
-    this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
-      const newCaseId = params['caseId'] as string
+    // Re-initialise when the ?case query param changes (case-shell navigates with queryParams).
+    this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const newCaseId = params['case'] as string
       if (newCaseId && newCaseId !== this.caseId) {
         this.caseId = newCaseId
         this.reinitialise()
@@ -298,7 +499,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Called once after the first render.
    */
   private attachScrollListener(): void {
-    const el = this.messagesContainer?.nativeElement
+    const el = this.messagesContainer()?.nativeElement
     if (!el) return
 
     const onScroll = () => {
@@ -312,7 +513,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Programmatically scroll the messages container to the very bottom. */
   protected scrollToBottom(): void {
-    const el = this.messagesContainer?.nativeElement
+    const el = this.messagesContainer()?.nativeElement
     if (!el) return
     el.scrollTop = el.scrollHeight
   }
@@ -391,10 +592,21 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             return
           }
 
+          if (event.type === 'CaseUpdatedEvent') {
+            const updated = event as CaseUpdatedEvent
+            if (updated.title) {
+              this.caseState.updateCaseTitle(event.caseId, updated.title)
+            }
+            return
+          }
+
           if (event.type === 'CaseStatusEvent') {
             // Source of truth for running/terminal states.
             // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
             const status = (event as CaseStatusEvent).status as string
+            this._sseStatus.set(status)
+            // Sync the drawer list so both header and drawer show the same status
+            this.caseState.updateCaseStatus(this.caseId, status)
 
             const isTerminal = status === 'KILLED' || status === 'ERROR'
             this.isTerminal.set(isTerminal)
@@ -421,10 +633,39 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             this.isRunning.set(false)
             // End-of-turn: reset streaming buffer.
             this.streamingText.set('')
+            // Safety net: refresh both scopes at end-of-turn ONLY if a tool ran (covers a mutation the
+            // per-op regex may have missed); pure-conversation turns skip the manifest fetch.
+            if (this.anyToolResponseThisTurn) {
+              this.exchangeState.refreshManifest()
+            }
+            this.anyToolResponseThisTurn = false
             return
           }
 
-          // For other events: don’t force isRunning=true.
+          if (event.type === 'ToolResponseEvent') {
+            this.anyToolResponseThisTurn = true
+            // The agent mutated the exchange filesystem → refresh the affected scope's drawer + badge live.
+            const mutatedScope = exchangeMutationScope((event as ToolResponseEvent).toolName)
+            if (mutatedScope === 'case') {
+              this.exchangeState.refreshCase()
+            } else if (mutatedScope === 'namespace') {
+              this.exchangeState.refreshNamespace()
+            }
+            return
+          }
+
+          if (event.type === 'QuestionEvent') {
+            const qe = event as QuestionEvent
+            if (qe.questionType === QuestionEventQuestionTypeEnum.OAUTH_AUTHORIZE) {
+              // Delegate OAuth popup management to the service.
+              // The panel is shown via the timeline (question kind) and the service
+              // exposes pendingQuestion so the panel knows when to hide after popup opens.
+              this.oauthService.setPendingQuestion(qe)
+            }
+            return
+          }
+
+          // For other events: don't force isRunning=true.
           // submit() sets isRunning=true, and we flip it back on AgentFinishedEvent.
         })
       } catch (err) {
@@ -439,6 +680,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const eventNames = [
       'MessageEvent',
       'CaseStatusEvent',
+      'CaseUpdatedEvent',
       'AgentSelectedEvent',
       'AgentRunningEvent',
       'AgentFinishedEvent',
@@ -446,8 +688,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       'TextChunkEvent',
       'ToolRequestEvent',
       'ToolResponseEvent',
+      'PendingConfirmationEvent',
+      'ConfirmationResolvedEvent',
+      'ErrorEvent',
       'WarnEvent',
       'IntentionGeneratedEvent',
+      'QuestionEvent',
+      'AnswerEvent',
     ] as const
 
     // handle the different event names we see in the SSE stream
@@ -484,15 +731,51 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Whether any tool ran this turn — gates the end-of-turn exchange refresh (skips pure-chat turns). */
+  private anyToolResponseThisTurn = false
+
   protected onInput(event: Event): void {
-    this.inputValue.set((event.target as HTMLTextAreaElement).value)
+    const input = event.target as HTMLTextAreaElement
+    this.autocomplete.onInput(input.value, this.inputValue)
+    // The browser has already updated the textarea value when input fires, so measure
+    // the actual element directly instead of relying on a later signal-effect cycle.
+    this.resizeComposer(input)
+  }
+
+  /**
+   * Grow to the content height and let the CSS max-height take over for long drafts.
+   * Resetting to auto first also lets the textarea shrink after text is removed.
+   */
+  private resizeComposer(input = this.composerInput()?.nativeElement): void {
+    if (!input) return
+
+    input.style.height = 'auto'
+    input.style.height = `${input.scrollHeight}px`
   }
 
   protected onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    const consumed = this.autocomplete.onKeydown(event, this.promptAutocompleteRef, this.agentAutocompleteRef)
+    if (consumed) return
+    if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
     }
+  }
+
+  protected onPromptSelected(prompt: Prompt): void {
+    this.autocomplete.onPromptSelected(prompt, this.promptAutocompleteRef, this.composerInput, this.inputValue)
+  }
+
+  protected onAgentSelected(agent: AgentConfig): void {
+    this.autocomplete.onAgentSelected(agent, this.agentAutocompleteRef, this.composerInput, this.inputValue)
+  }
+
+  protected closeSlashAutocomplete(): void {
+    this.autocomplete.slashSuggestions.set([])
+  }
+
+  protected closeAtAutocomplete(): void {
+    this.autocomplete.atSuggestions.set([])
   }
 
   /**
@@ -507,34 +790,74 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.inputValue.set('')
     this.isRunning.set(false)
     this.isTerminal.set(false)
+    this._sseStatus.set('')
+    this.confirmingDelete.set(false)
     this.streamingText.set('')
     this.collapsedTools.set(new Set())
     this.isAtBottom.set(true)
+    this.drawerPanel.set('files')
+    this.autocomplete.reset()
+    this.attachments.reset()
     this.connectSse()
   }
 
-  protected submit(): void {
-    if (!this.canSend) return
+  /**
+   * Re-entrancy guard for the async attachment path. canSend alone is not enough: it goes
+   * false during the upload (isUploading), but that flag is cleared by the service before
+   * postMessage sets isRunning, leaving a window where a second submit() could pass the
+   * guard and post the same message twice. Set synchronously, cleared in a finally.
+   */
+  private submitting = false
+
+  protected async submit(): Promise<void> {
+    if (this.submitting || !this.canSend) return
     const content = this.inputValue().trim()
+    if (this.attachments.hasAttachments()) {
+      this.submitting = true
+      try {
+        const caseIdAtSubmit = this.caseId
+        const scope = resolveUploadScope(content, this.exchangeState.canWriteNamespace())
+        const mention = await this.attachments.uploadAllAndBuildMention(scope)
+        // An upload failure or a mid-flight case switch blocks the send: failed chips carry
+        // the mapped errors (or the switch reset the batch), the input stays intact.
+        if (mention === null || this.caseId !== caseIdAtSubmit) return
+        const sent = await this.postMessage(content ? `${content}\n\n${mention}` : mention)
+        // Only a confirmed send clears the composer: on failure the text and the uploaded
+        // chips stay, and a retry rebuilds the mention without re-uploading anything.
+        if (sent && this.caseId === caseIdAtSubmit) {
+          this.inputValue.set('')
+          this.attachments.reset()
+        }
+      } finally {
+        this.submitting = false
+      }
+      return
+    }
     this.inputValue.set('')
     this.sendMessage(content)
   }
 
   private sendMessage(content: string): void {
+    void this.postMessage(content)
+  }
+
+  private postMessage(content: string): Promise<boolean> {
     this.isRunning.set(true)
     this.streamingText.set('')
 
-    this.http
-      .post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
+    return firstValueFrom(
+      this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
         content,
         userId: 'default-user',
       })
-      .subscribe({
-        error: (err) => {
-          console.error('[CaseChat] Failed to send message', err)
-          this.isRunning.set(false)
-        },
-      })
+    ).then(
+      () => true,
+      (err) => {
+        console.error('[CaseChat] Failed to send message', err)
+        this.isRunning.set(false)
+        return false
+      }
+    )
   }
 
   protected interrupt(): void {
@@ -585,20 +908,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected toggleShowTechnical(): void {
-    this.showTechnical.update((v) => !v)
+    this.logsToggled.emit()
   }
 
-  protected toggleTechnical(eventId: string): void {
-    this.expandedTechnicals.update((set) => {
-      const next = new Set(set)
-      if (next.has(eventId)) next.delete(eventId)
-      else next.add(eventId)
-      return next
-    })
+  /** Extract plain text from a message item for clipboard copy. */
+  protected messageText(item: TimelineItem & { kind: 'message' }): string {
+    return this.extractText(item.event)
   }
 
-  protected isTechnicalExpanded(eventId: string): boolean {
-    return this.expandedTechnicals().has(eventId)
+  /** Durable provider/model attribution carried by the agent MessageEvent itself. */
+  protected agentModelAttribution(message: CaseMessageEvent): string | null {
+    if (message.actor.role !== 'AGENT') return null
+    const parts = [message.llmProvider, message.llmModel].filter((part): part is string => !!part)
+    return parts.length ? parts.join(' · ') : null
   }
 
   // ---------------------------------------------------------------------------
@@ -630,6 +952,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private buildMarkdownRenderer(): Renderer {
     const renderer = new Renderer()
     const originalLink = renderer.link.bind(renderer)
+    const originalCode = renderer.code.bind(renderer)
+    renderer.code = (token): string => {
+      // [innerHTML] content is not decorated with Angular's emulated-encapsulation
+      // attribute. Mark generated fenced code explicitly so global, agentos-scoped CSS
+      // can create its own horizontal scroll container.
+      return originalCode(token).replace('<pre>', '<pre class="agentos-chat-code-block">')
+    }
     renderer.link = (token): string => {
       let html = originalLink(token)
       if (this.isExternalLink(token.href)) {
@@ -662,6 +991,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         const e = event as WarnEvent
         return { type: 'WarnEvent', label: '⚠️ Warn', detail: e.message }
       }
+      case 'ErrorEvent': {
+        const e = event as ErrorEvent
+        return { type: 'ErrorEvent', label: '❌ Error', detail: e.message }
+      }
       case 'CaseStatusEvent': {
         const e = event as CaseStatusEvent
         return { type: 'CaseStatusEvent', label: `🟡 Status: ${e.status}` }
@@ -686,4 +1019,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         return null
     }
   }
+
+  protected readonly CaseStatusEnum = CaseStatusEnum
 }
