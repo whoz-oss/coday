@@ -1,3 +1,13 @@
+## 1.2.2 (2026-09-09)
+
+### 🩹 Fixes
+
+- #1322 sort tools by name for stable prompt cache prefix ([#1323](https://github.com/whoz-oss/coday/pull/1323), [#1322](https://github.com/whoz-oss/coday/issues/1322))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 1.2.1 (2026-09-09)
 
 ### 🚀 Features
