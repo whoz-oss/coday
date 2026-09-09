@@ -202,6 +202,10 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
     testImplementation(libs.testcontainers.neo4j)
     testImplementation(libs.testcontainers.junit)
+    // kotlinx-coroutines-test — UnconfinedTestDispatcher / runTest for coroutine loop tests.
+    // The resolutionStrategy below pins it to kotlinCoroutines version (same as production coroutines).
+    testImplementation(libs.kotlinx.coroutines.test)
+
     // Neo4j test harness: starts an embedded Neo4j in-process for testing.
     // neo4j-harness 2026.x requires Netty 4.2.x (BoltServer uses 4.2 APIs).
     // Spring Boot BOM pins Netty 4.1.x, which Gradle's conflict resolution selects

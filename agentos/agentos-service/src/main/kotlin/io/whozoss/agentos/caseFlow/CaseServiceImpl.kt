@@ -6,6 +6,7 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
+import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -14,8 +15,8 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptCommandParser
-import io.whozoss.agentos.prompt.ResolvedCommand
 import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.prompt.ResolvedCommand
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -118,6 +119,11 @@ class CaseServiceImpl(
             caseRepository.save(entity)
         }
     }
+
+    override fun findById(
+        id: UUID,
+        withRemoved: Boolean,
+    ): Case? = caseRepository.findByIds(listOf(id), withRemoved).firstOrNull()
 
     override fun findByIds(
         ids: Collection<UUID>,
@@ -295,35 +301,36 @@ class CaseServiceImpl(
         // Resolution failures (cycle, depth exceeded, missing arguments) are caught here
         // and surfaced as a WarnEvent in the runtime so the SSE client sees the error.
         // The original user message is stored first so the conversation history is intact.
-        val resolvedCommands: List<ResolvedCommand>? = if (userId != null) {
-            try {
-                content.filterIsInstance<MessageContent.Text>().flatMap { mc ->
-                    PromptCommandParser.resolve(mc.content) {
-                        promptService.findEffective(runtime.namespaceId, userId)
+        val resolvedCommands: List<ResolvedCommand>? =
+            if (userId != null) {
+                try {
+                    content.filterIsInstance<MessageContent.Text>().flatMap { mc ->
+                        PromptCommandParser.resolve(mc.content) {
+                            promptService.findEffective(runtime.namespaceId, userId)
+                        }
                     }
-                }
-            } catch (e: PromptResolutionException) {
-                logger.warn(e) { "Prompt resolution failed for case $caseId: ${e.message}" }
-                runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
-                runtime.emitEvent(
-                    storeEvent(
-                        WarnEvent(
-                            namespaceId = runtime.namespaceId,
-                            caseId = caseId,
-                            message = "Prompt resolution failed: ${e.message}",
+                } catch (e: PromptResolutionException) {
+                    logger.warn(e) { "Prompt resolution failed for case $caseId: ${e.message}" }
+                    runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+                    runtime.emitEvent(
+                        storeEvent(
+                            WarnEvent(
+                                namespaceId = runtime.namespaceId,
+                                caseId = caseId,
+                                message = "Prompt resolution failed: ${e.message}",
+                            ),
                         ),
-                    ),
-                )
-                // run() must still be launched: addUserMessage stored a MessageEvent and
-                // an AgentSelectedEvent. Without run(), the runtime has a pending
-                // AgentSelectedEvent in its history but no execution loop to process it,
-                // leaving the case blocked in PENDING status forever.
-                scope.launch { runtime.run() }
-                return
+                    )
+                    // run() must still be launched: addUserMessage stored a MessageEvent and
+                    // an AgentSelectedEvent. Without run(), the runtime has a pending
+                    // AgentSelectedEvent in its history but no execution loop to process it,
+                    // leaving the case blocked in PENDING status forever.
+                    scope.launch { runtime.run() }
+                    return
+                }
+            } else {
+                content.filterIsInstance<MessageContent.Text>().map { ResolvedCommand(it.content) }
             }
-        } else {
-            content.filterIsInstance<MessageContent.Text>().map { ResolvedCommand(it.content) }
-        }
         val nonTextContent = content.filter { it !is MessageContent.Text }
 
         // Cache agentConfigId -> agent name lookups so multiple ResolvedCommands referencing
@@ -334,17 +341,21 @@ class CaseServiceImpl(
             val agentConfigId = cmd.agentConfigId ?: return cmd.text
             // Don't prefix if the content already starts with an @mention.
             if (cmd.text.trimStart().startsWith("@")) return cmd.text
-            val agentName = agentNameCache.getOrPut(agentConfigId) {
-                agentConfigService.findById(agentConfigId)
-                    ?.takeIf { !it.metadata.removed }
-                    ?.name
-            }
+            val agentName =
+                agentNameCache.getOrPut(agentConfigId) {
+                    agentConfigService
+                        .findById(agentConfigId)
+                        ?.takeIf { !it.metadata.removed }
+                        ?.name
+                }
             return if (agentName != null) "@$agentName ${cmd.text}" else cmd.text
         }
 
         when {
-            resolvedCommands.isNullOrEmpty() ->
+            resolvedCommands.isNullOrEmpty() -> {
                 runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+            }
+
             else -> {
                 // First command goes as the initial user message (with any non-text attachments).
                 // Subsequent commands are enqueued: the runtime drains them one-by-one after
@@ -682,7 +693,10 @@ class CaseServiceImpl(
         if (newStatus == CaseStatus.IDLE) {
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
-                triggerNamingIfNeeded(updated, caseEventService.findByParent(caseId)) { event -> runtime.emitEvent(event) }
+                triggerNamingIfNeeded(
+                    case = updated,
+                    events = caseEventService.findByParent(caseId),
+                ) { event -> runtime.emitEvent(event) }
             }
         }
 

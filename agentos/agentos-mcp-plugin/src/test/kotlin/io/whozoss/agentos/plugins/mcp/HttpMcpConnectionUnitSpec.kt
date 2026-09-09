@@ -27,4 +27,31 @@ class HttpMcpConnectionUnitSpec : StringSpec({
         val connection = HttpMcpConnection(config)
         connection.tools shouldBe emptyList()
     }
+
+    // splitMcpUrl — the endpoint is always explicit; the SDK default "/mcp" never applies
+
+    "splitMcpUrl: bare root URL (no path) returns origin and slash endpoint" {
+        HttpMcpConnection.splitMcpUrl("https://mcp.hubspot.com") shouldBe
+            Pair("https://mcp.hubspot.com", "/")
+    }
+
+    "splitMcpUrl: root URL with trailing slash returns origin and slash endpoint" {
+        HttpMcpConnection.splitMcpUrl("https://mcp.hubspot.com/") shouldBe
+            Pair("https://mcp.hubspot.com", "/")
+    }
+
+    "splitMcpUrl: URL with explicit path returns origin and that path as endpoint" {
+        HttpMcpConnection.splitMcpUrl("https://mcp.atlassian.com/v1/mcp") shouldBe
+            Pair("https://mcp.atlassian.com", "/v1/mcp")
+    }
+
+    "splitMcpUrl: URL with single-segment path returns origin and that path as endpoint" {
+        HttpMcpConnection.splitMcpUrl("https://mcp.example.com/mcp") shouldBe
+            Pair("https://mcp.example.com", "/mcp")
+    }
+
+    "splitMcpUrl: URL with port preserves the port in origin and returns slash endpoint" {
+        HttpMcpConnection.splitMcpUrl("http://localhost:3000") shouldBe
+            Pair("http://localhost:3000", "/")
+    }
 })

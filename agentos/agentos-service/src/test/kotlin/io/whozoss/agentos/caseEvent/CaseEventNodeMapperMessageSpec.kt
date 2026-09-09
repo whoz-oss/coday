@@ -75,6 +75,26 @@ class CaseEventNodeMapperMessageSpec :
             roundTrippedImage.height shouldBe imageContent.height
         }
 
+        "Agent MessageEvent preserves durable LLM attribution through persistence" {
+            val original =
+                MessageEvent(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = UUID.randomUUID(),
+                    caseId = UUID.randomUUID(),
+                    actor = agentActor,
+                    content = listOf(MessageContent.Text("Done")),
+                    llmProvider = "anthropic",
+                    llmModel = "claude-sonnet",
+                )
+
+            val copied = nodeMapper.withRemoved(nodeMapper.fromDomain(original), true)
+            val roundTripped = nodeMapper.toDomain(copied) as MessageEvent
+
+            roundTripped.llmProvider shouldBe "anthropic"
+            roundTripped.llmModel shouldBe "claude-sonnet"
+            roundTripped.metadata.removed shouldBe true
+        }
+
         "MessageEvent with non-null sessionContext survives the round-trip" {
             val sessionCtx = mapOf("page" to "dashboard", "entityId" to "42")
             val original =

@@ -149,6 +149,8 @@ class MessageEventNode(
      * or null when no context was provided.
      */
     val contextJson: String? = null,
+    val llmProvider: String? = null,
+    val llmModel: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
