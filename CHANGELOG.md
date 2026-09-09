@@ -1,3 +1,14 @@
+## 1.2.1 (2026-09-09)
+
+### 🚀 Features
+
+- **agentos:** #WZ-34091 restrict scheduler execution to off-peak time windows ([#1282](https://github.com/whoz-oss/coday/pull/1282))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+- vincent.couturier @vincent-couturier-whoz
+
 ## 1.2.0 (2026-09-09)
 
 ### 🚀 Features
