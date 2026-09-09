@@ -42,7 +42,7 @@ import java.util.UUID
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
-@Import(EmbeddedNeo4jTestConfiguration::class)
+@Import(EmbeddedNeo4jTestConfiguration::class, PreviewToolPluginTestConfiguration::class)
 class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
@@ -54,6 +54,7 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
     @MockkBean(relaxed = true) lateinit var namespaceService: NamespaceService
 
     private val aliceId = UUID.randomUUID()
+    private val bobId = UUID.randomUUID()
     private val alice = User(
         metadata = EntityMetadata(id = aliceId),
         externalId = "alice@example.com",
@@ -434,6 +435,136 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
             mockMvc.perform(get("/api/integration-configs?userId=me"))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$").isArray)
+        }
+
+        // -------------------------------------------------------------------------
+        // POST /{id}/preview-tools — WRITE on the row, namespace READ for platform rows,
+        // 400 / 422 at the edge, DTO shape on the happy path
+        // -------------------------------------------------------------------------
+
+        fun previewTestRow(
+            namespaceId: UUID?,
+            userId: UUID?,
+            integrationType: String = PreviewToolPluginTestConfiguration.INTEGRATION_TYPE,
+        ): IntegrationConfig =
+            integrationConfigService.create(
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    name = "PREVIEW_${UUID.randomUUID()}",
+                    integrationType = integrationType,
+                ),
+            )
+
+        "POST preview-tools on another user's row returns 404 (WRITE required, existence hidden)" {
+            val bobsRow = previewTestRow(namespaceId = null, userId = bobId)
+
+            mockMvc.perform(post("/api/integration-configs/${bobsRow.id}/preview-tools?namespaceId=$namespaceId"))
+                .andExpect(status().isNotFound)
+        }
+
+        "POST preview-tools on a nonexistent id returns 404" {
+            mockMvc.perform(post("/api/integration-configs/${UUID.randomUUID()}/preview-tools"))
+                .andExpect(status().isNotFound)
+        }
+
+        "POST preview-tools on a platform row without namespaceId returns 400 for a super admin" {
+            val platformRow = previewTestRow(namespaceId = null, userId = null)
+            every { userService.getCurrentUser() } returns alice.copy(isAdmin = true)
+            every {
+                permissionService.hasPermission(
+                    aliceId.toString(),
+                    EntityType.INTEGRATION_CONFIG,
+                    platformRow.id.toString(),
+                    Action.WRITE,
+                )
+            } returns true
+
+            mockMvc.perform(post("/api/integration-configs/${platformRow.id}/preview-tools"))
+                .andExpect(status().isBadRequest)
+        }
+
+        "POST preview-tools on a platform row with a namespace the caller cannot read returns 404" {
+            val platformRow = previewTestRow(namespaceId = null, userId = null)
+            val foreignNs = UUID.randomUUID()
+            every {
+                permissionService.hasPermission(
+                    aliceId.toString(),
+                    EntityType.INTEGRATION_CONFIG,
+                    platformRow.id.toString(),
+                    Action.WRITE,
+                )
+            } returns true
+
+            mockMvc.perform(post("/api/integration-configs/${platformRow.id}/preview-tools?namespaceId=$foreignNs"))
+                .andExpect(status().isNotFound)
+        }
+
+        "POST preview-tools on a platform row with a readable namespace returns 200 for a super admin" {
+            val platformRow = previewTestRow(namespaceId = null, userId = null)
+            every { userService.getCurrentUser() } returns alice.copy(isAdmin = true)
+            every {
+                permissionService.hasPermission(
+                    aliceId.toString(),
+                    EntityType.INTEGRATION_CONFIG,
+                    platformRow.id.toString(),
+                    Action.WRITE,
+                )
+            } returns true
+
+            mockMvc.perform(post("/api/integration-configs/${platformRow.id}/preview-tools?namespaceId=$namespaceId"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.tools[0].name").value("${platformRow.name}__Echo"))
+        }
+
+        "POST preview-tools with a readable namespaceId that does not match the row returns 400" {
+            val ownRow = previewTestRow(namespaceId = namespaceId, userId = aliceId)
+            // Authorization runs first: an unreadable namespace is a 404 (existence hidden), so the
+            // mismatch validation is only reachable with a namespace the caller can read.
+            val otherReadableNamespace = UUID.randomUUID()
+            every {
+                permissionService.hasPermission(
+                    aliceId.toString(),
+                    EntityType.NAMESPACE,
+                    otherReadableNamespace.toString(),
+                    Action.READ,
+                )
+            } returns true
+
+            val url = "/api/integration-configs/${ownRow.id}/preview-tools?namespaceId=$otherReadableNamespace"
+            mockMvc.perform(post(url)).andExpect(status().isBadRequest)
+        }
+
+        "POST preview-tools with an unreadable namespaceId on an owned row returns 404" {
+            val ownRow = previewTestRow(namespaceId = namespaceId, userId = aliceId)
+
+            mockMvc
+                .perform(post("/api/integration-configs/${ownRow.id}/preview-tools?namespaceId=${UUID.randomUUID()}"))
+                .andExpect(status().isNotFound)
+        }
+
+        "POST preview-tools on a row whose integration type has no loaded plugin returns 422" {
+            val ownRow = previewTestRow(namespaceId = namespaceId, userId = aliceId, integrationType = "JIRA")
+
+            mockMvc.perform(post("/api/integration-configs/${ownRow.id}/preview-tools"))
+                .andExpect(status().isUnprocessableEntity)
+        }
+
+        "POST preview-tools on an owned user x namespace row returns 200 with the preview shape" {
+            val ownRow = previewTestRow(namespaceId = namespaceId, userId = aliceId)
+
+            mockMvc.perform(post("/api/integration-configs/${ownRow.id}/preview-tools"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.integrationType").value(PreviewToolPluginTestConfiguration.INTEGRATION_TYPE))
+                .andExpect(jsonPath("$.configName").value(ownRow.name))
+                .andExpect(jsonPath("$.namespaceDescription").value("Preview namespace line for ${ownRow.name}"))
+                .andExpect(jsonPath("$.error").doesNotExist())
+                .andExpect(jsonPath("$.tools.length()").value(1))
+                .andExpect(jsonPath("$.tools[0].name").value("${ownRow.name}__Echo"))
+                .andExpect(jsonPath("$.tools[0].description").value("Echoes its input"))
+                .andExpect(jsonPath("$.tools[0].inputSchema").isString)
+                .andExpect(jsonPath("$.tools[0].confirmationMode").value("NONE"))
         }
     }
 }

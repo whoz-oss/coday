@@ -11,12 +11,18 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-system'
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
+import { IntegrationToolPreviewStateService } from '../../services/integration-tool-preview-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
+import { IntegrationToolPreviewComponent } from '../integration-tool-preview/integration-tool-preview.component'
 
 /** Minimal shape we need from each AuthSetting — the generated union type is an empty interface. */
 type AuthSettingWithName = { name: string }
 
 const VALID_SCOPES: ReadonlySet<IntegrationScope> = new Set(['platform', 'namespace', 'userOnNs', 'userGlobal'])
+
+const PREVIEW_TOOLS_TITLE = 'Resolve the tools this integration yields, without binding an agent'
+const PREVIEW_TOOLS_NO_NAMESPACE_HINT =
+  'Open this integration from a namespace to preview its tools: the platform screen has no namespace context'
 
 const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
   platform: 'Configuration plateforme',
@@ -41,10 +47,15 @@ const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
  * referenced NS-shared config — used by the "Override for me" cross-link from the list page.
  *
  * On success or cancel, navigates back to /:namespaceId/integrations.
+ *
+ * In edit mode, "Preview tools" resolves the tools the stored row yields for the current user
+ * ([IntegrationToolPreviewStateService], provided per form). The backend previews in a namespace,
+ * so the action is disabled on the platform admin screen, which has no namespace context.
  */
 @Component({
   selector: 'agentos-integration-form',
-  imports: [ReactiveFormsModule, JsonSchemaFormComponent],
+  imports: [ReactiveFormsModule, JsonSchemaFormComponent, IntegrationToolPreviewComponent],
+  providers: [IntegrationToolPreviewStateService],
   templateUrl: './integration-form.component.html',
   styleUrl: './integration-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -57,6 +68,7 @@ export class IntegrationFormComponent implements OnInit {
   private readonly integrationTypeController = inject(IntegrationTypeControllerService)
   private readonly authSettingController = inject(AuthSettingControllerService)
   private readonly namespaceRole = inject(NamespaceRoleStateService)
+  protected readonly toolPreview = inject(IntegrationToolPreviewStateService)
 
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
 
@@ -111,6 +123,14 @@ export class IntegrationFormComponent implements OnInit {
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
   protected readonly isExporting = signal(false)
+
+  /** The preview needs a namespace to run in; only the namespace routes provide one. */
+  protected readonly canPreviewTools = computed(() => this.isEditMode() && !!this.namespaceId)
+
+  /** Tooltip of the "Preview tools" action: what it does, or why it is disabled (no namespace context). */
+  protected readonly previewToolsTitle: string = this.namespaceId
+    ? PREVIEW_TOOLS_TITLE
+    : PREVIEW_TOOLS_NO_NAMESPACE_HINT
 
   protected readonly scopeOptions: ReadonlyArray<{ value: IntegrationScope; label: string }> = [
     { value: 'platform', label: SCOPE_LABEL.platform },
@@ -386,6 +406,12 @@ export class IntegrationFormComponent implements OnInit {
         },
         error: () => this.isExporting.set(false),
       })
+  }
+
+  protected previewTools(): void {
+    const id = this.existingConfig?.id
+    if (!id || !this.canPreviewTools() || this.toolPreview.isLoading()) return
+    this.toolPreview.load(id, this.namespaceId ?? null)
   }
 
   protected cancel(): void {

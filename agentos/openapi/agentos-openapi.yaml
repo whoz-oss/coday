@@ -1679,6 +1679,42 @@ paths:
       summary: Export an IntegrationConfig as a YAML file
       tags:
       - integration-config-controller
+  /api/integration-configs/{id}/preview-tools:
+    post:
+      description: |-
+        Resolves the tools of the stored config for the calling user, without binding an agent and without a case, so a config can be checked right after saving it. The stored row is used as is: the user-level overlay merge applied by an agent run is NOT applied, no agent allowlist is applied and nothing is persisted.
+
+        A POST, not a GET: nothing is persisted, but the call resolves the caller's credential and lets the plugin open outbound connections, so it must never be prefetched or cached.
+
+        Requires WRITE on the config. The preview runs in a namespace: rows that carry a `namespaceId` use it (a supplied `namespaceId` must match it, 400 otherwise); platform and user-global rows have none, so `namespaceId` is required (400 when missing). A supplied `namespaceId` must be readable by the caller (404 otherwise, existence hidden). Platform rows additionally require Super Admin.
+
+        422 when no plugin is loaded for the config's integration type. A plugin failure while building the tools is reported in `error` with an empty `tools` list (200).
+      operationId: previewToolsIntegrationConfig
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: Namespace to preview in. Required for platform and user-global
+          rows; must equal the row's namespace when the row has one.
+        in: query
+        name: namespaceId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationConfigToolPreview"
+          description: OK
+      summary: Preview the tools an IntegrationConfig yields
+      tags:
+      - integration-config-controller
   /api/integration-types:
     get:
       operationId: listTypesIntegrationType
@@ -3950,6 +3986,66 @@ components:
           format: uuid
       required:
       - integrationType
+      - name
+    IntegrationConfigToolPreview:
+      type: object
+      description: "Tools an IntegrationConfig yields for the calling user, resolved\
+        \ from the stored row as is (the user-level overlay merge applied by an agent\
+        \ run is NOT applied) and without any agent allowlist. Nothing is persisted."
+      properties:
+        configName:
+          type: string
+          description: "Name of the previewed config, also the prefix of every tool\
+            \ name."
+        error:
+          type: string
+          description: "Why the plugin could not build its tool set (`ExceptionClass:\
+            \ message`), or null when `tools` is the result."
+        integrationType:
+          type: string
+          description: Integration type of the previewed config (plugin key).
+          example: MCP_HTTP
+        namespaceDescription:
+          type: string
+          description: "The plugin's describeNamespace line for this config, or null\
+            \ when the plugin gives none, fails or does not answer within the configured\
+            \ timeout (agentos.integrations.preview-describe-namespace-timeout-ms,\
+            \ best effort)."
+        tools:
+          type: array
+          description: Tools the plugin built for this config; empty when `error`
+            is set.
+          items:
+            $ref: "#/components/schemas/IntegrationConfigToolPreviewTool"
+      required:
+      - configName
+      - integrationType
+      - tools
+    IntegrationConfigToolPreviewTool:
+      type: object
+      description: One tool as an agent would receive it.
+      properties:
+        confirmationMode:
+          type: string
+          description: Confirmation gate the tool reports for a call without arguments.
+          enum:
+          - NONE
+          - INFER
+          - EVERY_TIME
+        description:
+          type: string
+          description: Prompt-facing description of the tool.
+        inputSchema:
+          type: string
+          description: "JSON Schema of the tool input, serialised as a string."
+        name:
+          type: string
+          description: "Full tool name as exposed to the model, prefixed by the config\
+            \ name."
+      required:
+      - confirmationMode
+      - description
+      - inputSchema
       - name
     IntegrationTypeDescriptor:
       type: object

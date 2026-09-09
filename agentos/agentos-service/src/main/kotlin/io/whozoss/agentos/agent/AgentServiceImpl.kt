@@ -6,11 +6,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
-import io.whozoss.agentos.auth.AuthServiceFactory
-import io.whozoss.agentos.auth.OAuthFlowService
-import io.whozoss.agentos.auth.StaticCredentialFactory
-import io.whozoss.agentos.authSetting.AuthSetting
-import io.whozoss.agentos.authSetting.AuthType
+import io.whozoss.agentos.auth.CredentialProviderFactory
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
@@ -30,8 +26,6 @@ import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
-import io.whozoss.agentos.sdk.auth.CredentialProvider
-import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -67,9 +61,7 @@ class AgentServiceImpl(
     private val toolRegistryService: ToolRegistryService,
     private val toolMetricsService: ToolMetricsService,
     private val caseEventService: CaseEventService,
-    private val oAuthFlowService: OAuthFlowService,
-    private val staticCredentialFactory: StaticCredentialFactory,
-    private val authServiceFactory: AuthServiceFactory,
+    private val credentialProviderFactory: CredentialProviderFactory,
     private val idCompressorService: IdCompressorService,
     private val exchangeStorageService: ExchangeStorageService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
@@ -244,107 +236,20 @@ class AgentServiceImpl(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
                 agentName = agentConfig.name,
             )
-        val credentialProviderFactory: (String) -> CredentialProvider? = { authSettingName ->
-            logger.debug { "CredentialProvider invoked for '$authSettingName'" }
-            context.userId?.let { userId ->
-                val scopedAuthService = authServiceFactory.create(context.namespaceId, userId)
-                val provider: CredentialProvider = {
-                    val setting = scopedAuthService.resolveAuthSetting(authSettingName)
-                    logger.debug { "CredentialProvider for '$authSettingName': resolved authType=${setting.authType}" }
-                    if (setting.authType in OAUTH_AUTH_TYPES && context.caseId != null && context.emitEvent != null) {
-                        // OAuth types: delegate to OAuthFlowService for full lifecycle
-                        // (check existing -> refresh -> interactive via QuestionEvent).
-                        logger.debug { "CredentialProvider for '$authSettingName': using OAuth flow (authType=${setting.authType})" }
-                        // NOTE — blocking thread analysis:
-                        // The `runBlocking` below is INSIDE the body of the `CredentialProvider`
-                        // lambda — not before its creation. The lambda is the trigger for the
-                        // interactive OAuth flow, not a passive carrier of an already-obtained
-                        // credential.
-                        //
-                        // Invocation timing: `CredentialProvider` is called once per run and per
-                        // MCP integration by `McpHttpToolProvider.provideTools` (via
-                        // `ToolResolverService.extractTools`) during the tool-resolution phase,
-                        // before the agent processes any message. It establishes the HTTP MCP
-                        // connection and is NOT called again on each tool invocation.
-                        //
-                        // Blocked thread: `provideTools` is non-suspend (SDK public contract), so
-                        // the call stack at this point is synchronous. The `runBlocking` therefore
-                        // blocks a thread from the Kotlin `Dispatchers.IO` pool — NOT a Tomcat/MVC
-                        // request thread — for up to `agentos.oauth.flow-timeout-minutes` (default
-                        // 2 min) while waiting for the user to complete browser authorization.
-                        // The pool ceiling (64 threads by default) implicitly caps the number of
-                        // concurrent interactive OAuth flows; see OAuthPendingRegistry for the
-                        // capacity and instance constraints.
-                        //
-                        // Why `runBlocking` cannot be removed without touching the SDK: eliminating
-                        // it requires making `suspend` the entire chain `ToolPlugin.provideTools` →
-                        // `ToolContext.credentialProvider` → `CredentialProvider` — three elements
-                        // of the SDK public contract. Tracked in #1198.
-                        //
-                        // Non-OAuth types (API_KEY / BEARER_TOKEN / BASIC_AUTH) take the `else`
-                        // branch below: the per-user Credential row is looked up first and wins
-                        // when present; otherwise the static secret carried by the resolved
-                        // AuthSetting is synthesised in memory by `StaticCredentialFactory`.
-                        // Nothing is persisted on that path, and OAuth types are never
-                        // synthesised — their credentials only ever come from OAuthFlowService.
-                        val credential =
-                            kotlinx.coroutines.runBlocking {
-                                oAuthFlowService.resolveOAuthCredential(
-                                    userId = userId,
-                                    authSetting = setting,
-                                    namespaceId = context.namespaceId,
-                                    caseId = context.caseId,
-                                    agentId = UUID.nameUUIDFromBytes(agentConfig.name.toByteArray()),
-                                    agentName = agentConfig.name,
-                                    emitEvent = context.emitEvent,
-                                )
-                            }
-                        if (credential == null) {
-                            logger.warn { "CredentialProvider for '$authSettingName': OAuth flow returned null" }
-                        } else {
-                            logger.debug { "CredentialProvider for '$authSettingName': OAuth credential resolved" }
-                        }
-                        credential
-                    } else {
-                        if (setting.authType in OAUTH_AUTH_TYPES) {
-                            logger.warn {
-                                "CredentialProvider for '$authSettingName': OAuth type ${setting.authType} but " +
-                                    "missing caseId=${context.caseId != null} or emitEvent=${context.emitEvent != null}, " +
-                                    "falling back to direct lookup"
-                            }
-                        } else {
-                            logger.debug {
-                                "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, using direct credential lookup"
-                            }
-                        }
-                        val credential =
-                            scopedAuthService.resolveCredential(setting.metadata.id)
-                                ?: staticCredentialFor(userId, setting)
-                        if (credential == null) {
-                            logger.warn {
-                                "CredentialProvider for '$authSettingName': no credential found for authSetting ${setting.metadata.id}"
-                            }
-                        } else {
-                            logger.debug {
-                                "CredentialProvider for '$authSettingName': credential resolved " +
-                                    "(per-user row or static AuthSetting secret)"
-                            }
-                        }
-                        credential
-                    }
-                }
-                provider
-            } ?: run {
-                logger.debug { "CredentialProvider for '$authSettingName': no userId in context, skipping" }
-                null
-            }
-        }
+        val runCredentialProviderFactory =
+            credentialProviderFactory.forRun(
+                namespaceId = context.namespaceId,
+                userId = context.userId,
+                caseId = context.caseId,
+                agentName = agentConfig.name,
+                emitEvent = context.emitEvent,
+            )
         val baseTools =
             toolResolverService.resolveToolsForRun(
                 agentIntegrations = agentConfig.integrations,
                 context = toolContext,
                 allIntegrationConfigs = effectiveIntegrationConfigs,
-                credentialProviderFactory = credentialProviderFactory,
+                credentialProviderFactory = runCredentialProviderFactory,
             )
         // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
         // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name
@@ -805,24 +710,5 @@ class AgentServiceImpl(
         return tools
     }
 
-    /**
-     * Static-secret fallback used when no per-user Credential row exists: synthesised in memory
-     * from the resolved [setting], never persisted. OAuth types are never synthesised — their
-     * credentials only come from [OAuthFlowService].
-     */
-    private fun staticCredentialFor(
-        userId: UUID,
-        setting: AuthSetting,
-    ): Credential? =
-        if (setting.authType in OAUTH_AUTH_TYPES) null else staticCredentialFactory.fromAuthSetting(userId, setting)
-
-    companion object : KLogging() {
-        private val OAUTH_AUTH_TYPES =
-            setOf(
-                AuthType.OAUTH_DISCOVERABLE,
-                AuthType.OAUTH_REGISTERED,
-                AuthType.OAUTH_CUSTOM,
-                AuthType.OAUTH_MCP_DISCOVERABLE,
-            )
-    }
+    companion object : KLogging()
 }

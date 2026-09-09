@@ -3,6 +3,7 @@ import {
   IntegrationConfig,
   IntegrationConfigControllerService,
   IntegrationConfigExportService,
+  IntegrationConfigToolPreview,
 } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, catchError, combineLatest, map, Observable, of, shareReplay, switchMap, tap } from 'rxjs'
 import { multicastRefreshable } from './rxjs-state.utils'
@@ -250,5 +251,15 @@ export class IntegrationConfigStateService {
    */
   exportAsYaml(id: string): Observable<string> {
     return this.exportService.exportAsYaml(id)
+  }
+
+  /**
+   * Resolve the tools a stored config yields for the current user, without an agent or a case
+   * (`POST /api/integration-configs/{id}/preview-tools`). `namespaceId` is the route namespace
+   * of the caller: the backend requires it for platform and user-global rows, which carry none,
+   * and checks it against the row's own namespace otherwise. Nothing is persisted.
+   */
+  previewTools(id: string, namespaceId: string | null): Observable<IntegrationConfigToolPreview> {
+    return this.nsController.previewToolsIntegrationConfig(id, namespaceId ?? undefined)
   }
 }

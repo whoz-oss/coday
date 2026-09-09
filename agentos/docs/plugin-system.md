@@ -97,6 +97,40 @@ host they control, so those types are refused in both user scopes at the API edg
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
 | `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
+| `agentos.integrations.preview-describe-namespace-timeout-ms` | `AGENTOS_INTEGRATIONS_PREVIEW_DESCRIBE_NAMESPACE_TIMEOUT_MS` | `5000` | Milliseconds the tool preview waits for a plugin's `describeNamespace` line before reporting it as absent (best effort: only a cooperatively suspending plugin is cancelled). |
+
+## Previewing the Tools of an Integration
+
+`POST /api/integration-configs/{id}/preview-tools` resolves the tools an `IntegrationConfig` yields for
+the calling user without binding an agent and without a case, so an admin can check a config right
+after saving it instead of going through save -> bind to an agent -> open the agent definition
+preview. The UI exposes it as the **Preview tools** action of the integration edit form.
+
+The response carries the plugin's `describeNamespace` line (null when absent, failing or slower than
+`agentos.integrations.preview-describe-namespace-timeout-ms`, see the table above), the tools (name,
+description, input schema, confirmation mode) and, when `provideTools` throws, the failure as
+`ExceptionClass: message` with an empty tool list. No credential or parameter value is returned.
+
+The timeout is best effort: `withTimeoutOrNull` cancels a `describeNamespace` that suspends
+cooperatively, but a plugin doing blocking I/O inside the suspend function is only abandoned and keeps
+its thread until it returns. No shipped plugin overrides `describeNamespace` today.
+
+- **Permissions**: WRITE on the config (existence hidden: 404 otherwise). The preview runs in a
+  namespace: rows that carry a `namespaceId` use it (a supplied `namespaceId` must match it, 400
+  otherwise); platform and user-global rows have none, so `?namespaceId=` is required (400 when
+  missing) and must be readable by the caller. Platform rows additionally require Super Admin.
+- **No overlay merge**: the stored row is previewed as is; the 4-tier overlay an agent run applies
+  (`IntegrationConfigService.findEffective`) and the agent allowlist are not applied.
+- **No persistence**: the credential provider is built for the caller without a case, so OAuth types
+  resolve through the direct lookup only and never start an interactive flow. Static types synthesise
+  their credential in memory as during a run.
+- **`POST`, not `GET`**: nothing is persisted, but the call resolves the caller's credential and lets
+  the plugin open outbound connections with it, so it must never be prefetched or cached by a browser
+  or an intermediary the way a safe `GET` such as `GET /{id}/export` may be.
+- **422** when no plugin is loaded for the config's integration type.
+- The plugin is invoked exactly like `ToolResolverService` does for a run, so the preview inherits
+  the plugins' connection behaviour: `MCP_HTTP` opens a fresh connection on every `provideTools` call
+  (#1133), like the agent definition preview already does.
 
 ## Tool Registration
 
