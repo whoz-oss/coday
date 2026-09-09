@@ -2,7 +2,12 @@ import { HttpClient } from '@angular/common/http'
 import { ComponentRef, createComponent, EnvironmentInjector, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
-import { Configuration, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import {
+  Configuration,
+  ExchangeFileEntryScopeEnum,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
@@ -223,5 +228,71 @@ describe('CaseChatComponent — submit with attachments', () => {
     attachments(ref).isUploading.set(false)
     ref.instance['isTerminal'].set(true)
     expect(ref.instance['canSend']).toBe(false)
+  })
+
+  it('replaces the generic delegate tool card when its real content-wrapped output contains delegation JSON', () => {
+    const ref = makeComponent()
+    const toolRequestId = 'tool-request-1'
+    const output = JSON.stringify([
+      {
+        delegationId: 'delegation-1',
+        toolRequestId,
+        subCaseId: 'sub-case-1',
+        agentName: 'Research',
+        success: true,
+        result: '**Done**',
+      },
+    ])
+    const request: ToolRequestEvent = {
+      id: 'request-event-id',
+      type: 'ToolRequestEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:00Z',
+      metadata: { id: 'request-event-id', created: '', modified: '', removed: false },
+      toolName: 'DELEGATE__delegate',
+      toolRequestId,
+      args: '{"delegations":[]}',
+    }
+    const response: ToolResponseEvent = {
+      id: 'response-event-id',
+      type: 'ToolResponseEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:01Z',
+      metadata: { id: 'response-event-id', created: '', modified: '', removed: false },
+      toolName: 'DELEGATE__delegate',
+      toolRequestId,
+      output: { content: output },
+      success: true,
+      images: [],
+      toolMetadata: {},
+    }
+
+    // This is the exact source used by the generic tool-card OUTPUT block.
+    expect(
+      ref.instance['extractToolOutput']({
+        requestId: toolRequestId,
+        toolName: request.toolName,
+        args: request.args,
+        response,
+      })
+    ).toBe(output)
+
+    ref.instance['events'].set([request, response])
+
+    const timeline = ref.instance['timeline']()
+    expect(timeline).toHaveLength(1)
+    expect(timeline[0]).toEqual(
+      expect.objectContaining({
+        kind: 'delegation',
+        delegation: expect.objectContaining({
+          delegationId: 'delegation-1',
+          toolRequestId,
+          subCaseId: 'sub-case-1',
+        }),
+      })
+    )
+    expect(timeline.some((item) => item.kind === 'tool')).toBe(false)
   })
 })

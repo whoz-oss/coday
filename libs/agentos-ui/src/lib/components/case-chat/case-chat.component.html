@@ -162,6 +162,8 @@
                   <span class="case-chat__question-answered-text">{{ item.event.question }}</span>
                 </div>
               }
+            } @else if (item.kind === 'delegation') {
+              <agentos-delegation-card [delegation]="item.delegation" [namespaceId]="namespaceId" />
             } @else {
               <div
                 class="case-chat__tool-call"

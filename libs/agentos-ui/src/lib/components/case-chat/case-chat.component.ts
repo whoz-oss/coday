@@ -19,7 +19,7 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
+import { SafeHtml } from '@angular/platform-browser'
 import { ActivatedRoute } from '@angular/router'
 import {
   AgentFinishedEvent,
@@ -47,8 +47,14 @@ import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph
 import { CaseStateService } from '../../services/case-state.service'
 import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { QuestionPanelComponent } from '../question-panel/question-panel.component'
-import DOMPurify from 'dompurify'
-import { marked, Renderer } from 'marked'
+import { MarkdownRendererService } from '../../services/markdown-renderer.service'
+import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
+import {
+  buildDelegations,
+  DelegationPresentation,
+  extractToolOutputText,
+  isCorrelatedDelegateTool,
+} from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
@@ -91,6 +97,7 @@ export type TimelineItem =
   | { kind: 'streaming' }
   | { kind: 'technical'; item: TechnicalItem; eventId: string }
   | { kind: 'question'; event: QuestionEvent; answered: boolean }
+  | { kind: 'delegation'; delegation: DelegationPresentation }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
@@ -129,6 +136,7 @@ function hasActiveSelection(): boolean {
     CopyButtonComponent,
     ComposerAttachmentsComponent,
     QuestionPanelComponent,
+    DelegationCardComponent,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
@@ -140,7 +148,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient)
   private readonly zone = inject(NgZone)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly domSanitizer = inject(DomSanitizer)
+  private readonly markdown = inject(MarkdownRendererService)
   private readonly exchangeState = inject(ExchangeStateService)
 
   private readonly config = inject(Configuration)
@@ -174,10 +182,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // The case-shell renders this component directly (not via router-outlet),
   // so route params are empty — all context comes through query params.
   protected caseId = this.route.snapshot.queryParams['case'] as string
-  private readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
-
-  /** Markdown renderer shared across all message pre-computations. */
-  private readonly markdownRenderer = this.buildMarkdownRenderer()
+  protected readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
 
   /** Display name used for the streaming assistant bubble (before final MessageEvent arrives). */
   protected readonly agentDisplayName = computed(() => {
@@ -338,9 +343,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * 2. Walk events in order to emit timeline items, deduplicating tool entries
    *    so TOOL_RESPONSE doesn't create a second item — it's already merged.
    */
+  protected readonly delegations = computed(() => buildDelegations(this.events()))
+
   private readonly baseTimeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()
     const showTechnical = this.showTechnical()
+    const delegations = this.delegations()
 
     // Pass 1: build complete tool call map (request + optional response)
     const toolCallMap = new Map<string, ToolCall>()
@@ -372,6 +380,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
+    const emittedDelegationIds = new Set<string>()
     // Track the last role to detect group boundaries (consecutive same-role messages).
     // Any non-message item (tool call, technical event) resets the group.
     let lastMessageRole: string | null = null
@@ -391,9 +400,26 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         const requestId = e.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
           seenToolIds.add(requestId)
-          items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
+          const call = toolCallMap.get(requestId)!
+          if (isCorrelatedDelegateTool(call.toolName, requestId, call.response, delegations)) {
+            for (const delegation of delegations.filter((candidate) => candidate.toolRequestId === requestId)) {
+              if (!emittedDelegationIds.has(delegation.delegationId)) {
+                emittedDelegationIds.add(delegation.delegationId)
+                items.push({ kind: 'delegation', delegation })
+              }
+            }
+          } else items.push({ kind: 'tool', call })
         }
         lastMessageRole = null
+      } else if (e.type === 'SubCaseStartedEvent') {
+        const delegation = delegations.find((candidate) => candidate.delegationId === e.delegationId)
+        if (delegation && !emittedDelegationIds.has(delegation.delegationId)) {
+          emittedDelegationIds.add(delegation.delegationId)
+          items.push({ kind: 'delegation', delegation })
+        }
+        lastMessageRole = null
+      } else if (e.type === 'SubCaseFinishedEvent') {
+        // The corresponding Started event owns the single visual card.
       } else if (e.type === 'QuestionEvent') {
         const qe = e as QuestionEvent
         // A question is answered when there is a corresponding AnswerEvent in the stream.
@@ -431,6 +457,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         return 'streaming'
       case 'question':
         return `question-${item.event.id}`
+      case 'delegation':
+        return `delegation-${item.delegation.delegationId}`
     }
   }
 
@@ -852,10 +880,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected extractToolOutput(call: ToolCall): string | null {
-    if (!call.response) return null
-    const output = call.response.output as { content?: string } | null
-    if (!output) return null
-    return output.content ?? null
+    return call.response ? extractToolOutputText(call.response.output) : null
   }
 
   protected toggleToolCall(requestId: string): void {
@@ -900,53 +925,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Called once per MessageEvent at SSE ingestion time.
    */
   private renderMarkdown(text: string): SafeHtml {
-    if (!text) return ''
-    const rawHtml = marked.parse(text, {
-      renderer: this.markdownRenderer,
-      breaks: true,
-      gfm: true,
-      async: false,
-    }) as string
-
-    const clean = DOMPurify.sanitize(rawHtml, {
-      ADD_TAGS: ['span'],
-      ADD_ATTR: ['aria-hidden', 'aria-label', 'target', 'rel'],
-      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
-    })
-
-    return this.domSanitizer.bypassSecurityTrustHtml(clean)
-  }
-
-  private buildMarkdownRenderer(): Renderer {
-    const renderer = new Renderer()
-    const originalLink = renderer.link.bind(renderer)
-    const originalCode = renderer.code.bind(renderer)
-    renderer.code = (token): string => {
-      // [innerHTML] content is not decorated with Angular's emulated-encapsulation
-      // attribute. Mark generated fenced code explicitly so global, agentos-scoped CSS
-      // can create its own horizontal scroll container.
-      return originalCode(token).replace('<pre>', '<pre class="agentos-chat-code-block">')
-    }
-    renderer.link = (token): string => {
-      let html = originalLink(token)
-      if (this.isExternalLink(token.href)) {
-        html = html
-          .replace('<a ', '<a target="_blank" rel="noopener noreferrer" ')
-          .replace('</a>', '<span class="external-link-icon" aria-hidden="true">↗</span></a>')
-      }
-      return html
-    }
-    return renderer
-  }
-
-  private isExternalLink(href: string): boolean {
-    if (!href || href.startsWith('/') || href.startsWith('#') || href.startsWith('?')) return false
-    if (href.startsWith('//')) return true
-    try {
-      return new URL(href, window.location.href).hostname !== window.location.hostname
-    } catch {
-      return false
-    }
+    return this.markdown.render(text)
   }
 
   // ---------------------------------------------------------------------------
