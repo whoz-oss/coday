@@ -25,6 +25,8 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TransientCaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
@@ -758,6 +760,14 @@ class CaseServiceImpl(
         logger.info { "Killing case: $caseId" }
         activeRuntimes[caseId]?.requestKill()
         handleStatusChange(caseId, CaseStatus.KILLED)
+    }
+
+    override fun emitParentEvent(event: CaseEvent) {
+        require(event is SubCaseStartedEvent || event is SubCaseFinishedEvent) {
+            "emitParentEvent is reserved for sub-case observation events; got ${event.type}."
+        }
+        val saved = storeEvent(event)
+        activeRuntimes[event.caseId]?.emitEvent(saved)
     }
 
     override fun killCase(caseId: UUID) {

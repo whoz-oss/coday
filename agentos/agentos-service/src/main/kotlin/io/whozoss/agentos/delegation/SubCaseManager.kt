@@ -1,6 +1,7 @@
 package io.whozoss.agentos.delegation
 
 import io.whozoss.agentos.caseFlow.CaseRuntime
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import java.util.UUID
 
 /**
@@ -52,4 +53,9 @@ interface SubCaseManager {
      * Called by [DelegationTool] after a timeout to avoid leaving orphan runtimes in memory.
      */
     fun killCase(caseId: UUID)
+
+    /** Persist and emit a durable observation on a parent case without re-entering its runtime. */
+    fun emitParentEvent(event: CaseEvent) {
+        // Default keeps existing alternative implementations source-compatible.
+    }
 }

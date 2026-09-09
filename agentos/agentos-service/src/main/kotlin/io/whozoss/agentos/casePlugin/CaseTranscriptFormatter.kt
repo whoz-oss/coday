@@ -20,6 +20,8 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
 
 /**
  * Converts a list of [CaseEvent]s into a human-readable chronological transcript.
@@ -99,6 +101,7 @@ object CaseTranscriptFormatter {
             is ConfirmationResolvedEvent -> {
                 if (includesTechnicalEvents) "CONFIRMATION_RESOLVED: confirmed=${event.confirmed} ${event.resultText}" else null
             }
+            is SubCaseStartedEvent, is SubCaseFinishedEvent -> null
 
             // ── Transient events — never persisted, silently ignored ───────────────
             is ThinkingEvent -> null

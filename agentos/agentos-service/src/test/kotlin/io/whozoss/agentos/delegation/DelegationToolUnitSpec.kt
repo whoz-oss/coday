@@ -36,6 +36,7 @@ class DelegationToolUnitSpec :
                 userId = userId,
                 userExternalId = null,
                 caseEvents = emptyList(),
+                toolRequestId = "parent-tool-request",
             )
 
         fun agentMessage(text: String) =

@@ -9,6 +9,8 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
@@ -124,6 +126,8 @@ data class AgentAdvancedContext(
                 is AnswerEvent -> {
                     listOf(UserMessage(event.answer))
                 }
+
+                is SubCaseStartedEvent, is SubCaseFinishedEvent -> emptyList()
 
                 else -> {
                     emptyList()
