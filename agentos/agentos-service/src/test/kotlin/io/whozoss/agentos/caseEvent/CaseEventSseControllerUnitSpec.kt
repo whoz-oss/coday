@@ -173,7 +173,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             controller.streamEvents(caseId)
 
             latch.await(2, TimeUnit.SECONDS)
-            verify(exactly = 1) { caseEventService.findByParent(caseId) }
+            verify(timeout = 2000, exactly = 1) { caseEventService.findByParent(caseId) }
             verify(exactly = 1) { caseService.findActiveRuntime(caseId) }
         }
 
@@ -207,7 +207,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             controller.streamEvents(caseId)
 
             latch.await(2, TimeUnit.SECONDS)
-            verify(exactly = 1) { caseEventService.findByParent(caseId) }
+            verify(timeout = 2000, exactly = 1) { caseEventService.findByParent(caseId) }
             verify(exactly = 1) { caseService.findActiveRuntime(caseId) }
         }
 
