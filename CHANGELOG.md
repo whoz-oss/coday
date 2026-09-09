@@ -1,3 +1,19 @@
+## 1.2.0 (2026-09-09)
+
+### 🚀 Features
+
+- #1292 persist resolved model on agent messages ([#1292](https://github.com/whoz-oss/coday/issues/1292))
+- #1292 persist resolved model on agent messages ([#1319](https://github.com/whoz-oss/coday/pull/1319), [#1292](https://github.com/whoz-oss/coday/issues/1292))
+
+### 🩹 Fixes
+
+- #1298 de-emphasize agent model attribution ([#1298](https://github.com/whoz-oss/coday/issues/1298))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 1.1.5 (2026-09-09)
 
 ### 🩹 Fixes
