@@ -21,6 +21,19 @@ The JAR manifest must declare `Plugin-Id`, `Plugin-Version`, and `Plugin-Class`.
 
 Deploy by copying the JAR into `plugins/` and restarting the service.
 
+## Bundled Tool Plugins
+
+The `ToolPlugin` implementations shipped with the service (`./gradlew deployPlugins` builds and copies them into `plugins/`):
+
+| Module | Integration type(s) | Exposes |
+|---|---|---|
+| `agentos-bash-plugin` | `BASH` | Configured bash commands |
+| `agentos-datetime-plugin` | `DATETIME` | Date/time tools |
+| `agentos-file-plugin` | `FILE_ACCESS` | File system tools under a root path (`readOnly` keeps only the read tools) |
+| `agentos-mcp-plugin` | `MCP_STDIO`, `MCP_HTTP` | Tools of a local (stdio) or remote (HTTP) MCP server |
+| `agentos-http-plugin` | `HTTP_API` | Operations of an OpenAPI-described HTTP API (see [http-api-integration.md](http-api-integration.md)) |
+| `agentos-tmux-plugin` | `TMUX` | Long-running processes in persistent tmux sessions |
+
 ## Filesystem Plugin
 
 The `agentos-plugins-filesystem` module provides filesystem-based providers for agents, AI models, and AI providers. They scan configured directories for YAML files and load definitions without recompilation.
