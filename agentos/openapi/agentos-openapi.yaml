@@ -4059,6 +4059,10 @@ components:
               oneOf:
               - $ref: "#/components/schemas/Image"
               - $ref: "#/components/schemas/Text"
+          llmModel:
+            type: string
+          llmProvider:
+            type: string
           sessionContext:
             type: object
             additionalProperties: {}

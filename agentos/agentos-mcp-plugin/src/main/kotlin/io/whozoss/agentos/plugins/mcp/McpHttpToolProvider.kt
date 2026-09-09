@@ -127,7 +127,7 @@ class McpHttpToolProvider : ToolPlugin {
                         "type": "string",
                         "format": "uri",
                         "title": "Server URL",
-                        "description": "Absolute http(s) URL of the remote MCP server (e.g. https://mcp.example.com/mcp). Must have a public host: localhost, loopback, link-local, private, shared-address-space (CGNAT) and wildcard IPs are rejected, and embedded user:password is not allowed. Without a path the SDK appends /mcp as the default endpoint. Prefer https: credentials sent over plain http travel in cleartext."
+                        "description": "Full URL of the MCP endpoint, path included, exactly as documented by the server provider; no path is appended automatically (examples: 'https://mcp.hubspot.com/' root endpoint, 'https://mcp.atlassian.net/v1/mcp' path endpoint). Must be an absolute http(s) URL with a public host: localhost, loopback, link-local, private, shared-address-space (CGNAT) and wildcard IPs are rejected, and embedded user:password is not allowed. Prefer https: credentials sent over plain http travel in cleartext."
                     },
                     "authToken": {
                         "type": "string",

@@ -21,7 +21,10 @@ package io.whozoss.agentos.plugins.mcp
  * @property env Environment variables injected into the child process (stdio transport only).
  * @property cwd Optional working directory for the child process (stdio transport only).
  *   Defaults to the JVM working directory when null.
- * @property url HTTP endpoint of the remote MCP server (HTTP transport only).
+ * @property url Full URL of the MCP endpoint, path included (HTTP transport only).
+ *   Use the URL exactly as documented by the server provider — no path is appended
+ *   automatically. Examples: `https://mcp.hubspot.com/` (root endpoint),
+ *   `https://mcp.atlassian.net/v1/mcp` (path endpoint).
  * @property authToken Optional static Bearer token sent in the `Authorization` header (HTTP transport only).
  *   Deprecated: bind an Auth Setting to the integration instead; kept as a fallback.
  * @property timeoutSeconds Connection/initialisation timeout in seconds.

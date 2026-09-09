@@ -13,11 +13,11 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.util.concurrent.atomic.AtomicBoolean
 
+
 /**
- * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them,
- * and a separate tick that consumes available [ScheduledPromptUserRun]s.
+ * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them.
  *
- * ### Two-tick architecture
+ * ### Scheduled entry points
  *
  * **[tickClaim]** (Phase A, every `agentos.prompt.scheduler.tick-interval-ms`):
  * 1. Sweep orphaned CLAIMED runs via [recoverOrphanedClaimedRuns] — handles the crash
@@ -27,13 +27,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    calls [ScheduledPromptExecutor.materialize] to create PENDING UserRuns.
  * 4. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
  *
- * **[tickConsume]** (Phase B, every `agentos.prompt.scheduler.consume-interval-ms`):
- * Declared `suspend` — Spring Framework 6.1+ natively supports suspend functions on
- * `@Scheduled` methods. Calls [ScheduledPromptExecutor.consumeAvailable] which suspends
- * until ALL UserRuns from ALL batches have finished executing. Spring `fixedDelay`
- * guarantees no overlap between consecutive consume ticks.
+ * **[tickWatchdog]** (every `agentos.prompt.scheduler.tick-interval-ms`):
+ * Checks [ScheduledPromptExecutor.isRunning] and calls [ScheduledPromptExecutor.restart]
+ * if the consumer loop has died unexpectedly. Runs on the same interval as [tickClaim]
+ * so a dead producer is detected within one tick.
  *
- * Both ticks use Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
+ * Phase B (UserRun consumption) is handled by [ScheduledPromptExecutor], which runs a
+ * continuous DB poller + worker-pool loop started by `@PostConstruct`. There is no consume
+ * tick in this scanner.
+ *
+ * [tickClaim] uses Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
  * own successor. No fire-and-forget coroutines are used at the Scanner level.
  *
  * ### Claim logic
@@ -72,15 +75,20 @@ class SchedulerScanner(
     private val clock: Clock,
     private val nextRunCalculatorService: NextRunCalculatorService,
     private val executor: ScheduledPromptExecutor,
+    private val executionWindowService: ExecutionWindowService,
 ) {
+    /**
+     * Tracks whether the scheduler was last seen inside or outside the execution window,
+     * so WINDOW_OPEN / WINDOW_CLOSE transitions are logged exactly once per transition
+     * rather than on every tick.
+     * Initialised to `null` — unknown until the first tick evaluation.
+     */
+    private var lastWindowState: Boolean? = null
+
     /** When true, tickClaim() exits immediately without processing. */
     private val claimPaused = AtomicBoolean(false)
 
-    /** When true, tickConsume() exits immediately without processing. */
-    private val consumePaused = AtomicBoolean(false)
-
     fun isClaimPaused(): Boolean = claimPaused.get()
-    fun isConsumePaused(): Boolean = consumePaused.get()
 
     fun pauseClaim() {
         claimPaused.set(true)
@@ -90,16 +98,6 @@ class SchedulerScanner(
     fun resumeClaim() {
         claimPaused.set(false)
         logger.warn { "[SchedulerScanner] tickClaim RESUMED by operator" }
-    }
-
-    fun pauseConsume() {
-        consumePaused.set(true)
-        logger.warn { "[SchedulerScanner] tickConsume PAUSED by operator" }
-    }
-
-    fun resumeConsume() {
-        consumePaused.set(false)
-        logger.warn { "[SchedulerScanner] tickConsume RESUMED by operator" }
     }
 
     @PostConstruct
@@ -119,15 +117,63 @@ class SchedulerScanner(
      * Fully blocking — materialize runs synchronously within the tick.
      * Spring fixedDelay guarantees no overlap between ticks.
      *
-     * When [claimPaused] the tick is a no-op — the scheduling thread still fires
-     * but [processClaim] is not called.
+     * Guards (evaluated in order):
+     * 1. [claimPaused] — operator pause via [pauseClaim] / [SchedulerEndpoint].
+     * 2. [ExecutionWindowService.isWithinWindow] — time-window guard; logs WINDOW_OPEN /
+     *    WINDOW_CLOSE on transitions and REQUEST_HELD when outside the window.
+     *
+     * When outside the execution window, due prompts are not dispatched and nextRunAt is
+     * not advanced — they accumulate and are processed at the next window open, including
+     * after a service restart (state is not persisted; the window is re-evaluated from
+     * config + current time on every tick).
+     *
+     * Note: the time-window guard applies only to this tick (Phase A). Phase B (UserRun
+     * consumption) runs continuously via [ScheduledPromptExecutor]'s internal loop — already
+     * materialised UserRuns are always consumed to completion even after the window closes.
+     * The volume of in-flight work is bounded by [SchedulerProperties.batchSize] (max UserRuns
+     * claimed per poller iteration) and [SchedulerProperties.channelCapacity] (max UserRuns
+     * buffered in the handoff channel between the poller and the workers).
      */
     @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
     fun tickClaim() {
         when {
             claimPaused.get() -> logger.debug { "[SchedulerScanner] tickClaim PAUSED — skipping" }
-            else -> processClaim()
+            else -> if (checkExecutionWindow()) processClaim()
         }
+    }
+
+    /**
+     * Evaluates the execution window and emits transition log events.
+     *
+     * Returns `true` when the scheduler is allowed to dispatch (inside the window or no
+     * window configured). Returns `false` when outside the window — the caller must skip
+     * processing.
+     *
+     * Logs:
+     * - `WINDOW_OPEN`  on the first tick after entering the window.
+     * - `WINDOW_CLOSE` on the first tick after leaving the window.
+     * - `REQUEST_HELD` on every tick while outside the window (indicates pending work is waiting).
+     */
+    private fun checkExecutionWindow(): Boolean {
+        val now = Instant.now(clock)
+        val inWindow = executionWindowService.isWithinExecutionWindow(now)
+
+        when {
+            inWindow && lastWindowState != true -> {
+                logger.info { "[SchedulerScanner] WINDOW_OPEN — scheduler resuming dispatch (${now.atZone(ZoneOffset.UTC).toLocalTime()} UTC)" }
+                lastWindowState = true
+            }
+            !inWindow && lastWindowState != false -> {
+                logger.info { "[SchedulerScanner] WINDOW_CLOSE — scheduler pausing dispatch (${now.atZone(ZoneOffset.UTC).toLocalTime()} UTC)" }
+                lastWindowState = false
+            }
+        }
+
+        if (!inWindow) {
+            logger.debug { "[SchedulerScanner] REQUEST_HELD — outside execution window, due prompts will wait" }
+        }
+
+        return inWindow
     }
 
     /**
@@ -228,23 +274,16 @@ class SchedulerScanner(
     }
 
     /**
-     * Phase B: Consume available UserRuns.
-     * Declared `suspend` — Spring Framework 6.1+ natively dispatches suspend `@Scheduled`
-     * methods on the application's coroutine scheduler.
-     * Returns only when all claimed UserRuns have finished executing.
-     * Spring fixedDelay guarantees no overlap between ticks.
-     *
-     * When [consumePaused] the tick is a no-op — the scheduling thread still fires
-     * but [ScheduledPromptExecutor.consumeAvailable] is not called.
-     *
-     * The IO dispatcher is managed by [ScheduledPromptExecutor.consumeAvailable] itself
-     * via [kotlinx.coroutines.withContext].
+     * Watchdog: restarts the consumer loop if it died unexpectedly.
+     * Runs on the same interval as [tickClaim] so a dead producer is detected within one tick.
+     * Safe: Spring guarantees @PostConstruct on all beans completes before @Scheduled ticks fire,
+     * so executor.scope is always initialized when this first runs.
      */
-    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.consume-interval-ms:10000}")
-    suspend fun tickConsume() {
-        when {
-            consumePaused.get() -> logger.debug { "[SchedulerScanner] tickConsume PAUSED — skipping" }
-            else -> executor.consumeAvailable()
+    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
+    fun tickWatchdog() {
+        if (!executor.isRunning()) {
+            logger.error { "[SchedulerScanner] consumer loop is dead — restarting automatically" }
+            executor.restart()
         }
     }
 

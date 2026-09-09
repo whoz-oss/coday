@@ -1,3 +1,72 @@
+## 1.2.1 (2026-09-09)
+
+### 🚀 Features
+
+- **agentos:** #WZ-34091 restrict scheduler execution to off-peak time windows ([#1282](https://github.com/whoz-oss/coday/pull/1282))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 1.2.0 (2026-09-09)
+
+### 🚀 Features
+
+- #1292 persist resolved model on agent messages ([#1292](https://github.com/whoz-oss/coday/issues/1292))
+- #1292 persist resolved model on agent messages ([#1319](https://github.com/whoz-oss/coday/pull/1319), [#1292](https://github.com/whoz-oss/coday/issues/1292))
+
+### 🩹 Fixes
+
+- #1298 de-emphasize agent model attribution ([#1298](https://github.com/whoz-oss/coday/issues/1298))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 1.1.5 (2026-09-09)
+
+### 🩹 Fixes
+
+- #1299 fix case chat message wrapping and composer resizing ([#1299](https://github.com/whoz-oss/coday/issues/1299))
+- #1299 Fix case chat composer width and resize on input ([#1299](https://github.com/whoz-oss/coday/issues/1299))
+- #1299 Auto-resize case composer textarea ([#1299](https://github.com/whoz-oss/coday/issues/1299))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
+## 1.1.4 (2026-09-08)
+
+### 🩹 Fixes
+
+- bump bundled version to 1.1.3 ([#1316](https://github.com/whoz-oss/coday/pull/1316))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 1.1.3 (2026-09-08)
+
+### 🩹 Fixes
+
+- #1311 add uniqueness constraint on Credential (userId, authSettingId) ([#1312](https://github.com/whoz-oss/coday/pull/1312), [#1311](https://github.com/whoz-oss/coday/issues/1311))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 1.1.2 (2026-09-08)
+
+### 🩹 Fixes
+
+- #1310 MCP HTTP root endpoint unreachable due to forced SDK default ([#1313](https://github.com/whoz-oss/coday/pull/1313), [#1310](https://github.com/whoz-oss/coday/issues/1310))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 1.1.1 (2026-09-08)
 
 ### 🩹 Fixes
