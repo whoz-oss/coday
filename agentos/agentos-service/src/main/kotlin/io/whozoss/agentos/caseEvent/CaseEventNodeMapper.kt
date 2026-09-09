@@ -203,6 +203,8 @@ class CaseEventNodeMapper(
                     node.actorRole,
                     node.contentJson,
                     node.contextJson,
+                    node.llmProvider,
+                    node.llmModel,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -459,6 +461,8 @@ class CaseEventNodeMapper(
             actor = Actor(id = n.actorId, displayName = n.actorDisplayName, role = ActorRole.valueOf(n.actorRole)),
             content = serializer.deserialize(n.contentJson),
             sessionContext = n.contextJson?.let { serializer.deserializeMetadata(it) },
+            llmProvider = n.llmProvider,
+            llmModel = n.llmModel,
         )
 
     private fun toDomain(n: ToolRequestEventNode) =
@@ -680,6 +684,8 @@ class CaseEventNodeMapper(
             actorRole = e.actor.role.name,
             contentJson = serializer.serialize(e.content),
             contextJson = e.sessionContext?.let { serializer.serializeMetadata(it) },
+            llmProvider = e.llmProvider,
+            llmModel = e.llmModel,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
