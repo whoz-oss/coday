@@ -1,4 +1,14 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject, signal } from '@angular/core'
+import {
+  Component,
+  Input,
+  Output,
+  EventEmitter,
+  OnInit,
+  OnDestroy,
+  inject,
+  signal,
+  ChangeDetectionStrategy,
+} from '@angular/core'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { MessageContent } from '@coday/model'
 import { MessageContextMenuComponent, MenuAction } from '../message-context-menu/message-context-menu.component'
@@ -33,6 +43,7 @@ export interface ChatMessage {
   imports: [MessageContextMenuComponent, NgClass],
   providers: [DatePipe],
   templateUrl: './chat-message.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './chat-message.component.scss',
 })
 export class ChatMessageComponent implements OnInit, OnDestroy {

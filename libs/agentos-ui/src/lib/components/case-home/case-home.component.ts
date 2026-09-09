@@ -10,6 +10,7 @@ import {
   OnInit,
   signal,
   viewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { firstValueFrom } from 'rxjs'
@@ -52,6 +53,7 @@ import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-home.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-home.component.scss',
 })
 export class CaseHomeComponent implements OnInit {

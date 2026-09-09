@@ -5,6 +5,9 @@ import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.config.TestAuditConfiguration
@@ -542,6 +545,75 @@ abstract class AbstractScheduledPromptUserRunPersistenceSpec : StringSpec() {
             userRunRepo.materialize(runId, fixture.agent.id, fixture.ns.id)
 
             userRunRepo.hasAnyFailed(runId) shouldBe false
+        }
+
+        // -------------------------------------------------------------------------
+        // Load — 100 UserRuns claimed across multiple batches without loss
+        // -------------------------------------------------------------------------
+
+        "claimBatch: 100 PENDING UserRuns are all claimed across multiple batches of 25 without loss" {
+            // Create 4 independent runs with 25 distinct users each → 100 PENDING UserRuns total.
+            // Each run uses its own dedicated agent so that materialize traverses an isolated
+            // deployment sub-graph (avoids cross-run interference when counting RUNNING entries).
+            val ns = namespaceRepo.save(namespace())
+            val allRunIds = mutableListOf<UUID>()
+
+            repeat(4) { batchIndex ->
+                val runId = UUID.randomUUID()
+                allRunIds.add(runId)
+                val agent = agentConfigRepo.save(agentConfig(ns.id, "load-agent-$batchIndex"))
+                val group = userGroupRepo.save(userGroup(ns.id, "load-group-$batchIndex"))
+                val emails = (1..25).map { i -> "load-user-$batchIndex-$i@example.com" }
+                emails.forEach { userRepo.save(user(it)) }
+                userGroupRepo.addAgents(group.id, listOf(agent.id))
+                userGroupRepo.addUsers(group.id, emails)
+                userRunRepo.materialize(runId, agent.id, ns.id)
+            }
+
+            // Drain all UserRuns in batches of 25 until no more PENDING remain.
+            // claimBatch may return fewer than requested when the optimistic lock is contended
+            // (even single-threaded, SDN reloads nodes between saves). We loop until empty.
+            var iterations = 0
+            var batch = userRunRepo.claimBatch(Duration.ofMinutes(30), 25)
+            while (batch.isNotEmpty() && iterations < 20) {
+                iterations++
+                batch = userRunRepo.claimBatch(Duration.ofMinutes(30), 25)
+            }
+
+            // Verify no UserRun was lost: all 100 are RUNNING in the DB
+            val totalRunning = allRunIds.sumOf { runId ->
+                userRunRepo.countByRunIdAndStatus(runId, UserRunStatus.RUNNING)
+            }
+            totalRunning shouldBe 100
+        }
+
+        // -------------------------------------------------------------------------
+        // Concurrency — concurrent claimBatch does not double-claim
+        // -------------------------------------------------------------------------
+
+        "claimBatch: concurrent claims do not double-claim the same UserRun" {
+            // Create 10 PENDING UserRuns
+            val runId = UUID.randomUUID()
+            val fixture = setupDeployment(
+                (1..10).map { i -> "concurrent-user-$i@example.com" },
+                agentName = "concurrent-agent",
+            )
+            userRunRepo.materialize(runId, fixture.agent.id, fixture.ns.id)
+
+            // Launch two concurrent claimBatch calls, each asking for all 10
+            val (result1, result2) = runBlocking {
+                val deferred1 = async { userRunRepo.claimBatch(Duration.ofMinutes(30), 10) }
+                val deferred2 = async { userRunRepo.claimBatch(Duration.ofMinutes(30), 10) }
+                awaitAll(deferred1, deferred2)
+            }
+
+            // The Neo4j optimistic lock ensures each UserRun is claimed by exactly one caller
+            val totalClaimed = result1.size + result2.size
+            totalClaimed shouldBe 10
+            // No UserRun appears in both results
+            val ids1 = result1.map { it.id }.toSet()
+            val ids2 = result2.map { it.id }.toSet()
+            ids1.intersect(ids2).size shouldBe 0
         }
     }
 

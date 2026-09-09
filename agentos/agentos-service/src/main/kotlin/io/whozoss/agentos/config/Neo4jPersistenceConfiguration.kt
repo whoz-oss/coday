@@ -36,11 +36,11 @@ import io.whozoss.agentos.integrationConfig.Neo4jIntegrationConfigRepository
 import io.whozoss.agentos.namespace.NamespaceNodeNeo4jRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.namespace.Neo4jNamespaceRepository
+import io.whozoss.agentos.permissions.FavoriteRepository
+import io.whozoss.agentos.permissions.Neo4jFavoriteRepository
 import io.whozoss.agentos.permissions.Neo4jPermissionRepository
-import io.whozoss.agentos.permissions.Neo4jStarredRepository
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.permissions.PermissionRepository
-import io.whozoss.agentos.permissions.StarredRepository
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.prompt.FilesystemPromptRepository
 import io.whozoss.agentos.prompt.Neo4jPromptRepository
@@ -63,6 +63,7 @@ import io.whozoss.agentos.userGroup.UserGroupNodeNeo4jRepository
 import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -71,6 +72,9 @@ import org.springframework.context.annotation.Primary
 import org.springframework.data.neo4j.config.EnableNeo4jAuditing
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 /**
  * Registers Neo4j-backed repository beans.
@@ -139,15 +143,20 @@ class Neo4jPersistenceConfiguration {
     fun neo4jCaseRepository(
         caseNodeNeo4jRepository: CaseNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
+        clock: Clock,
     ): CaseRepository {
         logger.info { "[Persistence] Neo4jCaseRepository active" }
-        return Neo4jCaseRepository(caseNodeNeo4jRepository, childLinkService)
+        return Neo4jCaseRepository(
+            caseNodeNeo4jRepository = caseNodeNeo4jRepository,
+            childLinkService = childLinkService,
+            clock = clock,
+        )
     }
 
     @Bean
     fun neo4jCaseEventRepository(
         caseEventNodeNeo4jRepository: CaseEventNodeNeo4jRepository,
-        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
+        objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
     ): CaseEventRepository {
         logger.info { "[Persistence] Neo4jCaseEventRepository active" }
@@ -168,9 +177,9 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
-    fun neo4jStarredRepository(caseNodeNeo4jRepository: CaseNodeNeo4jRepository): StarredRepository {
-        logger.info { "[Persistence] Neo4jStarredRepository active" }
-        return Neo4jStarredRepository(caseNodeNeo4jRepository)
+    fun neo4jFavoriteRepository(caseNodeNeo4jRepository: CaseNodeNeo4jRepository): FavoriteRepository {
+        logger.info { "[Persistence] Neo4jFavoriteRepository active" }
+        return Neo4jFavoriteRepository(caseNodeNeo4jRepository)
     }
 
     /**
@@ -185,11 +194,10 @@ class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jIntegrationConfigRepositoryDelegate(
         integrationConfigNodeNeo4jRepository: IntegrationConfigNodeNeo4jRepository,
-        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
+        objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
-    ): Neo4jIntegrationConfigRepository {
-        return Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
-    }
+    ): Neo4jIntegrationConfigRepository =
+        Neo4jIntegrationConfigRepository(integrationConfigNodeNeo4jRepository, objectMapper, childLinkService)
 
     @Bean
     @Primary
@@ -210,7 +218,7 @@ class Neo4jPersistenceConfiguration {
     fun neo4jCredentialRepository(
         credentialNodeNeo4jRepository: CredentialNodeNeo4jRepository,
         fieldEncryptor: FieldEncryptor,
-        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
+        objectMapper: ObjectMapper,
     ): CredentialRepository {
         logger.info { "[Persistence] Neo4jCredentialRepository active" }
         return Neo4jCredentialRepository(credentialNodeNeo4jRepository, fieldEncryptor, objectMapper)
@@ -269,7 +277,7 @@ class Neo4jPersistenceConfiguration {
     @Bean
     fun neo4jPromptRepositoryDelegate(
         promptNodeNeo4jRepository: PromptNodeNeo4jRepository,
-        @Qualifier("jacksonObjectMapper") objectMapper: ObjectMapper,
+        objectMapper: ObjectMapper,
         childLinkService: Neo4jChildLinkService,
     ): Neo4jPromptRepository = Neo4jPromptRepository(promptNodeNeo4jRepository, objectMapper, childLinkService)
 
@@ -321,6 +329,101 @@ class Neo4jPersistenceConfiguration {
         logger.info { "[Persistence] Neo4jScheduledPromptUserRunRepository active" }
         return Neo4jScheduledPromptUserRunRepository(scheduledPromptUserRunNodeNeo4jRepository)
     }
+
+    /**
+     * One-time migration: converts legacy `[:STARRED]` plain edges to
+     * `[:WATCHES]` relationship-with-properties edges.
+     *
+     * Sets `favorite = true` on the new edge (the original edge carried no properties).
+     * The migration is idempotent: `MERGE` on `[:WATCHES]` ensures that if the edge
+     * already exists (from a previous partial migration), only `favorite` is SET —
+     * `readAt` is left untouched.
+     * The legacy `[:STARRED]` edge is deleted after the merge.
+     *
+     * Runs once at startup and is a no-op when no `[:STARRED]` edges remain.
+     */
+    @Bean
+    fun migrateStarredEdges(neo4jClient: Neo4jClient): CommandLineRunner =
+        CommandLineRunner {
+            val result =
+                neo4jClient
+                    .query(
+                        """
+                        MATCH (u:User)-[s:STARRED]->(c:Case)
+                        MERGE (u)-[state:WATCHES]->(c)
+                        SET state.favorite = true
+                        DELETE s
+                        RETURN count(s) AS migrated
+                        """.trimIndent(),
+                    ).fetch()
+                    .one()
+            val count = result.map { it["migrated"] as Long }.orElse(0L) ?: 0L
+            if (count > 0L) {
+                logger.info { "[Migration] Converted $count [:STARRED] edges to [:WATCHES]" }
+            } else {
+                logger.debug { "[Migration] No legacy [:STARRED] edges found — nothing to migrate" }
+            }
+        }
+
+    /**
+     * One-time initialisation: creates `[:WATCHES]` edges with `readAt = now` for every
+     * `(User)-[:ADMIN|MEMBER]->(Case)` relation in the database that has no WATCHES edge yet.
+     *
+     * This prevents cases that existed before the read-state feature was introduced from
+     * appearing as "unread" for all their members on first startup.
+     *
+     * Idempotency is guaranteed by a `(:CompletedMigration {id: 'readAtFeat20260908'})` flag
+     * node in Neo4j: the node is created (MERGE ON CREATE) on the first run and the heavy
+     * WATCHES backfill only executes when the node is brand-new. On every subsequent startup
+     * the flag node already exists, the WITH/WHERE clause filters it out, and the body of the
+     * migration is never reached.
+     *
+     * Runs after [migrateStarredEdges] (via bean dependency) so that edges converted from
+     * `[:STARRED]` — which carry `readAt = null` — are also initialised here.
+     */
+    @Bean
+    fun initCaseReadAt(
+        neo4jClient: Neo4jClient,
+        clock: Clock,
+        @Suppress("UNUSED_PARAMETER") migrateStarredEdges: CommandLineRunner,
+    ): CommandLineRunner =
+        CommandLineRunner {
+            // Neo4j driver does not accept java.time.Instant directly — convert to ZonedDateTime
+            // (stored as a Neo4j DateTime value) so the driver can serialise it correctly.
+            val now = Instant.now(clock).atZone(ZoneOffset.UTC)
+            // The flag node ensures this migration runs exactly once across all restarts.
+            // ON CREATE SET flag.isNew = true marks the node as brand-new; the WITH/WHERE
+            // clause lets the rest of the query through only on that first creation.
+            // On every subsequent startup the MERGE matches the existing node (isNew absent),
+            // the WHERE filters it out, and the MATCH below never executes.
+            val result =
+                neo4jClient
+                    .query(
+                        $$"""
+                        MERGE (flag:CompletedMigration {id: 'readAtFeat20260908'})
+                        ON CREATE SET flag.isNew = true
+                        WITH flag
+                        WHERE flag.isNew = true
+                        REMOVE flag.isNew
+                        WITH count(flag) AS guard
+                        MATCH (u:User)-[:ADMIN|MEMBER]->(c:Case)
+                        WHERE (c.removed IS NULL OR c.removed = false) and guard > 0
+                        MERGE (u)-[s:WATCHES]->(c)
+                        ON CREATE SET s.readAt = $readAt
+                        ON MATCH SET s.readAt = CASE WHEN s.readAt IS NULL THEN $readAt ELSE s.readAt END
+                        RETURN count(c) AS initialised
+                        """.trimIndent(),
+                    ).bind(now)
+                    .to("readAt")
+                    .fetch()
+                    .one()
+            val count = result.map { it["initialised"] as Long }.orElse(0L) ?: 0L
+            if (count > 0L) {
+                logger.info { "[Migration] Initialised readAt on $count WATCHES edges" }
+            } else {
+                logger.debug { "[Migration] readAtFeat20260908 already applied — skipping" }
+            }
+        }
 
     companion object : KLogging()
 }

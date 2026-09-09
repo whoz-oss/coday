@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output, ViewChild } from '@angular/core'
+import { Component, EventEmitter, Input, Output, ViewChild, ChangeDetectionStrategy } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { TextInputComponent } from '../text-input/text-input.component'
 import { MatButton } from '@angular/material/button'
@@ -12,6 +12,7 @@ import { MatButton } from '@angular/material/button'
   standalone: true,
   imports: [CommonModule, TextInputComponent, MatButton],
   templateUrl: './project-create.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './project-create.component.scss',
 })
 export class ProjectCreateComponent {

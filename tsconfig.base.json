@@ -7,6 +7,7 @@
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,
     "experimentalDecorators": true,
+    "ignoreDeprecations": "6.0",
     "importHelpers": true,
     "lib": ["ESNext", "dom"],
     "module": "esnext",
@@ -76,7 +77,9 @@
     "sourceMap": true,
     "strict": true,
     "target": "ESNext",
-    "typeRoots": ["node_modules/@types"]
+    "typeRoots": ["node_modules/@types"],
+    "noUncheckedSideEffectImports": false,
+    "types": ["*"]
   },
   "exclude": ["node_modules", "tmp", "dist"]
 }

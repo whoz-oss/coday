@@ -1,5 +1,11 @@
 <ds-drawer position="end" [(open)]="exchangeOpen" drawerWidth="400px" [mobileFullWidth]="true">
-  <agentos-exchange-shell dsDrawerSide (closeRequested)="exchangeOpen.set(false)" />
+  <div dsDrawerSide class="case-chat__drawer-side">
+    @if (drawerPanel() === 'members') {
+      <agentos-case-members [caseId]="caseId" (closeRequested)="exchangeOpen.set(false)" />
+    } @else {
+      <agentos-exchange-shell (closeRequested)="exchangeOpen.set(false)" />
+    }
+  </div>
 
   <div dsDrawerContent class="case-chat__host">
     <!-- ── Case header: glyph + title + status badge ─────────────────────── -->
@@ -24,12 +30,15 @@
           icon="folder"
           variant="default"
           [title]="'Files (' + exchangeFileCount() + ')'"
-          (action)="toggleExchange()"
+          (action)="openFilesPanel()"
         />
         @if (exchangeFileCount() > 0 && !exchangeOpen()) {
           <span class="case-chat__exchange-badge" aria-hidden="true">{{ exchangeFileCount() }}</span>
         }
       </div>
+
+      <!-- Share case -->
+      <ds-icon-button icon="group_add" variant="default" title="Share case" (action)="openMembersPanel()" />
 
       <!-- Separator -->
       <span class="case-chat__header-sep"></span>

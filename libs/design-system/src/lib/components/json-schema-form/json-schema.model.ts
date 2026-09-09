@@ -22,6 +22,15 @@ export interface JsonSchemaObject {
   maxLength?: number
   /** Describes the schema of array items — used to render typed item inputs. */
   items?: JsonSchemaObject
+  /**
+   * UI widget override (JSON Schema extension keyword).
+   * `"textarea"` forces a multiline <textarea> instead of the default <input type="text">
+   * for string fields expected to hold long text (prompts, templates, paths, etc.).
+   *
+   * @example
+   * { "type": "string", "title": "System prompt", "x-ui-widget": "textarea" }
+   */
+  'x-ui-widget'?: 'textarea'
   // Allow any additional JSON Schema keywords (format, pattern, etc.)
   [key: string]: unknown
 }

@@ -12,14 +12,23 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.user.UserService
+import jakarta.annotation.PostConstruct
+import jakarta.annotation.PreDestroy
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicBoolean
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
@@ -32,7 +41,7 @@ import java.util.UUID
 /**
  * Executes [ScheduledPromptRun]s in two phases.
  *
- * ### Phase A — Materialisation (fast, no throttle)
+ * ### Phase A — Materialisation (fast, called by [SchedulerScanner])
  *
  * [materialize] is called by [SchedulerScanner.claim] after the Run has been inserted.
  * It resolves all target users and creates PENDING [ScheduledPromptUserRun]s via a single
@@ -43,11 +52,45 @@ import java.util.UUID
  * [materialize] call, the Run remains CLAIMED forever. [SchedulerScanner.recoverOrphanedClaimedRuns]
  * detects such orphans on the next tick and marks them FAILED, unblocking the overlap guard.
  *
- * ### Phase B — Consumption (throttled)
+ * ### Phase B — Continuous processing (DB poller + worker pool)
  *
- * Called by [SchedulerScanner.tickConsume] on every consume tick.
- * Loops over [ScheduledPromptUserRunRepository.claimBatch] until the queue is empty.
- * Each claimed [ScheduledPromptUserRun] is executed in a background coroutine:
+ * The lifecycle is driven by `@PostConstruct` / `@PreDestroy` (Jakarta annotations).
+ * On [start], a [CoroutineScope] is created with a [SupervisorJob] and [startProcessingLoop]
+ * is launched inside it on the [dispatcher]. [stop] cancels the scope. [restart] (stop
+ * then start) is called by the watchdog [SchedulerScanner.tickWatchdog] whenever
+ * [isRunning] returns false, recovering from unexpected coroutine death.
+ *
+ * **DB poller** (on the [dispatcher] injected, `Dispatchers.IO` by default): loops
+ * continuously, calling [ScheduledPromptUserRunRepository.claimBatch] and handing each
+ * claimed [ScheduledPromptUserRun] off for processing. When the batch is empty the poller
+ * delays [SchedulerProperties.emptyPollDelayMs] before polling again, avoiding a busy-loop.
+ * On database errors it applies exponential backoff (capped at 60 s). The poller respects
+ * [consumePaused]: when paused it delays [SchedulerProperties.pausedPollDelayMs] per
+ * iteration without touching the database.
+ * The handoff channel is closed in the poller's `finally` block, guaranteeing that workers
+ * exit their iteration loop cleanly regardless of how the poller stops.
+ *
+ * **Worker pool** ([SchedulerProperties.workerCount] coroutines, on the [dispatcher]
+ * injected, `Dispatchers.IO` by default): each worker receives [ScheduledPromptUserRun]s
+ * and calls [processUserRun]. A failure in one worker does not affect its
+ * siblings — exceptions are caught per-item; [CancellationException] is always re-thrown
+ * to honour cooperative cancellation.
+ *
+ * **Channel capacity**: [SchedulerProperties.channelCapacity] (default 50 = 2 x batchSize).
+ * Double-buffering: the poller can fill a second batch into the channel while workers drain
+ * the first, keeping all workers continuously fed without pre-claiming an excessive number of
+ * leased UserRuns. The channel capacity should be at least [SchedulerProperties.batchSize]
+ * so the poller never suspends mid-batch.
+ *
+ * **Shutdown**: [stop] cancels the scope. The [CancellationException] propagates
+ * immediately to all coroutines at their next suspension point — minimising shutdown time
+ * without killing coroutines abruptly. The poller's `finally` block closes the channel,
+ * unblocking workers suspended on receive. UserRuns that were in-flight remain RUNNING;
+ * their leases expire and another instance (or the restarted instance) reclaims them
+ * via [claimBatch] (at-least-once delivery).
+ *
+ * ### Per-UserRun processing
+ *
  * 1. Create a [Case] in the prompt's namespace.
  * 2. Grant ADMIN on the Case to the target user via [PermissionService.grantPermission].
  * 3. Build an [Actor] with `role = USER`.
@@ -55,29 +98,20 @@ import java.util.UUID
  *    [CaseService.addMessage]. The Executor resolves content itself rather than using
  *    a `/slash-command` because PromptCommandParser requires the text to start with `/`,
  *    which is incompatible with the leading `@mention`.
- * 5. Await the Case launch: collect the runtime's [CaseRuntime.statusFlow] for up to
- *    [SchedulerProperties.launchTimeoutSeconds] seconds to detect immediate failures.
- *    If the Case reaches IDLE or is still RUNNING after the timeout, the UserRun is
- *    closed as DONE (the Case continues independently). Only an immediate terminal
- *    status (ERROR/KILLED) marks the UserRun as FAILED.
+ * 5. Await the Case launch: inspect the runtime's [CaseRuntime.statusFlow] current value,
+ *    then observe future transitions for up to [SchedulerProperties.launchTimeoutSeconds]
+ *    seconds to detect immediate failures. If the Case is IDLE (turn finished) it is closed
+ *    as DONE. If still RUNNING after the timeout, monitoring is released (Case continues
+ *    independently) and the UserRun is closed as TIMEOUT. An immediate terminal status
+ *    (ERROR/KILLED) marks the UserRun as FAILED.
  *
- * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
- * each batch contains at most that many UserRuns, and all are launched as structured
- * coroutines within a single [coroutineScope]. A short stagger delay
- * ([SchedulerProperties.launchStaggerMs]) between each `launch` spreads the initial
- * burst to reduce memory pressure. Further burst control is delegated to Spring AI's `RetryTemplate`
- * on each `ChatModel` (exponential backoff on 429 rate-limit responses).
+ * ### Run (parent) completion
  *
- * ### Completion check
- *
- * After each batch of UserRuns finishes, the distinct Runs touched in that batch are
- * checked via [checkCompletion] — one call per Run, not per UserRun. Each check uses
- * two LIMIT 1 queries:
- * 1. [ScheduledPromptUserRunRepository.hasAnyActive] — fast-path exit when work is still in flight.
- * 2. [ScheduledPromptUserRunRepository.hasAnyFailed] — only reached when all UserRuns are terminal.
- * Result: FAILED if any UserRun failed, DONE otherwise.
- * Only RUNNING Runs are inspected — the CLAIMED→RUNNING transition in Phase A acts as
- * the guard ensuring all UserRuns have been materialised before completion is evaluated.
+ * Workers do **not** update the parent [ScheduledPromptRun] status. That responsibility
+ * belongs entirely to [SchedulerScanner.recoverOrphanedRunningRuns], which runs on every
+ * [SchedulerScanner.tickClaim] (approximately every 60 s). It finds all RUNNING Runs whose
+ * UserRuns are all terminal and closes them as DONE or FAILED. This avoids N concurrent
+ * completion checks from parallel workers racing on the same `runId`.
  */
 @Component
 @ConditionalOnProperty(name = ["agentos.prompt.scheduler.enabled"], havingValue = "true")
@@ -92,7 +126,150 @@ class ScheduledPromptExecutor(
     private val userService: UserService,
     private val properties: SchedulerProperties,
     private val clock: Clock,
+    private val userContextProvider: UserContextProvider? = null,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
+
+    /** When true, the poller skips claimBatch and delays instead. */
+    private val consumePaused = AtomicBoolean(false)
+
+    /** True if the processing loop is active. Returns false if start() was never called or if
+     * stop() was called. The watchdog uses this to detect unexpected coroutine death. */
+    fun isRunning(): Boolean = scope?.isActive == true
+
+    fun restart() {
+        stop()
+        start()
+    }
+
+    fun isConsumePaused(): Boolean = consumePaused.get()
+
+    fun pauseConsume() {
+        consumePaused.set(true)
+        logger.warn { "[Executor] consume PAUSED by operator" }
+    }
+
+    fun resumeConsume() {
+        consumePaused.set(false)
+        logger.warn { "[Executor] consume RESUMED by operator" }
+    }
+
+    // No synchronisation needed: start() writes scope then immediately launches the coroutine
+    // that reads it — the launch itself establishes a happens-before edge so startProcessingLoop()
+    // always sees the written value. stop() is called by Spring @PreDestroy, sequentially after
+    // start() has returned, never concurrently with it. If this invariant ever changes (e.g. an
+    // admin endpoint calling start/stop concurrently), replace with AtomicReference + compareAndSet.
+    //
+    // We store a CoroutineScope rather than just the SupervisorJob for convenience: it lets us
+    // call launch() directly (currentScope.launch(...)) and use scope.isActive as a natural
+    // liveness check in isRunning(). Both scope.cancel() and scope.isActive are shortcuts to
+    // the underlying Job: scope.coroutineContext[Job]?.cancel() and
+    // scope.coroutineContext[Job]?.isActive respectively — everything goes through the Job.
+    private var scope: CoroutineScope? = null
+
+    // -------------------------------------------------------------------------
+    // Lifecycle
+    // -------------------------------------------------------------------------
+
+    @PostConstruct
+    fun start() {
+        val newScope = CoroutineScope(SupervisorJob())
+        scope = newScope
+        newScope.launch(dispatcher) { startProcessingLoop() }
+        logger.info { "[Executor] started (workers=${properties.workerCount}, batchSize=${properties.batchSize}, channelCapacity=${properties.channelCapacity})" }
+    }
+
+    @PreDestroy
+    fun stop() {
+        scope?.cancel()
+        scope = null
+        logger.info { "[Executor] stopped" }
+    }
+
+    // -------------------------------------------------------------------------
+    // Processing loop (DB poller + worker pool)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Orchestrates UserRun processing: starts the DB poller and the worker pool.
+     *
+     * The poller closes the handoff channel in its `finally` block, guaranteeing that workers
+     * exit their iteration loop cleanly whether the poller stops normally, is cancelled, or
+     * throws an unexpected exception.
+     *
+     * The poller and all workers share the same scope. Cancelling the scope (on [stop])
+     * propagates [CancellationException] to all of them at their next suspension point —
+     * minimising shutdown time without killing coroutines abruptly.
+     */
+    private suspend fun startProcessingLoop() {
+        val channel = Channel<ScheduledPromptUserRun>(capacity = properties.channelCapacity)
+        startUserRunPoller(channel)
+        startUserRunWorkers(channel)
+    }
+
+    /** Continuously claims UserRuns from the database and hands them off for processing. */
+    private fun startUserRunPoller(channel: Channel<ScheduledPromptUserRun>) {
+        val currentScope = checkNotNull(scope)
+        currentScope.launch(dispatcher) {
+            val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
+            var consecutiveErrors = 0
+            try {
+                while (isActive) {
+                    when {
+                        consumePaused.get() -> delay(properties.pausedPollDelayMs)
+                        else -> {
+                            try {
+                                val batch = userRunRepository.claimBatch(leaseDuration, properties.batchSize)
+                                when {
+                                    batch.isEmpty() -> delay(properties.emptyPollDelayMs)
+                                    else -> batch.forEach { channel.send(it) }
+                                }
+                                consecutiveErrors = 0
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                consecutiveErrors++
+                                val backoffMs = exponentialBackoffMs(consecutiveErrors)
+                                logger.error(e) {
+                                    "[Executor] poller error (attempt=$consecutiveErrors), backing off ${backoffMs}ms"
+                                }
+                                delay(backoffMs)
+                            }
+                        }
+                    }
+                }
+            } finally {
+                channel.close()
+            }
+        }
+    }
+
+    /**
+     * Processes claimed UserRuns — one worker per configured [SchedulerProperties.workerCount].
+     * Run (parent) completion is NOT checked here:
+     * [SchedulerScanner.recoverOrphanedRunningRuns] handles RUNNING -> DONE/FAILED on each tickClaim.
+     */
+    private fun startUserRunWorkers(channel: Channel<ScheduledPromptUserRun>) {
+        val currentScope = checkNotNull(scope)
+        repeat(properties.workerCount) { workerId ->
+            currentScope.launch(dispatcher) {
+                for (userRun in channel) {
+                    try {
+                        logger.info {
+                            "[Executor] worker=$workerId processing UserRun=${userRun.id} runId=${userRun.runId} userId=${userRun.userId}"
+                        }
+                        processUserRun(userRun)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.error(e) {
+                            "[Executor] worker=$workerId failed on UserRun=${userRun.id} — lease expires, will be reclaimed"
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Phase A — Materialisation
@@ -109,13 +286,17 @@ class ScheduledPromptExecutor(
      * Transitions the Run to [RunStatus.RUNNING] when UserRuns are created, or directly
      * to [RunStatus.DONE] when no target users exist (e.g. platform-scope ScheduledPrompt).
      *
-     * The MERGE and the CLAIMED→RUNNING transition run in a single `@Transactional`:
+     * The MERGE and the CLAIMED->RUNNING transition run in a single `@Transactional`:
      * if the service crashes between the two, neither orphaned PENDING UserRuns (never
      * consumed) nor a RUNNING Run with no UserRuns can result.
      *
      * Note: the Run insert happens in [SchedulerScanner.claim], **outside** this transaction.
-     * A crash between the insert and this call leaves an orphaned CLAIMED Run, which
-     * [SchedulerScanner.recoverOrphanedClaimedRuns] detects and marks FAILED on the next tick.
+     * A crash between the insert and this call, or an exception thrown by
+     * [ScheduledPromptUserRunRepository.materialize], leaves an orphaned CLAIMED Run —
+     * Spring rolls back the transaction so no partial UserRuns are written.
+     * [SchedulerScanner.recoverOrphanedClaimedRuns] detects such orphans and marks them
+     * FAILED on the next tick. The caller ([SchedulerScanner.claim]) is protected by
+     * `runCatching` so one failure does not block other prompts in the same tick.
      */
     @Transactional
     fun materialize(run: ScheduledPromptRun, scheduledPrompt: ScheduledPrompt) {
@@ -131,22 +312,9 @@ class ScheduledPromptExecutor(
                 }
                 0
             }
-            else -> runCatching {
-                userRunRepository.materialize(run.id, scheduledPrompt.agentConfigId, namespaceId)
-            }.onFailure { e ->
-                logger.error(e) {
-                    "[Executor] materialize failed for run=${run.id} sp=${scheduledPrompt.id}"
-                }
-            }.getOrDefault(0)
+            else -> userRunRepository.materialize(run.id, scheduledPrompt.agentConfigId, namespaceId)
         }
 
-        // Transition based on whether any UserRuns were created:
-        // - RUNNING when count > 0 — Phase B will consume the UserRuns and checkCompletion
-        //   will close the Run once all are terminal.
-        // - DONE when count == 0 — no UserRuns to consume (platform-scope ScheduledPrompt
-        //   with no target users, or namespace with no deployed users). Transitioning to
-        //   RUNNING would leave the Run stuck forever since checkCompletion requires at
-        //   least one UserRun closure to trigger.
         val finalStatus = if (count > 0) RunStatus.RUNNING else RunStatus.DONE
         runRepository.updateStatus(run.id, finalStatus, if (count == 0) Instant.now(clock) else null)
 
@@ -156,212 +324,164 @@ class ScheduledPromptExecutor(
     }
 
     // -------------------------------------------------------------------------
-    // Phase B — Consumption
-    // -------------------------------------------------------------------------
-
-    /**
-     * Claim and execute all currently available [ScheduledPromptUserRun]s.
-     *
-     * Suspends until ALL UserRuns from ALL batches have finished executing, so the
-     * caller ([SchedulerScanner.tickConsume]) suspends for the full duration.
-     * Spring `fixedDelay` on [SchedulerScanner.tickConsume] prevents a new consume
-     * tick from starting before this one completes.
-     *
-     * Each batch is claimed via [ScheduledPromptUserRunRepository.claimBatch], which
-     * uses SDN `@Version` optimistic locking so concurrent instances cannot double-claim
-     * the same UserRun. Within a batch, each UserRun is launched as a structured
-     * coroutine inside [coroutineScope]; the scope suspends until all launched children
-     * finish before the next batch is claimed.
-     *
-     * Runs on [Dispatchers.IO] so the coroutines launched inside [coroutineScope] execute on
-     * the IO thread pool (default 64 threads) rather than being serialised on the caller's
-     * single thread. This is required because [processUserRun] calls blocking Spring services
-     * (Neo4j, CaseService, PermissionService) that would otherwise starve the coroutine dispatcher.
-     *
-     * Concurrency is bounded by the batch size ([SchedulerProperties.batchSize]):
-     * each batch contains at most that many UserRuns, all launched as structured coroutines
-     * within a single [coroutineScope]. A short [SchedulerProperties.launchStaggerMs] delay
-     * between each `launch` spreads the initial burst to reduce memory pressure (OOM observed
-     * on CI without stagger). Further burst control is delegated to Spring AI's `RetryTemplate`
-     * (exponential backoff on 429 responses).
-     *
-     * ### Delivery guarantee: at-least-once
-     *
-     * If an instance crashes after creating a Case but before [markTerminal], the
-     * UserRun's [ScheduledPromptUserRun.leaseUntil] will expire and a subsequent
-     * [claimBatch] will reclaim it, creating a **second** Case for the same user.
-     * This is acceptable for the scheduled-prompt use case (duplicate conversation,
-     * no data corruption). Exactly-once would require an idempotence key on Case
-     * creation (e.g. a UNIQUE constraint on `runId|userId` carried by the Case).
-     */
-    suspend fun consumeAvailable() = withContext(Dispatchers.IO) {
-        val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
-
-        var batch: List<ScheduledPromptUserRun>
-        do {
-            batch = userRunRepository.claimBatch(leaseDuration, properties.batchSize)
-            val runIds = batch.map { it.runId }.toSet()
-
-            coroutineScope {
-                for (userRun in batch) {
-                    logger.info {
-                        "[Executor] Phase B: claimed UserRun=${userRun.id} runId=${userRun.runId} userId=${userRun.userId}"
-                    }
-
-                    launch {
-                        processUserRun(userRun)
-                    }
-
-                    // Stagger launches to spread the initial burst and reduce memory pressure.
-                    // Without this delay, simultaneous Case+Runtime creation for a full batch
-                    // causes OOM on CI. Once launched, coroutines run concurrently.
-                    delay(properties.launchStaggerMs)
-                }
-            }
-
-            // All UserRuns in this batch have finished — check completion once per Run.
-            // The sweep recoverOrphanedRunningRuns covers crashes between markTerminal
-            // and this point.
-            runIds.forEach { checkCompletion(it) }
-        } while (batch.isNotEmpty())
-    }
-
-    // -------------------------------------------------------------------------
     // Single UserRun processing
     // -------------------------------------------------------------------------
 
-    private suspend fun processUserRun(userRun: ScheduledPromptUserRun) {
-        val now = Instant.now(clock)
-        val runId = userRun.runId
-        val userId = userRun.userId
-
+    /**
+     * Execute a single [ScheduledPromptUserRun]: resolve context, create a Case,
+     * inject the prompt message, and await the launch outcome.
+     *
+     * Captures any non-[CancellationException] exception internally and calls [markFailed]
+     * to transition the UserRun to FAILED. If [markFailed] itself fails (e.g. database
+     * unavailable), the error is swallowed by `runCatching` and the UserRun remains RUNNING
+     * until its lease expires and is reclaimed by [ScheduledPromptUserRunRepository.claimBatch]
+     * (at-least-once delivery). This edge case is covered by a dedicated test.
+     *
+     * On a [CancellationException] (scope cancelled) the exception is re-thrown so the
+     * worker exits its channel loop and the coroutine terminates cooperatively.
+     *
+     * Exposed as `internal` so unit tests can invoke it directly without starting the
+     * full processing loop.
+     */
+    internal suspend fun processUserRun(userRun: ScheduledPromptUserRun) {
+        // At-least-once delivery: if markTerminal() fails (DB unavailable), the UserRun stays
+        // RUNNING until its lease expires and is reclaimed — potentially creating a second Case
+        // for the same user. A future improvement would store the userRunId on the Case and
+        // check for an existing Case before creating one, making execution effectively-once.
         try {
-            // --- Resolve context ---
-            // Each check is required: the resolved value is consumed below to create the Case,
-            // build the Actor, or compose the message. IllegalStateException on missing data
-            // is caught by the outer try/catch and marks the UserRun FAILED with a diagnostic.
-
-            val run = checkNotNull(runRepository.findById(runId)) {
-                "Parent Run $runId not found"
-            }
-
-            val scheduledPrompt = scheduledPromptRepository.findByIds(listOf(run.scheduledPromptId))
-                .firstOrNull()
-                ?: error("ScheduledPrompt ${run.scheduledPromptId} not found")
-
-            val namespaceId = checkNotNull(scheduledPrompt.namespaceId) {
-                "Platform-scope ScheduledPrompt cannot be executed per-user"
-            }
-
-            val user = checkNotNull(userService.findById(userId)) {
-                "User $userId not found"
-            }
-
-            // Resolve the prompt content directly — the Executor is the consumer of the prompt
-            // and has the full context (userId, namespaceId, scheduling metadata) needed to
-            // resolve it. Injecting a /slash-command would fail because addMessage's
-            // PromptCommandParser requires text to start with '/' but the @mention prefix
-            // prevents that.
-            val prompt = checkNotNull(promptService.findById(scheduledPrompt.promptTemplateId)) {
-                "PromptTemplate ${scheduledPrompt.promptTemplateId} not found"
-            }
-
-            // Mono-line content (enforced by ScheduledPromptService validation).
-            // Future: resolve {{placeholders}} here with execution context (user name, date, etc.)
-            val promptContent = prompt.content.firstOrNull()?.takeIf { it.isNotBlank() }
-                ?: error("PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content")
-
-            // Resolve the agent name — prepended as @mention so selectAgent picks it up
-            // via the normal @mention resolution path (no special-casing in the runtime).
-            val agentName = checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
-                "AgentConfig ${scheduledPrompt.agentConfigId} not found"
-            }
-
-            // Inject resolved content with @mention — selectAgent resolves the agent,
-            // PromptCommandParser sees no /command and passes text through unchanged.
-            val message = "@$agentName $promptContent"
-
-            // --- Execute ---
-
-            // Step 1: Create the Case.
-            // No idempotence key links this Case to the UserRun — if the instance crashes
-            // after this point but before markTerminal(), the lease expires and another
-            // instance will create a second Case for the same user (at-least-once).
-            // Exactly-once would require a UNIQUE constraint on Case keyed by (runId, userId).
-            val case = caseService.create(
-                Case(
-                    namespaceId = namespaceId,
-                    title = scheduledPrompt.name,
-                ),
-            )
-            val caseId = case.id
-
-            // Step 2: Grant ADMIN to the target user.
-            permissionService.grantPermission(
-                userId.toString(),
-                EntityType.CASE,
-                caseId.toString(),
-                PermissionRelation.ADMIN,
-            )
-
-            // Step 3: Build Actor.
-            val actor = Actor(
-                id = userId.toString(),
-                displayName = user.displayName(),
-                role = ActorRole.USER,
-            )
-
-            // Step 4: Inject the prompt message.
-            // addMessage internally launches runtime.run() in CaseServiceImpl.scope.
-            caseService.addMessage(
-                caseId = caseId,
-                actor = actor,
-                content = listOf(MessageContent.Text(message)),
-            )
-
-            logger.info {
-                "[Executor] UserRun=${userRun.id} — Case $caseId created and message injected for user=$userId"
-            }
-
-            // Step 5: Await launch — detect immediate failures.
-            // The runtime is guaranteed to exist in activeRuntimes right after create().
-            // If the Case is still RUNNING after the timeout, it's healthy — close as DONE.
-            // Only an immediate terminal status (ERROR/KILLED) means the launch failed.
-            val runtime = caseService.findActiveRuntime(caseId)
-            if (runtime == null) {
-                // Runtime already evicted (terminal status reached before we got here)
-                closeUserRun(userRun.id, caseService.findById(caseId)?.status, caseId)
-            } else {
-                monitorLaunch(userRun.id, caseId, runtime)
-            }
+            val context = resolveContext(userRun)
+            val caseId = createAndInjectCase(userRun, context)
+            awaitLaunch(userRun.id, caseId)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logger.error(e) {
-                "[Executor] UserRun=${userRun.id} failed for user=$userId"
-            }
-            markFailed(userRun.id, now, e.message ?: "Unknown error")
+            logger.error(e) { "[Executor] UserRun=${userRun.id} failed for user=${userRun.userId} — marking FAILED" }
+            markFailed(userRun.id, Instant.now(clock), e.message ?: "Unknown error")
         }
     }
+
+    /**
+     * Resolve all data required to execute a [ScheduledPromptUserRun].
+     * Throws [IllegalStateException] on any missing entity — propagates to the
+     * try/catch in [processUserRun] which marks the UserRun FAILED.
+     */
+    private fun resolveContext(userRun: ScheduledPromptUserRun): UserRunContext {
+        val run = checkNotNull(runRepository.findById(userRun.runId)) {
+            "Parent Run ${userRun.runId} not found"
+        }
+        val scheduledPrompt = scheduledPromptRepository.findByIds(listOf(run.scheduledPromptId))
+            .firstOrNull()
+            ?: error("ScheduledPrompt ${run.scheduledPromptId} not found")
+        val namespaceId = checkNotNull(scheduledPrompt.namespaceId) {
+            "Platform-scope ScheduledPrompt cannot be executed per-user"
+        }
+        val user = checkNotNull(userService.findById(userRun.userId)) {
+            "User ${userRun.userId} not found"
+        }
+        val prompt = checkNotNull(promptService.findById(scheduledPrompt.promptTemplateId)) {
+            "PromptTemplate ${scheduledPrompt.promptTemplateId} not found"
+        }
+        val promptContent = prompt.content.firstOrNull()?.takeIf { it.isNotBlank() }
+            ?: error("PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content")
+        val agentName = checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
+            "AgentConfig ${scheduledPrompt.agentConfigId} not found"
+        }
+        val sessionContext = runCatching {
+            userContextProvider?.provideUserContext(
+                userExternalId = user.externalId,
+                namespaceId = namespaceId,
+            )
+        }.onFailure { e ->
+            logger.warn(e) {
+                "[Executor] Context enrichment failed for UserRun=${userRun.id} userId=${userRun.userId} — continuing without sessionContext"
+            }
+        }.getOrNull()
+        return UserRunContext(
+            namespaceId = namespaceId,
+            caseTitle = scheduledPrompt.name,
+            actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
+            message = "@$agentName $promptContent",
+            scheduledPromptId = scheduledPrompt.id,
+            sessionContext = sessionContext,
+        )
+    }
+
+    /**
+     * Create a [Case], grant ADMIN to the target user, and inject the prompt message.
+     * Returns the created [Case] id.
+     */
+    private fun createAndInjectCase(userRun: ScheduledPromptUserRun, context: UserRunContext): UUID {
+        val case = caseService.create(
+            Case(
+                namespaceId = context.namespaceId,
+                title = context.caseTitle,
+                scheduledPromptId = context.scheduledPromptId,
+            ),
+        )
+        permissionService.grantPermission(
+            userRun.userId.toString(),
+            EntityType.CASE,
+            case.id.toString(),
+            PermissionRelation.ADMIN,
+        )
+        caseService.addMessage(
+            caseId = case.id,
+            actor = context.actor,
+            content = listOf(MessageContent.Text(context.message)),
+            sessionContext = context.sessionContext,
+        )
+        logger.info {
+            "[Executor] UserRun=${userRun.id} — Case ${case.id} created and message injected for user=${userRun.userId}"
+        }
+        return case.id
+    }
+
+    /** Resolved execution context for a single [ScheduledPromptUserRun]. */
+    private data class UserRunContext(
+        val namespaceId: UUID,
+        val caseTitle: String,
+        val actor: Actor,
+        val message: String,
+        val scheduledPromptId: UUID,
+        val sessionContext: Map<String, Any?>? = null,
+    )
 
     // -------------------------------------------------------------------------
     // Case completion
     // -------------------------------------------------------------------------
 
     /**
+     * Await the Case launch and close the UserRun based on the observed [CaseStatus].
+     * If no active runtime is found, the Case already reached a terminal status.
+     */
+    private suspend fun awaitLaunch(userRunId: UUID, caseId: UUID) {
+        val runtime = caseService.findActiveRuntime(caseId)
+        when {
+            runtime == null -> closeUserRun(userRunId, caseService.findById(caseId)?.status, caseId)
+            else -> monitorLaunch(userRunId, caseId, runtime)
+        }
+    }
+
+    /**
      * Await the Case launch and detect immediate failures.
      *
      * Collects [CaseRuntime.statusFlow] for up to [SchedulerProperties.launchTimeoutSeconds]
      * seconds. This is a **health check**, not a completion wait:
-     * - IDLE → agent finished its turn quickly → DONE
-     * - Timeout (still RUNNING) → Case is healthy but slow; monitoring released → TIMEOUT
-     * - ERROR/KILLED → immediate crash → FAILED
+     * - IDLE -> agent finished its turn quickly -> DONE
+     * - Timeout (still RUNNING) -> Case is healthy but slow; monitoring released -> TIMEOUT
+     * - ERROR/KILLED -> immediate crash -> FAILED
      *
-     * On timeout the UserRun is closed as [UserRunStatus.TIMEOUT] via a direct
-     * [ScheduledPromptUserRunRepository.markTerminal] call, bypassing [closeUserRun] and
-     * [toUserRunOutcome] (which only map [CaseStatus] values).
+     * ### StateFlow current-value guard
      *
-     * The Case continues running independently after this method returns.
-     * The lease on the UserRun is only relevant for crash recovery (instance down
-     * between Case creation and this point).
+     * [CaseRuntime.statusFlow] is a [kotlinx.coroutines.flow.StateFlow]. Calling `.first { predicate }`
+     * on a StateFlow always evaluates the **current value** first: if it satisfies the predicate,
+     * it is returned immediately without suspending.
+     *
+     * The status lifecycle in [CaseRuntime.run] is: `PENDING -> RUNNING -> IDLE/ERROR/KILLED`.
+     * `statusFlow` is initialised to `PENDING` at construction. The only status that can cause
+     * a false early return is **IDLE**: if a very fast turn completes before `monitorLaunch` is
+     * called, `statusFlow.value` is already `IDLE`, and `.first { it == IDLE || it.isTerminal() }`
+     * returns it immediately — which is actually the correct behaviour (the turn did finish).
      */
     private suspend fun monitorLaunch(
         userRunId: UUID,
@@ -369,33 +489,28 @@ class ScheduledPromptExecutor(
         runtime: CaseRuntime,
     ) {
         val timeoutMs = Duration.ofSeconds(properties.launchTimeoutSeconds).toMillis()
+        val currentStatus = runtime.statusFlow.value
 
-        val finalStatus = withTimeoutOrNull(timeoutMs) {
-            runtime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
+        val observedStatus = when {
+            currentStatus == CaseStatus.IDLE || currentStatus.isTerminal() -> currentStatus
+            else -> withTimeoutOrNull(timeoutMs) {
+                runtime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
+            }
         }
 
-        if (finalStatus != null && finalStatus.isTerminal()) {
-            // Immediate terminal status (ERROR/KILLED) — execution failed.
-            closeUserRun(userRunId, finalStatus, caseId)
-        } else if (finalStatus == CaseStatus.IDLE) {
-            // Agent finished its turn before the timeout — clean completion.
-            closeUserRun(userRunId, CaseStatus.IDLE, caseId)
-        } else {
-            // Timeout — Case is still RUNNING; monitoring released, Case continues independently.
-            userRunRepository.markTerminal(userRunId, UserRunStatus.TIMEOUT, Instant.now(clock))
-            logger.info {
-                "[Executor] UserRun=$userRunId timed out (caseId=$caseId still running) — monitoring released"
+        when {
+            observedStatus != null -> closeUserRun(userRunId, observedStatus, caseId)
+            else -> {
+                userRunRepository.markTerminal(userRunId, UserRunStatus.TIMEOUT, Instant.now(clock))
+                logger.info {
+                    "[Executor] UserRun=$userRunId timed out (caseId=$caseId still running) — monitoring released"
+                }
             }
         }
     }
 
     /**
      * Close a UserRun based on the final [CaseStatus].
-     *
-     * Maps [CaseStatus] to [UserRunStatus] via [toUserRunOutcome]:
-     * - IDLE or any non-error terminal → DONE
-     * - KILLED, ERROR → FAILED with diagnostic message
-     * - null (Case not found) → DONE (defensive, Case was likely cleaned up)
      */
     private fun closeUserRun(userRunId: UUID, caseStatus: CaseStatus?, caseId: UUID) {
         val now = Instant.now(clock)
@@ -407,51 +522,10 @@ class ScheduledPromptExecutor(
     }
 
     // -------------------------------------------------------------------------
-    // Completion check
-    // -------------------------------------------------------------------------
-
-    /**
-     * Transition the parent [ScheduledPromptRun] to DONE (or FAILED) once all
-     * UserRuns are settled.
-     *
-     * Fast-path: [ScheduledPromptUserRunRepository.hasAnyActive] exits immediately
-     * (EXISTS query, stops at first match) when work is still in flight.
-     * Only when no active UserRuns remain does it check for failures.
-     *
-     * Only inspects RUNNING Runs — a Run only reaches RUNNING after [materialize]
-     * completes, so the CLAIMED→RUNNING transition acts as the completion guard
-     * (a CLAIMED Run whose [materialize] has not yet finished is never prematurely
-     * evaluated). Orphaned CLAIMED Runs (crash before [materialize]) are swept to
-     * FAILED by [SchedulerScanner.recoverOrphanedClaimedRuns] and never reach this path.
-     * The Run is FAILED when at least one UserRun failed; DONE otherwise.
-     *
-     * ### Crash window
-     *
-     * If the instance crashes after the last [ScheduledPromptUserRunRepository.markTerminal]
-     * but before this method runs, the Run stays RUNNING forever — no subsequent UserRun
-     * closure will re-trigger this check. [SchedulerScanner.recoverOrphanedRunningRuns]
-     * handles this by re-evaluating the completion condition on every tick.
-     */
-    private fun checkCompletion(runId: UUID) {
-        val run = runRepository.findById(runId) ?: return
-        if (run.status != RunStatus.RUNNING && run.status != RunStatus.CLAIMED) return
-
-        if (userRunRepository.hasAnyActive(runId)) return
-
-        val finalStatus = if (userRunRepository.hasAnyFailed(runId)) RunStatus.FAILED else RunStatus.DONE
-        runRepository.updateStatus(runId, finalStatus, Instant.now(clock))
-        logger.info { "[Executor] Run=$runId → $finalStatus" }
-    }
-
-    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
-    private fun markFailed(
-        userRunId: UUID,
-        now: Instant,
-        error: String,
-    ) {
+    private fun markFailed(userRunId: UUID, now: Instant, error: String) {
         runCatching {
             userRunRepository.markTerminal(userRunId, UserRunStatus.FAILED, now, error)
         }.onFailure { e ->
@@ -460,10 +534,6 @@ class ScheduledPromptExecutor(
     }
 
     companion object : KLogging() {
-        /**
-         * Maps a [CaseStatus] (possibly null when the Case was already cleaned up)
-         * to the corresponding [UserRunStatus] and optional error message.
-         */
         private fun CaseStatus?.toUserRunOutcome(): Pair<UserRunStatus, String?> = when (this) {
             CaseStatus.KILLED, CaseStatus.ERROR ->
                 UserRunStatus.FAILED to "Case reached terminal status $this"

@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
@@ -14,9 +15,11 @@ import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -750,6 +753,625 @@ class CaseRuntimeSpec : StringSpec() {
             runtime.statusFlow.value shouldBe CaseStatus.KILLED
         }
 
+        // -------------------------------------------------------------------------
+        // Pre-flight: findUnresolvedQuestion — tested via observable runtime behaviour
+        // -------------------------------------------------------------------------
+
+        "pre-flight emits AgentSelectedEvent when a question has been answered and no AgentFinishedEvent follows" {
+            // Simulate the AwaitAnswer path: QuestionEvent was emitted, agent finished,
+            // THEN the user answered. No AgentFinishedEvent after the answer.
+            // Expected: pre-flight finds the question and emits AgentSelectedEvent for
+            // the original agent, causing runAgent to be called.
+            //
+            // IMPORTANT: timestamps must be explicit and strictly increasing.
+            // InMemoryCaseEventList re-sorts all events by timestamp on insertion, so
+            // the order in which events appear in the source list is irrelevant — only
+            // the timestamp determines their position. Without explicit timestamps every
+            // event gets Instant.now() and the sort order is undefined, which breaks
+            // findUnresolvedQuestion's subList-based OAuth guard.
+            val agentName = "qa-agent"
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val caseId = UUID.randomUUID()
+            val savedEvents = mutableListOf<CaseEvent>()
+            val runCalls = mutableListOf<String>()
+
+            // Chronological order: MessageEvent(t1) -> AgentSelectedEvent(t2) ->
+            //   AgentFinishedEvent(t3) -> QuestionEvent(t4) -> AnswerEvent(t5).
+            // No AgentFinishedEvent after AnswerEvent → pre-flight must fire.
+            val t1 = Instant.EPOCH.plusSeconds(1)
+            val t2 = Instant.EPOCH.plusSeconds(2)
+            val t3 = Instant.EPOCH.plusSeconds(3)
+            val t4 = Instant.EPOCH.plusSeconds(4)
+            val t5 = Instant.EPOCH.plusSeconds(5)
+
+            val questionEvent = QuestionEvent(
+                timestamp = t4,
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                agentName = agentName,
+                question = "What is your choice?",
+            )
+            // createAnswer() defaults timestamp to Instant.now(); override it to t5
+            // so the sort order is deterministic and AnswerEvent lands after QuestionEvent.
+            val answerEvent = questionEvent.createAnswer(
+                Actor("user-1", "User", ActorRole.USER),
+                "My answer",
+            ).copy(timestamp = t5)
+
+            val existingEvents = listOf(
+                MessageEvent(
+                    timestamp = t1,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = userMessage,
+                ),
+                AgentSelectedEvent(
+                    timestamp = t2,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                AgentFinishedEvent(
+                    timestamp = t3,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                questionEvent,
+                answerEvent,
+            )
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    runCalls += name
+                    // Push AgentFinishedEvent so the loop terminates cleanly.
+                    runtime.pushEvents(
+                        listOf(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = UUID.nameUUIDFromBytes(name.toByteArray()),
+                                agentName = name,
+                            ),
+                        ),
+                    )
+                },
+            )
+            runtime.pushEvents(existingEvents)
+
+            // run() is called as it would be when CaseServiceImpl.addMessage triggers it
+            // after the user posts an AnswerEvent.
+            runtime.run()
+
+            // runCalls proves runAgent was triggered (i.e. the AgentSelectedEvent from
+            // the pre-flight was stored and picked up by processNextStep).
+            runCalls shouldBe listOf(agentName)
+            // savedEvents must contain the AgentSelectedEvent emitted by the pre-flight
+            // (it passes through storeEvent, which appends to savedEvents).
+            savedEvents.filterIsInstance<AgentSelectedEvent>()
+                .any { it.agentName == agentName } shouldBe true
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "pre-flight does NOT wake up agent when answer is followed by AgentFinishedEvent (OAuth guard)" {
+            // Simulate the OAuth path: agent was running INSIDE its run when the answer
+            // arrived, finished its turn normally, so AgentFinishedEvent comes AFTER the
+            // answer. The pre-flight must NOT emit another AgentSelectedEvent.
+            //
+            // IMPORTANT: timestamps must be explicit and strictly increasing.
+            // InMemoryCaseEventList re-sorts all events by timestamp on insertion, so
+            // the order in which events appear in the source list is irrelevant — only
+            // the timestamp determines their position. Without explicit timestamps every
+            // event gets Instant.now() and the sort order is undefined, which would make
+            // this test pass for the wrong reason (AgentFinishedEvent landing before
+            // AnswerEvent instead of after it).
+            val agentName = "oauth-agent"
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val caseId = UUID.randomUUID()
+            val runCalls = mutableListOf<String>()
+
+            // Chronological order: MessageEvent(t1) -> AgentSelectedEvent(t2) ->
+            //   QuestionEvent(t3) -> AnswerEvent(t4) -> AgentFinishedEvent(t5).
+            // AgentFinishedEvent is AFTER AnswerEvent → OAuth guard must suppress wake-up.
+            val t1 = Instant.EPOCH.plusSeconds(1)
+            val t2 = Instant.EPOCH.plusSeconds(2)
+            val t3 = Instant.EPOCH.plusSeconds(3)
+            val t4 = Instant.EPOCH.plusSeconds(4)
+            val t5 = Instant.EPOCH.plusSeconds(5)
+
+            val questionEvent = QuestionEvent(
+                timestamp = t3,
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                agentName = agentName,
+                question = "Authorize OAuth?",
+            )
+            // createAnswer() defaults timestamp to Instant.now(); override it to t4
+            // so the sort order is deterministic and AnswerEvent lands before AgentFinishedEvent.
+            val answerEvent = questionEvent.createAnswer(
+                Actor("user-1", "User", ActorRole.USER),
+                "yes",
+            ).copy(timestamp = t4)
+
+            // OAuth order: MessageEvent -> AgentSelectedEvent -> QuestionEvent ->
+            //   AnswerEvent -> AgentFinishedEvent
+            // (agent finished AFTER the answer because it was already running)
+            val existingEvents = listOf(
+                MessageEvent(
+                    timestamp = t1,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = userMessage,
+                ),
+                AgentSelectedEvent(
+                    timestamp = t2,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                questionEvent,
+                answerEvent,
+                AgentFinishedEvent(
+                    timestamp = t5,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+            )
+
+            val runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { it },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ -> runCalls += name },
+            )
+            runtime.pushEvents(existingEvents)
+
+            runtime.run()
+
+            // The pre-flight must NOT have fired: AgentFinishedEvent is after AnswerEvent,
+            // so the OAuth guard in findUnresolvedQuestion returns null.
+            runCalls shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "pre-flight does NOT wake up agent when question has no answer yet" {
+            // QuestionEvent present but no AnswerEvent: the user has not replied yet.
+            // The pre-flight must stay silent.
+            //
+            // IMPORTANT: timestamps must be explicit and strictly increasing.
+            // InMemoryCaseEventList re-sorts all events by timestamp on insertion, so
+            // the order in which events appear in the source list is irrelevant — only
+            // the timestamp determines their position.
+            val agentName = "waiting-agent"
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val caseId = UUID.randomUUID()
+            val runCalls = mutableListOf<String>()
+
+            // Chronological order: MessageEvent(t1) -> AgentFinishedEvent(t2) -> QuestionEvent(t3).
+            // No AnswerEvent → findUnresolvedQuestion returns null → no wake-up.
+            val t1 = Instant.EPOCH.plusSeconds(1)
+            val t2 = Instant.EPOCH.plusSeconds(2)
+            val t3 = Instant.EPOCH.plusSeconds(3)
+
+            val questionEvent = QuestionEvent(
+                timestamp = t3,
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                agentName = agentName,
+                question = "Still waiting?",
+            )
+            val existingEvents = listOf(
+                MessageEvent(
+                    timestamp = t1,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = userMessage,
+                ),
+                AgentFinishedEvent(
+                    timestamp = t2,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                questionEvent,
+                // No AnswerEvent
+            )
+
+            val runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { it },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ -> runCalls += name },
+            )
+            runtime.pushEvents(existingEvents)
+
+            runtime.run()
+
+            runCalls shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        // -------------------------------------------------------------------------
+        // Pre-flight: recipient check on addressed QuestionEvent
+        // -------------------------------------------------------------------------
+
+        "pre-flight fires when addressed question is answered by the right user" {
+            // QuestionEvent.userId = aliceId. Alice answers. Pre-flight must wake the agent.
+            //
+            // IMPORTANT: timestamps must be explicit and strictly increasing.
+            // InMemoryCaseEventList re-sorts all events by timestamp on insertion — only
+            // the timestamp determines their position, not the order in the source list.
+            // createAnswer() forces Instant.now(), so always .copy(timestamp = tN).
+            val agentName = "addressed-agent"
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val caseId = UUID.randomUUID()
+            val aliceId = UUID.randomUUID()
+            val runCalls = mutableListOf<String>()
+
+            val t1 = Instant.EPOCH.plusSeconds(1)
+            val t2 = Instant.EPOCH.plusSeconds(2)
+            val t3 = Instant.EPOCH.plusSeconds(3)
+            val t4 = Instant.EPOCH.plusSeconds(4)
+            val t5 = Instant.EPOCH.plusSeconds(5)
+
+            // QuestionEvent is addressed to Alice (userId = aliceId).
+            val questionEvent = QuestionEvent(
+                timestamp = t4,
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                agentName = agentName,
+                question = "Alice, which option?",
+                userId = aliceId,
+            )
+            // Alice answers: actor.id must be aliceId.toString() so UUID.fromString succeeds.
+            val aliceActor = Actor(id = aliceId.toString(), displayName = "Alice", role = ActorRole.USER)
+            val answerEvent = questionEvent.createAnswer(aliceActor, "Option A").copy(timestamp = t5)
+
+            val existingEvents = listOf(
+                MessageEvent(
+                    timestamp = t1,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = userMessage,
+                ),
+                AgentSelectedEvent(
+                    timestamp = t2,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                AgentFinishedEvent(
+                    timestamp = t3,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                questionEvent,
+                answerEvent,
+            )
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { it },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    runCalls += name
+                    runtime.pushEvents(
+                        listOf(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = UUID.nameUUIDFromBytes(name.toByteArray()),
+                                agentName = name,
+                            ),
+                        ),
+                    )
+                },
+            )
+            runtime.pushEvents(existingEvents)
+            runtime.run()
+
+            runCalls shouldBe listOf(agentName)
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "pre-flight does NOT fire when addressed question is answered by a different user" {
+            // QuestionEvent.userId = aliceId. Bob answers. Pre-flight must stay silent.
+            //
+            // IMPORTANT: timestamps must be explicit and strictly increasing.
+            val agentName = "addressed-agent-2"
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val caseId = UUID.randomUUID()
+            val aliceId = UUID.randomUUID()
+            val bobId = UUID.randomUUID()
+            val runCalls = mutableListOf<String>()
+
+            val t1 = Instant.EPOCH.plusSeconds(1)
+            val t2 = Instant.EPOCH.plusSeconds(2)
+            val t3 = Instant.EPOCH.plusSeconds(3)
+            val t4 = Instant.EPOCH.plusSeconds(4)
+            val t5 = Instant.EPOCH.plusSeconds(5)
+
+            val questionEvent = QuestionEvent(
+                timestamp = t4,
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                agentName = agentName,
+                question = "Alice, which option?",
+                userId = aliceId,
+            )
+            // Bob answers — actor.id = bobId, which != aliceId.
+            val bobActor = Actor(id = bobId.toString(), displayName = "Bob", role = ActorRole.USER)
+            val bobAnswerEvent = questionEvent.createAnswer(bobActor, "Option B").copy(timestamp = t5)
+
+            val existingEvents = listOf(
+                MessageEvent(
+                    timestamp = t1,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = userMessage,
+                ),
+                AgentSelectedEvent(
+                    timestamp = t2,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                AgentFinishedEvent(
+                    timestamp = t3,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                questionEvent,
+                bobAnswerEvent,
+            )
+
+            val runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { it },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ -> runCalls += name },
+            )
+            runtime.pushEvents(existingEvents)
+            runtime.run()
+
+            // Bob's answer does not qualify — Alice has not answered yet.
+            runCalls shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "pre-flight fires when wrong user answers first then right user answers (anti-deadlock regression)" {
+            // Anti-regression for the permanent-deadlock bug: if the recipient check were
+            // applied AFTER indexOfFirst (instead of inside its predicate), Bob's answer
+            // would anchor the search forever and Alice's subsequent answer would never be
+            // found — the agent would be stuck permanently.
+            //
+            // QuestionEvent.userId = aliceId.
+            // Bob answers first (t5), Alice answers second (t6).
+            // Expected: pre-flight finds Alice's answer as the first LEGITIMATE response
+            // and wakes the agent.
+            //
+            // IMPORTANT: timestamps must be explicit and strictly increasing.
+            val agentName = "deadlock-guard-agent"
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val caseId = UUID.randomUUID()
+            val aliceId = UUID.randomUUID()
+            val bobId = UUID.randomUUID()
+            val runCalls = mutableListOf<String>()
+
+            val t1 = Instant.EPOCH.plusSeconds(1)
+            val t2 = Instant.EPOCH.plusSeconds(2)
+            val t3 = Instant.EPOCH.plusSeconds(3)
+            val t4 = Instant.EPOCH.plusSeconds(4)
+            val t5 = Instant.EPOCH.plusSeconds(5) // Bob answers first
+            val t6 = Instant.EPOCH.plusSeconds(6) // Alice answers second
+
+            val questionEvent = QuestionEvent(
+                timestamp = t4,
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                agentName = agentName,
+                question = "Alice, confirm?",
+                userId = aliceId,
+            )
+            val bobActor = Actor(id = bobId.toString(), displayName = "Bob", role = ActorRole.USER)
+            val aliceActor = Actor(id = aliceId.toString(), displayName = "Alice", role = ActorRole.USER)
+            val bobAnswerEvent = questionEvent.createAnswer(bobActor, "I'll answer for Alice").copy(timestamp = t5)
+            val aliceAnswerEvent = questionEvent.createAnswer(aliceActor, "Confirmed").copy(timestamp = t6)
+
+            val existingEvents = listOf(
+                MessageEvent(
+                    timestamp = t1,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = userMessage,
+                ),
+                AgentSelectedEvent(
+                    timestamp = t2,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                AgentFinishedEvent(
+                    timestamp = t3,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                questionEvent,
+                bobAnswerEvent,
+                aliceAnswerEvent,
+            )
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { it },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    runCalls += name
+                    runtime.pushEvents(
+                        listOf(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = UUID.nameUUIDFromBytes(name.toByteArray()),
+                                agentName = name,
+                            ),
+                        ),
+                    )
+                },
+            )
+            runtime.pushEvents(existingEvents)
+            runtime.run()
+
+            // Alice's answer qualifies — agent must have been woken up despite Bob
+            // having answered first.
+            runCalls shouldBe listOf(agentName)
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "pre-flight fires when question has no userId and any user answers (non-regression)" {
+            // QuestionEvent.userId = null (unaddressed). Any respondent qualifies.
+            // This is the existing behaviour — must not regress.
+            //
+            // IMPORTANT: timestamps must be explicit and strictly increasing.
+            val agentName = "open-question-agent"
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val caseId = UUID.randomUUID()
+            val someUserId = UUID.randomUUID()
+            val runCalls = mutableListOf<String>()
+
+            val t1 = Instant.EPOCH.plusSeconds(1)
+            val t2 = Instant.EPOCH.plusSeconds(2)
+            val t3 = Instant.EPOCH.plusSeconds(3)
+            val t4 = Instant.EPOCH.plusSeconds(4)
+            val t5 = Instant.EPOCH.plusSeconds(5)
+
+            // userId = null → unaddressed question.
+            val questionEvent = QuestionEvent(
+                timestamp = t4,
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                agentName = agentName,
+                question = "Anyone can answer this",
+                userId = null,
+            )
+            val someActor = Actor(id = someUserId.toString(), displayName = "Someone", role = ActorRole.USER)
+            val answerEvent = questionEvent.createAnswer(someActor, "Here").copy(timestamp = t5)
+
+            val existingEvents = listOf(
+                MessageEvent(
+                    timestamp = t1,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = userActor,
+                    content = userMessage,
+                ),
+                AgentSelectedEvent(
+                    timestamp = t2,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                AgentFinishedEvent(
+                    timestamp = t3,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                ),
+                questionEvent,
+                answerEvent,
+            )
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { it },
+                selectAgent = { _, _ -> listOf(agentSelectedEvent(caseId, agentName)) },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    runCalls += name
+                    runtime.pushEvents(
+                        listOf(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = UUID.nameUUIDFromBytes(name.toByteArray()),
+                                agentName = name,
+                            ),
+                        ),
+                    )
+                },
+            )
+            runtime.pushEvents(existingEvents)
+            runtime.run()
+
+            // Unaddressed question: any respondent qualifies.
+            runCalls shouldBe listOf(agentName)
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
         "command queue is cleared on error (max iterations)" {
             val loopingAgent = mockk<Agent> {
                 every { metadata } returns EntityMetadata(id = UUID.randomUUID())
@@ -764,6 +1386,332 @@ class CaseRuntimeSpec : StringSpec() {
 
             runtime.statusFlow.value shouldBe CaseStatus.ERROR
         }
+
+        // -------------------------------------------------------------------------
+        // Anti-redirect-loop guard
+        // -------------------------------------------------------------------------
+
+        "redirect loop guard triggers at MAX_SAME_AGENT_SELECTIONS_PER_TURN" {
+            // Build a history with 1 user MessageEvent followed by exactly
+            // MAX_SAME_AGENT_SELECTIONS_PER_TURN AgentSelectedEvents for "AgentA".
+            // The guard must fire: WarnEvent + AgentFinishedEvent emitted, runAgent never called.
+            val agentName = "AgentA"
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val userMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = userMessage,
+            )
+            val selections = (1..CaseRuntime.MAX_SAME_AGENT_SELECTIONS_PER_TURN).map {
+                AgentSelectedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                )
+            }
+            val inputEvents: List<CaseEvent> = listOf(userMsg) + selections
+
+            lateinit var runtime: CaseRuntime
+            val runAgentCalled = mutableListOf<String>()
+            val isAgentAuthorizedCalled = mutableListOf<String>()
+
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = java.time.Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = { name, _ -> isAgentAuthorizedCalled.add(name); true },
+                runAgent = { name, _, _, _, _ -> runAgentCalled.add(name) },
+                inputEvents = inputEvents,
+            )
+
+            runtime.run()
+
+            // Guard must have fired: WarnEvent mentioning agentName
+            val warns = savedEvents.filterIsInstance<WarnEvent>()
+            warns.size shouldBe 1
+            warns[0].message shouldContain agentName
+            warns[0].message shouldContain "could not complete the task"
+
+            // AgentFinishedEvent must have been emitted for durability
+            val finished = savedEvents.filterIsInstance<AgentFinishedEvent>()
+            finished.size shouldBe 1
+            finished[0].agentName shouldBe agentName
+
+            // runAgent must never have been called
+            runAgentCalled shouldBe emptyList()
+
+            // isAgentAuthorized must never have been called (guard fires before authorization)
+            isAgentAuthorizedCalled shouldBe emptyList()
+
+            // Status must be IDLE, not ERROR
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "redirect loop guard does not trigger below MAX_SAME_AGENT_SELECTIONS_PER_TURN" {
+            // MAX_SAME_AGENT_SELECTIONS_PER_TURN - 1 occurrences: runAgent must be called normally.
+            val agentName = "AgentA"
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val userMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = userMessage,
+            )
+            // MAX - 1 prior selections (the guard counts the current one too, so
+            // the slice will have MAX - 1 entries when processNextStep runs, which is
+            // strictly below the threshold).
+            val priorSelections = (1 until CaseRuntime.MAX_SAME_AGENT_SELECTIONS_PER_TURN).map {
+                AgentSelectedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                )
+            }
+            val inputEvents: List<CaseEvent> = listOf(userMsg) + priorSelections
+
+            val runAgentCalled = mutableListOf<String>()
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = java.time.Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = { _, _ -> true },
+                runAgent = { name, _, _, _, _ ->
+                    runAgentCalled.add(name)
+                    // Push AgentFinishedEvent so the loop exits cleanly
+                    runtime.pushEvents(listOf(
+                        AgentFinishedEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            agentId = agentId,
+                            agentName = agentName,
+                        ),
+                    ))
+                },
+                inputEvents = inputEvents,
+            )
+
+            runtime.run()
+
+            // runAgent must have been called (no guard triggered)
+            runAgentCalled shouldBe listOf(agentName)
+
+            // No WarnEvent from the guard
+            savedEvents.filterIsInstance<WarnEvent>() shouldBe emptyList()
+
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "redirect loop guard does not produce cross-turn false positives" {
+            // MAX_SAME_AGENT_SELECTIONS_PER_TURN prior selections of AgentA in turn 1,
+            // then a new user MessageEvent, then 1 AgentSelectedEvent for AgentA in turn 2.
+            // The guard must NOT fire in turn 2 because the counter is scoped to the current turn.
+            val agentName = "AgentA"
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val firstUserMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = userMessage,
+            )
+            val previousTurnSelections = (1..CaseRuntime.MAX_SAME_AGENT_SELECTIONS_PER_TURN).map {
+                AgentSelectedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                )
+            }
+            val secondUserMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = listOf(MessageContent.Text("second turn")),
+            )
+            // One selection in the new turn
+            val newTurnSelection = AgentSelectedEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agentId,
+                agentName = agentName,
+            )
+            val inputEvents: List<CaseEvent> =
+                listOf(firstUserMsg) + previousTurnSelections + listOf(secondUserMsg, newTurnSelection)
+
+            val runAgentCalled = mutableListOf<String>()
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = java.time.Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = { _, _ -> true },
+                runAgent = { name, _, _, _, _ ->
+                    runAgentCalled.add(name)
+                    runtime.pushEvents(listOf(
+                        AgentFinishedEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            agentId = agentId,
+                            agentName = agentName,
+                        ),
+                    ))
+                },
+                inputEvents = inputEvents,
+            )
+
+            runtime.run()
+
+            // No guard triggered: only 1 selection in the current turn
+            runAgentCalled shouldBe listOf(agentName)
+            savedEvents.filterIsInstance<WarnEvent>() shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "redirect loop guard counts per agent name, not globally" {
+            // MAX_SAME_AGENT_SELECTIONS_PER_TURN selections of AgentA interleaved with
+            // fewer-than-threshold selections of AgentB. Guard must fire for AgentA (the
+            // last event in the scan), not for AgentB.
+            val agentA = "AgentA"
+            val agentB = "AgentB"
+            val caseId = UUID.randomUUID()
+            val agentAId = UUID.nameUUIDFromBytes(agentA.toByteArray())
+            val agentBId = UUID.nameUUIDFromBytes(agentB.toByteArray())
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val userMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = userMessage,
+            )
+
+            // Build interleaved list: A, B, A, B, ..., A (AgentA appears MAX times, AgentB fewer)
+            val maxA = CaseRuntime.MAX_SAME_AGENT_SELECTIONS_PER_TURN
+            val interleaved = mutableListOf<CaseEvent>()
+            for (i in 0 until maxA) {
+                interleaved.add(AgentSelectedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentAId,
+                    agentName = agentA,
+                ))
+                if (i < maxA - 1) { // AgentB appears maxA - 1 times, safely below threshold
+                    interleaved.add(AgentSelectedEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = agentBId,
+                        agentName = agentB,
+                    ))
+                }
+            }
+            val inputEvents: List<CaseEvent> = listOf(userMsg) + interleaved
+
+            val runAgentCalled = mutableListOf<String>()
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = java.time.Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = { _, _ -> true },
+                runAgent = { name, _, _, _, _ -> runAgentCalled.add(name) },
+                inputEvents = inputEvents,
+            )
+
+            runtime.run()
+
+            // Guard must have fired for AgentA
+            val warns = savedEvents.filterIsInstance<WarnEvent>()
+            warns.size shouldBe 1
+            warns[0].message shouldContain agentA
+
+            // runAgent never called
+            runAgentCalled shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "redirect loop guard: cut is durable without a new user message" {
+            // After the guard fires and emits AgentFinishedEvent, re-running the same
+            // runtime without a new user message must not call runAgent.
+            // The newly emitted AgentFinishedEvent is now the last event; processNextStep
+            // finds it first and returns AGENT_FINISHED without launching the agent.
+            val agentName = "AgentA"
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val savedEvents = mutableListOf<CaseEvent>()
+
+            val userMsg = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = userActor,
+                content = userMessage,
+            )
+            val selections = (1..CaseRuntime.MAX_SAME_AGENT_SELECTIONS_PER_TURN).map {
+                AgentSelectedEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = agentName,
+                )
+            }
+            val inputEvents: List<CaseEvent> = listOf(userMsg) + selections
+
+            val runAgentCalled = mutableListOf<String>()
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = java.time.Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = { _, _ -> true },
+                runAgent = { name, _, _, _, _ -> runAgentCalled.add(name) },
+                inputEvents = inputEvents,
+            )
+
+            // First run: guard fires, emits WarnEvent + AgentFinishedEvent
+            runtime.run()
+            runAgentCalled shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+
+            // Second run without a new user message: the AgentFinishedEvent is now last,
+            // processNextStep returns AGENT_FINISHED immediately — runAgent still not called.
+            runtime.run()
+            runAgentCalled shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        // -------------------------------------------------------------------------
+        // Rehydration from AgentRunningEvent
+        // -------------------------------------------------------------------------
 
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {
             val agentName = "gemini-flash"

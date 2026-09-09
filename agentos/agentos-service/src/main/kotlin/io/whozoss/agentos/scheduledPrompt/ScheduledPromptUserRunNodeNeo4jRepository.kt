@@ -24,8 +24,9 @@ interface ScheduledPromptUserRunNodeNeo4jRepository : Neo4jRepository<ScheduledP
      * (access control), but scheduled prompts target users who are *deployed to* the
      * agent — being an admin is not the same as being a target audience.
      *
-     * Both paths are resolved via OPTIONAL MATCH and collected into a single set.
-     * Then MERGEs a PENDING [ScheduledPromptUserRunNode] for each distinct eligible user.
+     * Both paths are resolved via a `CALL { UNION }` subquery that traverses the graph
+     * starting from the agent — no full User scan. `UNION` deduplicates users found via
+     * both paths. Then MERGEs a PENDING [ScheduledPromptUserRunNode] for each distinct eligible user.
      *
      * Safe to replay on crash — MERGE is idempotent on the composite UNIQUE `(runId, userId)` constraint.
      *
@@ -37,20 +38,21 @@ interface ScheduledPromptUserRunNodeNeo4jRepository : Neo4jRepository<ScheduledP
           WHERE NOT COALESCE(a.removed, false) AND a.enabled = true
         MATCH (ns:Namespace {id: $namespaceId})
           WHERE NOT COALESCE(ns.removed, false)
-        MATCH (u:User)
-          WHERE NOT COALESCE(u.removed, false)
-            AND (
-                EXISTS {
-                    MATCH (u)-[:MEMBER|ADMIN]->(g:UserGroup)-[:BELONGS_TO]->(ns)
-                    WHERE NOT COALESCE(g.removed, false)
-                    MATCH (a)-[:DEPLOYED_TO]->(g)
-                }
-                OR (
-                    EXISTS { MATCH (a)-[:DEPLOYED_TO]->(ns) }
-                    AND EXISTS { MATCH (u)-[:MEMBER|ADMIN]->(ns) }
-                )
-            )
-        WITH DISTINCT u.id AS userId
+        CALL {
+            WITH a, ns
+            MATCH (a)-[:DEPLOYED_TO]->(g:UserGroup)-[:BELONGS_TO]->(ns)
+              WHERE NOT COALESCE(g.removed, false)
+            MATCH (u:User)-[:MEMBER|ADMIN]->(g)
+              WHERE NOT COALESCE(u.removed, false)
+            RETURN u.id AS userId
+            UNION
+            WITH a, ns
+            MATCH (a)-[:DEPLOYED_TO]->(ns)
+            MATCH (u:User)-[:MEMBER|ADMIN]->(ns)
+              WHERE NOT COALESCE(u.removed, false)
+            RETURN u.id AS userId
+        }
+        WITH DISTINCT userId
         MERGE (ur:ScheduledPromptUserRun {runId: $runId, userId: userId})
         ON CREATE SET
             ur.id       = randomUUID(),

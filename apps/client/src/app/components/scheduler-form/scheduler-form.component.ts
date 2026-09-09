@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core'
+import { Component, inject, OnInit, ChangeDetectionStrategy } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog'
@@ -33,6 +33,7 @@ export interface SchedulerFormData {
     MatButtonToggleModule,
   ],
   templateUrl: './scheduler-form.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrls: ['./scheduler-form.component.scss'],
 })
 export class SchedulerFormComponent implements OnInit {

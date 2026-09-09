@@ -553,6 +553,52 @@ app.use((err: any, req: express.Request, res: express.Response, _: express.NextF
   }
 })
 
+/**
+ * Auto-close threads that have been paused (not closedByUser) for more than 7 days.
+ * Runs once at server startup, best-effort: errors are logged but never block startup.
+ */
+async function autoCloseStaleThreads(): Promise<void> {
+  const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+  const cutoff = new Date(Date.now() - STALE_THRESHOLD_MS).toISOString()
+
+  try {
+    // At startup there is no HTTP request, so we resolve the username directly.
+    // In --auth mode we cannot determine the user here, so we skip auto-close.
+    if (codayOptions.auth) {
+      debugLog('CLEANUP', 'autoCloseStaleThreads: skipped in --auth mode (no server-side user identity at startup)')
+      return
+    }
+    const osUsername = resolveUsername({}, false)
+
+    const projects = projectService.listProjects()
+    let totalClosed = 0
+
+    for (const project of projects) {
+      try {
+        const threads = await threadService.listThreads(project.name, osUsername)
+        const stale = threads.filter((t) => !t.closedByUser && t.modifiedDate < cutoff)
+
+        for (const t of stale) {
+          try {
+            await threadService.updateThread(project.name, t.id, { closedByUser: true })
+            totalClosed++
+          } catch (err) {
+            console.error(`autoClose: failed to close thread ${t.id} in project ${project.name}:`, err)
+          }
+        }
+      } catch (err) {
+        console.error(`autoClose: failed to process project ${project.name}:`, err)
+      }
+    }
+
+    if (totalClosed > 0) {
+      console.log(`✅ Auto-close: ${totalClosed} thread(s) paused depuis plus d'1 semaine marqués comme done`)
+    }
+  } catch (err) {
+    console.error('autoCloseStaleThreads: unexpected error (non-fatal):', err)
+  }
+}
+
 // Use PORT_PROMISE to listen on the available port
 PORT_PROMISE.then(async (PORT) => {
   // Set baseUrl if not already configured
@@ -571,6 +617,9 @@ PORT_PROMISE.then(async (PORT) => {
   // (up to ~230 MB) never block server startup or other services.
   // The proxy will return errors until AgentOS is ready, which is acceptable.
   provisionAgentos(PORT).catch((err) => debugLog('AGENTOS', '[PROVISION] Unhandled error:', err))
+
+  // Auto-close stale threads — fire-and-forget, non-blocking
+  autoCloseStaleThreads().catch((err) => console.error('autoCloseStaleThreads: unhandled error:', err))
 
   // Start thread cleanup service after server is running
   try {

@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.micrometer.observation.ObservationRegistry
+import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.chat.ChatModelFactory
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import org.springframework.ai.anthropic.AnthropicChatModel
@@ -12,7 +13,7 @@ import org.springframework.ai.openai.OpenAiChatModel
 
 class ChatModelFactoryUnitSpec : StringSpec({
 
-    val factory = ChatModelFactory(ObservationRegistry.NOOP)
+    val factory = ChatModelFactory(ObservationRegistry.NOOP, AnthropicProperties(promptCachingEnabled = true))
 
     "createChatModel should create OpenAI chat model" {
         val model = factory.createChatModel(

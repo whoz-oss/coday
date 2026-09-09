@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core'
 import { Router } from '@angular/router'
+import { MatCheckboxModule } from '@angular/material/checkbox'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatTooltipModule } from '@angular/material/tooltip'
@@ -14,7 +15,7 @@ export interface TaskThreadWithProject extends TaskThread {
   selector: 'app-task-card',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatIconModule, MatButtonModule, MatTooltipModule],
+  imports: [MatCheckboxModule, MatIconModule, MatButtonModule, MatTooltipModule],
   templateUrl: './task-card.component.html',
   styleUrl: './task-card.component.scss',
 })
@@ -24,6 +25,10 @@ export class TaskCardComponent {
   readonly showProject = input<boolean>(false)
   /** When true, clicking the card emits previewRequested instead of navigating. */
   readonly previewMode = input<boolean>(false)
+  /** When true, shows a selection checkbox on the card (used for batch operations). */
+  readonly selectable = input<boolean>(false)
+  /** Whether the card is currently selected (controlled externally). */
+  readonly selected = input<boolean>(false)
   readonly stopRequested = output<string>()
   readonly deleteRequested = output<string>()
   readonly starToggled = output<string>()
@@ -31,6 +36,7 @@ export class TaskCardComponent {
   readonly markDoneRequested = output<string>()
   readonly markActiveRequested = output<string>()
   readonly previewRequested = output<string>()
+  readonly selectionChanged = output<{ id: string; selected: boolean }>()
 
   private readonly router = inject(Router)
   private readonly projectState = inject(ProjectStateService)

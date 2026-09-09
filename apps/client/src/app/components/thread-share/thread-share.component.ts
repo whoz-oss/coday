@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output, signal } from '@angular/core'
+import { Component, EventEmitter, Input, Output, signal, ChangeDetectionStrategy } from '@angular/core'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatTooltipModule } from '@angular/material/tooltip'
@@ -18,6 +18,7 @@ import { UserAutocompleteComponent } from '../user-autocomplete/user-autocomplet
   standalone: true,
   imports: [MatIconModule, MatButtonModule, MatTooltipModule, UserAutocompleteComponent],
   templateUrl: './thread-share.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './thread-share.component.scss',
 })
 export class ThreadShareComponent {

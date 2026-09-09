@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core'
+import { Component, OnInit, inject, ChangeDetectionStrategy } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
 
 export const OAUTH_CALLBACK_STORAGE_KEY = 'coday_oauth_callback'
@@ -6,6 +6,7 @@ export const OAUTH_CALLBACK_STORAGE_KEY = 'coday_oauth_callback'
 @Component({
   selector: 'app-oauth-callback',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `<p>{{ message }}</p>`,
 })
 export class OAuthCallbackComponent implements OnInit {

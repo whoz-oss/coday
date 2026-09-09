@@ -1,3 +1,431 @@
+## 1.1.4 (2026-09-08)
+
+### 🩹 Fixes
+
+- bump bundled version to 1.1.3 ([#1316](https://github.com/whoz-oss/coday/pull/1316))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 1.1.3 (2026-09-08)
+
+### 🩹 Fixes
+
+- #1311 add uniqueness constraint on Credential (userId, authSettingId) ([#1312](https://github.com/whoz-oss/coday/pull/1312), [#1311](https://github.com/whoz-oss/coday/issues/1311))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 1.1.2 (2026-09-08)
+
+### 🩹 Fixes
+
+- #1310 MCP HTTP root endpoint unreachable due to forced SDK default ([#1313](https://github.com/whoz-oss/coday/pull/1313), [#1310](https://github.com/whoz-oss/coday/issues/1310))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 1.1.1 (2026-09-08)
+
+### 🩹 Fixes
+
+- **agentos:** return tool failures to the llm instead of aborting the run ([#1308](https://github.com/whoz-oss/coday/pull/1308))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 1.1.0 (2026-09-08)
+
+### 🚀 Features
+
+- wz-30464 - fix migration flag ([#1306](https://github.com/whoz-oss/coday/pull/1306))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+# 1.0.0 (2026-09-08)
+
+### 🚀 Features
+
+- ⚠️  wz-33132 - fix bugs found in integration ([#1302](https://github.com/whoz-oss/coday/pull/1302))
+
+### 🩹 Fixes
+
+- move legacy H1 changelog entries to docs to unblock 1.0.0 release ([8c295c76](https://github.com/whoz-oss/coday/commit/8c295c76))
+- move legacy H1 changelog entries to docs to unblock 1.0.0 release ([#1307](https://github.com/whoz-oss/coday/pull/1307))
+
+### ⚠️  Breaking Changes
+
+- wz-33132 - fix bugs found in integration  ([#1302](https://github.com/whoz-oss/coday/pull/1302))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.251.2 (2026-09-08)
+
+### 🚀 Features
+
+- ⚠️  **agentos:** breaking change - remove date on case title of scheduled cases ([#1304](https://github.com/whoz-oss/coday/pull/1304))
+
+### ⚠️  Breaking Changes
+
+- **agentos:** breaking change - remove date on case title of scheduled cases  ([#1304](https://github.com/whoz-oss/coday/pull/1304))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.251.1 (2026-09-07)
+
+### 🩹 Fixes
+
+- bump bundled agentos version to incorporate anthropic cache option ([#1288](https://github.com/whoz-oss/coday/pull/1288))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.251.0 (2026-09-07)
+
+### 🚀 Features
+
+- enable Anthropic prompt caching (CONVERSATION_HISTORY strategy) ([#1287](https://github.com/whoz-oss/coday/pull/1287))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.250.1 (2026-09-07)
+
+### 🩹 Fixes
+
+- correct context gauge glass color in dark themes ([#1284](https://github.com/whoz-oss/coday/pull/1284))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 0.250.0 (2026-09-03)
+
+### 🚀 Features
+
+- #34228 add WhatsNext tool to REDIRECT integration ([#1270](https://github.com/whoz-oss/coday/pull/1270), [#34228](https://github.com/whoz-oss/coday/issues/34228))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.19 (2026-09-03)
+
+### 🩹 Fixes
+
+- **release:** restore minor bump for feat commits after nx 23 migration ([ec697413](https://github.com/whoz-oss/coday/commit/ec697413))
+- **release:** restore minor bump for feat commits after nx 23 migration ([#1279](https://github.com/whoz-oss/coday/pull/1279), [#1278](https://github.com/whoz-oss/coday/issues/1278))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.18 (2026-09-03)
+
+### 🩹 Fixes
+
+- authSettingName missing from IntegrationConfig YAML export and filesystem load ([#1267](https://github.com/whoz-oss/coday/pull/1267))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.17 (2026-09-02)
+
+### 🚀 Features
+
+- wz-30464: fix agentos-ui for prompt translations ([#1276](https://github.com/whoz-oss/coday/pull/1276))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.249.16 (2026-09-02)
+
+### 🚀 Features
+
+- wz-30464: prompt translations ([#1253](https://github.com/whoz-oss/coday/pull/1253))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- vincent.audibert
+
+## 0.249.15 (2026-09-02)
+
+### 🚀 Features
+
+- wz-32132: read cases tracking ([#1260](https://github.com/whoz-oss/coday/pull/1260))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.249.14 (2026-09-02)
+
+### 🚀 Features
+
+- #1235 Add queryUser tool and resume agents after answers ([#1235](https://github.com/whoz-oss/coday/issues/1235))
+- #1236 Extract QuestionEvent prompt rendering helper ([#1236](https://github.com/whoz-oss/coday/issues/1236))
+- #1235 Add queryUser tool and resume agents after answers ([#1236](https://github.com/whoz-oss/coday/pull/1236), [#1235](https://github.com/whoz-oss/coday/issues/1235))
+
+### 🩹 Fixes
+
+- #1235 disable queryUser tool by default (review VA) ([#1235](https://github.com/whoz-oss/coday/issues/1235))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.249.13 (2026-09-02)
+
+### 🚀 Features
+
+- wz-34012: identify scheduler that initiated a case ([#1254](https://github.com/whoz-oss/coday/pull/1254))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.249.12 (2026-09-01)
+
+### 🩹 Fixes
+
+- kill AgentOS child process on Node.js unclean exit to prevent Neo4j store_lock orphan ([#1266](https://github.com/whoz-oss/coday/pull/1266))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.11 (2026-09-01)
+
+### 🩹 Fixes
+
+- discard stale MCP OAuth client registration when tokens are absent ([#1265](https://github.com/whoz-oss/coday/pull/1265))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.10 (2026-09-01)
+
+### 🩹 Fixes
+
+- avoid openapi gen port collision ([#1264](https://github.com/whoz-oss/coday/pull/1264))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.9 (2026-08-31)
+
+### 🩹 Fixes
+
+- build front ([#1262](https://github.com/whoz-oss/coday/pull/1262))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.8 (2026-08-28)
+
+### 🚀 Features
+
+- #33829 share a case with other users (multi-user case) ([#1248](https://github.com/whoz-oss/coday/pull/1248), [#33829](https://github.com/whoz-oss/coday/issues/33829))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.7 (2026-08-28)
+
+### 🚀 Features
+
+- bump bundled version to 0.249.0 ([#1249](https://github.com/whoz-oss/coday/pull/1249))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.249.6 (2026-08-28)
+
+### 🩹 Fixes
+
+- **agentos-ui:** add infinite scroll to ds-entity-list to prevent freeze on large user lists ([35a8c9fc](https://github.com/whoz-oss/coday/commit/35a8c9fc))
+- **agentos-ui:** add infinite scroll to ds-entity-list to prevent freeze on large user lists ([#1259](https://github.com/whoz-oss/coday/pull/1259), [#1258](https://github.com/whoz-oss/coday/issues/1258))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.5 (2026-08-28)
+
+### 🩹 Fixes
+
+- remove $safeNavigationMigration (remaining from ng migration) ([1fd5b3a1](https://github.com/whoz-oss/coday/commit/1fd5b3a1))
+- remove $safeNavigationMigration (remaining from ng migration) ([#1257](https://github.com/whoz-oss/coday/pull/1257))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.4 (2026-08-28)
+
+### 🩹 Fixes
+
+- disable prompt select while loading in scheduler form ([56f5f10d](https://github.com/whoz-oss/coday/commit/56f5f10d))
+- disable prompt select while loading in scheduler form ([#1256](https://github.com/whoz-oss/coday/pull/1256), [#1255](https://github.com/whoz-oss/coday/issues/1255))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.249.3 (2026-08-28)
+
+### 🩹 Fixes
+
+- **agentos:** fix advancedExecution attribut mapping in case of yml agent config #1244 ([#1245](https://github.com/whoz-oss/coday/pull/1245), [#1244](https://github.com/whoz-oss/coday/issues/1244))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.249.2 (2026-08-27)
+
+### 🚀 Features
+
+- nx23 angular22 ([#1252](https://github.com/whoz-oss/coday/pull/1252), [#1251](https://github.com/whoz-oss/coday/issues/1251))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.249.1 (2026-08-26)
+
+### 🚀 Features
+
+- **agentos:** add actuator endpoint to disable / enable agentos schedulers #34024 ([#1250](https://github.com/whoz-oss/coday/pull/1250), [#34024](https://github.com/whoz-oss/coday/issues/34024))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.249.0 (2026-08-25)
+
+### 🚀 Features
+
+- #1246 Add batch mark-done for paused tasks and auto-close stale threads ([#1246](https://github.com/whoz-oss/coday/issues/1246))
+- #1246 Add batch mark-done for paused tasks and auto-close stale… ([#1247](https://github.com/whoz-oss/coday/pull/1247), [#1246](https://github.com/whoz-oss/coday/issues/1246))
+
+### 🩹 Fixes
+
+- #1246 Stop propagation on task checkbox click ([#1246](https://github.com/whoz-oss/coday/issues/1246))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 0.248.3 (2026-08-21)
+
+### 🩹 Fixes
+
+- **agentos:** fix missed favorite and role enrichment in case read and list endpoints #33653 ([#1241](https://github.com/whoz-oss/coday/pull/1241), [#33653](https://github.com/whoz-oss/coday/issues/33653))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.248.2 (2026-08-20)
+
+### 🩹 Fixes
+
+- sanitize MCP tool names to comply with Anthropic name pattern ([8b39346f](https://github.com/whoz-oss/coday/commit/8b39346f))
+
+### ❤️ Thank You
+
+- Marc Bouteiller @marc-bouteiller-whoz
+
+## 0.248.1 (2026-08-19)
+
+### 🩹 Fixes
+
+- optimize findFilesByName to prevent TimeoutError on large projects ([14d69846](https://github.com/whoz-oss/coday/commit/14d69846))
+- optimize findFilesByName to prevent TimeoutError on large projects ([#1238](https://github.com/whoz-oss/coday/pull/1238))
+
+### ❤️ Thank You
+
+- Alex @alex-whoz
+
+## 0.248.0 (2026-08-14)
+
+### 🚀 Features
+
+- add UserContextProvider SPI and resolver for scheduled case context enrichment ([#1233](https://github.com/whoz-oss/coday/pull/1233))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.247.4 (2026-08-14)
+
+### 🩹 Fixes
+
+- override Spring Boot's ObjectMapper auto-configuration ([#1234](https://github.com/whoz-oss/coday/pull/1234))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.247.3 (2026-08-13)
+
+### 🚀 Features
+
+- **agentos:** add star endpoints and list my cases by parent on SDK #33653 ([#1232](https://github.com/whoz-oss/coday/pull/1232), [#33653](https://github.com/whoz-oss/coday/issues/33653))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 0.247.2 (2026-08-12)
+
+### 🩹 Fixes
+
+- wz-33620 improve coroutine handling in scheduled prompt UserRun consumption + other fixes ([#1230](https://github.com/whoz-oss/coday/pull/1230))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @fdelsert-whoz
+
+## 0.247.1 (2026-08-12)
+
+### 🩹 Fixes
+
+- wz-33220 stop agent redirection ping-pong loops in CaseRuntime ([#1209](https://github.com/whoz-oss/coday/pull/1209))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.247.0 (2026-08-07)
 
 ### 🚀 Features
@@ -5795,87 +6223,3 @@ This was a version bump only, there were no code changes.
 
 - vincent.audibert
 
-# 1.2.0 (2024-12-12)
-
-This was a version bump only, there were no code changes.
-
-# 1.0.0 (2024-12-12)
-
-### 🚀 Features
-
-- add flexible parameter handling to git log and git show functions
-- `thread save` can take a title and save it without interaction
-- display selected project in user prompt and do not select automatically previous project
-- add script to open files in intellij
-- expose a tool for Coday to ask questions to the user
-- rework Coday systemInstruction for more leeway and flexibility.
-- add a remove file tool (through node unlink)
-- eventify interactor and tools
-- add memory service and handler (useless for now)
-- add memory.tools.ts to add a memory
-- add memories in initial context
-- connect memory-service to config.service
-- split current coday config into project folders (still in ./coday)
-- split current coday config into project folders (still in ./coday)
-- add file-map and coday-prompt-chains
-- add load-file-handler
-- add load parent handler for file and folder handlers
-- add confluence basic integration to search for pages by text and retrieve page by id
-- enhance web ui significantly
-- refine scrolling and wrapping
-- handle multiple clients on one server and show selected project.
-- add timestamp to log clients connects and disconnects
-- add thinking event and display to show the LLM is doing something...long
-- add draft gemini client
-- make subTask available by default
-- handle assistant by name search depending on aiClient.multiAssistant flag
-- add delegate handler, tool and use in small-task prompt chain
-- stricter write by chunk, with explicit status return
-- add an 'iterate' handler
-- focus on textarea or choice when they appear.
-- memorization standard, not anymore an integration
-- enable thread conversation with claude and with tools.
-- start preparing move to stateless clients.
-- create ToolSet class for modular tool management
-- move ai setup through integration to its own config part
-- move again ai setup to user config (new)
-- remove dependencies on AI meta-integration
-- clean up last references to ai integrations
-- add handler to curate memories
-- prepare ai-thread.ts
-- use AiThread for Claude
-- silent implementation of changes in ai.client.ts
-- silent management and selection of aiThreads
-- using aiThread and fixing bugs
-- add stop at various levels
-- adding tests on file ai thread repository
-- simpler save behavior
-- simpler find aiThread behavior
-- add stop endpoint to server.ts
-- ai-thread handler
-- add stop in ui
-- show thread messages on reload
-- openai on aithreads !!!! YEEEHAAAA!!!!
-- select ai-threads at startup
-- clean up ai.client.ts and implementations
-- remove or de-activate handlers made irrelevant by recent aiThread impacts on aiclients.
-- clean and pricing runs
-- self-review
-- propose new thread as first selection from empty state
-- ask user when consumption threshold of the run are reached
-- Re-enable OpenAI Assistants with improved agent architecture
-- **file-tools:** Add comprehensive documentation and read-only mode support
-- **gitlab:** add list issue and list merge requests
-- **openai-client:** Enhance usage tracking and message processing
-
-### 🩹 Fixes
-
-- recognize and handle assistant selection only commands
-- assistants could not call each other
-- inconsistency in confluence vs jira integration apiUrl expectation
-- attenuate the bad gemini performance with more output tokens.
-
-### ❤️ Thank You
-
-- Vincent Audibert
-- vincent.audibert

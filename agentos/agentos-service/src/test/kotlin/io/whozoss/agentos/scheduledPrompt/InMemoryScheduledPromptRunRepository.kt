@@ -41,6 +41,8 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
         error: String?,
     ): Boolean {
         val entry = store.entries.firstOrNull { it.value.id == id } ?: return false
+        // Mirror the Cypher guard: do not overwrite a terminal status
+        if (entry.value.status == RunStatus.DONE || entry.value.status == RunStatus.FAILED) return false
         store[entry.key] = entry.value.copy(status = status, finishedAt = finishedAt, error = error)
         return true
     }
@@ -48,9 +50,10 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
     override fun findById(id: UUID): ScheduledPromptRun? =
         store.values.firstOrNull { it.id == id }
 
-    override fun countCompletedRuns(scheduledPromptId: UUID): Int =
+    override fun countCompletedRuns(scheduledPromptId: UUID, startInstant: Instant): Int =
         store.values.count {
-            it.scheduledPromptId == scheduledPromptId && it.status != RunStatus.SKIPPED
+            it.scheduledPromptId == scheduledPromptId &&
+                !it.scheduledFor.isBefore(startInstant)
         }
 
     override fun findOrphanedClaimed(olderThan: Instant): List<ScheduledPromptRun> =

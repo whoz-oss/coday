@@ -5,7 +5,7 @@ info:
   version: 0.0.1
 servers:
 - description: Generated server url
-  url: http://localhost:8124
+  url: http://localhost:18124
 tags:
 - description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
   name: sse
@@ -939,6 +939,10 @@ paths:
       - case-controller
   /api/cases/by-parentId/{parentId}/mine:
     get:
+      description: "GET /api/cases/by-parentId/{parentId}/mine — list only the cases\
+        \ in the namespace the current user has a direct relation with. Unlike listByParent,\
+        \ admin transitivity is excluded: every returned case is one the caller can\
+        \ star."
       operationId: listMineByParentCase
       parameters:
       - in: path
@@ -956,6 +960,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/Case"
           description: OK
+      summary: List my cases by namespace
       tags:
       - case-controller
   /api/cases/by-user/external/{externalId}:
@@ -1026,6 +1031,29 @@ paths:
                   $ref: "#/components/schemas/Case"
           description: OK
       summary: List cases by user
+      tags:
+      - case-controller
+  /api/cases/unread-count:
+    get:
+      description: GET /api/cases/unread-count?namespaceId= — number of unread cases
+        in the namespace for the current user. A case is unread when no readAt relation
+        exists or the most recent event timestamp is after the user's readAt.
+      operationId: countUnreadCase
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCountResponse"
+          description: OK
+      summary: Count unread cases
       tags:
       - case-controller
   /api/cases/{caseId}/events:
@@ -1245,6 +1273,29 @@ paths:
       summary: Add a message
       tags:
       - case-controller
+  /api/cases/{caseId}/read:
+    post:
+      description: "POST /api/cases/{caseId}/read — record that the current user has\
+        \ read this case. Sets readAt on the User↔Case relation. Idempotent. Returns\
+        \ 200 with the updated Case DTO."
+      operationId: markCaseRead
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Mark case as read
+      tags:
+      - case-controller
   /api/cases/{entityId}/members:
     get:
       description: Returns all users holding a direct ADMIN or MEMBER relation on
@@ -1359,6 +1410,9 @@ paths:
       - case-controller
   /api/cases/{id}/star:
     delete:
+      description: "DELETE /api/cases/{id}/star — remove the case from the current\
+        \ user's favorites. Requires a direct user↔case relation, otherwise the call\
+        \ is rejected."
       operationId: unstarCase
       parameters:
       - in: path
@@ -1370,9 +1424,12 @@ paths:
       responses:
         "204":
           description: No Content
+      summary: Unstar a case
       tags:
       - case-controller
     put:
+      description: "PUT /api/cases/{id}/star — mark the case as favorite for the current\
+        \ user. Requires a direct user↔case relation, otherwise the call is rejected."
       operationId: starCase
       parameters:
       - in: path
@@ -1384,6 +1441,7 @@ paths:
       responses:
         "200":
           description: OK
+      summary: Star a case
       tags:
       - case-controller
   /api/feedbacks:
@@ -2494,6 +2552,45 @@ paths:
       summary: Export a Prompt as a YAML file
       tags:
       - prompt-controller
+  /api/prompts/{id}/translations/{languageCode}:
+    post:
+      description: "Returns the translated content list (same indices as `content`).\
+        \ If the requested language matches `sourceLanguage`, returns `content` as-is.\
+        \ If a cached translation exists it is returned without an LLM call. Otherwise\
+        \ the content is translated via the namespace's AI model, persisted, and returned.\
+        \ For namespace-scoped prompts the namespace is inferred from the prompt itself.\
+        \ For platform-scoped prompts (namespaceId IS NULL on the prompt), at least\
+        \ one of `namespaceId` / `namespaceExternalId` is required in the request\
+        \ body."
+      operationId: translatePrompt
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: languageCode
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptTranslateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptTranslation"
+          description: OK
+      summary: Translate prompt content into a target language
+      tags:
+      - prompt-controller
   /api/scheduled-prompts:
     post:
       operationId: createScheduledPrompt
@@ -3443,6 +3540,10 @@ components:
         parentCaseId:
           type: string
           format: uuid
+        readAt:
+          type: string
+          format: date-time
+          description: Timestamp of the caller's last read. Null = never read (unread).
         removed:
           type: boolean
         role:
@@ -3451,6 +3552,9 @@ components:
           enum:
           - ADMIN
           - MEMBER
+        scheduledPromptId:
+          type: string
+          format: uuid
         status:
           type: string
           enum:
@@ -4308,6 +4412,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PromptParameter"
+        sourceLanguage:
+          type: string
+          description: BCP-47 language code of the authored content and title. Defaults
+            to 'en'.
+          example: en
+        title:
+          type: string
+          description: "Optional user-facing display label (e.g. starter button text).\
+            \ Distinct from content, which is the message sent to the LLM. Null when\
+            \ no explicit title has been set."
         updatedBy:
           type: string
         updatedOn:
@@ -4322,6 +4436,7 @@ components:
       - content
       - name
       - parameters
+      - sourceLanguage
     PromptEffectiveRequest:
       type: object
       properties:
@@ -4379,6 +4494,31 @@ components:
           - string
           - "null"
           format: uuid
+    PromptTranslateRequest:
+      type: object
+      properties:
+        namespaceExternalId:
+          type: string
+          description: Namespace external ID for AI model resolution (resolved server-side).
+            Required only for platform-scoped prompts. Mutually exclusive with namespaceId.
+        namespaceId:
+          type: string
+          format: uuid
+          description: Namespace UUID for AI model resolution. Required only for platform-scoped
+            prompts. Mutually exclusive with namespaceExternalId.
+    PromptTranslation:
+      type: object
+      properties:
+        content:
+          type: array
+          description: Translated content list. Same indices as the source content.
+          items:
+            type: string
+        title:
+          type: string
+          description: Translated display label. Null when the prompt has no title.
+      required:
+      - content
     QuestionEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -4669,6 +4809,14 @@ components:
       - timestamp
       - toolName
       - type
+    UnreadCountResponse:
+      type: object
+      properties:
+        unreadCount:
+          type: integer
+          format: int64
+      required:
+      - unreadCount
     User:
       type: object
       properties:

@@ -10,9 +10,12 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.mockk
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
@@ -690,6 +693,97 @@ class AgentAdvancedContextSpec :
             mediaMessages shouldHaveSize 2
             val evictedResponse = messages[1].shouldBeInstanceOf<ToolResponseMessage>()
             evictedResponse.responses[0].responseData() shouldContain "no longer attached"
+        }
+
+        // -------------------------------------------------------------------------
+        // QuestionEvent and AnswerEvent conversion
+        // -------------------------------------------------------------------------
+
+        "QuestionEvent is converted to AssistantMessage with the question text" {
+            val questionEvent = QuestionEvent(
+                namespaceId = ns,
+                caseId = case,
+                agentId = agentId,
+                agentName = "Agent",
+                question = "What is your preference?",
+            )
+            val messages = context.convertEventsToMessages(listOf(questionEvent))
+
+            messages shouldHaveSize 1
+            val msg = messages[0].shouldBeInstanceOf<AssistantMessage>()
+            msg.text shouldBe "What is your preference?"
+        }
+
+        "QuestionEvent with options includes them in the AssistantMessage text" {
+            val questionEvent = QuestionEvent(
+                namespaceId = ns,
+                caseId = case,
+                agentId = agentId,
+                agentName = "Agent",
+                question = "Pick one",
+                options = listOf("A", "B", "C"),
+                questionType = QuestionType.SINGLE_CHOICE,
+            )
+            val messages = context.convertEventsToMessages(listOf(questionEvent))
+
+            messages shouldHaveSize 1
+            val msg = messages[0].shouldBeInstanceOf<AssistantMessage>()
+            msg.text shouldContain "Pick one"
+            msg.text shouldContain "\"A\""
+            msg.text shouldContain "\"B\""
+            msg.text shouldContain "\"C\""
+        }
+
+        "AnswerEvent is converted to UserMessage with the answer text" {
+            val questionEvent = QuestionEvent(
+                namespaceId = ns,
+                caseId = case,
+                agentId = agentId,
+                agentName = "Agent",
+                question = "What is your preference?",
+            )
+            val answerEvent = questionEvent.createAnswer(
+                Actor("user1", "User", ActorRole.USER),
+                "My answer",
+            )
+            val messages = context.convertEventsToMessages(listOf(questionEvent, answerEvent))
+
+            messages shouldHaveSize 2
+            messages[0].shouldBeInstanceOf<AssistantMessage>()
+            val userMsg = messages[1].shouldBeInstanceOf<UserMessage>()
+            userMsg.text shouldBe "My answer"
+        }
+
+        "QuestionEvent and AnswerEvent produce correct message order in a full conversation" {
+            // Full scenario: user message -> agent runs -> asks question -> user answers ->
+            // agent resumes. The LLM must see its question as AssistantMessage and the
+            // answer as UserMessage so it can continue naturally.
+            val questionEvent = QuestionEvent(
+                namespaceId = ns,
+                caseId = case,
+                agentId = agentId,
+                agentName = "Agent",
+                question = "Which environment?",
+                options = listOf("staging", "prod"),
+                questionType = QuestionType.SINGLE_CHOICE,
+            )
+            val answerEvent = questionEvent.createAnswer(
+                Actor("user1", "User", ActorRole.USER),
+                "staging",
+            )
+            val events = listOf(
+                userMessage("deploy the app"),
+                questionEvent,
+                answerEvent,
+            )
+            val messages = context.convertEventsToMessages(events)
+
+            messages shouldHaveSize 3
+            messages[0].shouldBeInstanceOf<UserMessage>()
+            val questionMsg = messages[1].shouldBeInstanceOf<AssistantMessage>()
+            questionMsg.text shouldContain "Which environment?"
+            val answerMsg = messages[2].shouldBeInstanceOf<UserMessage>()
+            answerMsg.text shouldBe "staging"
         }
 
         "extractText never dumps base64 for image output" {

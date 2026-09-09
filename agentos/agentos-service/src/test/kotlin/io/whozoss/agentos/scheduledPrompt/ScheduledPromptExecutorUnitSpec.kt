@@ -23,9 +23,14 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -40,9 +45,14 @@ import java.util.UUID
  *
  * Fixed clock: 2026-01-01 09:00:00 UTC.
  *
+ * Phase B tests call [ScheduledPromptExecutor.processUserRun] directly (`internal`)
+ * rather than starting the full lifecycle loop. This keeps the tests fast and
+ * deterministic without coroutine infrastructure.
+ *
  * The [InMemoryScheduledPromptUserRunRepository] is constructed with a [targetUserIdsProvider]
  * lambda to simulate the Neo4j deployment-graph traversal without touching a database.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class ScheduledPromptExecutorUnitSpec : StringSpec() {
 
     private val nowInstant = Instant.parse("2026-01-01T09:00:00Z")
@@ -133,6 +143,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         caseService: CaseService,
         permissionService: PermissionService,
         userService: UserService,
+        userContextProvider: UserContextProvider? = null,
     ) = ScheduledPromptExecutor(
         scheduledPromptRepository = spRepo,
         runRepository = runRepo,
@@ -144,6 +155,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         userService = userService,
         properties = properties,
         clock = clock,
+        userContextProvider = userContextProvider,
     )
 
     init {
@@ -215,11 +227,37 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             userRunRepo.all().size shouldBe 1
         }
 
+        "Phase A: materialise propagates exception from userRunRepository — Run stays CLAIMED" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+
+            val throwingUserRunRepo = mockk<ScheduledPromptUserRunRepository>().also {
+                every { it.materialize(run.id, agentId, namespaceId) } throws RuntimeException("Simulated Neo4j failure")
+            }
+
+            val exec = executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = throwingUserRunRepo,
+                promptService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+            )
+
+            io.kotest.assertions.throwables.shouldThrow<RuntimeException> {
+                exec.materialize(run, sp)
+            }
+
+            val updatedRun = runRepo.all().first { it.id == run.id }
+            updatedRun.status shouldBe RunStatus.CLAIMED
+        }
+
         "Phase A: platform-scope ScheduledPrompt materialises zero UserRuns and transitions to DONE" {
             val sp = makeScheduledPrompt(nsId = null)
             val run = makeRun(sp)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            // Provider is never called for platform-scope (namespaceId == null)
             val userRunRepo = makeUserRunRepo(emptySet())
 
             executor(
@@ -233,57 +271,31 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             ).materialize(run, sp)
 
             userRunRepo.all().size shouldBe 0
-            // No target users → Run transitions directly to DONE (nothing to consume)
             val updatedRun = runRepo.all().first { it.id == run.id }
             updatedRun.status shouldBe RunStatus.DONE
         }
 
         // -------------------------------------------------------------------------
-        // Phase B — consumeAvailable with no pending UserRuns
+        // Phase B — processUserRun (called directly, internal)
         // -------------------------------------------------------------------------
 
-        "Phase B: consumeAvailable does nothing when no PENDING UserRuns exist" {
-            val sp = makeScheduledPrompt()
-            val run = makeRun(sp)
-            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(emptySet())
-            val caseService = mockk<CaseService>(relaxed = true)
-
-            executor(
-                spRepo = makeSpRepo(sp),
-                runRepo = runRepo,
-                userRunRepo = userRunRepo,
-                promptService = mockk(relaxed = true),
-                caseService = caseService,
-                permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
-            ).consumeAvailable()
-
-            verify(exactly = 0) { caseService.create(any()) }
-        }
-
-        // -------------------------------------------------------------------------
-        // Phase B — full execution path
-        // -------------------------------------------------------------------------
-
-        "Phase B: consumeAvailable creates Case, grants ADMIN, and injects @agentName /promptName message" {
+        "Phase B: processUserRun creates Case, grants ADMIN, and injects @agentName message" {
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
             val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
                 it.materialize(run.id, agentId, namespaceId)
             }
+            val userRun = userRunRepo.all().first()
+            // Transition to RUNNING so processUserRun can mark it terminal
+            userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10)
 
-            val promptTemplate = makePromptTemplate() // name = "digest-template"
             val promptService = mockk<PromptService>().also {
-                every { it.findById(promptTemplateId) } returns promptTemplate
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
             }
-
-            val agentConfig = makeAgentConfig(name = "weekly-agent")
             val agentConfigService = mockk<AgentConfigService>().also {
-                every { it.findById(agentId) } returns agentConfig
+                every { it.findById(agentId) } returns makeAgentConfig(name = "weekly-agent")
             }
-
             val createdCase = Case(
                 metadata = EntityMetadata(id = caseId),
                 namespaceId = namespaceId,
@@ -291,9 +303,8 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val caseService = mockk<CaseService>(relaxed = true).also {
                 every { it.create(any()) } returns createdCase
                 every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-                every { it.findActiveRuntime(caseId) } returns null // runtime evicted — IDLE
+                every { it.findActiveRuntime(caseId) } returns null
             }
-
             val permissionService = mockk<PermissionService>(relaxed = true)
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -308,10 +319,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = caseService,
                 permissionService = permissionService,
                 userService = userService,
-            ).consumeAvailable()
-
-            // Wait for the background coroutine to settle
-            kotlinx.coroutines.delay(500)
+            ).processUserRun(userRun)
 
             val caseSlot = slot<Case>()
             verify(exactly = 1) { caseService.create(capture(caseSlot)) }
@@ -335,87 +343,8 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             actorSlot.captured.role shouldBe ActorRole.USER
             actorSlot.captured.id shouldBe userId1.toString()
-            // The message must be "@agentName <resolved prompt content>" — the Executor
-            // resolves the content directly rather than injecting a /slash-command, because
-            // PromptCommandParser requires text to start with '/' which is incompatible
-            // with the leading @mention.
             val text = contentSlot.captured.filterIsInstance<MessageContent.Text>().first().content
             text shouldBe "@weekly-agent Run your weekly digest report."
-        }
-
-        // -------------------------------------------------------------------------
-        // Completion check
-        // -------------------------------------------------------------------------
-
-        "Completion: Run transitions to DONE when all UserRuns are settled" {
-            val sp = makeScheduledPrompt()
-            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
-            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1))
-            userRunRepo.materialize(run.id, agentId, namespaceId)
-            val ur = userRunRepo.all().first()
-            userRunRepo.markTerminal(ur.id, UserRunStatus.DONE, nowInstant)
-
-            executor(
-                spRepo = makeSpRepo(sp),
-                runRepo = runRepo,
-                userRunRepo = userRunRepo,
-                promptService = mockk(relaxed = true),
-                caseService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
-            ).consumeAvailable()
-
-            val updatedRun = runRepo.all().first { it.id == run.id }
-            updatedRun.status shouldBe RunStatus.RUNNING
-        }
-
-        "Completion: Run transitions to FAILED when a UserRun has failed" {
-            val sp = makeScheduledPrompt()
-            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
-            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1))
-            userRunRepo.materialize(run.id, agentId, namespaceId)
-            val ur = userRunRepo.all().first()
-            userRunRepo.markTerminal(ur.id, UserRunStatus.FAILED, nowInstant, "boom")
-
-            userRunRepo.hasAnyFailed(run.id) shouldBe true
-            userRunRepo.countByRunIdAndStatus(run.id, UserRunStatus.PENDING) shouldBe 0
-            userRunRepo.countByRunIdAndStatus(run.id, UserRunStatus.RUNNING) shouldBe 0
-        }
-
-        // -------------------------------------------------------------------------
-        // Phase B: user not found — UserRun marked FAILED
-        // -------------------------------------------------------------------------
-
-        "Phase B: user not found in UserService marks UserRun FAILED" {
-            val sp = makeScheduledPrompt()
-            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
-            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
-            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
-                it.materialize(run.id, agentId, namespaceId)
-            }
-
-            val userService = mockk<UserService>().also {
-                every { it.findById(userId1) } returns null
-            }
-
-            executor(
-                spRepo = makeSpRepo(sp),
-                runRepo = runRepo,
-                userRunRepo = userRunRepo,
-                promptService = mockk(relaxed = true),
-                agentConfigService = mockk(relaxed = true),
-                caseService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
-                userService = userService,
-            ).consumeAvailable()
-
-            // Wait for the background coroutine
-            kotlinx.coroutines.delay(500)
-
-            val userRun = userRunRepo.all().first()
-            userRun.status shouldBe UserRunStatus.FAILED
         }
 
         // -------------------------------------------------------------------------
@@ -429,6 +358,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
                 it.materialize(run.id, agentId, namespaceId)
             }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
             val promptService = mockk<PromptService>().also {
                 every { it.findById(promptTemplateId) } returns null
@@ -446,13 +376,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-            ).consumeAvailable()
+            ).processUserRun(userRun)
 
-            kotlinx.coroutines.delay(500)
-
-            val userRun = userRunRepo.all().first()
-            userRun.status shouldBe UserRunStatus.FAILED
-            userRun.error shouldBe "PromptTemplate $promptTemplateId not found"
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.FAILED
+            updated.error shouldBe "PromptTemplate $promptTemplateId not found"
         }
 
         "Phase B: prompt template with empty content marks UserRun FAILED" {
@@ -462,6 +390,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
                 it.materialize(run.id, agentId, namespaceId)
             }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
             val promptService = mockk<PromptService>().also {
                 every { it.findById(promptTemplateId) } returns makePromptTemplate(content = "")
@@ -479,13 +408,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-            ).consumeAvailable()
+            ).processUserRun(userRun)
 
-            kotlinx.coroutines.delay(500)
-
-            val userRun = userRunRepo.all().first()
-            userRun.status shouldBe UserRunStatus.FAILED
-            userRun.error shouldBe "PromptTemplate $promptTemplateId has empty content"
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.FAILED
+            updated.error shouldBe "PromptTemplate $promptTemplateId has empty content"
         }
 
         // -------------------------------------------------------------------------
@@ -499,6 +426,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
                 it.materialize(run.id, agentId, namespaceId)
             }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
             val promptService = mockk<PromptService>().also {
                 every { it.findById(promptTemplateId) } returns makePromptTemplate()
@@ -509,27 +437,13 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
             }
-
-            val createdCase = Case(
-                metadata = EntityMetadata(id = caseId),
-                namespaceId = namespaceId,
-            )
-
-            // Simulate a runtime whose statusFlow starts as RUNNING then transitions to IDLE
-            // after addMessage is called (mimicking the real CaseRuntime lifecycle).
-            val statusFlow = MutableStateFlow(CaseStatus.RUNNING)
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
             val runtime = mockk<CaseRuntime>(relaxed = true).also {
-                every { it.statusFlow } returns statusFlow
+                every { it.statusFlow } returns MutableStateFlow(CaseStatus.IDLE)
             }
-
             val caseService = mockk<CaseService>(relaxed = true).also {
                 every { it.create(any()) } returns createdCase
                 every { it.findActiveRuntime(caseId) } returns runtime
-                // When addMessage is called, transition the statusFlow to IDLE
-                // (simulates the async agent execution completing).
-                every { it.addMessage(caseId = caseId, actor = any(), content = any()) } answers {
-                    statusFlow.value = CaseStatus.IDLE
-                }
             }
 
             executor(
@@ -541,10 +455,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = caseService,
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-            ).consumeAvailable()
+            ).processUserRun(userRun)
 
-            val userRun = userRunRepo.all().first()
-            userRun.status shouldBe UserRunStatus.DONE
+            userRunRepo.all().first { it.id == userRun.id }.status shouldBe UserRunStatus.DONE
         }
 
         "Phase B: monitorLaunch closes UserRun as FAILED when runtime reaches ERROR" {
@@ -554,6 +467,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
                 it.materialize(run.id, agentId, namespaceId)
             }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
             val promptService = mockk<PromptService>().also {
                 every { it.findById(promptTemplateId) } returns makePromptTemplate()
@@ -564,23 +478,13 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
             }
-
-            val createdCase = Case(
-                metadata = EntityMetadata(id = caseId),
-                namespaceId = namespaceId,
-            )
-
-            val statusFlow = MutableStateFlow(CaseStatus.RUNNING)
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
             val runtime = mockk<CaseRuntime>(relaxed = true).also {
-                every { it.statusFlow } returns statusFlow
+                every { it.statusFlow } returns MutableStateFlow(CaseStatus.ERROR)
             }
-
             val caseService = mockk<CaseService>(relaxed = true).also {
                 every { it.create(any()) } returns createdCase
                 every { it.findActiveRuntime(caseId) } returns runtime
-                every { it.addMessage(caseId = caseId, actor = any(), content = any()) } answers {
-                    statusFlow.value = CaseStatus.ERROR
-                }
             }
 
             executor(
@@ -592,18 +496,17 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = caseService,
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-            ).consumeAvailable()
+            ).processUserRun(userRun)
 
-            val userRun = userRunRepo.all().first()
-            userRun.status shouldBe UserRunStatus.FAILED
-            userRun.error shouldBe "Case reached terminal status ERROR"
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.FAILED
+            updated.error shouldBe "Case reached terminal status ERROR"
         }
 
         "Phase B: monitorLaunch closes UserRun as TIMEOUT on timeout (Case still RUNNING)" {
-            // Use a zero launch timeout so it times out immediately.
             val shortTimeoutProperties = SchedulerProperties(
                 batchSize = 5,
-                launchTimeoutSeconds = 0L, // 0 seconds → withTimeoutOrNull(0) times out immediately
+                launchTimeoutSeconds = 0L,
                 leaseMinutes = 30L,
             )
 
@@ -613,6 +516,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
                 it.materialize(run.id, agentId, namespaceId)
             }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
             val promptService = mockk<PromptService>().also {
                 every { it.findById(promptTemplateId) } returns makePromptTemplate()
@@ -623,18 +527,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
             }
-
-            val createdCase = Case(
-                metadata = EntityMetadata(id = caseId),
-                namespaceId = namespaceId,
-            )
-
-            // StatusFlow stays RUNNING forever — simulates a slow but healthy agent.
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
             val statusFlow = MutableStateFlow(CaseStatus.RUNNING)
             val runtime = mockk<CaseRuntime>(relaxed = true).also {
                 every { it.statusFlow } returns statusFlow
             }
-
             val caseService = mockk<CaseService>(relaxed = true).also {
                 every { it.create(any()) } returns createdCase
                 every { it.findActiveRuntime(caseId) } returns runtime
@@ -651,18 +548,494 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 userService = userService,
                 properties = shortTimeoutProperties,
                 clock = clock,
-            ).consumeAvailable()
+            ).processUserRun(userRun)
 
-            // Timeout on a still-RUNNING Case is not a failure — the Case is healthy,
-            // just slow. Monitoring is released and the UserRun is closed as TIMEOUT
-            // for audit visibility; the Case continues running independently.
-            val userRun = userRunRepo.all().first()
-            userRun.status shouldBe UserRunStatus.TIMEOUT
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.TIMEOUT
         }
 
         // -------------------------------------------------------------------------
-        // Phase B: prompt or agent not found — UserRun marked FAILED
+        // Phase B — scheduledPromptId propagation
         // -------------------------------------------------------------------------
+
+        "Phase B: Case created by ScheduledPrompt carries scheduledPromptId" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseSlot = slot<Case>()
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(capture(caseSlot)) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            caseSlot.captured.scheduledPromptId shouldBe sp.id
+        }
+
+        // -------------------------------------------------------------------------
+        // Phase B — UserContextProvider enrichment
+        // -------------------------------------------------------------------------
+
+        "Phase B: sessionContext from UserContextProvider is forwarded to addMessage" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+            val expectedContext = mapOf("userContext" to mapOf("talentId" to "t1"))
+            val provider = mockk<UserContextProvider>().also {
+                every { it.provideUserContext(user1.externalId, namespaceId) } returns expectedContext
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+                userContextProvider = provider,
+            ).processUserRun(userRun)
+
+            val sessionContextSlot = slot<Map<String, Any?>>()
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = any(),
+                    sessionContext = capture(sessionContextSlot),
+                )
+            }
+            sessionContextSlot.captured shouldBe expectedContext
+        }
+
+        "Phase B: addMessage is called with null sessionContext when UserContextProvider throws" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+            val provider = mockk<UserContextProvider>().also {
+                every { it.provideUserContext(any(), any()) } throws RuntimeException("Copilot unreachable")
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+                userContextProvider = provider,
+            ).processUserRun(userRun)
+
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.DONE
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = any(),
+                    sessionContext = null,
+                )
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // Phase B — error handling in processUserRun
+        // -------------------------------------------------------------------------
+
+        "processUserRun: resolveContext throws (findById returns null for run) → markFailed called" {
+            // runRepository.findById returns null → resolveContext throws IllegalStateException
+            // → catch block in processUserRun calls markFailed → userRunRepository.markTerminal FAILED
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            // runRepository that throws on findById
+            val throwingRunRepo = mockk<ScheduledPromptRunRepository>().also {
+                every { it.findById(run.id) } throws RuntimeException("DB unavailable")
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = throwingRunRepo,
+                userRunRepo = userRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+            ).processUserRun(userRun)
+
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.FAILED
+        }
+
+        "processUserRun: markFailed fails (DB down) → exception swallowed, no rethrow" {
+            // Both resolveContext (findById) and markTerminal throw → processUserRun must not propagate
+            val sp = makeScheduledPrompt()
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(UUID.randomUUID(), agentId, namespaceId)
+            }
+            // Claim a userRun from the in-memory repo so we have a valid id
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            // runRepository throws → resolveContext throws → catch block → markFailed called
+            val throwingRunRepo = mockk<ScheduledPromptRunRepository>().also {
+                every { it.findById(any()) } throws RuntimeException("DB unavailable")
+            }
+            // userRunRepository also throws on markTerminal → markFailed swallows the error
+            val throwingUserRunRepo = mockk<ScheduledPromptUserRunRepository>().also {
+                every { it.markTerminal(any(), any(), any(), any()) } throws RuntimeException("DB also down")
+            }
+
+            // Must not throw — the exception in markFailed is swallowed by runCatching in markFailed
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = throwingRunRepo,
+                userRunRepo = throwingUserRunRepo,
+                promptService = mockk(relaxed = true),
+                agentConfigService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = mockk(relaxed = true),
+            ).processUserRun(userRun)
+            // No assertion needed — the test passes if no exception is thrown
+        }
+
+        "processUserRun: markTerminal fails after successful case creation → UserRun stays RUNNING (at-least-once)" {
+            // resolveContext and createAndInjectCase succeed, but markTerminal (called from closeUserRun)
+            // throws — the UserRun stays RUNNING (lease expires and is reclaimed: at-least-once delivery)
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val realRunRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                // No active runtime → closeUserRun is called with findById result
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            // Wrap userRunRepo to make markTerminal throw on the first call (from closeUserRun)
+            // but still track the actual state so we can verify the UserRun stays RUNNING
+            val throwingOnMarkTerminalRepo = object : ScheduledPromptUserRunRepository by userRunRepo {
+                override fun markTerminal(
+                    id: UUID,
+                    status: UserRunStatus,
+                    now: Instant,
+                    error: String?,
+                ): ScheduledPromptUserRun {
+                    throw RuntimeException("DB write failed")
+                }
+            }
+
+            // processUserRun catches the exception from closeUserRun → calls markFailed
+            // but markFailed also uses the same repo (throwingOnMarkTerminalRepo) → also throws
+            // → runCatching in markFailed swallows it → no rethrow from processUserRun
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = realRunRepo,
+                userRunRepo = throwingOnMarkTerminalRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            // The original in-memory repo still shows the UserRun as RUNNING (markTerminal was never persisted)
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.RUNNING
+        }
+
+        // -------------------------------------------------------------------------
+        // Consumer loop — real coroutine loop tests
+        // -------------------------------------------------------------------------
+
+        "consumer loop: N UserRuns are all processed by the real coroutine loop" {
+            // Verify that the real producer/channel/worker loop processes all PENDING UserRuns.
+            // Uses UnconfinedTestDispatcher so coroutines run eagerly without real threads.
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userIds = (1..10).map { UUID.randomUUID() }.toSet()
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> userIds }
+            userRunRepo.materialize(run.id, agentId, namespaceId)
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also { svc ->
+                userIds.forEach { uid ->
+                    every { svc.findById(uid) } returns User(
+                        metadata = EntityMetadata(id = uid),
+                        externalId = "$uid@example.com",
+                        firstname = "User",
+                        lastname = uid.toString().take(6),
+                    )
+                }
+            }
+            // Each Case immediately reaches IDLE so processUserRun marks UserRun DONE quickly.
+            val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
+            val caseService = mockk<CaseService>(relaxed = true).also { svc ->
+                every { svc.create(any()) } answers {
+                    val id = UUID.randomUUID()
+                    val flow = MutableStateFlow(CaseStatus.IDLE)
+                    val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
+                    runtimeMap[id] = rt
+                    Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+                }
+                every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
+            }
+
+            val testDispatcher = UnconfinedTestDispatcher()
+            val exec = ScheduledPromptExecutor(
+                scheduledPromptRepository = makeSpRepo(sp),
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+                properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
+                clock = clock,
+                dispatcher = testDispatcher,
+            )
+
+            runTest(testDispatcher) {
+                exec.start()
+                // Poll until all 10 UserRuns are DONE (or timeout after 5 s real time).
+                withTimeout(5_000L) {
+                    while (userRunRepo.all().count { it.status == UserRunStatus.DONE } < 10) {
+                        kotlinx.coroutines.delay(10L)
+                    }
+                }
+                exec.stop()
+            }
+
+            userRunRepo.all().all { it.status == UserRunStatus.DONE } shouldBe true
+        }
+
+        "consumer loop: stop() closes channel and workers exit cleanly" {
+            // After stop(), isRunning() must return false and no coroutine must keep running.
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userIds = setOf(userId1, userId2)
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> userIds }
+            userRunRepo.materialize(run.id, agentId, namespaceId)
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also { svc ->
+                every { svc.findById(userId1) } returns user1
+                every { svc.findById(userId2) } returns user2
+            }
+            val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
+            val caseService = mockk<CaseService>(relaxed = true).also { svc ->
+                every { svc.create(any()) } answers {
+                    val id = UUID.randomUUID()
+                    val flow = MutableStateFlow(CaseStatus.IDLE)
+                    val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
+                    runtimeMap[id] = rt
+                    Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+                }
+                every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
+            }
+
+            val testDispatcher = UnconfinedTestDispatcher()
+            val exec = ScheduledPromptExecutor(
+                scheduledPromptRepository = makeSpRepo(sp),
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+                properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
+                clock = clock,
+                dispatcher = testDispatcher,
+            )
+
+            runTest(testDispatcher) {
+                exec.start()
+                exec.isRunning() shouldBe true
+                exec.stop()
+            }
+
+            exec.isRunning() shouldBe false
+        }
+
+        "consumer loop: worker exception does not stop other workers" {
+            // A resolveContext failure on one UserRun must not prevent other UserRuns from completing.
+            // We simulate this by making runRepository.findById throw for one specific runId,
+            // which causes resolveContext to throw for that UserRun only.
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val normalUserIds = (1..5).map { UUID.randomUUID() }.toSet()
+            val failingUserId = UUID.randomUUID()
+            val allUserIds = normalUserIds + failingUserId
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository { _, _ -> allUserIds }
+            userRunRepo.materialize(run.id, agentId, namespaceId)
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also { svc ->
+                normalUserIds.forEach { uid ->
+                    every { svc.findById(uid) } returns User(
+                        metadata = EntityMetadata(id = uid),
+                        externalId = "$uid@example.com",
+                        firstname = "User",
+                        lastname = uid.toString().take(6),
+                    )
+                }
+                // Simulate missing user for the failing UserRun — resolveContext will throw.
+                every { svc.findById(failingUserId) } returns null
+            }
+            val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
+            val caseService = mockk<CaseService>(relaxed = true).also { svc ->
+                every { svc.create(any()) } answers {
+                    val id = UUID.randomUUID()
+                    val flow = MutableStateFlow(CaseStatus.IDLE)
+                    val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
+                    runtimeMap[id] = rt
+                    Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+                }
+                every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
+            }
+
+            val testDispatcher = UnconfinedTestDispatcher()
+            val exec = ScheduledPromptExecutor(
+                scheduledPromptRepository = makeSpRepo(sp),
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+                properties = SchedulerProperties(batchSize = 10, leaseMinutes = 30L, emptyPollDelayMs = 10L),
+                clock = clock,
+                dispatcher = testDispatcher,
+            )
+
+            runTest(testDispatcher) {
+                exec.start()
+                // Wait until all 6 UserRuns reach a terminal state (DONE or FAILED).
+                withTimeout(5_000L) {
+                    while (userRunRepo.all().count { it.status == UserRunStatus.DONE || it.status == UserRunStatus.FAILED } < allUserIds.size) {
+                        kotlinx.coroutines.delay(10L)
+                    }
+                }
+                exec.stop()
+            }
+
+            // The 5 normal UserRuns must be DONE.
+            val doneRuns = userRunRepo.all().filter { it.status == UserRunStatus.DONE }
+            doneRuns.size shouldBe normalUserIds.size
+            // The failing UserRun must be FAILED.
+            val failedRun = userRunRepo.all().first { it.userId == failingUserId }
+            failedRun.status shouldBe UserRunStatus.FAILED
+        }
 
         "Phase B: agent config not found marks UserRun FAILED" {
             val sp = makeScheduledPrompt()
@@ -671,6 +1044,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
                 it.materialize(run.id, agentId, namespaceId)
             }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
 
             val promptService = mockk<PromptService>().also {
                 every { it.findById(promptTemplateId) } returns makePromptTemplate()
@@ -691,13 +1065,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-            ).consumeAvailable()
+            ).processUserRun(userRun)
 
-            kotlinx.coroutines.delay(500)
-
-            val userRun = userRunRepo.all().first()
-            userRun.status shouldBe UserRunStatus.FAILED
-            userRun.error shouldBe "AgentConfig $agentId not found"
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.FAILED
+            updated.error shouldBe "AgentConfig $agentId not found"
         }
     }
 }

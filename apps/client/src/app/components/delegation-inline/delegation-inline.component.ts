@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnDestroy, inject } from '@angular/core'
+import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectionStrategy } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
@@ -26,6 +26,7 @@ import {
   standalone: true,
   imports: [CommonModule, MatIconModule, MatProgressSpinnerModule, ChatMessageComponent],
   templateUrl: './delegation-inline.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './delegation-inline.component.scss',
 })
 export class DelegationInlineComponent implements OnInit, OnDestroy {

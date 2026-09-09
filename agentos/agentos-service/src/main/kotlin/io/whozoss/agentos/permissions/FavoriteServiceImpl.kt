@@ -8,13 +8,13 @@ import org.springframework.stereotype.Service
     "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
         "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
 )
-class StarredServiceImpl(
-    private val starredRepository: StarredRepository,
-) : StarredService {
+class FavoriteServiceImpl(
+    private val favoriteRepository: FavoriteRepository,
+) : FavoriteService {
 
-    override fun setStarred(userId: String, entityType: EntityType, entityId: String, starred: Boolean): Boolean =
-        starredRepository.setStarred(userId, entityType, entityId, starred)
+    override fun setFavorite(userId: String, entityType: EntityType, entityId: String, favorite: Boolean): Boolean =
+        favoriteRepository.setFavorite(userId, entityType, entityId, favorite)
 
     override fun listDirectRelations(userId: String, entityType: EntityType): Map<String, DirectRelation> =
-        starredRepository.listDirectRelations(userId, entityType)
+        favoriteRepository.listDirectRelations(userId, entityType)
 }

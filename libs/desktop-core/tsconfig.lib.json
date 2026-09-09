@@ -2,7 +2,8 @@
   "compilerOptions": {
     "declaration": true,
     "declarationMap": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "rootDir": "src"
   },
   "extends": "./tsconfig.json",
   "include": ["src/**/*.ts"]

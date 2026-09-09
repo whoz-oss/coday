@@ -1,4 +1,13 @@
-import { AfterViewInit, Component, ElementRef, EventEmitter, Input, Output, ViewChild } from '@angular/core'
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  EventEmitter,
+  Input,
+  Output,
+  ViewChild,
+  ChangeDetectionStrategy,
+} from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { CommonModule } from '@angular/common'
 
@@ -11,6 +20,7 @@ import { CommonModule } from '@angular/common'
   standalone: true,
   imports: [FormsModule, CommonModule],
   templateUrl: './text-input.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './text-input.component.scss',
 })
 export class TextInputComponent implements AfterViewInit {

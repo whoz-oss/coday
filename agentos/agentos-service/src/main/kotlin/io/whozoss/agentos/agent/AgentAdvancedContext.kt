@@ -1,10 +1,12 @@
 package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -69,18 +71,19 @@ data class AgentAdvancedContext(
         events: List<CaseEvent>,
         maxDetailedChars: Int = 300_000,
     ): List<Message> {
-        val responsesByRequestId = indexToolResponses(events)
-        val (detailedRequestIds, mediaRequestIds) =
-            selectDetailedToolRequestIds(
-                events = events,
-                responsesByRequestId = responsesByRequestId,
+        val plan =
+            ToolReplayPlanner(
                 maxDetailedChars = maxDetailedChars,
-            )
+                maxAttachedImages = maxAttachedImages,
+                imageCharCost = imageCharCost,
+            ).plan(events)
 
         val lastUserMsgIndex =
             events.indexOfLast {
                 it is MessageEvent && it.actor.role == ActorRole.USER
             }
+
+        val responsesByRequestId = events.filterIsInstance<ToolResponseEvent>().associateBy { it.toolRequestId }
 
         return events.flatMapIndexed { index, event ->
             when (event) {
@@ -97,14 +100,29 @@ data class AgentAdvancedContext(
                 is ToolRequestEvent -> {
                     toToolMessages(
                         event = event,
-                        detailedRequestIds = detailedRequestIds,
-                        mediaRequestIds = mediaRequestIds,
+                        plan = plan,
                         responsesByRequestId = responsesByRequestId,
                     )
                 }
 
                 is IntentionGeneratedEvent -> {
                     toIntentionMessage(event)
+                }
+
+                // QuestionEvent: the agent asked the user a question and terminated its run.
+                // Rendered as AssistantMessage (the agent's own voice) so the LLM sees its
+                // own question in the history when it resumes after the answer.
+                // No XML balisage is applied — the question is plain agent speech, not a
+                // "foreign" message, so the same convention as other AssistantMessages holds.
+                is QuestionEvent -> {
+                    listOf(AssistantMessage(event.toPromptText()))
+                }
+
+                // AnswerEvent: the user's reply to a QuestionEvent.
+                // Rendered as UserMessage so the LLM sees it as the user speaking,
+                // consistent with MessageEvent USER rendering in toSpringAiMessage.
+                is AnswerEvent -> {
+                    listOf(UserMessage(event.answer))
                 }
 
                 else -> {
@@ -114,87 +132,20 @@ data class AgentAdvancedContext(
         }
     }
 
-    private fun indexToolResponses(events: List<CaseEvent>): Map<String, ToolResponseEvent> =
-        events.filterIsInstance<ToolResponseEvent>().associateBy { it.toolRequestId }
-
-    /**
-     * Selection of the tool requests replayed in detail, and among them the ones whose
-     * response images are actually attached as [Media].
-     */
-    private data class ToolReplaySelection(
-        val detailedRequestIds: Set<String>,
-        val mediaRequestIds: Set<String>,
-    )
-
-    /**
-     * Single newest-first walk deciding both selections coherently:
-     * - a request is detailed while its cumulated char cost fits [maxDetailedChars];
-     * - its images are attached while they fit [maxAttachedImages], and only attached
-     *   images are charged [imageCharCost] against the budget. Responses whose images
-     *   are not attached keep their text summary plus a marker (see
-     *   [toDetailedToolMessages]) and cost only that text.
-     */
-    private fun selectDetailedToolRequestIds(
-        events: List<CaseEvent>,
-        responsesByRequestId: Map<String, ToolResponseEvent>,
-        maxDetailedChars: Int,
-    ): ToolReplaySelection {
-        val detailed = mutableSetOf<String>()
-        val withMedia = mutableSetOf<String>()
-        var charsCollected = 0
-        var imagesAttached = 0
-
-        for (event in events.reversed()) {
-            if (event !is ToolRequestEvent) continue
-
-            val response = responsesByRequestId[event.toolRequestId]
-            val images = response?.images ?: emptyList()
-            val attachMedia = images.isNotEmpty() && imagesAttached + images.size <= maxAttachedImages
-
-            val cost = detailedCharCost(event, response, attachMedia)
-            if (charsCollected + cost > maxDetailedChars) break
-
-            detailed.add(event.toolRequestId)
-            charsCollected += cost
-            if (attachMedia) {
-                withMedia.add(event.toolRequestId)
-                imagesAttached += images.size
-            }
-        }
-        return ToolReplaySelection(detailed, withMedia)
-    }
-
-    /**
-     * Char-equivalent cost charged against the detailed-tool budget for one request/response:
-     * the request args, the response text, and — only when [attachMedia] is true — the attached
-     * images at [imageCharCost] each.
-     */
-    private fun detailedCharCost(
-        event: ToolRequestEvent,
-        response: ToolResponseEvent?,
-        attachMedia: Boolean,
-    ): Int {
-        val argsCost = event.args?.length ?: 0
-        val responseCost = response?.let { extractText(it.output).length } ?: 0
-        val imagesCost = if (attachMedia) (response?.images?.size ?: 0) * imageCharCost else 0
-        return argsCost + responseCost + imagesCost
-    }
-
     private fun toToolMessages(
         event: ToolRequestEvent,
-        detailedRequestIds: Set<String>,
-        mediaRequestIds: Set<String>,
+        plan: ToolReplayPlan,
         responsesByRequestId: Map<String, ToolResponseEvent>,
     ): List<Message> =
-        if (event.toolRequestId in detailedRequestIds) {
-            toDetailedToolMessages(event, mediaRequestIds, responsesByRequestId)
+        if (plan.isDetailed(event.toolRequestId)) {
+            toDetailedToolMessages(event, plan, responsesByRequestId)
         } else {
             listOf(toToolSummaryMessage(event, responsesByRequestId))
         }
 
     private fun toDetailedToolMessages(
         event: ToolRequestEvent,
-        mediaRequestIds: Set<String>,
+        plan: ToolReplayPlan,
         responsesByRequestId: Map<String, ToolResponseEvent>,
     ): List<Message> {
         val args = normalizeArgs(event.args)
@@ -206,11 +157,7 @@ data class AgentAdvancedContext(
         // for each tool_call_id — OpenAI returns 400 otherwise. Use the real response if
         // available, or synthesize a placeholder so the message list stays well-formed.
         val response = responsesByRequestId[event.toolRequestId]
-        val attachMedia = response != null && response.images.isNotEmpty() && event.toolRequestId in mediaRequestIds
-        var responseText = response?.let { extractText(it.output) } ?: "[No response recorded]"
-        if (response != null && response.images.isNotEmpty() && !attachMedia) {
-            responseText += "\n[${response.images.size} image(s) no longer attached, call the tool again if needed]"
-        }
+        val responseText = response?.let { toolResponseText(it, plan) } ?: "[No response recorded]"
 
         messages.add(
             ToolResponseMessage
@@ -227,8 +174,8 @@ data class AgentAdvancedContext(
         )
         // Provider tool responses are text-only: the images ride in a follow-up user
         // message with Media attachments right after the tool response.
-        if (attachMedia) {
-            messages.add(toolImagesUserMessage(event.toolName, response!!.images))
+        if (response != null && plan.hasAttachedMedia(event.toolRequestId)) {
+            messages.add(toolImagesUserMessage(event.toolName, response.images))
         }
         return messages
     }

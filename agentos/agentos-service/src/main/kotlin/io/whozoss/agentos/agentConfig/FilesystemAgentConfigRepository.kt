@@ -29,7 +29,6 @@ class FilesystemAgentConfigRepository(
     private val yamlMapper: ObjectMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build()),
     ttl: Duration = Duration.ofMinutes(5),
 ) : AgentConfigRepository by delegate {
-
     private val cacheRegistry =
         FilesystemYamlCacheRegistry(
             parser = ::parseYamlFile,
@@ -180,6 +179,7 @@ class FilesystemAgentConfigRepository(
             instructions = model.instructions,
             modelName = model.modelName,
             integrations = model.integrations,
+            advancedExecution = model.advancedExecution,
             subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
             docs =
                 model.docs
@@ -231,6 +231,7 @@ private data class AgentConfigYamlModel(
     val name: String = "",
     val description: String? = null,
     val instructions: String? = null,
+    val advancedExecution: Boolean = false,
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
     val subAgents: List<String>? = null,

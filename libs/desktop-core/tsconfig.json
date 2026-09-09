@@ -6,7 +6,8 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2021",
-    "types": ["node"]
+    "types": ["node"],
+    "ignoreDeprecations": "6.0"
   },
   "extends": "../../tsconfig.base.json",
   "include": ["src/**/*.ts"]

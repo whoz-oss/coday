@@ -42,4 +42,26 @@ interface PromptApi : EntityCrudApi<PromptDto> {
      * Requires READ on the namespace.
      */
     fun resolveEffective(request: PromptEffectiveRequest): List<PromptDto>
+
+    /**
+     * POST /api/prompts/{id}/translations/{languageCode} — resolve a translation of [content]
+     * and [title] into the requested language, using the namespace's AI model.
+     *
+     * - If [languageCode] matches the prompt's [PromptDto.sourceLanguage], returns the source
+     *   fields as-is without an LLM call.
+     * - Returns cached translations when available without an LLM call.
+     * - Otherwise translates via LLM, persists the results, and returns them.
+     *
+     * For namespace-scoped prompts the namespace is inferred from the prompt itself.
+     * For platform-scoped prompts (namespaceId IS NULL on the prompt), at least one of
+     * [namespaceId] / [namespaceExternalId] must be provided in the request body.
+     *
+     * Returns a [PromptTranslationDto] with the resolved [title] (null when the prompt has
+     * no title) and [content] (same indices as [PromptDto.content]).
+     */
+    fun translate(
+        id: UUID,
+        languageCode: String,
+        request: PromptTranslateRequest,
+    ): PromptTranslationDto
 }

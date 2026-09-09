@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core'
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatIcon } from '@angular/material/icon'
@@ -38,6 +38,7 @@ export interface JsonEditorData {
     MatDialogActions,
   ],
   templateUrl: './json-editor.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './json-editor.component.scss',
 })
 export class JsonEditorComponent {

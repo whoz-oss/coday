@@ -1,4 +1,4 @@
-import { Component, Input, signal } from '@angular/core'
+import { Component, Input, signal, ChangeDetectionStrategy } from '@angular/core'
 import { IconButtonComponent } from '../icon-button/icon-button.component'
 
 /**
@@ -13,6 +13,7 @@ import { IconButtonComponent } from '../icon-button/icon-button.component'
 @Component({
   selector: 'ds-copy-button',
   imports: [IconButtonComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
   templateUrl: './copy-button.component.html',
 })
 export class CopyButtonComponent {

@@ -7,6 +7,7 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.namespace.Namespace
@@ -165,6 +166,40 @@ abstract class AbstractCasePersistenceSpec : StringSpec() {
             repo.linkParentToChild(root.id, child.id)
             val descendants = repo.findActiveDescendants(root.id)
             descendants.map { it.id } shouldBe listOf(child.id)
+        }
+
+        "scheduledPromptId round-trips through toDomain/fromDomain" {
+            val ns = namespaceRepo.save(namespace())
+            val spId = UUID.randomUUID()
+            val saved = repo.save(case(ns.id).copy(scheduledPromptId = spId))
+            val found = repo.findByIds(listOf(saved.id))
+            found shouldHaveSize 1
+            found.first().scheduledPromptId shouldBe spId
+        }
+
+        "scheduledPromptId is null when not set" {
+            val ns = namespaceRepo.save(namespace())
+            val saved = repo.save(case(ns.id))
+            val found = repo.findByIds(listOf(saved.id))
+            found.first().scheduledPromptId shouldBe null
+        }
+
+        "save stamps modified on every write and the value round-trips correctly" {
+            val ns = namespaceRepo.save(namespace())
+            val first = repo.save(case(ns.id))
+
+            // modified is set by Neo4jCaseRepository.save() from the injected Clock —
+            // not by the caller. It must be non-null after the first save.
+            first.metadata.modified shouldNotBe null
+
+            val second = repo.save(first.copy(status = CaseStatus.RUNNING))
+
+            second.metadata.modified shouldNotBe null
+            second.status shouldBe CaseStatus.RUNNING
+
+            // Verify the value persisted and round-trips through toDomain().
+            val found = repo.findByIds(listOf(first.id)).first()
+            found.metadata.modified shouldBe second.metadata.modified
         }
 
         "deleteByParent removes all cases in namespace without touching others" {

@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core'
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core'
 import { RouterOutlet } from '@angular/router'
 import { THEME_PORT } from '../../services/theme.service'
 
@@ -12,6 +12,7 @@ import { THEME_PORT } from '../../services/theme.service'
   selector: 'agentos-shell',
   imports: [RouterOutlet],
   templateUrl: './agentos-shell.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './agentos-shell.component.scss',
 })
 export class AgentosShellComponent {

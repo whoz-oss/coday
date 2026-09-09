@@ -11,6 +11,7 @@ import {
   OnChanges,
   SimpleChanges,
   inject,
+  ChangeDetectionStrategy,
 } from '@angular/core'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
 import { DelegationInlineComponent } from '../delegation-inline/delegation-inline.component'
@@ -30,6 +31,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
   standalone: true,
   imports: [ChatMessageComponent, MatIcon, ThinkingLoaderComponent, MatFabButton, DelegationInlineComponent],
   templateUrl: './chat-history.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './chat-history.component.scss',
 })
 export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy, OnChanges {

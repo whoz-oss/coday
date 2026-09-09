@@ -1,4 +1,14 @@
-import { Component, DestroyRef, ElementRef, EventEmitter, inject, Input, OnInit, Output } from '@angular/core'
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  EventEmitter,
+  inject,
+  Input,
+  OnInit,
+  Output,
+  ChangeDetectionStrategy,
+} from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Subject, debounceTime, distinctUntilChanged, switchMap, of } from 'rxjs'
 import { AutocompleteDataSource, AutocompleteItem } from './autocomplete-data-source'
@@ -25,6 +35,7 @@ import { AutocompleteDataSource, AutocompleteItem } from './autocomplete-data-so
   standalone: true,
   imports: [],
   templateUrl: './autocomplete-input.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './autocomplete-input.component.scss',
 })
 export class AutocompleteInputComponent implements OnInit {

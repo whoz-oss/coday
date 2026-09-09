@@ -2,7 +2,9 @@ package io.whozoss.agentos.prompt
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Operation
+import org.springframework.beans.factory.annotation.Qualifier
 import io.whozoss.agentos.entity.EntityCrudDelegate
+import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -15,6 +17,8 @@ import io.whozoss.agentos.sdk.api.prompt.PromptDto
 import io.whozoss.agentos.sdk.api.prompt.PromptEffectiveRequest
 import io.whozoss.agentos.sdk.api.prompt.PromptParameterDto
 import io.whozoss.agentos.sdk.api.prompt.PromptSearchRequest
+import io.whozoss.agentos.sdk.api.prompt.PromptTranslateRequest
+import io.whozoss.agentos.sdk.api.prompt.PromptTranslationDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -80,7 +84,8 @@ class PromptController(
     private val userService: UserService,
     private val permissionService: PermissionService,
     private val overlayScopeAuthorizer: OverlayScopeAuthorizer,
-    private val yamlExportMapper: ObjectMapper,
+    private val externalIdentifierResolver: ExternalIdentifierResolver,
+    @Qualifier("yamlExportMapper") private val yamlExportMapper: ObjectMapper,
 ) : PromptApi {
     private val crud =
         EntityCrudDelegate(
@@ -229,6 +234,9 @@ class PromptController(
                 content = resource.content,
                 parameters = resource.parameters.map { it.toDomain() },
                 externalMetadata = resource.externalMetadata,
+                title = resource.title,
+                sourceLanguage = resource.sourceLanguage,
+                // translatedTitles and translatedContent are never accepted from the caller
             )
         return toDto(promptService.create(target))
     }
@@ -302,7 +310,51 @@ class PromptController(
             content = resource.content,
             parameters = resource.parameters.map { it.toDomain() },
             externalMetadata = resource.externalMetadata,
+            title = resource.title,
+            sourceLanguage = resource.sourceLanguage,
+            // translatedTitles and translatedContent are never accepted from the caller
+            // PromptServiceImpl.update clears them when their source fields change
         )
+
+    @Operation(
+        summary = "Translate prompt content into a target language",
+        description =
+            "Returns the translated content list (same indices as `content`). " +
+                "If the requested language matches `sourceLanguage`, returns `content` as-is. " +
+                "If a cached translation exists it is returned without an LLM call. " +
+                "Otherwise the content is translated via the namespace's AI model, persisted, and returned. " +
+                "For namespace-scoped prompts the namespace is inferred from the prompt itself. " +
+                "For platform-scoped prompts (namespaceId IS NULL on the prompt), " +
+                "at least one of `namespaceId` / `namespaceExternalId` is required in the request body.",
+    )
+    @PostMapping("/{id}/translations/{languageCode}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#id, 'Prompt', 'READ')")
+    @HideOnAccessDenied
+    override fun translate(
+        @PathVariable id: UUID,
+        @PathVariable languageCode: String,
+        @Valid @RequestBody request: PromptTranslateRequest,
+    ): PromptTranslationDto {
+        // Resolve caller-supplied namespace only when present — used as fallback for platform prompts.
+        // Namespace-scoped prompts derive namespaceId from the prompt itself in PromptServiceImpl.
+        val callerNamespaceId =
+            if (request.namespaceId != null || request.namespaceExternalId != null) {
+                externalIdentifierResolver.resolveNamespaceId(
+                    id = request.namespaceId,
+                    externalId = request.namespaceExternalId,
+                )
+            } else {
+                null
+            }
+
+        val translation =
+            promptService.translate(
+                id = id,
+                targetLanguage = languageCode,
+                callerNamespaceId = callerNamespaceId,
+            )
+        return PromptTranslationDto(title = translation.title, content = translation.content)
+    }
 
     private fun PromptParameterDto.toDomain(): PromptParameter =
         PromptParameter(
@@ -332,6 +384,8 @@ internal fun toDto(entity: Prompt): PromptDto =
                 )
             },
         externalMetadata = entity.externalMetadata,
+        title = entity.title,
+        sourceLanguage = entity.sourceLanguage,
         createdBy = entity.metadata.createdBy,
         createdOn = entity.metadata.created,
         updatedBy = entity.metadata.modifiedBy,

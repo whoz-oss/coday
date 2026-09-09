@@ -11,12 +11,12 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them,
- * and a separate tick that consumes available [ScheduledPromptUserRun]s.
+ * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them.
  *
- * ### Two-tick architecture
+ * ### Scheduled entry points
  *
  * **[tickClaim]** (Phase A, every `agentos.prompt.scheduler.tick-interval-ms`):
  * 1. Sweep orphaned CLAIMED runs via [recoverOrphanedClaimedRuns] — handles the crash
@@ -26,13 +26,16 @@ import java.time.ZoneOffset
  *    calls [ScheduledPromptExecutor.materialize] to create PENDING UserRuns.
  * 4. Always advance `nextRunAt` via [ScheduledPromptRepository.advanceNextRunAt].
  *
- * **[tickConsume]** (Phase B, every `agentos.prompt.scheduler.consume-interval-ms`):
- * Declared `suspend` — Spring Framework 6.1+ natively supports suspend functions on
- * `@Scheduled` methods. Calls [ScheduledPromptExecutor.consumeAvailable] which suspends
- * until ALL UserRuns from ALL batches have finished executing. Spring `fixedDelay`
- * guarantees no overlap between consecutive consume ticks.
+ * **[tickWatchdog]** (every `agentos.prompt.scheduler.tick-interval-ms`):
+ * Checks [ScheduledPromptExecutor.isRunning] and calls [ScheduledPromptExecutor.restart]
+ * if the consumer loop has died unexpectedly. Runs on the same interval as [tickClaim]
+ * so a dead producer is detected within one tick.
  *
- * Both ticks use Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
+ * Phase B (UserRun consumption) is handled by [ScheduledPromptExecutor], which runs a
+ * continuous producer + channel + worker-pool loop started by `@PostConstruct` and stopped
+ * by `@PreDestroy`. There is no consume tick in this scanner.
+ *
+ * [tickClaim] uses Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
  * own successor. No fire-and-forget coroutines are used at the Scanner level.
  *
  * ### Claim logic
@@ -42,7 +45,7 @@ import java.time.ZoneOffset
  * - Otherwise → insert a CLAIMED Run, then call [ScheduledPromptExecutor.materialize]
  *   (MERGE + RUNNING transition in a single `@Transactional` boundary).
  * - Catch [DuplicateRunException] for both SKIPPED and CLAIMED (concurrent tick won the race).
- * - After the insert (or on duplicate), advance `nextRunAt` via CAS.
+ * - After the insert (or on duplicate), advance `nextRunAt` optimistically.
  *
  * ### Orphan recovery
  *
@@ -50,12 +53,15 @@ import java.time.ZoneOffset
  * and materialize). [recoverOrphanedClaimedRuns] marks such runs FAILED at the start of
  * each tick, unblocking the [ScheduledPromptRunRepository.hasActive] overlap guard.
  *
- * A RUNNING Run whose UserRuns are all terminal but whose completion check was never
- * called is handled by [recoverOrphanedRunningRuns], also called at the start of each
- * tick. This covers the crash window between [ScheduledPromptUserRunRepository.markTerminal]
- * and [ScheduledPromptExecutor.checkCompletion].
+ * A RUNNING Run whose UserRuns are all terminal but whose parent was never closed is
+ * handled by [recoverOrphanedRunningRuns], also called at the start of each tick.
+ * This covers the crash window between the [ScheduledPromptUserRunRepository.markTerminal]
+ * call of the last UserRun and the closure of the parent Run, which is now performed
+ * exclusively by [recoverOrphanedRunningRuns] on each tick.
  *
  * The [clock] is injected so tests can freeze time.
+ *
+ * See `docs/scheduled-prompt.md` for the full crash recovery matrix.
  */
 
 @Component
@@ -70,38 +76,96 @@ class SchedulerScanner(
     private val nextRunCalculatorService: NextRunCalculatorService,
     private val executor: ScheduledPromptExecutor,
 ) {
+    /** When true, tickClaim() exits immediately without processing. */
+    private val claimPaused = AtomicBoolean(false)
+
+    fun isClaimPaused(): Boolean = claimPaused.get()
+
+    fun pauseClaim() {
+        claimPaused.set(true)
+        logger.warn { "[SchedulerScanner] tickClaim PAUSED by operator" }
+    }
+
+    fun resumeClaim() {
+        claimPaused.set(false)
+        logger.warn { "[SchedulerScanner] tickClaim RESUMED by operator" }
+    }
+
     @PostConstruct
     fun logStartup() {
         logger.info { "[SchedulerScanner] Scheduler enabled" }
+        val leaseSeconds = properties.leaseMinutes * 60
+        require(leaseSeconds > properties.launchTimeoutSeconds) {
+            "[SchedulerScanner] agentos.prompt.scheduler.lease-minutes (${properties.leaseMinutes}m = ${leaseSeconds}s) " +
+                "must be greater than launch-timeout-seconds (${properties.launchTimeoutSeconds}s). " +
+                "A shorter lease causes UserRuns to be reclaimed before monitorLaunch completes, " +
+                "leading to double execution."
+        }
     }
 
     /**
      * Phase A: Discover due ScheduledPrompts, claim them, and materialize UserRuns.
      * Fully blocking — materialize runs synchronously within the tick.
      * Spring fixedDelay guarantees no overlap between ticks.
+     *
+     * When [claimPaused] the tick is a no-op — the scheduling thread still fires
+     * but [processClaim] is not called.
      */
     @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
     fun tickClaim() {
+        when {
+            claimPaused.get() -> logger.debug { "[SchedulerScanner] tickClaim PAUSED — skipping" }
+            else -> processClaim()
+        }
+    }
+
+    /**
+     * Watchdog: restarts the consumer loop if it died unexpectedly.
+     * Runs on the same interval as [tickClaim] so a dead producer is detected within one tick.
+     * Safe: Spring guarantees @PostConstruct on all beans completes before @Scheduled ticks fire,
+     * so executor.scope is always initialized when this first runs.
+     */
+    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
+    fun tickWatchdog() {
+        if (!executor.isRunning()) {
+            logger.error { "[SchedulerScanner] consumer loop is dead — restarting automatically" }
+            executor.restart()
+        }
+    }
+
+    /**
+     * Core claim logic, extracted from [tickClaim] so the scheduled entry point
+     * remains a pure activation guard.
+     */
+    private fun processClaim() {
         val now = Instant.now(clock)
 
         // Sweep: abandon orphaned CLAIMED runs that were never materialised.
         // This handles the crash window between Run insert and materialize() in claim().
-        // A CLAIMED Run older than the tick interval is presumed orphaned — materialize()
+        // A CLAIMED Run older than ORPHAN_THRESHOLD is presumed orphaned — materialize()
         // normally completes in seconds. Marking it FAILED unblocks the hasActive() overlap
         // guard so subsequent slots are not stuck in SKIPPED.
-        recoverOrphanedClaimedRuns(now)
+        runCatching { recoverOrphanedClaimedRuns(now) }.onFailure { e ->
+            logger.error(e) { "[SchedulerScanner] recoverOrphanedClaimedRuns failed — continuing tick" }
+        }
 
-        // Sweep: close RUNNING runs whose UserRuns are all settled but whose completion
-        // check was missed. This handles the crash window between markTerminal() and
-        // checkCompletion() in ScheduledPromptExecutor.
-        recoverOrphanedRunningRuns(now)
+        // Sweep: close RUNNING runs whose UserRuns are all settled but whose parent was
+        // never closed. This handles the crash window between the last markTerminal() call
+        // and the closure of the parent Run by recoverOrphanedRunningRuns.
+        runCatching { recoverOrphanedRunningRuns(now) }.onFailure { e ->
+            logger.error(e) { "[SchedulerScanner] recoverOrphanedRunningRuns failed — continuing tick" }
+        }
 
         scheduledPromptRepository.findDue(now)
             .also { due ->
                 if (due.isEmpty()) logger.debug { "[SchedulerScanner] tickClaim: no due prompts" }
                 else logger.info { "[SchedulerScanner] tickClaim: ${due.size} due prompt(s)" }
             }
-            .forEach { sp -> claim(sp) }
+            .forEach { sp ->
+                runCatching { claim(sp) }.onFailure { e ->
+                    logger.error(e) { "[SchedulerScanner] claim failed for sp=${sp.id} — skipping this prompt in this tick" }
+                }
+            }
     }
 
     /**
@@ -136,12 +200,12 @@ class SchedulerScanner(
     }
 
     /**
-     * Close RUNNING Runs whose UserRuns are all settled but whose completion check was missed.
+     * Close RUNNING Runs whose UserRuns are all settled but whose parent was never closed.
      *
      * This handles the crash window where the last [ScheduledPromptUserRunRepository.markTerminal]
-     * completed but the instance crashed before [ScheduledPromptExecutor]'s `checkCompletion()`
-     * could transition the parent Run. Without this sweep, the Run would stay RUNNING forever
-     * — no subsequent UserRun closure will re-trigger the check.
+     * completed but the instance crashed before the parent Run could be transitioned.
+     * Without this sweep, the Run would stay RUNNING forever — no subsequent event will
+     * re-trigger the closure.
      *
      * Uses a single [ScheduledPromptRunRepository.findSettledRunning] query that filters
      * directly in the database: only RUNNING Runs with no UserRun in PENDING or RUNNING
@@ -159,26 +223,11 @@ class SchedulerScanner(
                 else -> RunStatus.DONE
             }
             runRepository.updateStatus(run.id, finalStatus, now)
-            logger.warn {
-                "[SchedulerScanner] Orphaned RUNNING run=${run.id} sp=${run.scheduledPromptId} " +
-                    "— all UserRuns settled, closing as $finalStatus (crash recovery)"
+            logger.info {
+                "[SchedulerScanner] RUNNING run=${run.id} sp=${run.scheduledPromptId} " +
+                    "— all UserRuns settled, closing as $finalStatus"
             }
         }
-    }
-
-    /**
-     * Phase B: Consume available UserRuns.
-     * Declared `suspend` — Spring Framework 6.1+ natively dispatches suspend `@Scheduled`
-     * methods on the application's coroutine scheduler.
-     * Returns only when all claimed UserRuns have finished executing.
-     * Spring fixedDelay guarantees no overlap between ticks.
-     *
-     * The IO dispatcher is managed by [ScheduledPromptExecutor.consumeAvailable] itself
-     * via [kotlinx.coroutines.withContext].
-     */
-    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.consume-interval-ms:10000}")
-    suspend fun tickConsume() {
-        executor.consumeAvailable()
     }
 
     private fun claim(scheduledPrompt: ScheduledPrompt) {
@@ -192,7 +241,7 @@ class SchedulerScanner(
                 "[SchedulerScanner] AgentConfig ${scheduledPrompt.agentConfigId} is ${if (agentConfig == null) "deleted" else "disabled"} " +
                     "— disabling sp=${scheduledPrompt.id} to prevent further zombie ticks"
             }
-            scheduledPromptRepository.save(scheduledPrompt.copy(enabled = false))
+            scheduledPromptRepository.updateEnabled(scheduledPrompt.id, false)
             return
         }
 
@@ -209,7 +258,7 @@ class SchedulerScanner(
                 "[SchedulerScanner] End condition already reached for sp=${scheduledPrompt.id} " +
                     "(${scheduledPrompt.planning.endType}) \u2014 disabling without execution"
             }
-            scheduledPromptRepository.save(scheduledPrompt.copy(enabled = false))
+            scheduledPromptRepository.updateEnabled(scheduledPrompt.id, false)
             return
         }
 
@@ -238,12 +287,11 @@ class SchedulerScanner(
 
         // Always advance nextRunAt — auto-repairing even on duplicate or skip.
         val nextSlot = nextRunCalculatorService.nextAfter(recurrence = scheduledPrompt.recurrence, planning = scheduledPrompt.planning, after = slot)
-        logger.info { "[DEBUG] slot=$slot nextSlot=$nextSlot" }
         val advanced = scheduledPromptRepository.advanceNextRunAt(scheduledPrompt.id, slot, nextSlot)
         if (advanced) {
             logger.debug { "[SchedulerScanner] Advanced sp=${scheduledPrompt.id} nextRunAt=$nextSlot" }
         } else {
-            logger.debug { "[SchedulerScanner] CAS miss for sp=${scheduledPrompt.id} (another tick advanced first)" }
+            logger.debug { "[SchedulerScanner] Optimistic advance miss for sp=${scheduledPrompt.id} (another tick advanced first)" }
         }
 
         // Check if the end condition will be reached after this run.
@@ -251,7 +299,24 @@ class SchedulerScanner(
         checkEndConditionAfterAdvance(scheduledPrompt, nextSlot)
 
         if (status == RunStatus.CLAIMED && insertedRun != null) {
-            executor.materialize(insertedRun, scheduledPrompt)
+            runCatching { executor.materialize(insertedRun, scheduledPrompt) }
+                .onFailure { e ->
+                    logger.error(e) {
+                        "[SchedulerScanner] materialize failed for run=${insertedRun.id} sp=${scheduledPrompt.id} — marking FAILED"
+                    }
+                    runCatching {
+                        runRepository.updateStatus(
+                            id = insertedRun.id,
+                            status = RunStatus.FAILED,
+                            finishedAt = Instant.now(clock),
+                            error = e.message?.takeIf { it.isNotBlank() } ?: "materialize failed: ${e::class.simpleName}",
+                        )
+                    }.onFailure { updateError ->
+                        logger.error(updateError) {
+                            "[SchedulerScanner] Could not mark run=${insertedRun.id} as FAILED — will be swept by recoverOrphanedClaimedRuns"
+                        }
+                    }
+                }
         }
     }
 
@@ -275,7 +340,8 @@ class SchedulerScanner(
             }
             SchedulerEndType.OCCURRENCES -> {
                 val max = planning.maxOccurrenceCount ?: return false
-                val completed = runRepository.countCompletedRuns(scheduledPrompt.id)
+                val startInstant = planning.startDate.atStartOfDay(ZoneOffset.UTC).toInstant()
+                val completed = runRepository.countCompletedRuns(scheduledPrompt.id, startInstant)
                 completed >= max
             }
         }
@@ -303,7 +369,8 @@ class SchedulerScanner(
             }
             SchedulerEndType.OCCURRENCES -> {
                 val max = planning.maxOccurrenceCount ?: return
-                val completed = runRepository.countCompletedRuns(scheduledPrompt.id)
+                val startInstant = planning.startDate.atStartOfDay(ZoneOffset.UTC).toInstant()
+                val completed = runRepository.countCompletedRuns(scheduledPrompt.id, startInstant)
                 completed >= max
             }
         }
@@ -313,7 +380,9 @@ class SchedulerScanner(
                 "[SchedulerScanner] End condition reached after advance for sp=${scheduledPrompt.id} " +
                     "(${planning.endType}) \u2014 disabling"
             }
-            scheduledPromptRepository.save(scheduledPrompt.copy(enabled = false))
+            // Use targeted updateEnabled rather than save(copy(enabled=false)) to avoid
+            // overwriting the nextRunAt that was just advanced above.
+            scheduledPromptRepository.updateEnabled(scheduledPrompt.id, false)
         }
     }
 
