@@ -1,3 +1,15 @@
+## 1.1.5 (2026-09-09)
+
+### 🩹 Fixes
+
+- #1299 fix case chat message wrapping and composer resizing ([#1299](https://github.com/whoz-oss/coday/issues/1299))
+- #1299 Fix case chat composer width and resize on input ([#1299](https://github.com/whoz-oss/coday/issues/1299))
+- #1299 Auto-resize case composer textarea ([#1299](https://github.com/whoz-oss/coday/issues/1299))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
 ## 1.1.4 (2026-09-08)
 
 ### 🩹 Fixes
