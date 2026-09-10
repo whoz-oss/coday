@@ -30,6 +30,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const DISPATCH = {
   'workflow:us-loop':                { category: 'workflow',   path: join(__dirname, '..', 'workflows', 'us-loop.mjs') },
   'workflow:fix-loop':               { category: 'workflow',   path: join(__dirname, '..', 'workflows', 'fix-loop.mjs') },
+  'workflow:forge-epic':             { category: 'workflow',   path: join(__dirname, '..', 'workflows', 'forge-epic.mjs') },
   'diagnostic:agentos-smoke':        { category: 'diagnostic', path: join(__dirname, '..', 'diagnostics', 'agentos-smoke.mjs') },
   'diagnostic:backend-oracle-check': { category: 'diagnostic', path: join(__dirname, '..', 'diagnostics', 'backend-oracle-check.mjs') },
 
@@ -105,6 +106,14 @@ console.log('\n=== Commandes catégorisées canoniques ===\n')
   expect('workflow fix-loop : clé correcte', key, 'workflow:fix-loop')
   expect('workflow fix-loop : category = workflow', entry?.category, 'workflow')
   expectTrue('workflow fix-loop : module existe', existsSync(entry?.path ?? ''))
+}
+
+{
+  const key = argvToKey('workflow', 'forge-epic')
+  const entry = resolve(key)
+  expect('workflow forge-epic : clé correcte', key, 'workflow:forge-epic')
+  expect('workflow forge-epic : category = workflow', entry?.category, 'workflow')
+  expectTrue('workflow forge-epic : module existe', existsSync(entry?.path ?? ''))
 }
 
 {
@@ -217,6 +226,11 @@ console.log('\n=== Fichiers de workflows de production ===\n')
 {
   const p = join(__dirname, '..', 'workflows', 'fix-loop.mjs')
   expectTrue('workflows/fix-loop.mjs existe', existsSync(p))
+}
+
+{
+  const p = join(__dirname, '..', 'workflows', 'forge-epic.mjs')
+  expectTrue('workflows/forge-epic.mjs existe', existsSync(p))
 }
 
 // ---------------------------------------------------------------------------

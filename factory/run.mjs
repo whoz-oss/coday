@@ -9,6 +9,7 @@
  * Workflows (production) :
  *   node factory/run.mjs workflow us-loop
  *   node factory/run.mjs workflow fix-loop
+ *   node factory/run.mjs workflow forge-epic
  *
  * Diagnostics (vérification de plomberie, pas de livraison) :
  *   node factory/run.mjs diagnostic agentos-smoke
@@ -58,6 +59,7 @@ const DISPATCH = {
   // Commandes catégorisées (forme canonique)
   'workflow:us-loop':                 { category: 'workflow',    path: join(__dirname, 'workflows', 'us-loop.mjs') },
   'workflow:fix-loop':                { category: 'workflow',    path: join(__dirname, 'workflows', 'fix-loop.mjs') },
+  'workflow:forge-epic':              { category: 'workflow',    path: join(__dirname, 'workflows', 'forge-epic.mjs') },
   'diagnostic:agentos-smoke':         { category: 'diagnostic',  path: join(__dirname, 'diagnostics', 'agentos-smoke.mjs') },
   'diagnostic:backend-oracle-check':  { category: 'diagnostic',  path: join(__dirname, 'diagnostics', 'backend-oracle-check.mjs') },
 
@@ -117,6 +119,7 @@ function printHelp() {
   console.error('Workflows (livraison) :')
   console.error('  node factory/run.mjs workflow us-loop')
   console.error('  node factory/run.mjs workflow fix-loop')
+  console.error('  node factory/run.mjs workflow forge-epic')
   console.error('')
   console.error('Diagnostics (vérification de plomberie) :')
   console.error('  node factory/run.mjs diagnostic agentos-smoke')

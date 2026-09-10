@@ -36,12 +36,17 @@ import { spawn } from 'node:child_process'
 import { fetchJiraTicket } from '../lib/jira.mjs'
 import { discoverJiraCredentials } from '../lib/coday-config.mjs'
 import { registerGate, unregisterGate, getGate, writeGateReply } from '../lib/review-gate.mjs'
+import { listForgeRunProjections, parseForgeLedger, projectForgeRun } from '../lib/forge-ledger.mjs'
+import { recordHumanDecision } from '../lib/forge-human-decision.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
 const RUN_ENTRY = join(__dirname, '..', 'run.mjs')
 const PORT = parseInt(process.env.PORT ?? '3141', 10)
 const AGENTOS_URL = process.env.AGENTOS_URL ?? 'http://localhost:8124'
+// Explicit store location for Forge Epic/Story projections. It is intentionally
+// independent from both this dashboard's source tree and the target repoRoot.
+const FORGE_RUN_STORE_ROOT = process.env.FACTORY_FORGE_RUN_STORE_ROOT ?? null
 
 // FACTORY_USER: used only to identify the AgentOS user for proxy headers.
 // No hardcoded personal username — resolved from Coday config or left undefined.
@@ -561,6 +566,43 @@ const server = createServer(async (req, res) => {
   // GET /api/runs
   if (method === 'GET' && path === '/api/runs') {
     return send(res, 200, listRuns())
+  }
+
+  // Minimal replay-only Forge view for the existing dashboard and future UI.
+  // Legacy workflow JSONL remains served by /api/runs unchanged.
+  if (method === 'GET' && path === '/api/forge/runs') {
+    if (!FORGE_RUN_STORE_ROOT) return send(res, 503, { error: 'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.' })
+    return send(res, 200, listForgeRunProjections(FORGE_RUN_STORE_ROOT))
+  }
+
+  const forgeG1Match = path.match(/^\/api\/forge\/runs\/([^/]+)\/gates\/G1$/)
+  if (method === 'GET' && forgeG1Match) {
+    if (!FORGE_RUN_STORE_ROOT) return send(res, 503, { error: 'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.' })
+    try {
+      const projection = projectForgeRun(parseForgeLedger(join(FORGE_RUN_STORE_ROOT, `${forgeG1Match[1]}.jsonl`)))
+      if (!projection) return send(res, 404, { error: 'Forge run not found.' })
+      return send(res, 200, projection.gates.find((gate) => gate.gate === 'G1') ?? null)
+    } catch { return send(res, 404, { error: 'Forge run not found.' }) }
+  }
+
+  const forgeG1DecisionMatch = path.match(/^\/api\/forge\/runs\/([^/]+)\/gates\/G1\/decision$/)
+  if (method === 'POST' && forgeG1DecisionMatch) {
+    if (!FORGE_RUN_STORE_ROOT) return send(res, 503, { error: 'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.' })
+    const body = await readBody(req)
+    // Minimal injected dashboard adapter. Production authentication replaces this
+    // boundary; actor/authority are never accepted from the request body.
+    const actorId = req.headers['x-factory-actor-id']
+    const authorityId = req.headers['x-factory-authority-id']
+    const identityPort = {
+      actorId: async () => Array.isArray(actorId) ? actorId[0] : actorId,
+      authorize: async ({ actorId: verifiedActor }) =>
+        typeof authorityId === 'string' && authorityId && verifiedActor ? { authorityId } : null,
+    }
+    try {
+      const roots = { runStoreRoot: FORGE_RUN_STORE_ROOT }
+      const result = await recordHumanDecision({ roots, runId: forgeG1DecisionMatch[1], decision: body, identityPort })
+      return send(res, result.status === 'recorded' ? 201 : 200, result)
+    } catch (error) { return send(res, 409, { error: String(error.message ?? error) }) }
   }
 
   // POST /api/runs
