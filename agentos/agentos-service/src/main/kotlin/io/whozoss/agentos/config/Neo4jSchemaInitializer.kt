@@ -76,6 +76,7 @@ class Neo4jSchemaInitializer(
                 "user_group_id_unique" to "UserGroup",
                 "feedback_id_unique" to "Feedback",
                 "prompt_id_unique" to "Prompt",
+                "usage_record_id_unique" to "UsageRecord",
             )
 
         // CaseEvent base label + one entry per subtype derived from the canonical enum.

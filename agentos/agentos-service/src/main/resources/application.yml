@@ -182,6 +182,20 @@ agentos:
     # autonomous agents triggered by webhooks where nobody is listening.
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
     # enabled-by-default: true
+  limits:
+    # Maximum number of internal steps per user message in the CaseRuntime before the case
+    # transitions to ERROR status. A "step" is one processNextStep() call covering agent
+    # selection, agent run, and redirect events. The counter resets to 0 on each
+    # AgentFinishedEvent, so a case with multiple sequential commands can safely exceed this
+    # threshold across the full session without triggering it within a single turn.
+    # Override with env var: AGENTOS_LIMITS_CASE_MAX_ITERATIONS
+    # case-max-iterations: 100
+    # Maximum number of intention->tool iterations per agent run in AgentAdvanced.
+    # Each iteration consists of one intention-generation call followed by zero or one tool
+    # executions. When this limit is reached the agent emits a WarnEvent and breaks out
+    # of the loop, producing its final response based on what it has gathered so far.
+    # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
+    # agent-max-iterations: 20
   defaults:
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.

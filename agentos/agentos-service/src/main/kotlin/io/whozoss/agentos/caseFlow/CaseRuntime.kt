@@ -76,6 +76,12 @@ class CaseRuntime(
     inputEvents: List<CaseEvent> = emptyList(),
     initialStatus: CaseStatus = CaseStatus.PENDING,
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
+    /**
+     * Maximum number of internal steps per user message before the runtime transitions to
+     * [CaseStatus.ERROR]. Configurable via [io.whozoss.agentos.config.LimitsConfigProperties].
+     * Defaults to 100 to preserve the previous hardcoded value.
+     */
+    private val maxIterations: Int = 100,
 ) : CaseEventEmitter by emitter {
     private val eventList = InMemoryCaseEventList(inputEvents)
 
@@ -103,7 +109,6 @@ class CaseRuntime(
      */
     private val runInFlight = AtomicBoolean(false)
 
-    private val maxIterations = 100
     private var iterationCount = 0
 
     /**

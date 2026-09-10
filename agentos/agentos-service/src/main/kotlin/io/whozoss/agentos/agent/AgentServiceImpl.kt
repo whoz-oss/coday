@@ -3,6 +3,7 @@ package io.whozoss.agentos.agent
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
@@ -72,6 +73,7 @@ class AgentServiceImpl(
     private val exchangeToolGrantService: ExchangeToolGrantService,
     private val agentDocumentResolver: AgentDocumentResolver,
     private val agentConfigProperties: AgentConfigProperties,
+    private val limitsConfig: LimitsConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
 ) : AgentService {
     /**
@@ -463,7 +465,7 @@ class AgentServiceImpl(
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
-        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
+        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString(), context.usageAccumulator)
 
         return if (advancedExecution) {
             val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
@@ -487,6 +489,7 @@ class AgentServiceImpl(
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
+                maxIterations = limitsConfig.agentMaxIterations,
                 llmProvider = providerConfig.name,
                 llmModel = modelConfig.apiModelName,
                 toolMetricsService = toolMetricsService,

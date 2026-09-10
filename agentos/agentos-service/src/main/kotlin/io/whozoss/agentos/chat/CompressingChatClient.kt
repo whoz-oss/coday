@@ -4,9 +4,13 @@ import io.whozoss.agentos.util.IdCompressorService
 import io.whozoss.agentos.util.MessageCompressorBuffer
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.client.ChatClient.AdvisorSpec
 import org.springframework.ai.chat.client.ChatClient.CallResponseSpec
 import org.springframework.ai.chat.client.ChatClient.ChatClientRequestSpec
+import org.springframework.ai.chat.client.ChatClient.PromptSystemSpec
+import org.springframework.ai.chat.client.ChatClient.PromptUserSpec
 import org.springframework.ai.chat.client.ChatClient.StreamResponseSpec
+import org.springframework.ai.chat.client.advisor.api.Advisor
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
@@ -14,9 +18,16 @@ import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
+import org.springframework.ai.chat.prompt.ChatOptions
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.template.TemplateRenderer
+import org.springframework.ai.tool.ToolCallback
+import org.springframework.ai.tool.ToolCallbackProvider
+import org.springframework.core.io.Resource
 import reactor.core.publisher.Flux
+import java.nio.charset.Charset
 import java.util.concurrent.atomic.AtomicReference
+import java.util.function.Consumer
 
 /**
  * A proper [ChatClient] decorator that compresses UUIDs/ObjectIds in outgoing
@@ -67,16 +78,102 @@ class CompressingChatClient(
     // -------------------------------------------------------------------------
 
     /**
-     * Wraps a [ChatClientRequestSpec], delegating all methods transparently except
-     * [call] and [stream], which are intercepted to inject decompression wrappers.
+     * Wraps a [ChatClientRequestSpec], intercepting [call] and [stream] to inject
+     * decompression wrappers, and re-wrapping every other fluent method so callers
+     * always stay inside this envelope.
      *
      * The [buffer] is the same one used to compress the outgoing prompt, so the
-     * decompressor can resolve aliases back to the original IDs.
+     * decompressor can resolve aliases back to the original IDs. It must be propagated
+     * as-is to every re-wrap — creating a new buffer would break alias resolution.
+     *
+     * ## Why every fluent method must be overridden here
+     *
+     * Spring AI's fluent methods (e.g. [toolCallbacks], [messages], [system], …)
+     * return the *implementation* instance, not the interface type. Kotlin `by`
+     * delegation only intercepts methods declared on this class; any method that is
+     * NOT overridden here will return the bare delegate, silently escaping the wrapper.
+     * The next call in the chain then runs on the unwrapped delegate, so [call]/[stream]
+     * would never be intercepted and decompression would be silently skipped.
+     *
+     * **Maintenance rule:** every method of [ChatClientRequestSpec] whose return type
+     * is [ChatClientRequestSpec] MUST be listed here and re-wrap its result in a fresh
+     * [CompressingRequestSpec] carrying the same [buffer]. Only [mutate] (which returns
+     * [ChatClient.Builder]) and the terminal methods [call]/[stream] are exempt.
+     *
+     * If a future Spring AI upgrade adds a new fluent method to [ChatClientRequestSpec],
+     * it must be added here to preserve the decompression invariant.
      */
     private inner class CompressingRequestSpec(
         private val delegate: ChatClientRequestSpec,
         private val buffer: MessageCompressorBuffer,
     ) : ChatClientRequestSpec by delegate {
+
+        // --- fluent methods that must re-wrap to stay inside the compression envelope ---
+
+        override fun advisors(consumer: Consumer<AdvisorSpec>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.advisors(consumer), buffer)
+
+        override fun advisors(vararg advisors: Advisor): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.advisors(*advisors), buffer)
+
+        override fun advisors(advisors: List<Advisor>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.advisors(advisors), buffer)
+
+        override fun messages(vararg messages: Message): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.messages(*messages), buffer)
+
+        override fun messages(messages: List<Message>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.messages(messages), buffer)
+
+        override fun <T : ChatOptions> options(options: T): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.options(options), buffer)
+
+        override fun toolNames(vararg toolNames: String): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.toolNames(*toolNames), buffer)
+
+        override fun tools(vararg toolObjects: Any): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.tools(*toolObjects), buffer)
+
+        override fun toolCallbacks(vararg toolCallbacks: ToolCallback): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.toolCallbacks(*toolCallbacks), buffer)
+
+        override fun toolCallbacks(toolCallbacks: List<ToolCallback>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.toolCallbacks(toolCallbacks), buffer)
+
+        override fun toolCallbacks(vararg toolCallbackProviders: ToolCallbackProvider): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.toolCallbacks(*toolCallbackProviders), buffer)
+
+        override fun toolContext(toolContext: Map<String, Any>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.toolContext(toolContext), buffer)
+
+        override fun system(text: String): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.system(text), buffer)
+
+        override fun system(textResource: Resource, charset: Charset): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.system(textResource, charset), buffer)
+
+        override fun system(text: Resource): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.system(text), buffer)
+
+        override fun system(consumer: Consumer<PromptSystemSpec>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.system(consumer), buffer)
+
+        override fun user(text: String): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.user(text), buffer)
+
+        override fun user(text: Resource, charset: Charset): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.user(text, charset), buffer)
+
+        override fun user(text: Resource): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.user(text), buffer)
+
+        override fun user(consumer: Consumer<PromptUserSpec>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.user(consumer), buffer)
+
+        override fun templateRenderer(templateRenderer: TemplateRenderer): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.templateRenderer(templateRenderer), buffer)
+
+        // --- terminal methods: intercept and wrap ---
 
         override fun call(): CallResponseSpec {
             logger.debug { "[CompressingChatClient] call() — buffer=${buffer.hashCode()}" }

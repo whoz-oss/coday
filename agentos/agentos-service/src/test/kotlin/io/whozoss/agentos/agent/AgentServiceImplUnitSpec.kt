@@ -14,6 +14,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
@@ -113,6 +114,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentDocumentResolver = agentDocumentResolver,
             idCompressorService = IdCompressorService(),
             agentConfigProperties = AgentConfigProperties(),
+            limitsConfig = LimitsConfigProperties(),
             queryUserToolGrantService = queryUserToolGrantService,
         )
 
@@ -143,7 +145,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
         alias: String? = "sonnet",
         priority: Int = 0,
         temperature: Double? = null,
-        maxTokens: Int? = null,
     ) = AiModel(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         aiProviderId = aiProviderId,
@@ -152,7 +153,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
         alias = alias,
         priority = priority,
         temperature = temperature,
-        maxTokens = maxTokens,
     )
 
     private fun agentConfig(
@@ -451,6 +451,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentDocumentResolver = agentDocumentResolver,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
                 )
             val caseTool = mockk<StandardTool<*>>()
@@ -781,6 +782,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentDocumentResolver = agentDocumentResolver,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
                 )
             val configs =

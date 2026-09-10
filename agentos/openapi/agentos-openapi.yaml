@@ -3267,6 +3267,8 @@ components:
             type: string
           llmProvider:
             type: string
+          llmUsage:
+            $ref: "#/components/schemas/LlmUsage"
       required:
       - agentId
       - agentName
@@ -3334,12 +3336,14 @@ components:
         id:
           type: string
           format: uuid
-        maxTokens:
+        maxCompletionTokens:
           type: integer
           format: int32
         namespaceId:
           type: string
           format: uuid
+        pricing:
+          $ref: "#/components/schemas/ModelPricing"
         priority:
           type: integer
           format: int32
@@ -4013,6 +4017,33 @@ components:
       required:
       - namespaceExternalId
       - userExternalId
+    LlmUsage:
+      type: object
+      properties:
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        estimatedCostUsd:
+          type: number
+          format: double
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+      required:
+      - cacheReadTokens
+      - cacheWriteTokens
+      - inputTokens
+      - outputTokens
+      - totalTokens
     MemberItem:
       type: object
       properties:
@@ -4075,6 +4106,25 @@ components:
       - namespaceId
       - timestamp
       - type
+    ModelPricing:
+      type: object
+      properties:
+        cacheRead:
+          type: number
+          format: double
+        cacheWrite:
+          type: number
+          format: double
+        inputMTokens:
+          type: number
+          format: double
+        isEmpty:
+          type: boolean
+        outputMTokens:
+          type: number
+          format: double
+      required:
+      - isEmpty
     Namespace:
       type: object
       properties:
