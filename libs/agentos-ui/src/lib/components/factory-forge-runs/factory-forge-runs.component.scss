@@ -1,0 +1,97 @@
+:host {
+  display: block;
+}
+.factory-forge-runs {
+  margin-top: 2rem;
+  border-top: 1px solid var(--color-divider, #d4d4d8);
+  padding-top: 1.5rem;
+}
+.factory-forge-runs__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+}
+p {
+  color: var(--color-text-secondary, #52525b);
+}
+.factory-forge-runs__scope {
+  border-left: 0.25rem solid var(--color-info, #1d4ed8);
+  padding-left: 0.75rem;
+}
+button {
+  border: 1px solid var(--color-divider, #d4d4d8);
+  border-radius: 0.375rem;
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #1d1d1f);
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+}
+button:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--color-focus, #2563eb);
+  outline-offset: 2px;
+}
+.factory-forge-runs__notice,
+.factory-forge-runs__run,
+.factory-forge-runs__story {
+  border: 1px solid var(--color-divider, #d4d4d8);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+.factory-forge-runs__story {
+  background: var(--color-surface-secondary, #f4f4f5);
+}
+span {
+  color: var(--color-text-secondary, #52525b);
+  font-size: 0.875rem;
+}
+dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem 1rem;
+}
+dt {
+  color: var(--color-text-secondary, #52525b);
+}
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+details {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-divider, #d4d4d8);
+  border-radius: 0.375rem;
+  padding: 0.5rem;
+}
+summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5rem;
+  border: 1px solid var(--color-divider, #d4d4d8);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  table {
+    display: block;
+    overflow-x: auto;
+  }
+}

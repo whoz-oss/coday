@@ -2,6 +2,41 @@ import { HttpClient, HttpParams } from '@angular/common/http'
 import { inject, Injectable } from '@angular/core'
 import { Observable } from 'rxjs'
 
+export interface FactoryForgeOracleResult {
+  name: string
+  status: string
+  code?: string
+  ownerProjects: string[]
+  target: string | null
+  buildHosts: string[]
+  ownersWithTestTarget: string[]
+  ownersWithoutTestTarget: string[]
+  exitCode?: number
+  durationMs?: number
+  commandHash?: string
+}
+
+export interface FactoryForgeRun {
+  runId: string
+  workflow: string
+  workItem: { id: string; kind: string }
+  roots: { repoRoot?: string }
+  startedAt: string
+  status: string
+  gates: Array<Record<string, unknown> & { gate: string; status: string }>
+  stories: Array<{
+    runId: string
+    ordinal: number
+    status: string
+    workItem: { id: string; kind: string }
+    executions: Array<Record<string, unknown>>
+    edits: Array<Record<string, unknown>>
+    oracleCampaigns: Array<
+      { campaignId: string; status: string; results: FactoryForgeOracleResult[] } & Record<string, unknown>
+    >
+  }>
+}
+
 export interface FactoryRunContext {
   ticketId?: string
   ticketSummary?: string
@@ -108,6 +143,14 @@ export class FactoryApiService {
     return this.http.get<FactoryRunSummary[]>('/api/factory/runs', {
       params: new HttpParams().set('namespaceId', namespaceId),
     })
+  }
+
+  /**
+   * Global read-only projections of Epic/Story Forge runs; JSONL is parsed server-side only.
+   * The endpoint currently has no namespace filter because EpicRun has no durable namespaceId.
+   */
+  listForgeRuns(): Observable<FactoryForgeRun[]> {
+    return this.http.get<FactoryForgeRun[]>('/api/factory/forge/runs')
   }
 
   /**

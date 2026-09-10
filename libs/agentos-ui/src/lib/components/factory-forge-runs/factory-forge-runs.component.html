@@ -1,0 +1,155 @@
+<section class="factory-forge-runs" aria-labelledby="forge-runs-title">
+  <header class="factory-forge-runs__header">
+    <div>
+      <h2 id="forge-runs-title">Global Forge Epic runs</h2>
+      <p>Read-only projection of Epic, Story, gate, and oracle evidence.</p>
+    </div>
+    <button type="button" (click)="refresh()" [disabled]="state.loading()">Refresh</button>
+  </header>
+
+  <p class="factory-forge-runs__scope" role="note">
+    These Forge projections are global. They are displayed in this namespace-scoped tab for visibility, but are not
+    attributed to the selected namespace.
+  </p>
+
+  @if (state.loading()) {
+    <p class="factory-forge-runs__notice" role="status">Loading Forge Epic runs…</p>
+  } @else if (state.error(); as error) {
+    <div class="factory-forge-runs__notice" role="alert">
+      <p>{{ error }}</p>
+      <button type="button" (click)="refresh()">Try again</button>
+    </div>
+  } @else if (state.runs().length === 0) {
+    <p class="factory-forge-runs__notice" role="status">No global Forge Epic runs are available.</p>
+  } @else {
+    @for (run of state.runs(); track trackRun($index, run)) {
+      <article class="factory-forge-runs__run">
+        <header>
+          <h3>
+            {{ run.workItem.id }} <span>{{ run.status }}</span>
+          </h3>
+          <dl>
+            <dt>Epic run</dt>
+            <dd>
+              <code>{{ run.runId }}</code>
+            </dd>
+            <dt>Repository</dt>
+            <dd>
+              <code>{{ field(run.roots.repoRoot) }}</code>
+            </dd>
+            <dt>Started</dt>
+            <dd>{{ date(run.startedAt) }}</dd>
+          </dl>
+        </header>
+        <section class="factory-forge-runs__gates" aria-label="Epic gates">
+          @for (gate of run.gates; track gate.gate) {
+            <details>
+              <summary>{{ gate.gate }}: {{ gate.status }}</summary>
+              <dl>
+                <dt>Attempt</dt>
+                <dd>{{ field(gate['attempt']) }}</dd>
+                <dt>Code</dt>
+                <dd>{{ field(gate['code']) }}</dd>
+                <dt>Policy</dt>
+                <dd>{{ field(gate['policyVersion']) }}</dd>
+                <dt>Evidence hash</dt>
+                <dd>
+                  <code>{{ field(gate['evidenceSetHash']) }}</code>
+                </dd>
+              </dl>
+            </details>
+          }
+        </section>
+        <section aria-label="Stories">
+          <h4>Stories</h4>
+          @for (story of run.stories; track trackStory($index, story)) {
+            <article class="factory-forge-runs__story">
+              <h5>
+                {{ story.ordinal }}. {{ story.workItem.id }} <span>{{ story.status }}</span>
+              </h5>
+              <p>
+                Story run: <code>{{ story.runId }}</code>
+              </p>
+              <details>
+                <summary>Analyses ({{ story.executions.length }})</summary>
+                @for (analysis of story.executions; track field(analysis['executionId'])) {
+                  <dl>
+                    <dt>Status / outcome</dt>
+                    <dd>{{ field(analysis['status']) }} / {{ field(analysis['outcome']) }}</dd>
+                    <dt>Case ID</dt>
+                    <dd>
+                      <code>{{ field(analysis['caseId']) }}</code>
+                    </dd>
+                    <dt>Validation</dt>
+                    <dd>{{ field(analysis['analysisValidation']) }}</dd>
+                    <dt>Artifact</dt>
+                    <dd>
+                      <code>{{ field(analysis['artifact']) }}</code>
+                    </dd>
+                  </dl>
+                } @empty {
+                  <p>No analysis recorded.</p>
+                }
+              </details>
+              <details>
+                <summary>Edits ({{ story.edits.length }})</summary>
+                @for (edit of story.edits; track field(edit['editId'])) {
+                  <dl>
+                    <dt>Status / outcome</dt>
+                    <dd>{{ field(edit['status']) }} / {{ field(edit['outcome']) }}</dd>
+                    <dt>Files modified</dt>
+                    <dd>{{ list(edit['filesModified']) }}</dd>
+                    <dt>Files created</dt>
+                    <dd>{{ list(edit['filesCreated']) }}</dd>
+                    <dt>Diff validation</dt>
+                    <dd>{{ field(edit['diffValidation']) }}</dd>
+                  </dl>
+                } @empty {
+                  <p>No edit recorded.</p>
+                }
+              </details>
+              <details>
+                <summary>G3 oracle campaigns ({{ story.oracleCampaigns.length }})</summary>
+                @for (campaign of story.oracleCampaigns; track campaign.campaignId) {
+                  <h6>{{ campaign.campaignId }}: {{ campaign.status }}</h6>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Oracle</th>
+                        <th>Status / code</th>
+                        <th>Owners and target</th>
+                        <th>Build and test targets</th>
+                        <th>Result</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (oracle of campaign.results; track trackOracle($index, oracle)) {
+                        <tr>
+                          <th scope="row">{{ oracle.name }}</th>
+                          <td>{{ oracle.status }} / {{ field(oracle.code) }}</td>
+                          <td>
+                            {{ list(oracle.ownerProjects) }}<br /><code>{{ field(oracle.target) }}</code>
+                          </td>
+                          <td>
+                            Build: {{ list(oracle.buildHosts) }}<br />With target: {{ list(oracle.ownersWithTestTarget)
+                            }}<br />Without target: {{ list(oracle.ownersWithoutTestTarget) }}
+                          </td>
+                          <td>
+                            Exit {{ field(oracle.exitCode) }} · {{ duration(oracle.durationMs) }}<br />Hash:
+                            <code>{{ field(oracle.commandHash) }}</code>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                } @empty {
+                  <p>No G3 campaign recorded.</p>
+                }
+              </details>
+            </article>
+          }
+        </section>
+      </article>
+    }
+  }
+</section>

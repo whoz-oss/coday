@@ -578,7 +578,7 @@ const server = createServer(async (req, res) => {
 
   // Minimal replay-only Forge view for the existing dashboard and future UI.
   // Legacy workflow JSONL remains served by /api/runs unchanged.
-  if (method === 'GET' && path === '/api/forge/runs') {
+  if (method === 'GET' && (path === '/api/forge/runs' || path === '/api/factory/forge/runs')) {
     if (!FORGE_RUN_STORE_ROOT) return send(res, 503, { error: 'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.' })
     return send(res, 200, listForgeRunProjections(FORGE_RUN_STORE_ROOT))
   }

@@ -94,7 +94,26 @@ export function projectForgeRun(events) {
   const g2 = events.filter((event) => event.event === 'g2_evaluated' && event.runId === start.runId).at(-1)
   const validations = new Map(events.filter((event) => event.event === 'story_analysis_plan_validated').map((event) => [event.executionId, event]))
   const oracleCampaignsByStory = new Map()
-  for (const gate of events.filter((event) => event.event === 'story_g3_evaluated')) { const results=events.filter(event=>event.event==='story_oracle_finished'&&event.campaignId===gate.campaignId).map(event=>({name:event.name,status:event.status,code:event.code,exitCode:event.exitCode,durationMs:event.durationMs,commandHash:event.commandHash})); const list=oracleCampaignsByStory.get(gate.storyRunId)??[]; list.push({campaignId:gate.campaignId,editId:gate.editId,status:gate.status,specHash:gate.specHash,policyVersion:gate.policyVersion,results}); oracleCampaignsByStory.set(gate.storyRunId,list) }
+  for (const gate of events.filter((event) => event.event === 'story_g3_evaluated')) {
+    const results = events
+      .filter((event) => event.event === 'story_oracle_finished' && event.campaignId === gate.campaignId)
+      .map((event) => ({
+        name: event.name,
+        status: event.status,
+        code: event.code,
+        ownerProjects: event.ownerProjects ?? [],
+        target: event.target ?? null,
+        buildHosts: event.buildHosts ?? [],
+        ownersWithTestTarget: event.ownersWithTestTarget ?? [],
+        ownersWithoutTestTarget: event.ownersWithoutTestTarget ?? [],
+        exitCode: event.exitCode,
+        durationMs: event.durationMs,
+        commandHash: event.commandHash,
+      }))
+    const list = oracleCampaignsByStory.get(gate.storyRunId) ?? []
+    list.push({ campaignId: gate.campaignId, editId: gate.editId, status: gate.status, specHash: gate.specHash, policyVersion: gate.policyVersion, results })
+    oracleCampaignsByStory.set(gate.storyRunId, list)
+  }
   const editsByStory = new Map()
   for (const edit of events.filter((event) => event.event === 'story_edit_finished')) { const list=editsByStory.get(edit.storyRunId) ?? []; list.push({editId:edit.editId,status:edit.status,outcome:edit.outcome,caseId:edit.caseId,diffValidation:edit.diffValidation,filesModified:edit.filesModified,filesCreated:edit.filesCreated}); editsByStory.set(edit.storyRunId,list) }
   const executions = events.filter((event) => event.event === 'agent_execution_finished')
@@ -118,7 +137,18 @@ export function projectForgeRun(events) {
       ...(g1 ? [{ gate: 'G1', attempt: g1.attempt, status: g1Status, requiredDecision: g1.requiredDecision, policyVersion: g1.policyVersion, evidenceSetHash, decision: decision?.decision ?? null }] : []),
       ...(g2 ? [{ gate: 'G2', attempt: g2.attempt, status: g2.status, code: g2.code, policyVersion: g2.policyVersion, spec: g2.spec ?? null }] : []),
     ],
-    stories: storyEvents.map((event) => ({ runId: event.runId, ordinal: event.ordinal, status: 'not_started', workItem: event.workItem, executions: executionsByStory.get(event.runId) ?? [], edits: editsByStory.get(event.runId) ?? [], oracleCampaigns: oracleCampaignsByStory.get(event.runId) ?? [] })),
+    stories: storyEvents.map((event) => {
+      const executions = executionsByStory.get(event.runId) ?? []
+      const edits = editsByStory.get(event.runId) ?? []
+      const oracleCampaigns = oracleCampaignsByStory.get(event.runId) ?? []
+      // Event order is the ledger's authoritative chronology. A Story's visible
+      // state is its latest completed workflow step, without inventing a status.
+      const latestCampaign = oracleCampaigns.at(-1)
+      const latestEdit = edits.at(-1)
+      const latestExecution = executions.at(-1)
+      const status = latestCampaign?.status ?? latestEdit?.status ?? latestExecution?.status ?? 'not_started'
+      return { runId: event.runId, ordinal: event.ordinal, status, workItem: event.workItem, executions, edits, oracleCampaigns }
+    }),
   }
 }
 

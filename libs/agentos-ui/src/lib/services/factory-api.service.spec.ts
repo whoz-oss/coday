@@ -90,6 +90,16 @@ describe('FactoryApiService', () => {
     })
   })
 
+  describe('listForgeRuns', () => {
+    it('GETs the server-projected Forge endpoint under the Factory proxy', () => {
+      service.listForgeRuns().subscribe()
+
+      const req = http.expectOne('/api/factory/forge/runs')
+      expect(req.request.method).toBe('GET')
+      req.flush([])
+    })
+  })
+
   describe('getJiraTicket', () => {
     const mockTicket: JiraTicketResponse = {
       ticketId: 'PROJ-1234',
