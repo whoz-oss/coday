@@ -1,15 +1,15 @@
 {
   "compilerOptions": {
     "allowJs": true,
+    "ignoreDeprecations": "6.0",
     "module": "commonjs",
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "noImplicitReturns": true,
     "outDir": "../../dist/out-tsc",
+    "rootDir": ".",
     "sourceMap": false,
-    "strict": true,
-    "ignoreDeprecations": "6.0",
-    "rootDir": "."
+    "strict": true
   },
   "extends": "../../tsconfig.base.json",
   "include": [

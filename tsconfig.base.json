@@ -16,6 +16,7 @@
     "noImplicitReturns": true,
     "noImplicitThis": true,
     "noUncheckedIndexedAccess": true,
+    "noUncheckedSideEffectImports": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "paths": {
@@ -78,7 +79,6 @@
     "strict": true,
     "target": "ESNext",
     "typeRoots": ["node_modules/@types"],
-    "noUncheckedSideEffectImports": false,
     "types": ["*"]
   },
   "exclude": ["node_modules", "tmp", "dist"]

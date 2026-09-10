@@ -1,14 +1,14 @@
 {
   "compilerOptions": {
     "forceConsistentCasingInFileNames": true,
+    "ignoreDeprecations": "6.0",
     "importHelpers": true,
     "module": "preserve",
     "moduleResolution": "bundler",
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "noImplicitReturns": true,
-    "strict": true,
-    "ignoreDeprecations": "6.0"
+    "strict": true
   },
   "extends": "../../tsconfig.base.json",
   "files": [],

@@ -42,6 +42,7 @@ catalog:
   zone.js: '0.16.1'
 catalogs:
   dev:
+    '@actions/cache': '4.0.3'
     '@angular-devkit/core': '22.0.9'
     '@angular-devkit/schematics': '22.0.9'
     '@angular/build': '22.0.9'
