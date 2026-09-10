@@ -1,3 +1,13 @@
+## 1.2.3 (2026-09-10)
+
+### 🩹 Fixes
+
+- #1320 keep dynamic client registration during in-progress OAuth flow ([#1320](https://github.com/whoz-oss/coday/issues/1320))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+
 ## 1.2.2 (2026-09-09)
 
 ### 🩹 Fixes
