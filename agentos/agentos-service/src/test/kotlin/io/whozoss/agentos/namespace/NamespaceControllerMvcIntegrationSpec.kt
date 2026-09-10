@@ -69,6 +69,34 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
             ).andExpect(status().isCreated)
         }
 
+        "POST /api/namespaces with negative runCostThreshold returns 400" {
+            mockMvc.perform(
+                post("/api/namespaces")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "name": "bad-threshold", "runCostThreshold": -5.0 }""")
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST /api/namespaces with zero runCostThreshold returns 201" {
+            mockMvc.perform(
+                post("/api/namespaces")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "name": "zero-threshold", "runCostThreshold": 0.0 }""")
+            ).andExpect(status().isCreated)
+        }
+
+        "PUT /api/namespaces/{id} with negative runCostThreshold returns 400" {
+            val created = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "threshold-update-neg"),
+            )
+
+            mockMvc.perform(
+                put("/api/namespaces/${created.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}", "name": "threshold-update-neg", "runCostThreshold": -1.0 }""")
+            ).andExpect(status().isBadRequest)
+        }
+
         "POST /api/namespaces with path-traversal in configPath returns 201" {
             mockMvc.perform(
                 post("/api/namespaces")

@@ -92,6 +92,32 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$.scheduledPromptId").doesNotExist())
         }
 
+        "POST /api/cases with runCostThreshold preserves the value in the response" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-threshold"),
+            )
+
+            mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "runCostThreshold": 25.0 }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.runCostThreshold").value(25.0))
+        }
+
+        "POST /api/cases with negative runCostThreshold returns 400" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-threshold-neg"),
+            )
+
+            mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "runCostThreshold": -1.0 }""")
+            ).andExpect(status().isBadRequest)
+        }
+
         "POST /api/cases without title still returns 201 (title optional)" {
             val ns = namespaceService.create(
                 Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-no-title"),

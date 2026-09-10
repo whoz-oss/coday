@@ -272,6 +272,26 @@ export class CaseShellComponent {
       })
   }
 
+  /**
+   * Persist field updates (title and/or runCostThreshold) requested from the chat header.
+   * Applied optimistically by the service; reverted on failure.
+   */
+  protected onCaseUpdateRequested(event: { id: string; title?: string; runCostThreshold?: number | null }): void {
+    this.caseState
+      .updateCaseFields(event.id, {
+        title: event.title,
+        // Convert null ("clear the threshold") to undefined (Case type doesn't carry null)
+        runCostThreshold: event.runCostThreshold ?? undefined,
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => {
+          console.error(`[CaseShell] Failed to update case ${event.id}:`, err)
+          alert('Could not save the changes. Please try again.')
+        },
+      })
+  }
+
   // ---------------------------------------------------------------------------
   // Navigation
   // ---------------------------------------------------------------------------

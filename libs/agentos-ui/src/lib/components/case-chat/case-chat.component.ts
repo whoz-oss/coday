@@ -173,8 +173,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // caseId and namespaceId are read from query params (?case=...&ns=...).
   // The case-shell renders this component directly (not via router-outlet),
   // so route params are empty — all context comes through query params.
+  //
+  // caseId is kept as a plain field (updated in ngOnInit on queryParams changes) so that
+  // all SSE callbacks and HTTP calls always reference the current case without going
+  // through a signal read inside a zone.runOutsideAngular context.
   protected caseId = this.route.snapshot.queryParams['case'] as string
   private readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
+
+  /**
+   * Reactive case ID — updated in sync with the queryParams subscription so that
+   * computed signals that derive from it (e.g. activeCase) are always in sync with
+   * the currently displayed case, even when the case list has not changed (no SSE).
+   */
+  private readonly _activeCaseId = signal<string>(this.route.snapshot.queryParams['case'] as string)
 
   /** Markdown renderer shared across all message pre-computations. */
   private readonly markdownRenderer = this.buildMarkdownRenderer()
@@ -220,7 +231,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected isTerminal = signal(false)
 
   /** Active case from the shared case list (title + stored status). */
-  protected readonly activeCase = computed(() => this.caseState.cases().find((c) => c.id === this.caseId) ?? null)
+  protected readonly activeCase = computed(
+    () => this.caseState.cases().find((c) => c.id === this._activeCaseId()) ?? null
+  )
 
   /**
    * Raw SSE status — empty string until a CaseStatusEvent arrives for this case.
@@ -254,6 +267,57 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly deleteRequested = output<string>()
   readonly logsToggled = output<void>()
+  readonly updateRequested = output<{ id: string; title?: string; runCostThreshold?: number | null }>()
+
+  // ---------------------------------------------------------------------------
+  // Inline header edit (title + runCostThreshold)
+  // ---------------------------------------------------------------------------
+
+  /** Whether the header is in edit mode. */
+  protected readonly isEditing = signal(false)
+  protected readonly draftTitle = signal('')
+  protected readonly draftThreshold = signal<string>('')
+
+  protected startEdit(): void {
+    const c = this.activeCase()
+    if (!c) return
+    this.draftTitle.set(c.title ?? '')
+    this.draftThreshold.set(c.runCostThreshold != null ? String(c.runCostThreshold) : '')
+    this.isEditing.set(true)
+  }
+
+  protected cancelEdit(): void {
+    this.isEditing.set(false)
+  }
+
+  protected commitEdit(): void {
+    const c = this.activeCase()
+    if (!c?.id) return
+    const title = this.draftTitle().trim()
+    if (!title) return // empty title not allowed
+    const rawThreshold = this.draftThreshold().trim()
+    // Empty threshold: the server does not support removing the threshold via this endpoint
+    // (a missing key is treated as "keep existing"). We simply omit the field from the patch
+    // so the server keeps its value and the UI stays coherent after the response is merged back.
+    // A non-empty value must be a valid positive number.
+    if (rawThreshold !== '') {
+      const parsed = parseFloat(rawThreshold)
+      if (isNaN(parsed) || parsed < 0) return
+    }
+    const parsedThreshold = rawThreshold === '' ? undefined : parseFloat(rawThreshold)
+    this.isEditing.set(false)
+    this.updateRequested.emit({ id: c.id, title, runCostThreshold: parsedThreshold })
+  }
+
+  protected onEditKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      this.commitEdit()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      this.cancelEdit()
+    }
+  }
 
   readonly showTechnicalOverride = input(false)
   protected readonly showTechnical = computed(() => this.showTechnicalOverride())
@@ -290,10 +354,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.autocomplete.init(this.namespaceId)
 
     // Restore focus to the composer whenever we return to an interactive state,
-    // but only when the user has no active text selection (avoid clearing copy intent).
+    // but only when the user has no active text selection (avoid clearing copy intent)
+    // and only when the inline header editor is not open (isEditing). Checking isEditing
+    // inside the microtask covers the case where an edit is started after the callback
+    // was scheduled (e.g. AgentFinishedEvent arrives while the user opens the editor).
     effect(() => {
       if (this.isRunning() || this.isTerminal()) return
       queueMicrotask(() => {
+        if (this.isEditing()) return
         if (hasActiveSelection()) return
         this.composerInput()?.nativeElement.focus()
       })
@@ -479,6 +547,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       const newCaseId = params['case'] as string
       if (newCaseId && newCaseId !== this.caseId) {
         this.caseId = newCaseId
+        this._activeCaseId.set(newCaseId)
         this.reinitialise()
       }
     })
@@ -796,6 +865,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.collapsedTools.set(new Set())
     this.isAtBottom.set(true)
     this.drawerPanel.set('files')
+    this.isEditing.set(false)
     this.autocomplete.reset()
     this.attachments.reset()
     this.connectSse()

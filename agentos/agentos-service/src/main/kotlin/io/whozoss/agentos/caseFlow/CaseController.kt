@@ -139,7 +139,7 @@ class CaseController(
     }
 
     /**
-     * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
+     * Map domain [Case] to [CaseDto]s, enriching each with [userId]'s direct
      * relation (`role`), favorite flag, [CaseDto.readAt], and [CaseDto.lastMessageAt].
      *
      * Two batch queries resolve the whole set (no per-case round-trips):
@@ -178,12 +178,14 @@ class CaseController(
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
         val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
+        val runCostThreshold = namespaceService.resolveRunCostThreshold(resource.namespaceId)
         val domain =
             Case(
                 metadata = metadata,
                 namespaceId = resource.namespaceId,
                 status = resource.status,
                 title = resource.title ?: "Case ${metadata.id}",
+                runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
             )
         val saved = caseService.create(domain)
         val userId = userService.getCurrentUser().id.toString()
@@ -227,6 +229,12 @@ class CaseController(
                     // namespaceId is the transitivity key for permissions;
                     // status is driven by the runtime lifecycle, not PUT.
                     title = resource.title ?: existing.title,
+                    // runCostThreshold: keep the existing value when the caller omits the field
+                    // (null in DTO = not provided, not an explicit reset). An explicit reset to
+                    // the inherited regime is not supported via PUT — the value materialised at
+                    // creation is sticky. The enforcement mechanism raises the limit by writing
+                    // a concrete value here when the user chooses to continue after a breach.
+                    runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
                 ),
             )
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
@@ -418,6 +426,7 @@ internal fun toDto(entity: Case) =
         title = entity.title,
         parentCaseId = entity.parentCaseId,
         scheduledPromptId = entity.scheduledPromptId,
+        runCostThreshold = entity.runCostThreshold,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
         // lastMessageAt is not stored on Case — it is resolved at list time by

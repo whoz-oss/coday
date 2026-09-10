@@ -12,13 +12,13 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import java.util.UUID
 import java.util.UUID.randomUUID
 
 /**
@@ -36,7 +36,14 @@ class NamespaceServiceImplSpec :
         val permissionService = mockk<PermissionService>()
         val userGroupRepository = mockk<io.whozoss.agentos.userGroup.UserGroupRepository>(relaxed = true)
         val agentConfigRepository = mockk<AgentConfigRepository>(relaxed = true)
-        val service = NamespaceServiceImpl(namespaceRepository, permissionService, userGroupRepository, agentConfigRepository)
+        val service =
+            NamespaceServiceImpl(
+                namespaceRepository,
+                permissionService,
+                userGroupRepository,
+                agentConfigRepository,
+                LimitsConfigProperties(),
+            )
 
         val userId = randomUUID().toString()
 

@@ -27,6 +27,13 @@ export class CaseStateService {
   private currentNamespaceId: string | null = null
 
   /**
+   * Per-case update sequence counter. Incremented on every updateCaseFields call.
+   * The rollback checks that the counter has not advanced since the request was issued
+   * before reverting, so a slow failing request cannot undo a later successful one.
+   */
+  private readonly updateSeq = new Map<string, number>()
+
+  /**
    * Load (or reload) the cases the current user is directly related to in a namespace.
    *
    * Uses the `/mine` listing (direct ADMIN/MEMBER edge only) so every listed case is
@@ -114,9 +121,63 @@ export class CaseStateService {
     })
   }
 
+  /**
+   * Update a case's editable fields (title and/or runCostThreshold).
+   *
+   * Applies the patch optimistically so the header reflects the change immediately.
+   * On success, the response body is merged back so the local state reflects what the
+   * server actually persisted (e.g. the server ignores a missing runCostThreshold key
+   * and keeps the previous value, so we must not leave the optimistic cleared state).
+   * On failure, the previous values are restored — but only if no newer update has been
+   * issued in the meantime, preventing a stale rollback from undoing a later success.
+   *
+   * `runCostThreshold: undefined` omits the key from the JSON body (JSON.stringify
+   * semantics). The server currently treats a missing key as "keep existing", so clearing
+   * the threshold is not supported through this endpoint. The UI prevents the user from
+   * submitting an empty threshold as a reset (commitEdit guards against it).
+   */
+  updateCaseFields(caseId: string, patch: { title?: string; runCostThreshold?: number }): Observable<Case> {
+    return defer(() => {
+      const existing = this.cases().find((c) => c.id === caseId)
+      if (!existing) {
+        return throwError(() => new Error(`[CaseState] Case ${caseId} is not in the current list`))
+      }
+      const previous = { title: existing.title, runCostThreshold: existing.runCostThreshold }
+      // Bump the sequence counter for this case before issuing the request.
+      const seq = (this.updateSeq.get(caseId) ?? 0) + 1
+      this.updateSeq.set(caseId, seq)
+      this.patchFields(caseId, patch)
+      // Build the payload: spread existing then override with patch.
+      // undefined fields are omitted by JSON.stringify.
+      const payload: Case = { ...existing, ...patch }
+      return this.caseController.updateCase(caseId, payload).pipe(
+        tap((updated) => {
+          // Sync back what the server actually stored so optimistic state stays accurate.
+          this.patchFields(caseId, { title: updated.title, runCostThreshold: updated.runCostThreshold })
+        }),
+        catchError((err) => {
+          // Only revert if this request is still the latest one for this case.
+          // A later request may have already applied a different optimistic patch.
+          if ((this.updateSeq.get(caseId) ?? 0) === seq) {
+            this.patchFields(caseId, previous)
+          }
+          return throwError(() => err)
+        })
+      )
+    })
+  }
+
   /** Set the favorite flag of a single case in-place (immutably, to re-emit the signal). */
   private patchFavorite(caseId: string, favorite: boolean): void {
     this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, favorite } : c)))
+  }
+
+  /**
+   * Apply a partial field patch to a single case in-place.
+   * Uses a mapped type to allow `undefined` for optional fields without carrying `null`.
+   */
+  private patchFields(caseId: string, patch: { title?: string; runCostThreshold?: number }): void {
+    this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, ...patch } : c)))
   }
 
   /**
