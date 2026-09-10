@@ -30,6 +30,7 @@ import org.springframework.stereotype.Service
  * - [CreateAgentTool] — create a new agent (Namespace WRITE)
  * - [UpdateAgentTool] — update an existing agent (AgentConfig WRITE)
  * - [SetAgentEnabledTool] — enable or disable an agent (AgentConfig WRITE)
+ * - [SetAgentDeploymentTool] — deploy or undeploy an agent on the namespace (Namespace WRITE)
  */
 @Service
 class AgentosAgentsToolPlugin(
@@ -54,6 +55,7 @@ class AgentosAgentsToolPlugin(
             CreateAgentTool(configName = configName, operations = operations),
             UpdateAgentTool(configName = configName, operations = operations),
             SetAgentEnabledTool(configName = configName, operations = operations),
+            SetAgentDeploymentTool(configName = configName, operations = operations),
         )
     }
 

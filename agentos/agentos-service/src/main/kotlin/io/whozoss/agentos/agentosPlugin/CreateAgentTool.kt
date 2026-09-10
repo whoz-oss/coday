@@ -28,6 +28,8 @@ class CreateAgentTool(
     override val name: String = if (configName != null) "${configName}__CreateAgent" else "CreateAgent"
     override val description: String =
         "Create a new agent configuration in the current namespace. " +
+            "A newly created agent is disabled and not deployed: use SetAgentEnabled to publish it, " +
+            "then SetAgentDeployment to make it accessible to namespace members. " +
             "Requires namespace admin rights. Returns the created agent id and name."
     override val version: String = "1.0.0"
     override val paramType: Class<Input> = Input::class.java

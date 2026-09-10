@@ -24,4 +24,6 @@ interface AgentAdminOperations {
     fun updateAgent(namespaceId: UUID, userId: UUID?, input: UpdateAgentTool.Input): AgentConfig?
     fun enableAgent(namespaceId: UUID, userId: UUID?, name: String): AgentConfig?
     fun disableAgent(namespaceId: UUID, userId: UUID?, name: String): AgentConfig?
+    fun deployAgentOnNamespace(namespaceId: UUID, userId: UUID?, name: String): AgentConfig?
+    fun undeployAgentFromNamespace(namespaceId: UUID, userId: UUID?, name: String): AgentConfig?
 }

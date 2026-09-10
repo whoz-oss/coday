@@ -2,6 +2,7 @@ package io.whozoss.agentos.agentosPlugin
 
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -21,6 +22,7 @@ import java.util.UUID
 class AgentAdminOperationsImpl(
     private val agentConfigService: AgentConfigService,
     private val permissionService: PermissionService,
+    private val namespaceService: NamespaceService,
 ) : AgentAdminOperations {
 
     override fun listAgents(namespaceId: UUID, userId: UUID?, withDisabled: Boolean): List<AgentConfig>? {
@@ -114,6 +116,28 @@ class AgentAdminOperationsImpl(
         val agent = findAgentByName(namespaceId, name) ?: return null
         if (!canWriteAgent(agent, userId, operation = "disableAgent")) return null
         return agentConfigService.disable(agent.metadata.id)
+    }
+
+    override fun deployAgentOnNamespace(namespaceId: UUID, userId: UUID?, name: String): AgentConfig? {
+        if (!canWriteNamespace(namespaceId, userId, operation = "deployAgentOnNamespace")) return null
+        val agent = findAgentByName(namespaceId, name) ?: return null
+        return runCatching {
+            namespaceService.deployAgents(namespaceId, listOf(agent.metadata.id))
+            agent
+        }.onFailure { e ->
+            logger.debug { "[AgentosPlugin] deployAgentOnNamespace failed: ${e.message}" }
+        }.getOrNull()
+    }
+
+    override fun undeployAgentFromNamespace(namespaceId: UUID, userId: UUID?, name: String): AgentConfig? {
+        if (!canWriteNamespace(namespaceId, userId, operation = "undeployAgentFromNamespace")) return null
+        val agent = findAgentByName(namespaceId, name) ?: return null
+        return runCatching {
+            namespaceService.undeployAgents(namespaceId, listOf(agent.metadata.id))
+            agent
+        }.onFailure { e ->
+            logger.debug { "[AgentosPlugin] undeployAgentFromNamespace failed: ${e.message}" }
+        }.getOrNull()
     }
 
     // -------------------------------------------------------------------------

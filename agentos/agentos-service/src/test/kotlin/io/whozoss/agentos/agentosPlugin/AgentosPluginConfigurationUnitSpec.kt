@@ -10,6 +10,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.agentConfig.AgentConfigServiceImpl
 import io.whozoss.agentos.entity.EntityRepository
 import io.whozoss.agentos.entity.InMemoryEntityRepository
+import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -76,6 +77,7 @@ class AgentosPluginConfigurationUnitSpec :
         fun buildPlugin(
             repo: AgentConfigRepository,
             permissionService: PermissionService,
+            namespaceService: NamespaceService = mockk(relaxed = true),
         ): AgentosAgentsToolPlugin {
             val service =
                 AgentConfigServiceImpl(
@@ -83,7 +85,7 @@ class AgentosPluginConfigurationUnitSpec :
                     promptRepository = mockk<PromptRepository>(relaxed = true),
                     userService = mockk<UserService>(relaxed = true),
                 )
-            val operations = AgentAdminOperationsImpl(service, permissionService, mockk(relaxed = true))
+            val operations = AgentAdminOperationsImpl(service, permissionService, namespaceService)
             return AgentosAgentsToolPlugin(operations)
         }
 
@@ -416,4 +418,100 @@ class AgentosPluginConfigurationUnitSpec :
             updated.enabled shouldBe false
         }
 
+        // =========================================================================
+        // SetAgentDeployment
+        // =========================================================================
+
+        "setAgentDeployment returns INVALID_INPUT when deployed parameter is missing" {
+            val repo = buildRepository()
+            repo.save(agent("Dev"))
+            val permService = mockk<PermissionService>(relaxed = true)
+            val plugin = buildPlugin(repo, permService)
+            val tool = plugin.provideTools(config = null, context = context()).filterIsInstance<SetAgentDeploymentTool>().first()
+
+            val result = tool.execute(SetAgentDeploymentTool.Input(name = "Dev", deployed = null), context())
+
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_INPUT"
+            verify(exactly = 0) { permService.hasPermission(any(), any(), any(), any()) }
+        }
+
+        "setAgentDeployment returns NOT_FOUND when userId is null" {
+            val repo = buildRepository()
+            repo.save(agent("Dev"))
+            val permService = mockk<PermissionService>(relaxed = true)
+            val plugin = buildPlugin(repo, permService)
+            val tool = plugin.provideTools(config = null, context = context(uid = null)).filterIsInstance<SetAgentDeploymentTool>().first()
+
+            val result = tool.execute(SetAgentDeploymentTool.Input(name = "Dev", deployed = true), context(uid = null))
+
+            result.success shouldBe false
+            result.errorType shouldBe "NOT_FOUND"
+            verify(exactly = 0) { permService.hasPermission(any(), any(), any(), any()) }
+        }
+
+        "setAgentDeployment returns NOT_FOUND when namespace WRITE is denied" {
+            val repo = buildRepository()
+            repo.save(agent("Dev"))
+            val permService =
+                mockk<PermissionService> {
+                    every { hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns false
+                }
+            val plugin = buildPlugin(repo, permService)
+            val tool = plugin.provideTools(config = null, context = context()).filterIsInstance<SetAgentDeploymentTool>().first()
+
+            val result = tool.execute(SetAgentDeploymentTool.Input(name = "Dev", deployed = true), context())
+
+            result.success shouldBe false
+            result.errorType shouldBe "NOT_FOUND"
+        }
+
+        "setAgentDeployment returns NOT_FOUND when agent does not exist" {
+            val repo = buildRepository()
+            val permService =
+                mockk<PermissionService> {
+                    every { hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+                }
+            val plugin = buildPlugin(repo, permService)
+            val tool = plugin.provideTools(config = null, context = context()).filterIsInstance<SetAgentDeploymentTool>().first()
+
+            val result = tool.execute(SetAgentDeploymentTool.Input(name = "Ghost", deployed = true), context())
+
+            result.success shouldBe false
+            result.errorType shouldBe "NOT_FOUND"
+        }
+
+        "setAgentDeployment with deployed=true calls deployAgents with the resolved agent id" {
+            val repo = buildRepository()
+            val saved = repo.save(agent("Dev"))
+            val permService =
+                mockk<PermissionService> {
+                    every { hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+                }
+            val nsService = mockk<NamespaceService>(relaxed = true)
+            val plugin = buildPlugin(repo, permService, nsService)
+            val tool = plugin.provideTools(config = null, context = context()).filterIsInstance<SetAgentDeploymentTool>().first()
+
+            val result = tool.execute(SetAgentDeploymentTool.Input(name = "Dev", deployed = true), context())
+
+            result.success shouldBe true
+            verify(exactly = 1) { nsService.deployAgents(namespaceId, listOf(saved.metadata.id)) }
+        }
+
+        "setAgentDeployment with deployed=false calls undeployAgents with the resolved agent id" {
+            val repo = buildRepository()
+            val saved = repo.save(agent("Dev"))
+            val permService =
+                mockk<PermissionService> {
+                    every { hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+                }
+            val nsService = mockk<NamespaceService>(relaxed = true)
+            val plugin = buildPlugin(repo, permService, nsService)
+            val tool = plugin.provideTools(config = null, context = context()).filterIsInstance<SetAgentDeploymentTool>().first()
+
+            val result = tool.execute(SetAgentDeploymentTool.Input(name = "Dev", deployed = false), context())
+
+            result.success shouldBe true
+            verify(exactly = 1) { nsService.undeployAgents(namespaceId, listOf(saved.metadata.id)) }
+        }
     })

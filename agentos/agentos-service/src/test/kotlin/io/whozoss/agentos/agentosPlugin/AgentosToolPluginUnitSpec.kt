@@ -60,6 +60,7 @@ class AgentosToolPluginUnitSpec :
             tools.filterIsInstance<CreateAgentTool>() shouldHaveSize 1
             tools.filterIsInstance<UpdateAgentTool>() shouldHaveSize 1
             tools.filterIsInstance<SetAgentEnabledTool>() shouldHaveSize 1
+            tools.filterIsInstance<SetAgentDeploymentTool>() shouldHaveSize 1
         }
 
         // -------------------------------------------------------------------------
@@ -75,6 +76,7 @@ class AgentosToolPluginUnitSpec :
                     "CreateAgent",
                     "UpdateAgent",
                     "SetAgentEnabled",
+                    "SetAgentDeployment",
                 )
         }
 
@@ -87,6 +89,7 @@ class AgentosToolPluginUnitSpec :
                     "AGENTOS__CreateAgent",
                     "AGENTOS__UpdateAgent",
                     "AGENTOS__SetAgentEnabled",
+                    "AGENTOS__SetAgentDeployment",
                 )
         }
 
