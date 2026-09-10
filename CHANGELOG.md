@@ -1,3 +1,50 @@
+## 1.2.3 (2026-09-10)
+
+### 🩹 Fixes
+
+- #1320 keep dynamic client registration during in-progress OAuth flow ([#1320](https://github.com/whoz-oss/coday/issues/1320))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+
+## 1.2.2 (2026-09-09)
+
+### 🩹 Fixes
+
+- #1322 sort tools by name for stable prompt cache prefix ([#1323](https://github.com/whoz-oss/coday/pull/1323), [#1322](https://github.com/whoz-oss/coday/issues/1322))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 1.2.1 (2026-09-09)
+
+### 🚀 Features
+
+- **agentos:** #WZ-34091 restrict scheduler execution to off-peak time windows ([#1282](https://github.com/whoz-oss/coday/pull/1282))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 1.2.0 (2026-09-09)
+
+### 🚀 Features
+
+- #1292 persist resolved model on agent messages ([#1292](https://github.com/whoz-oss/coday/issues/1292))
+- #1292 persist resolved model on agent messages ([#1319](https://github.com/whoz-oss/coday/pull/1319), [#1292](https://github.com/whoz-oss/coday/issues/1292))
+
+### 🩹 Fixes
+
+- #1298 de-emphasize agent model attribution ([#1298](https://github.com/whoz-oss/coday/issues/1298))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 1.1.5 (2026-09-09)
 
 ### 🩹 Fixes

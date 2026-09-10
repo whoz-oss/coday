@@ -250,6 +250,16 @@ agentos:
       # Interval between claim ticks in milliseconds.
       # Override with env var: AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS
       tick-interval-ms: ${AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS:30000}
+      # Optional execution time windows (UTC). When set, the scheduler only dispatches
+      # new claims during the specified windows; outside windows, due prompts accumulate
+      # and are processed at the next window open (including after a restart).
+      # Comma-separated 'DAYOFWEEK HH:mm' boundaries in UTC — alternating open/close.
+      # Spring binds the comma-separated env var value into a list automatically.
+      # Example (nightly Mon–Thu + continuous Fri–Mon weekend):
+      #   MONDAY 22:00,FRIDAY 05:00,FRIDAY 22:00,MONDAY 05:00
+      # When unset, the scheduler runs continuously (default behaviour).
+      # Override with env var: AGENTOS_PROMPT_SCHEDULER_WINDOWS=MONDAY 22:00,FRIDAY 05:00,...
+      # windows: ${AGENTOS_PROMPT_SCHEDULER_WINDOWS:}
 
 springdoc:
   writer-with-order-by-keys: true
