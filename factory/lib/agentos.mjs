@@ -375,6 +375,22 @@ export async function preflightWorkspace(namespaceId, agent, repoRoot) {
 }
 
 /**
+ * Preflight strict for a bounded editor: exactly one writable FILE_ACCESS at
+ * the canonical repo root, QUERY_USER explicitly disabled, no extra powers.
+ */
+export async function preflightWritableWorkspace(namespaceId, agent, repoRoot) {
+  const reserved = new Set(['QUERY_USER', 'CASE_FILE_EXCHANGE', 'NAMESPACE_FILE_EXCHANGE'])
+  if (!Array.isArray(agent.integrations?.QUERY_USER) || agent.integrations.QUERY_USER.length !== 0) return { ok:false, reason:'QUERY_USER must be explicitly disabled with an empty allowlist.', rootPath:null, integration:null }
+  const names=Object.keys(agent.integrations??{}).filter(name=>!reserved.has(name))
+  if(names.length!==1) return { ok:false, reason:`Editor must declare exactly one non-reserved integration; found: ${names.join(', ')||'(none)'}.`, rootPath:null, integration:null }
+  let configs; try { configs=await listIntegrations(namespaceId) } catch(error) { return {ok:false,reason:`Unable to list integrations: ${error}`,rootPath:null,integration:null} }
+  const integration=configs.find(config=>config.name===names[0])
+  let actual=null; try { actual=integration?.parameters?.rootPath ? realpathSync(integration.parameters.rootPath) : null } catch {}
+  if(!integration || integration.integrationType!=='FILE_ACCESS' || !actual || normalizeRoot(actual)!==normalizeRoot(repoRoot) || integration.parameters?.readOnly!==false) return {ok:false,reason:'FILE_ACCESS must use canonical repoRoot with readOnly:false.',rootPath:integration?.parameters?.rootPath??null,integration:null}
+  return {ok:true,reason:null,rootPath:normalizeRoot(actual),integration}
+}
+
+/**
  * Préflight strict pour une phase d'analyse : l'agent doit être limité à une
  * seule intégration FILE_ACCESS read-only, colocalisée au repo, et avoir opté
  * explicitement hors de QUERY_USER. Ce contrôle ne réutilise pas

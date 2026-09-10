@@ -109,8 +109,8 @@ const targetAgent = process.argv[2] === '--agent' ? process.argv[3] : null
 if (process.argv.length > 2 && !targetAgent) {
   throw new Error('Usage: node factory/provision.mjs [--agent factory-analyst]')
 }
-if (targetAgent && targetAgent !== ANALYST_AGENT_NAME) {
-  throw new Error(`Unsupported targeted agent: ${targetAgent}. Only ${ANALYST_AGENT_NAME} is supported.`)
+if (targetAgent && ![ANALYST_AGENT_NAME, EDITOR_AGENT_NAME].includes(targetAgent)) {
+  throw new Error(`Unsupported targeted agent: ${targetAgent}. Use ${ANALYST_AGENT_NAME} or ${EDITOR_AGENT_NAME}.`)
 }
 
 /**
@@ -355,7 +355,7 @@ async function provisionAgent(
   // Targeted analyst provisioning is the read-only execution contract, not
   // merely a best-effort update. Reject hidden integrations and a QUERY_USER
   // default grant after re-reading the effective AgentOS config.
-  if (agentName === ANALYST_AGENT_NAME) {
+  if (agentName === ANALYST_AGENT_NAME || agentName === EDITOR_AGENT_NAME) {
     const expectedKeys = [integrationName, 'QUERY_USER'].sort()
     if (JSON.stringify(integrationKeys.sort()) !== JSON.stringify(expectedKeys)) {
       problems.push(`les intégrations doivent être exactement ${expectedKeys.join(', ')}`)
@@ -407,6 +407,11 @@ async function main() {
     await provisionIntegration(namespaceId, existingIntegrations, INTEGRATION_RO, true)
     console.log('--- Agent analyste read-only ---')
     await provisionAgent(namespaceId, existingAgents, ANALYST_AGENT_NAME, ANALYST_DESCRIPTION, ANALYST_INSTRUCTIONS, INTEGRATION_RO)
+  } else if (targetAgent === EDITOR_AGENT_NAME) {
+    console.log('--- Intégration éditeur writable ---')
+    await provisionIntegration(namespaceId, existingIntegrations, INTEGRATION_RW, false)
+    console.log('--- Agent éditeur writable ---')
+    await provisionAgent(namespaceId, existingAgents, EDITOR_AGENT_NAME, EDITOR_DESCRIPTION, EDITOR_INSTRUCTIONS, INTEGRATION_RW)
   } else {
     console.log('--- Intégrations ---')
     await provisionIntegration(namespaceId, existingIntegrations, INTEGRATION_RW, false)

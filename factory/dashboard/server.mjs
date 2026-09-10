@@ -40,6 +40,7 @@ import { listForgeRunProjections, parseForgeLedger, projectForgeRun } from '../l
 import { recordHumanDecision } from '../lib/forge-human-decision.mjs'
 import { evaluateG2 } from '../lib/forge-g2.mjs'
 import { executeStoryAnalysis } from '../lib/forge-story-analysis.mjs'
+import { executeStoryEdit } from '../lib/forge-story-edit.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
@@ -523,6 +524,10 @@ function send(res, status, body, ct = 'application/json') {
   res.end(data)
 }
 
+export function isAllowedStoryEditRequestBody(body) {
+  return !!body && typeof body === 'object' && !Array.isArray(body) && Object.keys(body).every((key) => ['analysisExecutionId', 'namespaceId', 'agentName', 'expectedSpecHash', 'supplement'].includes(key))
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = ''
@@ -597,6 +602,17 @@ const server = createServer(async (req, res) => {
       const result = await executeStoryAnalysis({ roots: start.roots, epicRunId: forgeStoryExecutionsMatch[1], storyRunId: forgeStoryExecutionsMatch[2], namespaceId: body.namespaceId, agentName: body.agentName, supplement: body.supplement, expectedSpecHash: body.expectedSpecHash })
       return send(res, 201, result)
     } catch (error) { return send(res, 409, { error: String(error.message ?? error) }) }
+  }
+
+  const forgeStoryEditsMatch = path.match(/^\/api\/forge\/runs\/([^/]+)\/stories\/([^/]+)\/edits$/)
+  if (method === 'GET' && forgeStoryEditsMatch) {
+    if (!FORGE_RUN_STORE_ROOT) return send(res,503,{error:'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.'})
+    try { const projection=projectForgeRun(parseForgeLedger(join(FORGE_RUN_STORE_ROOT,`${forgeStoryEditsMatch[1]}.jsonl`))); const story=projection?.stories.find(item=>item.runId===forgeStoryEditsMatch[2]); return story?send(res,200,story.edits):send(res,404,{error:'Story run not found.'}) } catch { return send(res,404,{error:'Forge run not found.'}) }
+  }
+  if (method === 'POST' && forgeStoryEditsMatch) {
+    if (!FORGE_RUN_STORE_ROOT) return send(res,503,{error:'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.'})
+    const body=await readBody(req); if(!isAllowedStoryEditRequestBody(body)) return send(res,400,{error:'Unsupported Story edit request field.'})
+    try { const events=parseForgeLedger(join(FORGE_RUN_STORE_ROOT,`${forgeStoryEditsMatch[1]}.jsonl`)); const start=events.find(event=>event.event==='run_started'); const result=await executeStoryEdit({roots:start.roots,epicRunId:forgeStoryEditsMatch[1],storyRunId:forgeStoryEditsMatch[2],...body}); return send(res,201,result) } catch(error) { return send(res,409,{error:String(error.message??error)}) }
   }
 
   const forgeG1Match = path.match(/^\/api\/forge\/runs\/([^/]+)\/gates\/G1$/)
