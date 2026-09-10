@@ -331,6 +331,40 @@ class Neo4jPersistenceConfiguration {
     }
 
     /**
+     * One-time migration: copies `maxTokens → maxCompletionTokens` on AiModel nodes that were
+     * populated before the rename.
+     *
+     * The legacy `maxTokens` property is left untouched on the node so that any tooling or
+     * rollback path that still reads it keeps working. SDN never writes `maxTokens` back
+     * (it is not declared in [io.whozoss.agentos.aiModel.AiModelNode]), so the orphaned
+     * property is harmless.
+     *
+     * Idempotent: the `WHERE maxCompletionTokens IS NULL` guard ensures nodes that were
+     * already migrated (or created after the rename) are not touched.
+     */
+    @Bean
+    fun migrateAiModelMaxTokens(neo4jClient: Neo4jClient): CommandLineRunner =
+        CommandLineRunner {
+            val result =
+                neo4jClient
+                    .query(
+                        """
+                        MATCH (m:AiModel)
+                        WHERE m.maxTokens IS NOT NULL AND m.maxCompletionTokens IS NULL
+                        SET m.maxCompletionTokens = m.maxTokens
+                        RETURN count(m) AS migrated
+                        """.trimIndent(),
+                    ).fetch()
+                    .one()
+            val count = result.map { it["migrated"] as Long }.orElse(0L) ?: 0L
+            if (count > 0L) {
+                logger.info { "[Migration] Copied maxTokens → maxCompletionTokens on $count AiModel node(s)" }
+            } else {
+                logger.debug { "[Migration] No AiModel nodes needed maxTokens → maxCompletionTokens migration" }
+            }
+        }
+
+    /**
      * One-time migration: converts legacy `[:STARRED]` plain edges to
      * `[:WATCHES]` relationship-with-properties edges.
      *

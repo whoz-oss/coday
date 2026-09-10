@@ -8,6 +8,7 @@ import {
   AiProviderControllerService,
   AiModel,
   AiModelControllerService,
+  ModelPricing,
 } from '@whoz-oss/agentos-api-client'
 
 /**
@@ -80,7 +81,14 @@ export class AiModelFormComponent implements OnInit {
     alias: new FormControl<string>('', { nonNullable: true }),
     priority: new FormControl<number>(0, { nonNullable: true }),
     temperature: new FormControl<number | null>(null),
-    maxTokens: new FormControl<number | null>(null),
+    contextWindow: new FormControl<number | null>(null),
+    maxCompletionTokens: new FormControl<number | null>(null),
+    pricing: new FormGroup({
+      inputMTokens: new FormControl<number | null>(null),
+      outputMTokens: new FormControl<number | null>(null),
+      cacheWrite: new FormControl<number | null>(null),
+      cacheRead: new FormControl<number | null>(null),
+    }),
   })
 
   protected get aiProviderIdControl() {
@@ -107,8 +115,16 @@ export class AiModelFormComponent implements OnInit {
     return this.form.controls.temperature
   }
 
-  protected get maxTokensControl() {
-    return this.form.controls.maxTokens
+  protected get contextWindowControl() {
+    return this.form.controls.contextWindow
+  }
+
+  protected get maxCompletionTokensControl() {
+    return this.form.controls.maxCompletionTokens
+  }
+
+  protected get pricingGroup() {
+    return this.form.controls.pricing
   }
 
   protected readonly isEditMode = signal(false)
@@ -153,7 +169,14 @@ export class AiModelFormComponent implements OnInit {
           this.aliasControl.setValue(model.alias ?? '')
           this.priorityControl.setValue(model.priority ?? 0)
           this.temperatureControl.setValue(model.temperature ?? null)
-          this.maxTokensControl.setValue(model.maxTokens ?? null)
+          this.contextWindowControl.setValue(model.contextWindow ?? null)
+          this.maxCompletionTokensControl.setValue(model.maxCompletionTokens ?? null)
+          this.pricingGroup.setValue({
+            inputMTokens: model.pricing?.inputMTokens ?? null,
+            outputMTokens: model.pricing?.outputMTokens ?? null,
+            cacheWrite: model.pricing?.cacheWrite ?? null,
+            cacheRead: model.pricing?.cacheRead ?? null,
+          })
           this.isLoading.set(false)
         },
         error: () => {
@@ -171,6 +194,22 @@ export class AiModelFormComponent implements OnInit {
     // getRawValue() includes disabled controls (aiProviderId in edit mode)
     const raw = this.form.getRawValue()
 
+    const rawPricing = raw.pricing
+    const hasPricing =
+      rawPricing.inputMTokens != null ||
+      rawPricing.outputMTokens != null ||
+      rawPricing.cacheWrite != null ||
+      rawPricing.cacheRead != null
+    const pricing: ModelPricing | undefined = hasPricing
+      ? {
+          isEmpty: false,
+          inputMTokens: rawPricing.inputMTokens ?? undefined,
+          outputMTokens: rawPricing.outputMTokens ?? undefined,
+          cacheWrite: rawPricing.cacheWrite ?? undefined,
+          cacheRead: rawPricing.cacheRead ?? undefined,
+        }
+      : undefined
+
     const payload: AiModel = {
       ...(this.existingModel ?? {}),
       aiProviderId: raw.aiProviderId,
@@ -183,7 +222,9 @@ export class AiModelFormComponent implements OnInit {
       alias: raw.alias.trim() || undefined,
       priority: raw.priority,
       temperature: raw.temperature ?? undefined,
-      maxTokens: raw.maxTokens ?? undefined,
+      contextWindow: raw.contextWindow ?? undefined,
+      maxCompletionTokens: raw.maxCompletionTokens ?? undefined,
+      pricing,
     }
 
     const call$ = this.isEditMode()

@@ -16,11 +16,16 @@ export interface Case {
   modified?: string
   namespaceId: string
   parentCaseId?: string
+  /**
+   * Timestamp of the caller\'s last read. Null = never read (unread).
+   */
+  readAt?: string
   removed: boolean
   /**
    * The caller\'s direct relation on this case
    */
   role?: CaseRoleEnum
+  scheduledPromptId?: string
   status: CaseStatusEnum
   title?: string
 }
