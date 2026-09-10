@@ -38,6 +38,7 @@ import { discoverJiraCredentials } from '../lib/coday-config.mjs'
 import { registerGate, unregisterGate, getGate, writeGateReply } from '../lib/review-gate.mjs'
 import { listForgeRunProjections, parseForgeLedger, projectForgeRun } from '../lib/forge-ledger.mjs'
 import { recordHumanDecision } from '../lib/forge-human-decision.mjs'
+import { evaluateG2 } from '../lib/forge-g2.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
@@ -583,6 +584,28 @@ const server = createServer(async (req, res) => {
       if (!projection) return send(res, 404, { error: 'Forge run not found.' })
       return send(res, 200, projection.gates.find((gate) => gate.gate === 'G1') ?? null)
     } catch { return send(res, 404, { error: 'Forge run not found.' }) }
+  }
+
+  const forgeG2Match = path.match(/^\/api\/forge\/runs\/([^/]+)\/gates\/G2$/)
+  if (method === 'GET' && forgeG2Match) {
+    if (!FORGE_RUN_STORE_ROOT) return send(res, 503, { error: 'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.' })
+    try {
+      const projection = projectForgeRun(parseForgeLedger(join(FORGE_RUN_STORE_ROOT, `${forgeG2Match[1]}.jsonl`)))
+      if (!projection) return send(res, 404, { error: 'Forge run not found.' })
+      return send(res, 200, projection.gates.find((gate) => gate.gate === 'G2') ?? { gate: 'G2', status: 'not_evaluated' })
+    } catch { return send(res, 404, { error: 'Forge run not found.' }) }
+  }
+
+  if (method === 'POST' && forgeG2Match) {
+    if (!FORGE_RUN_STORE_ROOT) return send(res, 503, { error: 'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.' })
+    const body = await readBody(req)
+    try {
+      const events = parseForgeLedger(join(FORGE_RUN_STORE_ROOT, `${forgeG2Match[1]}.jsonl`))
+      const start = events.find((event) => event.event === 'run_started' && event.runId === forgeG2Match[1])
+      if (!start?.roots) return send(res, 409, { error: 'Forge run roots are missing from the ledger.' })
+      const result = evaluateG2({ roots: start.roots, runId: forgeG2Match[1], specPath: body.specPath })
+      return send(res, result.status === 'recorded' ? 201 : (result.status === 'conflict' ? 409 : 200), result)
+    } catch (error) { return send(res, 409, { error: String(error.message ?? error) }) }
   }
 
   const forgeG1DecisionMatch = path.match(/^\/api\/forge\/runs\/([^/]+)\/gates\/G1\/decision$/)

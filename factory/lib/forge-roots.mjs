@@ -42,6 +42,7 @@ export function resolveForgeRoots(input) {
   if (!input || typeof input !== 'object') throw new Error('roots object is required')
   const orchestratorRoot = resolveExistingDirectory(input.orchestratorRoot, 'roots.orchestratorRoot')
   const repoRoot = resolveExistingDirectory(input.repoRoot, 'roots.repoRoot')
+  const forgeRoot = input.forgeRoot === undefined ? undefined : resolveExistingDirectory(input.forgeRoot, 'roots.forgeRoot')
   const runStoreRoot = resolveStoreRoot(input.runStoreRoot)
   const runStorePolicy = input.runStorePolicy ?? DEFAULT_RUN_STORE_POLICY
   if (![DEFAULT_RUN_STORE_POLICY, EXTERNAL_RUN_STORE_POLICY].includes(runStorePolicy)) {
@@ -50,7 +51,7 @@ export function resolveForgeRoots(input) {
   if (runStorePolicy === DEFAULT_RUN_STORE_POLICY && !isWithin(runStoreRoot, orchestratorRoot)) {
     throw new Error('roots.runStoreRoot must remain under roots.orchestratorRoot unless runStorePolicy is external_allowed')
   }
-  return Object.freeze({ schemaVersion: FORGE_ROOTS_SCHEMA_VERSION, orchestratorRoot, runStoreRoot, repoRoot, runStorePolicy })
+  return Object.freeze({ schemaVersion: FORGE_ROOTS_SCHEMA_VERSION, orchestratorRoot, runStoreRoot, repoRoot, ...(forgeRoot ? { forgeRoot } : {}), runStorePolicy })
 }
 
 export function ensureForgeRunStore(roots) {

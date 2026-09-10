@@ -92,6 +92,7 @@ export function projectForgeRun(events) {
   const decision = g1 && events.find((event) => event.event === 'human_decision_recorded' && event.runId === start.runId && event.gate === 'G1' && event.attempt === g1.attempt)
   const evidenceSetHash = g1 ? computeG1EvidenceSetHash(events, start.runId, g1.attempt, g1.policyVersion) : null
   const g1Status = decision ? decision.decision.outcome : (g1?.status ?? 'not_started')
+  const g2 = events.filter((event) => event.event === 'g2_evaluated' && event.runId === start.runId).at(-1)
   return {
     schemaVersion: FORGE_LEDGER_SCHEMA_VERSION,
     runId: start.runId,
@@ -101,7 +102,10 @@ export function projectForgeRun(events) {
     roots: start.roots,
     startedAt: start.at,
     status: g1Status,
-    gates: g1 ? [{ gate: 'G1', attempt: g1.attempt, status: g1Status, requiredDecision: g1.requiredDecision, policyVersion: g1.policyVersion, evidenceSetHash, decision: decision?.decision ?? null }] : [],
+    gates: [
+      ...(g1 ? [{ gate: 'G1', attempt: g1.attempt, status: g1Status, requiredDecision: g1.requiredDecision, policyVersion: g1.policyVersion, evidenceSetHash, decision: decision?.decision ?? null }] : []),
+      ...(g2 ? [{ gate: 'G2', attempt: g2.attempt, status: g2.status, code: g2.code, policyVersion: g2.policyVersion, spec: g2.spec ?? null }] : []),
+    ],
     stories,
   }
 }
