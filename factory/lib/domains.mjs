@@ -236,7 +236,8 @@ export const domains = {
         // FACTORY_COMMAND_FRONT surcharge cette commande (comportement historique).
         // La commande surchargée doit contenir `-t <cible>` ou `--target=<cible>`
         // pour que `buildOracleCommand` puisse extraire la cible et construire
-        // la commande `run-many` effective.
+        // la commande `run-many` effective. FACTORY_FRONT_TEST_TARGET configure
+        // aussi la cible par défaut (frontend-test) sans remplacer la commande.
         //
         // POURQUOI `filesArg: true` — HISTORIQUE DES INCIDENTS
         // ─────────────────────────────────────────────────────────────────────
@@ -257,7 +258,7 @@ export const domains = {
         // `filesArg: true` signale à `buildOracleCommand` de résoudre les projets
         // propriétaires des fichiers modifiés (pas leurs dépendants transitifs),
         // puis de construire :
-        //   pnpm nx run-many --target=frontend-test --projects=proj1,proj2 --skip-nx-cache
+        //   pnpm nx run-many --target=<FACTORY_FRONT_TEST_TARGET> --projects=proj1,proj2 --skip-nx-cache
         //
         // La résolution se fait par remontée de dossiers jusqu'au premier
         // `project.json`, en Node pur, sans appel Nx. Pour 6 fichiers dans 3 libs :
@@ -272,7 +273,7 @@ export const domains = {
         // sa commande telle quelle — périmètre fixe, indépendant du diff.
         name: 'tests',
         command: process.env.FACTORY_COMMAND_FRONT
-          ?? 'pnpm nx affected -t frontend-test',
+          ?? `pnpm nx affected -t ${process.env.FACTORY_FRONT_TEST_TARGET ?? 'frontend-test'}`,
         cwd: process.env.FACTORY_CWD_FRONT
           ?? REPO_ROOT,
         filesArg: true,
