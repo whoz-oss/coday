@@ -26,11 +26,10 @@ import org.springframework.stereotype.Service
  *
  * Exposed tools:
  * - [ListAgentsTool] — list agents in the namespace (Namespace READ)
- * - [GetAgentTool] — retrieve a single agent by name (Namespace READ then AgentConfig READ)
+ * - [GetAgentTool] — retrieve a single agent by name (AgentConfig READ, resolved transitively)
  * - [CreateAgentTool] — create a new agent (Namespace WRITE)
  * - [UpdateAgentTool] — update an existing agent (AgentConfig WRITE)
- * - [EnableAgentTool] — enable an agent (AgentConfig WRITE)
- * - [DisableAgentTool] — disable an agent (AgentConfig WRITE)
+ * - [SetAgentEnabledTool] — enable or disable an agent (AgentConfig WRITE)
  */
 @Service
 class AgentosAgentsToolPlugin(
@@ -54,8 +53,7 @@ class AgentosAgentsToolPlugin(
             GetAgentTool(configName = configName, operations = operations),
             CreateAgentTool(configName = configName, operations = operations),
             UpdateAgentTool(configName = configName, operations = operations),
-            EnableAgentTool(configName = configName, operations = operations),
-            DisableAgentTool(configName = configName, operations = operations),
+            SetAgentEnabledTool(configName = configName, operations = operations),
         )
     }
 

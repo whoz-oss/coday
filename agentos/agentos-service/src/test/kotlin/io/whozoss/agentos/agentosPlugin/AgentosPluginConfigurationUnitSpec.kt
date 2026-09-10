@@ -83,7 +83,7 @@ class AgentosPluginConfigurationUnitSpec :
                     promptRepository = mockk<PromptRepository>(relaxed = true),
                     userService = mockk<UserService>(relaxed = true),
                 )
-            val operations = AgentAdminOperationsImpl(service, permissionService)
+            val operations = AgentAdminOperationsImpl(service, permissionService, mockk(relaxed = true))
             return AgentosAgentsToolPlugin(operations)
         }
 
@@ -351,23 +351,38 @@ class AgentosPluginConfigurationUnitSpec :
         }
 
         // =========================================================================
-        // EnableAgent
+        // SetAgentEnabled
         // =========================================================================
 
-        "enableAgent returns NOT_FOUND when userId is null" {
+        "setAgentEnabled returns INVALID_INPUT when enabled parameter is missing" {
+            val repo = buildRepository()
+            repo.save(agent("Dev"))
+            val permService = mockk<PermissionService>(relaxed = true)
+            val plugin = buildPlugin(repo, permService)
+            val tool = plugin.provideTools(config = null, context = context()).filterIsInstance<SetAgentEnabledTool>().first()
+
+            val result = tool.execute(SetAgentEnabledTool.Input(name = "Dev", enabled = null), context())
+
+            result.success shouldBe false
+            result.errorType shouldBe "INVALID_INPUT"
+            verify(exactly = 0) { permService.hasPermission(any(), any(), any(), any()) }
+        }
+
+        "setAgentEnabled returns NOT_FOUND when userId is null" {
             val repo = buildRepository()
             repo.save(agent("Dev", enabled = false))
             val permService = mockk<PermissionService>(relaxed = true)
             val plugin = buildPlugin(repo, permService)
-            val tool = plugin.provideTools(config = null, context = context(uid = null)).filterIsInstance<EnableAgentTool>().first()
+            val tool = plugin.provideTools(config = null, context = context(uid = null)).filterIsInstance<SetAgentEnabledTool>().first()
 
-            val result = tool.execute(EnableAgentTool.Input(name = "Dev"), context(uid = null))
+            val result = tool.execute(SetAgentEnabledTool.Input(name = "Dev", enabled = true), context(uid = null))
 
             result.success shouldBe false
             result.errorType shouldBe "NOT_FOUND"
+            verify(exactly = 0) { permService.hasPermission(any(), any(), any(), any()) }
         }
 
-        "enableAgent sets enabled=true when WRITE is granted" {
+        "setAgentEnabled with enabled=true sets enabled=true when WRITE is granted" {
             val repo = buildRepository()
             val saved = repo.save(agent("Dev", enabled = false))
             val permService =
@@ -375,33 +390,16 @@ class AgentosPluginConfigurationUnitSpec :
                     every { hasPermission(userId.toString(), EntityType.AGENT_CONFIG, saved.id.toString(), Action.WRITE) } returns true
                 }
             val plugin = buildPlugin(repo, permService)
-            val tool = plugin.provideTools(config = null, context = context()).filterIsInstance<EnableAgentTool>().first()
+            val tool = plugin.provideTools(config = null, context = context()).filterIsInstance<SetAgentEnabledTool>().first()
 
-            val result = tool.execute(EnableAgentTool.Input(name = "Dev"), context())
+            val result = tool.execute(SetAgentEnabledTool.Input(name = "Dev", enabled = true), context())
 
             result.success shouldBe true
             val updated = repo.findByParent(namespaceId).first { it.name == "Dev" }
             updated.enabled shouldBe true
         }
 
-        // =========================================================================
-        // DisableAgent
-        // =========================================================================
-
-        "disableAgent returns NOT_FOUND when userId is null" {
-            val repo = buildRepository()
-            repo.save(agent("Dev", enabled = true))
-            val permService = mockk<PermissionService>(relaxed = true)
-            val plugin = buildPlugin(repo, permService)
-            val tool = plugin.provideTools(config = null, context = context(uid = null)).filterIsInstance<DisableAgentTool>().first()
-
-            val result = tool.execute(DisableAgentTool.Input(name = "Dev"), context(uid = null))
-
-            result.success shouldBe false
-            result.errorType shouldBe "NOT_FOUND"
-        }
-
-        "disableAgent sets enabled=false when WRITE is granted" {
+        "setAgentEnabled with enabled=false sets enabled=false when WRITE is granted" {
             val repo = buildRepository()
             val saved = repo.save(agent("Dev", enabled = true))
             val permService =
@@ -409,12 +407,13 @@ class AgentosPluginConfigurationUnitSpec :
                     every { hasPermission(userId.toString(), EntityType.AGENT_CONFIG, saved.id.toString(), Action.WRITE) } returns true
                 }
             val plugin = buildPlugin(repo, permService)
-            val tool = plugin.provideTools(config = null, context = context()).filterIsInstance<DisableAgentTool>().first()
+            val tool = plugin.provideTools(config = null, context = context()).filterIsInstance<SetAgentEnabledTool>().first()
 
-            val result = tool.execute(DisableAgentTool.Input(name = "Dev"), context())
+            val result = tool.execute(SetAgentEnabledTool.Input(name = "Dev", enabled = false), context())
 
             result.success shouldBe true
             val updated = repo.findByParent(namespaceId).first { it.name == "Dev" }
             updated.enabled shouldBe false
         }
+
     })
