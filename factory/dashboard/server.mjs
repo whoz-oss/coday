@@ -39,6 +39,7 @@ import { registerGate, unregisterGate, getGate, writeGateReply } from '../lib/re
 import { listForgeRunProjections, parseForgeLedger, projectForgeRun } from '../lib/forge-ledger.mjs'
 import { recordHumanDecision } from '../lib/forge-human-decision.mjs'
 import { evaluateG2 } from '../lib/forge-g2.mjs'
+import { executeStoryAnalysis } from '../lib/forge-story-analysis.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
@@ -574,6 +575,25 @@ const server = createServer(async (req, res) => {
   if (method === 'GET' && path === '/api/forge/runs') {
     if (!FORGE_RUN_STORE_ROOT) return send(res, 503, { error: 'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.' })
     return send(res, 200, listForgeRunProjections(FORGE_RUN_STORE_ROOT))
+  }
+
+  const forgeStoryExecutionsMatch = path.match(/^\/api\/forge\/runs\/([^/]+)\/stories\/([^/]+)\/executions$/)
+  if (method === 'GET' && forgeStoryExecutionsMatch) {
+    if (!FORGE_RUN_STORE_ROOT) return send(res, 503, { error: 'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.' })
+    try {
+      const projection = projectForgeRun(parseForgeLedger(join(FORGE_RUN_STORE_ROOT, `${forgeStoryExecutionsMatch[1]}.jsonl`)))
+      const story = projection?.stories.find((item) => item.runId === forgeStoryExecutionsMatch[2])
+      return story ? send(res, 200, story.executions) : send(res, 404, { error: 'Story run not found.' })
+    } catch { return send(res, 404, { error: 'Forge run not found.' }) }
+  }
+  if (method === 'POST' && forgeStoryExecutionsMatch) {
+    if (!FORGE_RUN_STORE_ROOT) return send(res, 503, { error: 'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.' })
+    const body = await readBody(req)
+    try {
+      const events = parseForgeLedger(join(FORGE_RUN_STORE_ROOT, `${forgeStoryExecutionsMatch[1]}.jsonl`)); const start = events.find((event) => event.event === 'run_started')
+      const result = await executeStoryAnalysis({ roots: start.roots, epicRunId: forgeStoryExecutionsMatch[1], storyRunId: forgeStoryExecutionsMatch[2], namespaceId: body.namespaceId, agentName: body.agentName, brief: body.brief, expectedSpecHash: body.expectedSpecHash })
+      return send(res, 201, result)
+    } catch (error) { return send(res, 409, { error: String(error.message ?? error) }) }
   }
 
   const forgeG1Match = path.match(/^\/api\/forge\/runs\/([^/]+)\/gates\/G1$/)

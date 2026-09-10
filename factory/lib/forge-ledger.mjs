@@ -85,14 +85,20 @@ export function parseForgeLedger(filePath) {
 export function projectForgeRun(events) {
   const start = events.find((event) => event.event === 'run_started' && event.runType === 'EpicRun')
   if (!start) return null
-  const stories = events.filter((event) => event.event === 'story_run_created' && event.parentRunId === start.runId)
+  const storyEvents = events.filter((event) => event.event === 'story_run_created' && event.parentRunId === start.runId)
     .sort((a, b) => a.ordinal - b.ordinal)
-    .map((event) => ({ runId: event.runId, ordinal: event.ordinal, status: 'not_started', workItem: event.workItem }))
   const g1 = events.filter((event) => event.event === 'gate_started' && event.runId === start.runId && event.gate === 'G1').at(-1)
   const decision = g1 && events.find((event) => event.event === 'human_decision_recorded' && event.runId === start.runId && event.gate === 'G1' && event.attempt === g1.attempt)
   const evidenceSetHash = g1 ? computeG1EvidenceSetHash(events, start.runId, g1.attempt, g1.policyVersion) : null
   const g1Status = decision ? decision.decision.outcome : (g1?.status ?? 'not_started')
   const g2 = events.filter((event) => event.event === 'g2_evaluated' && event.runId === start.runId).at(-1)
+  const executions = events.filter((event) => event.event === 'agent_execution_finished')
+  const executionsByStory = new Map()
+  for (const execution of executions) {
+    const list = executionsByStory.get(execution.storyRunId) ?? []
+    list.push({ executionId: execution.executionId, caseId: execution.caseId, runtime: execution.runtime, role: execution.role, agentName: execution.agentName, namespaceId: execution.namespaceId, status: execution.status, outcome: execution.outcome, caseStatus: execution.caseStatus ?? null, killedByBudget: execution.killedByBudget === true, observedAt: execution.observedAt })
+    executionsByStory.set(execution.storyRunId, list)
+  }
   return {
     schemaVersion: FORGE_LEDGER_SCHEMA_VERSION,
     runId: start.runId,
@@ -106,7 +112,7 @@ export function projectForgeRun(events) {
       ...(g1 ? [{ gate: 'G1', attempt: g1.attempt, status: g1Status, requiredDecision: g1.requiredDecision, policyVersion: g1.policyVersion, evidenceSetHash, decision: decision?.decision ?? null }] : []),
       ...(g2 ? [{ gate: 'G2', attempt: g2.attempt, status: g2.status, code: g2.code, policyVersion: g2.policyVersion, spec: g2.spec ?? null }] : []),
     ],
-    stories,
+    stories: storyEvents.map((event) => ({ runId: event.runId, ordinal: event.ordinal, status: 'not_started', workItem: event.workItem, executions: executionsByStory.get(event.runId) ?? [] })),
   }
 }
 

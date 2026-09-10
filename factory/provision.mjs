@@ -62,6 +62,7 @@
  */
 
 import { join, dirname, resolve } from 'node:path'
+import { realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -76,9 +77,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
  * Exemple :
  *   FACTORY_ROOT=/path/to/other-repo node factory/provision.mjs
  */
-const REPO_ROOT = process.env.FACTORY_ROOT
+const requestedRepoRoot = process.env.FACTORY_ROOT
   ? resolve(process.env.FACTORY_ROOT)
   : join(__dirname, '..')
+
+// The live integration and Factory roots contract must use the same canonical
+// path (not /var versus /private/var, nor an unresolved project symlink).
+let REPO_ROOT
+try {
+  REPO_ROOT = realpathSync(requestedRepoRoot)
+} catch {
+  throw new Error(`FACTORY_ROOT must exist and resolve via realpath: ${requestedRepoRoot}`)
+}
 
 const BASE_URL = process.env.AGENTOS_URL ?? 'http://localhost:8124'
 const FACTORY_USER = process.env.FACTORY_USER ?? 'benjamin.valdes'
@@ -94,6 +104,14 @@ const INTEGRATION_RW = 'FACTORY_FILES'
 
 /** Intégration lecture seule (pour l'analyste). */
 const INTEGRATION_RO = 'FACTORY_FILES_RO'
+
+const targetAgent = process.argv[2] === '--agent' ? process.argv[3] : null
+if (process.argv.length > 2 && !targetAgent) {
+  throw new Error('Usage: node factory/provision.mjs [--agent factory-analyst]')
+}
+if (targetAgent && targetAgent !== ANALYST_AGENT_NAME) {
+  throw new Error(`Unsupported targeted agent: ${targetAgent}. Only ${ANALYST_AGENT_NAME} is supported.`)
+}
 
 /**
  * Instructions du rôle éditeur.
@@ -332,8 +350,22 @@ async function provisionAgent(
   const problems = []
   if (verified.enabled !== true) problems.push("l'agent n'est pas activé")
   if (subAgents.length > 0) problems.push('subAgents est non-vide')
-  if (!integrationKeys.includes(integrationName)) {
-    problems.push(`l'intégration ${integrationName} n'est pas liée`)
+  if (!integrationKeys.includes(integrationName)) problems.push(`l'intégration ${integrationName} n'est pas liée`)
+
+  // Targeted analyst provisioning is the read-only execution contract, not
+  // merely a best-effort update. Reject hidden integrations and a QUERY_USER
+  // default grant after re-reading the effective AgentOS config.
+  if (agentName === ANALYST_AGENT_NAME) {
+    const expectedKeys = [integrationName, 'QUERY_USER'].sort()
+    if (JSON.stringify(integrationKeys.sort()) !== JSON.stringify(expectedKeys)) {
+      problems.push(`les intégrations doivent être exactement ${expectedKeys.join(', ')}`)
+    }
+    if (verified.integrations?.QUERY_USER == null || !Array.isArray(verified.integrations.QUERY_USER) || verified.integrations.QUERY_USER.length !== 0) {
+      problems.push('QUERY_USER doit être explicitement une allowlist vide')
+    }
+    if (verified.integrations?.[integrationName] !== null) {
+      problems.push(`${integrationName} doit avoir une allowlist null`)
+    }
   }
 
   if (problems.length > 0) {
@@ -367,35 +399,23 @@ async function main() {
   const agentsRes = await request('GET', `/api/agent-configs/by-parentId/${namespaceId}`)
   const existingAgents = await agentsRes.json()
 
-  // -------------------------------------------------------------------------
-  // Étape 2 : intégrations
-  // -------------------------------------------------------------------------
-  console.log('--- Intégrations ---')
-  await provisionIntegration(namespaceId, existingIntegrations, INTEGRATION_RW, false)
-  await provisionIntegration(namespaceId, existingIntegrations, INTEGRATION_RO, true)
-  console.log('')
-
-  // -------------------------------------------------------------------------
-  // Étape 3 : agents
-  // -------------------------------------------------------------------------
-  console.log('--- Agents ---')
-  await provisionAgent(
-    namespaceId,
-    existingAgents,
-    EDITOR_AGENT_NAME,
-    EDITOR_DESCRIPTION,
-    EDITOR_INSTRUCTIONS,
-    INTEGRATION_RW
-  )
-
-  await provisionAgent(
-    namespaceId,
-    existingAgents,
-    ANALYST_AGENT_NAME,
-    ANALYST_DESCRIPTION,
-    ANALYST_INSTRUCTIONS,
-    INTEGRATION_RO
-  )
+  // Targeted mode is deliberately narrow: it never updates the writable
+  // integration nor factory-editor. Without --agent, preserve legacy global
+  // provisioning behavior.
+  if (targetAgent === ANALYST_AGENT_NAME) {
+    console.log('--- Intégration analyste read-only ---')
+    await provisionIntegration(namespaceId, existingIntegrations, INTEGRATION_RO, true)
+    console.log('--- Agent analyste read-only ---')
+    await provisionAgent(namespaceId, existingAgents, ANALYST_AGENT_NAME, ANALYST_DESCRIPTION, ANALYST_INSTRUCTIONS, INTEGRATION_RO)
+  } else {
+    console.log('--- Intégrations ---')
+    await provisionIntegration(namespaceId, existingIntegrations, INTEGRATION_RW, false)
+    await provisionIntegration(namespaceId, existingIntegrations, INTEGRATION_RO, true)
+    console.log('')
+    console.log('--- Agents ---')
+    await provisionAgent(namespaceId, existingAgents, EDITOR_AGENT_NAME, EDITOR_DESCRIPTION, EDITOR_INSTRUCTIONS, INTEGRATION_RW)
+    await provisionAgent(namespaceId, existingAgents, ANALYST_AGENT_NAME, ANALYST_DESCRIPTION, ANALYST_INSTRUCTIONS, INTEGRATION_RO)
+  }
 
   console.log(`\u2713 Prêt.`)
   console.log(`  Éditeur  : FACTORY_AGENT_EDITOR=${EDITOR_AGENT_NAME}`)

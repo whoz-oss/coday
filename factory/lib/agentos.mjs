@@ -7,6 +7,7 @@
  * AgentOS supportera les comptes de service.
  */
 
+import { realpathSync } from 'node:fs'
 import { setActiveCaseId, clearActiveCaseId } from './active-case.mjs'
 
 const BASE_URL = process.env.AGENTOS_URL ?? 'http://localhost:8124'
@@ -371,6 +372,42 @@ export async function preflightWorkspace(namespaceId, agent, repoRoot) {
   }
 
   return { ok: true, reason: null, rootPath: normalizeRoot(fileAccess[0].parameters.rootPath) }
+}
+
+/**
+ * Préflight strict pour une phase d'analyse : l'agent doit être limité à une
+ * seule intégration FILE_ACCESS read-only, colocalisée au repo, et avoir opté
+ * explicitement hors de QUERY_USER. Ce contrôle ne réutilise pas
+ * preflightWorkspace(), qui est volontairement conçu pour l'éditeur writable.
+ *
+ * @param {string} namespaceId
+ * @param {object} agent
+ * @param {string} repoRoot
+ * @returns {Promise<{ ok: boolean, reason: string|null, rootPath: string|null, integration: object|null }>}
+ */
+export async function preflightReadOnlyWorkspace(namespaceId, agent, repoRoot) {
+  const RESERVED = new Set(['QUERY_USER', 'CASE_FILE_EXCHANGE', 'NAMESPACE_FILE_EXCHANGE'])
+  const declared = Object.keys(agent.integrations ?? {})
+  if (!Array.isArray(agent.integrations?.QUERY_USER) || agent.integrations.QUERY_USER.length !== 0) {
+    return { ok: false, reason: 'QUERY_USER must be explicitly disabled with an empty allowlist for automated analysis.', rootPath: null, integration: null }
+  }
+  const nonReserved = declared.filter((name) => !RESERVED.has(name))
+  if (nonReserved.length !== 1) {
+    return { ok: false, reason: `Read-only analyst must declare exactly one non-reserved integration; found: ${nonReserved.join(', ') || '(none)'}.`, rootPath: null, integration: null }
+  }
+  let configs
+  try { configs = await listIntegrations(namespaceId) } catch (error) { return { ok: false, reason: `Unable to list integrations: ${error}`, rootPath: null, integration: null } }
+  const integration = configs.find((config) => config.name === nonReserved[0])
+  if (!integration || integration.integrationType !== 'FILE_ACCESS') {
+    return { ok: false, reason: `Read-only analyst integration ${nonReserved[0]} must resolve to FILE_ACCESS.`, rootPath: null, integration: null }
+  }
+  const rootPath = integration.parameters?.rootPath
+  let canonicalRoot = null
+  try { canonicalRoot = rootPath ? realpathSync(rootPath) : null } catch {}
+  if (!canonicalRoot || normalizeRoot(canonicalRoot) !== normalizeRoot(repoRoot) || integration.parameters?.readOnly !== true) {
+    return { ok: false, reason: 'FILE_ACCESS must use the canonical target repoRoot with readOnly:true.', rootPath: rootPath ?? null, integration: null }
+  }
+  return { ok: true, reason: null, rootPath: normalizeRoot(canonicalRoot), integration }
 }
 
 /**
