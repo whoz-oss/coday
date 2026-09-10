@@ -41,6 +41,7 @@ import { recordHumanDecision } from '../lib/forge-human-decision.mjs'
 import { evaluateG2 } from '../lib/forge-g2.mjs'
 import { executeStoryAnalysis } from '../lib/forge-story-analysis.mjs'
 import { executeStoryEdit } from '../lib/forge-story-edit.mjs'
+import { executeStoryOracles, isAllowedStoryOracleRequestBody } from '../lib/forge-story-oracles.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
@@ -603,6 +604,10 @@ const server = createServer(async (req, res) => {
       return send(res, 201, result)
     } catch (error) { return send(res, 409, { error: String(error.message ?? error) }) }
   }
+
+  const forgeStoryOraclesMatch = path.match(/^\/api\/forge\/runs\/([^/]+)\/stories\/([^/]+)\/oracles$/)
+  if (method === 'GET' && forgeStoryOraclesMatch) { if(!FORGE_RUN_STORE_ROOT)return send(res,503,{error:'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.'}); try {const projection=projectForgeRun(parseForgeLedger(join(FORGE_RUN_STORE_ROOT,`${forgeStoryOraclesMatch[1]}.jsonl`)));const story=projection?.stories.find(item=>item.runId===forgeStoryOraclesMatch[2]);return story?send(res,200,story.oracleCampaigns):send(res,404,{error:'Story run not found.'})}catch{return send(res,404,{error:'Forge run not found.'})} }
+  if (method === 'POST' && forgeStoryOraclesMatch) { if(!FORGE_RUN_STORE_ROOT)return send(res,503,{error:'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.'});const body=await readBody(req);if(!isAllowedStoryOracleRequestBody(body))return send(res,400,{error:'Unsupported Story oracle request field.'});try{const events=parseForgeLedger(join(FORGE_RUN_STORE_ROOT,`${forgeStoryOraclesMatch[1]}.jsonl`));const start=events.find(event=>event.event==='run_started');return send(res,201,await executeStoryOracles({roots:start.roots,epicRunId:forgeStoryOraclesMatch[1],storyRunId:forgeStoryOraclesMatch[2],...body}))}catch(error){return send(res,409,{error:String(error.message??error)})} }
 
   const forgeStoryEditsMatch = path.match(/^\/api\/forge\/runs\/([^/]+)\/stories\/([^/]+)\/edits$/)
   if (method === 'GET' && forgeStoryEditsMatch) {
