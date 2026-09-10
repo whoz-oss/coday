@@ -28,6 +28,19 @@ class AgentAdminOperationsImpl(
         return agentConfigService.findByNamespace(namespaceId, withDisabled)
     }
 
+    /**
+     * Permission is checked on the [AgentConfig] entity, not on the namespace.
+     *
+     * [PermissionService.hasPermission] for [EntityType.AGENT_CONFIG] already resolves
+     * transitive access: a namespace MEMBER inherits READ on all its AgentConfigs via
+     * [io.whozoss.agentos.permissions.Neo4jPermissionRepository.hasTransitivePermission].
+     * Adding a prior NAMESPACE READ check would turn that OR (direct entity relation OR
+     * transitive namespace) into an AND, incorrectly blocking a user who holds a direct
+     * relation on the AgentConfig but is not a namespace member.
+     *
+     * [listAgents] correctly checks NAMESPACE READ instead, because it enumerates at
+     * namespace scope and has no single entity id to check against.
+     */
     override fun getAgent(namespaceId: UUID, userId: UUID?, name: String): AgentConfig? {
         if (userId == null) {
             logger.debug { "[AgentosPlugin] getAgent denied: no userId" }
@@ -121,13 +134,11 @@ class AgentAdminOperationsImpl(
             logger.debug { "[AgentosPlugin] $operation denied: no userId" }
             return false
         }
-        return when {
-            permissionService.hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ) -> true
-            else -> {
-                logger.debug { "[AgentosPlugin] $operation denied: user $userId lacks READ on namespace $namespaceId" }
-                false
-            }
+        if (!permissionService.hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)) {
+            logger.debug { "[AgentosPlugin] $operation denied: user $userId lacks READ on namespace $namespaceId" }
+            return false
         }
+        return true
     }
 
     private fun canWriteNamespace(namespaceId: UUID, userId: UUID?, operation: String): Boolean {
@@ -135,32 +146,28 @@ class AgentAdminOperationsImpl(
             logger.debug { "[AgentosPlugin] $operation denied: no userId" }
             return false
         }
-        return when {
-            permissionService.hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) -> true
-            else -> {
-                logger.debug { "[AgentosPlugin] $operation denied: user $userId lacks WRITE on namespace $namespaceId" }
-                false
-            }
+        if (!permissionService.hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)) {
+            logger.debug { "[AgentosPlugin] $operation denied: user $userId lacks WRITE on namespace $namespaceId" }
+            return false
         }
+        return true
     }
 
-    private fun canReadAgent(agent: AgentConfig, userId: UUID, operation: String): Boolean =
-        when {
-            permissionService.hasPermission(userId.toString(), EntityType.AGENT_CONFIG, agent.id.toString(), Action.READ) -> true
-            else -> {
-                logger.debug { "[AgentosPlugin] $operation denied: user $userId lacks READ on agent ${agent.id}" }
-                false
-            }
+    private fun canReadAgent(agent: AgentConfig, userId: UUID, operation: String): Boolean {
+        if (!permissionService.hasPermission(userId.toString(), EntityType.AGENT_CONFIG, agent.id.toString(), Action.READ)) {
+            logger.debug { "[AgentosPlugin] $operation denied: user $userId lacks READ on agent ${agent.id}" }
+            return false
         }
+        return true
+    }
 
-    private fun canWriteAgent(agent: AgentConfig, userId: UUID, operation: String): Boolean =
-        when {
-            permissionService.hasPermission(userId.toString(), EntityType.AGENT_CONFIG, agent.id.toString(), Action.WRITE) -> true
-            else -> {
-                logger.debug { "[AgentosPlugin] $operation denied: user $userId lacks WRITE on agent ${agent.id}" }
-                false
-            }
+    private fun canWriteAgent(agent: AgentConfig, userId: UUID, operation: String): Boolean {
+        if (!permissionService.hasPermission(userId.toString(), EntityType.AGENT_CONFIG, agent.id.toString(), Action.WRITE)) {
+            logger.debug { "[AgentosPlugin] $operation denied: user $userId lacks WRITE on agent ${agent.id}" }
+            return false
         }
+        return true
+    }
 
     companion object : KLogging()
 }
