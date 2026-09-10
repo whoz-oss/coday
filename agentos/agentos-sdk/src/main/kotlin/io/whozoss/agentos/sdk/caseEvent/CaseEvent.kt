@@ -151,6 +151,8 @@ data class AgentSelectedEvent(
     override val timestamp: Instant = Instant.now(),
     val agentId: UUID,
     val agentName: String,
+    /** Non-null only when this selection resumes a specific answered question. */
+    val questionId: UUID? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_SELECTED
 }

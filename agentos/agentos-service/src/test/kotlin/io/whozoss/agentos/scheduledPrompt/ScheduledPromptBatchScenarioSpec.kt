@@ -27,6 +27,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * End-to-end scenario tests for the scheduled prompt batch pipeline.
@@ -159,7 +160,9 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
      * MockK 1.13.x matcher issues) and keeps the scenarios deterministic.
      */
     private fun eventuallyIdleCaseService(): CaseService {
-        val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
+        // consumeAvailable processes UserRuns in parallel. This fixture must preserve the
+        // CaseService lookup contract under those concurrent create/read operations.
+        val runtimeMap = ConcurrentHashMap<UUID, CaseRuntime>()
         return mockk<CaseService>(relaxed = true).also { svc ->
             every { svc.create(any()) } answers {
                 val id = UUID.randomUUID()
