@@ -589,9 +589,12 @@ const server = createServer(async (req, res) => {
   if (method === 'POST' && forgeStoryExecutionsMatch) {
     if (!FORGE_RUN_STORE_ROOT) return send(res, 503, { error: 'FACTORY_FORGE_RUN_STORE_ROOT must be configured explicitly.' })
     const body = await readBody(req)
+    if (Object.keys(body).some((key) => !['namespaceId', 'agentName', 'expectedSpecHash', 'supplement'].includes(key))) {
+      return send(res, 400, { error: 'Unsupported Story analysis request field.' })
+    }
     try {
       const events = parseForgeLedger(join(FORGE_RUN_STORE_ROOT, `${forgeStoryExecutionsMatch[1]}.jsonl`)); const start = events.find((event) => event.event === 'run_started')
-      const result = await executeStoryAnalysis({ roots: start.roots, epicRunId: forgeStoryExecutionsMatch[1], storyRunId: forgeStoryExecutionsMatch[2], namespaceId: body.namespaceId, agentName: body.agentName, brief: body.brief, expectedSpecHash: body.expectedSpecHash })
+      const result = await executeStoryAnalysis({ roots: start.roots, epicRunId: forgeStoryExecutionsMatch[1], storyRunId: forgeStoryExecutionsMatch[2], namespaceId: body.namespaceId, agentName: body.agentName, supplement: body.supplement, expectedSpecHash: body.expectedSpecHash })
       return send(res, 201, result)
     } catch (error) { return send(res, 409, { error: String(error.message ?? error) }) }
   }

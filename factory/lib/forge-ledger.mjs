@@ -92,11 +92,13 @@ export function projectForgeRun(events) {
   const evidenceSetHash = g1 ? computeG1EvidenceSetHash(events, start.runId, g1.attempt, g1.policyVersion) : null
   const g1Status = decision ? decision.decision.outcome : (g1?.status ?? 'not_started')
   const g2 = events.filter((event) => event.event === 'g2_evaluated' && event.runId === start.runId).at(-1)
+  const validations = new Map(events.filter((event) => event.event === 'story_analysis_plan_validated').map((event) => [event.executionId, event]))
   const executions = events.filter((event) => event.event === 'agent_execution_finished')
   const executionsByStory = new Map()
   for (const execution of executions) {
     const list = executionsByStory.get(execution.storyRunId) ?? []
-    list.push({ executionId: execution.executionId, caseId: execution.caseId, runtime: execution.runtime, role: execution.role, agentName: execution.agentName, namespaceId: execution.namespaceId, status: execution.status, outcome: execution.outcome, caseStatus: execution.caseStatus ?? null, killedByBudget: execution.killedByBudget === true, observedAt: execution.observedAt })
+    const validation = validations.get(execution.executionId)
+    list.push({ executionId: execution.executionId, caseId: execution.caseId, runtime: execution.runtime, role: execution.role, agentName: execution.agentName, namespaceId: execution.namespaceId, status: execution.status, outcome: execution.outcome, caseStatus: execution.caseStatus ?? null, killedByBudget: execution.killedByBudget === true, artifact: execution.artifact ?? null, analysisValidation: validation ? { schemaVersion: validation.planSchemaVersion, status: validation.status, code: validation.code } : null, observedAt: execution.observedAt })
     executionsByStory.set(execution.storyRunId, list)
   }
   return {
