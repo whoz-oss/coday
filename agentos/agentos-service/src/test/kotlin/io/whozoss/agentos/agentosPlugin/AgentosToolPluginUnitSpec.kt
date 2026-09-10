@@ -4,7 +4,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
-import io.whozoss.agentos.agentConfig.AgentConfig
+import io.mockk.mockk
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
@@ -12,22 +12,8 @@ class AgentosToolPluginUnitSpec :
     StringSpec({
 
         val namespaceId: UUID = UUID.randomUUID()
-        val noopListAgents: (UUID, UUID?, Boolean) -> List<AgentConfig>? = { _, _, _ -> emptyList() }
-        val noopGetAgent: (UUID, UUID?, String) -> AgentConfig? = { _, _, _ -> null }
-        val noopCreateAgent: (UUID, UUID?, CreateAgentTool.Input) -> AgentConfig? = { _, _, _ -> null }
-        val noopUpdateAgent: (UUID, UUID?, UpdateAgentTool.Input) -> AgentConfig? = { _, _, _ -> null }
-        val noopEnableAgent: (UUID, UUID?, String) -> AgentConfig? = { _, _, _ -> null }
-        val noopDisableAgent: (UUID, UUID?, String) -> AgentConfig? = { _, _, _ -> null }
 
-        fun plugin() =
-            AgentosAgentsToolPlugin(
-                listAgents = noopListAgents,
-                getAgent = noopGetAgent,
-                createAgent = noopCreateAgent,
-                updateAgent = noopUpdateAgent,
-                enableAgent = noopEnableAgent,
-                disableAgent = noopDisableAgent,
-            )
+        fun plugin() = AgentosAgentsToolPlugin(operations = mockk<AgentAdminOperations>(relaxed = true))
 
         fun context() =
             ToolContext(

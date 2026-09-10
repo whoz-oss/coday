@@ -20,14 +20,14 @@ import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
- * Unit tests for the [AgentosAgentsPluginConfiguration] lambdas.
+ * Unit tests for [AgentAdminOperationsImpl].
  *
- * Instantiates [AgentosAgentsPluginConfiguration] directly (no Spring context), wires it
+ * Instantiates [AgentAdminOperationsImpl] directly (no Spring context), wires it
  * with a real [AgentConfigServiceImpl] backed by an in-memory repository and MockK
  * permission services, then exercises each tool through
  * [AgentosAgentsToolPlugin.provideTools] → tool.execute().
  *
- * Using the real service (instead of the former direct repository mock) means the
+ * Using the real service (instead of a direct repository mock) means the
  * uniqueness enforcement in [AgentConfigServiceImpl.create] is exercised here too.
  */
 class AgentosPluginConfigurationUnitSpec :
@@ -83,8 +83,8 @@ class AgentosPluginConfigurationUnitSpec :
                     promptRepository = mockk<PromptRepository>(relaxed = true),
                     userService = mockk<UserService>(relaxed = true),
                 )
-            val config = AgentosAgentsPluginConfiguration(service, permissionService)
-            return config.agentosAgentsToolPlugin() as AgentosAgentsToolPlugin
+            val operations = AgentAdminOperationsImpl(service, permissionService)
+            return AgentosAgentsToolPlugin(operations)
         }
 
         fun context(uid: UUID? = userId) =

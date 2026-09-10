@@ -1,20 +1,18 @@
 package io.whozoss.agentos.agentosPlugin
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import java.util.UUID
 
 /**
- * Lists all [AgentConfig] entries visible in the current namespace.
+ * Lists all [io.whozoss.agentos.agentConfig.AgentConfig] entries visible in the current namespace.
  *
  * Requires Namespace READ permission. Returns a JSON array of agent summaries.
  */
 class ListAgentsTool(
     private val configName: String?,
-    private val listAgents: (namespaceId: UUID, userId: UUID?, withDisabled: Boolean) -> List<AgentConfig>?,
+    private val operations: AgentAdminOperations,
 ) : StandardTool<ListAgentsTool.Input> {
 
     data class Input(val withDisabled: Boolean = true)
@@ -32,7 +30,7 @@ class ListAgentsTool(
         context: ToolContext,
     ): ToolExecutionResult {
         val withDisabled = input?.withDisabled ?: true
-        val agents = listAgents(context.namespaceId, context.userId, withDisabled)
+        val agents = operations.listAgents(context.namespaceId, context.userId, withDisabled)
             ?: return ToolExecutionResult.error(
                 output = "Permission denied: you do not have READ access to this namespace.",
                 errorType = "PERMISSION_DENIED",

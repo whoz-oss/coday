@@ -1,20 +1,18 @@
 package io.whozoss.agentos.agentosPlugin
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import java.util.UUID
 
 /**
- * Disables (unpublishes) an [AgentConfig] in the current namespace.
+ * Disables (unpublishes) an [io.whozoss.agentos.agentConfig.AgentConfig] in the current namespace.
  *
  * Requires AgentConfig WRITE permission.
  */
 class DisableAgentTool(
     private val configName: String?,
-    private val disableAgent: (namespaceId: UUID, userId: UUID?, name: String) -> AgentConfig?,
+    private val operations: AgentAdminOperations,
 ) : StandardTool<DisableAgentTool.Input> {
 
     data class Input(val name: String)
@@ -35,7 +33,7 @@ class DisableAgentTool(
             output = "Missing required parameter: name",
             errorType = "INVALID_INPUT",
         )
-        val agent = disableAgent(context.namespaceId, context.userId, input.name)
+        val agent = operations.disableAgent(context.namespaceId, context.userId, input.name)
             ?: return ToolExecutionResult.error(
                 output = "Agent '${input.name}' not found or permission denied.",
                 errorType = "NOT_FOUND",

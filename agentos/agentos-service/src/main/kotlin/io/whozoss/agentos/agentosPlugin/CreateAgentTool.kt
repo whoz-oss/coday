@@ -1,20 +1,18 @@
 package io.whozoss.agentos.agentosPlugin
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import java.util.UUID
 
 /**
- * Creates a new [AgentConfig] in the current namespace.
+ * Creates a new [io.whozoss.agentos.agentConfig.AgentConfig] in the current namespace.
  *
  * Requires Namespace WRITE permission. Returns the created agent's id, name and enabled status.
  */
 class CreateAgentTool(
     private val configName: String?,
-    private val createAgent: (namespaceId: UUID, userId: UUID?, input: Input) -> AgentConfig?,
+    private val operations: AgentAdminOperations,
 ) : StandardTool<CreateAgentTool.Input> {
 
     data class Input(
@@ -47,7 +45,7 @@ class CreateAgentTool(
             output = "Agent name must not be blank.",
             errorType = "INVALID_INPUT",
         )
-        val created = createAgent(context.namespaceId, context.userId, input)
+        val created = operations.createAgent(context.namespaceId, context.userId, input)
             ?: return ToolExecutionResult.error(
                 output = "Permission denied or agent name '${input.name}' already exists in this namespace.",
                 errorType = "PERMISSION_DENIED",

@@ -1,21 +1,20 @@
 package io.whozoss.agentos.agentosPlugin
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import java.util.UUID
 
 /**
- * Retrieves a single [AgentConfig] by name from the current namespace.
+ * Retrieves a single [io.whozoss.agentos.agentConfig.AgentConfig] by name from the current namespace.
  *
- * Requires AgentConfig READ permission on the found entity. Returns null (NOT_FOUND)
- * when no agent with the given name exists or when the caller lacks READ.
+ * Permission order: Namespace READ is checked first, then AgentConfig READ on the resolved entity.
+ * Returns null (NOT_FOUND) in all denial cases — the tool does not reveal whether an agent exists
+ * when the caller lacks access (equivalent to `@HideOnAccessDenied` on the REST side).
  */
 class GetAgentTool(
     private val configName: String?,
-    private val getAgent: (namespaceId: UUID, userId: UUID?, name: String) -> AgentConfig?,
+    private val operations: AgentAdminOperations,
 ) : StandardTool<GetAgentTool.Input> {
 
     data class Input(val name: String)
@@ -36,7 +35,7 @@ class GetAgentTool(
             output = "Missing required parameter: name",
             errorType = "INVALID_INPUT",
         )
-        val agent = getAgent(context.namespaceId, context.userId, input.name)
+        val agent = operations.getAgent(context.namespaceId, context.userId, input.name)
             ?: return ToolExecutionResult.error(
                 output = "Agent '${input.name}' not found or not accessible in this namespace.",
                 errorType = "NOT_FOUND",

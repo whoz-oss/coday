@@ -1,21 +1,19 @@
 package io.whozoss.agentos.agentosPlugin
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import java.util.UUID
 
 /**
- * Updates an existing [AgentConfig] in the current namespace.
+ * Updates an existing [io.whozoss.agentos.agentConfig.AgentConfig] in the current namespace.
  *
  * Requires AgentConfig WRITE permission. Only non-null fields in the input are applied;
  * omitted fields preserve their current value. [namespaceId] is never modified (mass-assignment guard).
  */
 class UpdateAgentTool(
     private val configName: String?,
-    private val updateAgent: (namespaceId: UUID, userId: UUID?, input: Input) -> AgentConfig?,
+    private val operations: AgentAdminOperations,
 ) : StandardTool<UpdateAgentTool.Input> {
 
     data class Input(
@@ -45,7 +43,7 @@ class UpdateAgentTool(
             output = "Missing required parameter: name",
             errorType = "INVALID_INPUT",
         )
-        val updated = updateAgent(context.namespaceId, context.userId, input)
+        val updated = operations.updateAgent(context.namespaceId, context.userId, input)
             ?: return ToolExecutionResult.error(
                 output = "Agent '${input.name}' not found or permission denied.",
                 errorType = "NOT_FOUND",
