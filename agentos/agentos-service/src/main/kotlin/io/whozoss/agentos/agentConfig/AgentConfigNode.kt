@@ -43,6 +43,12 @@ data class AgentConfigNode(
     val advancedExecution: Boolean = false,
     val enabled: Boolean,
     val subAgentsJson: String? = null,
+    /**
+     * True when this node was upserted from a filesystem YAML definition rather than
+     * created via the API. Used to gate write operations (e.g. linking to a Prompt or
+     * ScheduledPrompt) that require a fully-persisted, API-managed agent.
+     */
+    val fileOrigin: Boolean = false,
     // EntityMetadata fields
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
@@ -75,6 +81,7 @@ data class AgentConfigNode(
             externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
             enabled = enabled,
             subAgents = subAgentsJson?.let { MAPPER.readValue(it, STRING_LIST_TYPE) },
+            fileOrigin = fileOrigin,
         )
 
     companion object {
@@ -95,6 +102,7 @@ data class AgentConfigNode(
                 externalMetadataJson = config.externalMetadata?.let { MAPPER.writeValueAsString(it) },
                 advancedExecution = config.advancedExecution,
                 subAgentsJson = config.subAgents?.let { MAPPER.writeValueAsString(it) },
+                fileOrigin = config.fileOrigin,
                 version = config.metadata.version,
                 enabled = config.enabled,
                 created = config.metadata.created,

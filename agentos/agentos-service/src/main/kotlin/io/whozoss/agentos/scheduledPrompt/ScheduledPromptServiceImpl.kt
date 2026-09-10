@@ -53,11 +53,8 @@ class ScheduledPromptServiceImpl(
     override fun create(entity: ScheduledPrompt): ScheduledPrompt {
         val agentConfig = agentConfigService.findById(entity.agentConfigId)
             ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
-        if (agentConfig.isFilesystemOnly) {
-            throw UnprocessableEntityException(
-                "AgentConfig id=${entity.agentConfigId} is a filesystem-only agent and cannot be linked to a ScheduledPrompt",
-            )
-        }
+        // File-origin agents are synced into Neo4j and are valid targets for ScheduledPrompts.
+        // We do not block them here.
         validateAgentConfigScope(entity, agentConfig)
 
         val prompt = promptService.findById(entity.promptTemplateId)
