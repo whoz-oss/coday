@@ -1,3 +1,13 @@
+## 1.3.1 (2026-09-11)
+
+### 🩹 Fixes
+
+- **agentos:** #34532 add missing Neo4j indexes and id-uniqueness constraints ([#1330](https://github.com/whoz-oss/coday/pull/1330), [#34532](https://github.com/whoz-oss/coday/issues/34532))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 1.3.0 (2026-09-11)
 
 ### 🚀 Features
