@@ -65,7 +65,7 @@ class SkillController(
                     name = resource.name,
                     description = resource.description,
                     body = resource.body,
-                    resources = resource.resources,
+                    resources = resource.resources ?: emptyMap(),
                 )
             },
         )
@@ -118,7 +118,7 @@ class SkillController(
                     name = resource.name,
                     description = resource.description,
                     body = resource.body,
-                    resources = resource.resources,
+                    resources = resource.resources ?: existing.resources,
                 ),
             ),
         )
@@ -143,7 +143,7 @@ internal fun toDto(entity: Skill) =
         name = entity.name,
         description = entity.description,
         body = entity.body,
-        resources = entity.resources,
+        resources = entity.resources.takeIf { it.isNotEmpty() },
         createdBy = entity.metadata.createdBy,
         createdOn = entity.metadata.created,
         updatedBy = entity.metadata.modifiedBy,

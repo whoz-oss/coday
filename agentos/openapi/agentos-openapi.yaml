@@ -4843,6 +4843,10 @@ components:
           - string
           - "null"
           format: uuid
+        resources:
+          type: object
+          additionalProperties:
+            type: string
         updatedBy:
           type: string
         updatedOn:

@@ -32,7 +32,7 @@ data class SkillDto(
     val description: String,
     @field:NotBlank(message = "body must not be blank")
     val body: String,
-    val resources: Map<String, String> = emptyMap(),
+    val resources: Map<String, String>? = null,
     val createdBy: String? = null,
     val createdOn: Instant? = null,
     val updatedBy: String? = null,
