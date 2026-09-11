@@ -35,7 +35,20 @@
   <!-- Content (max-width constrained) — not rendered in toolbar-only mode -->
   @if (!toolbarOnly()) {
     <div class="entity-list__content" [style.max-width]="contentMaxWidth()">
-      @if (filteredItems().length === 0) {
+      @if (loading()) {
+        <!-- Skeleton placeholder — mirrors the grid layout while data loads -->
+        <div class="entity-list__grid" [style.--card-min-width]="cardMinWidth()" aria-hidden="true">
+          @for (_ of skeletonItems(); track $index) {
+            <div class="entity-list__skeleton-card">
+              <div class="entity-list__skeleton-body">
+                <div class="entity-list__skeleton-line entity-list__skeleton-line--name"></div>
+                <div class="entity-list__skeleton-line entity-list__skeleton-line--desc"></div>
+              </div>
+            </div>
+          }
+        </div>
+        <span class="cdk-visually-hidden" role="status" aria-live="polite">Loading…</span>
+      } @else if (filteredItems().length === 0) {
         <p class="entity-list__empty">{{ emptyMessage() }}</p>
       } @else if (hasGroups()) {
         <!-- Grouped view (no active search) -->

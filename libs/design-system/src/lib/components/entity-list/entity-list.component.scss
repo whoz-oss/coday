@@ -196,3 +196,65 @@
   gap: 0.75rem;
   padding: 0.5rem 0;
 }
+
+// ── Skeleton loading state ─────────────────────────────────────────────────────
+
+@keyframes entity-list-shimmer {
+  from {
+    background-position: -400px 0;
+  }
+  to {
+    background-position: 400px 0;
+  }
+}
+
+.entity-list__skeleton-card {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 1rem 1.25rem;
+  background: var(--color-surface, rgba(255, 255, 255, 0.7));
+  border: 1px solid var(--color-divider, rgba(0, 0, 0, 0.08));
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.entity-list__skeleton-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.entity-list__skeleton-line {
+  border-radius: 4px;
+  height: 0.75rem;
+  background: linear-gradient(
+    90deg,
+    var(--color-neutral-200, rgba(0, 0, 0, 0.06)) 25%,
+    var(--color-neutral-100, rgba(0, 0, 0, 0.03)) 50%,
+    var(--color-neutral-200, rgba(0, 0, 0, 0.06)) 75%
+  );
+  background-size: 800px 100%;
+  animation: entity-list-shimmer 1.4s infinite linear;
+
+  &--name {
+    width: 55%;
+    height: 0.875rem;
+  }
+
+  &--desc {
+    width: 80%;
+  }
+}
+
+// Respect users who prefer reduced motion — freeze the shimmer.
+@media (prefers-reduced-motion: reduce) {
+  .entity-list__skeleton-line {
+    animation: none;
+    background: var(--color-neutral-200, rgba(0, 0, 0, 0.06));
+  }
+}
