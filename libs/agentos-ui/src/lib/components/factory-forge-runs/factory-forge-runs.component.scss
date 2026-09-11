@@ -1,97 +1,826 @@
+/* ==================================================================
+ * agentos-factory-forge-runs — blueprint diagram
+ *
+ * Reprend le design system Industry de la maquette epic-run-diagram :
+ * fond technique clair, accent acier unique, Barlow Condensed + Barlow,
+ * objets blueprint à angles droits, filets d'un pixel et marques en croix.
+ *
+ * Tokens consommés depuis le host (avec fallbacks) :
+ *   --color-bg, --color-text, --color-neutral-700/600,
+ *   --color-divider, --color-accent, --color-accent-100/400/700/900,
+ *   --font-heading, --font-body
+ * ================================================================== */
+
+/* ── Variables locales ───────────────────────────────────────────── */
 :host {
   display: block;
+  --sf-bg: var(--color-bg, #f2f2f3);
+  --sf-ink: var(--color-text, #1d1f20);
+  --sf-muted: var(--color-neutral-700, #5d5d60);
+  --sf-faint: var(--color-neutral-600, #7a7a7d);
+  --sf-line: var(--color-divider, rgba(29, 31, 32, 0.14));
+  --sf-rule: var(--color-text, #1d1f20);
+  --sf-accent: var(--color-accent, #5980a6);
+  --sf-accent-ink: var(--color-accent-700, #416180);
+  --sf-accent-deep: var(--color-accent-900, #1d2d3d);
+  --sf-accent-wash: var(--color-accent-100, #eef6ff);
+  --sf-accent-line: var(--color-accent-400, #94bce3);
+
+  --sf-heading: var(--font-heading, 'Barlow Condensed', system-ui, sans-serif);
+  --sf-body: var(--font-body, 'Barlow', system-ui, sans-serif);
+  --sf-mono: ui-monospace, 'SFMono-Regular', monospace;
+
+  --sf-gap: 22px;
+  --sf-lane-drop: 26px;
+
+  background: var(--sf-bg);
+  color: var(--sf-ink);
+  font-family: var(--sf-body);
+  font-size: 14px;
+  line-height: 1.5;
+  container-type: inline-size;
 }
-.factory-forge-runs {
-  margin-top: 2rem;
-  border-top: 1px solid var(--color-divider, #d4d4d8);
-  padding-top: 1.5rem;
+
+/* ── Primitives ──────────────────────────────────────────────────── */
+
+.kicker {
+  margin: 0;
+  font-family: var(--sf-heading);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--sf-muted);
 }
-.factory-forge-runs__header {
+
+.mono {
+  font-family: var(--sf-mono);
+  font-size: 0.86em;
+  letter-spacing: -0.01em;
+}
+
+.accent {
+  color: var(--sf-accent-ink);
+}
+
+/* Objet blueprint : filet d'un pixel, angles droits. */
+.blueprint {
+  position: relative;
+  border: 1px solid var(--sf-line);
+  background: transparent;
+}
+
+/* Marques de repérage en croix */
+.corner {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    background: var(--sf-accent-line);
+  }
+  &::before {
+    inset: 4px 0 auto;
+    height: 1px;
+  }
+  &::after {
+    inset: 0 4px;
+    width: 1px;
+  }
+
+  &--tl {
+    top: -5px;
+    left: -5px;
+  }
+  &--tr {
+    top: -5px;
+    right: -5px;
+  }
+  &--bl {
+    bottom: -5px;
+    left: -5px;
+  }
+  &--br {
+    bottom: -5px;
+    right: -5px;
+  }
+}
+
+/* Puce de statut — jamais seule, toujours accompagnée de son mot. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  font-family: var(--sf-heading);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+
+  &--ok {
+    background: #dcece2;
+    color: #23543f;
+  }
+  &--active {
+    background: #d9e8f5;
+    color: #2c455d;
+  }
+  &--wait {
+    background: #f4e8d2;
+    color: #6f4a10;
+  }
+  &--fail {
+    background: #f5dcda;
+    color: #7d2b29;
+  }
+  &--idle {
+    background: #e7e7ea;
+    color: #5d5d60;
+  }
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 7px;
+  vertical-align: -1px;
+
+  &--ok {
+    background: #dcece2;
+    border: 1px solid #23543f;
+  }
+  &--active {
+    background: #d9e8f5;
+    border: 1px solid #2c455d;
+  }
+  &--wait {
+    background: #f4e8d2;
+    border: 1px solid #6f4a10;
+  }
+  &--fail {
+    background: #f5dcda;
+    border: 1px solid #7d2b29;
+  }
+  &--idle {
+    background: #e7e7ea;
+    border: 1px solid #5d5d60;
+  }
+}
+
+/* ── Listes de définitions compactes ─────────────────────────────── */
+
+.rule {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+
+  > div {
+    display: grid;
+    gap: 1px;
+  }
+
+  dt {
+    font-family: var(--sf-mono);
+    font-size: 12px;
+    color: var(--sf-ink);
+  }
+  dd {
+    margin: 0;
+    font-size: 12px;
+    color: var(--sf-muted);
+  }
+}
+
+/* ── Page wrapper ────────────────────────────────────────────────── */
+
+.diagram {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sf-gap);
+  padding: 24px 32px;
+}
+
+.diagram__page-header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 1rem;
+
+  h2 {
+    margin: 0.25rem 0 0;
+    font-family: var(--sf-heading);
+    font-size: 22px;
+    font-weight: 600;
+  }
+}
+
+.diagram__page-sub {
+  margin: 0.25rem 0 0;
+  font-size: 13px;
+  color: var(--sf-muted);
+}
+
+.diagram__scope {
+  margin: 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--sf-accent);
+  font-size: 0.8rem;
+  color: var(--sf-muted);
+}
+
+.diagram__notice {
+  padding: 1rem;
+  background: color-mix(in srgb, var(--sf-ink) 4%, transparent);
+  font-size: 0.85rem;
+}
+
+.btn-refresh {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--sf-line);
+  background: transparent;
+  color: var(--sf-ink);
+  cursor: pointer;
+  font-family: var(--sf-heading);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+
+  &:hover:not(:disabled) {
+    background: var(--sf-accent-wash);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--sf-accent);
+    outline-offset: 2px;
+  }
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+/* ── Epic article ────────────────────────────────────────────────── */
+
+.epic {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sf-gap);
+}
+
+/* ── En-tête EpicRun ─────────────────────────────────────────────── */
+
+.diagram__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--sf-rule);
+}
+
+.diagram__identity {
+  flex: 1 1 auto;
+}
+
+.diagram__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 0 0;
+  font-family: var(--sf-heading);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.diagram__counters {
+  margin: 6px 0 0;
+  font-family: var(--sf-heading);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sf-accent-ink);
+}
+
+.diagram__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, max-content));
+  gap: 4px 26px;
+  margin: 0;
+  flex-shrink: 0;
+
+  dt {
+    font-family: var(--sf-heading);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--sf-muted);
+  }
+  dd {
+    margin: 0;
+    font-size: 13px;
+  }
+}
+
+.diagram__tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+/* ── Légende ─────────────────────────────────────────────────────── */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 14px 18px;
+}
+
+.legend__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.legend__note {
+  margin: 0;
+  padding-left: 18px;
+  max-width: 42ch;
+  border-left: 1px solid var(--sf-line);
+  font-size: 12.5px;
+  color: var(--sf-muted);
+}
+
+/* ── Bande Epic ──────────────────────────────────────────────────── */
+
+.band {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: var(--sf-gap);
+  padding-top: 18px;
+  border-top: 1px solid var(--sf-rule);
+}
+
+.band__label {
+  h4 {
+    margin: 0;
+    font-family: var(--sf-heading);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--sf-muted);
+  }
+}
+
+.band__body {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.7fr) minmax(0, 1.9fr) minmax(0, 1.1fr);
+  gap: var(--sf-gap);
   align-items: start;
 }
-h2,
-h3,
-h4,
-h5,
-h6 {
+
+/* ── Nœuds ───────────────────────────────────────────────────────── */
+
+.node {
+  padding: 12px 14px;
+}
+
+.node__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.node__gate {
   margin: 0;
-}
-p {
-  color: var(--color-text-secondary, #52525b);
-}
-.factory-forge-runs__scope {
-  border-left: 0.25rem solid var(--color-info, #1d4ed8);
-  padding-left: 0.75rem;
-}
-button {
-  border: 1px solid var(--color-divider, #d4d4d8);
-  border-radius: 0.375rem;
-  background: var(--color-surface, #fff);
-  color: var(--color-text, #1d1d1f);
-  padding: 0.5rem 0.75rem;
-  cursor: pointer;
-}
-button:focus-visible,
-summary:focus-visible {
-  outline: 3px solid var(--color-focus, #2563eb);
-  outline-offset: 2px;
-}
-.factory-forge-runs__notice,
-.factory-forge-runs__run,
-.factory-forge-runs__story {
-  border: 1px solid var(--color-divider, #d4d4d8);
-  border-radius: 0.5rem;
-  padding: 1rem;
-  margin-top: 1rem;
-}
-.factory-forge-runs__story {
-  background: var(--color-surface-secondary, #f4f4f5);
-}
-span {
-  color: var(--color-text-secondary, #52525b);
-  font-size: 0.875rem;
-}
-dl {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 0.35rem 1rem;
-}
-dt {
-  color: var(--color-text-secondary, #52525b);
-}
-dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-details {
-  margin-top: 0.75rem;
-  border: 1px solid var(--color-divider, #d4d4d8);
-  border-radius: 0.375rem;
-  padding: 0.5rem;
-}
-summary {
-  cursor: pointer;
+  font-family: var(--sf-heading);
+  font-size: 11.5px;
   font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sf-accent-ink);
 }
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 0.5rem;
+
+.node__title {
+  margin: 1px 0 0;
+  font-family: var(--sf-heading);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.15;
 }
-th,
-td {
-  text-align: left;
-  vertical-align: top;
-  padding: 0.5rem;
-  border: 1px solid var(--color-divider, #d4d4d8);
+
+.node__caption {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--sf-muted);
+  text-wrap: pretty;
+}
+
+.node__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.node__metric {
+  font-size: 11.5px;
+  color: var(--sf-muted);
+}
+
+.node__hash {
+  margin: 8px 0 0;
+  padding-top: 7px;
+  border-top: 1px solid var(--sf-line);
+  font-size: 10.5px;
+  color: var(--sf-accent-ink);
   overflow-wrap: anywhere;
 }
-@media (max-width: 700px) {
-  table {
-    display: block;
-    overflow-x: auto;
+
+/* La spec Epic et les specs US sont lavées d'accent. */
+.node--spec,
+.node--story-spec {
+  background: var(--sf-accent-wash);
+  border-color: var(--sf-accent-line);
+
+  .node__caption {
+    color: var(--sf-accent-deep);
+  }
+}
+
+/* Règle d'héritage : tracé en tirets. */
+.node--rule {
+  border-style: dashed;
+}
+
+/* G3 passé : seul objet plein du diagramme. */
+.node--gate {
+  background: var(--sf-accent-deep);
+  border-color: var(--sf-accent-deep);
+
+  .node__gate {
+    color: var(--sf-accent-line);
+  }
+  .node__title {
+    color: var(--sf-bg);
+  }
+  .node__caption {
+    color: var(--sf-accent-line);
+  }
+
+  .corner::before,
+  .corner::after {
+    background: var(--sf-accent-line);
+  }
+}
+
+/* G3 non acquis : tracé seulement. */
+.node--gate-idle {
+  border-style: dashed;
+  border-color: var(--sf-line);
+  .node__gate {
+    color: var(--sf-accent-ink);
+  }
+}
+
+.node--gate-wait {
+  border-color: #6f4a10;
+  .node__gate {
+    color: #6f4a10;
+  }
+}
+
+.node--gate-fail {
+  border-color: #7d2b29;
+  .node__gate {
+    color: #7d2b29;
+  }
+}
+
+/* Étape non démarrée : tracé en tirets. */
+.node--idle {
+  border-style: dashed;
+  .node__title {
+    color: var(--sf-faint);
+  }
+}
+
+.node--wait {
+  border-color: #6f4a10;
+}
+.node--fail {
+  border-color: #7d2b29;
+}
+
+/* ── En-têtes de couloirs ───────────────────────────────────────── */
+
+.lanes {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 240px) minmax(0, 1fr) minmax(0, 1.45fr);
+  gap: var(--sf-gap);
+  padding-bottom: 2px;
+}
+
+.lanes__title {
+  font-family: var(--sf-heading);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sf-muted);
+
+  &--spec,
+  &--factory {
+    color: var(--sf-accent-ink);
+  }
+}
+
+/* ── Bloc StoryRun ──────────────────────────────────────────────── */
+
+.story {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 240px) minmax(0, 1fr) minmax(0, 1.45fr);
+  grid-template-areas:
+    'identity spec agents  .'
+    'identity spec .       factory'
+    'evidence evidence evidence evidence';
+  gap: var(--sf-gap);
+  padding: 18px 0 20px;
+  border-top: 1px solid var(--sf-rule);
+
+  &:last-of-type {
+    border-bottom: 1px solid var(--sf-rule);
+  }
+}
+
+.story__identity {
+  grid-area: identity;
+  align-self: start;
+}
+
+.story__key {
+  margin: 2px 0 0;
+  font-family: var(--sf-heading);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.story__summary {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--sf-faint);
+}
+
+.story__spec {
+  grid-area: spec;
+  align-self: start;
+}
+
+/* Couloirs : agents en haut, Factory décroché d'un cran. */
+.story__lane {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--sf-gap);
+  align-items: stretch;
+
+  &--agents {
+    grid-area: agents;
+  }
+
+  &--factory {
+    position: relative;
+    grid-area: factory;
+    margin-top: var(--sf-lane-drop);
+    padding: 12px;
+    margin-left: -12px;
+    margin-right: -12px;
+    background: var(--sf-accent-wash);
+  }
+}
+
+.lane__absence {
+  align-self: center;
+  margin: 0;
+  font-size: 12px;
+  color: var(--sf-muted);
+  font-style: italic;
+}
+
+/* ── Connecteurs ────────────────────────────────────────────────── */
+
+.step {
+  position: relative;
+
+  /* Filet horizontal vers l'étape précédente. */
+  &--linked::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: calc(-1 * var(--sf-gap));
+    width: var(--sf-gap);
+    height: 1px;
+    background: var(--sf-accent-ink);
+  }
+
+  /* Pointe de flèche. */
+  &--linked::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: -6px;
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 6px solid var(--sf-accent-ink);
+    transform: translateY(-50%);
+  }
+
+  /* Décrochement agents → Factory : coude. */
+  &--elbow::before {
+    top: auto;
+    bottom: 50%;
+    left: calc(-1 * var(--sf-gap));
+    width: var(--sf-gap);
+    height: calc(50% + var(--sf-lane-drop) + 12px);
+    background: transparent;
+    border-left: 1px solid var(--sf-accent-ink);
+    border-bottom: 1px solid var(--sf-accent-ink);
+  }
+
+  /* Après une étape terminale, la chaîne n'est plus une promesse. */
+  &--broken ~ .step::before {
+    background: var(--sf-line);
+  }
+  &--broken ~ .step::after {
+    border-left-color: var(--sf-line);
+  }
+}
+
+/* ── Preuves techniques ─────────────────────────────────────────── */
+
+.story__evidence {
+  grid-area: evidence;
+}
+
+.epic__evidence {
+  padding-top: var(--sf-gap);
+  border-top: 1px solid var(--sf-line);
+}
+
+.evidence__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid var(--sf-line);
+  font-family: var(--sf-heading);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sf-accent-ink);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--sf-accent-wash);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--sf-accent);
+    outline-offset: 2px;
+  }
+}
+
+.evidence__mark {
+  font-family: var(--sf-mono);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.evidence {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--sf-line);
+
+  &__group {
+    h5 {
+      margin: 0 0 6px;
+      font-family: var(--sf-heading);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: var(--sf-muted);
+    }
+
+    dl {
+      display: grid;
+      gap: 6px;
+      margin: 0;
+    }
+    dt {
+      font-size: 11px;
+      color: var(--sf-faint);
+    }
+    dd {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+  }
+}
+
+/* ── Pied ───────────────────────────────────────────────────────── */
+
+.diagram__foot {
+  padding: 16px 20px;
+  max-width: 92ch;
+
+  p:not(.kicker) {
+    margin: 8px 0 0;
+    font-size: 13px;
+    line-height: 1.6;
+    text-wrap: pretty;
+  }
+}
+
+/* ── Repli : sous 1100px les couloirs s'empilent ─────────────────── */
+
+@container (max-width: 1100px) {
+  .lanes {
+    display: none;
+  }
+
+  .story {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'identity'
+      'spec'
+      'agents'
+      'factory'
+      'evidence';
+  }
+
+  .band {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .band__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .story__lane {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+
+    &--factory {
+      margin-top: 0;
+    }
+  }
+
+  .step--linked::before,
+  .step--linked::after,
+  .step--elbow::before {
+    content: none;
+  }
+}
+
+@media print {
+  .evidence__toggle {
+    display: none;
+  }
+  .story {
+    break-inside: avoid;
   }
 }

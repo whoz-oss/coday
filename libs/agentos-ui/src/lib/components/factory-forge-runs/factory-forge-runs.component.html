@@ -1,154 +1,435 @@
-<section class="factory-forge-runs" aria-labelledby="forge-runs-title">
-  <header class="factory-forge-runs__header">
+<section class="diagram" aria-labelledby="forge-runs-title">
+  <!-- Page header -->
+  <header class="diagram__page-header">
     <div>
+      <p class="kicker">Software Factory · projection lecture seule</p>
       <h2 id="forge-runs-title">Global Forge Epic runs</h2>
-      <p>Read-only projection of Epic, Story, gate, and oracle evidence.</p>
+      <p class="diagram__page-sub">Chaîne de preuves gouvernée — projection depuis le ledger.</p>
     </div>
-    <button type="button" (click)="refresh()" [disabled]="state.loading()">Refresh</button>
+    <button type="button" class="btn-refresh" (click)="refresh()" [disabled]="state.loading()">Refresh</button>
   </header>
 
-  <p class="factory-forge-runs__scope" role="note">
-    These Forge projections are global. They are displayed in this namespace-scoped tab for visibility, but are not
-    attributed to the selected namespace.
+  <p class="diagram__scope" role="note">
+    Ces projections Forge sont globales. Elles sont affichées dans cet onglet namespace-scopé pour visibilité, mais ne
+    sont pas attribuées au namespace sélectionné.
   </p>
 
+  <!-- States -->
   @if (state.loading()) {
-    <p class="factory-forge-runs__notice" role="status">Loading Forge Epic runs…</p>
+    <p class="diagram__notice" role="status">Chargement des EpicRuns…</p>
   } @else if (state.error(); as error) {
-    <div class="factory-forge-runs__notice" role="alert">
+    <div class="diagram__notice" role="alert">
       <p>{{ error }}</p>
-      <button type="button" (click)="refresh()">Try again</button>
+      <button type="button" class="btn-refresh" (click)="refresh()">Réessayer</button>
     </div>
   } @else if (state.runs().length === 0) {
-    <p class="factory-forge-runs__notice" role="status">No global Forge Epic runs are available.</p>
+    <p class="diagram__notice" role="status">Aucun EpicRun Forge disponible.</p>
   } @else {
     @for (run of state.runs(); track trackRun($index, run)) {
-      <article class="factory-forge-runs__run">
-        <header>
-          <h3>
-            {{ run.workItem.id }} <span>{{ run.status }}</span>
-          </h3>
-          <dl>
-            <dt>Epic run</dt>
-            <dd>
-              <code>{{ run.runId }}</code>
-            </dd>
-            <dt>Repository</dt>
-            <dd>
-              <code>{{ field(run.roots.repoRoot) }}</code>
-            </dd>
-            <dt>Started</dt>
-            <dd>{{ date(run.startedAt) }}</dd>
+      <!-- ═══════════════════════════════════════════════════════════════
+           EPIC RUN
+           ═══════════════════════════════════════════════════════════════ -->
+      <article class="epic" [attr.aria-labelledby]="'epic-' + run.runId">
+        <!-- ── En-tête EpicRun ── -->
+        <header class="diagram__head">
+          <div class="diagram__identity">
+            <p class="kicker">Epic work item · EpicRun</p>
+            <h3 class="diagram__title" [id]="'epic-' + run.runId">
+              {{ run.workItem.id }}
+              <span class="chip" [class]="'chip--' + epicTone(run)">{{ epicLabel(run) }}</span>
+            </h3>
+            <p class="diagram__counters">{{ counters(run) }}</p>
+          </div>
+          <dl class="diagram__meta">
+            <div>
+              <dt>Démarrage</dt>
+              <dd>{{ date(run.startedAt) }}</dd>
+            </div>
+            <div>
+              <dt>Dépôt cible</dt>
+              <dd class="mono">{{ shortRepository(run.roots.repoRoot) }}</dd>
+            </div>
+            <div>
+              <dt>Portes G3</dt>
+              <dd class="diagram__tally">
+                @for (bucket of gate3Breakdown(run); track bucket.label) {
+                  <span class="chip" [class]="'chip--' + bucket.tone">{{ bucket.count }} {{ bucket.label }}</span>
+                }
+              </dd>
+            </div>
           </dl>
         </header>
-        <section class="factory-forge-runs__gates" aria-label="Epic gates">
-          @for (gate of run.gates; track gate.gate) {
-            <details>
-              <summary>{{ gate.gate }}: {{ gate.status }}</summary>
-              <dl>
-                <dt>Attempt</dt>
-                <dd>{{ field(gate['attempt']) }}</dd>
-                <dt>Code</dt>
-                <dd>{{ field(gate['code']) }}</dd>
-                <dt>Policy</dt>
-                <dd>{{ field(gate['policyVersion']) }}</dd>
-                <dt>Evidence hash</dt>
-                <dd>
-                  <code>{{ field(gate['evidenceSetHash']) }}</code>
-                </dd>
-              </dl>
-            </details>
-          }
-        </section>
-        <section aria-label="Stories">
-          <h4>Stories</h4>
-          @for (story of run.stories; track trackStory($index, story)) {
-            <article class="factory-forge-runs__story">
-              <h5>
-                {{ story.ordinal }}. {{ story.workItem.id }} <span>{{ story.status }}</span>
-              </h5>
-              <p>
-                Story run: <code>{{ story.runId }}</code>
+
+        <!-- ── Légende statuts ── -->
+        <aside class="legend blueprint">
+          <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
+          ><i class="corner corner--br"></i>
+          <p class="kicker">Statuts</p>
+          <ul class="legend__items">
+            <li><i class="swatch swatch--ok"></i>passed · approved · finished</li>
+            <li><i class="swatch swatch--active"></i>running</li>
+            <li><i class="swatch swatch--wait"></i>pending · blocked</li>
+            <li><i class="swatch swatch--fail"></i>failed · preuve invalide</li>
+            <li><i class="swatch swatch--idle"></i>not started · open</li>
+          </ul>
+          <p class="legend__note">
+            <strong>blocked</strong> n'est ni un échec fonctionnel ni un succès : la Factory n'a pas pu établir de
+            preuve fiable.
+          </p>
+        </aside>
+
+        <!-- ── Bande Epic : G1 + G2 + règle d'héritage ── -->
+        <section class="band band--epic" aria-labelledby="band-epic-{{ run.runId }}">
+          <div class="band__label">
+            <h4 [id]="'band-epic-' + run.runId">Niveau Epic</h4>
+            <p>décidé et figé une seule fois</p>
+          </div>
+
+          <div class="band__body">
+            <!-- G1 -->
+            @let g1 = g1Gate(run);
+            <div class="node blueprint" [class]="'node--' + intentTone(run)">
+              <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
+              ><i class="corner corner--br"></i>
+              <p class="node__gate">G1</p>
+              <h5 class="node__title">Intention humaine</h5>
+              <p class="node__caption">un responsable autorisé confirme que le travail doit être entrepris</p>
+              <footer class="node__footer">
+                <span class="chip" [class]="'chip--' + intentTone(run)">{{ intentLabel(run) }}</span>
+                @if (g1['attempt']) {
+                  <span class="node__metric">tentative {{ g1['attempt'] }}</span>
+                }
+              </footer>
+            </div>
+
+            <!-- G2 · Epic specification gate -->
+            @let g2 = g2Gate(run);
+            <div class="node node--spec blueprint">
+              <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
+              ><i class="corner corner--br"></i>
+              <header class="node__header">
+                <div>
+                  <p class="node__gate">G2 · Epic specification gate</p>
+                  <h5 class="node__title">Cadre commun figé par hash</h5>
+                </div>
+                <span class="chip" [class]="'chip--' + specTone(run)">{{ specLabel(run) }}</span>
+              </header>
+              <p class="node__caption">
+                Validation déterministe du cadre Epic. Les Story specs et l'héritage G2-US ne sont pas encore projetés
+                dans le ledger.
               </p>
-              <details>
-                <summary>Analyses ({{ story.executions.length }})</summary>
-                @for (analysis of story.executions; track field(analysis['executionId'])) {
-                  <dl>
-                    <dt>Status / outcome</dt>
-                    <dd>{{ field(analysis['status']) }} / {{ field(analysis['outcome']) }}</dd>
-                    <dt>Case ID</dt>
-                    <dd>
-                      <code>{{ field(analysis['caseId']) }}</code>
-                    </dd>
-                    <dt>Validation</dt>
-                    <dd>{{ field(analysis['analysisValidation']) }}</dd>
-                    <dt>Artifact</dt>
-                    <dd>
-                      <code>{{ field(analysis['artifact']) }}</code>
-                    </dd>
-                  </dl>
-                } @empty {
-                  <p>No analysis recorded.</p>
-                }
-              </details>
-              <details>
-                <summary>Edits ({{ story.edits.length }})</summary>
-                @for (edit of story.edits; track field(edit['editId'])) {
-                  <dl>
-                    <dt>Status / outcome</dt>
-                    <dd>{{ field(edit['status']) }} / {{ field(edit['outcome']) }}</dd>
-                    <dt>Files modified</dt>
-                    <dd>{{ list(edit['filesModified']) }}</dd>
-                    <dt>Files created</dt>
-                    <dd>{{ list(edit['filesCreated']) }}</dd>
-                    <dt>Diff validation</dt>
-                    <dd>{{ field(edit['diffValidation']) }}</dd>
-                  </dl>
-                } @empty {
-                  <p>No edit recorded.</p>
-                }
-              </details>
-              <details>
-                <summary>G3 oracle campaigns ({{ story.oracleCampaigns.length }})</summary>
-                @for (campaign of story.oracleCampaigns; track campaign.campaignId) {
-                  <h6>{{ campaign.campaignId }}: {{ campaign.status }}</h6>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Oracle</th>
-                        <th>Status / code</th>
-                        <th>Owners and target</th>
-                        <th>Build and test targets</th>
-                        <th>Result</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      @for (oracle of campaign.results; track trackOracle($index, oracle)) {
-                        <tr>
-                          <th scope="row">{{ oracle.name }}</th>
-                          <td>{{ oracle.status }} / {{ field(oracle.code) }}</td>
-                          <td>
-                            {{ list(oracle.ownerProjects) }}<br /><code>{{ field(oracle.target) }}</code>
-                          </td>
-                          <td>
-                            Build: {{ list(oracle.buildHosts) }}<br />With target: {{ list(oracle.ownersWithTestTarget)
-                            }}<br />Without target: {{ list(oracle.ownersWithoutTestTarget) }}
-                          </td>
-                          <td>
-                            Exit {{ field(oracle.exitCode) }} · {{ duration(oracle.durationMs) }}<br />Hash:
-                            <code>{{ field(oracle.commandHash) }}</code>
-                          </td>
-                        </tr>
-                      }
-                    </tbody>
-                  </table>
-                } @empty {
-                  <p>No G3 campaign recorded.</p>
-                }
-              </details>
-            </article>
-          }
+              @if (g2['code']) {
+                <footer class="node__hash mono">
+                  {{ g2['code'] }} · {{ g2['policyVersion'] }}
+                  @if (g2['evidenceSetHash']) {
+                    · <span class="accent">{{ g2['evidenceSetHash'] }}</span>
+                  }
+                </footer>
+              }
+            </div>
+
+            <!-- Règle d'héritage — projection gap -->
+            <div class="node node--rule blueprint">
+              <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
+              ><i class="corner corner--br"></i>
+              <p class="node__gate">Règle d'héritage — not yet projected</p>
+              <dl class="rule">
+                <div>
+                  <dt class="mono">scope US ⊆ scope Epic</dt>
+                  <dd>raffiner, jamais élargir</dd>
+                </div>
+                <div>
+                  <dt class="mono">deny US ⊇ deny Epic</dt>
+                  <dd>hériter, jamais affaiblir</dd>
+                </div>
+              </dl>
+              <p class="node__caption">
+                Story specifications et G2-US ne sont pas encore persistés dans le ledger. Les stations architecturales
+                sont préservées sans asserter leur évidence.
+              </p>
+            </div>
+          </div>
         </section>
+
+        <!-- ── En-têtes de couloirs ── -->
+        <div class="lanes" aria-hidden="true">
+          <span class="lanes__spacer"></span>
+          <span class="lanes__title lanes__title--spec">Spécification US</span>
+          <span class="lanes__title">Couloir agents bornés →</span>
+          <span class="lanes__title lanes__title--factory">Couloir preuves déterministes Factory →</span>
+        </div>
+
+        <!-- ── Un bloc par StoryRun ── -->
+        @for (story of stories(run); track trackStory($index, story)) {
+          <section class="story" [attr.aria-label]="story.workItemKey">
+            <!-- Identité -->
+            <div class="story__identity">
+              <p class="kicker">US {{ $index + 1 }} · StoryRun</p>
+              <h4 class="story__key">{{ story.workItemKey }}</h4>
+              <span class="chip" [class]="'chip--' + story.tone">{{ story.statusLabel }}</span>
+              <p class="story__summary">{{ story.summary }}</p>
+            </div>
+
+            <!-- Spécification US — projection gap -->
+            <div class="story__spec node node--story-spec blueprint">
+              <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
+              ><i class="corner corner--br"></i>
+              <p class="node__gate">Story specification</p>
+              <h5 class="node__title">Not projected yet</h5>
+              <p class="node__caption">G2-US et l'héritage scope/deny ne sont pas encore persistés dans le ledger.</p>
+              <footer class="node__footer">
+                <span class="chip chip--idle">not projected</span>
+              </footer>
+            </div>
+
+            <!-- Couloir agents (Analysis → Edit) -->
+            <div class="story__lane story__lane--agents">
+              @for (step of story.agentSteps; track trackStep($index, step)) {
+                <div
+                  class="step node blueprint"
+                  [class]="'node--' + step.tone"
+                  [class.step--linked]="!step.first"
+                  [class.step--broken]="breaksChain(step)"
+                >
+                  <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
+                  ><i class="corner corner--br"></i>
+                  <h5 class="node__title">{{ step.label }}</h5>
+                  <p class="node__caption">{{ step.caption }}</p>
+                  <footer class="node__footer">
+                    <span class="chip" [class]="'chip--' + step.tone">{{ step.statusLabel }}</span>
+                    <span class="node__metric">{{ step.metric }}</span>
+                  </footer>
+                </div>
+              }
+            </div>
+
+            <!-- Couloir Factory : oracles + G3 -->
+            <div class="story__lane story__lane--factory">
+              @if (story.factorySteps.length === 0) {
+                <p class="lane__absence">Aucune campagne oracle enregistrée.</p>
+              }
+              @for (step of story.factorySteps; track trackStep($index, step)) {
+                <div
+                  class="step node blueprint"
+                  [class]="'node--' + step.tone"
+                  [class.step--linked]="!step.first"
+                  [class.step--elbow]="step.laneBreak"
+                  [class.step--broken]="breaksChain(step)"
+                >
+                  <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
+                  ><i class="corner corner--br"></i>
+                  <h5 class="node__title">{{ step.label }}</h5>
+                  <p class="node__caption">{{ step.caption }}</p>
+                  <footer class="node__footer">
+                    <span class="chip" [class]="'chip--' + step.tone">{{ step.statusLabel }}</span>
+                    <span class="node__metric">{{ step.metric }}</span>
+                  </footer>
+                </div>
+              }
+
+              <!-- G3 -->
+              <div class="step node node--gate blueprint step--linked" [class]="'node--gate-' + story.gateTone">
+                <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
+                ><i class="corner corner--br"></i>
+                <p class="node__gate">G3</p>
+                <h5 class="node__title">Preuve vs spec US</h5>
+                <p class="node__caption">oracles déterministes de la spec US</p>
+                <footer class="node__footer">
+                  <span class="chip" [class]="'chip--' + story.gateTone">{{ story.gateStatusLabel }}</span>
+                </footer>
+              </div>
+            </div>
+
+            <!-- Preuves techniques -->
+            <div class="story__evidence">
+              <button
+                type="button"
+                class="evidence__toggle"
+                [attr.aria-expanded]="isEvidenceOpen(story.id)"
+                [attr.aria-controls]="'evidence-' + story.id"
+                (click)="toggleEvidence(story.id)"
+              >
+                <span class="evidence__mark" aria-hidden="true">{{ isEvidenceOpen(story.id) ? '−' : '+' }}</span>
+                Technical evidence — {{ story.workItemKey }}
+              </button>
+
+              @if (isEvidenceOpen(story.id)) {
+                <div class="evidence" [id]="'evidence-' + story.id">
+                  <section class="evidence__group">
+                    <h5>StoryRun</h5>
+                    <dl>
+                      <div>
+                        <dt>story run ID</dt>
+                        <dd class="mono accent">{{ story.id }}</dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  @if (story.raw.executions.length > 0) {
+                    <section class="evidence__group">
+                      <h5>Analysis</h5>
+                      <dl>
+                        @for (exec of story.raw.executions; track field(exec['executionId'])) {
+                          <div>
+                            <dt>exécution</dt>
+                            <dd class="mono">{{ field(exec['executionId']) }}</dd>
+                          </div>
+                          <div>
+                            <dt>case</dt>
+                            <dd class="mono">{{ field(exec['caseId']) }}</dd>
+                          </div>
+                          <div>
+                            <dt>validation</dt>
+                            <dd>{{ field(exec['analysisValidation']) }}</dd>
+                          </div>
+                          <div>
+                            <dt>artefact</dt>
+                            <dd class="mono">{{ field(exec['artifact']) }}</dd>
+                          </div>
+                        }
+                      </dl>
+                    </section>
+                  }
+
+                  @if (story.raw.edits.length > 0) {
+                    <section class="evidence__group">
+                      <h5>Edit</h5>
+                      <dl>
+                        @for (edit of story.raw.edits; track field(edit['editId'])) {
+                          <div>
+                            <dt>ID</dt>
+                            <dd class="mono">{{ field(edit['editId']) }}</dd>
+                          </div>
+                          <div>
+                            <dt>diff validation</dt>
+                            <dd>{{ field(edit['diffValidation']) }}</dd>
+                          </div>
+                          <div>
+                            <dt>fichiers modifiés</dt>
+                            <dd class="mono">{{ list(edit['filesModified']) }}</dd>
+                          </div>
+                          <div>
+                            <dt>fichiers créés</dt>
+                            <dd class="mono">{{ list(edit['filesCreated']) }}</dd>
+                          </div>
+                        }
+                      </dl>
+                    </section>
+                  }
+
+                  @for (campaign of story.raw.oracleCampaigns; track campaign.campaignId) {
+                    <section class="evidence__group">
+                      <h5>G3 — campagne {{ campaign.campaignId }}</h5>
+                      <dl>
+                        <div>
+                          <dt>statut</dt>
+                          <dd>{{ campaign.status }}</dd>
+                        </div>
+                        @for (oracle of campaign.results; track trackOracle($index, oracle)) {
+                          <div>
+                            <dt>{{ oracle.name }} — code</dt>
+                            <dd>{{ field(oracle.code) }}</dd>
+                          </div>
+                          <div>
+                            <dt>{{ oracle.name }} — owners</dt>
+                            <dd class="mono">{{ list(oracle.ownerProjects) }}</dd>
+                          </div>
+                          <div>
+                            <dt>{{ oracle.name }} — target</dt>
+                            <dd class="mono">{{ field(oracle.target) }}</dd>
+                          </div>
+                          <div>
+                            <dt>{{ oracle.name }} — build hosts</dt>
+                            <dd class="mono">{{ list(oracle.buildHosts) }}</dd>
+                          </div>
+                          <div>
+                            <dt>{{ oracle.name }} — exit</dt>
+                            <dd>{{ field(oracle.exitCode) }}</dd>
+                          </div>
+                          <div>
+                            <dt>{{ oracle.name }} — cmd hash</dt>
+                            <dd class="mono accent">{{ field(oracle.commandHash) }}</dd>
+                          </div>
+                        }
+                      </dl>
+                    </section>
+                  }
+                </div>
+              }
+            </div>
+          </section>
+        }
+        <!-- /stories -->
+
+        <!-- Preuves techniques Epic -->
+        <div class="epic__evidence">
+          <button
+            type="button"
+            class="evidence__toggle"
+            [attr.aria-expanded]="isEvidenceOpen(run.runId + '-epic')"
+            [attr.aria-controls]="'evidence-epic-' + run.runId"
+            (click)="toggleEvidence(run.runId + '-epic')"
+          >
+            <span class="evidence__mark" aria-hidden="true">{{ isEvidenceOpen(run.runId + '-epic') ? '−' : '+' }}</span>
+            Epic technical evidence — {{ run.workItem.id }}
+          </button>
+          @if (isEvidenceOpen(run.runId + '-epic')) {
+            <div class="evidence" [id]="'evidence-epic-' + run.runId">
+              <section class="evidence__group">
+                <h5>EpicRun</h5>
+                <dl>
+                  <div>
+                    <dt>epic run ID</dt>
+                    <dd class="mono accent">{{ run.runId }}</dd>
+                  </div>
+                  <div>
+                    <dt>repository</dt>
+                    <dd class="mono">{{ field(run.roots.repoRoot) }}</dd>
+                  </div>
+                </dl>
+              </section>
+              @for (gate of run.gates; track gate.gate) {
+                <section class="evidence__group">
+                  <h5>{{ gate.gate }}</h5>
+                  <dl>
+                    <div>
+                      <dt>tentative</dt>
+                      <dd>{{ field(gate['attempt']) }}</dd>
+                    </div>
+                    <div>
+                      <dt>code</dt>
+                      <dd>{{ field(gate['code']) }}</dd>
+                    </div>
+                    <div>
+                      <dt>policy</dt>
+                      <dd class="mono">{{ field(gate['policyVersion']) }}</dd>
+                    </div>
+                    <div>
+                      <dt>evidence hash</dt>
+                      <dd class="mono accent">{{ field(gate['evidenceSetHash']) }}</dd>
+                    </div>
+                  </dl>
+                </section>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- Pied : portée du diagramme -->
+        <footer class="diagram__foot blueprint">
+          <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
+          ><i class="corner corner--br"></i>
+          <p class="kicker">Portée de cette vue</p>
+          <p>
+            Chaîne de preuves : intention humaine → spec Epic figée → analyse bornée → mutation contrôlée → validation
+            déterministe → résultat traçable. Ni journal d'agents, ni conversation, ni déclaration de réussite faite par
+            un modèle, ni état Jira reconstruit.
+          </p>
+          <p>
+            Aucune porte G4 n'existe : le statut <strong>{{ epicLabel(run) }}</strong> de l'Epic ne prétend pas que la
+            livraison est terminée, même lorsque toutes ses Stories ont passé G3.
+          </p>
+        </footer>
       </article>
     }
   }
