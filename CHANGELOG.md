@@ -1,3 +1,22 @@
+## 1.3.0 (2026-09-11)
+
+### 🚀 Features
+
+- #1291 Expose execution diagnostics in case conversations ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+- #1291 improve tool calls display in case events ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+- #1291 Add tool calls toggle to case shell menus ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+- add loading state to DsEntityListComponent ([3c801bf5](https://github.com/whoz-oss/coday/commit/3c801bf5))
+- #1291 Add loading state ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+- #1291 Add loading state ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+
+### 🩹 Fixes
+
+- #1291 fix tool call args JSON formatting and readability ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
 ## 1.2.3 (2026-09-10)
 
 ### 🩹 Fixes
