@@ -1283,8 +1283,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 name = "Review",
                 description = "Code review",
                 body = "## Body",
-                skillRelativePath = "core/review",
-                resourceRoot = "/tmp/skills/core/review",
             )
             val config = agentConfig(name = "my-agent", instructions = "Base instructions", modelName = "sonnet")
                 .copy(skillSelectors = listOf("*"))
@@ -1312,12 +1310,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 name = "spec-writing",
                 description = "Spec writing",
                 body = "## Body",
-                skillRelativePath = "product/spec-writing",
-                resourceRoot = "/tmp",
             )
             val config =
                 agentConfig(name = "filtered-agent", instructions = "Base instructions", modelName = "sonnet")
-                    .copy(skillSelectors = listOf("core/**", "product/**"))
+                    .copy(skillSelectors = listOf("spec-writing"))
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
@@ -1326,12 +1322,12 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
-            coEvery { skillService.findSkills(any<UUID>(), eq(listOf("core/**", "product/**"))) } returns listOf(skill)
+            coEvery { skillService.findSkills(any<UUID>(), eq(listOf("spec-writing"))) } returns listOf(skill)
 
             val agent = agentService.findAgentByName("filtered-agent", context) as AgentSimple
 
             agent.instructions shouldContain "- **spec-writing**: Spec writing"
-            coVerify(exactly = 1) { skillService.findSkills(namespaceId, eq(listOf("core/**", "product/**"))) }
+            coVerify(exactly = 1) { skillService.findSkills(namespaceId, eq(listOf("spec-writing"))) }
         }
 
         "findAgentByName with null skillSelectors results in no skills block (new semantics: null = no skills)" {

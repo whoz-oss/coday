@@ -45,4 +45,21 @@ interface SkillNodeNeo4jRepository : Neo4jRepository<SkillNode, String> {
             """,
     )
     fun findActiveByDoubleKey(doubleKey: String): SkillNode?
+
+    /**
+     * Find non-removed skills for a namespace whose names match any in the given collection (case-insensitive).
+     */
+    @Query(
+        $$"""
+            MATCH (s:Skill)
+            WHERE (s.namespaceId = $namespaceId OR s.namespaceId IS NULL)
+              AND (s.removed IS NULL OR s.removed = false)
+              AND toLower(s.name) IN $lowercasedNames
+            RETURN s ORDER BY s.name ASC
+            """,
+    )
+    fun findByNamespaceIdAndNames(
+        namespaceId: String,
+        lowercasedNames: Collection<String>,
+    ): List<SkillNode>
 }

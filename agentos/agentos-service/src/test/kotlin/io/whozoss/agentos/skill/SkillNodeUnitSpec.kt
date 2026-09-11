@@ -63,8 +63,7 @@ class SkillNodeUnitSpec : StringSpec({
             name = "Code Review",
             description = "Reviews PRs",
             body = "## Instructions\nReview carefully.",
-            skillRelativePath = "core/code-review",
-            resourceRoot = "/tmp/skills/core/code-review",
+            resources = mapOf("scripts/lint.sh" to "echo lint"),
         )
 
         val node = SkillNode.fromDomain(skill)
@@ -87,15 +86,13 @@ class SkillNodeUnitSpec : StringSpec({
         roundTripped.name shouldBe "Code Review"
         roundTripped.description shouldBe "Reviews PRs"
         roundTripped.body shouldBe "## Instructions\nReview carefully."
+        roundTripped.resources shouldBe mapOf("scripts/lint.sh" to "echo lint")
         roundTripped.metadata.created shouldBe created
         roundTripped.metadata.createdBy shouldBe "alice"
         roundTripped.metadata.modified shouldBe modified
         roundTripped.metadata.modifiedBy shouldBe "bob"
         roundTripped.metadata.removed shouldBe false
         roundTripped.metadata.version shouldBe 1L
-        // Storage asymmetry: skillRelativePath and resourceRoot are null when coming from DB node
-        roundTripped.skillRelativePath.shouldBeNull()
-        roundTripped.resourceRoot.shouldBeNull()
     }
 
     "fromDomain sets tombstone key when removed is true" {

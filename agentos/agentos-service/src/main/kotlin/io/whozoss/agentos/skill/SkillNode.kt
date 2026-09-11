@@ -1,5 +1,7 @@
 package io.whozoss.agentos.skill
 
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -31,8 +33,7 @@ import java.util.UUID
  * `(namespaceId, name.lowercase())`. It backs uniqueness per level and single-property
  * index seek for [SkillNodeNeo4jRepository.findActiveByDoubleKey].
  *
- * Storage asymmetry: [skillRelativePath] and [resourceRoot] are filesystem-only properties,
- * so they are not persisted to Neo4j.
+ * [resourcesJson] stores serialized auxiliary resource files map.
  */
 @Node("Skill")
 data class SkillNode(
@@ -43,6 +44,7 @@ data class SkillNode(
     val doubleKey: String,
     val description: String,
     val body: String,
+    val resourcesJson: String? = null,
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
     @CreatedBy val createdBy: String? = null,
@@ -68,11 +70,13 @@ data class SkillNode(
             name = name,
             description = description,
             body = body,
-            skillRelativePath = null,
-            resourceRoot = null,
+            resources = resourcesJson?.let { MAPPER.readValue(it, RESOURCES_TYPE) } ?: emptyMap(),
         )
 
     companion object {
+        private val MAPPER = jacksonObjectMapper()
+        private val RESOURCES_TYPE = object : TypeReference<Map<String, String>>() {}
+
         fun computeDoubleKey(
             namespaceId: UUID?,
             name: String,
@@ -97,6 +101,7 @@ data class SkillNode(
                 doubleKey = doubleKey,
                 description = skill.description,
                 body = skill.body,
+                resourcesJson = skill.resources.takeIf { it.isNotEmpty() }?.let { MAPPER.writeValueAsString(it) },
                 version = skill.metadata.version,
                 created = skill.metadata.created,
                 createdBy = skill.metadata.createdBy,

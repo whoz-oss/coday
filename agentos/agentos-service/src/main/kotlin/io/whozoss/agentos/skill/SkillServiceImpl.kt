@@ -66,10 +66,20 @@ class SkillServiceImpl(
     override suspend fun findSkills(
         namespaceId: UUID,
         selectors: List<String>?,
-    ): List<Skill> {
-        if (selectors.isNullOrEmpty()) return emptyList()
-        val allSkills = loadEffectiveSkills(namespaceId)
-        return filterSkills(allSkills, selectors)
+    ): List<Skill> = withContext(Dispatchers.IO) {
+        if (selectors.isNullOrEmpty()) return@withContext emptyList()
+        if (selectors.contains("*")) {
+            loadEffectiveSkills(namespaceId)
+        } else {
+            val names = selectors.map { it.trim().removeSuffix("/SKILL.md").removeSuffix("/").trimStart('/') }
+            val matched = skillRepository.findByNamespaceIdAndNames(namespaceId, names)
+            // Apply case-insensitive shadowing: namespace skills shadow platform skills of same name
+            val namespaceSkills = matched.filter { it.namespaceId != null }
+            val platformSkills = matched.filter { it.namespaceId == null }
+            val namespaceNames = namespaceSkills.mapTo(HashSet()) { it.name.lowercase() }
+            val shadowedPlatform = platformSkills.filter { it.name.lowercase() !in namespaceNames }
+            namespaceSkills + shadowedPlatform
+        }
     }
 
     override suspend fun findSkillByName(
@@ -93,14 +103,9 @@ class SkillServiceImpl(
     /**
      * Filters [skills] based on [selectors].
      *
-     * Selectors support:
-     * - Wildcard: a single star entry matches all available skills.
-     * - Recursive folder prefix: prefix ending with slash-star-star matches the prefix itself
-     *   and all recursive descendants (paths starting with prefix slash).
-     * - Single-level folder prefix: prefix ending with slash-star matches only direct child skills
-     *   under the prefix directory (remainder after prefix slash contains no further slash segments).
-     * - Exact match: exact relative path, path ending with slash SKILL.md, or frontmatter name (case-insensitive).
-     * - DB-persisted skills with null skillRelativePath only match wildcard or exact name.
+     * In the flat skill model, selectors match:
+     * - Wildcard `*`: matches all available skills.
+     * - Exact skill name (case-insensitive).
      */
     internal fun filterSkills(
         skills: List<Skill>,
@@ -110,41 +115,10 @@ class SkillServiceImpl(
         if (selectors.contains("*")) return skills
         val matched = LinkedHashSet<Skill>()
         for (selector in selectors) {
-            val normalized = selector.trim()
+            val normalized = selector.trim().removeSuffix("/SKILL.md").removeSuffix("/").trimStart('/')
             val beforeCount = matched.size
-            when {
-                normalized.endsWith("/**") -> {
-                    val prefix = normalized.removeSuffix("/**").trimStart('/')
-                    if (prefix.isNotEmpty()) {
-                        skills.filterTo(matched) { skill ->
-                            val path = skill.skillRelativePath
-                            path != null && (path == prefix || path.startsWith("$prefix/"))
-                        }
-                    }
-                }
-                normalized.endsWith("/*") -> {
-                    val prefix = normalized.removeSuffix("/*").trimStart('/')
-                    if (prefix.isNotEmpty()) {
-                        skills.filterTo(matched) { skill ->
-                            val path = skill.skillRelativePath
-                            if (path == null || !path.startsWith("$prefix/")) {
-                                false
-                            } else {
-                                val remainder = path.removePrefix("$prefix/")
-                                remainder.isNotEmpty() && !remainder.contains('/')
-                            }
-                        }
-                    }
-                }
-                else -> {
-                    val candidate = normalized.removeSuffix("/SKILL.md").removeSuffix("/").trimStart('/')
-                    val isDirectSkillMd = normalized == "SKILL.md"
-                    skills.filterTo(matched) { skill ->
-                        (isDirectSkillMd && skill.skillRelativePath == "") ||
-                            (skill.skillRelativePath != null && skill.skillRelativePath.equals(candidate, ignoreCase = true)) ||
-                            skill.name.equals(normalized, ignoreCase = true)
-                    }
-                }
+            skills.filterTo(matched) { skill ->
+                skill.name.equals(normalized, ignoreCase = true)
             }
             if (matched.size == beforeCount) {
                 logger.warn { "[SkillService] Skill selector '$selector' did not match any available skill in namespace" }
@@ -157,8 +131,10 @@ class SkillServiceImpl(
     // Helper methods
     // -------------------------------------------------------------------------
 
-    private fun isFilesystemBacked(skill: Skill): Boolean =
-        skill.skillRelativePath != null || skill.resourceRoot != null
+    private fun isFilesystemBacked(skill: Skill): Boolean {
+        val persisted = skillRepository.findByIds(listOf(skill.metadata.id), withRemoved = false)
+        return persisted.isEmpty()
+    }
 
     private fun requireUniqueName(
         namespaceId: UUID?,

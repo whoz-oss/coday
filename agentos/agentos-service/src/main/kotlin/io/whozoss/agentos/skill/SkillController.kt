@@ -65,6 +65,7 @@ class SkillController(
                     name = resource.name,
                     description = resource.description,
                     body = resource.body,
+                    resources = resource.resources,
                 )
             },
         )
@@ -103,6 +104,7 @@ class SkillController(
     @Operation(summary = "Update a Skill")
     @PutMapping("/{id}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#id, 'Skill', 'WRITE')")
+    @HideOnAccessDenied
     override fun update(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: SkillDto,
@@ -116,6 +118,7 @@ class SkillController(
                     name = resource.name,
                     description = resource.description,
                     body = resource.body,
+                    resources = resource.resources,
                 ),
             ),
         )
@@ -124,6 +127,7 @@ class SkillController(
     @Operation(summary = "Delete a Skill")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Skill', 'DELETE')")
+    @HideOnAccessDenied
     @ResponseStatus(HttpStatus.NO_CONTENT)
     override fun delete(
         @PathVariable id: UUID,
@@ -139,6 +143,7 @@ internal fun toDto(entity: Skill) =
         name = entity.name,
         description = entity.description,
         body = entity.body,
+        resources = entity.resources,
         createdBy = entity.metadata.createdBy,
         createdOn = entity.metadata.created,
         updatedBy = entity.metadata.modifiedBy,

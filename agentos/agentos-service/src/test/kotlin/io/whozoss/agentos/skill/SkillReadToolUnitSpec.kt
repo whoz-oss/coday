@@ -7,32 +7,23 @@ import io.mockk.mockk
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import java.nio.file.Files
 import java.util.UUID
-import kotlin.io.path.writeText
 
 class SkillReadToolUnitSpec : StringSpec({
 
     val toolContext = mockk<ToolContext>(relaxed = true)
 
-    fun tempSkillDir(): java.nio.file.Path {
-        val dir = Files.createTempDirectory("skill-tool-test")
-        dir.toFile().deleteOnExit()
-        return dir
-    }
-
     fun skill(
         name: String = "Code Review",
         body: String = "## Guidelines\nDo this.",
-        resourceRoot: String? = null,
+        resources: Map<String, String> = emptyMap(),
     ) = Skill(
         metadata = EntityMetadata(),
         namespaceId = UUID.randomUUID(),
         name = name,
         description = "Reviews code",
         body = body,
-        skillRelativePath = "core/${name.lowercase().replace(' ', '-')}",
-        resourceRoot = resourceRoot,
+        resources = resources,
     )
 
     // -------------------------------------------------------------------------
@@ -86,10 +77,8 @@ class SkillReadToolUnitSpec : StringSpec({
     // SkillReadResourceTool
     // -------------------------------------------------------------------------
 
-    "readSkillResource happy path returns file content" {
-        val dir = tempSkillDir()
-        dir.resolve("template.md").writeText("# Template content")
-        val s = skill(resourceRoot = dir.toString())
+    "readSkillResource happy path returns resource content" {
+        val s = skill(resources = mapOf("template.md" to "# Template content"))
         val tool = SkillReadResourceTool(listOf(s))
 
         val result = kotlinx.coroutines.runBlocking {
@@ -97,21 +86,6 @@ class SkillReadToolUnitSpec : StringSpec({
         }
 
         result shouldBe ToolExecutionResult.success("# Template content")
-    }
-
-    "readSkillResource exactly at MAX_RESOURCE_BYTES returns content" {
-        val dir = tempSkillDir()
-        val exactFile = dir.resolve("exact.txt")
-        exactFile.writeText("a".repeat(SkillReadResourceTool.MAX_RESOURCE_BYTES.toInt()))
-        val s = skill(resourceRoot = dir.toString())
-        val tool = SkillReadResourceTool(listOf(s))
-
-        val result = kotlinx.coroutines.runBlocking {
-            tool.execute(SkillReadResourceTool.Input("Code Review", "exact.txt"), toolContext)
-        }
-
-        result.success shouldBe true
-        result.output.length shouldBe SkillReadResourceTool.MAX_RESOURCE_BYTES.toInt()
     }
 
     "readSkillResource unknown skill returns error" {
@@ -125,70 +99,8 @@ class SkillReadToolUnitSpec : StringSpec({
         result.output shouldContain "not found"
     }
 
-    "readSkillResource null resourceRoot returns error" {
-        val s = Skill(
-            metadata = EntityMetadata(),
-            namespaceId = UUID.randomUUID(),
-            name = "No Root",
-            description = "desc",
-            body = "body",
-            skillRelativePath = "core/no-root",
-            resourceRoot = null,
-        )
-        val tool = SkillReadResourceTool(listOf(s))
-
-        val result = kotlinx.coroutines.runBlocking {
-            tool.execute(SkillReadResourceTool.Input("No Root", "file.md"), toolContext)
-        }
-
-        result.success shouldBe false
-        result.output shouldContain "no bundled resources"
-    }
-
-    "readSkillResource path traversal is rejected" {
-        val dir = tempSkillDir()
-        val s = skill(resourceRoot = dir.toString())
-        val tool = SkillReadResourceTool(listOf(s))
-
-        val result = kotlinx.coroutines.runBlocking {
-            tool.execute(SkillReadResourceTool.Input("Code Review", "../../etc/passwd"), toolContext)
-        }
-
-        result.success shouldBe false
-    }
-
-    "readSkillResource sensitive file is rejected" {
-        val dir = tempSkillDir()
-        dir.resolve(".env").writeText("SECRET=abc")
-        val s = skill(resourceRoot = dir.toString())
-        val tool = SkillReadResourceTool(listOf(s))
-
-        val result = kotlinx.coroutines.runBlocking {
-            tool.execute(SkillReadResourceTool.Input("Code Review", ".env"), toolContext)
-        }
-
-        result.success shouldBe false
-        result.output shouldContain "sensitive"
-    }
-
-    "readSkillResource oversized file is rejected" {
-        val dir = tempSkillDir()
-        val bigFile = dir.resolve("big.txt")
-        bigFile.writeText("x".repeat(SkillReadResourceTool.MAX_RESOURCE_BYTES.toInt() + 1))
-        val s = skill(resourceRoot = dir.toString())
-        val tool = SkillReadResourceTool(listOf(s))
-
-        val result = kotlinx.coroutines.runBlocking {
-            tool.execute(SkillReadResourceTool.Input("Code Review", "big.txt"), toolContext)
-        }
-
-        result.success shouldBe false
-        result.output shouldContain "too large"
-    }
-
-    "readSkillResource non-existent file returns error" {
-        val dir = tempSkillDir()
-        val s = skill(resourceRoot = dir.toString())
+    "readSkillResource non-existent resource in skill returns error" {
+        val s = skill(resources = mapOf("other.md" to "content"))
         val tool = SkillReadResourceTool(listOf(s))
 
         val result = kotlinx.coroutines.runBlocking {
@@ -197,6 +109,18 @@ class SkillReadToolUnitSpec : StringSpec({
 
         result.success shouldBe false
         result.output shouldContain "not found"
+    }
+
+    "readSkillResource sensitive file is rejected" {
+        val s = skill(resources = mapOf(".env" to "SECRET=abc"))
+        val tool = SkillReadResourceTool(listOf(s))
+
+        val result = kotlinx.coroutines.runBlocking {
+            tool.execute(SkillReadResourceTool.Input("Code Review", ".env"), toolContext)
+        }
+
+        result.success shouldBe false
+        result.output shouldContain "sensitive"
     }
 
     // -------------------------------------------------------------------------

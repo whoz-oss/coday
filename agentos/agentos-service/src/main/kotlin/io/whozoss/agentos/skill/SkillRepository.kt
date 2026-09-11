@@ -33,4 +33,12 @@ interface SkillRepository : EntityRepository<Skill, UUID> {
         namespaceId: UUID?,
         name: String,
     ): Skill?
+
+    /**
+     * Find skills matching any of [names] (case-insensitive) in [namespaceId] or platform scope.
+     */
+    fun findByNamespaceIdAndNames(
+        namespaceId: UUID,
+        names: Collection<String>,
+    ): List<Skill>
 }

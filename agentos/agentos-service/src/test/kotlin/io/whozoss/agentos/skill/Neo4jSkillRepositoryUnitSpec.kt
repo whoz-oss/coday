@@ -1,18 +1,14 @@
 package io.whozoss.agentos.skill
 
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import io.whozoss.agentos.namespace.Namespace
-import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.repository.findByIdOrNull
@@ -149,31 +145,21 @@ class Neo4jSkillRepositoryUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // findByNameInNamespace
+    // findByNamespaceIdAndNames
     // -------------------------------------------------------------------------
 
-    "findByNameInNamespace computes lowercased doubleKey and queries findActiveByDoubleKey" {
+    "findByNamespaceIdAndNames delegates to neo4jRepository with lowercased names" {
         val skill = Skill(name = "Code Review", description = "D", body = "B", namespaceId = namespaceId)
+        val node = SkillNode.fromDomain(skill)
 
-        every { neo4jRepository.findActiveByDoubleKey("$namespaceId:code review") } returns
-            SkillNode.fromDomain(skill)
+        every {
+            neo4jRepository.findByNamespaceIdAndNames(namespaceId.toString(), listOf("code review", "spec"))
+        } returns listOf(node)
 
-        val found = repo.findByNameInNamespace(namespaceId, "CODE REVIEW")
+        val result = repo.findByNamespaceIdAndNames(namespaceId, listOf("Code Review", "SPEC"))
 
-        found.shouldNotBeNull()
-        found.name shouldBe "Code Review"
-    }
-
-    "findByNameInNamespace supports platform scope with null namespaceId" {
-        val platformSkill = Skill(name = "Global", description = "D", body = "B", namespaceId = null)
-
-        every { neo4jRepository.findActiveByDoubleKey("_:global") } returns
-            SkillNode.fromDomain(platformSkill)
-
-        val found = repo.findByNameInNamespace(null, "Global")
-
-        found.shouldNotBeNull()
-        found.name shouldBe "Global"
+        result shouldHaveSize 1
+        result.single().name shouldBe "Code Review"
     }
 
     // -------------------------------------------------------------------------

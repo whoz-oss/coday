@@ -14,6 +14,8 @@ import java.util.UUID
  *
  * [name], [description], and [body] are required fields.
  *
+ * [resources] stores optional auxiliary files (templates, references, scripts) as a path-to-content map.
+ *
  * [createdBy], [createdOn], [updatedBy], [updatedOn] are read-only audit fields
  * present in GET responses; ignored on write.
  */
@@ -30,6 +32,7 @@ data class SkillDto(
     val description: String,
     @field:NotBlank(message = "body must not be blank")
     val body: String,
+    val resources: Map<String, String> = emptyMap(),
     val createdBy: String? = null,
     val createdOn: Instant? = null,
     val updatedBy: String? = null,

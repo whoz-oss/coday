@@ -3,20 +3,14 @@ package io.whozoss.agentos.skill
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.sdk.util.SensitiveFileDetector
 import mu.KLogging
-import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.charset.CodingErrorAction
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.NoSuchFileException
-import java.nio.file.Path
 
 /**
  * Returns the body of a skill identified by its frontmatter [name].
  *
  * Skills are name-addressed so this tool works for both filesystem-backed
- * and future DB-stored skills.
+ * and DB-stored skills.
  */
 class SkillReadTool(
     private val skills: List<Skill>,
@@ -65,11 +59,9 @@ class SkillReadTool(
 }
 
 /**
- * Reads a file adjacent to a skill, resolved under [Skill.resourceRoot].
+ * Reads a resource file bundled with a skill from [Skill.resources].
  *
- * Enforces path containment (no traversal) and rejects sensitive filenames.
- * Returns an error when [Skill.resourceRoot] is null (DB-stored skills have no
- * bundled resources in step 1).
+ * Works symmetrically for both filesystem-backed and DB-persisted skills.
  */
 class SkillReadResourceTool(
     private val skills: List<Skill>,
@@ -124,113 +116,25 @@ class SkillReadResourceTool(
                 errorType = "NOT_FOUND",
             )
 
-        val resourceRoot = skill.resourceRoot
-            ?: return ToolExecutionResult.error(
-                "Skill '${skill.name}' has no bundled resources (not filesystem-backed).",
-                errorType = "NO_RESOURCE_ROOT",
-            )
+        val normalizedPath = input.path.trim().trimStart('/').replace("\\", "/")
 
-        val rootPath =
-            try {
-                Path.of(resourceRoot).toRealPath()
-            } catch (e: NoSuchFileException) {
-                return ToolExecutionResult.error("Skill resource directory not found.", errorType = "NOT_FOUND")
-            } catch (e: IOException) {
-                logger.warn(e) { "[SkillReadResourceTool] Cannot resolve resource root for skill '${skill.name}'" }
-                return ToolExecutionResult.error("Could not access skill resource directory.", errorType = "IO_ERROR")
-            }
-
-        val resolved =
-            try {
-                rootPath.resolve(input.path).toRealPath()
-            } catch (e: NoSuchFileException) {
-                return ToolExecutionResult.error("Resource '${input.path}' not found in skill '${skill.name}'.", errorType = "NOT_FOUND")
-            } catch (e: IOException) {
-                return ToolExecutionResult.error("Could not resolve resource path '${input.path}'.", errorType = "IO_ERROR")
-            }
-
-        // Path containment: reject symlink escapes.
-        if (!resolved.startsWith(rootPath)) {
-            logger.warn { "[SkillReadResourceTool] Path traversal attempt for skill '${skill.name}': ${input.path}" }
-            return ToolExecutionResult.error("Access denied: resource path escapes the skill directory.", errorType = "ACCESS_DENIED")
-        }
-
-        // Sensitive-file deny-list.
-        if (isSensitiveFile(resolved.fileName.toString())) {
-            logger.warn { "[SkillReadResourceTool] Sensitive file rejected: $resolved" }
+        if (SensitiveFileDetector.isSensitive(normalizedPath.substringAfterLast('/'))) {
+            logger.warn { "[SkillReadResourceTool] Sensitive file rejected: $normalizedPath" }
             return ToolExecutionResult.error("Access denied: sensitive file.", errorType = "ACCESS_DENIED")
         }
 
-        if (!Files.isRegularFile(resolved)) {
-            return ToolExecutionResult.error("'${input.path}' is not a regular file.", errorType = "NOT_A_FILE")
-        }
-
-        val probe = (MAX_RESOURCE_BYTES + 1).coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
-        val bytes =
-            try {
-                Files.newInputStream(resolved).use { it.readNBytes(probe) }
-            } catch (e: NoSuchFileException) {
-                return ToolExecutionResult.error("Resource '${input.path}' not found in skill '${skill.name}'.", errorType = "NOT_FOUND")
-            } catch (e: IOException) {
-                logger.warn(e) { "[SkillReadResourceTool] Could not open $resolved" }
-                return ToolExecutionResult.error("Could not read resource '${input.path}'.", errorType = "IO_ERROR")
-            }
-
-        if (bytes.size.toLong() > MAX_RESOURCE_BYTES) {
-            return ToolExecutionResult.error(
-                "Resource '${input.path}' is too large (exceeds ${MAX_RESOURCE_BYTES}B limit).",
-                errorType = "TOO_LARGE",
+        val content = skill.resources[normalizedPath]
+            ?: return ToolExecutionResult.error(
+                "Resource '${input.path}' not found in skill '${skill.name}'.",
+                errorType = "NOT_FOUND",
             )
-        }
 
-        return try {
-            val content = StandardCharsets.UTF_8
-                .newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(bytes))
-                .toString()
-            ToolExecutionResult.success(content)
-        } catch (e: Exception) {
-            logger.warn(e) { "[SkillReadResourceTool] Could not decode UTF-8 from $resolved" }
-            ToolExecutionResult.error("Could not read resource '${input.path}'.", errorType = "IO_ERROR")
-        }
+        return ToolExecutionResult.success(content)
     }
 
     companion object : KLogging() {
-        // Reuse the same deny-list as AgentDocumentResolver.
-        private val SENSITIVE_FILE_PATTERNS =
-            listOf(
-                ".env",
-                ".env.*",
-                "credentials.json",
-                "*.key",
-                "*.pem",
-                "token.json",
-                "auth-profiles.json",
-                "*.p12",
-                "*.pfx",
-                "id_rsa",
-                "id_dsa",
-                "id_ecdsa",
-                "id_ed25519",
-            )
-
         const val MAX_RESOURCE_BYTES = 1 * 1024 * 1024L // 1 MiB
 
-        fun isSensitiveFile(fileName: String): Boolean =
-            SENSITIVE_FILE_PATTERNS.any { pattern -> matchesGlob(fileName, pattern) }
-
-        private fun matchesGlob(
-            name: String,
-            pattern: String,
-        ): Boolean {
-            val regex =
-                Regex(
-                    pattern.split("*").joinToString(".*") { Regex.escape(it) },
-                    RegexOption.IGNORE_CASE,
-                )
-            return regex.matches(name)
-        }
+        fun isSensitiveFile(fileName: String): Boolean = SensitiveFileDetector.isSensitive(fileName)
     }
 }

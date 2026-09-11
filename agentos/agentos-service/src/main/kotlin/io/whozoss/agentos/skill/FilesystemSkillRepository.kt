@@ -17,16 +17,8 @@ import java.util.UUID
  * Decorator over a delegate [SkillRepository] that augments read operations with [Skill]
  * definitions discovered from `SKILL.md` files under `<namespace.configPath>/skills/`.
  *
- * Each skill lives in its own directory under `<configPath>/skills/`. The directory
- * name becomes the [Skill.skillRelativePath]. The `SKILL.md` file must start with a
- * YAML frontmatter block delimited by `---` lines, followed by the skill body.
- *
- * Example layout:
- * ```
- * <configPath>/skills/
- *   product/spec-writing/SKILL.md
- *   core/branch-creation/SKILL.md
- * ```
+ * Each skill lives directly in its own directory under `<configPath>/skills/{skillName}/SKILL.md` (flat layout).
+ * Auxiliary files (templates, references, scripts) in that directory are loaded into [Skill.resources].
  *
  * All write operations ([save], [delete], [deleteByParent]) are forwarded to the delegate
  * unchanged — the filesystem is never written.
@@ -38,22 +30,6 @@ import java.util.UUID
  * Platform skills ([findPlatform]) are purely delegate-backed — the filesystem has no platform scope.
  *
  * Filesystem reads are cached per directory with a configurable [ttl] (default 5 minutes).
- *
- * Safety limits:
- * - [MAX_SKILL_FILE_BYTES]: files larger than this are skipped.
- * - [MAX_WALK_DEPTH]: accepted skill-directory depths are zero through three; the shared
- *   cache walk is bounded at file depth four so rejected deeper trees are never traversed.
- * - [MAX_SKILL_COUNT]: at most 500 unique, path-sorted skills are returned.
- * - [MAX_SKILL_NAME_CHARS]: names longer than this are truncated with an ellipsis.
- * - [MAX_SKILL_DESCRIPTION_CHARS]: same for descriptions.
- *
- * Discovery reuses [FilesystemYamlCacheRegistry] with a custom [filePredicate] matching the
- * exact filename `SKILL.md`.
- *
- * Symlinks that escape the skills root are rejected (path containment check).
- *
- * Deduplication: if two SKILL.md files produce the same name (case-insensitive),
- * the one with the lexicographically smaller [Skill.skillRelativePath] wins.
  */
 class FilesystemSkillRepository(
     private val delegate: SkillRepository,
@@ -67,11 +43,6 @@ class FilesystemSkillRepository(
             parser = ::parseSkillFile,
             ttl = ttl,
             filePredicate = { it.fileName.toString() == SKILL_FILE_NAME },
-            // Accepted skill-directory depths are 0..MAX_WALK_DEPTH-1 relative to the skills
-            // root (root itself is depth 0). SKILL.md sits one level below its skill directory,
-            // so a SKILL.md at an accepted depth is at most MAX_WALK_DEPTH file-levels below the
-            // root. Bounding Files.walk at MAX_WALK_DEPTH means anything deeper is never visited
-            // at all — same net result as visiting-then-rejecting, without the wasted I/O.
             maxDepth = MAX_WALK_DEPTH,
         )
 
@@ -103,6 +74,21 @@ class FilesystemSkillRepository(
         return filesystemSkills(namespaceId).firstOrNull { it.name.equals(name, ignoreCase = true) }
     }
 
+    override fun findByNamespaceIdAndNames(
+        namespaceId: UUID,
+        names: Collection<String>,
+    ): List<Skill> {
+        if (names.isEmpty()) return emptyList()
+        val nameSet = names.mapTo(HashSet()) { it.lowercase() }
+        val persisted = delegate.findByNamespaceIdAndNames(namespaceId, names)
+        val persistedNames = persisted.mapTo(HashSet()) { it.name.lowercase() }
+
+        val fromFilesystem = filesystemSkills(namespaceId, excludeNames = persistedNames)
+            .filter { it.name.lowercase() in nameSet }
+
+        return persisted + fromFilesystem
+    }
+
     override fun findByIds(
         ids: Collection<UUID>,
         withRemoved: Boolean,
@@ -131,15 +117,6 @@ class FilesystemSkillRepository(
     // Filesystem discovery helpers
     // -------------------------------------------------------------------------
 
-    /**
-     * Loads and returns skills from the filesystem for [namespaceId].
-     *
-     * Results are sorted by [Skill.skillRelativePath] and deduplicated by name (case-insensitive,
-     * first-by-path wins). When [excludeNames] is provided, matching names are dropped
-     * (persisted skills always win over filesystem ones).
-     *
-     * Duplicates removed by name do not consume the [MAX_SKILL_COUNT] budget.
-     */
     private fun filesystemSkills(
         namespaceId: UUID,
         excludeNames: Set<String> = emptySet(),
@@ -148,7 +125,7 @@ class FilesystemSkillRepository(
             namespaceRepository.findByIds(listOf(namespaceId)).firstOrNull()?.configPath
                 ?: return emptyList()
         val skillsRoot = Path.of(configPath, SKILLS_SUBDIR)
-        val all = cacheRegistry.getAll(skillsRoot).sortedBy { it.skillRelativePath }
+        val all = cacheRegistry.getAll(skillsRoot).sortedBy { it.name }
 
         val seenNames = LinkedHashSet<String>() // lowercased name, first-by-path wins
         val result = mutableListOf<Skill>()
@@ -157,17 +134,22 @@ class FilesystemSkillRepository(
             if (seenNames.add(nameKey)) {
                 if (nameKey !in excludeNames) {
                     if (result.size < MAX_SKILL_COUNT) {
-                        result += skill.copy(namespaceId = namespaceId)
+                        result += skill.copy(
+                            metadata = EntityMetadata(
+                                id = computeFilesystemSkillId(namespaceId, skill.name),
+                            ),
+                            namespaceId = namespaceId,
+                        )
                     }
                 }
             } else {
-                logger.debug { "[FilesystemSkillRepository] Duplicate name '${skill.name}' at '${skill.skillRelativePath}' (kept an earlier path)" }
+                logger.debug { "[FilesystemSkillRepository] Duplicate name '${skill.name}' (kept earlier)" }
             }
         }
         if (seenNames.size > MAX_SKILL_COUNT) {
             logger.warn {
                 "[FilesystemSkillRepository] Discovered ${seenNames.size} unique skills under $skillsRoot, " +
-                    "exceeding MAX_SKILL_COUNT=$MAX_SKILL_COUNT; truncated to the first $MAX_SKILL_COUNT by path"
+                    "exceeding MAX_SKILL_COUNT=$MAX_SKILL_COUNT; truncated to the first $MAX_SKILL_COUNT"
             }
         }
         return result
@@ -177,17 +159,6 @@ class FilesystemSkillRepository(
     // Parsing (invoked by FilesystemYamlCacheRegistry per matched file)
     // -------------------------------------------------------------------------
 
-    /**
-     * Parses a single `SKILL.md` file into a [Skill], or null when the file should be skipped.
-     *
-     * [directory] is the skills root (`<configPath>/skills`), as passed by
-     * [FilesystemYamlCacheRegistry]. [file] is the matched `SKILL.md` path, always one level
-     * below its containing skill directory.
-     *
-     * Applies, in order: path containment (symlink escape rejection), depth guard
-     * ([MAX_WALK_DEPTH]), file-size guard ([MAX_SKILL_FILE_BYTES]), frontmatter parsing,
-     * and name and blank checks with whitespace collapsing and truncation.
-     */
     private fun parseSkillFile(
         directory: Path,
         file: Path,
@@ -216,23 +187,20 @@ class FilesystemSkillRepository(
                 return null
             }
 
-        // Path containment: reject symlink escapes, whether the escaping symlink is an
-        // ancestor directory (realSkillDir check) or the SKILL.md file itself (realFile check).
+        // Path containment: reject symlink escapes
         if (!realSkillDir.startsWith(realSkillsRoot) || !realFile.startsWith(realSkillsRoot)) {
             logger.warn { "[FilesystemSkillRepository] Symlink escape rejected: $realFile" }
             return null
         }
 
-        // Depth check: skill directory must have fewer than MAX_WALK_DEPTH path segments
-        // below the skills root. A depth equal to MAX_WALK_DEPTH is already too deep.
+        // Flat layout: skill directory must be directly inside skills root (depth exactly 1)
         val relativePath = realSkillsRoot.relativize(realSkillDir).toString().replace("\\", "/")
         val depth = if (relativePath.isEmpty()) 0 else relativePath.split("/").size
-        if (depth >= MAX_WALK_DEPTH) {
-            logger.debug { "[FilesystemSkillRepository] Skipping deep skill ($depth >= $MAX_WALK_DEPTH): $file" }
+        if (depth > 1) {
+            logger.debug { "[FilesystemSkillRepository] Skipping nested skill in flat layout ($depth > 1): $file" }
             return null
         }
 
-        // File size guard.
         val fileSize =
             try {
                 Files.size(file)
@@ -271,6 +239,8 @@ class FilesystemSkillRepository(
             return null
         }
 
+        val resources = loadSkillResources(realSkillDir)
+
         return Skill(
             metadata = EntityMetadata(
                 id = UUID.nameUUIDFromBytes("filesystem-skill:$name".toByteArray(Charsets.UTF_8)),
@@ -279,24 +249,54 @@ class FilesystemSkillRepository(
             name = name,
             description = description,
             body = body,
-            skillRelativePath = relativePath,
-            resourceRoot = realSkillDir.toString(),
+            resources = resources,
         )
     }
 
-    // -------------------------------------------------------------------------
-    // Frontmatter parsing helpers
-    // -------------------------------------------------------------------------
+    private fun loadSkillResources(skillDir: Path): Map<String, String> {
+        val resources = mutableMapOf<String, String>()
+        try {
+            Files.walk(skillDir, MAX_RESOURCE_WALK_DEPTH).use { stream ->
+                stream
+                    .filter { Files.isRegularFile(it) && it.fileName.toString() != SKILL_FILE_NAME }
+                    .filter { !isJunkOrBinaryResource(skillDir.relativize(it)) }
+                    .forEach { resourceFile ->
+                        val fileName = resourceFile.fileName.toString()
+                        if (!SkillReadResourceTool.isSensitiveFile(fileName)) {
+                            val relPath = skillDir.relativize(resourceFile).toString().replace("\\", "/")
+                            try {
+                                if (Files.size(resourceFile) <= SkillReadResourceTool.MAX_RESOURCE_BYTES) {
+                                    resources[relPath] = Files.readString(resourceFile)
+                                }
+                            } catch (e: Exception) {
+                                logger.warn(e) { "[FilesystemSkillRepository] Could not read resource: $resourceFile" }
+                            }
+                        }
+                    }
+            }
+        } catch (e: Exception) {
+            logger.warn(e) { "[FilesystemSkillRepository] Error reading resources from $skillDir" }
+        }
+        return resources
+    }
 
     /**
-     * Splits the file content into (frontmatterYaml, body).
+     * Excludes files that are expected to be unreadable as text or irrelevant as skill resources:
+     * - any path segment that is a junk directory (`__pycache__`, `pycache`, `node_modules`) or
+     *   hidden (starts with a dot)
+     * - files with a known binary extension (compiled bytecode, native libs, archives, images, pdf)
      *
-     * The file must start with `---` followed by a second `---` delimiter. A single blank
-     * separator line immediately following the closing delimiter is stripped (the common
-     * Claude-skill convention of a blank line between frontmatter and body); any further
-     * blank lines are preserved verbatim as part of the body. Returns null when no valid
-     * frontmatter is present.
+     * These are skipped silently: they are expected byproducts of skill tooling, not errors.
      */
+    private fun isJunkOrBinaryResource(relativePath: Path): Boolean {
+        val segments = (0 until relativePath.nameCount).map { relativePath.getName(it).toString() }
+        if (segments.any { it in JUNK_DIR_NAMES || it.startsWith(".") }) return true
+        val fileName = segments.last()
+        val dotIndex = fileName.lastIndexOf('.')
+        if (dotIndex <= 0) return false
+        return fileName.substring(dotIndex + 1).lowercase() in BINARY_RESOURCE_EXTENSIONS
+    }
+
     private fun splitFrontmatterAndBody(content: String): Pair<String, String>? {
         if (!content.trimStart().startsWith("---")) return null
         val lines = content.lines()
@@ -312,23 +312,10 @@ class FilesystemSkillRepository(
         return frontmatterLines.joinToString("\n") to bodyText
     }
 
-    // -------------------------------------------------------------------------
-    // String helpers
-    // -------------------------------------------------------------------------
-
-    /** Collapses all whitespace sequences (including newlines) to a single space and trims. */
     private fun collapseWhitespace(value: String): String = value.replace(Regex("\\s+"), " ").trim()
 
-    /**
-     * Truncates to [maxChars] characters, appending an ellipsis when truncation occurs.
-     * The returned string has length at most [maxChars] + 1 (the ellipsis character).
-     */
     private fun String.truncate(maxChars: Int): String =
         if (length <= maxChars) this else take(maxChars) + "\u2026"
-
-    // -------------------------------------------------------------------------
-    // YAML model
-    // -------------------------------------------------------------------------
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private data class SkillFrontmatter(
@@ -340,34 +327,24 @@ class FilesystemSkillRepository(
         private const val SKILLS_SUBDIR = "skills"
         private const val SKILL_FILE_NAME = "SKILL.md"
 
-        /** Maximum character count for [Skill.name] before truncation. */
         const val MAX_SKILL_NAME_CHARS = 100
-
-        /** Maximum character count for [Skill.description] before truncation. */
         const val MAX_SKILL_DESCRIPTION_CHARS = 500
-
-        /** Maximum byte size of a SKILL.md file. Files larger than this are skipped. */
         const val MAX_SKILL_FILE_BYTES = 512 * 1024L // 512 KiB
-
-        /**
-         * Maximum number of unique (post-dedup) skills returned by filesystem discovery.
-         * Duplicates removed by name never consume this budget — the cap applies strictly
-         * to the deduplicated, path-sorted result.
-         */
         const val MAX_SKILL_COUNT = 500
+        const val MAX_WALK_DEPTH = 2
+        private const val MAX_RESOURCE_WALK_DEPTH = 5
 
-        /**
-         * Maximum accepted skill-directory depth below the skills root, exclusive.
-         *
-         * The skills root itself is depth 0. A skill directory directly inside it
-         * (skills followed by a domain segment) is depth 1; nesting one level deeper
-         * (skills, domain, skill-name) is depth 2. Accepted skill-directory depths are
-         * therefore 0 through MAX_WALK_DEPTH minus 1 inclusive — a skill directory at
-         * depth MAX_WALK_DEPTH or deeper is rejected. Since SKILL.md sits one file-level
-         * below its skill directory, this also bounds the [FilesystemYamlCacheRegistry]
-         * traversal depth passed as maxDepth: files below an accepted skill directory are
-         * still reached, and anything deeper is never visited.
-         */
-        const val MAX_WALK_DEPTH = 4
+        private val JUNK_DIR_NAMES = setOf("__pycache__", "pycache", "node_modules")
+
+        private val BINARY_RESOURCE_EXTENSIONS =
+            setOf(
+                "pyc", "class", "so", "dylib", "dll", "jar",
+                "zip", "gz", "png", "jpg", "jpeg", "pdf",
+            )
+
+        fun computeFilesystemSkillId(
+            namespaceId: UUID,
+            name: String,
+        ): UUID = UUID.nameUUIDFromBytes("filesystem-skill:$namespaceId:$name".toByteArray(Charsets.UTF_8))
     }
 }

@@ -63,6 +63,17 @@ open class Neo4jSkillRepository(
             .findActiveByDoubleKey(SkillNode.computeDoubleKey(namespaceId, name))
             ?.toDomain()
 
+    override fun findByNamespaceIdAndNames(
+        namespaceId: UUID,
+        names: Collection<String>,
+    ): List<Skill> {
+        if (names.isEmpty()) return emptyList()
+        val lowercased = names.map { it.lowercase() }
+        return neo4jRepository
+            .findByNamespaceIdAndNames(namespaceId.toString(), lowercased)
+            .map { it.toDomain() }
+    }
+
     override fun delete(id: UUID): Boolean =
         neo4jRepository
             .findByIdOrNull(id.toString())

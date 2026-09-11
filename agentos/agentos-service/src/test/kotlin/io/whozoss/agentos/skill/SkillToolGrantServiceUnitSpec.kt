@@ -22,8 +22,7 @@ class SkillToolGrantServiceUnitSpec : StringSpec({
         name = "Code Review",
         description = "Reviews PRs",
         body = "## Body",
-        skillRelativePath = "core/code-review",
-        resourceRoot = "/tmp/skills/core/code-review",
+        resources = mapOf("lint.sh" to "echo lint"),
     )
     val skill2 = Skill(
         metadata = EntityMetadata(),
@@ -31,8 +30,6 @@ class SkillToolGrantServiceUnitSpec : StringSpec({
         name = "Spec Writing",
         description = "Writes specs",
         body = "## Body",
-        skillRelativePath = "product/spec",
-        resourceRoot = "/tmp/skills/product/spec",
     )
 
     "isGranted returns false when skill list is empty" {
