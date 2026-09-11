@@ -96,13 +96,7 @@ class RedirectToolPlugin(
         }
 
         val redirectTool = RedirectTool(configName = configName, eligibleAgents = eligibleAgents)
-        val guideline = config?.get("guideline")?.asText()?.takeIf { it.isNotBlank() }
-        return if (guideline != null) {
-            logger.info { "[RedirectToolPlugin] Guideline present — adding WhatsNextTool for namespace $namespaceId" }
-            listOf(redirectTool, WhatsNextTool(configName = configName, guideline = guideline))
-        } else {
-            listOf(redirectTool)
-        }
+        return listOf(redirectTool)
     }
 
     companion object : KLogging() {

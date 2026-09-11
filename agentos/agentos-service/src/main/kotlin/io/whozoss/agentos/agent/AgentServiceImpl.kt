@@ -371,6 +371,10 @@ class AgentServiceImpl(
                     queryUserTools,
             )
 
+        val redirectGuideline = effectiveIntegrationConfigs
+            .filter { it.integrationType == "REDIRECT" && agentConfig.integrations?.containsKey(it.name) == true }
+            .firstNotNullOfOrNull { it.parameters?.get("guideline")?.asText()?.takeIf { g -> g.isNotBlank() } }
+
         return ResolvedAgentDefinition(
             agentConfigId = agentConfig.metadata.id,
             name = agentConfig.name,
@@ -386,6 +390,7 @@ class AgentServiceImpl(
             advancedExecution = agentConfig.advancedExecution,
             namespaceId = context.namespaceId,
             userId = context.userId,
+            redirectGuideline = redirectGuideline,
         )
     }
 
@@ -415,6 +420,7 @@ class AgentServiceImpl(
             context = context,
             resolvedTools = definition.tools,
             resolvedUser = resolvedUser,
+            redirectGuideline = definition.redirectGuideline,
         )
     }
 
@@ -472,6 +478,7 @@ class AgentServiceImpl(
         context: AgentExecutionContext,
         resolvedTools: Collection<StandardTool<*>>,
         resolvedUser: User?,
+        redirectGuideline: String? = null,
     ): Agent {
         logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
         logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
@@ -493,6 +500,7 @@ class AgentServiceImpl(
                     systemPrompt = resolvedSystemPrompt,
                     imageCharCost = agentConfigProperties.imageCharCost,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                    redirectGuideline = redirectGuideline,
                 )
             AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),

@@ -44,16 +44,24 @@ class AgentIntentionGenerator {
                 lastToolResponse?.success == false -> "Last tool '${lastToolResponse.toolName}' FAILED: ${(lastToolResponse.output as? MessageContent.Text)?.content}"
                 else -> ""
             }
+        val redirectGuidelines = context.redirectGuideline.orEmpty()
         val prompt =
             """
 Available agents and tools:
 <${agentName}_tools>
 $toolsDescription
 - $ANSWER_TOOL: produce the final answer to the user (use this when no more tool calls are needed)
-<\${agentName}_Tools>
+</${agentName}_tools>
 
 
 $executionState
+${if (redirectGuidelines.isNotBlank()) """
+### Redirect Guidelines
+Use the following guidelines to know how and when to redirect to another agent:
+<redirect_guidelines>
+$redirectGuidelines
+</redirect_guidelines>
+""" else ""}
 
 ### Objective
 Based on the full conversation history and current context, your objective is to determine the single most appropriate **next action**.
@@ -76,7 +84,7 @@ Before generating the output, analyze the situation using the following logic:
 
 **3. Verify Capabilities (Agent Handoff):**
 *   Does the **Current Active Agent** possess the tool required for the next action?
-    *   **NO:** The next action must be to switch to the correct agent and if none can do the action to use `${ANSWER_TOOL}`.
+    *   **NO:** The next action must be to switch to the correct agent bases on guide lines inside <redirect_guidelines> and if none can do the action to use `${ANSWER_TOOL}`.
     *   **YES:** Proceed to the next check.
 
 **4. Check Data Prerequisites:**

@@ -4,7 +4,6 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
-import io.mockk.mockk
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -199,7 +198,7 @@ class RedirectToolPluginSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // WhatsNext tool
+    // Guideline in config (now injected into intention prompt, not a tool)
     // -------------------------------------------------------------------------
 
     "provideTools returns only RedirectTool when config has no guideline" {
@@ -222,7 +221,7 @@ class RedirectToolPluginSpec : StringSpec({
         tools.first() shouldBe tools.filterIsInstance<RedirectTool>().first()
     }
 
-    "provideTools returns RedirectTool and WhatsNextTool when guideline is present" {
+    "provideTools returns only RedirectTool even when guideline is present" {
         val plugin = RedirectToolPlugin { _, _, _ -> listOf(agentConfig("AgentA")) }
         val config = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(
             """{"agents":["*"],"guideline":"When done, redirect to TRSharing."}"""
@@ -230,31 +229,11 @@ class RedirectToolPluginSpec : StringSpec({
 
         val tools = plugin.provideTools(config = config, context = context(userId = userId))
 
-        tools shouldHaveSize 2
+        tools shouldHaveSize 1
         tools.filterIsInstance<RedirectTool>() shouldHaveSize 1
-        tools.filterIsInstance<WhatsNextTool>() shouldHaveSize 1
     }
 
-    "provideTools WhatsNextTool carries the guideline from config" {
-        val guideline = "When done, redirect to TRSharing."
-        val plugin = RedirectToolPlugin { _, _, _ -> listOf(agentConfig("AgentA")) }
-        val config = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(
-            """{"guideline":"$guideline"}"""
-        )
-
-        val tools = plugin.provideTools(config = config, context = context(userId = userId))
-        val whatsNext = tools.filterIsInstance<WhatsNextTool>().first()
-
-        // execute returns a JSON-wrapped guideline: {"guideline": "..."}
-        val result = kotlinx.coroutines.runBlocking {
-            whatsNext.execute(null, mockk(relaxed = true))
-        }
-        result.success shouldBe true
-        val parsed = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(result.output)
-        parsed.get("guideline").asText() shouldBe guideline
-    }
-
-    "provideTools does not add WhatsNextTool when guideline is blank" {
+    "provideTools returns only RedirectTool when guideline is blank" {
         val plugin = RedirectToolPlugin { _, _, _ -> listOf(agentConfig("AgentA")) }
         val config = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(
             """{"guideline":"   "}"""
@@ -263,22 +242,6 @@ class RedirectToolPluginSpec : StringSpec({
         val tools = plugin.provideTools(config = config, context = context(userId = userId))
 
         tools shouldHaveSize 1
-        tools.filterIsInstance<WhatsNextTool>().shouldBeEmpty()
-    }
-
-    "provideTools WhatsNextTool name uses configName prefix" {
-        val plugin = RedirectToolPlugin { _, _, _ -> listOf(agentConfig("AgentA")) }
-        val config = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(
-            """{"guideline":"some guideline"}"""
-        )
-
-        val tools = plugin.provideTools(
-            config = config,
-            configName = "REDIRECT_all",
-            context = context(userId = userId),
-        )
-        val whatsNext = tools.filterIsInstance<WhatsNextTool>().first()
-
-        whatsNext.name shouldBe "REDIRECT_all__whatsNext"
+        tools.filterIsInstance<RedirectTool>() shouldHaveSize 1
     }
 })

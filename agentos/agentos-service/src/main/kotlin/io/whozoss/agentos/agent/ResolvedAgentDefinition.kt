@@ -33,6 +33,7 @@ import java.util.UUID
  * @param advancedExecution Whether the agent should run in advanced multi-step mode.
  * @param namespaceId The namespace this agent is scoped to.
  * @param userId The user the agent is built for, or null for anonymous / system runs.
+ * @param redirectGuideline Redirect process guideline extracted from the REDIRECT integration config, or null when absent.
  */
 data class ResolvedAgentDefinition(
     val agentConfigId: UUID,
@@ -49,4 +50,5 @@ data class ResolvedAgentDefinition(
     val advancedExecution: Boolean,
     val namespaceId: UUID,
     val userId: UUID?,
+    val redirectGuideline: String? = null,
 )

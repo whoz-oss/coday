@@ -33,6 +33,8 @@ data class AgentAdvancedContext(
     val imageCharCost: Int = 6_000,
     /** Maximum images attached as Media across the whole prompt, newest first. Default mirrors [AgentConfigProperties.maxAttachedImages]. */
     val maxAttachedImages: Int = 20,
+    /** Redirect process guideline from the REDIRECT integration config, injected into the intention prompt. */
+    val redirectGuideline: String? = null,
 ) {
     /**
      * Build the complete message list for a single LLM call.
