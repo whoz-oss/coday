@@ -316,6 +316,22 @@ class TextChunkEventNode(
     removed: Boolean? = null,
 ) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
+@Node("SubCaseStartedEvent")
+class SubCaseStartedEventNode(
+    id: String, caseId: String, namespaceId: String, timestamp: Instant,
+    val delegationId: String, val toolRequestId: String, val subCaseId: String,
+    val agentName: String, val task: String, val resumed: Boolean,
+    created: Instant = Instant.now(), createdBy: String? = null, modified: Instant = Instant.now(), modifiedBy: String? = null, removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
+
+@Node("SubCaseFinishedEvent")
+class SubCaseFinishedEventNode(
+    id: String, caseId: String, namespaceId: String, timestamp: Instant,
+    val delegationId: String, val toolRequestId: String, val subCaseId: String,
+    val agentName: String, val outcome: String, val errorType: String? = null,
+    created: Instant = Instant.now(), createdBy: String? = null, modified: Instant = Instant.now(), modifiedBy: String? = null, removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
+
 @Node("PendingConfirmationEvent")
 class PendingConfirmationEventNode(
     id: String,

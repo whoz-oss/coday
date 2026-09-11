@@ -32,6 +32,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -1762,6 +1763,65 @@ class CaseServiceImplSpec :
                     agentName,
                 )
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // Parent delegation observations are durable/live, but never re-enter runtime state
+        // -------------------------------------------------------------------------
+
+        "emitParentEvent persists and broadcasts an observation without restarting the parent automaton" {
+            var runCallCount = 0
+            val countingAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = agentId)
+                    every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        runCallCount++
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow { emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName)) }
+                    }
+                }
+            val eventStore = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val namespace = Namespace(metadata = EntityMetadata(id = namespaceId), name = "test-namespace", defaultAgentName = agentName)
+            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns countingAgent
+            }
+            val service = CaseServiceImpl(agentService, allowAllAgentConfigService, AgentConfigProperties(), InMemoryCaseRepository(), eventStore,
+                mockk<UserService> { every { findById(userId) } returns activeUser }, namespaceService,
+                CaseConfigProperties(idleEvictionGraceMs = 10_000), permissionService, promptService, noOpCaseNamingService)
+            val parent = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(parent.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+            val idle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(parent.id, userActor, listOf(MessageContent.Text("hello")))
+            idle.join()
+            awaitNotRunning(runtime)
+
+            val observed = java.util.concurrent.atomic.AtomicBoolean(false)
+            val collector = scope.launch {
+                withTimeout(5_000) {
+                    runtime.events.filterIsInstance<SubCaseStartedEvent>().first()
+                    observed.set(true)
+                }
+            }
+            awaitSubscribers(runtime)
+            service.emitParentEvent(
+                SubCaseStartedEvent(namespaceId = namespaceId, caseId = parent.id, delegationId = UUID.randomUUID(),
+                    toolRequestId = "request-1", subCaseId = UUID.randomUUID(), agentName = "child", task = "work", resumed = false),
+            )
+            collector.join()
+
+            observed.get() shouldBe true
+            runCallCount shouldBe 1
+            eventStore.findByParent(parent.id).filterIsInstance<SubCaseStartedEvent>().size shouldBe 1
+            eventStore.findByParent(parent.id).filterIsInstance<AgentFinishedEvent>().size shouldBe 1
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
         }
 
         // -------------------------------------------------------------------------
