@@ -1,3 +1,42 @@
+## 1.3.1 (2026-09-11)
+
+### 🩹 Fixes
+
+- **agentos:** #34532 add missing Neo4j indexes and id-uniqueness constraints ([#1330](https://github.com/whoz-oss/coday/pull/1330), [#34532](https://github.com/whoz-oss/coday/issues/34532))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 1.3.0 (2026-09-11)
+
+### 🚀 Features
+
+- #1291 Expose execution diagnostics in case conversations ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+- #1291 improve tool calls display in case events ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+- #1291 Add tool calls toggle to case shell menus ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+- add loading state to DsEntityListComponent ([3c801bf5](https://github.com/whoz-oss/coday/commit/3c801bf5))
+- #1291 Add loading state ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+- #1291 Add loading state ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+
+### 🩹 Fixes
+
+- #1291 fix tool call args JSON formatting and readability ([#1291](https://github.com/whoz-oss/coday/issues/1291))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+
+## 1.2.3 (2026-09-10)
+
+### 🩹 Fixes
+
+- #1320 keep dynamic client registration during in-progress OAuth flow ([#1320](https://github.com/whoz-oss/coday/issues/1320))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+
 ## 1.2.2 (2026-09-09)
 
 ### 🩹 Fixes
