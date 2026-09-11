@@ -58,6 +58,50 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Index message_event_caseId created" }
 
+        // Index on CaseEvent.caseId (generic label) — the MessageEvent sub-label index above
+        // is not used when queries match on the base CaseEvent label.
+        neo4jClient
+            .query(
+                "CREATE INDEX case_event_case_id IF NOT EXISTS FOR (e:CaseEvent) ON (e.caseId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index case_event_case_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX case_namespace_id IF NOT EXISTS FOR (c:Case) ON (c.namespaceId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index case_namespace_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX case_parent_case_id IF NOT EXISTS FOR (c:Case) ON (c.parentCaseId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index case_parent_case_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX agent_config_namespace_id IF NOT EXISTS FOR (a:AgentConfig) ON (a.namespaceId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index agent_config_namespace_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX user_group_namespace_id IF NOT EXISTS FOR (g:UserGroup) ON (g.namespaceId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index user_group_namespace_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX feedback_case_id IF NOT EXISTS FOR (f:Feedback) ON (f.caseId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index feedback_case_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX feedback_case_event_id IF NOT EXISTS FOR (f:Feedback) ON (f.caseEventId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index feedback_case_event_id created" }
+
         // ── Per-node id uniqueness constraints ──────────────────────────────
         // Every node label that carries an `id` property gets a UNIQUE
         // constraint so Neo4j enforces identity at the storage level and

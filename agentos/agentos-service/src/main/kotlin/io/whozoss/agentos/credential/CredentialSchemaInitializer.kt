@@ -43,6 +43,7 @@ class CredentialSchemaInitializer(
         ensureUserAuthSettingUniqueConstraint()
         ensureIdUniqueConstraint()
         ensureUserIdIndex()
+        ensureAuthSettingIdIndex()
     }
 
     /**
@@ -104,6 +105,14 @@ class CredentialSchemaInitializer(
                 "CREATE INDEX credential_user_lookup IF NOT EXISTS FOR (c:Credential) ON (c.userId)",
             ).run()
         logger.info { "[CredentialSchema] index 'credential_user_lookup' ensured" }
+    }
+
+    private fun ensureAuthSettingIdIndex() {
+        neo4jClient
+            .query(
+                "CREATE INDEX credential_auth_setting_id IF NOT EXISTS FOR (c:Credential) ON (c.authSettingId)",
+            ).run()
+        logger.info { "[CredentialSchema] index 'credential_auth_setting_id' ensured" }
     }
 
     companion object : KLogging()

@@ -25,10 +25,21 @@ class ScheduledPromptSchemaInitializer(
     private val neo4jClient: Neo4jClient,
 ) : ApplicationRunner {
     override fun run(args: ApplicationArguments) {
+        ensureIdUniqueConstraint()
         ensureTripleKeyUniqueConstraint()
         ensureNamespaceIdIndex()
         ensureUserIdIndex()
         ensureAgentConfigIdIndex()
+        ensureNextRunAtIndex()
+    }
+
+    private fun ensureIdUniqueConstraint() {
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT scheduled_prompt_id_unique IF NOT EXISTS " +
+                    "FOR (sp:ScheduledPrompt) REQUIRE sp.id IS UNIQUE",
+            ).run()
+        logger.info { "[ScheduledPromptSchema] constraint 'scheduled_prompt_id_unique' ensured" }
     }
 
     private fun ensureTripleKeyUniqueConstraint() {
@@ -62,6 +73,14 @@ class ScheduledPromptSchemaInitializer(
                 "CREATE INDEX scheduled_prompt_agent_config_id IF NOT EXISTS FOR (sp:ScheduledPrompt) ON (sp.agentConfigId)",
             ).run()
         logger.info { "[ScheduledPromptSchema] index 'scheduled_prompt_agent_config_id' ensured" }
+    }
+
+    private fun ensureNextRunAtIndex() {
+        neo4jClient
+            .query(
+                "CREATE INDEX scheduled_prompt_next_run IF NOT EXISTS FOR (sp:ScheduledPrompt) ON (sp.nextRunAt, sp.enabled)",
+            ).run()
+        logger.info { "[ScheduledPromptSchema] index 'scheduled_prompt_next_run' ensured" }
     }
 
     companion object : KLogging()
