@@ -22,6 +22,7 @@
     [userName]="userName()"
     [isAdmin]="isAdmin()"
     [isDark]="isDark()"
+    [showToolCalls]="showToolCalls()"
     (closed)="mobileDrawerOpen.set(false)"
     (caseSelected)="onMobileCaseSelect($event)"
     (starToggled)="onStarToggled($event)"
@@ -29,6 +30,7 @@
     (navigateTo)="onMenuNavigate($event)"
     (themeToggled)="onMenuToggleTheme()"
     (logsToggled)="onMenuToggleLogs()"
+    (toolCallsToggled)="onMenuToggleToolCalls()"
   />
 
   <!-- ═══ DESKTOP SIDEBAR ═══ -->
@@ -48,6 +50,7 @@
     [isDark]="isDark()"
     [themeVariant]="themeVariant()"
     [showTechnical]="showTechnical()"
+    [showToolCalls]="showToolCalls()"
     (collapseRequested)="collapseSidebar()"
     (homeClicked)="navigateHome()"
     (namespaceSelected)="onNamespaceSelected($event)"
@@ -64,6 +67,7 @@
     (themeToggled)="onMenuToggleTheme()"
     (themeVariantChanged)="onMenuThemeVariantChanged($event)"
     (logsToggled)="onMenuToggleLogs()"
+    (toolCallsToggled)="onMenuToggleToolCalls()"
   />
 
   <!-- Resize handle (hidden when sidebar is collapsed) -->
@@ -89,6 +93,7 @@
     @if (activeCaseId()) {
       <agentos-case-chat
         [showTechnicalOverride]="showTechnical()"
+        [showToolCallsOverride]="showToolCalls()"
         (starToggled)="onStarToggled($event)"
         (deleteRequested)="onDeleteRequested($event)"
         (logsToggled)="onMenuToggleLogs()"

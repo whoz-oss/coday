@@ -65,6 +65,9 @@ export class AiProvidersAllScopesComponent implements OnInit {
 
   protected readonly listItems$ = this.state.vm$.pipe(map((vm) => this.toListItems(vm)))
 
+  /** True until the first vm$ emission resolves. */
+  protected readonly isLoading = signal(true)
+
   /**
    * Index resolving a composite key (`<scope>:<id>`) → (config, scope) so the item template
    * can render the right component variant. Composite key prevents cross-scope collisions
@@ -88,6 +91,7 @@ export class AiProvidersAllScopesComponent implements OnInit {
       .subscribe((v) => this.isAdmin.set(v))
 
     this.state.vm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((vm) => {
+      this.isLoading.set(false)
       const next = new Map<string, ResolvedItem>()
       vm.platform.forEach((c) => {
         if (c.id) next.set(this.itemKey('platform', c.id), { config: c, scope: 'platform' })

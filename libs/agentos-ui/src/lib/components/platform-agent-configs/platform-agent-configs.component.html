@@ -1,6 +1,7 @@
 <ds-entity-list
   title="Platform Agent Configs"
   [items]="(configItems$ | async) ?? []"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No platform agent configs defined yet. Add one above."
   cardMinWidth="400px"

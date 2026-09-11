@@ -304,8 +304,24 @@
     z-index: 1;
   }
 
+  &__message-time {
+    position: absolute;
+    right: 10px;
+    bottom: 7px;
+    font-family: var(--font-heading);
+    font-size: 0.65rem;
+    line-height: 1;
+    color: var(--color-text-tertiary);
+    opacity: 0.8;
+    pointer-events: auto;
+
+    .case-chat__turn--user & {
+      color: var(--color-accent-700);
+    }
+  }
+
   &__bubble {
-    padding: 16px 18px;
+    padding: 16px 18px 28px;
     font-size: 16px;
     line-height: 1.6;
     width: 100%;
@@ -319,7 +335,7 @@
 
     @media (max-width: 600px) {
       font-size: 14px;
-      padding: 12px 14px;
+      padding: 12px 14px 26px;
       width: 100%;
       box-sizing: border-box;
     }
@@ -328,10 +344,10 @@
       background: var(--color-accent-200);
       color: var(--color-accent-800);
       border-left: none;
-      padding: 11px 15px;
+      padding: 11px 15px 24px;
 
       @media (max-width: 600px) {
-        padding: 10px 12px;
+        padding: 10px 12px 24px;
       }
     }
   }
@@ -398,11 +414,24 @@
     flex: 1;
     min-width: 0;
   }
+  &__tool-call-status {
+    margin-left: auto;
+    color: var(--color-neutral-500);
+    font-size: 0.7rem;
+  }
+  &__tool-call-time {
+    flex-shrink: 0;
+    font-family: var(--font-heading);
+    font-size: 0.65rem;
+    line-height: 1;
+    color: var(--color-text-tertiary);
+    opacity: 0.8;
+    white-space: nowrap;
+  }
   &__tool-call-chevron {
     flex-shrink: 0;
     font-size: 0.6rem;
     color: var(--color-neutral-500);
-    margin-left: auto;
   }
 
   &__tool-call-output {
@@ -421,13 +450,19 @@
     pre {
       margin: 0.25rem 0 0;
       white-space: pre-wrap;
-      word-break: break-all;
+      word-break: break-word;
+      overflow-wrap: anywhere;
       font-family: var(--font-heading);
       font-size: 0.75rem;
       color: var(--color-text);
-      max-height: 200px;
+      max-height: 300px;
       overflow-y: auto;
+      overflow-x: hidden;
     }
+  }
+
+  &__tool-call-code--text {
+    color: var(--color-neutral-600);
   }
 
   &__tool-call-label {
@@ -514,7 +549,35 @@
     font-size: 0.75rem;
   }
 
-  // ── System log ───────────────────────────────────────────────────────────────
+  // ── Execution notices and system log ─────────────────────────────────────────
+
+  &__execution-notice {
+    flex-shrink: 0;
+    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    max-width: 90%;
+    padding: 0.55rem 0.75rem;
+    border-left: 3px solid var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+    color: var(--color-text);
+    font-size: 0.8rem;
+
+    &--error {
+      border-left-color: var(--color-error);
+      background: color-mix(in srgb, var(--color-error) 8%, transparent);
+    }
+  }
+
+  &__execution-notice-title {
+    font-weight: 600;
+  }
+
+  &__execution-notice-detail {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 
   &__log {
     flex-shrink: 0;
@@ -545,6 +608,9 @@
   }
 
   &__log-body {
+    display: block;
+    max-height: 260px;
+    overflow: auto;
     margin-top: 4px;
     padding: 10px 12px;
     font-family: var(--font-heading);

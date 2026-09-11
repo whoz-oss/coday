@@ -1,6 +1,7 @@
 <ds-entity-list
   title="Scheduled Prompts"
   [items]="promptItems()"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No scheduled prompts yet. Create one to get started."
   cardMinWidth="420px"
