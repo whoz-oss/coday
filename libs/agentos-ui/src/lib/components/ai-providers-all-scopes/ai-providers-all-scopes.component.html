@@ -1,6 +1,7 @@
 <ds-entity-list
   title="AI Providers"
   [items]="(listItems$ | async) ?? []"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No AI providers available."
   cardMinWidth="400px"

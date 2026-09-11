@@ -1,6 +1,7 @@
 <ds-entity-list
   title="Platform Scheduled Prompts"
   [items]="promptItems()"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No platform scheduled prompts defined yet. Add one above."
   cardMinWidth="420px"

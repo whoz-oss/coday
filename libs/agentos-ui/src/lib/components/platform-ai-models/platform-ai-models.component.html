@@ -1,6 +1,7 @@
 <ds-entity-list
   title="Platform AI Models"
   [items]="(modelItems$ | async) ?? []"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No platform AI models defined yet. Add one above."
   cardMinWidth="400px"

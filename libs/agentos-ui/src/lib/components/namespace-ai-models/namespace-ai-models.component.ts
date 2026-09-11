@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
@@ -48,19 +48,22 @@ export class NamespaceAiModelsComponent {
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
+  protected readonly isLoading = signal(true)
+
   /**
    * Fetches namespace models, platform models, and providers in parallel.
    * Providers are needed to resolve group labels for namespace-level models.
    */
   private readonly data$: Observable<{ namespace: AiModel[]; platform: AiModel[]; providers: AiProvider[] }> =
     this.refresh$.pipe(
-      switchMap(() =>
-        forkJoin({
+      switchMap(() => {
+        this.isLoading.set(true)
+        return forkJoin({
           namespace: this.aiModelController.listByNamespaceIdAiModel(this.namespaceId),
           platform: this.aiModelController.listPlatformLevelAiModel().pipe(catchError(() => of([] as AiModel[]))),
           providers: this.aiProviderController.listAiProvider(this.namespaceId),
         })
-      )
+      })
     )
 
   /** Mapped to EntityListItem[] with groupKey/groupLabel for ds-entity-list grouping.
@@ -96,9 +99,13 @@ export class NamespaceAiModelsComponent {
   private platformModelsById = new Map<string, AiModel>()
 
   constructor() {
-    this.data$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(({ namespace, platform }) => {
-      this.namespaceModelsById = new Map(namespace.map((m: AiModel) => [m.id ?? '', m]))
-      this.platformModelsById = new Map(platform.map((m: AiModel) => [m.id ?? '', m]))
+    this.data$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: ({ namespace, platform }) => {
+        this.namespaceModelsById = new Map(namespace.map((m: AiModel) => [m.id ?? '', m]))
+        this.platformModelsById = new Map(platform.map((m: AiModel) => [m.id ?? '', m]))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
 

@@ -1,6 +1,7 @@
 <ds-entity-list
   title="AI models"
   [items]="(modelItems$ | async) ?? []"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No AI models configured yet. Add one above."
   cardMinWidth="400px"

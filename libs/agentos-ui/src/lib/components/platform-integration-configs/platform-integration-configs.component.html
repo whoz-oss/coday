@@ -1,6 +1,7 @@
 <ds-entity-list
   title="Platform Integration Configs"
   [items]="(configItems$ | async) ?? []"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No platform integration configs defined yet. Add one above."
   cardMinWidth="400px"

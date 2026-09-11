@@ -47,7 +47,7 @@
             </div>
           }
         </div>
-        <span class="cdk-visually-hidden" role="status" aria-live="polite">Loading…</span>
+        <span class="entity-list__sr-only" role="status" aria-live="polite">Loading…</span>
       } @else if (filteredItems().length === 0) {
         <p class="entity-list__empty">{{ emptyMessage() }}</p>
       } @else if (hasGroups()) {
