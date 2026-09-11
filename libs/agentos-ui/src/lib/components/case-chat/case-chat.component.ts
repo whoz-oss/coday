@@ -970,17 +970,39 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Recursively unescape string values in a parsed JSON structure.
+   * Handles backends that double-encode newlines (\\n → \n) inside JSON string values.
+   */
+  private unescapeStringValues(value: unknown): unknown {
+    if (typeof value === 'string') {
+      // Replace literal \n, \t, \r sequences with real whitespace characters
+      return value.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r')
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => this.unescapeStringValues(item))
+    }
+    if (value !== null && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, this.unescapeStringValues(v)])
+      )
+    }
+    return value
+  }
+
   /** Pretty-print valid structured payloads without hiding malformed or plain-text values. */
   protected formatStructuredData(value: unknown): string {
     if (typeof value === 'string') {
       try {
-        return JSON.stringify(JSON.parse(value), null, 2)
+        const parsed = this.unescapeStringValues(JSON.parse(value))
+        return JSON.stringify(parsed, null, 2)
       } catch {
-        return value
+        // Not valid JSON — unescape literal \n sequences so plain-text args render with line breaks
+        return value.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r')
       }
     }
     try {
-      const formatted = JSON.stringify(value, null, 2)
+      const formatted = JSON.stringify(this.unescapeStringValues(value), null, 2)
       return formatted ?? String(value)
     } catch {
       return String(value)

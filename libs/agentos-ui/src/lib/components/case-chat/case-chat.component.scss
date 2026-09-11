@@ -450,12 +450,14 @@
     pre {
       margin: 0.25rem 0 0;
       white-space: pre-wrap;
-      word-break: break-all;
+      word-break: break-word;
+      overflow-wrap: anywhere;
       font-family: var(--font-heading);
       font-size: 0.75rem;
       color: var(--color-text);
-      max-height: 200px;
+      max-height: 300px;
       overflow-y: auto;
+      overflow-x: hidden;
     }
   }
 
