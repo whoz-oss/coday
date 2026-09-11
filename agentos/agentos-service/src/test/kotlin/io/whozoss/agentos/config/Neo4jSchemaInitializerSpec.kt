@@ -93,5 +93,17 @@ class Neo4jSchemaInitializerSpec : StringSpec() {
             saved.name shouldBe "updated-agent"
             saved.metadata.version shouldBe 1L
         }
+
+        "ensures skill constraints exist and are queryable" {
+            runInitializer()
+
+            val hasSkillDoubleKeyConstraint = neo4jClient.query(
+                "SHOW CONSTRAINTS YIELD name WHERE name = 'skill_double_key_unique' RETURN count(name) AS count"
+            ).fetchAs(Long::class.java)
+                .mappedBy { _, record -> record["count"].asLong() }
+                .one().orElse(0L)
+
+            hasSkillDoubleKeyConstraint shouldBe 1L
+        }
     }
 }

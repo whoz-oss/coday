@@ -8,15 +8,26 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Generic TTL cache for entities loaded from YAML files in a directory.
+ * Generic TTL cache for entities loaded from files in a directory.
  *
  * Each cache instance is bound to a single [directory]. Entries are (re)loaded
  * when the cache is empty or when [ttl] has elapsed since the last load.
  *
- * [parser] receives each regular `.yaml` / `.yml` file and returns the parsed
+ * [parser] receives each file matched by [filePredicate] and returns the parsed
  * entity, or null if the file should be skipped (parse error, invalid content).
  * Errors inside [parser] are caught and logged — a bad file never prevents the
  * rest of the directory from loading.
+ *
+ * [filePredicate] controls which files are passed to [parser]. Defaults to
+ * matching `.yaml` / `.yml` extensions, preserving backward compatibility for
+ * all existing repositories. Pass a custom predicate (e.g. matching `SKILL.md`
+ * by exact filename) to handle non-YAML discovery patterns.
+ *
+ * [maxDepth] bounds the recursive scan, passed straight through to
+ * `Files.walk(directory, maxDepth)`. The starting [directory] itself is depth 0; a file
+ * directly inside it is depth 1, a file one directory level deeper is depth 2, and so on.
+ * Defaults to `Int.MAX_VALUE`, i.e. unbounded — every existing caller keeps its current
+ * fully-recursive behaviour unless it opts in to a bound.
  *
  * Thread-safe: concurrent calls to [getAll] during a reload are serialised via
  * the instance lock. The lock is only held during the filesystem scan, not during
@@ -26,6 +37,8 @@ class FilesystemYamlCache<T>(
     private val directory: Path,
     private val parser: (Path) -> T?,
     private val ttl: Duration = DEFAULT_TTL,
+    private val filePredicate: (Path) -> Boolean = { it.toString().endsWith(".yaml") || it.toString().endsWith(".yml") },
+    private val maxDepth: Int = Int.MAX_VALUE,
 ) {
     private data class CacheEntry<T>(val items: List<T>, val loadedAt: Instant)
 
@@ -62,11 +75,11 @@ class FilesystemYamlCache<T>(
 
         val items =
             Files
-                .walk(directory)
+                .walk(directory, maxDepth)
                 .use { stream ->
                     stream
                         .filter { Files.isRegularFile(it) }
-                        .filter { it.toString().endsWith(".yaml") || it.toString().endsWith(".yml") }
+                        .filter { filePredicate(it) }
                         .toList()
                 }
                 .mapNotNull { file: Path ->
@@ -101,15 +114,22 @@ class FilesystemYamlCache<T>(
  * private val caches = FilesystemYamlCacheRegistry(::parseAgentYaml, Duration.ofMinutes(5))
  * val agents = caches.getAll(Path.of(namespace.configPath!!, "agents"))
  * ```
+ *
+ * [maxDepth] is forwarded unchanged to each per-directory [FilesystemYamlCache]; see its
+ * KDoc for exact semantics. Defaults to unbounded, matching the pre-existing behaviour of
+ * every caller created before this parameter was added.
  */
 class FilesystemYamlCacheRegistry<T>(
     private val parser: (Path, Path) -> T?,
     private val ttl: Duration = FilesystemYamlCache.DEFAULT_TTL,
+    private val filePredicate: (Path) -> Boolean = { it.toString().endsWith(".yaml") || it.toString().endsWith(".yml") },
+    private val maxDepth: Int = Int.MAX_VALUE,
 ) {
     private val caches = ConcurrentHashMap<Path, FilesystemYamlCache<T>>()
 
     fun getAll(directory: Path): List<T> =
         caches
-            .computeIfAbsent(directory) { dir -> FilesystemYamlCache(dir, { file -> parser(dir, file) }, ttl) }
-            .getAll()
+            .computeIfAbsent(directory) { dir ->
+                FilesystemYamlCache(dir, { file -> parser(dir, file) }, ttl, filePredicate, maxDepth)
+            }.getAll()
 }

@@ -55,6 +55,10 @@ import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunNodeNeo4jRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptUserRunNodeNeo4jRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptUserRunRepository
+import io.whozoss.agentos.skill.FilesystemSkillRepository
+import io.whozoss.agentos.skill.Neo4jSkillRepository
+import io.whozoss.agentos.skill.SkillNodeNeo4jRepository
+import io.whozoss.agentos.skill.SkillRepository
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
@@ -111,6 +115,7 @@ import java.time.ZoneOffset
         "io.whozoss.agentos.integrationConfig",
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.prompt",
+        "io.whozoss.agentos.skill",
         "io.whozoss.agentos.userGroup",
         "io.whozoss.agentos.authSetting",
         "io.whozoss.agentos.credential",
@@ -291,6 +296,39 @@ class Neo4jPersistenceConfiguration {
         logger.info { "[Persistence] Neo4jPromptRepository active (filesystem augmentation enabled)" }
         return FilesystemPromptRepository(
             delegate = neo4jPromptRepositoryDelegate,
+            namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
+        )
+    }
+
+    /**
+     * Inner Neo4j-backed bean, declared explicitly so that Spring AOP can proxy it and honour
+     * the [org.springframework.transaction.annotation.Transactional] boundaries declared on
+     * [Neo4jSkillRepository.save] and [Neo4jSkillRepository.deleteByParent].
+     *
+     * If this bean were constructed inline (via `Neo4jSkillRepository(...)` inside the outer
+     * factory method), it would not be managed by Spring and the AOP proxy would never be
+     * applied, silently disabling rollback semantics. This matters for [Neo4jSkillRepository.save]
+     * in particular: it creates the Skill node then the BELONGS_TO edge to the namespace as two
+     * separate Neo4j operations — without a transaction, a failure on the edge step would leave
+     * an orphan Skill node behind.
+     */
+    @Bean
+    fun neo4jSkillRepositoryDelegate(
+        skillNodeNeo4jRepository: SkillNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): Neo4jSkillRepository = Neo4jSkillRepository(skillNodeNeo4jRepository, childLinkService)
+
+    @Bean
+    @Primary
+    fun neo4jSkillRepository(
+        neo4jSkillRepositoryDelegate: Neo4jSkillRepository,
+        namespaceRepository: NamespaceRepository,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
+    ): SkillRepository {
+        logger.info { "[Persistence] Neo4jSkillRepository active (filesystem augmentation enabled)" }
+        return FilesystemSkillRepository(
+            delegate = neo4jSkillRepositoryDelegate,
             namespaceRepository = namespaceRepository,
             yamlMapper = yamlMapper,
         )

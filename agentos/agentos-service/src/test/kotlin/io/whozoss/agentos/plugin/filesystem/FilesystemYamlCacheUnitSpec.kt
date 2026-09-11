@@ -133,6 +133,33 @@ class FilesystemYamlCacheUnitSpec :
             invocations shouldHaveSize 2
         }
 
+        "getAll with custom filePredicate matches only matching files and ignores yaml files" {
+            val dir = tempDir()
+            writeYaml(dir, "SKILL.md", "skill-content")
+            dir.resolve("notes.yaml").also { Files.writeString(it, "yaml-content") }
+            dir.resolve("README.md").also { Files.writeString(it, "readme") }
+
+            val skillPredicate: (Path) -> Boolean = { it.fileName.toString() == "SKILL.md" }
+            val cache = FilesystemYamlCache(dir, stringParser, filePredicate = skillPredicate)
+            val result = cache.getAll()
+
+            result shouldHaveSize 1
+            result.first() shouldBe "skill-content"
+        }
+
+        "getAll with default predicate still ignores non-yaml files after predicate parameter addition" {
+            val dir = tempDir()
+            writeYaml(dir, "agent.yaml", "yaml-content")
+            dir.resolve("SKILL.md").also { Files.writeString(it, "skill-content") }
+
+            // Default predicate: only .yaml/.yml
+            val cache = FilesystemYamlCache(dir, stringParser)
+            val result = cache.getAll()
+
+            result shouldHaveSize 1
+            result.first() shouldBe "yaml-content"
+        }
+
         "getAll reflects updated file content after TTL expiry" {
             val dir = tempDir()
             val file = writeYaml(dir, "a.yaml", "original")
@@ -145,5 +172,62 @@ class FilesystemYamlCacheUnitSpec :
             Thread.sleep(WAIT_DELAY_MS)
 
             cache.getAll().first() shouldBe "updated"
+        }
+
+        "getAll with default maxDepth scans nested subdirectories (unbounded, backward compatible)" {
+            val dir = tempDir()
+            writeYaml(dir, "top.yaml", "top")
+            val nested = dir.resolve("a").resolve("b").also { Files.createDirectories(it) }
+            writeYaml(nested, "deep.yaml", "deep")
+
+            val cache = FilesystemYamlCache(dir, stringParser)
+            val result = cache.getAll()
+
+            result.toSet() shouldBe setOf("top", "deep")
+        }
+
+        "getAll with explicit maxDepth stops traversal before reaching deeper files" {
+            val dir = tempDir()
+            writeYaml(dir, "top.yaml", "top") // depth 1
+            val nested = dir.resolve("a").also { Files.createDirectories(it) } // depth 1 directory
+            writeYaml(nested, "shallow.yaml", "shallow") // depth 2
+            val deeper = nested.resolve("b").also { Files.createDirectories(it) } // depth 2 directory
+            writeYaml(deeper, "deep.yaml", "deep") // depth 3
+
+            // maxDepth = 2: root is depth 0; \"top.yaml\" and directory \"a\" are depth 1;
+            // \"shallow.yaml\" and directory \"a/b\" are depth 2 (last depth visited);
+            // \"deep.yaml\" at depth 3 is never visited.
+            val cache = FilesystemYamlCache(dir, stringParser, maxDepth = 2)
+            val result = cache.getAll()
+
+            result.toSet() shouldBe setOf("top", "shallow")
+        }
+
+        "getAll with maxDepth of 1 only scans files directly in the root directory" {
+            val dir = tempDir()
+            writeYaml(dir, "top.yaml", "top")
+            val nested = dir.resolve("a").also { Files.createDirectories(it) }
+            writeYaml(nested, "nested.yaml", "nested")
+
+            val cache = FilesystemYamlCache(dir, stringParser, maxDepth = 1)
+            val result = cache.getAll()
+
+            result shouldBe listOf("top")
+        }
+
+        "FilesystemYamlCacheRegistry forwards maxDepth to each per-directory cache" {
+            val dir = tempDir()
+            writeYaml(dir, "top.yaml", "top")
+            val nested = dir.resolve("a").also { Files.createDirectories(it) }
+            writeYaml(nested, "nested.yaml", "nested")
+
+            val registry =
+                FilesystemYamlCacheRegistry<String>(
+                    parser = { _, file -> Files.readString(file).trim().takeIf { it.isNotBlank() } },
+                    maxDepth = 1,
+                )
+            val result = registry.getAll(dir)
+
+            result shouldBe listOf("top")
         }
     })

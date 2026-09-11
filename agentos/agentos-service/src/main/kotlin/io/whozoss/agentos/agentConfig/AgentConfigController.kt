@@ -1,8 +1,8 @@
 package io.whozoss.agentos.agentConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.swagger.v3.oas.annotations.Operation
 import org.springframework.beans.factory.annotation.Qualifier
+import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
@@ -86,7 +86,8 @@ class AgentConfigController(
                     advancedExecution = resource.advancedExecution ?: false,
                     externalMetadata = resource.externalMetadata,
                     enabled = resource.enabled ?: false,
-                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
+                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
+                    skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
                 )
             },
         )
@@ -144,7 +145,8 @@ class AgentConfigController(
                     advancedExecution = resource.advancedExecution ?: false,
                     externalMetadata = resource.externalMetadata,
                     enabled = resource.enabled ?: existing.enabled,
-                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
+                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
+                    skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
                 ),
             ),
         )
@@ -270,7 +272,8 @@ internal fun toDomain(resource: AgentConfigDto): AgentConfig {
         advancedExecution = resource.advancedExecution ?: false,
         externalMetadata = resource.externalMetadata,
         enabled = resource.enabled ?: false,
-        subAgents = resource.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
+        subAgents = resource.subAgents?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
+        skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
     )
 }
 
@@ -291,6 +294,7 @@ internal fun toDto(entity: AgentConfig) =
         updatedOn = entity.metadata.modified,
         enabled = entity.enabled,
         subAgents = entity.subAgents,
+        skillSelectors = entity.skillSelectors,
     )
 
 /**
@@ -316,4 +320,5 @@ private fun toExportModel(entity: AgentConfig): Map<String, Any?> =
         entity.integrations?.takeIf { it.isNotEmpty() }?.let { put("integrations", it) }
         entity.subAgents?.takeIf { it.isNotEmpty() }?.let { put("subAgents", it) }
         entity.docs?.takeIf { it.isNotEmpty() }?.let { put("docs", it) }
+        entity.skillSelectors?.takeIf { it.isNotEmpty() }?.let { put("skillSelectors", it) }
     }
