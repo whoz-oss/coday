@@ -116,6 +116,10 @@ export function projectForgeRun(events) {
   }
   const editsByStory = new Map()
   for (const edit of events.filter((event) => event.event === 'story_edit_finished')) { const list=editsByStory.get(edit.storyRunId) ?? []; list.push({editId:edit.editId,status:edit.status,outcome:edit.outcome,caseId:edit.caseId,diffValidation:edit.diffValidation,filesModified:edit.filesModified,filesCreated:edit.filesCreated}); editsByStory.set(edit.storyRunId,list) }
+  const g2usByStory = new Map()
+  for (const ev of events.filter((event) => event.event === 'g2_us_evaluated')) {
+    g2usByStory.set(ev.storyRunId, ev)
+  }
   const executions = events.filter((event) => event.event === 'agent_execution_finished')
   const executionsByStory = new Map()
   for (const execution of executions) {
@@ -141,13 +145,15 @@ export function projectForgeRun(events) {
       const executions = executionsByStory.get(event.runId) ?? []
       const edits = editsByStory.get(event.runId) ?? []
       const oracleCampaigns = oracleCampaignsByStory.get(event.runId) ?? []
+      const g2usEvent = g2usByStory.get(event.runId) ?? null
+      const storyG2 = g2usEvent ? { gate: 'G2-US', attempt: g2usEvent.attempt, status: g2usEvent.status, code: g2usEvent.code, policyVersion: g2usEvent.policyVersion, storySpec: g2usEvent.storySpec ?? null } : null
       // Event order is the ledger's authoritative chronology. A Story's visible
       // state is its latest completed workflow step, without inventing a status.
       const latestCampaign = oracleCampaigns.at(-1)
       const latestEdit = edits.at(-1)
       const latestExecution = executions.at(-1)
       const status = latestCampaign?.status ?? latestEdit?.status ?? latestExecution?.status ?? 'not_started'
-      return { runId: event.runId, ordinal: event.ordinal, status, workItem: event.workItem, executions, edits, oracleCampaigns }
+      return { runId: event.runId, ordinal: event.ordinal, status, workItem: event.workItem, executions, edits, oracleCampaigns, storyG2 }
     }),
   }
 }

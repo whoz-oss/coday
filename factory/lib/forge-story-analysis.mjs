@@ -25,7 +25,7 @@ function buildBrief({ epic, story, spec, supplement }) {
 }
 export function writeStoryAnalysisArtifact(store, runId, executionId, content) { if(!/^[A-Za-z0-9_-]+$/.test(runId)||!/^exec_[A-Za-z0-9_-]+$/.test(executionId)) throw new Error('STORY_ANALYSIS_ARTIFACT_ID_INVALID'); const root=resolve(store), dir=resolve(root,'artifacts',runId), finalPath=resolve(dir,`${executionId}.md`); if(!dir.startsWith(`${root}/`)||!finalPath.startsWith(`${dir}/`)) throw new Error('STORY_ANALYSIS_ARTIFACT_PATH_INVALID'); mkdirSync(dir,{recursive:true}); const temporary=resolve(dir,`.${executionId}.${randomUUID()}.tmp`); if(!temporary.startsWith(`${dir}/`)) throw new Error('STORY_ANALYSIS_ARTIFACT_PATH_INVALID'); writeFileSync(temporary,content,{encoding:'utf8',mode:0o600}); renameSync(temporary,finalPath); return { kind:'agent-analysis-output', path:relative(root,finalPath), sha256:sha256(content), mediaType:'text/markdown', schemaVersion:1 } }
 
-export async function executeStoryAnalysis({ roots, epicRunId, storyRunId, namespaceId, agentName, expectedSpecHash, supplement, runtime=agentosRuntime, now=()=>new Date().toISOString() }) {
+export async function executeStoryAnalysis({ roots, epicRunId, storyRunId, namespaceId, agentName, expectedSpecHash, storySpecHash, supplement, runtime=agentosRuntime, now=()=>new Date().toISOString() }) {
   if (!namespaceId||!agentName) throw new Error('STORY_ANALYSIS_INPUT_INVALID')
   if (supplement!==undefined && (typeof supplement!=='string'||supplement.length>MAX_TEXT)) throw new Error('STORY_ANALYSIS_SUPPLEMENT_INVALID')
   const store=ensureForgeRunStore(roots), filePath=join(store,`${epicRunId}.jsonl`), events=parseForgeLedger(filePath)
@@ -35,6 +35,7 @@ export async function executeStoryAnalysis({ roots, epicRunId, storyRunId, names
   if(active) throw new Error('STORY_ANALYSIS_ALREADY_RUNNING')
   if(g1(events,epicRunId)!=='approved') throw new Error('STORY_ANALYSIS_G1_NOT_APPROVED')
   const g2Event=g2(events,epicRunId,expectedSpecHash); if(!g2Event) throw new Error('STORY_ANALYSIS_G2_NOT_PASSED')
+  if(storySpecHash!==undefined) { const g2us=events.find(e=>e.event==='g2_us_evaluated'&&e.storyRunId===storyRunId&&e.status==='passed'&&e.storySpec?.sha256===storySpecHash); if(!g2us) throw new Error('STORY_ANALYSIS_G2_US_NOT_PASSED') }
   const spec={ path:g2Event.spec.path, sha256:g2Event.spec.sha256, policyVersion:g2Event.policyVersion, frontmatter:(await import('./forge-spec.mjs')).loadForgeSpec({specPath:g2Event.spec.path,roots,workItem:epic.workItem}).frontmatter }
   if(spec.sha256!==g2Event.spec.sha256) throw new Error('STORY_ANALYSIS_SPEC_HASH_STALE')
   const agent=await runtime.preflightAgent(namespaceId,agentName); if(!agent.ok) throw new Error(`STORY_ANALYSIS_AGENT_PREFLIGHT_FAILED:${agent.reason}`)
