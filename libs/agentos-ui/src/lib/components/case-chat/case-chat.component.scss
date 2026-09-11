@@ -304,8 +304,24 @@
     z-index: 1;
   }
 
+  &__message-time {
+    position: absolute;
+    right: 10px;
+    bottom: 7px;
+    font-family: var(--font-heading);
+    font-size: 0.65rem;
+    line-height: 1;
+    color: var(--color-text-tertiary);
+    opacity: 0.8;
+    pointer-events: auto;
+
+    .case-chat__turn--user & {
+      color: var(--color-accent-700);
+    }
+  }
+
   &__bubble {
-    padding: 16px 18px;
+    padding: 16px 18px 28px;
     font-size: 16px;
     line-height: 1.6;
     width: 100%;
@@ -319,7 +335,7 @@
 
     @media (max-width: 600px) {
       font-size: 14px;
-      padding: 12px 14px;
+      padding: 12px 14px 26px;
       width: 100%;
       box-sizing: border-box;
     }
@@ -328,10 +344,10 @@
       background: var(--color-accent-200);
       color: var(--color-accent-800);
       border-left: none;
-      padding: 11px 15px;
+      padding: 11px 15px 24px;
 
       @media (max-width: 600px) {
-        padding: 10px 12px;
+        padding: 10px 12px 24px;
       }
     }
   }
@@ -403,11 +419,19 @@
     color: var(--color-neutral-500);
     font-size: 0.7rem;
   }
+  &__tool-call-time {
+    flex-shrink: 0;
+    font-family: var(--font-heading);
+    font-size: 0.65rem;
+    line-height: 1;
+    color: var(--color-text-tertiary);
+    opacity: 0.8;
+    white-space: nowrap;
+  }
   &__tool-call-chevron {
     flex-shrink: 0;
     font-size: 0.6rem;
     color: var(--color-neutral-500);
-    margin-left: auto;
   }
 
   &__tool-call-output {
@@ -433,6 +457,10 @@
       max-height: 200px;
       overflow-y: auto;
     }
+  }
+
+  &__tool-call-code--text {
+    color: var(--color-neutral-600);
   }
 
   &__tool-call-label {

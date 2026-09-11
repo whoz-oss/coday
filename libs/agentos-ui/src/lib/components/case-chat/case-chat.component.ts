@@ -66,6 +66,8 @@ export interface ToolCall {
   requestId: string
   toolName: string
   args: string | null
+  /** ISO timestamp from the ToolRequestEvent. */
+  timestamp?: string
   /** undefined = pending, defined = done */
   response?: ToolResponseEvent
   /** Enrichment phase traces from multi-step parameter generation (null when no enrichment). */
@@ -85,7 +87,13 @@ export interface ExecutionNotice {
 }
 
 export type TimelineItem =
-  | { kind: 'message'; event: CaseMessageEvent; html: SafeHtml; isFirstInGroup: boolean }
+  | {
+      kind: 'message'
+      event: CaseMessageEvent
+      html: SafeHtml
+      isFirstInGroup: boolean
+      isLastInGroup: boolean
+    }
   | { kind: 'tool'; call: ToolCall }
   | { kind: 'streaming' }
   | { kind: 'notice'; notice: ExecutionNotice; eventId: string }
@@ -258,6 +266,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   readonly showTechnicalOverride = input(false)
   protected readonly showTechnical = computed(() => this.showTechnicalOverride())
 
+  readonly showToolCallsOverride = input(true)
+  protected readonly showToolCalls = computed(() => this.showToolCallsOverride())
+
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
 
@@ -341,6 +352,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly baseTimeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()
     const showTechnical = this.showTechnical()
+    const showToolCalls = this.showToolCalls()
 
     // Pass 1: build complete tool call map (request + optional response)
     const toolCallMap = new Map<string, ToolCall>()
@@ -353,6 +365,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           requestId,
           toolName: req.toolName ?? 'unknown',
           args: req.args ?? null,
+          timestamp: req.timestamp ?? existing?.timestamp,
           response: existing?.response,
           enrichmentPhases: (req as ToolRequestEvent).enrichmentPhases ?? null,
         })
@@ -364,6 +377,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           requestId,
           toolName: existing?.toolName ?? res.toolName ?? 'unknown',
           args: existing?.args ?? null,
+          timestamp: existing?.timestamp,
           response: res,
           enrichmentPhases: existing?.enrichmentPhases ?? null,
         })
@@ -386,12 +400,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           event: msg,
           html: this.messageHtmlCache.get(e.id) ?? '',
           isFirstInGroup,
+          isLastInGroup: false,
         })
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
         const requestId = e.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
           seenToolIds.add(requestId)
-          items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
+          if (showToolCalls) {
+            items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
+          }
         }
         lastMessageRole = null
       } else if (e.type === 'QuestionEvent') {
@@ -411,6 +428,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         }
         lastMessageRole = null
       }
+    }
+
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index]
+      if (item?.kind !== 'message') continue
+      const next = items[index + 1]
+      item.isLastInGroup = next?.kind !== 'message' || next.event.actor.role !== item.event.actor.role
     }
 
     return items
@@ -908,7 +932,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.formatStructuredData(metadata)
   }
 
+  protected isToolMetadataStructured(call: ToolCall): boolean {
+    return this.isStructuredPayload(call.response?.toolMetadata)
+  }
+
   protected extractToolOutput(call: ToolCall): string | null {
+    const output = this.extractToolOutputValue(call)
+    return output === null || output === undefined ? null : this.formatStructuredData(output)
+  }
+
+  protected isToolOutputStructured(call: ToolCall): boolean {
+    return this.isStructuredPayload(this.extractToolOutputValue(call))
+  }
+
+  private extractToolOutputValue(call: ToolCall): unknown {
     if (!call.response) return null
     const output = call.response.output as unknown
     if (output === null || output === undefined) return null
@@ -917,9 +954,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     // returns another shape or a malformed value.
     if (typeof output === 'object' && 'content' in output) {
       const content = (output as { content?: unknown }).content
-      if (content !== undefined && content !== null) return this.formatStructuredData(content)
+      if (content !== undefined && content !== null) return content
     }
-    return this.formatStructuredData(output)
+    return output
+  }
+
+  /** True when a payload can be displayed as formatted JSON rather than plain text. */
+  protected isStructuredPayload(value: unknown): boolean {
+    if (typeof value !== 'string') return value !== null && value !== undefined
+    try {
+      JSON.parse(value)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /** Pretty-print valid structured payloads without hiding malformed or plain-text values. */
@@ -937,6 +985,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     } catch {
       return String(value)
     }
+  }
+
+  /** Local time for message cards; the full source timestamp remains available via title. */
+  protected formatMessageTime(timestamp: string): string {
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return ''
+    return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }).format(date)
+  }
+
+  protected formatMessageTimestampTitle(timestamp: string): string {
+    const date = new Date(timestamp)
+    return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString()
   }
 
   protected toggleToolCall(requestId: string): void {

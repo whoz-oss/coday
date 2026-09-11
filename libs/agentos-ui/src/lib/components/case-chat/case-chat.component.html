@@ -132,6 +132,14 @@
                     <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
                   }
                   <ds-copy-button class="case-chat__bubble-copy" [text]="messageText(item)" title="Copy message" />
+                  @if (item.isLastInGroup) {
+                    <time
+                      class="case-chat__message-time"
+                      [attr.datetime]="item.event.timestamp"
+                      [title]="formatMessageTimestampTitle(item.event.timestamp)"
+                      >{{ formatMessageTime(item.event.timestamp) }}</time
+                    >
+                  }
                 </div>
               </div>
             } @else if (item.kind === 'streaming') {
@@ -208,6 +216,14 @@
                       Failed
                     }
                   </span>
+                  @if (item.call.timestamp) {
+                    <time
+                      class="case-chat__tool-call-time"
+                      [attr.datetime]="item.call.timestamp"
+                      [title]="formatMessageTimestampTitle(item.call.timestamp)"
+                      >{{ formatMessageTime(item.call.timestamp) }}</time
+                    >
+                  }
                   <span class="case-chat__tool-call-chevron">{{
                     isToolCallExpanded(item.call.requestId) ? '▼' : '▶'
                   }}</span>
@@ -253,8 +269,15 @@
                     }
                     @if (formatToolArguments(item.call.args); as args) {
                       <div class="case-chat__tool-call-section">
-                        <span class="case-chat__tool-call-label">Arguments</span>
-                        <pre>{{ args }}</pre>
+                        <span class="case-chat__tool-call-label">
+                          Arguments
+                          @if (!isStructuredPayload(item.call.args)) {
+                            · Text
+                          }
+                        </span>
+                        <pre [class.case-chat__tool-call-code--text]="!isStructuredPayload(item.call.args)">{{
+                          args
+                        }}</pre>
                       </div>
                     }
                     @if (showTechnical() && formatToolDuration(item.call); as duration) {
@@ -264,11 +287,16 @@
                       </div>
                     }
                     <div class="case-chat__tool-call-section">
-                      <span class="case-chat__tool-call-label">{{
-                        item.call.response?.success === false ? 'Error' : 'Output'
-                      }}</span>
+                      <span class="case-chat__tool-call-label">
+                        {{ item.call.response?.success === false ? 'Error' : 'Output' }}
+                        @if (!isToolOutputStructured(item.call)) {
+                          · Text
+                        }
+                      </span>
                       @if (extractToolOutput(item.call); as output) {
-                        <pre>{{ output }}</pre>
+                        <pre [class.case-chat__tool-call-code--text]="!isToolOutputStructured(item.call)">{{
+                          output
+                        }}</pre>
                       } @else if (!item.call.response) {
                         <span class="case-chat__tool-call-pending">Running…</span>
                       } @else {
@@ -277,8 +305,15 @@
                     </div>
                     @if (showTechnical() && formatToolMetadata(item.call); as metadata) {
                       <div class="case-chat__tool-call-section">
-                        <span class="case-chat__tool-call-label">Metadata</span>
-                        <pre>{{ metadata }}</pre>
+                        <span class="case-chat__tool-call-label">
+                          Metadata
+                          @if (!isToolMetadataStructured(item.call)) {
+                            · Text
+                          }
+                        </span>
+                        <pre [class.case-chat__tool-call-code--text]="!isToolMetadataStructured(item.call)">{{
+                          metadata
+                        }}</pre>
                       </div>
                     }
                   </div>
