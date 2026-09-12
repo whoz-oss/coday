@@ -1,0 +1,114 @@
+@use '../_forge-tokens' as forge;
+
+:host {
+  @include forge.host;
+
+  --sf-empty: var(--color-neutral-200, #e7e7ea);
+}
+
+.ribbon {
+  display: flex;
+  gap: 2px;
+
+  &--labels {
+    margin-top: 5px;
+  }
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  font-family: var(--sf-heading);
+  text-align: center;
+  overflow: hidden;
+
+  &--face {
+    height: 42px;
+    font-size: 17px;
+    font-weight: 600;
+  }
+
+  &--state {
+    height: 42px;
+    padding: 2px;
+    font-size: 9px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    cursor: pointer;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+
+    &:hover {
+      filter: brightness(0.94);
+    }
+
+    @include forge.focus-ring;
+  }
+
+  /* Position courante de l'US : un anneau dans l'encre de son état. */
+  &--current {
+    outline-style: solid;
+  }
+
+  &--step {
+    flex-direction: column;
+    gap: 7px;
+    padding: 14px 6px 12px;
+    cursor: pointer;
+    outline: 3px solid transparent;
+    outline-offset: -3px;
+
+    &:hover {
+      filter: brightness(1.07);
+    }
+
+    @include forge.focus-ring;
+  }
+
+  /* Étape ouverte dans le volet : l'anneau accent, visible sur les
+     gates profonds comme sur les phases claires. */
+  &--selected {
+    outline-color: var(--color-accent-500, #5980a6);
+  }
+
+  &__name {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.1;
+  }
+
+  &__chip {
+    @include forge.chip;
+
+    padding: 1px 6px;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+  }
+}
+
+.label {
+  min-width: 0;
+  font-family: var(--sf-heading);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sf-muted);
+  text-align: center;
+  overflow: hidden;
+}
+
+/* Sous 900px le ruban détaillé s'empile : les noms d'étape ne se
+   compressent pas jusqu'à devenir illisibles. */
+@container (max-width: 900px) {
+  .ribbon--detail {
+    flex-wrap: wrap;
+
+    .cell--step {
+      flex: 1 1 140px;
+    }
+  }
+}

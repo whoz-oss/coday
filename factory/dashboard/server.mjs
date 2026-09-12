@@ -51,7 +51,6 @@ const AGENTOS_URL = process.env.AGENTOS_URL ?? 'http://localhost:8124'
 // Explicit store location for Forge Epic/Story projections. It is intentionally
 // independent from both this dashboard's source tree and the target repoRoot.
 const FORGE_RUN_STORE_ROOT = process.env.FACTORY_FORGE_RUN_STORE_ROOT ?? null
-
 // FACTORY_USER: used only to identify the AgentOS user for proxy headers.
 // No hardcoded personal username — resolved from Coday config or left undefined.
 const FACTORY_USER = process.env.FACTORY_USER
@@ -244,6 +243,40 @@ function listRuns() {
   return files
     .sort((a, b) => b.localeCompare(a))
     .map((f) => summarizeRun(f.replace('.jsonl', '')))
+}
+
+function readWorkstreams(repoRoot) {
+  const tomlPath = join(repoRoot, 'forge/bmad/workstreams.toml')
+  if (!existsSync(tomlPath)) return []
+
+  const content = readFileSync(tomlPath, 'utf8')
+  const workstreams = []
+
+  // Parser les sections [workstreams.<slug>]
+  const sectionRegex = /^\[workstreams\.([a-z0-9]+(?:-[a-z0-9]+)*)\]$/gm
+  let match
+  while ((match = sectionRegex.exec(content)) !== null) {
+    const slug = match[1]
+    const sectionStart = match.index + match[0].length
+    // Trouver la fin de la section (prochaine section ou EOF)
+    const nextSection = /^\[/m.exec(content.slice(sectionStart))
+    const sectionContent = nextSection
+      ? content.slice(sectionStart, sectionStart + nextSection.index)
+      : content.slice(sectionStart)
+
+    const nameMatch = /^name\s*=\s*"([^"]+)"/m.exec(sectionContent)
+    const statusMatch = /^status\s*=\s*"([^"]+)"/m.exec(sectionContent)
+
+    if (nameMatch && statusMatch) {
+      workstreams.push({
+        slug,
+        name: nameMatch[1],
+        status: statusMatch[1],
+      })
+    }
+  }
+
+  return workstreams
 }
 
 // ---------------------------------------------------------------------------
@@ -489,6 +522,16 @@ async function fetchAgents(namespaceId) {
   const headers = {}
   if (RESOLVED_FACTORY_USER) headers['X-External-User-Id'] = RESOLVED_FACTORY_USER
   const res = await fetch(url, { headers })
+  if (!res.ok) throw new Error(`AgentOS ${res.status}`)
+  return res.json()
+}
+
+async function fetchNamespace(namespaceId) {
+  const url = `${AGENTOS_URL}/api/namespaces/${encodeURIComponent(namespaceId)}`
+  const headers = {}
+  if (RESOLVED_FACTORY_USER) headers['X-External-User-Id'] = RESOLVED_FACTORY_USER
+  const res = await fetch(url, { headers })
+  if (res.status === 404) return null
   if (!res.ok) throw new Error(`AgentOS ${res.status}`)
   return res.json()
 }
@@ -787,6 +830,33 @@ const server = createServer(async (req, res) => {
   // 4. Run launch (POST /api/factory/runs) and stream (GET /api/factory/runs/:id/stream)
   //    are aliased here so Angular can use a single base path.
   // ---------------------------------------------------------------------------
+
+  // GET /api/factory/workstreams?namespaceId=<uuid>
+  //
+  // Resolves the repoRoot from the namespace configPath (AgentOS), then reads
+  // forge/bmad/workstreams.toml from that repo.
+  // Returns [] when the file does not exist (workspace not yet initialized).
+  if (method === 'GET' && path === '/api/factory/workstreams') {
+    const namespaceId = url.searchParams.get('namespaceId')
+    if (!namespaceId) return send(res, 400, { error: 'namespaceId query param is required' })
+
+    try {
+      const namespace = await fetchNamespace(namespaceId)
+      if (!namespace) return send(res, 404, { error: 'Namespace not found' })
+
+      const configPath = namespace.configPath
+      if (!configPath) return send(res, 422, { error: 'Namespace has no configPath configured' })
+
+      // repoRoot is the parent directory of configPath
+      // e.g. configPath = /Users/.../sprint/coday  ->  repoRoot = /Users/.../sprint
+      const repoRoot = dirname(configPath.replace(/\/+$/, ''))
+
+      const workstreams = readWorkstreams(repoRoot)
+      return send(res, 200, workstreams)
+    } catch (err) {
+      return send(res, 500, { error: String(err) })
+    }
+  }
 
   // GET /api/factory/runs[?namespaceId=<uuid>]
   if (method === 'GET' && path === '/api/factory/runs') {

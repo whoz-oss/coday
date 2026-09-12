@@ -1,0 +1,70 @@
+@switch (mode()) {
+  <!-- Distribution : une barre de comptes, le ruban condensé. -->
+  @case ('distribution') {
+    <div class="ribbon ribbon--distribution">
+      @for (cell of cells(); track trackCell($index, cell)) {
+        <div
+          class="cell cell--face"
+          [style.flex]="cell.weight"
+          [style.background]="cell.face"
+          [style.color]="cell.faceInk"
+          [attr.title]="cell.title"
+        >
+          {{ cell.count }}
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Ligne de grille : l'état d'une US, cellule par cellule. -->
+  @case ('row') {
+    <div class="ribbon ribbon--row">
+      @for (cell of cells(); track trackCell($index, cell)) {
+        <button
+          type="button"
+          class="cell cell--state"
+          [class.cell--current]="cell.current"
+          [style.flex]="cell.weight"
+          [style.background]="cell.bg"
+          [style.color]="cell.ink"
+          [style.outlineColor]="cell.ink"
+          [attr.title]="cell.title"
+          [attr.aria-label]="cell.title"
+          (click)="pick(cell.key)"
+        >
+          {{ cell.word }}
+        </button>
+      }
+    </div>
+  }
+
+  <!-- Ruban détaillé : le nom de l'étape, sa pastille d'état. -->
+  @default {
+    <div class="ribbon ribbon--detail">
+      @for (cell of cells(); track trackCell($index, cell)) {
+        <button
+          type="button"
+          class="cell cell--step"
+          [class.cell--selected]="cell.selected"
+          [style.flex]="cell.weight"
+          [style.background]="cell.face"
+          [style.color]="cell.faceInk"
+          [attr.title]="cell.title"
+          [attr.aria-pressed]="cell.selected"
+          (click)="pick(cell.key)"
+        >
+          <span class="cell__name">{{ cell.name }}</span>
+          <span class="cell__chip" [style.background]="cell.bg" [style.color]="cell.ink">{{ cell.word }}</span>
+        </button>
+      }
+    </div>
+  }
+}
+
+@if (labels() && mode() === 'distribution') {
+  <div class="ribbon ribbon--labels" aria-hidden="true">
+    @for (cell of cells(); track trackCell($index, cell)) {
+      <span class="label" [style.flex]="cell.weight">{{ cell.short }}</span>
+    }
+  </div>
+}

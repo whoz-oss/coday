@@ -103,6 +103,12 @@ export interface FactoryLaunchResponse {
   runId: string | null
 }
 
+export interface WorkstreamEntry {
+  slug: string
+  name: string
+  status: 'discovery' | 'planning' | string
+}
+
 export interface FactoryStopResponse {
   runId: string
   stopping: boolean
@@ -196,5 +202,11 @@ export class FactoryApiService {
     // The raw /api/jira/ prefix has no proxy rule and falls through to the
     // SPA index — see proxy.conf.json and factory/dashboard/server.mjs.
     return this.http.get<JiraTicketResponse>(`/api/factory/jira/${encodeURIComponent(ticketId)}`)
+  }
+
+  listWorkstreams(namespaceId: string): Observable<WorkstreamEntry[]> {
+    return this.http.get<WorkstreamEntry[]>('/api/factory/workstreams', {
+      params: new HttpParams().set('namespaceId', namespaceId),
+    })
   }
 }

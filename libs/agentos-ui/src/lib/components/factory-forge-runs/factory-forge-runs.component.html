@@ -1,436 +1,272 @@
-<section class="diagram" aria-labelledby="forge-runs-title">
-  <!-- Page header -->
-  <header class="diagram__page-header">
-    <div>
-      <p class="kicker">Software Factory · projection lecture seule</p>
-      <h2 id="forge-runs-title">Global Forge Epic runs</h2>
-      <p class="diagram__page-sub">Chaîne de preuves gouvernée — projection depuis le ledger.</p>
-    </div>
-    <button type="button" class="btn-refresh" (click)="refresh()" [disabled]="state.loading()">Refresh</button>
-  </header>
+@let ws = workstream()!;
 
-  <p class="diagram__scope" role="note">
-    Ces projections Forge sont globales. Elles sont affichées dans cet onglet namespace-scopé pour visibilité, mais ne
-    sont pas attribuées au namespace sélectionné.
-  </p>
+<!-- ── Barre d'application ────────────────────────────────────────────────────── -->
+<header class="appbar">
+  <div class="appbar__left">
+    <span class="appbar__brand">Forge</span>
+    <button type="button" class="appbar__root" (click)="goStreams()">Workstreams</button>
 
-  <!-- States -->
-  @if (state.loading()) {
-    <p class="diagram__notice" role="status">Chargement des EpicRuns…</p>
-  } @else if (state.error(); as error) {
-    <div class="diagram__notice" role="alert">
-      <p>{{ error }}</p>
-      <button type="button" class="btn-refresh" (click)="refresh()">Réessayer</button>
-    </div>
-  } @else if (state.runs().length === 0) {
-    <p class="diagram__notice" role="status">Aucun EpicRun Forge disponible.</p>
-  } @else {
-    @for (run of state.runs(); track trackRun($index, run)) {
-      <!-- ═══════════════════════════════════════════════════════════════
-           EPIC RUN
-           ═══════════════════════════════════════════════════════════════ -->
-      <article class="epic" [attr.aria-labelledby]="'epic-' + run.runId">
-        <!-- ── En-tête EpicRun ── -->
-        <header class="diagram__head">
-          <div class="diagram__identity">
-            <p class="kicker">Epic work item · EpicRun</p>
-            <h3 class="diagram__title" [id]="'epic-' + run.runId">
-              {{ run.workItem.id }}
-              <span class="chip" [class]="'chip--' + epicTone(run)">{{ epicLabel(run) }}</span>
-            </h3>
-            <p class="diagram__counters">{{ counters(run) }}</p>
-          </div>
-          <dl class="diagram__meta">
-            <div>
-              <dt>Démarrage</dt>
-              <dd>{{ date(run.startedAt) }}</dd>
-            </div>
-            <div>
-              <dt>Dépôt cible</dt>
-              <dd class="mono">{{ shortRepository(run.roots.repoRoot) }}</dd>
-            </div>
-            <div>
-              <dt>Portes G3</dt>
-              <dd class="diagram__tally">
-                @for (bucket of gate3Breakdown(run); track bucket.label) {
-                  <span class="chip" [class]="'chip--' + bucket.tone">{{ bucket.count }} {{ bucket.label }}</span>
-                }
-              </dd>
-            </div>
-          </dl>
-        </header>
-
-        <!-- ── Légende statuts ── -->
-        <aside class="legend blueprint">
-          <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
-          ><i class="corner corner--br"></i>
-          <p class="kicker">Statuts</p>
-          <ul class="legend__items">
-            <li><i class="swatch swatch--ok"></i>passed · approved · finished</li>
-            <li><i class="swatch swatch--active"></i>running</li>
-            <li><i class="swatch swatch--wait"></i>pending · blocked</li>
-            <li><i class="swatch swatch--fail"></i>failed · preuve invalide</li>
-            <li><i class="swatch swatch--idle"></i>not started · open</li>
-          </ul>
-          <p class="legend__note">
-            <strong>blocked</strong> n'est ni un échec fonctionnel ni un succès : la Factory n'a pas pu établir de
-            preuve fiable.
-          </p>
-        </aside>
-
-        <!-- ── Bande Epic : G1 + G2 + règle d'héritage ── -->
-        <section class="band band--epic" aria-labelledby="band-epic-{{ run.runId }}">
-          <div class="band__label">
-            <h4 [id]="'band-epic-' + run.runId">Niveau Epic</h4>
-            <p>décidé et figé une seule fois</p>
-          </div>
-
-          <div class="band__body">
-            <!-- G1 -->
-            @let g1 = g1Gate(run);
-            <div class="node blueprint" [class]="'node--' + intentTone(run)">
-              <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
-              ><i class="corner corner--br"></i>
-              <p class="node__gate">G1</p>
-              <h5 class="node__title">Intention humaine</h5>
-              <p class="node__caption">un responsable autorisé confirme que le travail doit être entrepris</p>
-              <footer class="node__footer">
-                <span class="chip" [class]="'chip--' + intentTone(run)">{{ intentLabel(run) }}</span>
-                @if (g1['attempt']) {
-                  <span class="node__metric">tentative {{ g1['attempt'] }}</span>
-                }
-              </footer>
-            </div>
-
-            <!-- G2 · Epic specification gate -->
-            @let g2 = g2Gate(run);
-            <div class="node node--spec blueprint">
-              <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
-              ><i class="corner corner--br"></i>
-              <header class="node__header">
-                <div>
-                  <p class="node__gate">G2 · Epic specification gate</p>
-                  <h5 class="node__title">Cadre commun figé par hash</h5>
-                </div>
-                <span class="chip" [class]="'chip--' + specTone(run)">{{ specLabel(run) }}</span>
-              </header>
-              <p class="node__caption">
-                Validation déterministe du cadre Epic. Les Story specs et l'héritage G2-US ne sont pas encore projetés
-                dans le ledger.
-              </p>
-              @if (g2['code']) {
-                <footer class="node__hash mono">
-                  {{ g2['code'] }} · {{ g2['policyVersion'] }}
-                  @if (g2['evidenceSetHash']) {
-                    · <span class="accent">{{ g2['evidenceSetHash'] }}</span>
-                  }
-                </footer>
-              }
-            </div>
-
-            <!-- Règle d'héritage — projection gap -->
-            <div class="node node--rule blueprint">
-              <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
-              ><i class="corner corner--br"></i>
-              <p class="node__gate">Règle d'héritage — not yet projected</p>
-              <dl class="rule">
-                <div>
-                  <dt class="mono">scope US ⊆ scope Epic</dt>
-                  <dd>raffiner, jamais élargir</dd>
-                </div>
-                <div>
-                  <dt class="mono">deny US ⊇ deny Epic</dt>
-                  <dd>hériter, jamais affaiblir</dd>
-                </div>
-              </dl>
-              <p class="node__caption">
-                Story specifications et G2-US ne sont pas encore persistés dans le ledger. Les stations architecturales
-                sont préservées sans asserter leur évidence.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <!-- ── En-têtes de couloirs ── -->
-        <div class="lanes" aria-hidden="true">
-          <span class="lanes__spacer"></span>
-          <span class="lanes__title lanes__title--spec">Spécification US</span>
-          <span class="lanes__title">Couloir agents bornés →</span>
-          <span class="lanes__title lanes__title--factory">Couloir preuves déterministes Factory →</span>
-        </div>
-
-        <!-- ── Un bloc par StoryRun ── -->
-        @for (story of stories(run); track trackStory($index, story)) {
-          <section class="story" [attr.aria-label]="story.workItemKey">
-            <!-- Identité -->
-            <div class="story__identity">
-              <p class="kicker">US {{ $index + 1 }} · StoryRun</p>
-              <h4 class="story__key">{{ story.workItemKey }}</h4>
-              <span class="chip" [class]="'chip--' + story.tone">{{ story.statusLabel }}</span>
-              <p class="story__summary">{{ story.summary }}</p>
-            </div>
-
-            <!-- Spécification US — projection gap -->
-            <div class="story__spec node node--story-spec blueprint">
-              <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
-              ><i class="corner corner--br"></i>
-              <p class="node__gate">Story specification</p>
-              <h5 class="node__title">Not projected yet</h5>
-              <p class="node__caption">G2-US et l'héritage scope/deny ne sont pas encore persistés dans le ledger.</p>
-              <footer class="node__footer">
-                <span class="chip chip--idle">not projected</span>
-              </footer>
-            </div>
-
-            <!-- Couloir agents (Analysis → Edit) -->
-            <div class="story__lane story__lane--agents">
-              @for (step of story.agentSteps; track trackStep($index, step)) {
-                <div
-                  class="step node blueprint"
-                  [class]="'node--' + step.tone"
-                  [class.step--linked]="!step.first"
-                  [class.step--broken]="breaksChain(step)"
-                >
-                  <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
-                  ><i class="corner corner--br"></i>
-                  <h5 class="node__title">{{ step.label }}</h5>
-                  <p class="node__caption">{{ step.caption }}</p>
-                  <footer class="node__footer">
-                    <span class="chip" [class]="'chip--' + step.tone">{{ step.statusLabel }}</span>
-                    <span class="node__metric">{{ step.metric }}</span>
-                  </footer>
-                </div>
-              }
-            </div>
-
-            <!-- Couloir Factory : oracles + G3 -->
-            <div class="story__lane story__lane--factory">
-              @if (story.factorySteps.length === 0) {
-                <p class="lane__absence">Aucune campagne oracle enregistrée.</p>
-              }
-              @for (step of story.factorySteps; track trackStep($index, step)) {
-                <div
-                  class="step node blueprint"
-                  [class]="'node--' + step.tone"
-                  [class.step--linked]="!step.first"
-                  [class.step--elbow]="step.laneBreak"
-                  [class.step--broken]="breaksChain(step)"
-                >
-                  <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
-                  ><i class="corner corner--br"></i>
-                  <h5 class="node__title">{{ step.label }}</h5>
-                  <p class="node__caption">{{ step.caption }}</p>
-                  <footer class="node__footer">
-                    <span class="chip" [class]="'chip--' + step.tone">{{ step.statusLabel }}</span>
-                    <span class="node__metric">{{ step.metric }}</span>
-                  </footer>
-                </div>
-              }
-
-              <!-- G3 -->
-              <div class="step node node--gate blueprint step--linked" [class]="'node--gate-' + story.gateTone">
-                <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
-                ><i class="corner corner--br"></i>
-                <p class="node__gate">G3</p>
-                <h5 class="node__title">Preuve vs spec US</h5>
-                <p class="node__caption">oracles déterministes de la spec US</p>
-                <footer class="node__footer">
-                  <span class="chip" [class]="'chip--' + story.gateTone">{{ story.gateStatusLabel }}</span>
-                </footer>
-              </div>
-            </div>
-
-            <!-- Preuves techniques -->
-            <div class="story__evidence">
-              <button
-                type="button"
-                class="evidence__toggle"
-                [attr.aria-expanded]="isEvidenceOpen(story.id)"
-                [attr.aria-controls]="'evidence-' + story.id"
-                (click)="toggleEvidence(story.id)"
-              >
-                <span class="evidence__mark" aria-hidden="true">{{ isEvidenceOpen(story.id) ? '−' : '+' }}</span>
-                Technical evidence — {{ story.workItemKey }}
-              </button>
-
-              @if (isEvidenceOpen(story.id)) {
-                <div class="evidence" [id]="'evidence-' + story.id">
-                  <section class="evidence__group">
-                    <h5>StoryRun</h5>
-                    <dl>
-                      <div>
-                        <dt>story run ID</dt>
-                        <dd class="mono accent">{{ story.id }}</dd>
-                      </div>
-                    </dl>
-                  </section>
-
-                  @if (story.raw.executions.length > 0) {
-                    <section class="evidence__group">
-                      <h5>Analysis</h5>
-                      <dl>
-                        @for (exec of story.raw.executions; track field(exec['executionId'])) {
-                          <div>
-                            <dt>exécution</dt>
-                            <dd class="mono">{{ field(exec['executionId']) }}</dd>
-                          </div>
-                          <div>
-                            <dt>case</dt>
-                            <dd class="mono">{{ field(exec['caseId']) }}</dd>
-                          </div>
-                          <div>
-                            <dt>validation</dt>
-                            <dd>{{ field(exec['analysisValidation']) }}</dd>
-                          </div>
-                          <div>
-                            <dt>artefact</dt>
-                            <dd class="mono">{{ field(exec['artifact']) }}</dd>
-                          </div>
-                        }
-                      </dl>
-                    </section>
-                  }
-
-                  @if (story.raw.edits.length > 0) {
-                    <section class="evidence__group">
-                      <h5>Edit</h5>
-                      <dl>
-                        @for (edit of story.raw.edits; track field(edit['editId'])) {
-                          <div>
-                            <dt>ID</dt>
-                            <dd class="mono">{{ field(edit['editId']) }}</dd>
-                          </div>
-                          <div>
-                            <dt>diff validation</dt>
-                            <dd>{{ field(edit['diffValidation']) }}</dd>
-                          </div>
-                          <div>
-                            <dt>fichiers modifiés</dt>
-                            <dd class="mono">{{ list(edit['filesModified']) }}</dd>
-                          </div>
-                          <div>
-                            <dt>fichiers créés</dt>
-                            <dd class="mono">{{ list(edit['filesCreated']) }}</dd>
-                          </div>
-                        }
-                      </dl>
-                    </section>
-                  }
-
-                  @for (campaign of story.raw.oracleCampaigns; track campaign.campaignId) {
-                    <section class="evidence__group">
-                      <h5>G3 — campagne {{ campaign.campaignId }}</h5>
-                      <dl>
-                        <div>
-                          <dt>statut</dt>
-                          <dd>{{ campaign.status }}</dd>
-                        </div>
-                        @for (oracle of campaign.results; track trackOracle($index, oracle)) {
-                          <div>
-                            <dt>{{ oracle.name }} — code</dt>
-                            <dd>{{ field(oracle.code) }}</dd>
-                          </div>
-                          <div>
-                            <dt>{{ oracle.name }} — owners</dt>
-                            <dd class="mono">{{ list(oracle.ownerProjects) }}</dd>
-                          </div>
-                          <div>
-                            <dt>{{ oracle.name }} — target</dt>
-                            <dd class="mono">{{ field(oracle.target) }}</dd>
-                          </div>
-                          <div>
-                            <dt>{{ oracle.name }} — build hosts</dt>
-                            <dd class="mono">{{ list(oracle.buildHosts) }}</dd>
-                          </div>
-                          <div>
-                            <dt>{{ oracle.name }} — exit</dt>
-                            <dd>{{ field(oracle.exitCode) }}</dd>
-                          </div>
-                          <div>
-                            <dt>{{ oracle.name }} — cmd hash</dt>
-                            <dd class="mono accent">{{ field(oracle.commandHash) }}</dd>
-                          </div>
-                        }
-                      </dl>
-                    </section>
-                  }
-                </div>
-              }
-            </div>
-          </section>
-        }
-        <!-- /stories -->
-
-        <!-- Preuves techniques Epic -->
-        <div class="epic__evidence">
+    @if (inWorkstream()) {
+      <nav class="switcher" aria-label="Changer de workstream">
+        @for (candidate of workstreams; track candidate.name; let i = $index) {
           <button
             type="button"
-            class="evidence__toggle"
-            [attr.aria-expanded]="isEvidenceOpen(run.runId + '-epic')"
-            [attr.aria-controls]="'evidence-epic-' + run.runId"
-            (click)="toggleEvidence(run.runId + '-epic')"
+            class="switcher__item"
+            [class.switcher__item--active]="i === wsIndex()"
+            [attr.aria-current]="i === wsIndex() ? 'true' : null"
+            (click)="openWorkstream(i)"
           >
-            <span class="evidence__mark" aria-hidden="true">{{ isEvidenceOpen(run.runId + '-epic') ? '−' : '+' }}</span>
-            Epic technical evidence — {{ run.workItem.id }}
+            {{ candidate.name }}
           </button>
-          @if (isEvidenceOpen(run.runId + '-epic')) {
-            <div class="evidence" [id]="'evidence-epic-' + run.runId">
-              <section class="evidence__group">
-                <h5>EpicRun</h5>
-                <dl>
-                  <div>
-                    <dt>epic run ID</dt>
-                    <dd class="mono accent">{{ run.runId }}</dd>
-                  </div>
-                  <div>
-                    <dt>repository</dt>
-                    <dd class="mono">{{ field(run.roots.repoRoot) }}</dd>
-                  </div>
-                </dl>
-              </section>
-              @for (gate of run.gates; track gate.gate) {
-                <section class="evidence__group">
-                  <h5>{{ gate.gate }}</h5>
-                  <dl>
-                    <div>
-                      <dt>tentative</dt>
-                      <dd>{{ field(gate['attempt']) }}</dd>
-                    </div>
-                    <div>
-                      <dt>code</dt>
-                      <dd>{{ field(gate['code']) }}</dd>
-                    </div>
-                    <div>
-                      <dt>policy</dt>
-                      <dd class="mono">{{ field(gate['policyVersion']) }}</dd>
-                    </div>
-                    <div>
-                      <dt>evidence hash</dt>
-                      <dd class="mono accent">{{ field(gate['evidenceSetHash']) }}</dd>
-                    </div>
-                  </dl>
-                </section>
-              }
-            </div>
+        }
+      </nav>
+    }
+  </div>
+
+  <div class="appbar__actions">
+    @if (inWorkstream()) {
+      <dl class="appbar__meta">
+        <div>
+          <dt>branche</dt>
+          <dd class="mono">{{ ws.branch }}</dd>
+        </div>
+        <div>
+          <dt>preview</dt>
+          <dd class="mono">{{ ws.preview }}</dd>
+        </div>
+      </dl>
+    }
+    <!-- Bouton Lancer un run Forge : visible sur tous les écrans -->
+    <button type="button" class="btn-launch" (click)="openLaunchPanel()">Lancer un run Forge</button>
+  </div>
+</header>
+
+<!-- ── Fil d'ariane ─────────────────────────────────────────────────────────── -->
+<nav class="crumbs" aria-label="Fil d'ariane">
+  <button type="button" class="crumbs__link" (click)="goStreams()">Workstreams</button>
+
+  @if (inWorkstream()) {
+    <span class="crumbs__sep" aria-hidden="true">▸</span>
+    <button type="button" class="crumbs__link" (click)="goWorkstream()">{{ ws.name }}</button>
+  }
+
+  @if (inEpic()) {
+    <span class="crumbs__sep" aria-hidden="true">▸</span>
+    <button type="button" class="crumbs__link" (click)="goEpic()">{{ epic()?.key }}</button>
+  }
+
+  @if (screen() === 'story') {
+    <span class="crumbs__sep" aria-hidden="true">▸</span>
+    <span class="crumbs__current">{{ story()?.key }}</span>
+  }
+</nav>
+
+@switch (screen()) {
+  <!-- ══ 00 · Workstreams ══ -->
+  @case ('streams') {
+    <section class="screen">
+      <header class="screen__head">
+        <div>
+          <h1 class="screen__title">Workstreams</h1>
+          <p class="screen__lead">
+            Un workstream est un sujet produit : il porte ses Epics, mais aussi tout ce qui se dit autour — comptes
+            rendus de grooming, décisions, notes de cadrage.
+          </p>
+        </div>
+        <div class="screen__actions">
+          <span class="screen__hint">cliquez un sujet pour l'ouvrir</span>
+          <button type="button" class="btn-launch" (click)="openLaunchPanel()">Lancer un run Forge</button>
+        </div>
+      </header>
+
+      @if (workstreamsLoading()) {
+        <p class="screen__status">Chargement des workstreams…</p>
+      } @else if (workstreamsError()) {
+        <p class="screen__status screen__status--error">{{ workstreamsError() }}</p>
+      } @else if (!workstreams.length) {
+        <p class="screen__status screen__status--empty">Aucun workstream configuré.</p>
+      } @else {
+        <div class="cards">
+          @for (card of streamCards(); track card.name) {
+            <button type="button" class="card blueprint" (click)="openWorkstream(card.index)">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <span class="kicker kicker--accent">Sujet</span>
+              <span class="card__name">{{ card.name }}</span>
+              <span class="card__subject">{{ card.subject }}</span>
+              <span class="card__lead">{{ card.lead }}</span>
+              <span class="flags">
+                @for (flag of card.flags; track flag.label) {
+                  <span class="chip" [style.background]="flag.bg" [style.color]="flag.ink">{{ flag.label }}</span>
+                }
+              </span>
+              <span class="card__foot">
+                <span>{{ card.counts }}</span>
+                <span class="mono">{{ card.branch }}</span>
+              </span>
+            </button>
           }
         </div>
-
-        <!-- Pied : portée du diagramme -->
-        <footer class="diagram__foot blueprint">
-          <i class="corner corner--tl"></i><i class="corner corner--tr"></i> <i class="corner corner--bl"></i
-          ><i class="corner corner--br"></i>
-          <p class="kicker">Portée de cette vue</p>
-          <p>
-            Chaîne de preuves : intention humaine → spec Epic figée → analyse bornée → mutation contrôlée → validation
-            déterministe → résultat traçable. Ni journal d'agents, ni conversation, ni déclaration de réussite faite par
-            un modèle, ni état Jira reconstruit.
-          </p>
-          <p>
-            Aucune porte G4 n'existe : le statut <strong>{{ epicLabel(run) }}</strong> de l'Epic ne prétend pas que la
-            livraison est terminée, même lorsque toutes ses Stories ont passé G3.
-          </p>
-        </footer>
-      </article>
-    }
+      }
+    </section>
   }
-</section>
+
+  <!-- ══ 01 · page du sujet ══ -->
+  @case ('workstream') {
+    <section class="screen">
+      <header class="screen__head">
+        <div>
+          <h1 class="screen__title">{{ ws.name }}</h1>
+          <p class="screen__subtitle">{{ ws.subject }}</p>
+        </div>
+        <div class="screen__actions">
+          <span class="screen__hint">tout ce qui relève de ce sujet</span>
+          <button type="button" class="btn-launch" (click)="openLaunchPanel()">Lancer un run Forge</button>
+        </div>
+      </header>
+
+      <div class="tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          class="tabs__tab"
+          [class.tabs__tab--active]="tab() === 'epics'"
+          [attr.aria-selected]="tab() === 'epics'"
+          (click)="setTab('epics')"
+        >
+          Epics <span class="tabs__count">{{ ws.epics.length }}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="tabs__tab"
+          [class.tabs__tab--active]="tab() === 'docs'"
+          [attr.aria-selected]="tab() === 'docs'"
+          (click)="setTab('docs')"
+        >
+          Comptes rendus &amp; décisions <span class="tabs__count">{{ docCount() }}</span>
+        </button>
+        <span class="tabs__soon">Discussions — à venir</span>
+      </div>
+
+      @if (tab() === 'epics') {
+        <div class="rows">
+          @for (row of epicRows(); track row.key) {
+            <button type="button" class="row blueprint" (click)="openEpic(row.index)">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <span class="row__head">
+                <span class="row__identity">
+                  <span class="row__key">{{ row.key }}</span>
+                  <span class="row__title">{{ row.title }}</span>
+                </span>
+                <span class="flags">
+                  @for (flag of row.flags; track flag.label) {
+                    <span class="chip" [style.background]="flag.bg" [style.color]="flag.ink">{{ flag.label }}</span>
+                  }
+                </span>
+              </span>
+              <agentos-forge-ribbon class="row__bar" mode="distribution" [counts]="row.counts"></agentos-forge-ribbon>
+            </button>
+          }
+        </div>
+      } @else {
+        <div class="docs">
+          <p class="screen__lead">{{ ws.lead }}</p>
+
+          @for (group of ws.docs; track group.category) {
+            <section class="docs__group">
+              <header class="docs__head">
+                <h2>{{ group.category }}</h2>
+                <span>{{ group.items.length }}</span>
+              </header>
+
+              @for (doc of group.items; track doc.title) {
+                <article class="doc blueprint">
+                  <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+                  <div>
+                    <h3 class="doc__title">{{ doc.title }}</h3>
+                    <p class="doc__meta">{{ doc.meta }}</p>
+                  </div>
+                  <span class="doc__tag">{{ doc.tag }}</span>
+                </article>
+              }
+            </section>
+          }
+        </div>
+      }
+    </section>
+  }
+
+  <!-- ══ 02 · cockpit Epic ══ -->
+  @case ('epic') {
+    <agentos-epic-cockpit
+      [epic]="epic()!"
+      [overrides]="overrides()"
+      [answered]="answered()"
+      (storyPicked)="openStory($event)"
+    ></agentos-epic-cockpit>
+  }
+
+  <!-- ══ 03 · US ══ -->
+  @case ('story') {
+    <agentos-story-run
+      [story]="story()!"
+      [step]="stepKey()"
+      [overrides]="storyOverrides()"
+      [answered]="storyAnswered()"
+      (decided)="onDecided($event)"
+    ></agentos-story-run>
+  }
+}
+
+<!-- ── Dialog : Lancer un run Forge ──────────────────────────────────── -->
+@if (showLaunchPanel()) {
+  <div class="dialog-scrim" (click)="closeLaunchPanel()"></div>
+  <div class="dialog blueprint" role="dialog" aria-modal="true" aria-labelledby="launch-dialog-title">
+    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+    <header class="dialog__head">
+      <h2 class="dialog__title" id="launch-dialog-title">Lancer un run Forge</h2>
+      <button type="button" class="dialog__close" aria-label="Fermer" (click)="closeLaunchPanel()">×</button>
+    </header>
+    <p class="dialog__lead">
+      Entrez le numéro du ticket. L'agent ProductEngineer sera lancé dans un nouveau case AgentOS.
+    </p>
+    <div class="dialog__field">
+      <label for="forge-workstream" class="dialog__label">Workstream</label>
+      <select
+        id="forge-workstream"
+        class="dialog__input"
+        [value]="launchWorkstreamSlug()"
+        (change)="onWorkstreamChange($event)"
+      >
+        <option value="">— sélectionner —</option>
+        @for (ws of workstreamEntries; track ws.slug) {
+          <option [value]="ws.slug">{{ ws.name }}</option>
+        }
+      </select>
+    </div>
+    <div class="dialog__field">
+      <label for="forge-ticket-id" class="dialog__label">Numéro de ticket</label>
+      <input
+        id="forge-ticket-id"
+        type="text"
+        class="dialog__input mono"
+        placeholder="WZ-XXXX"
+        [value]="launchTicketId()"
+        (input)="onTicketInput($event)"
+        (keydown.enter)="launchForgeRun()"
+        (keydown.escape)="closeLaunchPanel()"
+      />
+    </div>
+    <div class="dialog__actions">
+      <button
+        type="button"
+        class="btn-launch"
+        [disabled]="!launchTicketId().trim() || launching()"
+        (click)="launchForgeRun()"
+      >
+        {{ launching() ? 'Lancement…' : 'Lancer' }}
+      </button>
+      <button type="button" class="btn-cancel" (click)="closeLaunchPanel()">Annuler</button>
+    </div>
+  </div>
+}

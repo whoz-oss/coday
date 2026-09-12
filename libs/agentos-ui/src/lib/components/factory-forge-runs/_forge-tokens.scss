@@ -1,0 +1,143 @@
+@use 'sass:map';
+
+/* ------------------------------------------------------------------
+ * Tokens partagés par les composants de la console Forge.
+ *
+ * Chaque composant fait `@use './_forge-tokens' as forge;` (ou un
+ * chemin relatif équivalent) puis `@include forge.host;` dans son
+ * `:host` — les valeurs viennent du design system Industry, avec un
+ * repli si la feuille globale n'est pas encore chargée.
+ * ------------------------------------------------------------------ */
+
+@mixin host {
+  --sf-bg: var(--color-bg, #f2f2f3);
+  --sf-ink: var(--color-text, #1d1f20);
+  --sf-muted: var(--color-neutral-700, #5d5d60);
+  --sf-faint: var(--color-neutral-600, #7b7b7e);
+  --sf-line: var(--color-divider, #d4d4d6);
+  --sf-rule: var(--color-text, #1d1f20);
+  --sf-accent: var(--color-accent, #5980a6);
+  --sf-accent-ink: var(--color-accent-700, #416180);
+  --sf-accent-deep: var(--color-accent-900, #1c2b3a);
+  --sf-accent-wash: var(--color-accent-100, #eaf1f7);
+  --sf-accent-line: var(--color-accent-400, #8fadc9);
+
+  --sf-heading: var(--font-heading, 'Barlow Condensed', 'Barlow', system-ui, sans-serif);
+  --sf-body: var(--font-body, 'Barlow', system-ui, sans-serif);
+  --sf-mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', monospace;
+
+  display: block;
+  color: var(--sf-ink);
+  font-family: var(--sf-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Kicker : la petite capitale condensée qui titre chaque bloc. */
+@mixin kicker($color: var(--sf-muted)) {
+  font-family: var(--sf-heading);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: $color;
+}
+
+/* Puce de statut — jamais seule : le mot est toujours dans le DOM. */
+@mixin chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  font-family: var(--sf-heading);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Objet blueprint : filet d'un pixel, angles droits, pas de fond. */
+@mixin blueprint {
+  position: relative;
+  border: 1px solid var(--sf-line);
+  background: transparent;
+}
+
+/* Marques de repérage en croix aux quatre angles. */
+@mixin corners {
+  .corner {
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    pointer-events: none;
+
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      background: var(--sf-accent-line);
+    }
+
+    &::before {
+      inset: 4px 0 auto;
+      height: 1px;
+    }
+
+    &::after {
+      inset: 0 4px;
+      width: 1px;
+    }
+
+    &.tl {
+      top: -5px;
+      left: -5px;
+    }
+    &.tr {
+      top: -5px;
+      right: -5px;
+    }
+    &.bl {
+      bottom: -5px;
+      left: -5px;
+    }
+    &.br {
+      bottom: -5px;
+      right: -5px;
+    }
+  }
+}
+
+@mixin mono($size: 11.5px) {
+  font-family: var(--sf-mono);
+  font-size: $size;
+  letter-spacing: -0.01em;
+}
+
+@mixin focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--sf-accent);
+    outline-offset: 2px;
+  }
+}
+
+/* Bouton d'action neutre du système : filet, angles droits, tint accent. */
+@mixin action-button {
+  padding: 7px 14px;
+  background: transparent;
+  border: 1px solid var(--sf-rule);
+  font-family: var(--sf-heading);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--sf-ink);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--sf-accent-wash);
+  }
+  &:active {
+    border-color: var(--sf-accent);
+    color: var(--sf-accent-deep);
+  }
+
+  @include focus-ring;
+}

@@ -1,263 +1,258 @@
-/* ==================================================================
- * agentos-factory-forge-runs — blueprint diagram
- *
- * Reprend le design system Industry de la maquette epic-run-diagram :
- * fond technique clair, accent acier unique, Barlow Condensed + Barlow,
- * objets blueprint à angles droits, filets d'un pixel et marques en croix.
- *
- * Tokens consommés depuis le host (avec fallbacks) :
- *   --color-bg, --color-text, --color-neutral-700/600,
- *   --color-divider, --color-accent, --color-accent-100/400/700/900,
- *   --font-heading, --font-body
- * ================================================================== */
+@use './_forge-tokens' as forge;
 
-/* ── Variables locales ───────────────────────────────────────────── */
 :host {
-  display: block;
-  --sf-bg: var(--color-bg, #f2f2f3);
-  --sf-ink: var(--color-text, #1d1f20);
-  --sf-muted: var(--color-neutral-700, #5d5d60);
-  --sf-faint: var(--color-neutral-600, #7a7a7d);
-  --sf-line: var(--color-divider, rgba(29, 31, 32, 0.14));
-  --sf-rule: var(--color-text, #1d1f20);
-  --sf-accent: var(--color-accent, #5980a6);
-  --sf-accent-ink: var(--color-accent-700, #416180);
-  --sf-accent-deep: var(--color-accent-900, #1d2d3d);
-  --sf-accent-wash: var(--color-accent-100, #eef6ff);
-  --sf-accent-line: var(--color-accent-400, #94bce3);
+  @include forge.host;
+  @include forge.corners;
 
-  --sf-heading: var(--font-heading, 'Barlow Condensed', system-ui, sans-serif);
-  --sf-body: var(--font-body, 'Barlow', system-ui, sans-serif);
-  --sf-mono: ui-monospace, 'SFMono-Regular', monospace;
-
-  --sf-gap: 22px;
-  --sf-lane-drop: 26px;
-
+  min-height: 100%;
   background: var(--sf-bg);
-  color: var(--sf-ink);
-  font-family: var(--sf-body);
-  font-size: 14px;
-  line-height: 1.5;
   container-type: inline-size;
 }
 
-/* ── Primitives ──────────────────────────────────────────────────── */
+.blueprint {
+  @include forge.blueprint;
+}
+.mono {
+  @include forge.mono(11.5px);
+}
 
 .kicker {
-  margin: 0;
-  font-family: var(--sf-heading);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--sf-muted);
-}
+  @include forge.kicker;
 
-.mono {
-  font-family: var(--sf-mono);
-  font-size: 0.86em;
-  letter-spacing: -0.01em;
-}
-
-.accent {
-  color: var(--sf-accent-ink);
-}
-
-/* Objet blueprint : filet d'un pixel, angles droits. */
-.blueprint {
-  position: relative;
-  border: 1px solid var(--sf-line);
-  background: transparent;
-}
-
-/* Marques de repérage en croix */
-.corner {
-  position: absolute;
-  width: 9px;
-  height: 9px;
-  pointer-events: none;
-
-  &::before,
-  &::after {
-    content: '';
-    position: absolute;
-    background: var(--sf-accent-line);
-  }
-  &::before {
-    inset: 4px 0 auto;
-    height: 1px;
-  }
-  &::after {
-    inset: 0 4px;
-    width: 1px;
-  }
-
-  &--tl {
-    top: -5px;
-    left: -5px;
-  }
-  &--tr {
-    top: -5px;
-    right: -5px;
-  }
-  &--bl {
-    bottom: -5px;
-    left: -5px;
-  }
-  &--br {
-    bottom: -5px;
-    right: -5px;
+  &--accent {
+    color: var(--sf-accent-ink);
   }
 }
 
-/* Puce de statut — jamais seule, toujours accompagnée de son mot. */
 .chip {
-  display: inline-flex;
+  @include forge.chip;
+}
+
+.flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+/* ── Barre d'application ──────────────────────────────────────────────────── */
+
+.appbar {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 1px 7px;
-  font-family: var(--sf-heading);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  white-space: nowrap;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 12px 28px;
+  border-bottom: 1px solid var(--sf-rule);
 
-  &--ok {
-    background: #dcece2;
-    color: #23543f;
-  }
-  &--active {
-    background: #d9e8f5;
-    color: #2c455d;
-  }
-  &--wait {
-    background: #f4e8d2;
-    color: #6f4a10;
-  }
-  &--fail {
-    background: #f5dcda;
-    color: #7d2b29;
-  }
-  &--idle {
-    background: #e7e7ea;
-    color: #5d5d60;
-  }
-}
-
-.swatch {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  margin-right: 7px;
-  vertical-align: -1px;
-
-  &--ok {
-    background: #dcece2;
-    border: 1px solid #23543f;
-  }
-  &--active {
-    background: #d9e8f5;
-    border: 1px solid #2c455d;
-  }
-  &--wait {
-    background: #f4e8d2;
-    border: 1px solid #6f4a10;
-  }
-  &--fail {
-    background: #f5dcda;
-    border: 1px solid #7d2b29;
-  }
-  &--idle {
-    background: #e7e7ea;
-    border: 1px solid #5d5d60;
-  }
-}
-
-/* ── Listes de définitions compactes ─────────────────────────────── */
-
-.rule {
-  display: grid;
-  gap: 6px;
-  margin: 10px 0 0;
-
-  > div {
-    display: grid;
-    gap: 1px;
+  &__left {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
   }
 
-  dt {
-    font-family: var(--sf-mono);
-    font-size: 12px;
-    color: var(--sf-ink);
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 16px;
   }
-  dd {
+
+  &__brand {
+    font-family: var(--sf-heading);
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  &__root {
+    @include forge.kicker;
+    @include forge.focus-ring;
+
+    padding: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--sf-accent-ink);
+    }
+  }
+
+  &__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
     margin: 0;
-    font-size: 12px;
+
+    > div {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    dt {
+      font-size: 12px;
+      color: var(--sf-muted);
+    }
+
+    dd {
+      margin: 0;
+    }
+  }
+}
+
+.switcher {
+  display: flex;
+  gap: 6px;
+
+  &__item {
+    @include forge.focus-ring;
+
+    position: relative;
+    padding: 5px 12px 7px;
+    background: transparent;
+    border: 1px solid var(--sf-line);
+    font-family: var(--sf-heading);
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    color: var(--sf-ink);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--sf-accent-wash);
+    }
+
+    /* Sélection : un filet accent, pas un fond — la barre reste un tracé. */
+    &--active::after {
+      content: '';
+      position: absolute;
+      inset: auto 6px 3px;
+      height: 3px;
+      background: var(--sf-accent);
+    }
+  }
+}
+
+/* ── Fil d'ariane ──────────────────────────────────────────────────────────── */
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 28px;
+  border-bottom: 1px solid var(--sf-line);
+
+  &__link {
+    @include forge.focus-ring;
+
+    padding: 0;
+    background: transparent;
+    border: none;
+    font-family: var(--sf-heading);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    color: var(--sf-accent-ink);
+    cursor: pointer;
+
+    &:first-child {
+      text-transform: uppercase;
+    }
+    &:hover {
+      color: var(--sf-accent-deep);
+    }
+  }
+
+  &__sep {
+    color: var(--sf-muted);
+  }
+
+  &__current {
+    font-family: var(--sf-heading);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+  }
+}
+
+/* ── Écrans 00 et 01 ──────────────────────────────────────────────────────────── */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 26px 28px;
+
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+  }
+
+  &__status {
+    padding: 24px 0;
+    font-size: 14px;
+    color: var(--sf-muted);
+
+    &--error {
+      color: var(--color-danger-600, #b91c1c);
+    }
+    &--empty {
+      font-style: italic;
+    }
+  }
+
+  &__title {
+    margin: 0;
+    font-family: var(--sf-heading);
+    font-size: 30px;
+    font-weight: 600;
+  }
+
+  &__subtitle {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: var(--sf-muted);
+  }
+
+  &__lead {
+    margin: 4px 0 0;
+    max-width: 80ch;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--sf-muted);
+    text-wrap: pretty;
+  }
+
+  &__hint {
+    font-size: 12.5px;
     color: var(--sf-muted);
   }
 }
 
-/* ── Page wrapper ────────────────────────────────────────────────── */
+/* ── Boutons d'action ───────────────────────────────────────────────────────── */
 
-.diagram {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sf-gap);
-  padding: 24px 32px;
-}
+/* Même mécanique que btn-refresh de l'ancien diagramme. */
+.btn-launch {
+  @include forge.action-button;
 
-.diagram__page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-
-  h2 {
-    margin: 0.25rem 0 0;
-    font-family: var(--sf-heading);
-    font-size: 22px;
-    font-weight: 600;
-  }
-}
-
-.diagram__page-sub {
-  margin: 0.25rem 0 0;
-  font-size: 13px;
-  color: var(--sf-muted);
-}
-
-.diagram__scope {
-  margin: 0;
-  padding-left: 0.75rem;
-  border-left: 3px solid var(--sf-accent);
-  font-size: 0.8rem;
-  color: var(--sf-muted);
-}
-
-.diagram__notice {
-  padding: 1rem;
-  background: color-mix(in srgb, var(--sf-ink) 4%, transparent);
-  font-size: 0.85rem;
-}
-
-.btn-refresh {
-  padding: 0.4rem 0.8rem;
-  border: 1px solid var(--sf-line);
-  background: transparent;
-  color: var(--sf-ink);
-  cursor: pointer;
-  font-family: var(--sf-heading);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  /* Accent léger pour qu'il se distingue du contexte blueprint. */
+  border-color: var(--sf-accent-line);
+  color: var(--sf-accent-deep);
 
   &:hover:not(:disabled) {
     background: var(--sf-accent-wash);
-  }
-  &:focus-visible {
-    outline: 2px solid var(--sf-accent);
-    outline-offset: 2px;
   }
   &:disabled {
     opacity: 0.45;
@@ -265,562 +260,349 @@
   }
 }
 
-/* ── Epic article ────────────────────────────────────────────────── */
+/* ── Cartes de workstream ───────────────────────────────────────────────────── */
 
-.epic {
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  max-width: 1240px;
+}
+
+.card {
   display: flex;
   flex-direction: column;
-  gap: var(--sf-gap);
-}
-
-/* ── En-tête EpicRun ─────────────────────────────────────────────── */
-
-.diagram__head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--sf-rule);
-}
-
-.diagram__identity {
-  flex: 1 1 auto;
-}
-
-.diagram__title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin: 2px 0 0;
-  font-family: var(--sf-heading);
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.diagram__counters {
-  margin: 6px 0 0;
-  font-family: var(--sf-heading);
-  font-size: 13px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--sf-accent-ink);
-}
-
-.diagram__meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, max-content));
-  gap: 4px 26px;
-  margin: 0;
-  flex-shrink: 0;
-
-  dt {
-    font-family: var(--sf-heading);
-    font-size: 10.5px;
-    font-weight: 600;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-    color: var(--sf-muted);
-  }
-  dd {
-    margin: 0;
-    font-size: 13px;
-  }
-}
-
-.diagram__tally {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-/* ── Légende ─────────────────────────────────────────────────────── */
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 24px;
-  padding: 14px 18px;
-}
-
-.legend__items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 22px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 13px;
-}
-
-.legend__note {
-  margin: 0;
-  padding-left: 18px;
-  max-width: 42ch;
-  border-left: 1px solid var(--sf-line);
-  font-size: 12.5px;
-  color: var(--sf-muted);
-}
-
-/* ── Bande Epic ──────────────────────────────────────────────────── */
-
-.band {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: var(--sf-gap);
-  padding-top: 18px;
-  border-top: 1px solid var(--sf-rule);
-}
-
-.band__label {
-  h4 {
-    margin: 0;
-    font-family: var(--sf-heading);
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-  p {
-    margin: 4px 0 0;
-    font-size: 12px;
-    color: var(--sf-muted);
-  }
-}
-
-.band__body {
-  display: grid;
-  grid-template-columns: minmax(190px, 0.7fr) minmax(0, 1.9fr) minmax(0, 1.1fr);
-  gap: var(--sf-gap);
-  align-items: start;
-}
-
-/* ── Nœuds ───────────────────────────────────────────────────────── */
-
-.node {
-  padding: 12px 14px;
-}
-
-.node__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.node__gate {
-  margin: 0;
-  font-family: var(--sf-heading);
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--sf-accent-ink);
-}
-
-.node__title {
-  margin: 1px 0 0;
-  font-family: var(--sf-heading);
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 1.15;
-}
-
-.node__caption {
-  margin: 3px 0 0;
-  font-size: 11.5px;
-  line-height: 1.4;
-  color: var(--sf-muted);
-  text-wrap: pretty;
-}
-
-.node__footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.node__metric {
-  font-size: 11.5px;
-  color: var(--sf-muted);
-}
-
-.node__hash {
-  margin: 8px 0 0;
-  padding-top: 7px;
-  border-top: 1px solid var(--sf-line);
-  font-size: 10.5px;
-  color: var(--sf-accent-ink);
-  overflow-wrap: anywhere;
-}
-
-/* La spec Epic et les specs US sont lavées d'accent. */
-.node--spec,
-.node--story-spec {
-  background: var(--sf-accent-wash);
-  border-color: var(--sf-accent-line);
-
-  .node__caption {
-    color: var(--sf-accent-deep);
-  }
-}
-
-/* Règle d'héritage : tracé en tirets. */
-.node--rule {
-  border-style: dashed;
-}
-
-/* G3 passé : seul objet plein du diagramme. */
-.node--gate {
-  background: var(--sf-accent-deep);
-  border-color: var(--sf-accent-deep);
-
-  .node__gate {
-    color: var(--sf-accent-line);
-  }
-  .node__title {
-    color: var(--sf-bg);
-  }
-  .node__caption {
-    color: var(--sf-accent-line);
-  }
-
-  .corner::before,
-  .corner::after {
-    background: var(--sf-accent-line);
-  }
-}
-
-/* G3 non acquis : tracé seulement. */
-.node--gate-idle {
-  border-style: dashed;
-  border-color: var(--sf-line);
-  .node__gate {
-    color: var(--sf-accent-ink);
-  }
-}
-
-.node--gate-wait {
-  border-color: #6f4a10;
-  .node__gate {
-    color: #6f4a10;
-  }
-}
-
-.node--gate-fail {
-  border-color: #7d2b29;
-  .node__gate {
-    color: #7d2b29;
-  }
-}
-
-/* Étape non démarrée : tracé en tirets. */
-.node--idle {
-  border-style: dashed;
-  .node__title {
-    color: var(--sf-faint);
-  }
-}
-
-.node--wait {
-  border-color: #6f4a10;
-}
-.node--fail {
-  border-color: #7d2b29;
-}
-
-/* ── En-têtes de couloirs ───────────────────────────────────────── */
-
-.lanes {
-  display: grid;
-  grid-template-columns: 200px minmax(0, 240px) minmax(0, 1fr) minmax(0, 1.45fr);
-  gap: var(--sf-gap);
-  padding-bottom: 2px;
-}
-
-.lanes__title {
-  font-family: var(--sf-heading);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--sf-muted);
-
-  &--spec,
-  &--factory {
-    color: var(--sf-accent-ink);
-  }
-}
-
-/* ── Bloc StoryRun ──────────────────────────────────────────────── */
-
-.story {
-  display: grid;
-  grid-template-columns: 200px minmax(0, 240px) minmax(0, 1fr) minmax(0, 1.45fr);
-  grid-template-areas:
-    'identity spec agents  .'
-    'identity spec .       factory'
-    'evidence evidence evidence evidence';
-  gap: var(--sf-gap);
-  padding: 18px 0 20px;
-  border-top: 1px solid var(--sf-rule);
-
-  &:last-of-type {
-    border-bottom: 1px solid var(--sf-rule);
-  }
-}
-
-.story__identity {
-  grid-area: identity;
-  align-self: start;
-}
-
-.story__key {
-  margin: 2px 0 0;
-  font-family: var(--sf-heading);
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.1;
-  overflow-wrap: anywhere;
-}
-
-.story__summary {
-  margin: 6px 0 0;
-  font-size: 11.5px;
-  color: var(--sf-faint);
-}
-
-.story__spec {
-  grid-area: spec;
-  align-self: start;
-}
-
-/* Couloirs : agents en haut, Factory décroché d'un cran. */
-.story__lane {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: var(--sf-gap);
-  align-items: stretch;
-
-  &--agents {
-    grid-area: agents;
-  }
-
-  &--factory {
-    position: relative;
-    grid-area: factory;
-    margin-top: var(--sf-lane-drop);
-    padding: 12px;
-    margin-left: -12px;
-    margin-right: -12px;
-    background: var(--sf-accent-wash);
-  }
-}
-
-.lane__absence {
-  align-self: center;
-  margin: 0;
-  font-size: 12px;
-  color: var(--sf-muted);
-  font-style: italic;
-}
-
-/* ── Connecteurs ────────────────────────────────────────────────── */
-
-.step {
-  position: relative;
-
-  /* Filet horizontal vers l'étape précédente. */
-  &--linked::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: calc(-1 * var(--sf-gap));
-    width: var(--sf-gap);
-    height: 1px;
-    background: var(--sf-accent-ink);
-  }
-
-  /* Pointe de flèche. */
-  &--linked::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: -6px;
-    width: 0;
-    height: 0;
-    border-top: 4px solid transparent;
-    border-bottom: 4px solid transparent;
-    border-left: 6px solid var(--sf-accent-ink);
-    transform: translateY(-50%);
-  }
-
-  /* Décrochement agents → Factory : coude. */
-  &--elbow::before {
-    top: auto;
-    bottom: 50%;
-    left: calc(-1 * var(--sf-gap));
-    width: var(--sf-gap);
-    height: calc(50% + var(--sf-lane-drop) + 12px);
-    background: transparent;
-    border-left: 1px solid var(--sf-accent-ink);
-    border-bottom: 1px solid var(--sf-accent-ink);
-  }
-
-  /* Après une étape terminale, la chaîne n'est plus une promesse. */
-  &--broken ~ .step::before {
-    background: var(--sf-line);
-  }
-  &--broken ~ .step::after {
-    border-left-color: var(--sf-line);
-  }
-}
-
-/* ── Preuves techniques ─────────────────────────────────────────── */
-
-.story__evidence {
-  grid-area: evidence;
-}
-
-.epic__evidence {
-  padding-top: var(--sf-gap);
-  border-top: 1px solid var(--sf-line);
-}
-
-.evidence__toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  background: transparent;
-  border: 1px solid var(--sf-line);
-  font-family: var(--sf-heading);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--sf-accent-ink);
+  gap: 2px;
+  padding: 18px 20px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
   cursor: pointer;
 
   &:hover {
     background: var(--sf-accent-wash);
   }
-  &:focus-visible {
-    outline: 2px solid var(--sf-accent);
-    outline-offset: 2px;
+
+  @include forge.focus-ring;
+
+  &__name {
+    margin-top: 2px;
+    font-family: var(--sf-heading);
+    font-size: 25px;
+    font-weight: 600;
+  }
+
+  &__subject {
+    font-size: 13px;
+    color: var(--sf-muted);
+  }
+
+  &__lead {
+    margin-top: 10px;
+    font-size: 13px;
+    line-height: 1.55;
+    text-wrap: pretty;
+  }
+
+  .flags {
+    margin-top: 12px;
+  }
+
+  &__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--sf-line);
+    font-size: 12px;
+    color: var(--sf-muted);
   }
 }
 
-.evidence__mark {
-  font-family: var(--sf-mono);
-  font-size: 13px;
-  line-height: 1;
+/* ── Onglets du sujet ───────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 2px;
+  border-bottom: 1px solid var(--sf-rule);
+
+  &__tab {
+    @include forge.focus-ring;
+
+    padding: 7px 15px;
+    background: transparent;
+    border: 1px solid var(--sf-line);
+    border-bottom: none;
+    font-family: var(--sf-heading);
+    font-size: 13.5px;
+    letter-spacing: 0.06em;
+    color: var(--sf-ink);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--sf-accent-wash);
+    }
+
+    /* Onglet actif : filet plein et lavis accent. */
+    &--active {
+      border-color: var(--sf-rule);
+      background: var(--sf-accent-wash);
+    }
+  }
+
+  &__count {
+    color: var(--sf-muted);
+  }
+
+  &__soon {
+    padding: 6px 14px;
+    border: 1px dashed var(--sf-line);
+    border-bottom: none;
+    font-family: var(--sf-heading);
+    font-size: 13px;
+    font-style: italic;
+    letter-spacing: 0.06em;
+    color: var(--sf-muted);
+  }
 }
 
-.evidence {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 18px;
-  margin-top: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--sf-line);
+/* ── Barres d'Epic ─────────────────────────────────────────────────────────── */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 1240px;
+}
+
+.row {
+  display: block;
+  padding: 14px 18px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--sf-accent-wash);
+  }
+
+  @include forge.focus-ring;
+
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  &__identity {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  &__key {
+    font-family: var(--sf-heading);
+    font-size: 20px;
+    font-weight: 600;
+  }
+
+  &__title {
+    font-size: 13px;
+    color: var(--sf-muted);
+  }
+
+  &__bar {
+    display: block;
+    margin-top: 12px;
+  }
+}
+
+/* ── Comptes rendus & décisions ─────────────────────────────────────────────── */
+
+.docs {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 1000px;
 
   &__group {
-    h5 {
-      margin: 0 0 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &__head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--sf-rule);
+
+    h2 {
+      margin: 0;
       font-family: var(--sf-heading);
-      font-size: 11px;
+      font-size: 12.5px;
       font-weight: 600;
       letter-spacing: 0.13em;
       text-transform: uppercase;
+    }
+
+    span {
+      font-size: 12px;
       color: var(--sf-muted);
     }
-
-    dl {
-      display: grid;
-      gap: 6px;
-      margin: 0;
-    }
-    dt {
-      font-size: 11px;
-      color: var(--sf-faint);
-    }
-    dd {
-      margin: 0;
-      font-size: 12px;
-      line-height: 1.45;
-      overflow-wrap: anywhere;
-    }
   }
 }
 
-/* ── Pied ───────────────────────────────────────────────────────── */
+.doc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding: 12px 15px;
 
-.diagram__foot {
-  padding: 16px 20px;
-  max-width: 92ch;
+  &__title {
+    margin: 0;
+    font-family: var(--sf-heading);
+    font-size: 16px;
+    font-weight: 600;
+  }
 
-  p:not(.kicker) {
-    margin: 8px 0 0;
+  &__meta {
+    margin: 0;
+    font-size: 12px;
+    color: var(--sf-muted);
+  }
+
+  &__tag {
+    padding: 1px 8px;
+    border: 1px solid var(--sf-accent-line);
+    background: var(--sf-accent-wash);
+    font-family: var(--sf-heading);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent-800, #2d4761);
+  }
+}
+
+/* ── Dialog : Lancer un run Forge ─────────────────────────────────── */
+
+/* Fond obscurcissant. */
+.dialog-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgb(29 31 32 / 38%);
+  z-index: 50;
+}
+
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 51;
+  width: min(480px, 92vw);
+  padding: 28px 30px 26px;
+  background: var(--sf-bg);
+  box-shadow: var(--shadow-lg, 0 18px 40px rgb(29 31 32 / 22%));
+
+  &__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--sf-rule);
+  }
+
+  &__title {
+    margin: 0;
+    font-family: var(--sf-heading);
+    font-size: 22px;
+    font-weight: 600;
+  }
+
+  &__close {
+    padding: 0 4px;
+    background: transparent;
+    border: none;
+    font-family: var(--sf-heading);
+    font-size: 22px;
+    line-height: 1;
+    color: var(--sf-muted);
+    cursor: pointer;
+
+    &:hover {
+      color: var(--sf-ink);
+    }
+
+    @include forge.focus-ring;
+  }
+
+  &__lead {
+    margin: 14px 0 0;
     font-size: 13px;
     line-height: 1.6;
-    text-wrap: pretty;
-  }
-}
-
-/* ── Repli : sous 1100px les couloirs s'empilent ─────────────────── */
-
-@container (max-width: 1100px) {
-  .lanes {
-    display: none;
+    color: var(--sf-muted);
   }
 
-  .story {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      'identity'
-      'spec'
-      'agents'
-      'factory'
-      'evidence';
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 18px;
   }
 
-  .band {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .band__body {
-    grid-template-columns: minmax(0, 1fr);
+  &__label {
+    @include forge.kicker;
   }
 
-  .story__lane {
-    grid-auto-flow: row;
-    grid-auto-columns: auto;
+  &__input {
+    padding: 8px 12px;
+    border: 1px solid var(--sf-rule);
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    color: var(--sf-ink);
 
-    &--factory {
-      margin-top: 0;
+    @include forge.focus-ring;
+
+    &::placeholder {
+      color: var(--sf-muted);
     }
   }
 
-  .step--linked::before,
-  .step--linked::after,
-  .step--elbow::before {
-    content: none;
+  &__actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
   }
 }
 
-@media print {
-  .evidence__toggle {
-    display: none;
+.btn-cancel {
+  @include forge.action-button;
+}
+
+@container (max-width: 780px) {
+  .appbar,
+  .crumbs {
+    padding-inline: 16px;
   }
-  .story {
-    break-inside: avoid;
+
+  .screen {
+    padding: 20px 16px;
+  }
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
