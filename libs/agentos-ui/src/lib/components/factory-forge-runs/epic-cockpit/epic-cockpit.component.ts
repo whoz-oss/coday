@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core'
 import { ForgeRibbonComponent } from '../forge-ribbon/forge-ribbon.component'
 import { EpicRun, RunState, StepKey, StoryRun, US_STEPS, headOf, plural, stateOf, toneOf } from '../forge.model'
+import { FactoryApiService } from '../../../services/factory-api.service'
 
 interface Flag {
   readonly label: string
@@ -36,8 +37,19 @@ export class EpicCockpitComponent {
   readonly overrides = input<Record<string, Partial<Record<StepKey, RunState>>>>({})
   readonly answered = input<readonly string[]>([])
 
+  /** Identifiant du run Forge brut — requis pour l'approbation G1. */
+  readonly runId = input<string | null>(null)
+  /** Vrai quand G1 est en attente d'approbation humaine. */
+  readonly g1WaitingHuman = input<boolean>(false)
+  /** Hash de preuve du ledger G1 — transmis au body de la décision. */
+  readonly g1EvidenceSetHash = input<string | null>(null)
+  /** Namespace courant — requis pour le paramètre de l'URL de décision. */
+  readonly namespaceId = input<string | null>(null)
+
   /** Lien profond : l'US ET l'étape à ouvrir. */
   readonly storyPicked = output<{ story: string; step: StepKey }>()
+  /** Émis après une approbation G1 réussie pour demander au parent de recharger. */
+  readonly g1Approved = output<void>()
 
   readonly steps = US_STEPS
 
@@ -98,6 +110,30 @@ export class EpicCockpitComponent {
       verdict: row.states['g3'] === 'done' ? 'preuve acquise' : toneOf(row.states['g3'] ?? 'pending').word,
     }))
   )
+
+  private readonly factoryApi = inject(FactoryApiService)
+  protected readonly approving = signal(false)
+  protected readonly approvalError = signal<string | null>(null)
+
+  protected approveG1(): void {
+    const runId = this.runId()
+    const hash = this.g1EvidenceSetHash()
+    const nsId = this.namespaceId()
+    if (!runId || !hash || !nsId || this.approving()) return
+
+    this.approving.set(true)
+    this.approvalError.set(null)
+    this.factoryApi.approveG1(runId, hash, nsId).subscribe({
+      next: () => {
+        this.approving.set(false)
+        this.g1Approved.emit()
+      },
+      error: (err: Error) => {
+        this.approving.set(false)
+        this.approvalError.set(`Erreur : ${err.message ?? "impossible d'approuver G1"}`)
+      },
+    })
+  }
 
   private tone(state: RunState): { bg: string; ink: string } {
     const { bg, ink } = toneOf(state)

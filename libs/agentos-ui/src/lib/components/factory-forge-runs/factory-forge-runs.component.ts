@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { switchMap, map } from 'rxjs'
@@ -6,8 +6,21 @@ import { CaseControllerService, CaseStatusEnum } from '@whoz-oss/agentos-api-cli
 import { EpicCockpitComponent } from './epic-cockpit/epic-cockpit.component'
 import { ForgeRibbonComponent } from './forge-ribbon/forge-ribbon.component'
 import { StoryRunComponent } from './story-run/story-run.component'
-import { FactoryApiService, WorkstreamEntry } from '../../services/factory-api.service'
-import { DecisionKind, RunState, StepKey, US_STEPS, Workstream, headOf, plural, stateOf, toneOf } from './forge.model'
+import { FactoryApiService, FactoryForgeRun, WorkstreamEntry } from '../../services/factory-api.service'
+import {
+  DecisionKind,
+  EpicClosure,
+  EpicRun,
+  RunState,
+  StepKey,
+  StoryRun,
+  US_STEPS,
+  Workstream,
+  headOf,
+  plural,
+  stateOf,
+  toneOf,
+} from './forge.model'
 import { FactoryForgeStateService } from '../../services/factory-forge-state.service'
 
 type Screen = 'streams' | 'workstream' | 'epic' | 'story'
@@ -25,7 +38,7 @@ type Tab = 'epics' | 'docs'
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'agentos-factory-forge-runs' },
 })
-export class FactoryForgeRunsComponent implements OnInit {
+export class FactoryForgeRunsComponent {
   /** Service réel — gardé injecté, sera activé quand le backend le supporte. */
   protected readonly state = inject(FactoryForgeStateService)
 
@@ -77,11 +90,37 @@ export class FactoryForgeRunsComponent implements OnInit {
     const idx = Math.min(this.wsIndex(), list.length - 1)
     return list[idx]
   })
-  readonly epic = computed(() => this.workstream()?.epics[this.epicIndex()])
+  /** Runs réels mappés en EpicRun pour le workstream affiché. */
+  readonly epicRunsForWorkstream = computed((): EpicRun[] =>
+    this.state.runs().map((run) => this.mapForgeRunToEpicRun(run))
+  )
+
+  readonly epic = computed(() => this.epicRunsForWorkstream()[this.epicIndex()])
   readonly story = computed(() => {
     const e = this.epic()
     if (!e) return undefined
     return e.stories.find((s) => s.key === this.storyKey()) ?? e.stories[0]
+  })
+
+  /** Run Forge brut correspondant à l'épic sélectionné. */
+  readonly currentForgeRun = computed(() => {
+    const runs = this.state.runs()
+    const idx = this.epicIndex()
+    return runs[idx] ?? null
+  })
+
+  readonly forgeRunIdForEpic = computed(() => this.currentForgeRun()?.runId ?? null)
+
+  readonly isG1WaitingHuman = computed(() => {
+    const run = this.currentForgeRun()
+    const g1 = run?.gates.find((g) => g.gate === 'G1')
+    return g1?.status === 'waiting_human'
+  })
+
+  readonly g1EvidenceSetHash = computed(() => {
+    const run = this.currentForgeRun()
+    const g1 = run?.gates.find((g) => g.gate === 'G1') as Record<string, unknown> | undefined
+    return (g1?.['evidenceSetHash'] as string | undefined) ?? null
   })
 
   readonly overrides = computed(() => this.overridesByStory())
@@ -96,9 +135,13 @@ export class FactoryForgeRunsComponent implements OnInit {
   readonly docCount = computed(() => this.workstream()?.docs.reduce((n, g) => n + g.items.length, 0) ?? 0)
 
   /** Cartes de l'écran 00 : un sujet, ce qui l'attend, ses volumes. */
-  readonly streamCards = computed(() =>
-    this.workstreams.map((ws, index) => {
-      const stories = ws.epics.flatMap((e) => e.stories)
+  readonly streamCards = computed(() => {
+    const runsCount = this.state.runs().length
+    const epicRuns = this.epicRunsForWorkstream()
+
+    return this.workstreams.map((ws, index) => {
+      // Les stories viennent des runs réels si disponibles, sinon des données mock
+      const stories = runsCount > 0 ? epicRuns.flatMap((e) => e.stories) : ws.epics.flatMap((e) => e.stories)
       const overrides = this.overridesByStory()
       const blocked = stories.filter((s) =>
         US_STEPS.some((step) => {
@@ -127,17 +170,17 @@ export class FactoryForgeRunsComponent implements OnInit {
         branch: ws.branch,
         flags,
         counts: [
-          plural(ws.epics.length, 'Epic', 'Epics'),
+          runsCount > 0 ? plural(runsCount, 'run Forge', 'runs Forge') : plural(ws.epics.length, 'Epic', 'Epics'),
           `${stories.length} US`,
           plural(docs, 'document', 'documents'),
         ].join(' · '),
       }
     })
-  )
+  })
 
   /** Barre condensée d'une Epic : mêmes colonnes que le cockpit. */
   readonly epicRows = computed(() =>
-    (this.workstream()?.epics ?? []).map((epicRun, index) => {
+    this.epicRunsForWorkstream().map((epicRun, index) => {
       const overrides = this.overridesByStory()
       const tally: Partial<Record<StepKey, number>> = {}
       for (const story of epicRun.stories) {
@@ -167,10 +210,128 @@ export class FactoryForgeRunsComponent implements OnInit {
     return { bg, ink }
   }
 
+  /* ── Mapping FactoryForgeRun → EpicRun ──────────────────────── */
+
+  private mapForgeRunToEpicRun(run: FactoryForgeRun): EpicRun {
+    const g1 = run.gates.find((g) => g.gate === 'G1')
+    const g3Summary = run.stories.map((s) => {
+      const latest = s.oracleCampaigns.at(-1)
+      return latest?.status ?? 'not_started'
+    })
+
+    const closure: EpicClosure =
+      run.status === 'approved'
+        ? g3Summary.every((s) => s === 'passed')
+          ? 'passed'
+          : 'pending'
+        : run.status === 'waiting_human'
+          ? 'pending'
+          : run.status === 'blocked'
+            ? 'blocked'
+            : 'pending'
+
+    // G1 est un gate Epic — son statut est transmis à chaque story du run.
+    const g1Status = g1?.status ?? 'not_started'
+
+    return {
+      key: run.workItem.id,
+      title: `${run.workItem.id} — ${run.workflow}`,
+      closure,
+      closureSummary: `G1: ${g1Status} · ${run.stories.length} US`,
+      note: `Run ${run.runId.slice(0, 8)} · démarré ${run.startedAt ? new Date(run.startedAt).toLocaleDateString() : '?'}`,
+      stories: run.stories.map((story) => this.mapStoryToStoryRun(story, g1Status)),
+    }
+  }
+
+  private mapStoryToStoryRun(story: FactoryForgeRun['stories'][number], epicG1Status: string): StoryRun {
+    const latestExecution = story.executions.at(-1) as Record<string, unknown> | undefined
+    const latestEdit = story.edits.at(-1) as Record<string, unknown> | undefined
+    const latestCampaign = story.oracleCampaigns.at(-1)
+
+    // G1 est un gate Epic, pas Story : son état vient du run parent.
+    const g1State: RunState =
+      epicG1Status === 'approved' ? 'done' : epicG1Status === 'waiting_human' ? 'human' : 'pending'
+
+    const specState: RunState =
+      latestExecution?.['status'] === 'finished'
+        ? 'done'
+        : latestExecution?.['status'] === 'failed'
+          ? 'failed'
+          : latestExecution
+            ? 'running'
+            : 'pending'
+    const codeState: RunState =
+      latestEdit?.['status'] === 'finished'
+        ? 'done'
+        : latestEdit?.['status'] === 'failed'
+          ? 'failed'
+          : latestEdit
+            ? 'running'
+            : 'pending'
+    const g3State: RunState =
+      latestCampaign?.status === 'passed'
+        ? 'done'
+        : latestCampaign?.status === 'blocked'
+          ? 'blocked'
+          : latestCampaign?.status === 'failed'
+            ? 'failed'
+            : latestCampaign
+              ? 'running'
+              : 'pending'
+
+    const analysisValidation = latestExecution?.['analysisValidation'] as { status?: string } | undefined
+
+    // G2 ne peut être validé que si G1 est approuvé.
+    const g2State: RunState =
+      g1State !== 'done' ? 'pending' : analysisValidation?.status === 'valid' ? 'done' : 'pending'
+
+    return {
+      key: story.workItem.id,
+      title: story.workItem.id,
+      ticket: story.workItem.id,
+      pr: '—',
+      updatedAt:
+        (latestExecution?.['observedAt'] as string | undefined) ??
+        (latestExecution?.['startedAt'] as string | undefined) ??
+        '?',
+      // Tête de la story : bloquée sur G1 tant que le gate Epic n'est pas approuvé.
+      head:
+        epicG1Status !== 'approved'
+          ? 'g1'
+          : latestCampaign
+            ? 'g3'
+            : latestEdit
+              ? 'code'
+              : latestExecution
+                ? 'spec'
+                : 'g1',
+      states: {
+        discovery: 'na',
+        grooming: 'done',
+        g1: g1State,
+        spec: specState,
+        g2: g2State,
+        code: codeState,
+        g3: g3State,
+        deploy: 'na',
+        g4: 'pending',
+        merge: 'pending',
+      },
+    }
+  }
+
   /* ── Initialisation ──────────────────────────────────────────── */
 
-  ngOnInit(): void {
-    this.loadWorkstreams()
+  constructor() {
+    // Recharge workstreams et runs Forge à chaque changement de namespace.
+    // L'effect se déclenche aussi à l'initialisation, remplaçant ngOnInit.
+    effect(() => {
+      const namespaceId = this.currentNamespaceId()
+      if (namespaceId) {
+        this.state.load(namespaceId)
+        this.loadWorkstreams()
+      }
+    })
   }
 
   private loadWorkstreams(): void {
@@ -243,6 +404,12 @@ export class FactoryForgeRunsComponent implements OnInit {
   }
 
   /* ── Décisions ──────────────────────────────────────────────────────── */
+
+  /** Appelé par epic-cockpit après une approbation G1 réussie. Recharge les runs pour refléter le nouveau statut. */
+  onG1Approved(): void {
+    const namespaceId = this.currentNamespaceId()
+    if (namespaceId) this.state.load(namespaceId)
+  }
 
   onDecided({ story, kind }: { story: string; kind: DecisionKind }): void {
     if (kind === 'answer') {

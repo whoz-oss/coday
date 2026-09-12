@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { resolveForgeRoots } from '../lib/forge-roots.mjs'
+import { dirname, resolve } from 'node:path'
+import { defaultRunStoreRoot, resolveForgeRoots, REPO_RUN_STORE_POLICY } from '../lib/forge-roots.mjs'
 import { createEpicRun } from '../lib/forge-ledger.mjs'
 
 /**
@@ -14,7 +14,16 @@ export async function run(log) {
 
   let request
   try { request = JSON.parse(raw) } catch { throw new Error('Forge run request must be valid JSON') }
-  const roots = resolveForgeRoots(request.roots)
+
+  // Override run store location: ledgers live in the target repo, not in the orchestrator.
+  // configPath is the Coday config dir (e.g. /Users/.../sprint/coday); repoRoot is its parent.
+  const rawRoots = request.roots
+  const repoRoot = rawRoots.repoRoot ?? (rawRoots.configPath ? dirname(rawRoots.configPath.replace(/\/+$/, '')) : undefined)
+  const roots = resolveForgeRoots({
+    ...rawRoots,
+    runStoreRoot: defaultRunStoreRoot(repoRoot),
+    runStorePolicy: REPO_RUN_STORE_POLICY,
+  })
   const phase = { name: 'create-epic-run' }
   log.phaseStart(phase.name, 'code')
   const result = createEpicRun({ roots, epic: request.epic, stories: request.stories, runId: request.runId })

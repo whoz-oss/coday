@@ -20,6 +20,27 @@
     <agentos-forge-ribbon mode="distribution" [counts]="counts()"></agentos-forge-ribbon>
   </div>
 
+  <!-- Panneau d'approbation G1 — affiché uniquement quand G1 est en attente humaine. -->
+  @if (g1WaitingHuman() && runId()) {
+    <div class="plate plate--g1 blueprint">
+      <i class="corner tl"></i><i class="corner tr"></i> <i class="corner bl"></i><i class="corner br"></i>
+      <div class="g1__head">
+        <span class="chip chip--human">Gate 1 · Attente approbation</span>
+      </div>
+      <p class="g1__lead">
+        Le run est en attente d'une décision humaine sur l'intention. Approuvez pour démarrer l'analyse.
+      </p>
+      <div class="actions">
+        <button type="button" class="action" [disabled]="approving()" (click)="approveG1()">
+          {{ approving() ? 'Approbation…' : "✅ Approuver l'intention" }}
+        </button>
+      </div>
+      @if (approvalError()) {
+        <p class="g1__error">{{ approvalError() }}</p>
+      }
+    </div>
+  }
+
   <!-- Grille US × étapes : le geste principal du produit. -->
   <section class="grid">
     <header class="grid__head">

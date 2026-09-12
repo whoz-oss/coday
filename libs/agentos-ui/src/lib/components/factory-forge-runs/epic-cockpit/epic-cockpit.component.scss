@@ -189,6 +189,58 @@
   }
 }
 
+/* ── Panneau d'approbation G1 ────────────────────────────────────────────────── */
+
+.plate--g1 {
+  padding: 16px 20px;
+  border-color: var(--color-accent-400, #94bce3);
+  background: var(--color-accent-100, #eef6ff);
+}
+
+.g1 {
+  &__head {
+    margin-bottom: 8px;
+  }
+
+  &__lead {
+    margin: 0 0 14px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  &__error {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--color-error, #b91c1c);
+  }
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action {
+  padding: 7px 16px;
+  background: var(--sf-accent-ink, #1d4ed8);
+  color: #fff;
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+
+  @include forge.focus-ring;
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  &:not(:disabled):hover {
+    opacity: 0.88;
+  }
+}
+
 /* ── Clôture d'Epic ─────────────────────────────────────────────────────────── */
 
 .closure {

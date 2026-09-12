@@ -133,7 +133,7 @@
           [attr.aria-selected]="tab() === 'epics'"
           (click)="setTab('epics')"
         >
-          Epics <span class="tabs__count">{{ ws.epics.length }}</span>
+          Epics <span class="tabs__count">{{ epicRunsForWorkstream().length }}</span>
         </button>
         <button
           type="button"
@@ -200,9 +200,14 @@
   @case ('epic') {
     <agentos-epic-cockpit
       [epic]="epic()!"
+      [runId]="forgeRunIdForEpic()"
+      [g1WaitingHuman]="isG1WaitingHuman()"
+      [g1EvidenceSetHash]="g1EvidenceSetHash()"
+      [namespaceId]="currentNamespaceId()"
       [overrides]="overrides()"
       [answered]="answered()"
       (storyPicked)="openStory($event)"
+      (g1Approved)="onG1Approved()"
     ></agentos-epic-cockpit>
   }
 

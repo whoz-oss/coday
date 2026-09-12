@@ -151,12 +151,11 @@ export class FactoryApiService {
     })
   }
 
-  /**
-   * Global read-only projections of Epic/Story Forge runs; JSONL is parsed server-side only.
-   * The endpoint currently has no namespace filter because EpicRun has no durable namespaceId.
-   */
-  listForgeRuns(): Observable<FactoryForgeRun[]> {
-    return this.http.get<FactoryForgeRun[]>('/api/factory/forge/runs')
+  /** Global read-only projections of Epic/Story Forge runs for the given namespace; JSONL is parsed server-side only. */
+  listForgeRuns(namespaceId: string): Observable<FactoryForgeRun[]> {
+    return this.http.get<FactoryForgeRun[]>('/api/factory/forge/runs', {
+      params: new HttpParams().set('namespaceId', namespaceId),
+    })
   }
 
   /**
@@ -208,5 +207,29 @@ export class FactoryApiService {
     return this.http.get<WorkstreamEntry[]>('/api/factory/workstreams', {
       params: new HttpParams().set('namespaceId', namespaceId),
     })
+  }
+
+  /**
+   * Soumet une décision d'approbation humaine sur la gate G1 d'un run Forge.
+   * POST /api/factory/forge/runs/:runId/gates/G1/decision
+   */
+  approveG1(runId: string, evidenceSetHash: string, namespaceId: string): Observable<unknown> {
+    return this.http.post(
+      `/api/factory/forge/runs/${encodeURIComponent(runId)}/gates/G1/decision?namespaceId=${encodeURIComponent(namespaceId)}`,
+      {
+        gate: 'G1',
+        attempt: 1,
+        policyVersion: 'forge-g1-human-v1',
+        evidenceSetHash,
+        outcome: 'approved',
+        reasonCode: 'intent_confirmed',
+      },
+      {
+        headers: {
+          'X-Factory-Actor-Id': 'benjamin.valdes',
+          'X-Factory-Authority-Id': 'product-owner',
+        },
+      }
+    )
   }
 }

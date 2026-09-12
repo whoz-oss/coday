@@ -5,6 +5,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 export const FORGE_ROOTS_SCHEMA_VERSION = 2
 export const DEFAULT_RUN_STORE_POLICY = 'under_orchestrator'
 export const EXTERNAL_RUN_STORE_POLICY = 'external_allowed'
+export const REPO_RUN_STORE_POLICY = 'under_repo'
 
 function resolveExistingDirectory(value, field) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${field} is required`)
@@ -45,13 +46,24 @@ export function resolveForgeRoots(input) {
   const forgeRoot = input.forgeRoot === undefined ? undefined : resolveExistingDirectory(input.forgeRoot, 'roots.forgeRoot')
   const runStoreRoot = resolveStoreRoot(input.runStoreRoot)
   const runStorePolicy = input.runStorePolicy ?? DEFAULT_RUN_STORE_POLICY
-  if (![DEFAULT_RUN_STORE_POLICY, EXTERNAL_RUN_STORE_POLICY].includes(runStorePolicy)) {
-    throw new Error(`roots.runStorePolicy must be ${DEFAULT_RUN_STORE_POLICY} or ${EXTERNAL_RUN_STORE_POLICY}`)
+  if (![DEFAULT_RUN_STORE_POLICY, EXTERNAL_RUN_STORE_POLICY, REPO_RUN_STORE_POLICY].includes(runStorePolicy)) {
+    throw new Error(`roots.runStorePolicy must be ${DEFAULT_RUN_STORE_POLICY}, ${EXTERNAL_RUN_STORE_POLICY}, or ${REPO_RUN_STORE_POLICY}`)
   }
   if (runStorePolicy === DEFAULT_RUN_STORE_POLICY && !isWithin(runStoreRoot, orchestratorRoot)) {
     throw new Error('roots.runStoreRoot must remain under roots.orchestratorRoot unless runStorePolicy is external_allowed')
   }
+  if (runStorePolicy === REPO_RUN_STORE_POLICY && !isWithin(runStoreRoot, repoRoot)) {
+    throw new Error('roots.runStoreRoot must remain under roots.repoRoot when runStorePolicy is under_repo')
+  }
   return Object.freeze({ schemaVersion: FORGE_ROOTS_SCHEMA_VERSION, orchestratorRoot, runStoreRoot, repoRoot, ...(forgeRoot ? { forgeRoot } : {}), runStorePolicy })
+}
+
+/**
+ * Default run store root: <repoRoot>/forge/factory-runs/
+ * Use this when the ledgers must live in the target repository, not in the orchestrator.
+ */
+export function defaultRunStoreRoot(repoRoot) {
+  return join(repoRoot, 'forge', 'factory-runs')
 }
 
 export function ensureForgeRunStore(roots) {
