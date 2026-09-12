@@ -33,6 +33,22 @@ parameters:
         Use {"status":"not_requested"} when no ticket/Jira read is requested for free-text intent.
         Optional: --project-root <absolute-repository-root>.
       command: "npx --yes --package ts-node@10.9.2 --package typescript@5.9.3 ts-node --project coday/scripts/tsconfig.json coday/scripts/forge-run-recon.ts PARAMETERS"
+    - name: "forge-gate2-record"
+      description: |
+        Records Gate 2 (Epic spec validated) in the Forge Factory ledger.
+        Must be called after the Epic spec file is finalized and G1 is approved.
+        Validates the spec against the Factory policy (scope patterns, oracle catalog)
+        and writes a g2_evaluated event to the JSONL ledger.
+        Returns idempotent if called again with the same spec hash.
+      parametersDescription: |
+        Required: --run-id <epic_runId> --spec-path <absolute-path-to-spec.md>
+        Optional: --namespace-id <uuid> (defaults to FACTORY_NAMESPACE_ID env var)
+        Example:
+          --run-id epic_fd71b96e-ad36-425b-ad0b-00eb45bebddc \
+          --spec-path /Users/.../sprint/forge/specs/WZ-34386.md
+      command: "npx --yes --package ts-node@10.9.2 --package typescript@5.9.3 ts-node --project coday/scripts/tsconfig.json coday/scripts/forge-gate2-record.ts PARAMETERS"
+      timeoutSeconds: 30
+
     - name: "forge-factory-launch"
       description: |
         Creates a Forge EpicRun ledger in the target repository (forge/factory-runs/).
