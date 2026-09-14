@@ -1,3 +1,17 @@
+## 1.3.4 (2026-09-14)
+
+### 🩹 Fixes
+
+- ⚠️  **agentos:** harmonize Integration Config scope filtering ([#1335](https://github.com/whoz-oss/coday/pull/1335))
+
+### ⚠️  Breaking Changes
+
+- **agentos:** harmonize Integration Config scope filtering  ([#1335](https://github.com/whoz-oss/coday/pull/1335))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 1.3.3 (2026-09-14)
 
 ### 🩹 Fixes
