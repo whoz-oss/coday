@@ -15,7 +15,7 @@ import { multicastRefreshable } from './rxjs-state.utils'
 import { UserStateService } from './user-state.service'
 
 /**
- * Scope of an auth setting row in the unified 3-section view.
+ * Scope of an auth setting row in the unified 4-section view.
  * - `platform`  : setting defined at platform level (read-only for namespace admins)
  * - `namespace` : setting shared at the namespace level
  * - `userOnNs`  : the caller's personal override scoped to the current namespace
@@ -140,14 +140,18 @@ function fromBackendRaw(raw: object): AuthSettingDto {
 }
 
 /**
- * AuthSettingConfigStateService — orchestrates the 3 sources of truth for the unified
- * Auth Settings page (Issue #1095). All 3 calls land on the single
+ * AuthSettingConfigStateService — orchestrates the 4 scope layers for the unified
+ * Auth Settings page (Issue #1095). All scope-specific calls use
  * `AuthSettingControllerService.listAuthSetting(namespaceId, userId)`, with the scope
  * distinguished by query params:
  *
- *   1. NS-shared        → `listAuthSetting(namespaceId=<uuid>)` (no `userId`)
- *   2. user × namespace → `listAuthSetting(namespaceId=<uuid>, userId='me')`
- *   3. user-global      → `listAuthSetting(namespaceId='none', userId='me')`
+ *   1. platform         → `listAuthSetting(namespaceId='none')` (no `userId`)
+ *   2. NS-shared        → `listAuthSetting(namespaceId=<uuid>)` (no `userId`)
+ *   3. user × namespace → `listAuthSetting(namespaceId=<uuid>, userId='me')`
+ *   4. user-global      → `listAuthSetting(namespaceId='none', userId='me')`
+ *
+ * Calling without parameters returns all of the caller's personal overlays, not the
+ * platform layer. Without a selected namespace, only platform and user-global are fetched.
  *
  * The implicit-scope dispatch on `POST` (Decision 15) lives server-side; on the FE the
  * payload's `(namespaceId, userId)` pair encodes the intent — the create method assembles
@@ -164,8 +168,8 @@ export class AuthSettingConfigStateService {
   /**
    * Reactive view model for the all-scopes page. Multicast via `shareReplay` so concurrent
    * subscribers (template async pipe + ngOnInit derivations) share a single fan-out of HTTP
-   * calls instead of redoing all 3 GETs each. Per-source `catchError` keeps the page rendering
-   * when one of the 3 layers fails — a 5xx on user-global must not blank the namespace section.
+   * calls instead of repeating each scope's GET. Per-source `catchError` keeps the page
+   * rendering when one layer fails — a 5xx on user-global must not blank the namespace section.
    */
   readonly vm$: Observable<AuthSettingConfigViewModel> = combineLatest([this.namespaceId$, this.refresh$]).pipe(
     switchMap(([namespaceId]) => {
