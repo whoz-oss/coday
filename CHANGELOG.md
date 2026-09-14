@@ -1,3 +1,13 @@
+## 1.3.5 (2026-09-14)
+
+### 🚀 Features
+
+- **agentos:** #1053 HTTP_API plugin exposing OpenAPI-described APIs as agent tools ([#1328](https://github.com/whoz-oss/coday/pull/1328), [#1053](https://github.com/whoz-oss/coday/issues/1053))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 1.3.4 (2026-09-14)
 
 ### 🩹 Fixes
