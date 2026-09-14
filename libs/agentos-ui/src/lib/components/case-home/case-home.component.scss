@@ -3,7 +3,9 @@
 .case-home {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
+  height: auto;
+  overflow-y: auto;
   align-items: center;
   justify-content: center;
   // Anchor for the drag & drop overlay.
@@ -14,6 +16,7 @@
     flex-direction: column;
     gap: 24px;
     padding: 0 24px;
+    flex: none;
     max-width: 720px;
     width: 100%;
   }
@@ -81,6 +84,7 @@
     line-height: 1.55;
     outline: none;
     box-sizing: border-box;
+    overflow-y: hidden;
 
     &::placeholder {
       color: var(--color-neutral-500);

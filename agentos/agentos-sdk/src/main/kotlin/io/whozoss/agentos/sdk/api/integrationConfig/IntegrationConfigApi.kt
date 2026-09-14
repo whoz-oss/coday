@@ -10,6 +10,8 @@ import io.whozoss.agentos.sdk.api.common.EntityCrudApi
  * routing annotations. AgentOS does not prescribe the client technology or configuration.
  *
  * **Scope query parameters** on [list] follow the same convention as AiProviderApi:
+ * - (no params) — all caller's configs across scopes
+ * - `namespaceId=none` (no userId) — platform configs
  * - `namespaceId=<uuid>` — NS-shared configs
  * - `namespaceId=<uuid>&userId=me` — user x namespace overlay
  * - `namespaceId=none&userId=me` — user-global configs
@@ -21,6 +23,9 @@ interface IntegrationConfigApi : EntityCrudApi<IntegrationConfigDto> {
 
     /**
      * GET /api/integration-configs — list configs by scope.
+     *
+     * Without parameters, returns all of the caller's personal overlays.
+     * Use `namespaceId=none` with no `userId` to list platform configs.
      *
      * [namespaceId] accepts a UUID string or the sentinel `"none"` (meaning `namespaceId IS NULL`).
      * [userId] accepts only the sentinel `"me"` or absent.

@@ -140,11 +140,13 @@
           [isDark]="isDark()"
           [themeVariant]="themeVariant()"
           [showTechnical]="showTechnical()"
+          [showToolCalls]="showToolCalls()"
           variant="desktop"
           (navigateTo)="navigateTo.emit($event)"
           (themeToggled)="themeToggled.emit()"
           (themeVariantChanged)="themeVariantChanged.emit($event)"
           (logsToggled)="logsToggled.emit()"
+          (toolCallsToggled)="toolCallsToggled.emit()"
           (closed)="menuClosed.emit($event)"
         />
       </div>
@@ -324,6 +326,7 @@
       [isDark]="isDark()"
       [themeVariant]="themeVariant()"
       [showTechnical]="showTechnical()"
+      [showToolCalls]="showToolCalls()"
       variant="compact"
       [fixedTop]="compactMenuTop()"
       [fixedLeft]="compactMenuLeft()"
@@ -331,6 +334,7 @@
       (themeToggled)="themeToggled.emit()"
       (themeVariantChanged)="themeVariantChanged.emit($event)"
       (logsToggled)="logsToggled.emit()"
+      (toolCallsToggled)="toolCallsToggled.emit()"
       (closed)="menuClosed.emit($event)"
     />
 

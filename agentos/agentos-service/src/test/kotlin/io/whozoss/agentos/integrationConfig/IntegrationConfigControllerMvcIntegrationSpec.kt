@@ -414,10 +414,30 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isNotFound)
         }
 
-        "LIST without params returns platform configs for any authenticated user" {
-            mockMvc.perform(get("/api/integration-configs"))
+        "LIST with namespaceId=none returns only platform configs for a non-admin" {
+            val platform = integrationConfigService.create(
+                IntegrationConfig(
+                    metadata = EntityMetadata(),
+                    namespaceId = null,
+                    userId = null,
+                    name = "PLATFORM_${UUID.randomUUID()}",
+                    integrationType = "JIRA",
+                ),
+            )
+            integrationConfigService.create(
+                IntegrationConfig(
+                    metadata = EntityMetadata(),
+                    namespaceId = null,
+                    userId = aliceId,
+                    name = "PERSONAL_${UUID.randomUUID()}",
+                    integrationType = "JIRA",
+                ),
+            )
+
+            mockMvc.perform(get("/api/integration-configs").param("namespaceId", "none"))
                 .andExpect(status().isOk)
-                .andExpect(jsonPath("$").isArray)
+                .andExpect(jsonPath("$[?(@.id == '${platform.id}')]").isNotEmpty)
+                .andExpect(jsonPath("$[?(@.userId != null || @.namespaceId != null)]").isEmpty)
         }
 
         "LIST with ?userId=me returns a flat JSON array for caller's configs" {

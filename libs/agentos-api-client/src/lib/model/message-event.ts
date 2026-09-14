@@ -21,4 +21,6 @@ export interface MessageEvent {
   actor: Actor
   content: Array<MessageEventAllOfContent>
   sessionContext?: { [key: string]: any }
+  llmProvider?: string
+  llmModel?: string
 }

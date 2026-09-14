@@ -4,19 +4,17 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
-  AuthSettingControllerService,
+  AuthSettingDto,
   IntegrationConfig,
   IntegrationTypeControllerService,
   IntegrationTypeDescriptor,
 } from '@whoz-oss/agentos-api-client'
 import { JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-oss/design-system'
+import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
 import { IntegrationToolPreviewStateService } from '../../services/integration-tool-preview-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { IntegrationToolPreviewComponent } from '../integration-tool-preview/integration-tool-preview.component'
-
-/** Minimal shape we need from each AuthSetting — the generated union type is an empty interface. */
-type AuthSettingWithName = { name: string }
 
 const VALID_SCOPES: ReadonlySet<IntegrationScope> = new Set(['platform', 'namespace', 'userOnNs', 'userGlobal'])
 
@@ -39,6 +37,7 @@ const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
  * - `/:namespaceId/integrations/:integrationId/edit`       → edit mode
  *
  * The active scope is driven by the `?scope=` query param (story 6.5):
+ *   - `platform`            → fixed for platform routes without a namespace
  *   - `namespace`  (default) → submits to `IntegrationConfigController`
  *   - `userOnNs`             → submits to the unified `IntegrationConfigController` for the current NS
  *   - `userGlobal`           → submits to the unified `IntegrationConfigController` cross-namespace
@@ -66,7 +65,7 @@ export class IntegrationFormComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
   private readonly state = inject(IntegrationConfigStateService)
   private readonly integrationTypeController = inject(IntegrationTypeControllerService)
-  private readonly authSettingController = inject(AuthSettingControllerService)
+  private readonly authSettingState = inject(AuthSettingConfigStateService)
   private readonly namespaceRole = inject(NamespaceRoleStateService)
   protected readonly toolPreview = inject(IntegrationToolPreviewStateService)
 
@@ -322,19 +321,19 @@ export class IntegrationFormComponent implements OnInit {
    * defined at a different tier will still resolve — same-scope is a sound UX default.
    */
   private loadAuthSettingsForScope(scope: IntegrationScope): void {
-    let obs$: Observable<AuthSettingWithName[]>
+    let obs$: Observable<AuthSettingDto[]>
     switch (scope) {
       case 'platform':
-        obs$ = this.authSettingController.listAuthSetting() as Observable<AuthSettingWithName[]>
+        obs$ = this.authSettingState.loadPlatformSettings()
         break
       case 'namespace':
-        obs$ = this.authSettingController.listAuthSetting(this.namespaceId) as Observable<AuthSettingWithName[]>
+        obs$ = this.authSettingState.loadNamespaceSettings(this.namespaceId!)
         break
       case 'userOnNs':
-        obs$ = this.authSettingController.listAuthSetting(this.namespaceId, 'me') as Observable<AuthSettingWithName[]>
+        obs$ = this.authSettingState.loadUserSettings(this.namespaceId!)
         break
       case 'userGlobal':
-        obs$ = this.authSettingController.listAuthSetting('none', 'me') as Observable<AuthSettingWithName[]>
+        obs$ = this.authSettingState.loadUserSettings('global')
         break
     }
     obs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({

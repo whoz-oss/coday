@@ -234,6 +234,8 @@ class AgentSimple(
                             caseId = caseId,
                             actor = Actor(id.toString(), name, ActorRole.AGENT),
                             content = listOf(MessageContent.Text(content)),
+                            llmProvider = llmProvider,
+                            llmModel = llmModel,
                         ),
                     )
                 }

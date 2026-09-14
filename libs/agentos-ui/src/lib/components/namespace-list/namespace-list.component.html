@@ -1,6 +1,7 @@
 <ds-entity-list
   title="Namespaces"
   [items]="(namespaceItems$ | async) ?? []"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No namespaces yet. Create one to get started."
   cardMinWidth="400px"

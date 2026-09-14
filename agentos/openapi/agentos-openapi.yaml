@@ -572,7 +572,8 @@ paths:
 
         | query                            | mode             | required permission                            |
         |----------------------------------|------------------|------------------------------------------------|
-        | (no params)                      | platform         | authenticated                                  |
+        | (no params)                      | all caller's     | authenticated                                  |
+        | `?namespaceId=none` (no userId)  | platform         | authenticated                                  |
         | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
         | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
         | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
@@ -1511,15 +1512,14 @@ paths:
 
         | query                            | mode             | required permission                            |
         |----------------------------------|------------------|------------------------------------------------|
-        | (no params)                      | platform         | authenticated                                  |
+        | (no params)                      | all caller's     | authenticated                                  |
+        | `?namespaceId=none` (no userId)  | platform         | authenticated                                  |
         | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
         | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
         | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
         | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
 
         `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
-
-        When called with no params, returns platform-level configs.
       operationId: listIntegrationConfig
       parameters:
       - in: query
@@ -4155,6 +4155,10 @@ components:
               oneOf:
               - $ref: "#/components/schemas/Image"
               - $ref: "#/components/schemas/Text"
+          llmModel:
+            type: string
+          llmProvider:
+            type: string
           sessionContext:
             type: object
             additionalProperties: {}
