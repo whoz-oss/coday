@@ -1,0 +1,42 @@
+openapi: 3.0.0
+info:
+  title: Remote ref
+  version: 1.0.0
+paths:
+  /remote:
+    get:
+      operationId: getRemote
+      parameters:
+        - name: filter
+          in: query
+          schema:
+            $ref: 'https://example.com/schemas/common.yaml#/Filter'
+      responses:
+        '200':
+          description: OK
+  /missing:
+    get:
+      operationId: getMissing
+      parameters:
+        - name: filter
+          in: query
+          schema:
+            $ref: '#/components/schemas/DoesNotExist'
+      responses:
+        '200':
+          description: OK
+  /local:
+    get:
+      operationId: getLocal
+      parameters:
+        - name: filter
+          in: query
+          schema:
+            $ref: '#/components/schemas/Filter'
+      responses:
+        '200':
+          description: OK
+components:
+  schemas:
+    Filter:
+      type: string
