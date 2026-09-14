@@ -145,14 +145,14 @@ class IntegrationConfigController(
             "Scope is inferred from the query params :\n\n" +
                 "| query                            | mode             | required permission                            |\n" +
                 "|----------------------------------|------------------|------------------------------------------------|\n" +
-                "| (no params)                      | platform         | authenticated                                  |\n" +
+                "| (no params)                      | all caller's     | authenticated                                  |\n" +
+                "| `?namespaceId=none` (no userId)  | platform         | authenticated                                  |\n" +
                 "| `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
                 "| `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |\n" +
                 "| `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |\n" +
                 "| `?userId=me` (no namespace)      | all caller's     | authenticated                                  |\n\n" +
                 "`userId` accepts ONLY the literal sentinel `me` \u2014 a UUID returns 400. " +
-                "`namespaceId=none` is the sentinel for `namespaceId IS NULL`.\n\n" +
-                "When called with no params, returns platform-level configs.",
+                "`namespaceId=none` is the sentinel for `namespaceId IS NULL`.",
     )
     @GetMapping
     @PreAuthorize("isAuthenticated()")
@@ -162,10 +162,6 @@ class IntegrationConfigController(
     ): List<IntegrationConfigDto> {
         val currentUser = userService.getCurrentUser()
         ScopeParams.validateUserParam(userId)
-
-        if (namespaceId == null && userId == null) {
-            return integrationConfigService.findPlatform().map(::toDto)
-        }
 
         val resolvedNs = ScopeParams.parseNamespaceParam(namespaceId)
         return integrationConfigService
