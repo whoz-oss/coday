@@ -1,3 +1,14 @@
+## 1.3.2 (2026-09-14)
+
+### 🚀 Features
+
+- **agentos:** #1053 deliver static AuthSetting credentials to plugins and deny user-scoped network integrations ([#1314](https://github.com/whoz-oss/coday/pull/1314), [#1053](https://github.com/whoz-oss/coday/issues/1053))
+- **agentos:** #1053 credentialType-driven MCP_HTTP auth header and URL validation ([#1315](https://github.com/whoz-oss/coday/pull/1315), [#1053](https://github.com/whoz-oss/coday/issues/1053))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 1.3.1 (2026-09-11)
 
 ### 🩹 Fixes
