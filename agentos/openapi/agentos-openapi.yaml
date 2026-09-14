@@ -572,7 +572,8 @@ paths:
 
         | query                            | mode             | required permission                            |
         |----------------------------------|------------------|------------------------------------------------|
-        | (no params)                      | platform         | authenticated                                  |
+        | (no params)                      | all caller's     | authenticated                                  |
+        | `?namespaceId=none` (no userId)  | platform         | authenticated                                  |
         | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
         | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
         | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
