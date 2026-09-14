@@ -117,6 +117,9 @@ class IntegrationConfigServiceImpl(
         canReadNamespace: (UUID) -> Boolean,
     ): List<IntegrationConfig> =
         when {
+            // Explicit platform scope, available to all authenticated users.
+            namespaceIsNone && !userRequested -> findPlatform()
+
             // NS-shared layer of a specific namespace (no userId param) : check READ permission
             namespaceId != null && !userRequested -> {
                 if (!canReadNamespace(namespaceId)) {

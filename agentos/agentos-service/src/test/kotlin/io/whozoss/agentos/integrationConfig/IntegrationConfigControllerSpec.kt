@@ -413,7 +413,7 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // list — three modes, mass-assignment guard
+    // list — scope dispatch, mass-assignment guard
     // -------------------------------------------------------------------------
 
     "list without namespace filter and userId=me returns caller's own rows" {
@@ -429,18 +429,18 @@ class IntegrationConfigControllerSpec : StringSpec({
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL_JIRA", "NS_JIRA")
     }
 
-    "list without any param returns platform configs for any authenticated user" {
+    "list without any param delegates to the caller overlay filter" {
         val rows = listOf(
-            config(nsId = null, userId = null, name = "PLATFORM_JIRA"),
+            config(nsId = null, userId = aliceId, name = "PERSONAL_JIRA"),
         )
-        every { service.findPlatform() } returns rows
+        every { service.findFiltered(null, false, aliceId, false, any()) } returns rows
 
         val resp = controller.list(namespaceId = null, userId = null)
 
-        resp.map { it.name } shouldBe listOf("PLATFORM_JIRA")
+        resp.map { it.name } shouldBe listOf("PERSONAL_JIRA")
     }
 
-    "list with namespaceId=none returns only user-global rows" {
+    "list with namespaceId=none and userId=me returns only user-global rows" {
         val rows = listOf(
             config(nsId = null, userId = aliceId, name = "GLOBAL"),
         )
