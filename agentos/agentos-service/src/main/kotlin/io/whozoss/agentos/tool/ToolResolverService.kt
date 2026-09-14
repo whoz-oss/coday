@@ -13,13 +13,15 @@ class ToolResolverService(
     private val toolRegistryService: ToolRegistryService,
 ) {
     /**
-     * Resolves the tool set for a user-scoped agent run, applying 3-tier overlay
-     * reconciliation for each integration config.
+     * Resolves the tool set for an agent run from the already-merged [allIntegrationConfigs]
+     * (the 4-tier overlay is applied upstream by the integration config service).
      *
-     * The [context] must carry both a valid [ToolContext.namespaceId] and a non-null
-     * [ToolContext.userId] (the method throws [IllegalArgumentException] otherwise). The
-     * context is passed verbatim to each plugin, giving them access to the full runtime
-     * identity (namespace, user, external id, agent name, case events).
+     * The [context] is passed verbatim to each plugin, giving them access to the runtime
+     * identity (namespace, user, external id, agent name, case events). A null
+     * [ToolContext.userId] is accepted: tools still resolve, and whether a plugin receives a
+     * `credentialProvider` depends solely on [credentialProviderFactory]. A factory returning
+     * `null` (the default here, and what `AgentServiceImpl` does for a run without a user)
+     * leaves the plugin without one.
      *
      * @param agentIntegrations Optional integration filter from AgentConfig.integrations.
      *   When null, the agent has no integration bindings and this resolver returns no tools.
@@ -27,7 +29,8 @@ class ToolResolverService(
      *   scopes are granted outside it by [io.whozoss.agentos.exchange.ExchangeToolGrantService],
      *   whose platform defaults can hand the file-plugin tools to an agent that declares nothing.
      * @param context Runtime context forwarded to each [ToolPlugin.provideTools] call.
-     *   [ToolContext.userId] must be non-null.
+     * @param credentialProviderFactory Builds the [CredentialProvider] for a config's
+     *   `authSettingName`; a `null` result leaves the context without a provider.
      */
     fun resolveToolsForRun(
         agentIntegrations: Map<String, List<String>?>? = null,

@@ -18,12 +18,14 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
 import io.whozoss.agentos.authSetting.ApiKeyAuthSetting
+import io.whozoss.agentos.authSetting.BearerTokenAuthSetting
 import io.whozoss.agentos.authSetting.OAuthRegisteredAuthSetting
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthService
 import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.auth.OAuthFlowService
+import io.whozoss.agentos.auth.StaticCredentialFactory
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
@@ -79,6 +81,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val caseEventService: CaseEventService = mockk(relaxed = true)
     private val authServiceFactory: AuthServiceFactory = mockk(relaxed = true)
     private val oAuthFlowService: OAuthFlowService = mockk(relaxed = true)
+    // Strict: the static fallback must only run on the exact path under test (non-OAuth type, no
+    // per-user row). A relaxed mock would silently return a Credential and mask a wrong dispatch.
+    private val staticCredentialFactory: StaticCredentialFactory = mockk()
     private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
@@ -107,6 +112,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             caseEventService = caseEventService,
             authServiceFactory = authServiceFactory,
             oAuthFlowService = oAuthFlowService,
+            staticCredentialFactory = staticCredentialFactory,
             exchangeStorageService = exchangeStorageService,
             exchangeCapabilityService = exchangeCapabilityService,
             exchangeToolGrantService = exchangeToolGrantService,
@@ -166,6 +172,44 @@ class AgentServiceImplUnitSpec : StringSpec() {
         instructions = instructions,
         modelName = modelName,
     )
+
+    /**
+     * Runs [AgentServiceImpl.findAgentByName] with the minimal stubbing needed to reach tool
+     * resolution and returns the `credentialProviderFactory` it handed to the resolver.
+     */
+    private suspend fun captureCredentialProviderFactory(
+        context: AgentExecutionContext,
+        agentName: String,
+    ): (String) -> CredentialProvider? {
+        val factorySlot = slot<(String) -> CredentialProvider?>()
+        every {
+            toolResolverService.resolveToolsForRun(
+                agentIntegrations = any(),
+                context = any(),
+                allIntegrationConfigs = any(),
+                credentialProviderFactory = capture(factorySlot),
+            )
+        } returns emptyList()
+        val config = agentConfig(name = agentName, modelName = "sonnet")
+        val userId = context.userId
+        if (userId != null) {
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, agentName)
+            } returns listOf(config)
+            every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns providerConfig()
+            every { userService.findById(userId) } returns null
+        } else {
+            every { agentConfigService.findByName(namespaceId, agentName) } returns config
+        }
+        every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+        every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+        every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+        every { integrationConfigService.findEffective(namespaceId, userId) } returns emptyList()
+
+        agentService.findAgentByName(agentName, context)
+
+        return factorySlot.captured
+    }
 
     init {
         every {
@@ -443,6 +487,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolRegistryService = toolRegistryService,
                     toolMetricsService = toolMetricsService,
                     oAuthFlowService = oAuthFlowService,
+                    staticCredentialFactory = staticCredentialFactory,
                     caseEventService = caseEventService,
                     authServiceFactory = authServiceFactory,
                     exchangeStorageService = exchangeStorageService,
@@ -775,6 +820,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     caseEventService = caseEventService,
                     authServiceFactory = authServiceFactory,
                     oAuthFlowService = oAuthFlowService,
+                    staticCredentialFactory = staticCredentialFactory,
                     exchangeStorageService = exchangeStorageService,
                     exchangeCapabilityService = exchangeCapabilityService,
                     exchangeToolGrantService = exchangeToolGrantService,
@@ -1413,6 +1459,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             }
             // Non-OAuth path must not be triggered.
             verify(exactly = 0) { mockAuthService.resolveCredential(any()) }
+            verify(exactly = 0) { staticCredentialFactory.fromAuthSetting(any(), any()) }
         }
 
         "credentialProviderFactory routes non-OAuth authType to resolveCredential, not OAuthFlowService" {
@@ -1439,7 +1486,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     userId = userId,
                     authSettingId = authSettingId,
                     credentialType = CredentialType.API_KEY,
-                    data = mapOf("apiKey" to "sk-test"),
+                    data = mapOf("key" to "sk-test"),
                 )
             val mockAuthService = mockk<AuthService>()
             every { authServiceFactory.create(namespaceId, userId) } returns mockAuthService
@@ -1474,6 +1521,114 @@ class AgentServiceImplUnitSpec : StringSpec() {
             verify(exactly = 1) { mockAuthService.resolveCredential(authSettingId) }
             // OAuth flow must never be triggered for a non-OAuth authType.
             coVerify(exactly = 0) { oAuthFlowService.resolveOAuthCredential(any(), any(), any(), any(), any(), any(), any()) }
+            // The persisted per-user row wins: static synthesis is not even attempted.
+            verify(exactly = 0) { staticCredentialFactory.fromAuthSetting(any(), any()) }
+        }
+
+        "credentialProviderFactory synthesises a static credential when no per-user row exists, without persisting it" {
+            val userId = UUID.randomUUID()
+            val authSettingId = UUID.randomUUID()
+            val userContext =
+                AgentExecutionContext(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    caseCreatedAt = caseCreatedAt,
+                    userId = userId,
+                )
+            val bearerSetting =
+                BearerTokenAuthSetting(
+                    metadata = EntityMetadata(id = authSettingId),
+                    name = "my-bearer",
+                    token = "tok-static",
+                )
+            val staticCredential =
+                Credential(
+                    userId = userId,
+                    authSettingId = authSettingId,
+                    credentialType = CredentialType.BEARER_TOKEN,
+                    data = mapOf("token" to "tok-static"),
+                )
+            val mockAuthService = mockk<AuthService>()
+            every { authServiceFactory.create(namespaceId, userId) } returns mockAuthService
+            every { mockAuthService.resolveAuthSetting("my-bearer") } returns bearerSetting
+            every { mockAuthService.resolveCredential(authSettingId) } returns null
+            every { staticCredentialFactory.fromAuthSetting(userId, bearerSetting) } returns staticCredential
+
+            val factory = captureCredentialProviderFactory(userContext, agentName = "bearer-agent")
+            val resolvedCredential = factory.invoke("my-bearer")?.invoke()
+
+            resolvedCredential shouldBe staticCredential
+            verify(exactly = 1) { mockAuthService.resolveCredential(authSettingId) }
+            verify(exactly = 1) { staticCredentialFactory.fromAuthSetting(userId, bearerSetting) }
+            // The synthesised credential is transient: nothing must be written back.
+            verify(exactly = 0) { mockAuthService.storeCredential(any()) }
+            coVerify(exactly = 0) {
+                oAuthFlowService.resolveOAuthCredential(any(), any(), any(), any(), any(), any(), any())
+            }
+        }
+
+        "credentialProviderFactory returns null for a non-OAuth type with neither a per-user row nor a static secret" {
+            val userId = UUID.randomUUID()
+            val authSettingId = UUID.randomUUID()
+            val userContext =
+                AgentExecutionContext(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    caseCreatedAt = caseCreatedAt,
+                    userId = userId,
+                )
+            val blankSetting =
+                ApiKeyAuthSetting(metadata = EntityMetadata(id = authSettingId), name = "blank-key", apiKey = "")
+            val mockAuthService = mockk<AuthService>()
+            every { authServiceFactory.create(namespaceId, userId) } returns mockAuthService
+            every { mockAuthService.resolveAuthSetting("blank-key") } returns blankSetting
+            every { mockAuthService.resolveCredential(authSettingId) } returns null
+            every { staticCredentialFactory.fromAuthSetting(userId, blankSetting) } returns null
+
+            val factory = captureCredentialProviderFactory(userContext, agentName = "blank-agent")
+
+            factory.invoke("blank-key")?.invoke() shouldBe null
+            verify(exactly = 0) { mockAuthService.storeCredential(any()) }
+        }
+
+        "credentialProviderFactory never asks the static factory for an OAuth type, even outside the interactive flow" {
+            // No emitEvent: the OAuth branch falls back to the direct lookup, which must still not
+            // synthesise anything (OAuth credentials only come from OAuthFlowService).
+            val userId = UUID.randomUUID()
+            val authSettingId = UUID.randomUUID()
+            val userContext =
+                AgentExecutionContext(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    caseCreatedAt = caseCreatedAt,
+                    userId = userId,
+                )
+            val oauthSetting =
+                OAuthRegisteredAuthSetting(
+                    metadata = EntityMetadata(id = authSettingId),
+                    name = "my-oauth",
+                    clientId = "client-id",
+                    clientSecret = "client-secret",
+                    authorizationUrl = "https://provider.example.com/auth",
+                    tokenUrl = "https://provider.example.com/token",
+                )
+            val mockAuthService = mockk<AuthService>()
+            every { authServiceFactory.create(namespaceId, userId) } returns mockAuthService
+            every { mockAuthService.resolveAuthSetting("my-oauth") } returns oauthSetting
+            every { mockAuthService.resolveCredential(authSettingId) } returns null
+
+            val factory = captureCredentialProviderFactory(userContext, agentName = "oauth-fallback-agent")
+
+            factory.invoke("my-oauth")?.invoke() shouldBe null
+            verify(exactly = 0) { staticCredentialFactory.fromAuthSetting(any(), any()) }
+        }
+
+        "credentialProviderFactory yields no provider when the run has no userId" {
+            val factory = captureCredentialProviderFactory(context, agentName = "anonymous-agent")
+
+            factory.invoke("my-api-key") shouldBe null
+            verify(exactly = 0) { authServiceFactory.create(any(), any()) }
+            verify(exactly = 0) { staticCredentialFactory.fromAuthSetting(any(), any()) }
         }
 
         // -------------------------------------------------------------------------

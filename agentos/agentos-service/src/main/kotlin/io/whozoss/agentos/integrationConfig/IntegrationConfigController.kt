@@ -61,6 +61,10 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * **Mass-assignment guards** — on `PUT`, `id`, `namespaceId`, `userId`, and
  * `integrationType` are preserved from the persisted row. `integrationType` is
  * immutable post-create (Decision 18 / AC11b).
+ *
+ * **User-scope denial** — both user scopes refuse the integration types listed in
+ * [IntegrationsProperties.userScopeDeniedTypes] on `POST` and `PUT` (see
+ * [IntegrationConfigScopePolicy]); shared scopes are unaffected.
  */
 @RestController
 @RequestMapping(
@@ -72,6 +76,7 @@ class IntegrationConfigController(
     private val namespaceService: NamespaceService,
     private val userService: UserService,
     private val permissionService: PermissionService,
+    private val scopePolicy: IntegrationConfigScopePolicy,
     @Qualifier("yamlExportMapper") private val yamlExportMapper: ObjectMapper,
 ) : IntegrationConfigApi {
     private val scopedOwnershipCrudDelegate =
@@ -191,7 +196,9 @@ class IntegrationConfigController(
                 "| null             | <currentUser.id>   | user-global   | authenticated only                   |\n" +
                 "| present          | <currentUser.id>   | user×namespace| READ on the namespace                |\n\n" +
                 "`body.userId` (when supplied) MUST equal the authenticated user's id. " +
-                "A `namespaceId` that does not exist returns 404.",
+                "A `namespaceId` that does not exist returns 404. " +
+                "Integration types listed in `agentos.integrations.user-scope-denied-types` " +
+                "(default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`) cannot be created in either user scope (403).",
     )
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
@@ -218,6 +225,7 @@ class IntegrationConfigController(
         }
 
         // Non-platform scopes — delegate handles userId guard + namespace authz.
+        scopePolicy.requireScopeAllowed(userId = resource.userId, integrationType = resource.integrationType)
         return scopedOwnershipCrudDelegate.create(resource)
     }
 
@@ -232,6 +240,8 @@ class IntegrationConfigController(
             integrationConfigService.findById(id)
                 ?: throw ResourceNotFoundException("IntegrationConfig not found: $id")
         requireAdminForPlatform(existing.namespaceId, existing.userId)
+        // integrationType is immutable, so the persisted type is the one that matters here.
+        scopePolicy.requireScopeAllowed(userId = existing.userId, integrationType = existing.integrationType)
         return toDto(
             integrationConfigService.update(
                 existing.copy(
