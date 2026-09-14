@@ -1,3 +1,13 @@
+## 1.3.6 (2026-09-14)
+
+### 🩹 Fixes
+
+- **agentos:** allow sharing agents across user groups ([#1336](https://github.com/whoz-oss/coday/pull/1336))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 1.3.5 (2026-09-14)
 
 ### 🚀 Features
