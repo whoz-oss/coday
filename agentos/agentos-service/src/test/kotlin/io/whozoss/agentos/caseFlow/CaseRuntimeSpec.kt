@@ -20,6 +20,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -865,6 +866,165 @@ class CaseRuntimeSpec : StringSpec() {
             runtime.statusFlow.value shouldBe CaseStatus.IDLE
         }
 
+        "pre-flight resumes every legitimately answered outstanding question sequentially in question history order" {
+            // Both answers exist before the run starts. The first question remains first
+            // even when the answers arrive in reverse order; QuestionEvent history order
+            // is the explicit deterministic scheduling rule.
+            val caseId = UUID.randomUUID()
+            val firstAgent = "first-agent"
+            val secondAgent = "second-agent"
+            val firstId = UUID.nameUUIDFromBytes(firstAgent.toByteArray())
+            val secondId = UUID.nameUUIDFromBytes(secondAgent.toByteArray())
+            val firstQuestion = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(1), namespaceId = namespaceId, caseId = caseId,
+                agentId = firstId, agentName = firstAgent, question = "First?",
+            )
+            val secondQuestion = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(2), namespaceId = namespaceId, caseId = caseId,
+                agentId = secondId, agentName = secondAgent, question = "Second?",
+            )
+            val respondent = Actor(UUID.randomUUID().toString(), "User", ActorRole.USER)
+            val secondAnswer = secondQuestion.createAnswer(respondent, "second").copy(timestamp = Instant.EPOCH.plusSeconds(3))
+            val firstAnswer = firstQuestion.createAnswer(respondent, "first").copy(timestamp = Instant.EPOCH.plusSeconds(4))
+            val runOrder = mutableListOf<String>()
+            val savedEvents = mutableListOf<CaseEvent>()
+            var nextStoredTimestamp = Instant.EPOCH.plusSeconds(5)
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event ->
+                    val saved = if (event is AgentSelectedEvent) event.copy(timestamp = nextStoredTimestamp) else event
+                    savedEvents += saved
+                    nextStoredTimestamp = nextStoredTimestamp.plusSeconds(1)
+                    saved
+                },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    runOrder += name
+                    runtime.pushEvents(listOf(AgentFinishedEvent(
+                        timestamp = nextStoredTimestamp,
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = if (name == firstAgent) firstId else secondId,
+                        agentName = name,
+                    )))
+                    nextStoredTimestamp = nextStoredTimestamp.plusSeconds(1)
+                },
+            )
+            runtime.pushEvents(listOf(firstQuestion, secondQuestion, secondAnswer, firstAnswer))
+
+            runtime.run()
+
+            runOrder shouldBe listOf(firstAgent, secondAgent)
+            savedEvents.filterIsInstance<AgentSelectedEvent>().map { it.agentName } shouldBe
+                listOf(firstAgent, secondAgent)
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "pre-flight leaves unanswered questions pending while resuming an answered one" {
+            val caseId = UUID.randomUUID()
+            val answeredAgent = "answered-agent"
+            val waitingAgent = "waiting-agent"
+            val answeredQuestion = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(1), namespaceId = namespaceId, caseId = caseId,
+                agentId = UUID.nameUUIDFromBytes(answeredAgent.toByteArray()), agentName = answeredAgent, question = "Answered?",
+            )
+            val waitingQuestion = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(2), namespaceId = namespaceId, caseId = caseId,
+                agentId = UUID.nameUUIDFromBytes(waitingAgent.toByteArray()), agentName = waitingAgent, question = "Waiting?",
+            )
+            val answer = answeredQuestion.createAnswer(Actor(UUID.randomUUID().toString(), "User", ActorRole.USER), "yes")
+                .copy(timestamp = Instant.EPOCH.plusSeconds(3))
+            val runCalls = mutableListOf<String>()
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId, namespaceId = namespaceId, caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> if (event is AgentSelectedEvent) event.copy(timestamp = Instant.EPOCH.plusSeconds(4)) else event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    runCalls += name
+                    runtime.pushEvents(listOf(AgentFinishedEvent(
+                        timestamp = Instant.EPOCH.plusSeconds(5), namespaceId = namespaceId, caseId = caseId,
+                        agentId = UUID.nameUUIDFromBytes(name.toByteArray()), agentName = name,
+                    )))
+                },
+            )
+            runtime.pushEvents(listOf(answeredQuestion, waitingQuestion, answer))
+
+            runtime.run()
+
+            runCalls shouldBe listOf(answeredAgent)
+        }
+
+        "pre-flight deduplicates two answered questions from the same agent by questionId" {
+            val caseId = UUID.randomUUID()
+            val agentName = "same-agent"
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val first = QuestionEvent(timestamp = Instant.EPOCH.plusSeconds(1), namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName, question = "one")
+            val second = QuestionEvent(timestamp = Instant.EPOCH.plusSeconds(2), namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName, question = "two")
+            val actor = Actor(UUID.randomUUID().toString(), "User", ActorRole.USER)
+            val firstAnswer = first.createAnswer(actor, "one").copy(timestamp = Instant.EPOCH.plusSeconds(3))
+            val secondAnswer = second.createAnswer(actor, "two").copy(timestamp = Instant.EPOCH.plusSeconds(4))
+            val calls = mutableListOf<String>()
+            var timestamp = Instant.EPOCH.plusSeconds(5)
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId, namespaceId = namespaceId, caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event ->
+                    val stored = if (event is AgentSelectedEvent) event.copy(timestamp = timestamp) else event
+                    timestamp = timestamp.plusSeconds(1)
+                    stored
+                },
+                selectAgent = { _, _ -> emptyList() }, isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    calls += name
+                    runtime.pushEvents(listOf(AgentFinishedEvent(timestamp = timestamp, namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = name)))
+                    timestamp = timestamp.plusSeconds(1)
+                },
+            )
+            runtime.pushEvents(listOf(first, second, firstAnswer, secondAnswer))
+            runtime.run()
+
+            calls shouldBe listOf(agentName, agentName)
+        }
+
+        "replay after first resumed question finished still resumes the second question exactly once" {
+            val caseId = UUID.randomUUID()
+            val agentOne = "agent-one"
+            val agentTwo = "agent-two"
+            val first = QuestionEvent(timestamp = Instant.EPOCH.plusSeconds(1), namespaceId = namespaceId, caseId = caseId, agentId = UUID.nameUUIDFromBytes(agentOne.toByteArray()), agentName = agentOne, question = "one")
+            val second = QuestionEvent(timestamp = Instant.EPOCH.plusSeconds(2), namespaceId = namespaceId, caseId = caseId, agentId = UUID.nameUUIDFromBytes(agentTwo.toByteArray()), agentName = agentTwo, question = "two")
+            val actor = Actor(UUID.randomUUID().toString(), "User", ActorRole.USER)
+            val firstAnswer = first.createAnswer(actor, "one").copy(timestamp = Instant.EPOCH.plusSeconds(3))
+            val secondAnswer = second.createAnswer(actor, "two").copy(timestamp = Instant.EPOCH.plusSeconds(4))
+            val firstSelection = AgentSelectedEvent(timestamp = Instant.EPOCH.plusSeconds(5), namespaceId = namespaceId, caseId = caseId, agentId = first.agentId, agentName = agentOne, questionId = first.id)
+            val firstFinished = AgentFinishedEvent(timestamp = Instant.EPOCH.plusSeconds(6), namespaceId = namespaceId, caseId = caseId, agentId = first.agentId, agentName = agentOne)
+            val calls = mutableListOf<String>()
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId, namespaceId = namespaceId, caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> if (event is AgentSelectedEvent) event.copy(timestamp = Instant.EPOCH.plusSeconds(7)) else event },
+                selectAgent = { _, _ -> emptyList() }, isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    calls += name
+                    runtime.pushEvents(listOf(AgentFinishedEvent(timestamp = Instant.EPOCH.plusSeconds(8), namespaceId = namespaceId, caseId = caseId, agentId = second.agentId, agentName = name)))
+                },
+            )
+            runtime.pushEvents(listOf(first, second, firstAnswer, secondAnswer, firstSelection, firstFinished))
+            runtime.run()
+
+            calls shouldBe listOf(agentTwo)
+        }
+
         "pre-flight does NOT wake up agent when answer is followed by AgentFinishedEvent (OAuth guard)" {
             // Simulate the OAuth path: agent was running INSIDE its run when the answer
             // arrived, finished its turn normally, so AgentFinishedEvent comes AFTER the
@@ -898,6 +1058,7 @@ class CaseRuntimeSpec : StringSpec() {
                 agentId = agentId,
                 agentName = agentName,
                 question = "Authorize OAuth?",
+                questionType = QuestionType.OAUTH_AUTHORIZE,
             )
             // createAnswer() defaults timestamp to Instant.now(); override it to t4
             // so the sort order is deterministic and AnswerEvent lands before AgentFinishedEvent.
@@ -949,8 +1110,71 @@ class CaseRuntimeSpec : StringSpec() {
 
             runtime.run()
 
-            // The pre-flight must NOT have fired: AgentFinishedEvent is after AnswerEvent,
-            // so the OAuth guard in findUnresolvedQuestion returns null.
+            // The pre-flight must NOT have fired: the persisted OAuth question type
+            // explicitly marks this answer as owned by the still-running OAuth flow.
+            runCalls shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "pre-flight does not falsely wake an OAuth question when another question was resumed before OAuth finished" {
+            // Exact interleaving regression:
+            // Q1 and Q2 are outstanding; Q2 is an active OAuth flow. After Answer(Q2),
+            // Answer(Q1) causes the durable correlated selection for Q1. OAuth Q2 then
+            // finishes. On replay, Q2 must remain suppressed even though the Q1 selection
+            // sits between its answer and the OAuth finish.
+            val caseId = UUID.randomUUID()
+            val q1AgentId = UUID.randomUUID()
+            val oauthAgentId = UUID.randomUUID()
+            val user = Actor(UUID.randomUUID().toString(), "User", ActorRole.USER)
+            val q1 = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(1),
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = q1AgentId,
+                agentName = "await-agent",
+                question = "Q1",
+            )
+            val q2 = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(2),
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = oauthAgentId,
+                agentName = "oauth-agent",
+                question = "Q2",
+                questionType = QuestionType.OAUTH_AUTHORIZE,
+            )
+            val q2Answer = q2.createAnswer(user, "authorized").copy(timestamp = Instant.EPOCH.plusSeconds(3))
+            val q1Answer = q1.createAnswer(user, "answer").copy(timestamp = Instant.EPOCH.plusSeconds(4))
+            val q1Selection = AgentSelectedEvent(
+                timestamp = Instant.EPOCH.plusSeconds(5),
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = q1AgentId,
+                agentName = q1.agentName,
+                questionId = q1.id,
+            )
+            val oauthFinished = AgentFinishedEvent(
+                timestamp = Instant.EPOCH.plusSeconds(6),
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = oauthAgentId,
+                agentName = q2.agentName,
+            )
+            val runCalls = mutableListOf<String>()
+            val runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { it },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ -> runCalls += name },
+            )
+            runtime.pushEvents(listOf(q1, q2, q2Answer, q1Answer, q1Selection, oauthFinished))
+
+            runtime.run()
+
             runCalls shouldBe emptyList()
             runtime.statusFlow.value shouldBe CaseStatus.IDLE
         }
