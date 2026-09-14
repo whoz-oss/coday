@@ -305,7 +305,7 @@ export class IntegrationFormComponent implements OnInit {
     let obs$: Observable<AuthSettingWithName[]>
     switch (scope) {
       case 'platform':
-        obs$ = this.authSettingController.listAuthSetting() as Observable<AuthSettingWithName[]>
+        obs$ = this.authSettingController.listAuthSetting('none') as Observable<AuthSettingWithName[]>
         break
       case 'namespace':
         obs$ = this.authSettingController.listAuthSetting(this.namespaceId) as Observable<AuthSettingWithName[]>

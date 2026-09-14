@@ -216,9 +216,9 @@ export class AuthSettingConfigStateService {
     [] as AuthSettingDto[]
   )
 
-  /** Platform-level auth settings: no namespaceId, no userId → scope IS NULL for both. */
+  /** Platform-level auth settings: explicit namespaceId=none, no userId. */
   loadPlatformSettings(): Observable<AuthSettingDto[]> {
-    return this.controller.listAuthSetting().pipe(map((raw) => castToDtoArray(raw)))
+    return this.controller.listAuthSetting(NAMESPACE_NONE_SENTINEL).pipe(map((raw) => castToDtoArray(raw)))
   }
 
   loadNamespaceSettings(namespaceId: string): Observable<AuthSettingDto[]> {
