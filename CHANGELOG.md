@@ -1,3 +1,13 @@
+## 1.3.3 (2026-09-14)
+
+### 🩹 Fixes
+
+- **agentos:** load platform Auth Settings with explicit scope ([#1333](https://github.com/whoz-oss/coday/pull/1333))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 1.3.2 (2026-09-14)
 
 ### 🚀 Features
