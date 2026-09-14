@@ -30,11 +30,10 @@ export interface UpdateUserGroupInput {
   adminExternalIds: string[]
 }
 
-/** Everything the create/edit form needs before rendering: agent choices, sibling groups, users. */
+/** Everything the create/edit form needs before rendering: agent choices and users. */
 export interface UserGroupFormData {
   namespaceAgents: AgentConfig[]
   platformAgents: AgentConfig[]
-  groups: UserGroupSearchResult[]
   users: MemberItem[]
 }
 
@@ -70,7 +69,6 @@ export class UserGroupStateService {
     return forkJoin({
       namespaceAgents: this.agentConfigController.listByParentAgentConfig(namespaceId, false),
       platformAgents: this.agentConfigController.listPlatformAgentsAgentConfig(false),
-      groups: this.listByNamespace(namespaceId),
       users: this.namespaceMembership.getMembersNamespaceMembership(namespaceId),
     })
   }

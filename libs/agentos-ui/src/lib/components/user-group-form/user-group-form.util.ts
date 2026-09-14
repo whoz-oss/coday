@@ -1,26 +1,3 @@
-import { UserGroupSearchResult } from '@whoz-oss/agentos-api-client'
-
-/**
- * Maps each agentId deployed to a group OTHER than [currentGroupId] to that group's name.
- *
- * Used by the form to disable agents already deployed elsewhere in the namespace — an agent may
- * be deployed to at most one group per namespace. When editing, the current group's own agents
- * are excluded (via [currentGroupId]) so they remain selectable.
- */
-export function computeTakenElsewhere(
-  groups: UserGroupSearchResult[],
-  currentGroupId: string | null
-): Map<string, string> {
-  const taken = new Map<string, string>()
-  for (const group of groups) {
-    if (group.userGroupId === currentGroupId) continue
-    for (const agentId of group.agentIds) {
-      if (!taken.has(agentId)) taken.set(agentId, group.name)
-    }
-  }
-  return taken
-}
-
 /**
  * Diffs the original member set against the selected one, producing the add/remove lists an
  * update request expects.
