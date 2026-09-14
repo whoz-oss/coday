@@ -1,3 +1,13 @@
+## 1.3.7 (2026-09-14)
+
+### 🩹 Fixes
+
+- bump bundled version to 1.3.6 ([00e21ee4](https://github.com/whoz-oss/coday/commit/00e21ee4))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 1.3.6 (2026-09-14)
 
 ### 🩹 Fixes
