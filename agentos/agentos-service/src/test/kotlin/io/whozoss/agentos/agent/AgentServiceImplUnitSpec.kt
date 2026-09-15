@@ -1365,7 +1365,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
         // OAuth dispatch in credentialProviderFactory
         //
-        // resolveAgentDefinition asks CredentialProviderFactory.forRun for the factory lambda, whose
+        // resolveAgentDefinition asks CredentialProviderFactory.forAgentRun for the factory lambda, whose
         // branch is:
         //   if (setting.authType in OAUTH_AUTH_TYPES && caseId != null && emitEvent != null) → OAuthFlowService
         //   else → AuthService.resolveCredential

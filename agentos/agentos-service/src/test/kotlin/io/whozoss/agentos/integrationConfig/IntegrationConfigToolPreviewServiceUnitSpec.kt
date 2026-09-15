@@ -228,21 +228,15 @@ class IntegrationConfigToolPreviewServiceUnitSpec : StringSpec() {
             context.caseEvents.shouldBeEmpty()
             context.agentName.shouldBeNull()
             context.credentialProvider.shouldBeNull()
-            verify(exactly = 0) { credentialProviderFactory.forRun(any(), any(), any(), any(), any()) }
+            verify(exactly = 0) { credentialProviderFactory.forPreview(any(), any()) }
         }
 
         "preview hands the plugin a credential provider built for the current user when an auth setting is bound" {
             val plugin = registered(RecordingPlugin(tools = { emptyList() }))
             val provider: CredentialProvider = { null }
             every {
-                credentialProviderFactory.forRun(
-                    namespaceId = namespaceId,
-                    userId = user.id,
-                    caseId = null,
-                    agentName = null,
-                    emitEvent = null,
-                )
-            } returns { name -> if (name == "my-auth") provider else null }
+                credentialProviderFactory.forPreview(namespaceId = namespaceId, userId = user.id)
+            } returns { name -> if (name == "my-auth") provider else error("unexpected auth setting '$name'") }
 
             service.preview(config(authSettingName = "my-auth"), namespaceId, user)
 

@@ -237,7 +237,7 @@ class AgentServiceImpl(
                 agentName = agentConfig.name,
             )
         val runCredentialProviderFactory =
-            credentialProviderFactory.forRun(
+            credentialProviderFactory.forAgentRun(
                 namespaceId = context.namespaceId,
                 userId = context.userId,
                 caseId = context.caseId,

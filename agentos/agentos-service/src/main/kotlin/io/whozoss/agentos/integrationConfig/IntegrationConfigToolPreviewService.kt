@@ -62,13 +62,7 @@ class IntegrationConfigToolPreviewService(
             )
         val credentialProvider =
             config.authSettingName?.let { authSettingName ->
-                credentialProviderFactory.forRun(
-                    namespaceId = namespaceId,
-                    userId = user.id,
-                    caseId = null,
-                    agentName = null,
-                    emitEvent = null,
-                )(authSettingName)
+                credentialProviderFactory.forPreview(namespaceId = namespaceId, userId = user.id)(authSettingName)
             }
         val toolContext = baseContext.copy(credentialProvider = credentialProvider)
         val (tools, error) = provideToolsSafely(plugin, config, toolContext)
