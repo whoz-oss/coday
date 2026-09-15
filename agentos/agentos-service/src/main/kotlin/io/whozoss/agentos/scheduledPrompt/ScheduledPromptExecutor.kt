@@ -361,7 +361,7 @@ class ScheduledPromptExecutor(
         // check for an existing Case before creating one, making execution effectively-once.
         try {
             val runContext = resolveRunContext(userRun)
-            val userContextResult = resolveUserContext(userRun, runContext)
+            val userContextResult = resolveUserContext(userRun, runContext.userExternalId, runContext.namespaceId)
             val sessionContext: Map<String, Any?>? = when (userContextResult) {
                 null -> null
                 is UserContextResult.Success -> {
@@ -450,14 +450,15 @@ class ScheduledPromptExecutor(
      */
     private fun resolveUserContext(
         userRun: ScheduledPromptUserRun,
-        runContext: UserRunContext,
+        userExternalId: String,
+        namespaceId: UUID,
     ): UserContextResult? {
         val provider = userContextProvider ?: return null
 
         return runCatching {
             provider.provideUserContext(
-                userExternalId = runContext.userExternalId,
-                namespaceId = runContext.namespaceId,
+                userExternalId = userExternalId,
+                namespaceId = namespaceId,
             )
         }.getOrElse { e ->
             logger.warn(e) {
