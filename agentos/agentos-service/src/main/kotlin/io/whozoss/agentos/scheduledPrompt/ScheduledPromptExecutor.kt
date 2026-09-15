@@ -379,7 +379,6 @@ class ScheduledPromptExecutor(
                     return
                 }
                 is UserContextResult.TransientFailure -> {
-                    // TODO : to be determined
                     // Transient failure: do NOT mark the UserRun terminal. The lease will expire and
                     // the UserRun will be reclaimed by claimBatch on the next scheduler tick.
                     logger.warn {
