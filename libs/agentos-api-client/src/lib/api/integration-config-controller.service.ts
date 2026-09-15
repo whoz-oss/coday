@@ -17,6 +17,8 @@ import { Observable } from 'rxjs'
 import { GetByIdsRequest } from '../model/get-by-ids-request'
 // @ts-ignore
 import { IntegrationConfig } from '../model/integration-config'
+// @ts-ignore
+import { IntegrationConfigToolPreview } from '../model/integration-config-tool-preview'
 
 // @ts-ignore
 import { BASE_PATH } from '../variables'
@@ -486,6 +488,86 @@ export class IntegrationConfigControllerService extends BaseService {
     let localVarPath = `/api/integration-configs`
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<IntegrationConfig>>('get', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      params: localVarQueryParameters,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Preview the tools an IntegrationConfig yields
+   * Resolves the tools of the stored config for the calling user, without binding an agent and without a case, so a config can be checked right after saving it. The stored row is used as is: the user-level overlay merge applied by an agent run is NOT applied, no agent allowlist is applied and nothing is persisted.  A POST, not a GET: nothing is persisted, but the call resolves the caller\&#39;s credential and lets the plugin open outbound connections, so it must never be prefetched or cached.  Requires WRITE on the config. The preview runs in a namespace: rows that carry a &#x60;namespaceId&#x60; use it (a supplied &#x60;namespaceId&#x60; must match it, 400 otherwise); platform and user-global rows have none, so &#x60;namespaceId&#x60; is required (400 when missing). A supplied &#x60;namespaceId&#x60; must be readable by the caller (404 otherwise, existence hidden). Platform rows additionally require Super Admin.  422 when no plugin is loaded for the config\&#39;s integration type. A plugin failure while building the tools is reported in &#x60;error&#x60; with an empty &#x60;tools&#x60; list (200).
+   * @param id
+   * @param namespaceId Namespace to preview in. Required for platform and user-global rows; must equal the row\&#39;s namespace when the row has one.
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public previewToolsIntegrationConfig(
+    id: string,
+    namespaceId?: string,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<IntegrationConfigToolPreview>
+  public previewToolsIntegrationConfig(
+    id: string,
+    namespaceId?: string,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<IntegrationConfigToolPreview>>
+  public previewToolsIntegrationConfig(
+    id: string,
+    namespaceId?: string,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<IntegrationConfigToolPreview>>
+  public previewToolsIntegrationConfig(
+    id: string,
+    namespaceId?: string,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling previewToolsIntegrationConfig.')
+    }
+
+    let localVarQueryParameters = new HttpParams({ encoder: this.encoder })
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>namespaceId, 'namespaceId')
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/integration-configs/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/preview-tools`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<IntegrationConfigToolPreview>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       params: localVarQueryParameters,
       responseType: <any>responseType_,

@@ -24,6 +24,7 @@ import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthService
 import io.whozoss.agentos.auth.AuthServiceFactory
+import io.whozoss.agentos.auth.CredentialProviderFactory
 import io.whozoss.agentos.auth.OAuthFlowService
 import io.whozoss.agentos.auth.StaticCredentialFactory
 import io.whozoss.agentos.caseEvent.CaseEventService
@@ -84,6 +85,15 @@ class AgentServiceImplUnitSpec : StringSpec() {
     // Strict: the static fallback must only run on the exact path under test (non-OAuth type, no
     // per-user row). A relaxed mock would silently return a Credential and mask a wrong dispatch.
     private val staticCredentialFactory: StaticCredentialFactory = mockk()
+    // Real factory over the mocks above: the OAuth-dispatch tests below capture the lambda that
+    // AgentServiceImpl hands to the resolver and exercise the whole chain, so the wiring
+    // (namespaceId, userId, caseId, agentName, emitEvent taken from the run context) is verified.
+    private val credentialProviderFactory =
+        CredentialProviderFactory(
+            authServiceFactory = authServiceFactory,
+            oAuthFlowService = oAuthFlowService,
+            staticCredentialFactory = staticCredentialFactory,
+        )
     private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
@@ -110,9 +120,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             toolRegistryService = toolRegistryService,
             toolMetricsService = toolMetricsService,
             caseEventService = caseEventService,
-            authServiceFactory = authServiceFactory,
-            oAuthFlowService = oAuthFlowService,
-            staticCredentialFactory = staticCredentialFactory,
+            credentialProviderFactory = credentialProviderFactory,
             exchangeStorageService = exchangeStorageService,
             exchangeCapabilityService = exchangeCapabilityService,
             exchangeToolGrantService = exchangeToolGrantService,
@@ -486,10 +494,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     objectMapper = testObjectMapper,
                     toolRegistryService = toolRegistryService,
                     toolMetricsService = toolMetricsService,
-                    oAuthFlowService = oAuthFlowService,
-                    staticCredentialFactory = staticCredentialFactory,
                     caseEventService = caseEventService,
-                    authServiceFactory = authServiceFactory,
+                    credentialProviderFactory = credentialProviderFactory,
                     exchangeStorageService = exchangeStorageService,
                     exchangeCapabilityService = exchangeCapabilityService,
                     exchangeToolGrantService = realGrantService,
@@ -818,9 +824,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     toolRegistryService = toolRegistryService,
                     toolMetricsService = toolMetricsService,
                     caseEventService = caseEventService,
-                    authServiceFactory = authServiceFactory,
-                    oAuthFlowService = oAuthFlowService,
-                    staticCredentialFactory = staticCredentialFactory,
+                    credentialProviderFactory = credentialProviderFactory,
                     exchangeStorageService = exchangeStorageService,
                     exchangeCapabilityService = exchangeCapabilityService,
                     exchangeToolGrantService = exchangeToolGrantService,
@@ -1361,9 +1365,12 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
         // OAuth dispatch in credentialProviderFactory
         //
-        // The factory lambda built in resolveAgentDefinition contains a branch:
+        // resolveAgentDefinition asks CredentialProviderFactory.forRun for the factory lambda, whose
+        // branch is:
         //   if (setting.authType in OAUTH_AUTH_TYPES && caseId != null && emitEvent != null) → OAuthFlowService
         //   else → AuthService.resolveCredential
+        // The dispatch itself is unit-tested in CredentialProviderFactoryUnitSpec; these tests pin
+        // the run-context wiring (namespaceId, userId, caseId, agentName, emitEvent).
         //
         // toolResolverService.resolveToolsForRun is stubbed to return emptyList() in these tests,
         // which means the factory is never invoked as a side-effect of resolveAgentDefinition.

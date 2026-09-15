@@ -1,0 +1,45 @@
+<section class="tool-preview" aria-live="polite">
+  <header class="tool-preview__header">
+    <h2 class="tool-preview__title">Tools preview</h2>
+    <span class="tool-preview__meta">{{ preview().integrationType }} &middot; {{ tools().length }} tool(s)</span>
+  </header>
+
+  @if (preview().namespaceDescription; as line) {
+    <p class="tool-preview__namespace">{{ line }}</p>
+  }
+
+  @if (preview().error; as error) {
+    <p class="tool-preview__error" role="alert">{{ error }}</p>
+  }
+
+  @if (isEmpty()) {
+    <p class="tool-preview__empty">This integration yields no tool.</p>
+  }
+
+  @if (tools().length > 0) {
+    <ul class="tool-preview__list">
+      @for (tool of tools(); track tool.name) {
+        <li class="tool-preview__tool">
+          <div class="tool-preview__tool-head">
+            <code class="tool-preview__name">{{ tool.name }}</code>
+            @if (requiresConfirmation(tool)) {
+              <span class="tool-preview__badge" title="Confirmation mode">{{ tool.confirmationMode }}</span>
+            }
+            <button
+              class="tool-preview__toggle"
+              type="button"
+              [attr.aria-expanded]="isExpanded(tool.name)"
+              (click)="toggleSchema(tool.name)"
+            >
+              {{ isExpanded(tool.name) ? 'Hide schema' : 'Show schema' }}
+            </button>
+          </div>
+          <p class="tool-preview__description">{{ tool.description }}</p>
+          @if (isExpanded(tool.name)) {
+            <pre class="tool-preview__schema">{{ schemaOf(tool.name) }}</pre>
+          }
+        </li>
+      }
+    </ul>
+  }
+</section>
