@@ -318,7 +318,9 @@ class IntegrationConfigController(
                 "A supplied `namespaceId` must be readable by the caller (404 otherwise, existence " +
                 "hidden). Platform rows additionally require Super Admin.\n\n" +
                 "422 when no plugin is loaded for the config's integration type. A plugin failure " +
-                "while building the tools is reported in `error` with an empty `tools` list (200).",
+                "while building the tools is reported in `error` with an empty `tools` list (200), and so is " +
+                "a plugin that does not return within `agentos.integrations.preview-provide-tools-timeout-ms`: " +
+                "the request never waits longer than the configured bounds, whatever timeouts the config declares.",
     )
     @PostMapping("/{id}/preview-tools")
     @PreAuthorize(

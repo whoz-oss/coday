@@ -5,10 +5,11 @@ import io.whozoss.agentos.sdk.tool.ConfirmationMode
 /**
  * Result of resolving the tools of one [IntegrationConfig] on behalf of a user, outside any case.
  *
- * Either [tools] is populated (and [error] is null) or the plugin failed to build its tool set and
- * [error] carries the failure (`ExceptionClass: message`) with [tools] empty. [namespaceDescription]
- * is independent of both: it is the plugin's `describeNamespace` line, null when the plugin gives
- * none, fails or does not answer within [IntegrationsProperties.previewDescribeNamespaceTimeoutMs].
+ * Either [tools] is populated (and [error] is null) or the plugin failed to build its tool set, or did
+ * not within [IntegrationsProperties.previewProvideToolsTimeoutMs], and [error] carries the failure
+ * (`ExceptionClass: message`, a `TimeoutException` for the bound) with [tools] empty.
+ * [namespaceDescription] is independent of both: it is the plugin's `describeNamespace` line, null when
+ * the plugin gives none, fails or does not answer within [IntegrationsProperties.previewDescribeNamespaceTimeoutMs].
  */
 data class IntegrationConfigToolPreview(
     val integrationType: String,
