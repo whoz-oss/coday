@@ -168,10 +168,10 @@ interface PermissionService {
      * Returns the current [PermissionRelation] for each of the given [userIds] on [entityId].
      *
      * Only direct relations are considered (no transitive namespace lookup). Users in [userIds]
-     * that hold no relation on the entity are absent from the returned map.
-     * Unknown user ids are silently ignored.
+     * that hold no relation on the entity are absent from the returned map, and so are soft-deleted users.
+     * Unknown user ids are silently ignored. A user holding both relations is reported as ADMIN.
      *
-     * Fail-closed: returns an empty map on error.
+     * Errors propagate: an empty map would read as "no current relation" to membership updates.
      *
      * @param entityType The type of entity
      * @param entityId The ID of the entity

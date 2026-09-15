@@ -1,6 +1,12 @@
 package io.whozoss.agentos.permissions
 
 import mu.KLogging
+import org.springframework.data.neo4j.core.Neo4jClient
+
+private data class UserRelationRow(
+    val userId: String,
+    val relation: PermissionRelation,
+)
 
 /**
  * Neo4j implementation of PermissionRepository using the Spring Data Neo4j pattern.
@@ -8,11 +14,13 @@ import mu.KLogging
  * error handling according to the fail-closed security model.
  *
  * IMPORTANT: This implementation follows the correct Spring Data Neo4j pattern,
- * NOT using Driver.session() directly. All Neo4j operations go through the
- * PermissionNodeNeo4jRepository with its @Query annotations.
+ * NOT using Driver.session() directly. Neo4j operations go through the
+ * PermissionNodeNeo4jRepository with its @Query annotations, except multi-column
+ * projections, which go through [Neo4jClient] (see [listRelationsForUsers]).
  */
 class Neo4jPermissionRepository(
     private val permissionNodeRepository: PermissionNodeNeo4jRepository,
+    private val neo4jClient: Neo4jClient,
 ) : PermissionRepository {
     companion object : KLogging() {
         /**
@@ -360,19 +368,42 @@ class Neo4jPermissionRepository(
             throw e
         }
 
+    // neo4jClient + mappedBy: SDN cannot project a multi-column RETURN (here incl. the computed `relation`)
+    // onto a non-entity row via @Query — an interface projection on PermissionNodeNeo4jRepository is
+    // materialized through its UserNode domain type and fails on every row. Mirrors
+    // Neo4jUserGroupRepository.findMembers, including its soft-deleted filter and ADMIN precedence.
     override fun listRelationsForUsers(
         entityType: EntityType,
         entityId: String,
         userIds: Collection<String>,
     ): Map<String, PermissionRelation> {
         if (userIds.isEmpty()) return emptyMap()
+        val query = $$"""
+            UNWIND $userIds AS uid
+            MATCH (u:User {id: uid})-[r:ADMIN|MEMBER]->(e {id: $entityId})
+            WHERE $entityLabel IN labels(e)
+              AND NOT COALESCE(u.removed, false)
+            WITH u, collect(type(r)) AS rels
+            RETURN u.id AS userId, CASE WHEN 'ADMIN' IN rels THEN 'ADMIN' ELSE 'MEMBER' END AS relation
+        """.trimIndent()
         return try {
-            permissionNodeRepository
-                .findRelationsForUsers(userIds, entityId, entityType.label)
-                .associate { row -> row.userId to row.relation }
+            neo4jClient
+                .query(query)
+                .bindAll(
+                    mapOf("userIds" to userIds.toList(), "entityId" to entityId, "entityLabel" to entityType.label),
+                )
+                .fetchAs(UserRelationRow::class.java)
+                .mappedBy { _, record ->
+                    UserRelationRow(
+                        userId = record["userId"].asString(),
+                        relation = PermissionRelation.valueOf(record["relation"].asString()),
+                    )
+                }.all()
+                .associate { it.userId to it.relation }
         } catch (e: Exception) {
+            // Not fail-closed: an empty map would read as "no current relation" and turn members into new users.
             logger.error(e) { "Error listing relations for users on $entityType:$entityId" }
-            emptyMap() // Fail-closed: return empty map on error
+            throw e
         }
     }
 

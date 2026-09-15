@@ -157,8 +157,9 @@ interface PermissionRepository {
      * Returns the current [PermissionRelation] for each of the given [userIds] on [entityId].
      *
      * Only direct relations are considered (no transitive namespace lookup). Users in [userIds]
-     * that hold no relation on the entity are absent from the returned map (not mapped to null).
-     * Unknown user ids are silently ignored.
+     * that hold no relation on the entity are absent from the returned map (not mapped to null),
+     * and so are soft-deleted users. Unknown user ids are silently ignored. A user holding both
+     * relations is reported as ADMIN.
      *
      * Designed for targeted membership lookups where only a small, known set of users is
      * relevant — avoids loading the entire entity membership to inspect a handful of entries.
