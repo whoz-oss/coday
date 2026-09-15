@@ -1,7 +1,10 @@
+import { provideHttpClient } from '@angular/common/http'
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   AgentConfig,
+  BASE_PATH,
   AgentConfigControllerService,
   AgentConfigDefaultsControllerService,
   AgentConfigExportService,
@@ -465,5 +468,44 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
     fixture.detectChanges()
     expect(input.value).toBe('')
     expect(internals().delegationTimeoutControl.value).toBeNull()
+  })
+})
+
+describe('AgentConfigFormComponent (generated defaults HTTP client)', () => {
+  it('requests JSON through the generated client and displays the server default', () => {
+    TestBed.configureTestingModule({
+      imports: [AgentConfigFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: BASE_PATH, useValue: '' },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { params: { namespaceId: 'ns-1' }, paramMap: { get: () => null } } },
+        },
+        { provide: Router, useValue: { navigate: jest.fn() } },
+        { provide: AgentConfigControllerService, useValue: {} },
+        { provide: AgentConfigExportService, useValue: {} },
+        {
+          provide: IntegrationConfigStateService,
+          useValue: { loadNamespaceConfigs: () => of([]), loadPlatformConfigs: () => of([]) },
+        },
+        { provide: IntegrationTypeControllerService, useValue: { listTypesIntegrationType: () => of([]) } },
+      ],
+    })
+    const fixture = TestBed.createComponent(AgentConfigFormComponent)
+    const http = TestBed.inject(HttpTestingController)
+    fixture.detectChanges()
+
+    const request = http.expectOne('/api/agent-configs/defaults')
+    expect(request.request.method).toBe('GET')
+    expect(request.request.responseType).toBe('json')
+    expect(request.request.headers.get('Accept')).toBe('application/json')
+    request.flush({ delegationTimeoutSeconds: 1800 }, { headers: { 'Content-Type': 'application/json' } })
+    fixture.detectChanges()
+
+    expect(fixture.nativeElement.querySelector('#delegation-timeout-hint').textContent).toContain('1800 s (30 min)')
+    expect(fixture.nativeElement.querySelector('#delegation-timeout').value).toBe('')
+    http.verify()
   })
 })
