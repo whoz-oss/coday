@@ -201,6 +201,11 @@ class FilesystemAgentConfigRepository(
                             .normalize()
                             .toString() + suffix
                     }?.takeIf { it.isNotEmpty() },
+            skillSelectors =
+                model.skillSelectors
+                    ?.filter { it.isNotBlank() }
+                    ?.map { it.trim() }
+                    ?.takeIf { it.isNotEmpty() },
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,
         )
@@ -236,6 +241,7 @@ private data class AgentConfigYamlModel(
     val integrations: Map<String, List<String>?>? = null,
     val subAgents: List<String>? = null,
     val docs: List<String>? = null,
+    val skillSelectors: List<String>? = null,
     // mandatoryDocs kept for backward compat with existing YAML files
     val mandatoryDocs: List<String>? = null,
 )
