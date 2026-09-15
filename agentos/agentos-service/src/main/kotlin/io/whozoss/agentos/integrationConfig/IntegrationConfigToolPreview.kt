@@ -7,7 +7,8 @@ import io.whozoss.agentos.sdk.tool.ConfirmationMode
  *
  * Either [tools] is populated (and [error] is null) or the plugin failed to build its tool set, or did
  * not within [IntegrationsProperties.previewProvideToolsTimeoutMs], and [error] carries the failure
- * (`ExceptionClass: message`, a `TimeoutException` for the bound) with [tools] empty.
+ * (`ExceptionClass: message`, a `TimeoutException` for the bound, a `RejectedExecutionException` when
+ * every preview worker is busy) with [tools] empty.
  * [namespaceDescription] is independent of both: it is the plugin's `describeNamespace` line, null when
  * the plugin gives none, fails or does not answer within [IntegrationsProperties.previewDescribeNamespaceTimeoutMs].
  */

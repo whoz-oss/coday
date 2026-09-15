@@ -1,7 +1,12 @@
 package io.whozoss.agentos.integrationConfig
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -26,10 +31,12 @@ import io.whozoss.agentos.sdk.tool.ToolPlugin
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.User
 import kotlinx.coroutines.delay
+import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.measureTimedValue
 
@@ -59,6 +66,18 @@ class IntegrationConfigToolPreviewServiceUnitSpec : StringSpec() {
             integrationsProperties =
                 IntegrationsProperties(previewDescribeNamespaceTimeoutMs = 100, previewProvideToolsTimeoutMs = 200),
         )
+
+    // Services built by a single test for a specific worker cap; shut down with the others.
+    private val extraServices = mutableListOf<IntegrationConfigToolPreviewService>()
+
+    private fun previewService(properties: IntegrationsProperties): IntegrationConfigToolPreviewService =
+        IntegrationConfigToolPreviewService(
+            toolRegistryService = toolRegistryService,
+            credentialProviderFactory = credentialProviderFactory,
+            integrationsProperties = properties,
+        ).also { extraServices += it }
+
+    private val serviceLogger = LoggerFactory.getLogger(IntegrationConfigToolPreviewService::class.java) as Logger
 
     private val namespaceId: UUID = UUID.randomUUID()
     private val user =
@@ -164,6 +183,7 @@ class IntegrationConfigToolPreviewServiceUnitSpec : StringSpec() {
         afterSpec {
             service.shutdown()
             shortTimeoutService.shutdown()
+            extraServices.forEach { it.shutdown() }
         }
 
         "preview throws 422 when no plugin is loaded for the integration type" {
@@ -235,7 +255,7 @@ class IntegrationConfigToolPreviewServiceUnitSpec : StringSpec() {
             preview.error.shouldNotBeNull() shouldNotContain "null"
         }
 
-        "the describeNamespace timeout defaults to 5 seconds and is bound from agentos.integrations" {
+        "the describeNamespace timeout defaults to 5 seconds" {
             IntegrationsProperties().previewDescribeNamespaceTimeoutMs shouldBe 5_000
         }
 
@@ -248,8 +268,12 @@ class IntegrationConfigToolPreviewServiceUnitSpec : StringSpec() {
             preview.error.shouldBeNull()
         }
 
-        "the provideTools timeout defaults to 30 seconds and is bound from agentos.integrations" {
+        "the provideTools timeout defaults to 30 seconds" {
             IntegrationsProperties().previewProvideToolsTimeoutMs shouldBe 30_000
+        }
+
+        "the preview worker cap defaults to 4" {
+            IntegrationsProperties().previewMaxConcurrentPluginCalls shouldBe 4
         }
 
         "preview returns a timeout error without waiting for a provideTools that blocks past the configured timeout" {
@@ -283,51 +307,113 @@ class IntegrationConfigToolPreviewServiceUnitSpec : StringSpec() {
                 }),
             )
 
-            val preview = shortTimeoutService.preview(config(), namespaceId, user)
-            release.countDown()
+            try {
+                val preview = shortTimeoutService.preview(config(), namespaceId, user)
 
-            preview.error shouldBe "TimeoutException: tools not built within 200 ms"
+                preview.error shouldBe "TimeoutException: tools not built within 200 ms"
+            } finally {
+                release.countDown()
+            }
             completed.await(5, TimeUnit.SECONDS) shouldBe true
             interrupted.get() shouldBe false
         }
 
-        "preview reports a busy pool without ever calling the plugin when every preview worker is held" {
+        "preview still logs a provideTools failure that happens after the preview gave up" {
+            val appender = ListAppender<ILoggingEvent>().apply { start() }
+            serviceLogger.addAppender(appender)
             val release = CountDownLatch(1)
-            val stuckCalls = CountDownLatch(IntegrationConfigToolPreviewService.MAX_PARALLEL_PLUGIN_CALLS)
             registered(
                 RecordingPlugin(tools = {
                     blockIgnoringInterrupts(release)
-                    stuckCalls.countDown()
+                    throw IllegalStateException("MCP session closed late")
+                }),
+            )
+            try {
+                shortTimeoutService.preview(config(), namespaceId, user).error shouldBe
+                    "TimeoutException: tools not built within 200 ms"
+                release.countDown()
+
+                eventually(5.seconds) {
+                    appender.list.any {
+                        it.level == Level.WARN && it.throwableProxy?.message == "MCP session closed late"
+                    } shouldBe true
+                }
+            } finally {
+                release.countDown()
+                serviceLogger.detachAppender(appender)
+            }
+        }
+
+        "preview answers at once, without calling the plugin, when every preview worker is busy" {
+            val singleWorker =
+                previewService(
+                    IntegrationsProperties(
+                        previewProvideToolsTimeoutMs = 10_000,
+                        previewDescribeNamespaceTimeoutMs = 100,
+                        previewMaxConcurrentPluginCalls = 1,
+                    ),
+                )
+            val release = CountDownLatch(1)
+            val entered = CountDownLatch(1)
+            registered(
+                RecordingPlugin(tools = {
+                    entered.countDown()
+                    blockIgnoringInterrupts(release)
+                    emptyList()
+                }),
+            )
+            val holder = thread { singleWorker.preview(config(), namespaceId, user) }
+            try {
+                entered.await(5, TimeUnit.SECONDS) shouldBe true
+                val refusedPlugin = registered(RecordingPlugin(tools = { emptyList() }))
+
+                val (preview, elapsed) = measureTimedValue { singleWorker.preview(config(), namespaceId, user) }
+
+                // Far below the 10 s bound: a busy pool is answered without waiting for a worker.
+                elapsed shouldBeLessThan 3.seconds
+                preview.tools.shouldBeEmpty()
+                preview.error shouldBe
+                    "RejectedExecutionException: all preview workers are busy with earlier previews, retry later"
+                preview.namespaceDescription.shouldBeNull()
+                refusedPlugin.provideContext.shouldBeNull()
+                refusedPlugin.describeContext.shouldBeNull()
+            } finally {
+                release.countDown()
+                holder.join(5_000)
+            }
+        }
+
+        "a worker held by an abandoned call is available again once the plugin returns" {
+            val singleWorker =
+                previewService(
+                    IntegrationsProperties(
+                        previewProvideToolsTimeoutMs = 200,
+                        previewDescribeNamespaceTimeoutMs = 100,
+                        previewMaxConcurrentPluginCalls = 1,
+                    ),
+                )
+            val release = CountDownLatch(1)
+            val completed = CountDownLatch(1)
+            registered(
+                RecordingPlugin(tools = {
+                    blockIgnoringInterrupts(release)
+                    completed.countDown()
                     emptyList()
                 }),
             )
             try {
-                repeat(IntegrationConfigToolPreviewService.MAX_PARALLEL_PLUGIN_CALLS) {
-                    shortTimeoutService.preview(config(), namespaceId, user)
-                }
-                val queuedCallRan = AtomicBoolean(false)
-                registered(
-                    RecordingPlugin(tools = {
-                        queuedCallRan.set(true)
-                        emptyList()
-                    }),
-                )
-
-                val preview = shortTimeoutService.preview(config(), namespaceId, user)
-
-                preview.error shouldBe
-                    "TimeoutException: no preview worker became free within 200 ms " +
-                    "(all ${IntegrationConfigToolPreviewService.MAX_PARALLEL_PLUGIN_CALLS} are busy with earlier previews)"
-                release.countDown()
-                stuckCalls.await(5, TimeUnit.SECONDS) shouldBe true
-                // A later preview is queued behind the abandoned call: once it completes, the queue has
-                // drained past that call, which must not have reached the plugin.
-                val laterPlugin = registered(RecordingPlugin(tools = { emptyList() }))
-                shortTimeoutService.preview(config(), namespaceId, user).error.shouldBeNull()
-                laterPlugin.provideContext.shouldNotBeNull()
-                queuedCallRan.get() shouldBe false
+                singleWorker.preview(config(), namespaceId, user).error shouldBe
+                    "TimeoutException: tools not built within 200 ms"
             } finally {
                 release.countDown()
+            }
+            completed.await(5, TimeUnit.SECONDS) shouldBe true
+            registered(RecordingPlugin(tools = { listOf(tool("MCP_PROD__Again")) }))
+
+            eventually(5.seconds) {
+                val preview = singleWorker.preview(config(), namespaceId, user)
+
+                preview.tools.map { it.name } shouldBe listOf("MCP_PROD__Again")
             }
         }
 

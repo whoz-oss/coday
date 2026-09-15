@@ -13,9 +13,9 @@ import java.util.UUID
  *
  * Implementations are plain objects bound to one identity, not Spring request-scoped beans:
  * [AuthServiceFactory.create] builds one each time a credential provider is prepared for an
- * integration, with the resolved (namespaceId, userId) from the enclosing
- * [io.whozoss.agentos.sdk.tool.ToolContext], so callers never need to pass identity parameters
- * explicitly and the instance is safe to use outside an HTTP request thread.
+ * integration, with the (namespaceId, userId) of the agent run or tool preview it serves, so callers
+ * never need to pass identity parameters explicitly and the instance is safe to use outside an HTTP
+ * request thread.
  */
 interface AuthService {
     /**

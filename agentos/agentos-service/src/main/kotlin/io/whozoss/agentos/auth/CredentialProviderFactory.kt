@@ -58,6 +58,8 @@ class CredentialProviderFactory(
             } else {
                 null
             }
+        val oauthFallbackReason =
+            if (interactiveRun == null) "missing caseId=${caseId != null} or emitEvent=${emitEvent != null}" else null
         return { authSettingName ->
             if (userId == null) {
                 logger.debug { "CredentialProvider for '$authSettingName': no userId in context, skipping" }
@@ -68,8 +70,7 @@ class CredentialProviderFactory(
                     namespaceId = namespaceId,
                     userId = userId,
                     interactiveRun = interactiveRun,
-                    caseId = caseId,
-                    emitEvent = emitEvent,
+                    oauthFallbackReason = oauthFallbackReason,
                 )
             }
         }
@@ -90,22 +91,22 @@ class CredentialProviderFactory(
                 namespaceId = namespaceId,
                 userId = userId,
                 interactiveRun = null,
-                caseId = null,
-                emitEvent = null,
+                oauthFallbackReason = null,
             )
         }
 
     /**
      * The provider for [authSettingName]; [interactiveRun] is null when OAuth types must not start an
-     * interactive flow. [caseId] and [emitEvent] only feed the fallback warning of [resolveDirect].
+     * interactive flow. [oauthFallbackReason] explains, in the warning of [resolveDirect], why an agent
+     * run sends an OAuth type to the direct lookup; it is null for the preview, whose only OAuth path
+     * that is.
      */
     private fun providerFor(
         authSettingName: String,
         namespaceId: UUID,
         userId: UUID,
         interactiveRun: InteractiveOAuthRun?,
-        caseId: UUID?,
-        emitEvent: ((CaseEvent) -> CaseEvent)?,
+        oauthFallbackReason: String?,
     ): CredentialProvider {
         logger.debug { "CredentialProvider invoked for '$authSettingName'" }
         val scopedAuthService = authServiceFactory.create(namespaceId, userId)
@@ -126,8 +127,7 @@ class CredentialProviderFactory(
                     setting = setting,
                     scopedAuthService = scopedAuthService,
                     userId = userId,
-                    caseId = caseId,
-                    emitEvent = emitEvent,
+                    oauthFallbackReason = oauthFallbackReason,
                 )
             }
         }
@@ -192,28 +192,34 @@ class CredentialProviderFactory(
 
     /**
      * Direct lookup: the per-user `Credential` row, then the static fallback for non-OAuth types.
-     * [caseId] and [emitEvent] only feed the warning that names the missing interactive-flow
-     * ingredient when an OAuth type lands here.
+     * An OAuth type landing here is warned about with [oauthFallbackReason] (the missing interactive-flow
+     * ingredient of an agent run), or only traced when that reason is null (the preview).
      */
     private fun resolveDirect(
         authSettingName: String,
         setting: AuthSetting,
         scopedAuthService: AuthService,
         userId: UUID,
-        caseId: UUID?,
-        emitEvent: ((CaseEvent) -> CaseEvent)?,
+        oauthFallbackReason: String?,
     ): Credential? {
-        if (setting.authType in OAUTH_AUTH_TYPES) {
-            logger.warn {
-                "CredentialProvider for '$authSettingName': OAuth type ${setting.authType} but " +
-                    "missing caseId=${caseId != null} or emitEvent=${emitEvent != null}, " +
-                    "falling back to direct lookup"
-            }
-        } else {
-            logger.debug {
-                "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, " +
-                    "using direct credential lookup"
-            }
+        when {
+            setting.authType !in OAUTH_AUTH_TYPES ->
+                logger.debug {
+                    "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, " +
+                        "using direct credential lookup"
+                }
+
+            oauthFallbackReason != null ->
+                logger.warn {
+                    "CredentialProvider for '$authSettingName': OAuth type ${setting.authType} but " +
+                        "$oauthFallbackReason, falling back to direct lookup"
+                }
+
+            else ->
+                logger.debug {
+                    "CredentialProvider for '$authSettingName': OAuth type ${setting.authType}, " +
+                        "direct credential lookup only (no interactive flow outside an agent run)"
+                }
         }
         val credential =
             scopedAuthService.resolveCredential(setting.metadata.id)

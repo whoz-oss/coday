@@ -8,17 +8,20 @@ import io.whozoss.agentos.sdk.tool.ToolPlugin
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.User
 import jakarta.annotation.PreDestroy
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -41,8 +44,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * the bundled plugins do not tolerate an interrupt (it breaks their own cleanup and shared connection
  * pools), so an abandoned call keeps its worker until the plugin returns on its own, and its result is
  * discarded (an `MCP_HTTP` connection it opens is then left open, as on every successful preview).
- * At most [MAX_PARALLEL_PLUGIN_CALLS] calls hold a worker at once; a call that finds no free worker
- * within its bound is reported as such and never reaches the plugin.
+ * At most [IntegrationsProperties.previewMaxConcurrentPluginCalls] calls hold a worker at once, across
+ * all namespaces; a call that finds none free is refused at once and never reaches the plugin.
  *
  * No agent-level allowlist is applied and nothing is persisted.
  */
@@ -52,21 +55,37 @@ class IntegrationConfigToolPreviewService(
     private val credentialProviderFactory: CredentialProviderFactory,
     private val integrationsProperties: IntegrationsProperties,
 ) {
+    init {
+        require(integrationsProperties.previewMaxConcurrentPluginCalls > 0) {
+            "agentos.integrations.preview-max-concurrent-plugin-calls must be positive, " +
+                "got ${integrationsProperties.previewMaxConcurrentPluginCalls}"
+        }
+    }
+
+    /** One permit per plugin call holding a worker, released when the call really ends. */
+    private val workerPermits = Semaphore(integrationsProperties.previewMaxConcurrentPluginCalls)
+
     /**
      * Workers for the plugin calls. A `limitedParallelism` view of `Dispatchers.IO` is elastic: it does
-     * not take threads from the pool agent runs share, and its cap bounds how many abandoned calls can
-     * still be running.
+     * not take threads from the pool agent runs share. With one permit per worker, a call never queues.
      */
     private val pluginCallScope =
-        CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(MAX_PARALLEL_PLUGIN_CALLS, "tool-preview"))
+        CoroutineScope(
+            SupervisorJob() +
+                Dispatchers.IO.limitedParallelism(
+                    parallelism = integrationsProperties.previewMaxConcurrentPluginCalls,
+                    name = "tool-preview",
+                ),
+        )
 
     /**
      * Previews [config] in [namespaceId] for [user].
      *
      * The credential provider (built for the preview, so OAuth types resolve through the direct
      * lookup only and never start an interactive flow) is handed to `provideTools` only; the
-     * `describeNamespace` call receives the context without it and runs after `provideTools`, whose
-     * outcome some plugins report in their namespace line.
+     * `describeNamespace` call receives the context without it and starts once `provideTools` is done,
+     * whose outcome some plugins report in their namespace line. When `provideTools` was abandoned, it
+     * may still be running meanwhile and that line may reflect the state before it.
      *
      * Throws [UnprocessableEntityException] when no plugin is loaded for the config's type.
      */
@@ -104,8 +123,9 @@ class IntegrationConfigToolPreviewService(
     }
 
     /**
-     * The mapped tools, or an empty list plus the failure rendered as `ExceptionClass: message`; a call
-     * past [IntegrationsProperties.previewProvideToolsTimeoutMs] is rendered as a [TimeoutException].
+     * The mapped tools, or an empty list plus the failure rendered as `ExceptionClass: message`: a call
+     * past [IntegrationsProperties.previewProvideToolsTimeoutMs] is rendered as a [TimeoutException], a
+     * call refused because every worker is busy as a [RejectedExecutionException].
      */
     private fun previewTools(
         plugin: ToolPlugin,
@@ -123,16 +143,13 @@ class IntegrationConfigToolPreviewService(
         return when (outcome) {
             is PluginCallOutcome.Completed -> outcome.value to null
             is PluginCallOutcome.Failed -> noTools to describeFailure(outcome.cause)
-            is PluginCallOutcome.TimedOut -> {
-                val message =
-                    if (outcome.started) {
-                        "tools not built within $timeoutMs ms"
-                    } else {
-                        "no preview worker became free within $timeoutMs ms " +
-                            "(all $MAX_PARALLEL_PLUGIN_CALLS are busy with earlier previews)"
-                    }
-                noTools to describeFailure(TimeoutException(message))
-            }
+            PluginCallOutcome.TimedOut ->
+                noTools to describeFailure(TimeoutException("tools not built within $timeoutMs ms"))
+            PluginCallOutcome.Rejected ->
+                noTools to
+                    describeFailure(
+                        RejectedExecutionException("all preview workers are busy with earlier previews, retry later"),
+                    )
         }
     }
 
@@ -149,8 +166,8 @@ class IntegrationConfigToolPreviewService(
         )
 
     /**
-     * The plugin's namespace line, or null when it gives none, fails or does not answer within
-     * [IntegrationsProperties.previewDescribeNamespaceTimeoutMs].
+     * The plugin's namespace line, or null when it gives none, fails, does not answer within
+     * [IntegrationsProperties.previewDescribeNamespaceTimeoutMs] or finds no free worker.
      */
     private fun describeNamespace(
         plugin: ToolPlugin,
@@ -169,9 +186,9 @@ class IntegrationConfigToolPreviewService(
     }
 
     /**
-     * Runs [block] on a preview worker and waits for it at most [timeoutMs] without interrupting it.
-     * Failures are logged by the worker itself, so a call that fails after the preview gave up is still
-     * traced.
+     * Runs [block] on a preview worker and waits for it at most [timeoutMs] without interrupting it, or
+     * refuses at once when no worker is free. Failures are logged by the worker itself, so a call that
+     * fails after the preview gave up is still traced.
      */
     private fun <T> callPlugin(
         config: IntegrationConfig,
@@ -179,37 +196,39 @@ class IntegrationConfigToolPreviewService(
         timeoutMs: Long,
         block: suspend () -> T,
     ): PluginCallOutcome<T> {
-        val started = AtomicBoolean(false)
+        if (!workerPermits.tryAcquire()) {
+            logger.warn { "[ToolPreview] $call ${describe(config)} refused: every preview worker is busy" }
+            return PluginCallOutcome.Rejected
+        }
         val abandoned = AtomicBoolean(false)
         val deferred =
             pluginCallScope.async {
-                started.set(true)
                 try {
                     PluginCallOutcome.Completed(block()).also {
                         if (abandoned.get()) {
-                            logger.info { "[ToolPreview] $call ${describe(config)} completed after the preview gave up" }
+                            logger.info {
+                                "[ToolPreview] $call ${describe(config)} completed after the preview gave up"
+                            }
                         }
                     }
                 } catch (e: Exception) {
-                    // A cancellation of this call (the preview gave up) is not a plugin failure.
-                    ensureActive()
-                    logger.warn(e) { "[ToolPreview] $call failed ${describe(config)}" }
+                    // The preview giving up cancels this call: that cancellation is not a plugin failure.
+                    if (e is CancellationException && !isActive) throw e
+                    logger.warn(e) {
+                        "[ToolPreview] $call failed ${describe(config)}" +
+                            if (abandoned.get()) " after the preview gave up" else ""
+                    }
                     PluginCallOutcome.Failed(e)
                 }
             }
+        // On completion rather than in the block: a call cancelled before it started never runs its block.
+        deferred.invokeOnCompletion { workerPermits.release() }
         val outcome = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
         if (outcome != null) return outcome
         abandoned.set(true)
         deferred.cancel()
-        val timedOut = PluginCallOutcome.TimedOut(started = started.get())
-        logger.warn {
-            if (timedOut.started) {
-                "[ToolPreview] $call ${describe(config)} did not complete within $timeoutMs ms; abandoned"
-            } else {
-                "[ToolPreview] $call ${describe(config)} found no free worker within $timeoutMs ms"
-            }
-        }
-        return timedOut
+        logger.warn { "[ToolPreview] $call ${describe(config)} did not complete within $timeoutMs ms; abandoned" }
+        return PluginCallOutcome.TimedOut
     }
 
     private fun describe(config: IntegrationConfig): String =
@@ -238,14 +257,12 @@ class IntegrationConfigToolPreviewService(
             val cause: Exception,
         ) : PluginCallOutcome<Nothing>
 
-        /** The bound elapsed; [started] is false when no worker became free, so the plugin was never called. */
-        data class TimedOut(
-            val started: Boolean,
-        ) : PluginCallOutcome<Nothing>
+        /** The bound elapsed; the call was abandoned and may still be running. */
+        data object TimedOut : PluginCallOutcome<Nothing>
+
+        /** Every worker was busy; the plugin was not called. */
+        data object Rejected : PluginCallOutcome<Nothing>
     }
 
-    companion object : KLogging() {
-        /** Plugin calls running at once across all previews, abandoned ones included. */
-        internal const val MAX_PARALLEL_PLUGIN_CALLS = 4
-    }
+    companion object : KLogging()
 }

@@ -112,6 +112,7 @@ host they control, so those types are refused in both user scopes at the API edg
 | `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
 | `agentos.integrations.preview-provide-tools-timeout-ms` | `AGENTOS_INTEGRATIONS_PREVIEW_PROVIDE_TOOLS_TIMEOUT_MS` | `30000` | Milliseconds the tool preview waits for a plugin's `provideTools` before reporting a timeout in `error`, whatever timeouts the config declares (see [time bounds](#previewing-the-tools-of-an-integration)). |
 | `agentos.integrations.preview-describe-namespace-timeout-ms` | `AGENTOS_INTEGRATIONS_PREVIEW_DESCRIBE_NAMESPACE_TIMEOUT_MS` | `5000` | Milliseconds the tool preview waits for a plugin's `describeNamespace` line before reporting it as absent. |
+| `agentos.integrations.preview-max-concurrent-plugin-calls` | `AGENTOS_INTEGRATIONS_PREVIEW_MAX_CONCURRENT_PLUGIN_CALLS` | `4` | Tool preview plugin calls that may hold a worker at once, across all namespaces, abandoned calls included; a preview that finds none free is refused at once. Must be positive. |
 
 ## Previewing the Tools of an Integration
 
@@ -124,10 +125,13 @@ The response carries the plugin's `describeNamespace` line (null when absent, fa
 `agentos.integrations.preview-describe-namespace-timeout-ms`, see the table above), the tools (name,
 description, input schema, confirmation mode) and, when `provideTools` throws or does not return within
 `agentos.integrations.preview-provide-tools-timeout-ms`, the failure as `ExceptionClass: message` with
-an empty tool list. No credential or parameter value is returned. The bundled `MCP_HTTP` and `HTTP_API`
-plugins catch their own failures and return no tools: a connection failure then shows as an empty tool
-list without `error` (`HTTP_API` reports the reason in its namespace line, built from its cached
-catalogue and recorded failures without a network request).
+an empty tool list. No credential or parameter value is returned, but the message of an exception that
+escapes the plugin is shown as is. The bundled `MCP_HTTP` and `HTTP_API` plugins catch their connection
+and document failures and return no tools: such a failure shows as an empty tool list without `error`
+(`HTTP_API` reports the reason in its namespace line, built from its cached catalogue and recorded
+failures without a network request). Failures outside those paths still reach `error`, for instance an
+`MCP_HTTP` config whose `authSettingName` does not resolve for the caller
+(`ConfigNotFoundException: ...`).
 
 **Time bounds.** Both plugin calls run on dedicated preview workers, never on the request thread, and
 the request waits for each at most its configured bound, whatever timeouts the config itself declares
@@ -135,9 +139,12 @@ the request waits for each at most its configured bound, whatever timeouts the c
 `toolCallTimeoutSeconds`, 60 s by default, so a slow server an agent run would still reach can time out
 here). Past the bound the call is abandoned, not interrupted: an interrupt breaks the bundled plugins'
 own cleanup and their shared MCP connection pool. An abandoned call keeps its worker until the plugin
-returns on its own and its result is discarded. At most 4 plugin calls hold a worker at once across all
-previews; a preview that finds none free within its bound reports
-`TimeoutException: no preview worker became free within <ms> ms (...)` and never reaches the plugin.
+returns on its own and its result is discarded; `describeNamespace` may then run while it is still
+going, so a namespace line built from `provideTools`' outcome can show the state before it. At most
+`agentos.integrations.preview-max-concurrent-plugin-calls` plugin calls hold a worker at once across all
+namespaces; a preview that finds none free is refused at once with
+`RejectedExecutionException: all preview workers are busy with earlier previews, retry later` and never
+reaches the plugin.
 
 - **Permissions**: WRITE on the config (existence hidden: 404 otherwise). The preview runs in a
   namespace: rows that carry a `namespaceId` use it (a supplied `namespaceId` must match it, 400

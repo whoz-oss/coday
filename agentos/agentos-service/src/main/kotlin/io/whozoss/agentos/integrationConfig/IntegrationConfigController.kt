@@ -320,7 +320,8 @@ class IntegrationConfigController(
                 "422 when no plugin is loaded for the config's integration type. A plugin failure " +
                 "while building the tools is reported in `error` with an empty `tools` list (200), and so is " +
                 "a plugin that does not return within `agentos.integrations.preview-provide-tools-timeout-ms`: " +
-                "the request never waits longer than the configured bounds, whatever timeouts the config declares.",
+                "the request never waits longer than the configured bounds, whatever timeouts the config declares. " +
+                "When every preview worker is busy, the preview is refused at once the same way.",
     )
     @PostMapping("/{id}/preview-tools")
     @PreAuthorize(

@@ -242,6 +242,20 @@ class CredentialProviderFactoryUnitSpec : StringSpec() {
             verify(exactly = 0) { staticCredentialFactory.fromAuthSetting(any(), any()) }
         }
 
+        "forPreview does not log the agent-run fallback warning, the direct lookup being its only OAuth path" {
+            factoryLogger.level = Level.TRACE
+            logCaptor.start()
+            factoryLogger.addAppender(logCaptor)
+            every { scopedAuthService.resolveAuthSetting("my-oauth") } returns oauthSetting
+            every { scopedAuthService.resolveCredential(authSettingId) } returns null
+
+            factory.forPreview(namespaceId = namespaceId, userId = userId)("my-oauth").invoke().shouldBeNull()
+
+            val fallbackWarnings =
+                logCaptor.list.filter { it.level == Level.WARN && "falling back" in it.formattedMessage }
+            fallbackWarnings shouldBe emptyList()
+        }
+
         "forPreview synthesises a static credential when no per-user row exists, as during a run" {
             every { scopedAuthService.resolveAuthSetting("my-bearer") } returns bearerSetting
             every { scopedAuthService.resolveCredential(authSettingId) } returns null

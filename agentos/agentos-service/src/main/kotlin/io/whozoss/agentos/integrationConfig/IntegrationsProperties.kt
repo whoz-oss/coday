@@ -18,6 +18,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * - `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` (comma-separated, replaces the default list)
  * - `AGENTOS_INTEGRATIONS_PREVIEW_PROVIDE_TOOLS_TIMEOUT_MS`
  * - `AGENTOS_INTEGRATIONS_PREVIEW_DESCRIBE_NAMESPACE_TIMEOUT_MS`
+ * - `AGENTOS_INTEGRATIONS_PREVIEW_MAX_CONCURRENT_PLUGIN_CALLS`
  *
  * Example (application.yml):
  * ```yaml
@@ -26,6 +27,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP
  *     preview-provide-tools-timeout-ms: 30000
  *     preview-describe-namespace-timeout-ms: 5000
+ *     preview-max-concurrent-plugin-calls: 4
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.integrations")
@@ -52,4 +54,10 @@ data class IntegrationsProperties(
      * a slow server that an agent run would still reach can time out here: raise the value for it.
      */
     val previewProvideToolsTimeoutMs: Long = 30_000,
+    /**
+     * Tool preview plugin calls that may hold a worker at once, across all namespaces, calls abandoned
+     * past their timeout included. A preview that finds every worker busy is refused at once with a
+     * `RejectedExecutionException` in `error`. Must be positive.
+     */
+    val previewMaxConcurrentPluginCalls: Int = 4,
 )

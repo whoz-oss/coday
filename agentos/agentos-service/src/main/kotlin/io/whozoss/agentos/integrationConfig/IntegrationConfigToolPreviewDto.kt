@@ -36,8 +36,8 @@ data class IntegrationConfigToolPreviewDto(
         description =
             "Why the plugin could not build its tool set (`ExceptionClass: message`), or null when " +
                 "`tools` is the result. A `TimeoutException` means the preview stopped waiting after the " +
-                "configured timeout (agentos.integrations.preview-provide-tools-timeout-ms) or found no " +
-                "free preview worker within it.",
+                "configured timeout (agentos.integrations.preview-provide-tools-timeout-ms); a " +
+                "`RejectedExecutionException` means every preview worker was busy and the plugin was not called.",
         nullable = true,
     )
     val error: String?,

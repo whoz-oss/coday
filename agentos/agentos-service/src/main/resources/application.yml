@@ -191,6 +191,10 @@ agentos:
     # it returns.
     # Override with env var: AGENTOS_INTEGRATIONS_PREVIEW_DESCRIBE_NAMESPACE_TIMEOUT_MS
     # preview-describe-namespace-timeout-ms: 5000
+    # Tool preview plugin calls that may hold a worker at once, across all namespaces, abandoned calls
+    # included. A preview that finds every worker busy is refused at once. Must be positive.
+    # Override with env var: AGENTOS_INTEGRATIONS_PREVIEW_MAX_CONCURRENT_PLUGIN_CALLS
+    # preview-max-concurrent-plugin-calls: 4
   query-user:
     # Grant the built-in queryUser tool to every agent that does not mention QUERY_USER in its
     # integrations map. On by default: asking a question is a primitive of conversation, not an
