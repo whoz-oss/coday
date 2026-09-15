@@ -33,12 +33,9 @@ class WhatsNextTool(
 ) : StandardTool<Nothing> {
     override val name: String = configName?.let { "${it}__whatsNext" } ?: "whatsNext"
 
-    override val description: String =
-        "Call this tool when you have finished the part of the work that falls within your scope. " +
-            "It returns a guideline telling you what the workflow expects next: either that another agent should " +
-            "take over (and which one), or that your step was the last one. If it names another agent, don't " +
-            "attempt that agent's work and switch to it.\n\n" +
-            "Call it once, at completion, including when the request turns out to be outside your scope and you've done what you can."
+    override val description: String = """
+        Call this tool to understand orchestration workflows between agents. It provides guidelines about what agent to redirect to at specific points in the conversation with a user, or if the agent task is finished.
+    """.trimIndent()
 
     override val inputSchema: String =
         """
