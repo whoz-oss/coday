@@ -369,10 +369,11 @@ class Neo4jPermissionRepository(
         return try {
             permissionNodeRepository
                 .findRelationsForUsers(userIds, entityId, entityType.label)
-                .associate { row -> row.userId to row.relation }
+                .associate { row -> row["userId"] as String to PermissionRelation.valueOf(row["relation"] as String) }
         } catch (e: Exception) {
+            // Not fail-closed: an empty map would read as "no current relation" and turn members into new users.
             logger.error(e) { "Error listing relations for users on $entityType:$entityId" }
-            emptyMap() // Fail-closed: return empty map on error
+            throw e
         }
     }
 

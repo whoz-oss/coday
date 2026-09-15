@@ -427,23 +427,32 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      *
      * Only direct [:ADMIN] and [:MEMBER] edges are considered — no transitive namespace
      * traversal. Users in [userIds] with no relation on the entity are simply absent
-     * from the result.
+     * from the result, and so are soft-deleted users, whose edges outlive their deletion.
+     * A user holding both edges (legacy data, see [PermissionRelation]) is reported as ADMIN.
      *
-     * Returns a list of two-element string arrays `[userId, relationType]`.
+     * Built as a single-column `collect` of `{userId, relation}` maps: Spring Data Neo4j rejects a
+     * multi-column `RETURN` into a `Map` ("Records with more than one value cannot be converted without
+     * a mapper"), and a typed interface or DTO projection is materialized through this repository's
+     * [UserNode] domain type, which such a row cannot instantiate.
      */
     @Query(
         $$"""
         UNWIND $userIds AS uid
         MATCH (u:User {id: uid})-[r:ADMIN|MEMBER]->(e {id: $entityId})
         WHERE $entityLabel IN labels(e)
-        RETURN u.id AS userId, type(r) AS relation
+          AND (u.removed IS NULL OR u.removed = false)
+        WITH u, collect(type(r)) AS relations
+        RETURN collect({
+            userId: u.id,
+            relation: CASE WHEN 'ADMIN' IN relations THEN 'ADMIN' ELSE 'MEMBER' END
+        })
         """,
     )
     fun findRelationsForUsers(
         @Param("userIds") userIds: Collection<String>,
         @Param("entityId") entityId: String,
         @Param("entityLabel") entityLabel: String,
-    ): List<UserRelationRow>
+    ): List<Map<String, Any>>
 
     /**
      * Batch-revoke all relations ([:ADMIN] and [:MEMBER]) from users on an entity.

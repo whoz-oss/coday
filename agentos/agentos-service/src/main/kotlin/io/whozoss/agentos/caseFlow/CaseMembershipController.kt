@@ -1,6 +1,7 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.membership.requireNoDuplicateUserIds
+import io.whozoss.agentos.membership.requireNoNullMembers
 import io.whozoss.agentos.membership.resolveMembers
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -70,6 +71,7 @@ class CaseMembershipController(
         @PathVariable entityId: UUID,
         @RequestBody members: List<UserMembershipRole>,
     ): List<MemberItem> {
+        requireNoNullMembers(members)
         requireNoDuplicateUserIds(members)
         caseService.getById(entityId)
         val currentUserId = userService.getCurrentUser().id

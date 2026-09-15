@@ -11,6 +11,7 @@ import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
@@ -102,6 +103,10 @@ class NamespaceServiceImpl(
             namespaceRepository.deployAgents(namespaceId, ids)
         }
     }
+
+    // MANDATORY: outside a transaction the lock would be released as soon as the statement completes.
+    @Transactional(propagation = Propagation.MANDATORY)
+    override fun lockForUpdate(namespaceId: UUID) = namespaceRepository.lockForUpdate(namespaceId)
 
     @Transactional
     override fun undeployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>) {

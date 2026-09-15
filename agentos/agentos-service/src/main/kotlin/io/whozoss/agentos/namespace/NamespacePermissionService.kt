@@ -61,6 +61,8 @@ interface NamespacePermissionService {
      *
      * Anti-lockout guard: rejects with [io.whozoss.agentos.exception.UnprocessableEntityException] (422)
      * any operation that would leave the namespace with zero ADMIN when it had at least one beforehand.
+     * Soft-deleted users do not count as ADMIN. Concurrent updates of the same namespace run one after
+     * the other ([NamespaceService.lockForUpdate]), so the guard always decides on committed relations.
      *
      * @return the resulting namespace membership, so the caller can refresh without a second round-trip.
      * @throws io.whozoss.agentos.exception.ResourceNotFoundException if the namespace does not exist.

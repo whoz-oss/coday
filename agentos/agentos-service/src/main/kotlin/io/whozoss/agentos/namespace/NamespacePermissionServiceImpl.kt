@@ -135,6 +135,9 @@ class NamespacePermissionServiceImpl(
         callerIsSuperAdmin: Boolean,
     ): List<MemberItem> {
         namespaceService.getById(namespaceId)
+        // Serializes concurrent updates of this namespace: the reads below must see what a concurrent update
+        // committed, otherwise two crossed demotions can each pass the anti-lockout guard.
+        namespaceService.lockForUpdate(namespaceId)
 
         // Duplicate-userId check is enforced by @NoDuplicateUserIds at the controller level.
         val (toUpsert, toRevoke) = members.partition { it.role != null }
@@ -170,22 +173,17 @@ class NamespacePermissionServiceImpl(
             }
         }
 
-        // Anti-lockout guard: load all existing admins (needed to account for admins
-        // not in this request who will still be admins after the update).
-        // Then apply the delta: remove revoked/demoted admins, add promoted ones.
-        val existingAdminIds: Set<UUID> =
-            permissionService
-                .listUsersWithPermission(EntityType.NAMESPACE, namespaceIdStr, PermissionRelation.ADMIN)
-                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
-                .toSet()
-        val hadAdminBefore = existingAdminIds.isNotEmpty()
+        // Anti-lockout guard: only an update taking the ADMIN role away from a current ADMIN without granting it
+        // to anyone can leave the namespace without ADMIN. Only then load the ADMINs that would remain.
         val removedFromAdmin: Set<UUID> =
             revokeUserIds.toSet() +
                 toUpsert.filter { it.role != PermissionRelation.ADMIN.name }.map { it.userId }.toSet()
         val addedToAdmin: Set<UUID> =
             toUpsert.filter { it.role == PermissionRelation.ADMIN.name }.map { it.userId }.toSet()
-        val hasAdminAfter = (existingAdminIds - removedFromAdmin + addedToAdmin).isNotEmpty()
-        if (hadAdminBefore && !hasAdminAfter) {
+        val removesCurrentAdmin = removedFromAdmin.any { currentRelationByUserId[it] == PermissionRelation.ADMIN }
+        val leavesNoAdmin =
+            addedToAdmin.isEmpty() && removesCurrentAdmin && (activeAdminIds(namespaceIdStr) - removedFromAdmin).isEmpty()
+        if (leavesNoAdmin) {
             throw UnprocessableEntityException("This update would leave the namespace with no ADMIN")
         }
 
@@ -205,6 +203,18 @@ class NamespacePermissionServiceImpl(
         }
 
         return resolveMembers(namespaceId, EntityType.NAMESPACE, permissionService, userService)
+    }
+
+    /**
+     * Users holding ADMIN on the namespace, soft-deleted users excluded: their relations outlive
+     * the deletion, but they can no longer administer the namespace.
+     */
+    private fun activeAdminIds(namespaceId: String): Set<UUID> {
+        val adminIds =
+            permissionService
+                .listUsersWithPermission(EntityType.NAMESPACE, namespaceId, PermissionRelation.ADMIN)
+                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+        return userService.findByIds(adminIds).map { it.metadata.id }.toSet()
     }
 
     private fun grant(

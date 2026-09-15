@@ -4,6 +4,8 @@ import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.stereotype.Service
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.UUID
 
 /**
@@ -121,7 +123,7 @@ class PermissionServiceImpl(
         try {
             permissionRepository.grantPermission(userId, entityType, entityId, relation)
             // Invalidate entire cache: transitive permissions can affect any user in the namespace
-            permissionCache.clear()
+            clearCache()
             logger.info { "Granted $relation permission to user=$userId on $entityType:$entityId" }
         } catch (e: Exception) {
             logger.error(e) { "Failed to grant permission: user=$userId, entity=$entityType:$entityId, relation=$relation" }
@@ -138,7 +140,7 @@ class PermissionServiceImpl(
         try {
             permissionRepository.revokePermission(userId, entityType, entityId, relation)
             // Invalidate entire cache: transitive permissions can affect any user in the namespace
-            permissionCache.clear()
+            clearCache()
             logger.info { "Revoked $relation permission from user=$userId on $entityType:$entityId" }
         } catch (e: Exception) {
             logger.error(e) { "Failed to revoke permission: user=$userId, entity=$entityType:$entityId, relation=$relation" }
@@ -202,7 +204,7 @@ class PermissionServiceImpl(
     ): Boolean {
         return try {
             val promoted = permissionRepository.promoteMemberToAdmin(userId, entityType, entityId)
-            permissionCache.clear()
+            clearCache()
             logger.info { "Promoted MEMBER to ADMIN for user=$userId on $entityType:$entityId (hadMember=$promoted)" }
             promoted
         } catch (e: Exception) {
@@ -218,7 +220,7 @@ class PermissionServiceImpl(
     ): Boolean {
         return try {
             val demoted = permissionRepository.demoteAdminToMember(userId, entityType, entityId)
-            permissionCache.clear()
+            clearCache()
             logger.info { "Demoted ADMIN to MEMBER for user=$userId on $entityType:$entityId (hadAdmin=$demoted)" }
             demoted
         } catch (e: Exception) {
@@ -236,7 +238,7 @@ class PermissionServiceImpl(
             permissionRepository.listRelationsForUsers(entityType, entityId, userIds)
         } catch (e: Exception) {
             logger.error(e) { "Failed to list relations for users on $entityType:$entityId" }
-            emptyMap() // Fail-closed: return empty map on error
+            throw e
         }
 
     override fun applyShareBatch(
@@ -248,7 +250,7 @@ class PermissionServiceImpl(
         return try {
             val result = permissionRepository.applyShareBatch(entityType, entityId, entries)
             // Sharing affects multiple users — invalidate the whole cache.
-            permissionCache.clear()
+            clearCache()
             logger.info { "applyShareBatch on $entityType:$entityId — ${result.size} user(s) affected" }
             result
         } catch (e: Exception) {
@@ -263,6 +265,21 @@ class PermissionServiceImpl(
             logger.info { "Cleared permission cache for user: $userId" }
         } catch (e: Exception) {
             logger.warn(e) { "Failed to clear cache for user: $userId — cache clearing is best-effort, not rethrowing" }
+        }
+    }
+
+    /**
+     * Clears the whole permission cache now, and again once the surrounding transaction (if any) completes:
+     * until then, a concurrent permission check still reads the previous relations and may re-cache them.
+     */
+    private fun clearCache() {
+        permissionCache.clear()
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                object : TransactionSynchronization {
+                    override fun afterCompletion(status: Int) = permissionCache.clear()
+                },
+            )
         }
     }
 }

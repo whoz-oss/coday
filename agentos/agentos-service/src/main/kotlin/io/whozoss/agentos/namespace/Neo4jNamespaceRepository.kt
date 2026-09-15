@@ -54,6 +54,10 @@ open class Neo4jNamespaceRepository(
         if (externalIds.isEmpty()) emptyList()
         else namespaceNodeNeo4jRepository.findActiveByExternalIdIn(externalIds).map { it.toDomain() }
 
+    override fun lockForUpdate(namespaceId: UUID) {
+        namespaceNodeNeo4jRepository.lockForUpdate(namespaceId.toString())
+    }
+
     override fun deployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>) {
         namespaceNodeNeo4jRepository.deployAgents(namespaceId.toString(), agentConfigIds.map { it.toString() })
     }

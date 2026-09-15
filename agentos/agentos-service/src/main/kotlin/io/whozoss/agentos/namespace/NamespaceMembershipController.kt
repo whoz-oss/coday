@@ -1,6 +1,7 @@
 package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.membership.requireNoDuplicateUserIds
+import io.whozoss.agentos.membership.requireNoNullMembers
 import io.whozoss.agentos.sdk.api.membership.MemberItem
 import io.whozoss.agentos.sdk.api.membership.MembershipApi
 import io.whozoss.agentos.sdk.api.user.UserMembershipRole
@@ -54,6 +55,7 @@ class NamespaceMembershipController(
         @PathVariable entityId: UUID,
         @RequestBody members: List<UserMembershipRole>,
     ): List<MemberItem> {
+        requireNoNullMembers(members)
         requireNoDuplicateUserIds(members)
         val callerIsSuperAdmin = userService.getCurrentUser().isAdmin
         return namespacePermissionService.updateMembers(entityId, members, callerIsSuperAdmin)

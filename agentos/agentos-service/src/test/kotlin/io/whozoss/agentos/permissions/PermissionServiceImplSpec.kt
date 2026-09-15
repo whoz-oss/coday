@@ -1,5 +1,6 @@
 package io.whozoss.agentos.permissions
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.Runs
@@ -11,6 +12,8 @@ import io.mockk.verify
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.UUID
 
 class PermissionServiceImplSpec :
@@ -221,6 +224,26 @@ class PermissionServiceImplSpec :
             result shouldBe listOf(userId)
             verify { mockPermissionRepository.applyShareBatch(entityType, entityId, entries) }
             verify { mockPermissionCache.clear() }
+        }
+
+        "applyShareBatch clears the cache again once the surrounding transaction completes" {
+            val entries = listOf<Pair<String, PermissionRelation?>>(userId to PermissionRelation.MEMBER)
+            every { mockPermissionRepository.applyShareBatch(entityType, entityId, entries) } returns listOf(userId)
+            every { mockPermissionCache.clear() } just Runs
+            TransactionSynchronizationManager.initSynchronization()
+            try {
+                permissionService.applyShareBatch(entityType, entityId, entries)
+                verify(exactly = 1) { mockPermissionCache.clear() }
+
+                // A permission check running before the commit may have re-cached the old grant.
+                TransactionSynchronizationManager.getSynchronizations().forEach {
+                    it.afterCompletion(TransactionSynchronization.STATUS_COMMITTED)
+                }
+
+                verify(exactly = 2) { mockPermissionCache.clear() }
+            } finally {
+                TransactionSynchronizationManager.clearSynchronization()
+            }
         }
 
         "applyShareBatch should skip the repository and cache entirely for an empty batch" {
@@ -475,13 +498,15 @@ class PermissionServiceImplSpec :
             permissionService.listRelationsForUsers(entityType, entityId, listOf(id1)) shouldBe emptyMap()
         }
 
-        "listRelationsForUsers returns empty map (fail-closed) when the repository throws" {
+        "listRelationsForUsers rethrows when the repository throws instead of reporting no relation" {
             val id1 = UUID.randomUUID().toString()
             every {
                 mockPermissionRepository.listRelationsForUsers(any(), any(), any())
             } throws RuntimeException("Cypher failure")
 
-            permissionService.listRelationsForUsers(entityType, entityId, listOf(id1)) shouldBe emptyMap()
+            shouldThrow<RuntimeException> {
+                permissionService.listRelationsForUsers(entityType, entityId, listOf(id1))
+            }.message shouldBe "Cypher failure"
         }
 
         "filterVisibleIds delegates to the repository for super-admin (no service-level bypass)" {

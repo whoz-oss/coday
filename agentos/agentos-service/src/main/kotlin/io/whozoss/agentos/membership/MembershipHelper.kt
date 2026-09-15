@@ -14,6 +14,18 @@ import java.util.UUID
 private val logger = KotlinLogging.logger {}
 
 /**
+ * Validates that [members] contains no `null` entry. Throws 400 if one is found.
+ *
+ * Neither Jackson nor Bean Validation rejects a `null` element in a `List<UserMembershipRole>` body
+ * (e.g. `[null]`), which would otherwise fail later with a NullPointerException (500).
+ */
+internal fun requireNoNullMembers(members: List<UserMembershipRole?>) {
+    if (members.any { it == null }) {
+        throw ResponseStatusException(HttpStatus.BAD_REQUEST, "members list must not contain null entries")
+    }
+}
+
+/**
  * Validates that [members] contains no duplicate [UserMembershipRole.userId] values.
  * Throws 400 if duplicates are found.
  *

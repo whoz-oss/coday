@@ -48,4 +48,11 @@ interface NamespaceService : EntityService<Namespace, String> {
      * Throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the namespace is not found.
      */
     fun undeployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>)
+
+    /**
+     * Locks namespace [namespaceId] until the current transaction ends, so that concurrent writers deciding
+     * on its current state (e.g. the membership anti-lockout guard) run one after the other, each reading
+     * what the previous one committed. Must be called inside a transaction.
+     */
+    fun lockForUpdate(namespaceId: UUID)
 }

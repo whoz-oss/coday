@@ -26,6 +26,12 @@ interface NamespaceRepository : EntityRepository<Namespace, String> {
      */
     fun undeployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>)
 
+    /**
+     * Holds an exclusive lock on the namespace [namespaceId] until the surrounding transaction ends.
+     * No-op for an unknown namespace.
+     */
+    fun lockForUpdate(namespaceId: UUID)
+
     companion object {
         const val NAMESPACE_PARENT_KEY = "all"
     }

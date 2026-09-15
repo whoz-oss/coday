@@ -321,6 +321,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
     "updateMembers throws 422 when removing a userId not currently on the namespace" {
         every { namespaceService.getById(namespaceId) } returns namespace
+        every { namespaceService.lockForUpdate(namespaceId) } just Runs
         every {
             permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
         } returns emptyMap()
@@ -336,6 +337,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
     "updateMembers throws AccessDenied when a non-super-admin caller adds a genuinely new user" {
         every { namespaceService.getById(namespaceId) } returns namespace
+        every { namespaceService.lockForUpdate(namespaceId) } just Runs
         every {
             permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
         } returns emptyMap()
@@ -352,6 +354,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
     "updateMembers throws 422 when a new user's userId is unknown" {
         every { namespaceService.getById(namespaceId) } returns namespace
+        every { namespaceService.lockForUpdate(namespaceId) } just Runs
         every {
             permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
         } returns emptyMap()
@@ -375,6 +378,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
     "updateMembers grants MEMBER to a new user when the caller is super-admin" {
         every { namespaceService.getById(namespaceId) } returns namespace
+        every { namespaceService.lockForUpdate(namespaceId) } just Runs
         every {
             permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
         } returns emptyMap()
@@ -404,6 +408,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
     "updateMembers allows a namespace-write (non-super-admin) caller to change an existing member's role" {
         every { namespaceService.getById(namespaceId) } returns namespace
+        every { namespaceService.lockForUpdate(namespaceId) } just Runs
         every {
             permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
         } returns mapOf(userId.toString() to PermissionRelation.MEMBER)
@@ -433,6 +438,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
     "updateMembers skips the share batch when no role actually changes" {
         every { namespaceService.getById(namespaceId) } returns namespace
+        every { namespaceService.lockForUpdate(namespaceId) } just Runs
         every {
             permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
         } returns mapOf(userId.toString() to PermissionRelation.ADMIN)
@@ -455,6 +461,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
 
     "updateMembers revokes an existing member without requiring super-admin" {
         every { namespaceService.getById(namespaceId) } returns namespace
+        every { namespaceService.lockForUpdate(namespaceId) } just Runs
         every {
             permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
         } returns mapOf(userId.toString() to PermissionRelation.MEMBER)
@@ -482,14 +489,42 @@ class NamespacePermissionServiceImplSpec : StringSpec({
         }
     }
 
+    "updateMembers loads the namespace ADMINs only for the returned roster when no current ADMIN loses the role" {
+        every { namespaceService.getById(namespaceId) } returns namespace
+        every { namespaceService.lockForUpdate(namespaceId) } just Runs
+        every {
+            permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
+        } returns mapOf(userId.toString() to PermissionRelation.MEMBER)
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
+        } returns emptyList()
+        every {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.MEMBER)
+        } returns emptyList()
+        every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(userId.toString())
+
+        service.updateMembers(
+            namespaceId,
+            listOf(UserMembershipRole(userId, null)),
+            callerIsSuperAdmin = false,
+        )
+
+        // Revoking a MEMBER cannot leave the namespace without ADMIN: the guard must not scan every ADMIN.
+        verify(exactly = 1) {
+            permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
+        }
+    }
+
     "updateMembers throws 422 when the update would leave the namespace with no ADMIN" {
         every { namespaceService.getById(namespaceId) } returns namespace
+        every { namespaceService.lockForUpdate(namespaceId) } just Runs
         every {
             permissionService.listRelationsForUsers(EntityType.NAMESPACE, namespaceId.toString(), listOf(userId.toString()))
         } returns mapOf(userId.toString() to PermissionRelation.ADMIN)
         every {
             permissionService.listUsersWithPermission(EntityType.NAMESPACE, namespaceId.toString(), PermissionRelation.ADMIN)
         } returns listOf(userId.toString())
+        every { userService.findByIds(listOf(userId)) } returns listOf(user)
 
         shouldThrow<UnprocessableEntityException> {
             service.updateMembers(
@@ -510,6 +545,7 @@ class NamespacePermissionServiceImplSpec : StringSpec({
             isAdmin = false,
         )
         every { namespaceService.getById(namespaceId) } returns namespace
+        every { namespaceService.lockForUpdate(namespaceId) } just Runs
         every {
             permissionService.listRelationsForUsers(
                 EntityType.NAMESPACE,

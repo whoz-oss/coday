@@ -13,6 +13,13 @@ interface NamespaceNodeNeo4jRepository : Neo4jRepository<NamespaceNode, String> 
     @Query($$"UNWIND $ids AS id MATCH (n:Namespace {id: id}) REMOVE n:ActiveNamespace")
     fun setInactiveByIds(ids: List<String>)
 
+    /**
+     * Takes the exclusive lock on the namespace node until the surrounding transaction ends, through a
+     * property write undone in the same statement: the node itself is left unchanged.
+     */
+    @Query($$"MATCH (n:Namespace {id: $id}) SET n._lock = true REMOVE n._lock")
+    fun lockForUpdate(id: String)
+
     @Query(
         """
             MATCH (n:Namespace)
