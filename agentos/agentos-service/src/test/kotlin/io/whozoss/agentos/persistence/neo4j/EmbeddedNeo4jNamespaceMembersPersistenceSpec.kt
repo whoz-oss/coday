@@ -88,13 +88,15 @@ class EmbeddedNeo4jNamespaceMembersPersistenceSpec : StringSpec() {
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
 
-        "listRelationsForUsers returns the direct relation of each requested user holding one" {
+        "listRelationsForUsers returns each requested user's direct relation on that namespace only" {
             val admin = createUser("admin@example.com")
             val member = createUser("member@example.com")
             val outsider = createUser("outsider@example.com")
             val namespace = createNamespace()
+            val otherNamespace = createNamespace()
             grant(admin, namespace, PermissionRelation.ADMIN)
             grant(member, namespace, PermissionRelation.MEMBER)
+            grant(outsider, otherNamespace, PermissionRelation.ADMIN)
 
             val relations =
                 permissionRepository.listRelationsForUsers(

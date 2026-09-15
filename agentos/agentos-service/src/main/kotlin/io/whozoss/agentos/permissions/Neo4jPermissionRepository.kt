@@ -368,10 +368,10 @@ class Neo4jPermissionRepository(
             throw e
         }
 
-    // neo4jClient + mappedBy: SDN cannot project a multi-column RETURN (here incl. the computed `relation`)
-    // onto a non-entity row via @Query — an interface projection on PermissionNodeNeo4jRepository is
-    // materialized through its UserNode domain type and fails on every row. Mirrors
-    // Neo4jUserGroupRepository.findMembers, including its soft-deleted filter and ADMIN precedence.
+    // neo4jClient + mappedBy: SDN cannot project a multi-column RETURN onto a non-entity row via @Query — an
+    // interface projection on PermissionNodeNeo4jRepository is materialized through its UserNode domain type
+    // and fails on every row. Same approach as Neo4jUserGroupRepository.findMembers. Errors propagate: an
+    // empty map would read as "no current relation" and turn existing members into new users.
     override fun listRelationsForUsers(
         entityType: EntityType,
         entityId: String,
@@ -382,29 +382,19 @@ class Neo4jPermissionRepository(
             UNWIND $userIds AS uid
             MATCH (u:User {id: uid})-[r:ADMIN|MEMBER]->(e {id: $entityId})
             WHERE $entityLabel IN labels(e)
-              AND NOT COALESCE(u.removed, false)
-            WITH u, collect(type(r)) AS rels
-            RETURN u.id AS userId, CASE WHEN 'ADMIN' IN rels THEN 'ADMIN' ELSE 'MEMBER' END AS relation
+            RETURN u.id AS userId, type(r) AS relation
         """.trimIndent()
-        return try {
-            neo4jClient
-                .query(query)
-                .bindAll(
-                    mapOf("userIds" to userIds.toList(), "entityId" to entityId, "entityLabel" to entityType.label),
+        return neo4jClient
+            .query(query)
+            .bindAll(mapOf("userIds" to userIds.toList(), "entityId" to entityId, "entityLabel" to entityType.label))
+            .fetchAs(UserRelationRow::class.java)
+            .mappedBy { _, record ->
+                UserRelationRow(
+                    userId = record["userId"].asString(),
+                    relation = PermissionRelation.valueOf(record["relation"].asString()),
                 )
-                .fetchAs(UserRelationRow::class.java)
-                .mappedBy { _, record ->
-                    UserRelationRow(
-                        userId = record["userId"].asString(),
-                        relation = PermissionRelation.valueOf(record["relation"].asString()),
-                    )
-                }.all()
-                .associate { it.userId to it.relation }
-        } catch (e: Exception) {
-            // Not fail-closed: an empty map would read as "no current relation" and turn members into new users.
-            logger.error(e) { "Error listing relations for users on $entityType:$entityId" }
-            throw e
-        }
+            }.all()
+            .associate { it.userId to it.relation }
     }
 
     override fun applyShareBatch(
