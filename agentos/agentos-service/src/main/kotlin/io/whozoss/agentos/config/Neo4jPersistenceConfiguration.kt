@@ -171,12 +171,9 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
-    fun neo4jPermissionRepository(
-        permissionNodeNeo4jRepository: PermissionNodeNeo4jRepository,
-        neo4jClient: Neo4jClient,
-    ): PermissionRepository {
+    fun neo4jPermissionRepository(permissionNodeNeo4jRepository: PermissionNodeNeo4jRepository): PermissionRepository {
         logger.info { "[Persistence] Neo4jPermissionRepository active" }
-        return Neo4jPermissionRepository(permissionNodeNeo4jRepository, neo4jClient)
+        return Neo4jPermissionRepository(permissionNodeNeo4jRepository)
     }
 
     @Bean
