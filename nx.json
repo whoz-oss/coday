@@ -76,6 +76,9 @@
         "tag": true
       }
     },
+    "conventionalCommits": {
+      "useCommitScope": false
+    },
     "version": {
       "conventionalCommits": true,
       "manifestRootsToUpdate": ["apps/{projectName}"],
@@ -85,8 +88,7 @@
       "git": {
         "commit": false,
         "tag": false
-      },
-        "adjustSemverBumpsForZeroMajorVersion": false
+      }
     },
     "releaseTag": {
       "pattern": "release/{version}"
