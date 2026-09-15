@@ -104,6 +104,8 @@ data class AgentConfig(
      * Examples: `["*"]` allows all agents, `["*Fixer"]` allows `BugFixer`, `StoryFixer`, etc.
      */
     val subAgents: List<String>? = null,
+    /** Budget for each outgoing delegation, including nested work. Null inherits the server default. */
+    val delegationTimeoutSeconds: Int? = null,
     /**
      * Paths to documents whose full content is injected into the agent's instructions.
      *
@@ -117,6 +119,12 @@ data class AgentConfig(
      */
     val docs: List<String>? = null,
 ) : Entity {
+    init {
+        require(delegationTimeoutSeconds == null || delegationTimeoutSeconds > 0) {
+            "delegationTimeoutSeconds must be positive"
+        }
+    }
+
     /**
      * True when this [AgentConfig] was loaded from a filesystem YAML definition
      * ([io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository]) rather than persisted
