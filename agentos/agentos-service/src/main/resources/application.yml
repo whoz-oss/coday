@@ -190,6 +190,8 @@ agentos:
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
     # enabled-by-default: true
   defaults:
+    # Default for every agent without a delegationTimeoutSeconds override. Requires restart.
+    delegation-timeout-seconds: ${AGENTOS_DEFAULTS_DELEGATION_TIMEOUT_SECONDS:300}
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.
   # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME

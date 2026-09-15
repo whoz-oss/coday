@@ -75,6 +75,18 @@ paths:
           description: OK
       tags:
       - agent-config-controller
+  /api/agent-configs/defaults:
+    get:
+      operationId: getAgentConfigDefaults
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/AgentConfigDefaultsDto"
+          description: OK
+      tags:
+      - agent-config-defaults-controller
   /api/agent-configs/platform:
     get:
       operationId: listPlatformAgentsAgentConfig
@@ -3134,6 +3146,13 @@ components:
         createdOn:
           type: string
           format: date-time
+        delegationTimeoutSeconds:
+          type: integer
+          format: int32
+          description: "Seconds allowed for each outgoing delegation, including nested\
+            \ work. Null or omitted inherits the server default; on PUT this clears\
+            \ an existing override."
+          minimum: 1
         description:
           type: string
         enabled:
@@ -3177,6 +3196,14 @@ components:
           format: date-time
       required:
       - name
+    AgentConfigDefaultsDto:
+      type: object
+      properties:
+        delegationTimeoutSeconds:
+          type: integer
+          format: int32
+      required:
+      - delegationTimeoutSeconds
     AgentConfigSearchRequest:
       type: object
       properties:
