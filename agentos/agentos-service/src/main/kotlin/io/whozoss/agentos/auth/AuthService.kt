@@ -11,9 +11,11 @@ import java.util.UUID
  * management (store, resolve, delete). Used internally by the credential provider
  * factory to resolve credentials for plugin tool contexts.
  *
- * Implementations are request-scoped: created per tool invocation with the
- * resolved (namespaceId, userId) from the enclosing [io.whozoss.agentos.sdk.tool.ToolContext],
- * so callers never need to pass identity parameters explicitly.
+ * Implementations are plain objects bound to one identity, not Spring request-scoped beans:
+ * [AuthServiceFactory.create] builds one each time a credential provider is prepared for an
+ * integration, with the resolved (namespaceId, userId) from the enclosing
+ * [io.whozoss.agentos.sdk.tool.ToolContext], so callers never need to pass identity parameters
+ * explicitly and the instance is safe to use outside an HTTP request thread.
  */
 interface AuthService {
     /**
