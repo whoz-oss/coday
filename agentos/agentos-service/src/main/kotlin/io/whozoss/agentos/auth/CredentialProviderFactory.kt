@@ -17,11 +17,12 @@ import java.util.UUID
  * Shared by the agent run (`AgentServiceImpl` hands the result to `ToolResolverService`) and by
  * the integration-config tool preview, which resolves tools for the current user without a case.
  *
- * Resolution, once the returned provider is invoked by the plugin:
+ * Two entry points share one builder: [forAgentRun] for an agent run and [forPreview] for the
+ * case-less tool preview. Resolution, once the returned provider is invoked by the plugin:
  * - the `AuthSetting` is resolved by name through the 4-tier overlay for `(namespaceId, userId)`;
  * - OAuth types go through [OAuthFlowService] (existing token -> refresh -> interactive flow) when
- *   the run has a [caseId][forRun] and an event sink; without them they fall back to the direct
- *   per-user `Credential` lookup and are never synthesised;
+ *   an agent run has a case and an event sink; otherwise, and always for the preview, they fall
+ *   back to the direct per-user `Credential` lookup and are never synthesised;
  * - static types (`API_KEY`, `BEARER_TOKEN`, `BASIC_AUTH`): the per-user `Credential` row wins,
  *   otherwise [StaticCredentialFactory] synthesises the credential in memory from the resolved
  *   `AuthSetting`. Nothing is persisted on that path.
@@ -35,60 +36,99 @@ class CredentialProviderFactory(
     private val staticCredentialFactory: StaticCredentialFactory,
 ) {
     /**
-     * Returns the factory mapping an `authSettingName` to a [CredentialProvider] for one run.
+     * Returns the factory mapping an `authSettingName` to a [CredentialProvider] for one agent run.
      *
      * The factory yields `null` for every name when [userId] is null: credentials are always
      * user-scoped, so a run without a user gets no provider at all.
      *
      * [caseId] and [emitEvent] make the run interactive ([OAuthFlowService.resolveOAuthCredential]
-     * emits its `QuestionEvent` into the case); when either is absent, OAuth types resolve through
-     * the direct lookup only. An interactive run must name its agent ([agentName] is a precondition
-     * then); a case-less caller such as the tool preview passes all three as null.
+     * emits its `QuestionEvent` into the case on behalf of [agentName]); when either is absent
+     * (webhooks, one-shot runs), OAuth types resolve through the direct lookup only.
      */
-    fun forRun(
+    fun forAgentRun(
         namespaceId: UUID,
         userId: UUID?,
         caseId: UUID?,
-        agentName: String?,
+        agentName: String,
         emitEvent: ((CaseEvent) -> CaseEvent)?,
     ): (String) -> CredentialProvider? {
         val interactiveRun =
             if (caseId != null && emitEvent != null) {
-                require(agentName != null) { "agentName is required for an interactive OAuth run (caseId=$caseId)" }
                 InteractiveOAuthRun(caseId = caseId, agentName = agentName, emitEvent = emitEvent)
             } else {
                 null
             }
+        val oauthFallbackReason =
+            if (interactiveRun == null) "missing caseId=${caseId != null} or emitEvent=${emitEvent != null}" else null
         return { authSettingName ->
-            logger.debug { "CredentialProvider invoked for '$authSettingName'" }
             if (userId == null) {
                 logger.debug { "CredentialProvider for '$authSettingName': no userId in context, skipping" }
                 null
             } else {
-                val scopedAuthService = authServiceFactory.create(namespaceId, userId)
-                val provider: CredentialProvider = {
-                    val setting = scopedAuthService.resolveAuthSetting(authSettingName)
-                    logger.debug { "CredentialProvider for '$authSettingName': resolved authType=${setting.authType}" }
-                    if (setting.authType in OAUTH_AUTH_TYPES && interactiveRun != null) {
-                        resolveInteractiveOAuth(
-                            authSettingName = authSettingName,
-                            setting = setting,
-                            namespaceId = namespaceId,
-                            userId = userId,
-                            run = interactiveRun,
-                        )
-                    } else {
-                        resolveDirect(
-                            authSettingName = authSettingName,
-                            setting = setting,
-                            scopedAuthService = scopedAuthService,
-                            userId = userId,
-                            caseId = caseId,
-                            emitEvent = emitEvent,
-                        )
-                    }
-                }
-                provider
+                providerFor(
+                    authSettingName = authSettingName,
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    interactiveRun = interactiveRun,
+                    oauthFallbackReason = oauthFallbackReason,
+                )
+            }
+        }
+    }
+
+    /**
+     * Returns the factory mapping an `authSettingName` to a [CredentialProvider] for the tool preview
+     * of [userId]: no case and no event sink, so OAuth types resolve through the direct lookup only
+     * and never start an interactive flow.
+     */
+    fun forPreview(
+        namespaceId: UUID,
+        userId: UUID,
+    ): (String) -> CredentialProvider =
+        { authSettingName ->
+            providerFor(
+                authSettingName = authSettingName,
+                namespaceId = namespaceId,
+                userId = userId,
+                interactiveRun = null,
+                oauthFallbackReason = null,
+            )
+        }
+
+    /**
+     * The provider for [authSettingName]; [interactiveRun] is null when OAuth types must not start an
+     * interactive flow. [oauthFallbackReason] explains, in the warning of [resolveDirect], why an agent
+     * run sends an OAuth type to the direct lookup; it is null for the preview, whose only OAuth path
+     * that is.
+     */
+    private fun providerFor(
+        authSettingName: String,
+        namespaceId: UUID,
+        userId: UUID,
+        interactiveRun: InteractiveOAuthRun?,
+        oauthFallbackReason: String?,
+    ): CredentialProvider {
+        logger.debug { "CredentialProvider invoked for '$authSettingName'" }
+        val scopedAuthService = authServiceFactory.create(namespaceId, userId)
+        return {
+            val setting = scopedAuthService.resolveAuthSetting(authSettingName)
+            logger.debug { "CredentialProvider for '$authSettingName': resolved authType=${setting.authType}" }
+            if (setting.authType in OAUTH_AUTH_TYPES && interactiveRun != null) {
+                resolveInteractiveOAuth(
+                    authSettingName = authSettingName,
+                    setting = setting,
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    run = interactiveRun,
+                )
+            } else {
+                resolveDirect(
+                    authSettingName = authSettingName,
+                    setting = setting,
+                    scopedAuthService = scopedAuthService,
+                    userId = userId,
+                    oauthFallbackReason = oauthFallbackReason,
+                )
             }
         }
     }
@@ -107,7 +147,7 @@ class CredentialProviderFactory(
         logger.debug { "CredentialProvider for '$authSettingName': using OAuth flow (authType=${setting.authType})" }
         // NOTE — blocking thread analysis:
         // This helper runs inside the body of the `CredentialProvider` lambda built by
-        // `forRun`, so the `runBlocking` below executes when the plugin invokes the
+        // `providerFor`, so the `runBlocking` below executes when the plugin invokes the
         // provider — not when the provider is created. The lambda is the trigger for the
         // interactive OAuth flow, not a passive carrier of an already-obtained credential.
         //
@@ -152,28 +192,34 @@ class CredentialProviderFactory(
 
     /**
      * Direct lookup: the per-user `Credential` row, then the static fallback for non-OAuth types.
-     * [caseId] and [emitEvent] only feed the warning that names the missing interactive-flow
-     * ingredient when an OAuth type lands here.
+     * An OAuth type landing here is warned about with [oauthFallbackReason] (the missing interactive-flow
+     * ingredient of an agent run), or only traced when that reason is null (the preview).
      */
     private fun resolveDirect(
         authSettingName: String,
         setting: AuthSetting,
         scopedAuthService: AuthService,
         userId: UUID,
-        caseId: UUID?,
-        emitEvent: ((CaseEvent) -> CaseEvent)?,
+        oauthFallbackReason: String?,
     ): Credential? {
-        if (setting.authType in OAUTH_AUTH_TYPES) {
-            logger.warn {
-                "CredentialProvider for '$authSettingName': OAuth type ${setting.authType} but " +
-                    "missing caseId=${caseId != null} or emitEvent=${emitEvent != null}, " +
-                    "falling back to direct lookup"
-            }
-        } else {
-            logger.debug {
-                "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, " +
-                    "using direct credential lookup"
-            }
+        when {
+            setting.authType !in OAUTH_AUTH_TYPES ->
+                logger.debug {
+                    "CredentialProvider for '$authSettingName': non-OAuth type ${setting.authType}, " +
+                        "using direct credential lookup"
+                }
+
+            oauthFallbackReason != null ->
+                logger.warn {
+                    "CredentialProvider for '$authSettingName': OAuth type ${setting.authType} but " +
+                        "$oauthFallbackReason, falling back to direct lookup"
+                }
+
+            else ->
+                logger.debug {
+                    "CredentialProvider for '$authSettingName': OAuth type ${setting.authType}, " +
+                        "direct credential lookup only (no interactive flow outside an agent run)"
+                }
         }
         val credential =
             scopedAuthService.resolveCredential(setting.metadata.id)

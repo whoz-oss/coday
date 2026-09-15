@@ -4,7 +4,6 @@ import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -87,13 +86,12 @@ class CredentialProviderFactoryUnitSpec : StringSpec() {
 
     private fun forUserRun(
         caseId: UUID? = this.caseId,
-        agentName: String? = "my-agent",
         emitEvent: ((CaseEvent) -> CaseEvent)? = this.emitEvent,
-    ) = factory.forRun(
+    ) = factory.forAgentRun(
         namespaceId = namespaceId,
         userId = userId,
         caseId = caseId,
-        agentName = agentName,
+        agentName = "my-agent",
         emitEvent = emitEvent,
     )
 
@@ -110,9 +108,9 @@ class CredentialProviderFactoryUnitSpec : StringSpec() {
             logCaptor.stop()
         }
 
-        "forRun yields no provider when the run has no userId" {
+        "forAgentRun yields no provider when the run has no userId" {
             val provider =
-                factory.forRun(
+                factory.forAgentRun(
                     namespaceId = namespaceId,
                     userId = null,
                     caseId = caseId,
@@ -125,7 +123,7 @@ class CredentialProviderFactoryUnitSpec : StringSpec() {
             verify(exactly = 0) { staticCredentialFactory.fromAuthSetting(any(), any()) }
         }
 
-        "forRun routes an OAuth type through OAuthFlowService when caseId and emitEvent are present" {
+        "forAgentRun routes an OAuth type through OAuthFlowService when caseId and emitEvent are present" {
             every { scopedAuthService.resolveAuthSetting("my-oauth") } returns oauthSetting
             val expected = credential(CredentialType.OAUTH_TOKENS, mapOf("accessToken" to "oauth-tok"))
             coEvery {
@@ -150,7 +148,7 @@ class CredentialProviderFactoryUnitSpec : StringSpec() {
             verify(exactly = 0) { staticCredentialFactory.fromAuthSetting(any(), any()) }
         }
 
-        "forRun falls back to the direct lookup for an OAuth type without a caseId, never synthesising" {
+        "forAgentRun falls back to the direct lookup for an OAuth type without a caseId, never synthesising" {
             every { scopedAuthService.resolveAuthSetting("my-oauth") } returns oauthSetting
             every { scopedAuthService.resolveCredential(authSettingId) } returns null
 
@@ -163,7 +161,7 @@ class CredentialProviderFactoryUnitSpec : StringSpec() {
             verify(exactly = 0) { staticCredentialFactory.fromAuthSetting(any(), any()) }
         }
 
-        "forRun falls back to the direct lookup for an OAuth type without an emitEvent" {
+        "forAgentRun falls back to the direct lookup for an OAuth type without an emitEvent" {
             every { scopedAuthService.resolveAuthSetting("my-oauth") } returns oauthSetting
             val stored = credential(CredentialType.OAUTH_TOKENS, mapOf("accessToken" to "stored-tok"))
             every { scopedAuthService.resolveCredential(authSettingId) } returns stored
@@ -175,14 +173,14 @@ class CredentialProviderFactoryUnitSpec : StringSpec() {
             }
         }
 
-        "forRun names the missing interactive ingredient in the fallback warning, as the inline lambda did" {
+        "forAgentRun names the missing interactive ingredient in the fallback warning, as the inline lambda did" {
             factoryLogger.level = Level.TRACE
             logCaptor.start()
             factoryLogger.addAppender(logCaptor)
             every { scopedAuthService.resolveAuthSetting("my-oauth") } returns oauthSetting
             every { scopedAuthService.resolveCredential(authSettingId) } returns null
 
-            forUserRun(caseId = null, agentName = null)("my-oauth").shouldNotBeNull().invoke().shouldBeNull()
+            forUserRun(caseId = null)("my-oauth").shouldNotBeNull().invoke().shouldBeNull()
 
             val fallbackWarning =
                 logCaptor.list.single {
@@ -193,14 +191,7 @@ class CredentialProviderFactoryUnitSpec : StringSpec() {
             fallbackWarning.formattedMessage shouldNotContain "agentName"
         }
 
-        "forRun rejects an interactive run (caseId and emitEvent) without an agentName up front" {
-            val failure = shouldThrow<IllegalArgumentException> { forUserRun(agentName = null) }
-
-            failure.message shouldContain "agentName"
-            verify(exactly = 0) { authServiceFactory.create(any(), any()) }
-        }
-
-        "forRun lets the per-user Credential row win for a non-OAuth type" {
+        "forAgentRun lets the per-user Credential row win for a non-OAuth type" {
             every { scopedAuthService.resolveAuthSetting("my-api-key") } returns apiKeySetting
             val stored = credential(CredentialType.API_KEY, mapOf("key" to "sk-stored"))
             every { scopedAuthService.resolveCredential(authSettingId) } returns stored
@@ -214,7 +205,7 @@ class CredentialProviderFactoryUnitSpec : StringSpec() {
             }
         }
 
-        "forRun synthesises a static credential when no per-user row exists, without persisting it" {
+        "forAgentRun synthesises a static credential when no per-user row exists, without persisting it" {
             every { scopedAuthService.resolveAuthSetting("my-bearer") } returns bearerSetting
             every { scopedAuthService.resolveCredential(authSettingId) } returns null
             val synthesised = credential(CredentialType.BEARER_TOKEN, mapOf("token" to "tok-secret-value"))
@@ -226,7 +217,7 @@ class CredentialProviderFactoryUnitSpec : StringSpec() {
             verify(exactly = 0) { scopedAuthService.storeCredential(any()) }
         }
 
-        "forRun returns null for a non-OAuth type with neither a per-user row nor a static secret" {
+        "forAgentRun returns null for a non-OAuth type with neither a per-user row nor a static secret" {
             val blankSetting =
                 ApiKeyAuthSetting(metadata = EntityMetadata(id = authSettingId), name = "blank-key", apiKey = "")
             every { scopedAuthService.resolveAuthSetting("blank-key") } returns blankSetting
@@ -238,7 +229,46 @@ class CredentialProviderFactoryUnitSpec : StringSpec() {
             verify(exactly = 0) { scopedAuthService.storeCredential(any()) }
         }
 
-        "forRun never writes a secret value to the log on any path" {
+        "forPreview resolves an OAuth type through the direct lookup only, never starting the interactive flow" {
+            every { scopedAuthService.resolveAuthSetting("my-oauth") } returns oauthSetting
+            val stored = credential(CredentialType.OAUTH_TOKENS, mapOf("accessToken" to "stored-tok"))
+            every { scopedAuthService.resolveCredential(authSettingId) } returns stored
+
+            factory.forPreview(namespaceId = namespaceId, userId = userId)("my-oauth").invoke() shouldBe stored
+
+            coVerify(exactly = 0) {
+                oAuthFlowService.resolveOAuthCredential(any(), any(), any(), any(), any(), any(), any())
+            }
+            verify(exactly = 0) { staticCredentialFactory.fromAuthSetting(any(), any()) }
+        }
+
+        "forPreview does not log the agent-run fallback warning, the direct lookup being its only OAuth path" {
+            factoryLogger.level = Level.TRACE
+            logCaptor.start()
+            factoryLogger.addAppender(logCaptor)
+            every { scopedAuthService.resolveAuthSetting("my-oauth") } returns oauthSetting
+            every { scopedAuthService.resolveCredential(authSettingId) } returns null
+
+            factory.forPreview(namespaceId = namespaceId, userId = userId)("my-oauth").invoke().shouldBeNull()
+
+            val fallbackWarnings =
+                logCaptor.list.filter { it.level == Level.WARN && "falling back" in it.formattedMessage }
+            fallbackWarnings shouldBe emptyList()
+        }
+
+        "forPreview synthesises a static credential when no per-user row exists, as during a run" {
+            every { scopedAuthService.resolveAuthSetting("my-bearer") } returns bearerSetting
+            every { scopedAuthService.resolveCredential(authSettingId) } returns null
+            val synthesised = credential(CredentialType.BEARER_TOKEN, mapOf("token" to "tok-secret-value"))
+            every { staticCredentialFactory.fromAuthSetting(userId, bearerSetting) } returns synthesised
+
+            factory.forPreview(namespaceId = namespaceId, userId = userId)("my-bearer").invoke() shouldBe synthesised
+
+            verify(exactly = 1) { authServiceFactory.create(namespaceId, userId) }
+            verify(exactly = 0) { scopedAuthService.storeCredential(any()) }
+        }
+
+        "forAgentRun never writes a secret value to the log on any path" {
             factoryLogger.level = Level.TRACE
             logCaptor.start()
             factoryLogger.addAppender(logCaptor)

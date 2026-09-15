@@ -16,14 +16,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *
  * Override with environment variables (Spring Boot relaxed binding):
  * - `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` (comma-separated, replaces the default list)
+ * - `AGENTOS_INTEGRATIONS_PREVIEW_PROVIDE_TOOLS_TIMEOUT_MS`
  * - `AGENTOS_INTEGRATIONS_PREVIEW_DESCRIBE_NAMESPACE_TIMEOUT_MS`
+ * - `AGENTOS_INTEGRATIONS_PREVIEW_MAX_CONCURRENT_PLUGIN_CALLS`
  *
  * Example (application.yml):
  * ```yaml
  * agentos:
  *   integrations:
  *     user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP
+ *     preview-provide-tools-timeout-ms: 30000
  *     preview-describe-namespace-timeout-ms: 5000
+ *     preview-max-concurrent-plugin-calls: 4
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.integrations")
@@ -35,10 +39,25 @@ data class IntegrationsProperties(
      */
     val userScopeDeniedTypes: List<String> = listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP"),
     /**
-     * Upper bound, in milliseconds, on a plugin's `describeNamespace` call during the tool preview
-     * (`POST /api/integration-configs/{id}/preview-tools`); past it the namespace line is reported
-     * as absent. Best effort: a plugin that suspends cooperatively is cancelled, one that blocks
-     * inside the suspend function is only abandoned and still holds its thread until it returns.
+     * Upper bound, in milliseconds, on how long the tool preview
+     * (`POST /api/integration-configs/{id}/preview-tools`) waits for a plugin's `describeNamespace`
+     * line; past it the line is reported as absent. The request returns at the bound; the call is
+     * cancelled, and a plugin that blocks instead of suspending keeps its preview worker until it returns.
      */
     val previewDescribeNamespaceTimeoutMs: Long = 5_000,
+    /**
+     * Upper bound, in milliseconds, on how long the tool preview waits for a plugin's `provideTools`,
+     * whatever timeouts the config itself declares (an `MCP_HTTP` config bounds `initialize` and
+     * `listTools` by the larger of `timeoutSeconds` and `toolCallTimeoutSeconds`, 60 s by default);
+     * past it the preview reports a timeout in `error`. The request returns at the bound; the plugin
+     * call is abandoned without being interrupted and keeps its preview worker until it returns, so
+     * a slow server that an agent run would still reach can time out here: raise the value for it.
+     */
+    val previewProvideToolsTimeoutMs: Long = 30_000,
+    /**
+     * Tool preview plugin calls that may hold a worker at once, across all namespaces, calls abandoned
+     * past their timeout included. A preview that finds every worker busy is refused at once with a
+     * `RejectedExecutionException` in `error`. Must be positive.
+     */
+    val previewMaxConcurrentPluginCalls: Int = 4,
 )

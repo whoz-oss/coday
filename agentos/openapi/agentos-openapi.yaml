@@ -1688,7 +1688,7 @@ paths:
 
         Requires WRITE on the config. The preview runs in a namespace: rows that carry a `namespaceId` use it (a supplied `namespaceId` must match it, 400 otherwise); platform and user-global rows have none, so `namespaceId` is required (400 when missing). A supplied `namespaceId` must be readable by the caller (404 otherwise, existence hidden). Platform rows additionally require Super Admin.
 
-        422 when no plugin is loaded for the config's integration type. A plugin failure while building the tools is reported in `error` with an empty `tools` list (200).
+        422 when no plugin is loaded for the config's integration type. A plugin failure while building the tools is reported in `error` with an empty `tools` list (200), and so is a plugin that does not return within `agentos.integrations.preview-provide-tools-timeout-ms`: the request never waits longer than the configured bounds, whatever timeouts the config declares. When every preview worker is busy, the preview is refused at once the same way.
       operationId: previewToolsIntegrationConfig
       parameters:
       - in: path
@@ -4000,7 +4000,10 @@ components:
         error:
           type: string
           description: "Why the plugin could not build its tool set (`ExceptionClass:\
-            \ message`), or null when `tools` is the result."
+            \ message`), or null when `tools` is the result. A `TimeoutException`\
+            \ means the preview stopped waiting after the configured timeout (agentos.integrations.preview-provide-tools-timeout-ms);\
+            \ a `RejectedExecutionException` means every preview worker was busy and\
+            \ the plugin was not called."
         integrationType:
           type: string
           description: Integration type of the previewed config (plugin key).
@@ -4009,8 +4012,7 @@ components:
           type: string
           description: "The plugin's describeNamespace line for this config, or null\
             \ when the plugin gives none, fails or does not answer within the configured\
-            \ timeout (agentos.integrations.preview-describe-namespace-timeout-ms,\
-            \ best effort)."
+            \ timeout (agentos.integrations.preview-describe-namespace-timeout-ms)."
         tools:
           type: array
           description: Tools the plugin built for this config; empty when `error`

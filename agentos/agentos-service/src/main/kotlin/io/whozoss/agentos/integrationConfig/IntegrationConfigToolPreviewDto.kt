@@ -26,7 +26,7 @@ data class IntegrationConfigToolPreviewDto(
         description =
             "The plugin's describeNamespace line for this config, or null when the plugin gives none, " +
                 "fails or does not answer within the configured timeout " +
-                "(agentos.integrations.preview-describe-namespace-timeout-ms, best effort).",
+                "(agentos.integrations.preview-describe-namespace-timeout-ms).",
         nullable = true,
     )
     val namespaceDescription: String?,
@@ -35,7 +35,9 @@ data class IntegrationConfigToolPreviewDto(
     @field:Schema(
         description =
             "Why the plugin could not build its tool set (`ExceptionClass: message`), or null when " +
-                "`tools` is the result.",
+                "`tools` is the result. A `TimeoutException` means the preview stopped waiting after the " +
+                "configured timeout (agentos.integrations.preview-provide-tools-timeout-ms); a " +
+                "`RejectedExecutionException` means every preview worker was busy and the plugin was not called.",
         nullable = true,
     )
     val error: String?,

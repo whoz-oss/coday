@@ -182,10 +182,19 @@ agentos:
     # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
     # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP
     # Milliseconds the tool preview (POST /api/integration-configs/{id}/preview-tools) waits for a
-    # plugin's describeNamespace line before reporting it as absent. Best effort: only a plugin that
-    # suspends cooperatively is actually cancelled.
+    # plugin's provideTools before reporting a timeout, whatever timeouts the config declares. The
+    # request returns at the bound; the plugin call is abandoned (not interrupted) and finishes on its own.
+    # Override with env var: AGENTOS_INTEGRATIONS_PREVIEW_PROVIDE_TOOLS_TIMEOUT_MS
+    # preview-provide-tools-timeout-ms: 30000
+    # Milliseconds the tool preview waits for a plugin's describeNamespace line before reporting it
+    # as absent. The request returns at the bound; a plugin that blocks keeps its preview worker until
+    # it returns.
     # Override with env var: AGENTOS_INTEGRATIONS_PREVIEW_DESCRIBE_NAMESPACE_TIMEOUT_MS
     # preview-describe-namespace-timeout-ms: 5000
+    # Tool preview plugin calls that may hold a worker at once, across all namespaces, abandoned calls
+    # included. A preview that finds every worker busy is refused at once. Must be positive.
+    # Override with env var: AGENTOS_INTEGRATIONS_PREVIEW_MAX_CONCURRENT_PLUGIN_CALLS
+    # preview-max-concurrent-plugin-calls: 4
   query-user:
     # Grant the built-in queryUser tool to every agent that does not mention QUERY_USER in its
     # integrations map. On by default: asking a question is a primitive of conversation, not an

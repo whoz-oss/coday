@@ -1,10 +1,16 @@
 package io.whozoss.agentos.integrationConfig
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.comparables.shouldBeLessThan
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -25,22 +31,53 @@ import io.whozoss.agentos.sdk.tool.ToolPlugin
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.user.User
 import kotlinx.coroutines.delay
+import org.slf4j.LoggerFactory
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.measureTimedValue
 
 /**
  * Unit tests for [IntegrationConfigToolPreviewService]: plugin lookup, tool mapping, failure
  * isolation (a failing `provideTools` becomes an error message, a slow or failing
- * `describeNamespace` becomes a null line) and the `ToolContext` handed to the plugin.
+ * `describeNamespace` becomes a null line), the time bounds of both plugin calls and the
+ * `ToolContext` handed to the plugin.
  */
 class IntegrationConfigToolPreviewServiceUnitSpec : StringSpec() {
     private val toolRegistryService: ToolRegistryService = mockk()
     private val credentialProviderFactory: CredentialProviderFactory = mockk()
+
+    // Default timeouts: a cold worker thread must never turn a nominal preview into a timeout.
     private val service =
         IntegrationConfigToolPreviewService(
             toolRegistryService = toolRegistryService,
             credentialProviderFactory = credentialProviderFactory,
-            integrationsProperties = IntegrationsProperties(previewDescribeNamespaceTimeoutMs = 100),
+            integrationsProperties = IntegrationsProperties(),
         )
+
+    // Short timeouts, only for the scenarios where the plugin is made to outlast them.
+    private val shortTimeoutService =
+        IntegrationConfigToolPreviewService(
+            toolRegistryService = toolRegistryService,
+            credentialProviderFactory = credentialProviderFactory,
+            integrationsProperties =
+                IntegrationsProperties(previewDescribeNamespaceTimeoutMs = 100, previewProvideToolsTimeoutMs = 200),
+        )
+
+    // Services built by a single test for a specific worker cap; shut down with the others.
+    private val extraServices = mutableListOf<IntegrationConfigToolPreviewService>()
+
+    private fun previewService(properties: IntegrationsProperties): IntegrationConfigToolPreviewService =
+        IntegrationConfigToolPreviewService(
+            toolRegistryService = toolRegistryService,
+            credentialProviderFactory = credentialProviderFactory,
+            integrationsProperties = properties,
+        ).also { extraServices += it }
+
+    private val serviceLogger = LoggerFactory.getLogger(IntegrationConfigToolPreviewService::class.java) as Logger
 
     private val namespaceId: UUID = UUID.randomUUID()
     private val user =
@@ -124,7 +161,31 @@ class IntegrationConfigToolPreviewServiceUnitSpec : StringSpec() {
         return plugin
     }
 
+    /**
+     * Blocks until [release] opens (10 s at most) and ignores interrupts, like a plugin stuck in a
+     * socket read that an interrupt cannot abort. Returns whether an interrupt was delivered meanwhile.
+     */
+    private fun blockIgnoringInterrupts(release: CountDownLatch): Boolean {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        var interrupted = false
+        while (true) {
+            val remaining = deadline - System.nanoTime()
+            if (remaining <= 0) return interrupted
+            try {
+                if (release.await(remaining, TimeUnit.NANOSECONDS)) return interrupted
+            } catch (_: InterruptedException) {
+                interrupted = true
+            }
+        }
+    }
+
     init {
+        afterSpec {
+            service.shutdown()
+            shortTimeoutService.shutdown()
+            extraServices.forEach { it.shutdown() }
+        }
+
         "preview throws 422 when no plugin is loaded for the integration type" {
             every { toolRegistryService.findPlugin("UNKNOWN") } returns null
 
@@ -194,17 +255,185 @@ class IntegrationConfigToolPreviewServiceUnitSpec : StringSpec() {
             preview.error.shouldNotBeNull() shouldNotContain "null"
         }
 
-        "the describeNamespace timeout defaults to 5 seconds and is bound from agentos.integrations" {
+        "the describeNamespace timeout defaults to 5 seconds" {
             IntegrationsProperties().previewDescribeNamespaceTimeoutMs shouldBe 5_000
         }
 
         "preview yields a null namespace description when describeNamespace exceeds the configured timeout" {
             registered(RecordingPlugin(tools = { emptyList() }, describe = { delay(10_000); "too late" }))
 
-            val preview = service.preview(config(), namespaceId, user)
+            val preview = shortTimeoutService.preview(config(), namespaceId, user)
 
             preview.namespaceDescription.shouldBeNull()
             preview.error.shouldBeNull()
+        }
+
+        "the provideTools timeout defaults to 30 seconds" {
+            IntegrationsProperties().previewProvideToolsTimeoutMs shouldBe 30_000
+        }
+
+        "the preview worker cap defaults to 4" {
+            IntegrationsProperties().previewMaxConcurrentPluginCalls shouldBe 4
+        }
+
+        "preview returns a timeout error without waiting for a provideTools that blocks past the configured timeout" {
+            val release = CountDownLatch(1)
+            registered(
+                RecordingPlugin(tools = {
+                    blockIgnoringInterrupts(release)
+                    listOf(tool("MCP_PROD__TooLate"))
+                }),
+            )
+            try {
+                val (preview, elapsed) = measureTimedValue { shortTimeoutService.preview(config(), namespaceId, user) }
+
+                elapsed shouldBeLessThan 3.seconds
+                preview.tools.shouldBeEmpty()
+                preview.error shouldBe "TimeoutException: tools not built within 200 ms"
+            } finally {
+                release.countDown()
+            }
+        }
+
+        "preview abandons a timed-out provideTools without interrupting it, and the call still runs to completion" {
+            val release = CountDownLatch(1)
+            val completed = CountDownLatch(1)
+            val interrupted = AtomicBoolean(false)
+            registered(
+                RecordingPlugin(tools = {
+                    interrupted.set(blockIgnoringInterrupts(release))
+                    completed.countDown()
+                    emptyList()
+                }),
+            )
+
+            try {
+                val preview = shortTimeoutService.preview(config(), namespaceId, user)
+
+                preview.error shouldBe "TimeoutException: tools not built within 200 ms"
+            } finally {
+                release.countDown()
+            }
+            completed.await(5, TimeUnit.SECONDS) shouldBe true
+            interrupted.get() shouldBe false
+        }
+
+        "preview still logs a provideTools failure that happens after the preview gave up" {
+            val appender = ListAppender<ILoggingEvent>().apply { start() }
+            serviceLogger.addAppender(appender)
+            val release = CountDownLatch(1)
+            registered(
+                RecordingPlugin(tools = {
+                    blockIgnoringInterrupts(release)
+                    throw IllegalStateException("MCP session closed late")
+                }),
+            )
+            try {
+                shortTimeoutService.preview(config(), namespaceId, user).error shouldBe
+                    "TimeoutException: tools not built within 200 ms"
+                release.countDown()
+
+                eventually(5.seconds) {
+                    appender.list.any {
+                        it.level == Level.WARN && it.throwableProxy?.message == "MCP session closed late"
+                    } shouldBe true
+                }
+            } finally {
+                release.countDown()
+                serviceLogger.detachAppender(appender)
+            }
+        }
+
+        "preview answers at once, without calling the plugin, when every preview worker is busy" {
+            val singleWorker =
+                previewService(
+                    IntegrationsProperties(
+                        previewProvideToolsTimeoutMs = 10_000,
+                        previewDescribeNamespaceTimeoutMs = 100,
+                        previewMaxConcurrentPluginCalls = 1,
+                    ),
+                )
+            val release = CountDownLatch(1)
+            val entered = CountDownLatch(1)
+            registered(
+                RecordingPlugin(tools = {
+                    entered.countDown()
+                    blockIgnoringInterrupts(release)
+                    emptyList()
+                }),
+            )
+            val holder = thread { singleWorker.preview(config(), namespaceId, user) }
+            try {
+                entered.await(5, TimeUnit.SECONDS) shouldBe true
+                val refusedPlugin = registered(RecordingPlugin(tools = { emptyList() }))
+
+                val (preview, elapsed) = measureTimedValue { singleWorker.preview(config(), namespaceId, user) }
+
+                // Far below the 10 s bound: a busy pool is answered without waiting for a worker.
+                elapsed shouldBeLessThan 3.seconds
+                preview.tools.shouldBeEmpty()
+                preview.error shouldBe
+                    "RejectedExecutionException: all preview workers are busy with earlier previews, retry later"
+                preview.namespaceDescription.shouldBeNull()
+                refusedPlugin.provideContext.shouldBeNull()
+                refusedPlugin.describeContext.shouldBeNull()
+            } finally {
+                release.countDown()
+                holder.join(5_000)
+            }
+        }
+
+        "a worker held by an abandoned call is available again once the plugin returns" {
+            val singleWorker =
+                previewService(
+                    IntegrationsProperties(
+                        previewProvideToolsTimeoutMs = 200,
+                        previewDescribeNamespaceTimeoutMs = 100,
+                        previewMaxConcurrentPluginCalls = 1,
+                    ),
+                )
+            val release = CountDownLatch(1)
+            val completed = CountDownLatch(1)
+            registered(
+                RecordingPlugin(tools = {
+                    blockIgnoringInterrupts(release)
+                    completed.countDown()
+                    emptyList()
+                }),
+            )
+            try {
+                singleWorker.preview(config(), namespaceId, user).error shouldBe
+                    "TimeoutException: tools not built within 200 ms"
+            } finally {
+                release.countDown()
+            }
+            completed.await(5, TimeUnit.SECONDS) shouldBe true
+            registered(RecordingPlugin(tools = { listOf(tool("MCP_PROD__Again")) }))
+
+            eventually(5.seconds) {
+                val preview = singleWorker.preview(config(), namespaceId, user)
+
+                preview.tools.map { it.name } shouldBe listOf("MCP_PROD__Again")
+            }
+        }
+
+        "preview returns a null namespace description without waiting for a describeNamespace that blocks" {
+            val release = CountDownLatch(1)
+            registered(
+                RecordingPlugin(tools = { emptyList() }, describe = {
+                    blockIgnoringInterrupts(release)
+                    "too late"
+                }),
+            )
+            try {
+                val (preview, elapsed) = measureTimedValue { shortTimeoutService.preview(config(), namespaceId, user) }
+
+                elapsed shouldBeLessThan 3.seconds
+                preview.namespaceDescription.shouldBeNull()
+                preview.error.shouldBeNull()
+            } finally {
+                release.countDown()
+            }
         }
 
         "preview yields a null namespace description when describeNamespace throws" {
@@ -228,21 +457,15 @@ class IntegrationConfigToolPreviewServiceUnitSpec : StringSpec() {
             context.caseEvents.shouldBeEmpty()
             context.agentName.shouldBeNull()
             context.credentialProvider.shouldBeNull()
-            verify(exactly = 0) { credentialProviderFactory.forRun(any(), any(), any(), any(), any()) }
+            verify(exactly = 0) { credentialProviderFactory.forPreview(any(), any()) }
         }
 
         "preview hands the plugin a credential provider built for the current user when an auth setting is bound" {
             val plugin = registered(RecordingPlugin(tools = { emptyList() }))
             val provider: CredentialProvider = { null }
             every {
-                credentialProviderFactory.forRun(
-                    namespaceId = namespaceId,
-                    userId = user.id,
-                    caseId = null,
-                    agentName = null,
-                    emitEvent = null,
-                )
-            } returns { name -> if (name == "my-auth") provider else null }
+                credentialProviderFactory.forPreview(namespaceId = namespaceId, userId = user.id)
+            } returns { name -> if (name == "my-auth") provider else error("unexpected auth setting '$name'") }
 
             service.preview(config(authSettingName = "my-auth"), namespaceId, user)
 

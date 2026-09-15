@@ -18,7 +18,7 @@ export interface IntegrationConfigToolPreview {
    */
   configName: string
   /**
-   * Why the plugin could not build its tool set (`ExceptionClass: message`), or null when `tools` is the result.
+   * Why the plugin could not build its tool set (`ExceptionClass: message`), or null when `tools` is the result. A `TimeoutException` means the preview stopped waiting after the configured timeout (agentos.integrations.preview-provide-tools-timeout-ms); a `RejectedExecutionException` means every preview worker was busy and the plugin was not called.
    */
   error?: string
   /**
@@ -26,7 +26,7 @@ export interface IntegrationConfigToolPreview {
    */
   integrationType: string
   /**
-   * The plugin\'s describeNamespace line for this config, or null when the plugin gives none, fails or does not answer within the configured timeout (agentos.integrations.preview-describe-namespace-timeout-ms, best effort).
+   * The plugin\'s describeNamespace line for this config, or null when the plugin gives none, fails or does not answer within the configured timeout (agentos.integrations.preview-describe-namespace-timeout-ms).
    */
   namespaceDescription?: string
   /**

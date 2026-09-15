@@ -7,11 +7,11 @@ import io.whozoss.agentos.sdk.credential.Credential
 import java.util.UUID
 
 /**
- * Request-scoped implementation of [AuthService].
+ * Implementation of [AuthService] bound to one (namespaceId, userId) identity.
  *
- * Created per tool invocation with the resolved (namespaceId, userId) from
- * [io.whozoss.agentos.sdk.tool.ToolContext]. Delegates to the singleton
- * [AuthSettingService] and [CredentialService] for actual data access.
+ * A plain object, not a request-scoped bean: [AuthServiceFactory] builds one each time a credential
+ * provider is prepared, with the identity of the agent run or tool preview it serves. Delegates to the
+ * singleton [AuthSettingService] and [CredentialService] for actual data access.
  *
  * Not a Spring bean — instantiated by [AuthServiceFactory].
  */
