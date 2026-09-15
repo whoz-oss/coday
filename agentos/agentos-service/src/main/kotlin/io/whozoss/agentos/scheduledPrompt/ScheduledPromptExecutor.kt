@@ -360,34 +360,22 @@ class ScheduledPromptExecutor(
         // for the same user. A future improvement would store the userRunId on the Case and
         // check for an existing Case before creating one, making execution effectively-once.
         try {
-            val run = checkNotNull(runRepository.findById(userRun.runId)) {
-                "Parent Run ${userRun.runId} not found"
-            }
-            val scheduledPrompt = scheduledPromptRepository.findByIds(listOf(run.scheduledPromptId))
-                .firstOrNull()
-                ?: error("ScheduledPrompt ${run.scheduledPromptId} not found")
-            val namespaceId = checkNotNull(scheduledPrompt.namespaceId) {
-                "Platform-scope ScheduledPrompt cannot be executed per-user"
-            }
-            val user = checkNotNull(userService.findById(userRun.userId)) {
-                "User ${userRun.userId} not found"
-            }
-
-            val contextResult = resolveSessionContext(userRun, user.externalId, namespaceId)
-            val sessionContext: Map<String, Any?>? = when (contextResult) {
+            val runContext = resolveRunContext(userRun)
+            val userContextResult = resolveUserContext(userRun, runContext)
+            val sessionContext: Map<String, Any?>? = when (userContextResult) {
                 null -> null
                 is UserContextResult.Success -> {
-                    if (contextResult.sessionContext == null) {
+                    if (userContextResult.sessionContext == null) {
                         logger.warn {
                             "[Executor] UserContextProvider returned Success(null) for UserRun=${userRun.id}" +
                                 " userId=${userRun.userId} — no sessionContext will be injected. Check provider configuration."
                         }
                     }
-                    contextResult.sessionContext
+                    userContextResult.sessionContext
                 }
                 is UserContextResult.PermanentFailure -> {
-                    logger.error { "[Executor] UserRun=${userRun.id} user=${userRun.userId} — permanent context failure, marking FAILED. Reason: ${contextResult.reason}" }
-                    markFailed(userRun.id, Instant.now(clock), contextResult.reason)
+                    logger.error { "[Executor] UserRun=${userRun.id} user=${userRun.userId} — permanent context failure, marking FAILED. Reason: ${userContextResult.reason}" }
+                    markFailed(userRun.id, Instant.now(clock), userContextResult.reason)
                     return
                 }
                 is UserContextResult.TransientFailure -> {
@@ -396,14 +384,12 @@ class ScheduledPromptExecutor(
                     // the UserRun will be reclaimed by claimBatch on the next scheduler tick.
                     logger.warn {
                         "[Executor] UserRun=${userRun.id} user=${userRun.userId} — transient context failure," +
-                            " leaving RUNNING for lease-based reclaim. Reason: ${contextResult.reason}"
+                            " leaving RUNNING for lease-based reclaim. Reason: ${userContextResult.reason}"
                     }
                     return
                 }
             }
-
-            val context = resolveContext(userRun, scheduledPrompt, namespaceId, user, sessionContext)
-            val caseId = createAndInjectCase(userRun, context)
+            val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = sessionContext))
             awaitLaunch(userRun.id, caseId)
         } catch (e: CancellationException) {
             throw e
@@ -414,19 +400,25 @@ class ScheduledPromptExecutor(
     }
 
     /**
-     * Resolve prompt/agent data required to execute a [ScheduledPromptUserRun].
+     * Resolve all execution context for a [ScheduledPromptUserRun], except [UserRunContext.sessionContext]
+     * which is determined later by branching on [resolveSessionContext].
+     *
      * Throws [IllegalStateException] on any missing entity — propagates to the
      * try/catch in [processUserRun] which marks the UserRun FAILED.
-     *
-     * [sessionContext] is pre-resolved by [processUserRun] after branching on [resolveSessionContext].
      */
-    private fun resolveContext(
-        userRun: ScheduledPromptUserRun,
-        scheduledPrompt: ScheduledPrompt,
-        namespaceId: UUID,
-        user: User,
-        sessionContext: Map<String, Any?>?,
-    ): UserRunContext {
+    private fun resolveRunContext(userRun: ScheduledPromptUserRun): UserRunContext {
+        val run = checkNotNull(runRepository.findById(userRun.runId)) {
+            "Parent Run ${userRun.runId} not found"
+        }
+        val scheduledPrompt = scheduledPromptRepository.findByIds(listOf(run.scheduledPromptId))
+            .firstOrNull()
+            ?: error("ScheduledPrompt ${run.scheduledPromptId} not found")
+        val namespaceId = checkNotNull(scheduledPrompt.namespaceId) {
+            "Platform-scope ScheduledPrompt cannot be executed per-user"
+        }
+        val user = checkNotNull(userService.findById(userRun.userId)) {
+            "User ${userRun.userId} not found"
+        }
         val prompt = checkNotNull(promptService.findById(scheduledPrompt.promptTemplateId)) {
             "PromptTemplate ${scheduledPrompt.promptTemplateId} not found"
         }
@@ -441,12 +433,12 @@ class ScheduledPromptExecutor(
             actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
             message = "@$agentName $promptContent",
             scheduledPromptId = scheduledPrompt.id,
-            sessionContext = sessionContext,
+            userExternalId = user.externalId,
         )
     }
 
     /**
-     * Resolve the sessionContext for a [ScheduledPromptUserRun] by calling [userContextProvider].
+     * Resolve the [UserContextResult] for a [ScheduledPromptUserRun] by calling [userContextProvider].
      *
      * Returns:
      * - `null` — no provider registered; execution continues without context.
@@ -456,17 +448,16 @@ class ScheduledPromptExecutor(
      * [UserContextResult.TransientFailure] with a warn log — the caller ([processUserRun])
      * decides how to react to each variant.
      */
-    private fun resolveSessionContext(
+    private fun resolveUserContext(
         userRun: ScheduledPromptUserRun,
-        userExternalId: String,
-        namespaceId: UUID,
+        runContext: UserRunContext,
     ): UserContextResult? {
         val provider = userContextProvider ?: return null
 
         return runCatching {
             provider.provideUserContext(
-                userExternalId = userExternalId,
-                namespaceId = namespaceId,
+                userExternalId = runContext.userExternalId,
+                namespaceId = runContext.namespaceId,
             )
         }.getOrElse { e ->
             logger.warn(e) {
@@ -514,6 +505,7 @@ class ScheduledPromptExecutor(
         val actor: Actor,
         val message: String,
         val scheduledPromptId: UUID,
+        val userExternalId: String,
         val sessionContext: Map<String, Any?>? = null,
     )
 
