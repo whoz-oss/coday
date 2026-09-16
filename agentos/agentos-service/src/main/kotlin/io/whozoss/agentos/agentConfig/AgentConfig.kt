@@ -116,21 +116,19 @@ data class AgentConfig(
      * Silently ignored when configPath is absent.
      */
     val docs: List<String>? = null,
-) : Entity {
     /**
-     * True when this [AgentConfig] was loaded from a filesystem YAML definition
-     * ([io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository]) rather than persisted
-     * in Neo4j.
+     * True when this [AgentConfig] originates from a filesystem YAML definition.
      *
-     * Filesystem agents are built in-memory on every read and never go through
-     * Spring Data Neo4j's `save()`, so [EntityMetadata.version] — which SDN sets to a
-     * non-null value on first persistence — stays `null` for their entire lifetime.
-     * This is an explicit, named proxy for that fact: callers that need to reject
-     * filesystem-only agents (e.g. before linking a [io.whozoss.agentos.prompt.Prompt] or a
-     * [io.whozoss.agentos.scheduledPrompt.ScheduledPrompt]) should read this property
-     * rather than re-deriving the same check from `metadata.version == null` at each
-     * call site.
+     * For agents that are only ever read from the filesystem (never synced to Neo4j),
+     * this is `true` and the node has no persistent representation in the graph.
+     * Once [io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository] upserts the
+     * agent into Neo4j via MERGE, the persisted node carries `fileOrigin = true` so callers
+     * can distinguish it from API-managed agents and gate write operations accordingly
+     * (e.g. reject linking a [io.whozoss.agentos.prompt.Prompt] or
+     * [io.whozoss.agentos.scheduledPrompt.ScheduledPrompt] to a file-origin agent).
+     *
+     * Callers that need to reject file-origin agents should read this property rather than
+     * using `metadata.version == null`, which was the previous implicit proxy for this state.
      */
-    val isFilesystemOnly: Boolean
-        get() = metadata.version == null
-}
+    val fileOrigin: Boolean = false,
+) : Entity

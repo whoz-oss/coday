@@ -23,11 +23,21 @@ import java.util.UUID
  * Filesystem reads are cached per directory with a configurable [ttl] (default
  * 5 minutes) to avoid repeated I/O on hot paths such as agent-name autocomplete.
  */
+
+/**
+ * Callback invoked after each cache reload to sync the filesystem agents into Neo4j.
+ * Receives the namespaceId and the full list of currently-live filesystem agents for that namespace.
+ */
+fun interface FilesystemAgentSyncCallback {
+    fun sync(namespaceId: UUID, liveAgents: List<AgentConfig>)
+}
+
 class FilesystemAgentConfigRepository(
     private val delegate: AgentConfigRepository,
     private val namespaceRepository: NamespaceRepository,
     private val yamlMapper: ObjectMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build()),
     ttl: Duration = Duration.ofMinutes(5),
+    private val syncCallback: FilesystemAgentSyncCallback? = null,
 ) : AgentConfigRepository by delegate {
     private val cacheRegistry =
         FilesystemYamlCacheRegistry(
@@ -71,7 +81,11 @@ class FilesystemAgentConfigRepository(
             emptyList()
         } else {
             val directory = Path.of(configPath, AGENTS_SUBDIR)
-            cacheRegistry.getAll(directory)
+            val agents = cacheRegistry.getAll(directory)
+            // Trigger Neo4j sync after each cache read. The cache's TTL ensures this is cheap
+            // on hot paths: the callback is invoked at most once per TTL window per namespace.
+            syncCallback?.sync(namespaceId, agents)
+            agents
         }
     }
 
@@ -83,6 +97,8 @@ class FilesystemAgentConfigRepository(
      *
      * When [parentId] is a namespace UUID, delegates to the underlying repository
      * with [withDisabled], then merges filesystem agents (always published by definition).
+     * After each cache reload, the sync callback is invoked to upsert/purge the
+     * corresponding Neo4j nodes — this is the primary trigger for Neo4j sync.
      */
     override fun findByParent(
         parentId: UUID?,
@@ -90,7 +106,12 @@ class FilesystemAgentConfigRepository(
     ): List<AgentConfig> {
         val persisted = delegate.findByParent(parentId, withDisabled)
         val fromFilesystem =
-            parentId?.let { filesystemAgents(parentId, excludeNames = persisted.mapTo(HashSet()) { it.name.lowercase() }) } ?: emptyList()
+            parentId?.let {
+                retrieveFilesystemAgentConfigs(parentId)
+                    .filter { it.name.lowercase() !in persisted.mapTo(HashSet()) { p -> p.name.lowercase() } }
+                    .map { it.copy(namespaceId = parentId) }
+                    .sortedBy { it.name }
+            } ?: emptyList()
         val merged = persisted + fromFilesystem
         logger.debug {
             "[FilesystemAgentConfigRepository] namespace=$parentId: ${persisted.size} persisted + ${fromFilesystem.size} filesystem = ${merged.size} total"
@@ -130,10 +151,13 @@ class FilesystemAgentConfigRepository(
     }
 
     /**
-     * Loads and returns agent configs from the filesystem for [parentId].
+     * Loads and returns agent configs from the filesystem for [parentId],
+     * without triggering the Neo4j sync callback.
      *
-     * When [excludeNames] is provided, any filesystem agent whose lowercased name
-     * is in that set is dropped (persisted configs always win over filesystem ones).
+     * Used only by [findByIds] (targeted lookup by known IDs) where the full
+     * live-set is not available and a sync would be incomplete.
+     * [findByParent] and [findDeployedByNamespaceIdAndUserIdAndName] use
+     * [retrieveFilesystemAgentConfigs] instead, which triggers the sync.
      */
     private fun filesystemAgents(
         parentId: UUID,
@@ -173,6 +197,7 @@ class FilesystemAgentConfigRepository(
             // Stable UUID derived from the name so identity survives restarts.
             // namespaceId is null here; it is overwritten in findByParent.
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("filesystem-agent:${model.name}".toByteArray())),
+            fileOrigin = true,
             namespaceId = null,
             name = model.name,
             description = model.description,

@@ -262,22 +262,22 @@ class PromptServiceImplSpec : StringSpec() {
             saved.agentConfigId shouldBe agentId
         }
 
-        "create with filesystem-only agentConfigId (version == null) throws UnprocessableEntityException" {
+        "create with file-origin agentConfigId succeeds (file-origin agents are synced into Neo4j and are valid targets)" {
             val service = newService()
             val agentId = UUID.randomUUID()
-            // Filesystem agents are built in-memory: EntityMetadata.version is null
-            // because they never go through SDN save.  Linking one would produce a
-            // dangling BELONGS_TO edge in Neo4j and silently hide the prompt from
-            // findEffective.  The service must reject such associations explicitly.
+            val ns = UUID.randomUUID()
+            // File-origin agents now have a real Neo4j node (synced by FilesystemAgentConfigSyncService)
+            // and are valid targets for Prompts. The version may be null on the first sync cycle
+            // but the fileOrigin flag is the canonical discriminator going forward.
             every { agentConfigService.findById(agentId) } returns AgentConfig(
                 metadata = EntityMetadata(id = agentId, version = null),
-                namespaceId = UUID.randomUUID(),
+                fileOrigin = true,
+                namespaceId = ns,
                 name = "fs-agent",
             )
 
-            shouldThrow<UnprocessableEntityException> {
-                service.create(prompt(namespaceId = UUID.randomUUID(), agentConfigId = agentId))
-            }
+            val saved = service.create(prompt(namespaceId = ns, agentConfigId = agentId))
+            saved.agentConfigId shouldBe agentId
         }
 
         "create platform prompt with namespace agentConfigId throws BadRequestException" {
