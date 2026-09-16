@@ -33,6 +33,19 @@ parameters:
         Use {"status":"not_requested"} when no ticket/Jira read is requested for free-text intent.
         Optional: --project-root <absolute-repository-root>.
       command: "npx --yes --package ts-node@10.9.2 --package typescript@5.9.3 ts-node --project coday/scripts/tsconfig.json coday/scripts/forge-run-recon.ts PARAMETERS"
+    - name: "forge-workflow-sync"
+      description: |
+        Synchronizes one atomically updated authoritative Forge BMAD run YAML into
+        the generic WorkflowProjection store. Reads the route's data.changed result
+        to report published versus unchanged. Best-effort: publication errors do not
+        fail the agent workflow.
+      parametersDescription: |
+        Required positional argument: <TICKET_ID> (for example WZ-123).
+        Required env: NAMESPACE_ID or FACTORY_NAMESPACE_ID.
+        Optional env: FACTORY_SERVER_URL (default: http://localhost:3141).
+      command: "npx --yes --package ts-node@10.9.2 --package typescript@5.9.3 ts-node --project coday/scripts/tsconfig.json coday/scripts/forge-workflow-sync.ts PARAMETERS"
+      timeoutSeconds: 30
+
     - name: "forge-gate2-record"
       description: |
         Records Gate 2 (Epic spec validated) in the Forge Factory ledger.

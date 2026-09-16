@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "lib": ["ES2020"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noUnusedLocals": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2020",
+    "types": ["node", "jest"]
+  },
+  "files": [
+    "bmad-memlog.ts",
+    "bmad-sprint-plan.ts",
+    "bmad-git-evidence.ts",
+    "bmad-lint-spine.ts",
+    "bmad-word-metrics.ts",
+    "bmad-skill-import.ts",
+    "bmad-workstream-init.ts",
+    "bmad-workstream-context.ts",
+    "forge-run-recon.ts",
+    "forge-workflow-sync.ts",
+    "forge-run-yaml-updater.ts"
+  ],
+  "include": ["*.spec.ts"]
+}
