@@ -1,12 +1,15 @@
 package io.whozoss.agentos.util
 
 import kotlinx.coroutines.CancellationException
+import mu.KotlinLogging
 import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.retry.TransientAiException
 import org.springframework.web.reactive.function.client.WebClientResponseException
 import reactor.core.Exceptions
 
-/** Maximum number of characters retained from the HTTP response body in the error message. */
+private val logger = KotlinLogging.logger {}
+
+/** Maximum number of response-body characters retained in diagnostic DEBUG logs. */
 private const val MAX_BODY_CHARS = 4_000
 
 /** Marker appended when the response body is truncated. */
@@ -62,20 +65,22 @@ private fun findWebClientException(root: Throwable): Exception? {
 }
 
 /**
- * Converts a [WebClientResponseException] to the appropriate Spring AI exception type,
- * embedding the response body in the message (bounded to [MAX_BODY_CHARS]).
+ * Converts a [WebClientResponseException] to the appropriate Spring AI exception type.
  *
- * The body is what the provider sent as its error description — exactly the information
- * that is otherwise lost on the streaming path.
+ * The provider response body may contain sensitive data, so it is deliberately excluded
+ * from the propagated exception message and retained only in a bounded DEBUG log.
  */
 private fun WebClientResponseException.toProviderAiException(): Exception {
-    val body = responseBodyAsString
-        .take(MAX_BODY_CHARS + TRUNCATION_MARKER.length)
-        .let { raw ->
-            if (raw.length > MAX_BODY_CHARS) raw.take(MAX_BODY_CHARS) + TRUNCATION_MARKER else raw
-        }
-        .ifBlank { "<empty body>" }
-    val message = "${statusCode} from ${request?.method} ${request?.uri}: $body"
+    logger.debug {
+        val body = responseBodyAsString
+            .take(MAX_BODY_CHARS + TRUNCATION_MARKER.length)
+            .let { raw ->
+                if (raw.length > MAX_BODY_CHARS) raw.take(MAX_BODY_CHARS) + TRUNCATION_MARKER else raw
+            }
+            .ifBlank { "<empty body>" }
+        "Provider error response body for $statusCode from ${request?.method} ${request?.uri}: $body"
+    }
+    val message = "$statusCode from ${request?.method} ${request?.uri}"
     return when {
         statusCode.is4xxClientError -> NonTransientAiException(message, this)
         else -> TransientAiException(message, this)

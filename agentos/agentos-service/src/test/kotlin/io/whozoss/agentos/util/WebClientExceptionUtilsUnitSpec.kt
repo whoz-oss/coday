@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.CancellationException
 import org.springframework.ai.retry.NonTransientAiException
@@ -43,14 +44,14 @@ class WebClientExceptionUtilsUnitSpec : StringSpec({
     // 4xx -- naked WebClientResponseException
     // -----------------------------------------------------------------------
 
-    "4xx bare exception becomes NonTransientAiException with body in message" {
+    "4xx bare exception becomes NonTransientAiException without body in message" {
         val body = """{"error":{"message":"tools.9.custom.name: String should match pattern"}}"""
         val ex = webClientException(HttpStatus.BAD_REQUEST, body)
 
         val result = ex.unwrapToProviderAiException()
 
         result.shouldBeInstanceOf<NonTransientAiException>()
-        result.message shouldContain body
+        result.message shouldNotContain body
     }
 
     "4xx bare exception - message also contains status code" {
@@ -74,7 +75,7 @@ class WebClientExceptionUtilsUnitSpec : StringSpec({
         val result = wrapped.unwrapToProviderAiException()
 
         result.shouldBeInstanceOf<NonTransientAiException>()
-        result.message shouldContain body
+        result.message shouldNotContain body
     }
 
     "4xx doubly-wrapped cause chain depth 2 is still found" {
@@ -85,7 +86,7 @@ class WebClientExceptionUtilsUnitSpec : StringSpec({
         val result = wrapped.unwrapToProviderAiException()
 
         result.shouldBeInstanceOf<NonTransientAiException>()
-        result.message shouldContain body
+        result.message shouldNotContain body
     }
 
     // -----------------------------------------------------------------------
@@ -99,7 +100,7 @@ class WebClientExceptionUtilsUnitSpec : StringSpec({
         val result = ex.unwrapToProviderAiException()
 
         result.shouldBeInstanceOf<TransientAiException>()
-        result.message shouldContain body
+        result.message shouldNotContain body
     }
 
     "429 Too Many Requests is classified as NonTransientAiException by current implementation" {
@@ -158,43 +159,26 @@ class WebClientExceptionUtilsUnitSpec : StringSpec({
     }
 
     // -----------------------------------------------------------------------
-    // Body truncation
+    // Response body confidentiality
     // -----------------------------------------------------------------------
 
-    "body longer than 4000 chars is truncated with marker" {
-        val longBody = "x".repeat(5_000)
+    "long response body is not exposed in propagated message" {
+        val longBody = "sensitive".repeat(625)
         val ex = webClientException(HttpStatus.BAD_REQUEST, longBody)
 
         val result = ex.unwrapToProviderAiException()
 
         result.shouldBeInstanceOf<NonTransientAiException>()
-        // Truncation marker present
-        result.message shouldContain "[truncated]"
-        // The retained portion must be exactly 4000 chars of the body
-        result.message shouldContain "x".repeat(4_000)
+        result.message shouldNotContain "sensitive"
+        result.message shouldNotContain "[truncated]"
     }
 
-    "body of exactly 4000 chars is not truncated" {
-        val exactBody = "y".repeat(4_000)
-        val ex = webClientException(HttpStatus.BAD_REQUEST, exactBody)
-
-        val result = ex.unwrapToProviderAiException()
-
-        result.shouldBeInstanceOf<NonTransientAiException>()
-        (result.message?.contains("[truncated]") ?: false) shouldBe false
-        result.message shouldContain exactBody
-    }
-
-    // -----------------------------------------------------------------------
-    // Empty body
-    // -----------------------------------------------------------------------
-
-    "empty response body is replaced with placeholder" {
+    "empty response body does not add a diagnostic placeholder to propagated message" {
         val ex = webClientException(HttpStatus.BAD_REQUEST, "")
 
         val result = ex.unwrapToProviderAiException()
 
         result.shouldBeInstanceOf<NonTransientAiException>()
-        result.message shouldContain "<empty body>"
+        result.message shouldNotContain "<empty body>"
     }
 })

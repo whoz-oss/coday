@@ -53,8 +53,8 @@ suspend fun FlowCollector<CaseEvent>.emitProviderErrorAndFinishEvents(
  *
  * If [e] or any cause in its chain is a [WebClientResponseException], it is translated
  * to the appropriate Spring AI exception ([NonTransientAiException] for 4xx,
- * [TransientAiException] for 5xx) so the response body surfaces in logs and in the
- * [ErrorEvent] — exactly as it does on the blocking path.
+ * [TransientAiException] for 5xx). Provider response bodies are intentionally excluded
+ * from propagated messages and events; they are available only in diagnostic DEBUG logs.
  *
  * If [e] is not a provider HTTP error, the function falls back to the original generic
  * behaviour: log at ERROR level and emit a [WarnEvent].
