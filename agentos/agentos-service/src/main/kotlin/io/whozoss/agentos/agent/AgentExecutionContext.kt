@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.time.Instant
@@ -25,6 +26,10 @@ import java.util.UUID
  *   Used by [io.whozoss.agentos.auth.OAuthFlowService] to emit [io.whozoss.agentos.sdk.caseEvent.QuestionEvent]s
  *   during interactive OAuth flows. Returns the persisted event (with stable id).
  *   Null when running outside a live case (e.g. definition resolution for a debug endpoint).
+ * @param usageAccumulator When non-null, the [ChatClientProvider] will wrap the chat client in a
+ *   [io.whozoss.agentos.chat.UsageTrackingChatClient] that records token usage into this accumulator.
+ *   The caller retrieves the totals at the end of the run and attaches them to [AgentFinishedEvent].
+ *   Null when usage tracking is not needed (e.g. definition resolution, tests).
  */
 data class AgentExecutionContext(
     val namespaceId: UUID,
@@ -33,6 +38,7 @@ data class AgentExecutionContext(
     val userId: UUID? = null,
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     val emitEvent: ((CaseEvent) -> CaseEvent)? = null,
+    val usageAccumulator: UsageAccumulator? = null,
 ) {
     fun toToolContext(
         userExternalId: String?,

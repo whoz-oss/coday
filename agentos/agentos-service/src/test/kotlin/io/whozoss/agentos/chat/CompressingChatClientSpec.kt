@@ -481,6 +481,55 @@ class CompressingChatClientSpec :
         // Non-intercepted methods pass through
         // -----------------------------------------------------------------------
 
+        // -----------------------------------------------------------------------
+        // Fluent chain regression — toolCallbacks must not escape the compression envelope
+        //
+        // Before the fix, toolCallbacks() was delegated transparently and returned the
+        // bare delegate spec. The subsequent stream() call then ran on the unwrapped
+        // delegate, skipping CompressingStreamSpec, so IDs in the response were never
+        // decompressed. This test fails without the fix and passes with it.
+        // -----------------------------------------------------------------------
+
+        "prompt(Prompt) with toolCallbacks fluent call: response is still decompressed" {
+            val service = IdCompressorService()
+
+            // Pass 1: learn the alias the client assigns for REAL_UUID
+            val capturedP1 = slot<Prompt>()
+            val delegateP1 = mockk<ChatClient>(relaxed = true)
+            val reqP1 = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val callP1 = mockk<ChatClient.CallResponseSpec>(relaxed = true)
+            every { delegateP1.prompt(capture(capturedP1)) } returns reqP1
+            every { reqP1.call() } returns callP1
+            every { callP1.content() } returns "ok"
+            CompressingChatClient(delegateP1, service)
+                .prompt(Prompt(listOf(UserMessage(REAL_UUID)))).call().content()
+            val alias = Regex("UI[0-9a-z]+").find(
+                capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
+            )?.value ?: error("No alias found")
+
+            // Pass 2: go through toolCallbacks() before stream()
+            val delegate = mockk<ChatClient>(relaxed = true)
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val streamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallback = mockk<org.springframework.ai.tool.ToolCallback>(relaxed = true)
+
+            every { delegate.prompt(any<Prompt>()) } returns reqSpec
+            // toolCallbacks must return the same reqSpec (simulates the real fluent chain)
+            every { reqSpec.toolCallbacks(*anyVararg<org.springframework.ai.tool.ToolCallback>()) } returns reqSpec
+            every { reqSpec.stream() } returns streamSpec
+            // The response contains the alias — decompression must still happen
+            every { streamSpec.chatResponse() } returns makeFlux(listOf("answer: $alias"))
+
+            val responses = CompressingChatClient(delegate, service)
+                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                .toolCallbacks(toolCallback)  // fluent — must stay inside compression envelope
+                .stream().chatResponse().collectList().block()!!
+
+            val combined = responses.joinToString("") { it.result?.output?.text ?: "" }
+            combined shouldContain REAL_UUID
+            combined shouldNotContain alias
+        }
+
         "non-intercepted request-spec methods delegate transparently" {
             val service = IdCompressorService()
             val delegate = mockk<ChatClient>(relaxed = true)

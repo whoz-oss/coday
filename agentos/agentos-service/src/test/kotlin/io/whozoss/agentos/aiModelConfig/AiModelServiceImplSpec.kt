@@ -56,7 +56,6 @@ class AiModelServiceImplSpec : StringSpec() {
         alias: String? = null,
         priority: Int = 0,
         temperature: Double? = null,
-        maxTokens: Int? = null,
     ): AiModel =
         AiModel(
             metadata = EntityMetadata(),
@@ -66,7 +65,6 @@ class AiModelServiceImplSpec : StringSpec() {
             alias = alias,
             priority = priority,
             temperature = temperature,
-            maxTokens = maxTokens,
         )
 
     init {
