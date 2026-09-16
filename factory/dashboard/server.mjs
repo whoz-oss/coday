@@ -30,6 +30,7 @@
 
 import { createServer } from 'node:http'
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
@@ -43,12 +44,30 @@ import { evaluateG2 } from '../lib/forge-g2.mjs'
 import { executeStoryAnalysis } from '../lib/forge-story-analysis.mjs'
 import { executeStoryEdit } from '../lib/forge-story-edit.mjs'
 import { executeStoryOracles, isAllowedStoryOracleRequestBody } from '../lib/forge-story-oracles.mjs'
+import { WorkflowProjectionStore } from '../lib/workflow-projection-store.mjs'
+import { handleWorkflowProjectionRequest } from './workflow-projection-routes.mjs'
+import { WorkflowProjectionSseHub } from './workflow-projection-sse.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
 const RUN_ENTRY = join(__dirname, '..', 'run.mjs')
 const PORT = parseInt(process.env.PORT ?? '3141', 10)
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost'])
+export function resolveFactoryBindPolicy(env = process.env) {
+  const host = env.FACTORY_BIND_HOST ?? '127.0.0.1'
+  const unsafeRemote = env.FACTORY_UNSAFE_ALLOW_REMOTE_BIND === 'true'
+  if (!LOOPBACK_HOSTS.has(host) && !unsafeRemote) {
+    throw new Error('FACTORY_BIND_HOST must be loopback unless FACTORY_UNSAFE_ALLOW_REMOTE_BIND=true is explicitly set.')
+  }
+  return { host, trustMode: LOOPBACK_HOSTS.has(host) ? 'loopback-only' : 'unsafe-remote-unauthenticated' }
+}
+const FACTORY_BIND_POLICY = resolveFactoryBindPolicy()
 const AGENTOS_URL = process.env.AGENTOS_URL ?? 'http://localhost:8124'
+// Generic workflow data is independent from cwd, repo roots, namespace config,
+// and target checkouts. FACTORY_DATA_ROOT may override this explicit user-data default.
+const FACTORY_DATA_ROOT = process.env.FACTORY_DATA_ROOT ?? join(homedir(), '.coday', 'factory')
+const workflowProjectionStore = new WorkflowProjectionStore(FACTORY_DATA_ROOT)
+const workflowProjectionSseHub = new WorkflowProjectionSseHub()
 // Explicit store location for Forge Epic/Story projections. It is intentionally
 // independent from both this dashboard's source tree and the target repoRoot.
 // FACTORY_USER: used only to identify the AgentOS user for proxy headers.
@@ -606,11 +625,43 @@ const server = createServer(async (req, res) => {
   if (method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST',
+      'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE',
       'Access-Control-Allow-Headers': 'Content-Type',
     })
     return res.end()
   }
+
+  // Generic WorkflowProjection API. Kept in a focused module so this legacy
+  // dashboard router only owns composition and transport adaptation.
+  if (await handleWorkflowProjectionRequest({
+    method,
+    path,
+    url,
+    readBody: () => readBody(req),
+    send: (status, body) => send(res, status, body),
+    store: workflowProjectionStore,
+    notifier: workflowProjectionSseHub,
+    openStream: (namespaceId) => {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      })
+      res.write(': connected\n\n')
+      workflowProjectionSseHub.subscribe(
+        namespaceId,
+        (frame) => res.write(frame),
+        (remove) => {
+          req.once('close', remove)
+          req.once('error', remove)
+          res.once('close', remove)
+          res.once('error', remove)
+        },
+      )
+    },
+    log: console,
+  })) return
 
   // UI
   if (method === 'GET' && (path === '/' || path === '/index.html')) {
@@ -1245,9 +1296,12 @@ const server = createServer(async (req, res) => {
 })
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  server.listen(PORT, () => {
-    console.log(`Factory dashboard → http://localhost:${PORT}`)
+  await workflowProjectionStore.initialize()
+  server.listen(PORT, FACTORY_BIND_POLICY.host, () => {
+    console.log(`Factory dashboard → http://${FACTORY_BIND_POLICY.host}:${PORT}`)
+    console.log(`Factory bind mode  : ${FACTORY_BIND_POLICY.trustMode}${FACTORY_BIND_POLICY.trustMode.startsWith('unsafe') ? ' (explicit unsafe opt-in; routes are unauthenticated)' : ''}`)
     console.log(`AgentOS           : ${AGENTOS_URL}`)
+    console.log(`Factory data root : ${FACTORY_DATA_ROOT}`)
     // Report Coday config discovery diagnostics (no secrets)
     for (const msg of _codayDiscovery.diagnostics) console.log(`Coday config      : ${msg}`)
     if (JIRA_BASE_URL) {
