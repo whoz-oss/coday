@@ -47,6 +47,7 @@ import { executeStoryOracles, isAllowedStoryOracleRequestBody } from '../lib/for
 import { WorkflowProjectionStore } from '../lib/workflow-projection-store.mjs'
 import { handleWorkflowProjectionRequest } from './workflow-projection-routes.mjs'
 import { WorkflowProjectionSseHub } from './workflow-projection-sse.mjs'
+import { handleForgeWorkflowProjectionRequest } from './forge-workflow-projection-routes.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
@@ -562,14 +563,15 @@ async function fetchNamespace(namespaceId) {
  * Returns null when the namespace is not found or has no configPath.
  * Throws on AgentOS errors.
  */
-async function resolveRunStoreRoot(namespaceId) {
+async function resolveRepoRoot(namespaceId) {
   const namespace = await fetchNamespace(namespaceId)
-  if (!namespace) return null
-  const configPath = namespace.configPath
-  if (!configPath) return null
-  // configPath = /Users/.../sprint/coday  ->  repoRoot = /Users/.../sprint
-  const repoRoot = dirname(configPath.replace(/\/+$/, ''))
-  return join(repoRoot, 'forge', 'factory-runs')
+  if (!namespace?.configPath) return null
+  return dirname(namespace.configPath.replace(/\/+$/, ''))
+}
+
+async function resolveRunStoreRoot(namespaceId) {
+  const repoRoot = await resolveRepoRoot(namespaceId)
+  return repoRoot ? join(repoRoot, 'forge', 'factory-runs') : null
 }
 
 /**
@@ -630,6 +632,16 @@ const server = createServer(async (req, res) => {
     })
     return res.end()
   }
+
+  if (await handleForgeWorkflowProjectionRequest({
+    method, path, url,
+    readBody: () => readBody(req),
+    send: (status, body) => send(res, status, body),
+    resolveRepoRoot,
+    store: workflowProjectionStore,
+    notifier: workflowProjectionSseHub,
+    log: console,
+  })) return
 
   // Generic WorkflowProjection API. Kept in a focused module so this legacy
   // dashboard router only owns composition and transport adaptation.
