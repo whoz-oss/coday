@@ -2,8 +2,8 @@
   "compilerOptions": {
     "module": "es2022",
     "outDir": "../../dist/out-tsc",
-    "types": ["jest", "node"],
-    "rootDir": "src/lib"
+    "rootDir": "src/lib",
+    "types": ["jest", "node"]
   },
   "extends": "./tsconfig.json",
   "include": ["jest.config.ts", "src/**/*.test.ts", "src/**/*.spec.ts", "src/**/*.d.ts"]
