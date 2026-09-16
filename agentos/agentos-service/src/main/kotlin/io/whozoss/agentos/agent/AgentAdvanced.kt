@@ -931,6 +931,7 @@ class AgentAdvanced(
             userId = userId,
             userExternalId = userExternalId,
             caseEvents = filterEventsByIntegration(toolName, caseEventsProvider()),
+            agentName = name,
         )
 
     private fun filterEventsByIntegration(
@@ -1523,6 +1524,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                                 userId = userId,
                                 userExternalId = userExternalId,
                                 caseEvents = filteredEvents,
+                                agentName = name,
                             ),
                         )
                     val durationMs =

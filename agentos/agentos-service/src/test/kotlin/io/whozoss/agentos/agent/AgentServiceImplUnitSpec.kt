@@ -32,6 +32,7 @@ import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
+import io.whozoss.agentos.factory.FactoryToolGrantService
 import io.whozoss.agentos.queryUser.QueryUserConfigProperties
 import io.whozoss.agentos.queryUser.QueryUserToolGrantService
 import io.whozoss.agentos.queryUser.QueryUserToolPlugin
@@ -89,6 +90,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
     // Relaxed: queryUser grant is a side concern for most tests in this spec; a relaxed mock returns
     // false for isGranted() (Boolean default) which means no tools are added — a safe neutral state.
     private val queryUserToolGrantService: QueryUserToolGrantService = mockk(relaxed = true)
+    // Relaxed Boolean defaults to false, preserving the pre-Factory tool set unless a test opts in.
+    private val factoryToolGrantService: FactoryToolGrantService = mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
             chatClientProvider = chatClientProvider,
@@ -114,6 +117,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             idCompressorService = IdCompressorService(),
             agentConfigProperties = AgentConfigProperties(),
             queryUserToolGrantService = queryUserToolGrantService,
+            factoryToolGrantService = factoryToolGrantService,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -452,6 +456,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
+                    factoryToolGrantService = factoryToolGrantService,
                 )
             val caseTool = mockk<StandardTool<*>>()
             every { caseTool.name } returns "case-exchange__readFile"
@@ -782,6 +787,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
+                    factoryToolGrantService = factoryToolGrantService,
                 )
             val configs =
                 listOf(

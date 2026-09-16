@@ -1743,6 +1743,9 @@ class AgentAdvancedSpec :
             val eventsCaptured =
                 java.util.concurrent.atomic
                     .AtomicReference<List<CaseEvent>?>(null)
+            val agentNameCaptured =
+                java.util.concurrent.atomic
+                    .AtomicReference<String?>(null)
             val tool =
                 object : StandardTool<Map<String, Any>> {
                     override val name = "TEST__capturingTool"
@@ -1757,6 +1760,7 @@ class AgentAdvancedSpec :
                     ): ConfirmationMode {
                         argsCaptured.set(argsJson)
                         eventsCaptured.set(context?.caseEvents)
+                        agentNameCaptured.set(context?.agentName)
                         // Returns EVERY_TIME so the orchestrator still routes through the gate
                         // — we want the seam exercised even when the result is "confirm".
                         return ConfirmationMode.EVERY_TIME
@@ -1806,6 +1810,7 @@ class AgentAdvancedSpec :
             // args : verbatim from the LLM response — same string the orchestrator
             // persists on the resulting ToolRequestEvent.
             argsCaptured.get() shouldBe expectedArgs
+            agentNameCaptured.get() shouldBe "TestAgent"
 
             // caseEvents : non-null, includes at least the initial USER MessageEvent
             // from `caseEventsProvider`. Proves the hook is wired to the live event

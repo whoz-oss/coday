@@ -18,6 +18,7 @@ import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
+import io.whozoss.agentos.factory.FactoryToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
@@ -73,6 +74,7 @@ class AgentServiceImpl(
     private val agentDocumentResolver: AgentDocumentResolver,
     private val agentConfigProperties: AgentConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
+    private val factoryToolGrantService: FactoryToolGrantService,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -339,6 +341,9 @@ class AgentServiceImpl(
             } else {
                 emptyList()
             }
+        val factoryTools =
+            if (factoryToolGrantService.isGranted(agentConfig.integrations)) factoryToolGrantService.grantTools(toolContext)
+            else emptyList()
         val tools =
             toolResolverService.dedupToolsByName(
                 baseTools +
@@ -352,7 +357,8 @@ class AgentServiceImpl(
                         },
                     ) +
                     buildExchangeTools(agentConfig, context, toolContext) +
-                    queryUserTools,
+                    queryUserTools +
+                    factoryTools,
             )
 
         return ResolvedAgentDefinition(
