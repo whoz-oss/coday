@@ -1,4 +1,4 @@
-# Troubleshooting:
+# Troubleshooting
 
 This guide covers common issues and their solutions when working with Coday.
 
