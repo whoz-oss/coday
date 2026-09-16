@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.skill.SkillApi
@@ -49,7 +50,7 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
 class SkillController(
     private val skillService: SkillService,
     userService: UserService,
-    permissionService: PermissionService,
+    private val permissionService: PermissionService,
 ) : SkillApi {
     private val crud =
         EntityCrudDelegate(
@@ -70,18 +71,38 @@ class SkillController(
             },
         )
 
+    /**
+     * Filesystem-backed skills have no Neo4j node, so `hasPermission(#id, 'Skill', 'READ')`
+     * alone always fails for them — the SpEL falls through to [SkillAuthorizationService.canRead],
+     * which resolves the skill (persisted or filesystem-backed) via [SkillService] and
+     * authorizes against its owning namespace.
+     */
     @GetMapping("/{id}")
-    @PreAuthorize("hasPermission(#id, 'Skill', 'READ')")
+    @PreAuthorize("hasPermission(#id, 'Skill', 'READ') or @skillAuthorizationService.canRead(authentication.name, #id)")
     @HideOnAccessDenied
     override fun getById(
         @PathVariable id: UUID,
     ): SkillDto = crud.getById(id)
 
+    /**
+     * [extraVisibility] grants visibility for filesystem-backed skills, which
+     * [PermissionService.filterVisibleIds] cannot see (no Neo4j node): a skill is
+     * visible when its owning namespace grants the caller READ, or when it is a
+     * platform skill (`namespaceId == null`).
+     */
     @PostMapping("/by-ids", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
     override fun getByIds(
         @RequestBody request: SdkGetByIdsRequest,
-    ): List<SkillDto> = crud.getByIds(GetByIdsRequest(request.ids, request.withRemoved))
+    ): List<SkillDto> = crud.getByIds(
+        GetByIdsRequest(request.ids, request.withRemoved),
+        extraVisibility = { entity, callerId ->
+            val skill = entity as Skill
+            val namespaceId = skill.namespaceId
+            namespaceId == null ||
+                permissionService.hasPermission(callerId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+        },
+    )
 
     @GetMapping("/by-parentId/{parentId}")
     @PreAuthorize("hasPermission(#parentId, 'Namespace', 'READ')")

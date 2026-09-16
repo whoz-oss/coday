@@ -121,10 +121,10 @@ data class AgentConfig(
      *
      * - null or empty list: no skills
      * - a single star entry: all discovered skills
-     * - other entries: union of matched skills (folder prefix such as core followed by
-     *   slash-star-star, exact path, or skill name)
+     * - other entries: exact skill name match (case-insensitive), against the flat
+     *   `skills/{name}/SKILL.md` layout — no folder/glob patterns are supported
      *
-     * Skills are SKILL.md files under `configPath/skills/`. Only name and description
+     * Skills are SKILL.md files under `configPath/skills/{name}/`. Only name and description
      * are injected into the agent catalog; bodies are read on demand via the readSkill tool.
      *
      * Only applicable for filesystem-backed agents (namespace with a configPath).

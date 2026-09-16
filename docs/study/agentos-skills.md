@@ -28,12 +28,13 @@ The reviewer's framing (Vincent, PR #1277):
 
 ## Storage format
 
-Claude-compatible filesystem skills. Each skill is a directory containing `SKILL.md`:
+Claude-compatible filesystem skills. Each skill is a directory containing `SKILL.md`, directly
+under the skills root (**flat layout**, no nesting):
 
 ```
 <namespace.configPath>/skills/
-  core/branch-creation/SKILL.md
-  product/spec-writing/SKILL.md
+  branch-creation/SKILL.md
+  spec-writing/SKILL.md
 ```
 
 `SKILL.md` is YAML frontmatter (`name`, `description`, both required and non-blank) followed by a
@@ -66,10 +67,13 @@ arbitrarily positioned and its parent means nothing. The invariant: `configPath`
 | absent / `null` | **no skills** |
 | `[]` | no skills |
 | `["*"]` | all discovered skills |
-| `["core/**"]` | recursive folder prefix (core and all subtrees) |
-| `["core/*"]` | direct child folder prefix (direct children only) |
-| `["product/spec-writing"]` | exact path under the skills root |
-| `["spec-writing"]` | frontmatter name |
+| `["spec-writing"]` | exact skill name (frontmatter `name`, case-insensitive) |
+
+Skills live in a **flat layout**: `skills/{name}/SKILL.md`. There is no folder nesting and no
+glob/prefix matching — selectors other than `"*"` are matched only against the skill's
+frontmatter `name`, exactly and case-insensitively. A selector written as a path
+(`core/spec-writing`) or a glob (`core/**`) will simply never match anything and silently
+yields an empty catalog for that entry — there is no validation warning at config time.
 
 `null = all` was explicitly rejected in review. This aligns skills with `subAgents` and removes
 the default-on upgrade problem — adding a skill to a namespace never silently changes the behaviour
@@ -98,8 +102,9 @@ parse time; null for DB-stored skills.
 A Neo4j-stored skill has no `skillRelativePath` and no `resourceRoot`. Both fields are nullable and
 filesystem-only.
 
-A DB-stored skill matches `*` or its exact name, but **never** a folder-prefix (`core/**`, `core/*`)
-or relative-path selector.
+A DB-stored skill matches `*` or its exact name, but **never** a filesystem path (irrelevant to
+DB-stored skills, which have no path at all) — and, per the flat layout, no folder-prefix
+selector ever matches any skill, filesystem or DB-stored.
 
 ### 5. Grant service without a `ToolPlugin`
 

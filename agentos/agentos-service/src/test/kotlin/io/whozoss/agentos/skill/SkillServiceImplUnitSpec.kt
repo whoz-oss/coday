@@ -88,9 +88,14 @@ class SkillServiceImplUnitSpec : StringSpec({
     }
 
     "update saves skill when name is unchanged on same entity" {
-        val existing = Skill(name = "My Skill", description = "D", body = "B", namespaceId = namespaceId)
+        val existing = Skill(
+            metadata = io.whozoss.agentos.sdk.entity.EntityMetadata(version = 1L),
+            name = "My Skill",
+            description = "D",
+            body = "B",
+            namespaceId = namespaceId,
+        )
         every { repository.findByIds(listOf(existing.metadata.id), true) } returns listOf(existing)
-        every { repository.findByIds(listOf(existing.metadata.id), false) } returns listOf(existing)
         every { repository.findByNameInNamespace(namespaceId, "My Skill") } returns existing
         every { repository.save(any()) } answers { firstArg() }
 
@@ -99,11 +104,16 @@ class SkillServiceImplUnitSpec : StringSpec({
     }
 
     "update throws 409 when renaming collides with another entity in same scope" {
-        val existing = Skill(name = "Skill A", description = "D", body = "B", namespaceId = namespaceId)
+        val existing = Skill(
+            metadata = io.whozoss.agentos.sdk.entity.EntityMetadata(version = 1L),
+            name = "Skill A",
+            description = "D",
+            body = "B",
+            namespaceId = namespaceId,
+        )
         val other = Skill(name = "Skill B", description = "D", body = "B", namespaceId = namespaceId)
 
         every { repository.findByIds(listOf(existing.metadata.id), true) } returns listOf(existing)
-        every { repository.findByIds(listOf(existing.metadata.id), false) } returns listOf(existing)
         every { repository.findByNameInNamespace(namespaceId, "Skill B") } returns other
 
         val ex = shouldThrow<ResponseStatusException> {
@@ -112,8 +122,31 @@ class SkillServiceImplUnitSpec : StringSpec({
         ex.statusCode.value() shouldBe 409
     }
 
+    "update throws 400 when target skill is filesystem-backed (version == null)" {
+        val filesystemSkill = Skill(
+            metadata = io.whozoss.agentos.sdk.entity.EntityMetadata(version = null),
+            name = "FS Skill",
+            description = "D",
+            body = "B",
+            namespaceId = namespaceId,
+        )
+        every { repository.findByIds(listOf(filesystemSkill.metadata.id), true) } returns listOf(filesystemSkill)
+
+        val ex = shouldThrow<ResponseStatusException> {
+            service.update(filesystemSkill.copy(description = "Attempted update"))
+        }
+        ex.statusCode.value() shouldBe 400
+        verify(exactly = 0) { repository.save(any()) }
+    }
+
     "delete soft-deletes DB skill and returns true" {
-        val dbEntity = Skill(name = "DB Skill", description = "D", body = "B", namespaceId = namespaceId)
+        val dbEntity = Skill(
+            metadata = io.whozoss.agentos.sdk.entity.EntityMetadata(version = 1L),
+            name = "DB Skill",
+            description = "D",
+            body = "B",
+            namespaceId = namespaceId,
+        )
         every { repository.findByIds(listOf(dbEntity.metadata.id), false) } returns listOf(dbEntity)
         every { repository.delete(dbEntity.metadata.id) } returns true
 
@@ -129,6 +162,24 @@ class SkillServiceImplUnitSpec : StringSpec({
         val deleted = service.delete(unknownId)
         deleted shouldBe false
         verify(exactly = 0) { repository.delete(unknownId) }
+    }
+
+    "delete throws 400 when target skill is filesystem-backed (version == null), no persisted copy created" {
+        val filesystemSkill = Skill(
+            metadata = io.whozoss.agentos.sdk.entity.EntityMetadata(version = null),
+            name = "FS Skill Delete",
+            description = "D",
+            body = "B",
+            namespaceId = namespaceId,
+        )
+        every { repository.findByIds(listOf(filesystemSkill.metadata.id), false) } returns listOf(filesystemSkill)
+
+        val ex = shouldThrow<ResponseStatusException> {
+            service.delete(filesystemSkill.metadata.id)
+        }
+        ex.statusCode.value() shouldBe 400
+        verify(exactly = 0) { repository.delete(any()) }
+        verify(exactly = 0) { repository.save(any()) }
     }
 
     // -------------------------------------------------------------------------

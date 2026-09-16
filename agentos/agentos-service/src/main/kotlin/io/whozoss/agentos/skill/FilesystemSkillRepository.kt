@@ -81,9 +81,18 @@ class FilesystemSkillRepository(
         if (names.isEmpty()) return emptyList()
         val nameSet = names.mapTo(HashSet()) { it.lowercase() }
         val persisted = delegate.findByNamespaceIdAndNames(namespaceId, names)
-        val persistedNames = persisted.mapTo(HashSet()) { it.name.lowercase() }
 
-        val fromFilesystem = filesystemSkills(namespaceId, excludeNames = persistedNames)
+        // The delegate query matches (namespaceId = $namespaceId OR namespaceId IS NULL),
+        // i.e. it also returns PLATFORM skills with a matching name. Only a persisted skill
+        // that actually belongs to THIS namespace should shadow (exclude) a filesystem skill
+        // of the same name — a platform skill with a matching name must not suppress the
+        // namespace's own filesystem skill. Downstream namespace-over-platform shadowing is
+        // still applied by SkillServiceImpl.findSkills on the merged result.
+        val persistedNamespaceNames = persisted
+            .filter { it.namespaceId == namespaceId }
+            .mapTo(HashSet()) { it.name.lowercase() }
+
+        val fromFilesystem = filesystemSkills(namespaceId, excludeNames = persistedNamespaceNames)
             .filter { it.name.lowercase() in nameSet }
 
         return persisted + fromFilesystem
@@ -255,18 +264,50 @@ class FilesystemSkillRepository(
 
     private fun loadSkillResources(skillDir: Path): Map<String, String> {
         val resources = mutableMapOf<String, String>()
+        val realSkillDir =
+            try {
+                skillDir.toRealPath()
+            } catch (e: IOException) {
+                logger.warn(e) { "[FilesystemSkillRepository] Cannot resolve skill directory for resources: $skillDir" }
+                return resources
+            }
         try {
             Files.walk(skillDir, MAX_RESOURCE_WALK_DEPTH).use { stream ->
                 stream
-                    .filter { Files.isRegularFile(it) && it.fileName.toString() != SKILL_FILE_NAME }
+                    // NOFOLLOW_LINKS: a symlink is never treated as a regular file here, even when
+                    // its target is one — symlinks (including ones with an innocuous filename that
+                    // would otherwise bypass the sensitive-file filter) are rejected outright.
+                    .filter {
+                        Files.isRegularFile(it, java.nio.file.LinkOption.NOFOLLOW_LINKS) &&
+                            it.fileName.toString() != SKILL_FILE_NAME
+                    }
                     .filter { !isJunkOrBinaryResource(skillDir.relativize(it)) }
                     .forEach { resourceFile ->
                         val fileName = resourceFile.fileName.toString()
+                        // Defense in depth: even though symlinks are already excluded above,
+                        // re-validate the canonical path stays contained within the skill directory
+                        // before reading — protects against any remaining escape vector (e.g. a
+                        // parent directory itself being replaced by a symlink between the walk and
+                        // this read).
+                        val realResourceFile =
+                            try {
+                                resourceFile.toRealPath()
+                            } catch (e: IOException) {
+                                logger.warn(e) { "[FilesystemSkillRepository] Cannot resolve resource path, skipping: $resourceFile" }
+                                return@forEach
+                            }
+                        if (!realResourceFile.startsWith(realSkillDir)) {
+                            logger.warn {
+                                "[FilesystemSkillRepository] Symlink/path escape rejected for resource: " +
+                                    "$resourceFile -> $realResourceFile"
+                            }
+                            return@forEach
+                        }
                         if (!SkillReadResourceTool.isSensitiveFile(fileName)) {
                             val relPath = skillDir.relativize(resourceFile).toString().replace("\\", "/")
                             try {
-                                if (Files.size(resourceFile) <= SkillReadResourceTool.MAX_RESOURCE_BYTES) {
-                                    resources[relPath] = Files.readString(resourceFile)
+                                if (Files.size(realResourceFile) <= SkillReadResourceTool.MAX_RESOURCE_BYTES) {
+                                    resources[relPath] = Files.readString(realResourceFile)
                                 }
                             } catch (e: Exception) {
                                 logger.warn(e) { "[FilesystemSkillRepository] Could not read resource: $resourceFile" }

@@ -68,8 +68,10 @@ data class AgentConfigDto(
                 implementation = String::class,
                 description =
                     "Selectors controlling which skills are advertised to this agent. " +
-                        "Null or empty means no skills. Use ['*'] for all, 'core/**' for a folder prefix, " +
-                        "or a skill name / path for exact matching.",
+                        "Skills live in a flat layout: skills/{name}/SKILL.md. " +
+                        "Null or empty means no skills. Use ['*'] for all skills, or list exact skill names " +
+                        "(matched against the SKILL.md frontmatter 'name', case-insensitive). " +
+                        "Folder/glob patterns (e.g. 'core/**') are NOT supported and will simply never match.",
             ),
     )
     val skillSelectors: List<String>? = null,

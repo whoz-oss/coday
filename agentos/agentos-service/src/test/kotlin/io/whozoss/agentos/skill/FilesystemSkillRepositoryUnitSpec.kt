@@ -6,6 +6,7 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldEndWith
@@ -213,5 +214,94 @@ class FilesystemSkillRepositoryUnitSpec : StringSpec({
 
         skills shouldHaveSize 1
         skills.single().name shouldBe "Shallow"
+    }
+
+    // -------------------------------------------------------------------------
+    // Symlink escape protection (security regression)
+    // -------------------------------------------------------------------------
+
+    "resource file that is a symlink escaping the skill directory is not loaded" {
+        val configPath = tempConfigPath()
+        val skillFile = createSkill(configPath, "code-review", "Code Review", "Reviews PRs")
+        val skillDir = skillFile.parent
+
+        val outsideSecret = Files.createTempFile("outside-secret", ".txt")
+        outsideSecret.writeText("TOP SECRET CONTENT")
+        outsideSecret.toFile().deleteOnExit()
+
+        val linkPath = skillDir.resolve("reference.txt")
+        val symlinkCreated =
+            try {
+                java.nio.file.Files.createSymbolicLink(linkPath, outsideSecret)
+                true
+            } catch (e: java.io.IOException) {
+                // Symlinks unsupported on this platform/filesystem (e.g. some CI sandboxes) — skip assertions.
+                false
+            }
+
+        if (symlinkCreated) {
+            val delegate = mockk<SkillRepository>()
+            val nsRepo = nsRepoWith(namespaceId, configPath.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+
+            val skills = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId)
+
+            skills shouldHaveSize 1
+            val skill = skills.single()
+            skill.resources.values shouldNotContain "TOP SECRET CONTENT"
+            skill.resources.containsKey("reference.txt") shouldBe false
+        }
+    }
+
+    "regular resource files (non-symlink) are still loaded normally" {
+        val configPath = tempConfigPath()
+        val skillFile = createSkill(configPath, "code-review", "Code Review", "Reviews PRs")
+        val skillDir = skillFile.parent
+        skillDir.resolve("normal.txt").writeText("normal content")
+
+        val delegate = mockk<SkillRepository>()
+        val nsRepo = nsRepoWith(namespaceId, configPath.toString())
+        every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+
+        val skills = buildRepo(delegate, nsRepo).findByNamespaceId(namespaceId)
+
+        skills.single().resources["normal.txt"] shouldBe "normal content"
+    }
+
+    // -------------------------------------------------------------------------
+    // Namespace-scoped exclusion for findByNamespaceIdAndNames (platform collision)
+    // -------------------------------------------------------------------------
+
+    "findByNamespaceIdAndNames does not let a same-named PLATFORM skill suppress the namespace filesystem skill" {
+        val configPath = tempConfigPath()
+        createSkill(configPath, "review", "review", "Namespace filesystem review skill")
+
+        val platformSkill = persistedSkill(nsId = null, name = "review", description = "Platform review skill")
+
+        val delegate = mockk<SkillRepository>()
+        val nsRepo = nsRepoWith(namespaceId, configPath.toString())
+        every { delegate.findByNamespaceIdAndNames(namespaceId, listOf("review")) } returns listOf(platformSkill)
+
+        val result = buildRepo(delegate, nsRepo).findByNamespaceIdAndNames(namespaceId, listOf("review"))
+
+        result shouldHaveSize 2
+        result.map { it.namespaceId } shouldBe listOf(null, namespaceId)
+    }
+
+    "findByNamespaceIdAndNames excludes filesystem skill when a persisted NAMESPACE skill has the same name" {
+        val configPath = tempConfigPath()
+        createSkill(configPath, "review", "review", "Namespace filesystem review skill")
+
+        val persistedNamespaceSkill = persistedSkill(nsId = namespaceId, name = "review", description = "Persisted namespace review skill")
+
+        val delegate = mockk<SkillRepository>()
+        val nsRepo = nsRepoWith(namespaceId, configPath.toString())
+        every { delegate.findByNamespaceIdAndNames(namespaceId, listOf("review")) } returns listOf(persistedNamespaceSkill)
+
+        val result = buildRepo(delegate, nsRepo).findByNamespaceIdAndNames(namespaceId, listOf("review"))
+
+        result shouldHaveSize 1
+        result.single().namespaceId shouldBe namespaceId
+        result.single().description shouldBe "Persisted namespace review skill"
     }
 })

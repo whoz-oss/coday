@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
+import kotlin.io.path.writeText
 
 /**
  * Permission-integration test for [SkillController].
@@ -396,6 +397,117 @@ class SkillControllerPermissionIntegrationSpec : StringSpec() {
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.id").value(platformSkill.id.toString()))
                 .andExpect(jsonPath("$.name").value(platformSkill.name))
+        }
+
+        // -------------------------------------------------------------------------
+        // Filesystem-backed skills — permission check must not 404 for valid namespace members
+        // (regression: filesystem skills have no Neo4j node, so a naive Skill-entity
+        // permission lookup always fails for them).
+        // -------------------------------------------------------------------------
+
+        "GET /{id} returns 200 for a REAL filesystem-backed skill for non-superadmin namespace admin" {
+            val configRoot = java.nio.file.Files.createTempDirectory("skill-fs-permission-test")
+            val skillDir = configRoot.resolve("skills").resolve("fs-review").also { java.nio.file.Files.createDirectories(it) }
+            skillDir.resolve("SKILL.md").writeText(
+                """
+                ---
+                name: fs-review
+                description: Filesystem-backed review skill
+                ---
+                Body content
+                """.trimIndent(),
+            )
+
+            val fsNamespace = namespaceService.create(
+                Namespace(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    externalId = "test-fs-ns-${UUID.randomUUID()}",
+                    name = "FS Namespace",
+                    configPath = configRoot.toString(),
+                ),
+            )
+
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                fsNamespace.id.toString(),
+                PermissionRelation.ADMIN,
+            )
+
+            val fsSkillId = FilesystemSkillRepository.computeFilesystemSkillId(fsNamespace.id, "fs-review")
+
+            mockMvc.perform(get("/api/skills/$fsSkillId"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.id").value(fsSkillId.toString()))
+                .andExpect(jsonPath("$.name").value("fs-review"))
+        }
+
+        "POST /by-ids contains a REAL filesystem-backed skill for non-superadmin namespace admin" {
+            val configRoot = java.nio.file.Files.createTempDirectory("skill-fs-permission-test-byids")
+            val skillDir = configRoot.resolve("skills").resolve("fs-byids").also { java.nio.file.Files.createDirectories(it) }
+            skillDir.resolve("SKILL.md").writeText(
+                """
+                ---
+                name: fs-byids
+                description: Filesystem-backed by-ids skill
+                ---
+                Body content
+                """.trimIndent(),
+            )
+
+            val fsNamespace = namespaceService.create(
+                Namespace(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    externalId = "test-fs-ns-byids-${UUID.randomUUID()}",
+                    name = "FS Namespace ByIds",
+                    configPath = configRoot.toString(),
+                ),
+            )
+
+            permissionService.grantPermission(
+                alice.id.toString(),
+                EntityType.NAMESPACE,
+                fsNamespace.id.toString(),
+                PermissionRelation.ADMIN,
+            )
+
+            val fsSkillId = FilesystemSkillRepository.computeFilesystemSkillId(fsNamespace.id, "fs-byids")
+
+            mockMvc.perform(
+                post("/api/skills/by-ids")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"ids": ["$fsSkillId"], "withRemoved": false}"""),
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[?(@.id == '$fsSkillId')]").exists())
+        }
+
+        "GET /{id} returns 404 for a REAL filesystem-backed skill for a foreign-namespace user" {
+            val configRoot = java.nio.file.Files.createTempDirectory("skill-fs-permission-test-foreign")
+            val skillDir = configRoot.resolve("skills").resolve("fs-foreign").also { java.nio.file.Files.createDirectories(it) }
+            skillDir.resolve("SKILL.md").writeText(
+                """
+                ---
+                name: fs-foreign
+                description: Filesystem-backed skill in a foreign namespace
+                ---
+                Body content
+                """.trimIndent(),
+            )
+
+            val fsNamespace = namespaceService.create(
+                Namespace(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    externalId = "test-fs-ns-foreign-${UUID.randomUUID()}",
+                    name = "FS Namespace Foreign",
+                    configPath = configRoot.toString(),
+                ),
+            )
+            // No permission granted to alice on fsNamespace — alice is a foreign user here.
+
+            val fsSkillId = FilesystemSkillRepository.computeFilesystemSkillId(fsNamespace.id, "fs-foreign")
+
+            mockMvc.perform(get("/api/skills/$fsSkillId"))
+                .andExpect(status().isNotFound)
         }
     }
 }
