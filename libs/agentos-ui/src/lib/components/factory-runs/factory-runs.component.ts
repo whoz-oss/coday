@@ -8,10 +8,17 @@ import { FactoryStateService } from '../../services/factory-state.service'
 import { FactoryRunDetailComponent } from '../factory-run-detail/factory-run-detail.component'
 import { FactoryLaunchComponent } from '../factory-launch/factory-launch.component'
 import { FactoryForgeRunsComponent } from '../factory-forge-runs/factory-forge-runs.component'
+import { FactoryWorkflowProjectionComponent } from '../factory-workflow-projection/factory-workflow-projection.component'
+import { FactoryWorkflowProjectionStateService } from '../../services/factory-workflow-projection-state.service'
 
 @Component({
   selector: 'agentos-factory-runs',
-  imports: [FactoryRunDetailComponent, FactoryLaunchComponent, FactoryForgeRunsComponent],
+  imports: [
+    FactoryRunDetailComponent,
+    FactoryLaunchComponent,
+    FactoryForgeRunsComponent,
+    FactoryWorkflowProjectionComponent,
+  ],
   templateUrl: './factory-runs.component.html',
   styleUrl: './factory-runs.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -21,6 +28,7 @@ export class FactoryRunsComponent {
   private readonly router = inject(Router)
   private readonly namespaceState = inject(NamespaceStateService)
   protected readonly state = inject(FactoryStateService)
+  protected readonly workflowProjectionState = inject(FactoryWorkflowProjectionStateService)
 
   /**
    * Optional namespace override — used when the component is embedded inside
@@ -65,6 +73,7 @@ export class FactoryRunsComponent {
 
   /** Whether the launch form is open. */
   protected readonly showLaunchForm = signal(false)
+  protected readonly workflowMode = signal<'active' | 'removed'>('active')
 
   constructor() {
     effect(() => {
@@ -72,18 +81,22 @@ export class FactoryRunsComponent {
       const namespaceName = this.namespaceName()
       if (!namespaceId) {
         this.state.clear()
+        this.workflowProjectionState.clear()
         return
       }
       if (!this.namespacesInitialized()) {
         this.state.clear()
+        this.workflowProjectionState.clear()
         return
       }
       if (!namespaceName) {
         this.state.clear()
+        this.workflowProjectionState.clear()
         return
       }
       this.namespaceState.selectNamespace(namespaceId)
       if (this.state.namespaceId() !== namespaceId) this.state.load(namespaceId)
+      this.workflowProjectionState.selectNamespace(namespaceId)
     })
 
     effect(() => {
@@ -105,6 +118,10 @@ export class FactoryRunsComponent {
 
   protected openLaunchForm(): void {
     this.showLaunchForm.set(true)
+  }
+
+  protected workflowPending(workflowId: string): boolean {
+    return this.workflowProjectionState.actionWorkflowId() === workflowId
   }
 
   /**

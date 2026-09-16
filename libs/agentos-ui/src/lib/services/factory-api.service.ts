@@ -1,6 +1,12 @@
 import { HttpClient, HttpParams } from '@angular/common/http'
 import { inject, Injectable } from '@angular/core'
 import { Observable } from 'rxjs'
+import {
+  WorkflowProjectionDetailDto,
+  WorkflowProjectionEvent,
+  WorkflowProjectionLifecycleDto,
+  WorkflowProjectionListDto,
+} from './factory-workflow-projection.model'
 
 export interface FactoryForgeOracleResult {
   name: string
@@ -144,6 +150,91 @@ export interface JiraTicketResponse {
 @Injectable({ providedIn: 'root' })
 export class FactoryApiService {
   private readonly http = inject(HttpClient)
+
+  listWorkflowProjections(
+    namespaceId: string,
+    state: 'active' | 'removed' = 'active'
+  ): Observable<WorkflowProjectionListDto> {
+    return this.http.get<WorkflowProjectionListDto>('/api/factory/workflows', {
+      params: new HttpParams().set('namespaceId', namespaceId).set('state', state),
+    })
+  }
+
+  listRemovedWorkflowProjections(namespaceId: string): Observable<WorkflowProjectionListDto> {
+    return this.listWorkflowProjections(namespaceId, 'removed')
+  }
+
+  removeWorkflowProjection(
+    namespaceId: string,
+    workflowId: string,
+    actorId?: string
+  ): Observable<WorkflowProjectionLifecycleDto> {
+    return this.http.delete<WorkflowProjectionLifecycleDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}`,
+      {
+        params: new HttpParams().set('namespaceId', namespaceId),
+        ...(actorId ? { body: { actorId } } : {}),
+      }
+    )
+  }
+
+  restoreWorkflowProjection(
+    namespaceId: string,
+    workflowId: string,
+    actorId?: string
+  ): Observable<WorkflowProjectionLifecycleDto> {
+    return this.http.post<WorkflowProjectionLifecycleDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/restore`,
+      actorId ? { actorId } : {},
+      { params: new HttpParams().set('namespaceId', namespaceId) }
+    )
+  }
+
+  purgeWorkflowProjection(
+    namespaceId: string,
+    workflowId: string,
+    actorId?: string
+  ): Observable<WorkflowProjectionLifecycleDto> {
+    return this.http.delete<WorkflowProjectionLifecycleDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/purge`,
+      {
+        params: new HttpParams().set('namespaceId', namespaceId),
+        ...(actorId ? { body: { actorId } } : {}),
+      }
+    )
+  }
+
+  getWorkflowProjection(namespaceId: string, workflowId: string): Observable<WorkflowProjectionDetailDto> {
+    return this.http.get<WorkflowProjectionDetailDto>(`/api/factory/workflows/${encodeURIComponent(workflowId)}`, {
+      params: new HttpParams().set('namespaceId', namespaceId),
+    })
+  }
+
+  workflowProjectionStreamUrl(namespaceId: string): string {
+    return `/api/factory/workflows/stream?namespaceId=${encodeURIComponent(namespaceId)}`
+  }
+
+  streamWorkflowProjectionUpdates(namespaceId: string): Observable<WorkflowProjectionEvent> {
+    return new Observable((subscriber) => {
+      const source = new EventSource(this.workflowProjectionStreamUrl(namespaceId))
+      source.onopen = () => subscriber.next({ type: 'open', namespaceId })
+      const listen = (name: string, type: Exclude<WorkflowProjectionEvent['type'], 'open'>) => {
+        source.addEventListener(name, (event: MessageEvent<string>) => {
+          try {
+            subscriber.next({ type, ...JSON.parse(event.data) } as WorkflowProjectionEvent)
+          } catch {
+            subscriber.error(new Error('Invalid workflow projection event'))
+          }
+        })
+      }
+      listen('workflow-projection-updated', 'updated')
+      listen('workflow-projection-removed', 'removed')
+      listen('workflow-projection-restored', 'restored')
+      listen('workflow-projection-purged', 'purged')
+      source.onerror = () => subscriber.error(new Error('Workflow projection stream disconnected'))
+      return () => source.close()
+    })
+  }
 
   listRuns(namespaceId: string): Observable<FactoryRunSummary[]> {
     return this.http.get<FactoryRunSummary[]>('/api/factory/runs', {

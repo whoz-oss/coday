@@ -26,6 +26,43 @@ describe('FactoryApiService', () => {
     TestBed.resetTestingModule()
   })
 
+  describe('workflow lifecycle', () => {
+    it('lists removed workflows with the removed state query', () => {
+      service.listRemovedWorkflowProjections('namespace-1').subscribe()
+      const req = http.expectOne(
+        (r) =>
+          r.url === '/api/factory/workflows' &&
+          r.params.get('namespaceId') === 'namespace-1' &&
+          r.params.get('state') === 'removed'
+      )
+      expect(req.request.method).toBe('GET')
+      req.flush({ data: { namespaceId: 'namespace-1', state: 'removed', items: [] } })
+    })
+
+    it('uses Angular DELETE options for the optional actor body', () => {
+      service.removeWorkflowProjection('namespace-1', 'workflow/1', 'actor-1').subscribe()
+      const req = http.expectOne(
+        (r) => r.url === '/api/factory/workflows/workflow%2F1' && r.params.get('namespaceId') === 'namespace-1'
+      )
+      expect(req.request.method).toBe('DELETE')
+      expect(req.request.body).toEqual({ actorId: 'actor-1' })
+      req.flush({ data: { namespaceId: 'namespace-1', workflowId: 'workflow/1', state: 'removed' } })
+    })
+
+    it('restores and purges without inventing actor identity', () => {
+      service.restoreWorkflowProjection('namespace-1', 'workflow-1').subscribe()
+      const restore = http.expectOne((r) => r.url.endsWith('/workflow-1/restore'))
+      expect(restore.request.method).toBe('POST')
+      expect(restore.request.body).toEqual({})
+      restore.flush({ data: { namespaceId: 'namespace-1', workflowId: 'workflow-1', revision: 2, state: 'active' } })
+      service.purgeWorkflowProjection('namespace-1', 'workflow-1').subscribe()
+      const purge = http.expectOne((r) => r.url.endsWith('/workflow-1/purge'))
+      expect(purge.request.method).toBe('DELETE')
+      expect(purge.request.body).toBeNull()
+      purge.flush({ data: { namespaceId: 'namespace-1', workflowId: 'workflow-1', state: 'purged' } })
+    })
+  })
+
   describe('stopRun', () => {
     it('POSTs to /api/factory/runs/:id/stop', () => {
       service.stopRun('run-abc').subscribe()

@@ -12,6 +12,47 @@
   overflow: hidden;
 }
 
+.factory-runs__workflows {
+  margin-top: 2rem;
+}
+
+.factory-runs__section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.factory-runs__section-header p,
+.factory-runs__sync {
+  color: var(--color-text-secondary, #4b5563);
+}
+
+.factory-runs__workflow-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 0.75rem;
+}
+.factory-runs__workflow-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0.75rem 0;
+  flex-wrap: wrap;
+}
+.factory-runs__workflow-tabs button {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--color-divider, #d4d4d8);
+  border-radius: 999px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #1d1d1f);
+  cursor: pointer;
+}
+.factory-runs__workflow-tabs button[aria-pressed='true'] {
+  background: var(--color-accent-100, #dbeafe);
+  border-color: var(--color-accent, #2563eb);
+  font-weight: 600;
+}
+
 .factory-runs {
   flex: 1;
   min-height: 0;

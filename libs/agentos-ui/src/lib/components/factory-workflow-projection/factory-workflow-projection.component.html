@@ -1,0 +1,120 @@
+<article class="workflow-projection" [attr.aria-labelledby]="'workflow-' + snapshot().workflowId">
+  <header>
+    <div>
+      <h3 [id]="'workflow-' + snapshot().workflowId">{{ snapshot().projection.title }}</h3>
+      <p class="workflow-projection__summary">
+        {{ snapshot().projection.workflowType }} <span aria-hidden="true">·</span> Revision {{ snapshot().revision }}
+      </p>
+    </div>
+    <span
+      class="workflow-projection__status"
+      [class]="'workflow-projection__status ' + statusClass(snapshot().projection.status)"
+    >
+      <span class="sr-only">Workflow status:</span>{{ displayStatus(snapshot().projection.status) }}
+    </span>
+  </header>
+
+  <dl class="workflow-projection__metadata">
+    <div>
+      <dt>Workflow ID</dt>
+      <dd>
+        <code>{{ snapshot().workflowId }}</code>
+      </dd>
+    </div>
+    <div>
+      <dt>Schema</dt>
+      <dd>v{{ snapshot().projection.schemaVersion }}</dd>
+    </div>
+  </dl>
+
+  <h4>
+    Steps <span class="workflow-projection__count">{{ snapshot().projection.steps.length }}</span>
+  </h4>
+  @if (snapshot().projection.steps.length === 0) {
+    <p class="workflow-projection__empty">No steps are currently projected.</p>
+  } @else {
+    <ol class="workflow-projection__steps">
+      @for (step of snapshot().projection.steps; track step.id; let index = $index) {
+        <li>
+          <span class="workflow-projection__step-number" aria-hidden="true">{{ index + 1 }}</span>
+          <div class="workflow-projection__step-content">
+            <div class="workflow-projection__step-heading">
+              <strong>{{ step.name }}</strong>
+              <span [class]="'workflow-projection__status ' + statusClass(step.status)"
+                ><span class="sr-only">Step status:</span>{{ displayStatus(step.status) }}</span
+              >
+            </div>
+            @if (step.description) {
+              <p>{{ step.description }}</p>
+            }
+            <p class="workflow-projection__dependencies">
+              <strong>Depends on</strong> {{ step.dependsOn.length ? step.dependsOn.join(', ') : 'No dependencies' }}
+            </p>
+          </div>
+        </li>
+      }
+    </ol>
+  }
+
+  <footer class="workflow-projection__actions">
+    @if (mode() === 'active') {
+      <button
+        type="button"
+        class="workflow-projection__button workflow-projection__button--danger"
+        [disabled]="pending()"
+        (click)="openConfirmation('remove')"
+      >
+        Remove from Factory
+      </button>
+    } @else {
+      <button type="button" class="workflow-projection__button" [disabled]="pending()" (click)="restore()">
+        Restore
+      </button>
+      <button
+        type="button"
+        class="workflow-projection__button workflow-projection__button--danger"
+        [disabled]="pending()"
+        (click)="openConfirmation('purge')"
+      >
+        Delete permanently
+      </button>
+    }
+    @if (pending()) {
+      <span role="status">Submitting&hellip;</span>
+    }
+  </footer>
+
+  <dialog #confirmationDialog class="workflow-projection__dialog" (close)="confirmation.set(null)">
+    @if (confirmation() === 'remove') {
+      <h4>Remove {{ snapshot().projection.title }} from Factory?</h4>
+      <p>
+        This removes the workflow projection and Factory history from active views; it does not delete BMAD, Jira, Git,
+        CRM, Coday, AgentOS cases, conversations, branches, or worktrees.
+      </p>
+    } @else if (confirmation() === 'purge') {
+      <h4>Permanently delete {{ snapshot().projection.title }}?</h4>
+      <p><strong>This permanently purges this workflow's Factory data and cannot be undone.</strong></p>
+      <label for="purge-confirm-{{ snapshot().workflowId }}"
+        >Type <strong>{{ snapshot().projection.title || snapshot().workflowId }}</strong> to confirm</label
+      >
+      <input
+        id="purge-confirm-{{ snapshot().workflowId }}"
+        type="text"
+        autocomplete="off"
+        [ngModel]="purgeText()"
+        (ngModelChange)="purgeText.set($event)"
+      />
+    }
+    <div class="workflow-projection__dialog-actions">
+      <button type="button" class="workflow-projection__button" (click)="closeConfirmation()">Cancel</button>
+      <button
+        type="button"
+        class="workflow-projection__button workflow-projection__button--danger"
+        [disabled]="confirmation() === 'purge' && !purgeMatches()"
+        (click)="confirm()"
+      >
+        {{ confirmation() === 'purge' ? 'Permanently delete' : 'Remove from Factory' }}
+      </button>
+    </div>
+  </dialog>
+</article>

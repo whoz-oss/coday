@@ -105,6 +105,71 @@
       }
     }
 
+    @if (namespaceAvailable()) {
+      <section class="factory-runs__workflows" aria-labelledby="generic-workflows-title">
+        <header class="factory-runs__section-header">
+          <div>
+            <h2 id="generic-workflows-title">Generic workflows</h2>
+            <p>Namespace-scoped, HTTP-authoritative workflow projections.</p>
+          </div>
+          <button type="button" class="factory-runs__refresh" (click)="workflowProjectionState.refresh()">
+            Refresh
+          </button>
+        </header>
+        <p class="factory-runs__sync" role="status">Synchronization: {{ workflowProjectionState.synchronization() }}</p>
+        <div class="factory-runs__workflow-tabs" role="group" aria-label="Workflow view">
+          <button type="button" [attr.aria-pressed]="workflowMode() === 'active'" (click)="workflowMode.set('active')">
+            Active workflows
+          </button>
+          <button
+            type="button"
+            [attr.aria-pressed]="workflowMode() === 'removed'"
+            (click)="workflowMode.set('removed')"
+          >
+            Removed workflows ({{ workflowProjectionState.removedWorkflows().length }})
+          </button>
+        </div>
+        @if (workflowProjectionState.actionError(); as actionError) {
+          <p class="factory-runs__notice" role="alert">{{ actionError }}</p>
+        }
+        @if (workflowProjectionState.loading()) {
+          <p class="factory-runs__notice" role="status">Loading generic workflows&hellip;</p>
+        } @else if (workflowProjectionState.error(); as workflowError) {
+          <p class="factory-runs__notice" role="alert">{{ workflowError }}</p>
+        } @else if (workflowMode() === 'active') {
+          @if (workflowProjectionState.workflows().length === 0) {
+            <p class="factory-runs__notice" role="status">
+              No active generic workflows are projected for this namespace.
+            </p>
+          }
+          <div class="factory-runs__workflow-list">
+            @for (workflow of workflowProjectionState.workflows(); track workflow.workflowId) {
+              <agentos-factory-workflow-projection
+                [snapshot]="workflow"
+                [pending]="workflowPending(workflow.workflowId)"
+                (removeRequested)="workflowProjectionState.remove($event)"
+              />
+            }
+          </div>
+        } @else {
+          @if (workflowProjectionState.removedWorkflows().length === 0) {
+            <p class="factory-runs__notice" role="status">No removed workflows.</p>
+          }
+          <div class="factory-runs__workflow-list">
+            @for (workflow of workflowProjectionState.removedWorkflows(); track workflow.workflowId) {
+              <agentos-factory-workflow-projection
+                [snapshot]="workflow"
+                mode="removed"
+                [pending]="workflowPending(workflow.workflowId)"
+                (restoreRequested)="workflowProjectionState.restore($event)"
+                (purgeRequested)="workflowProjectionState.purge($event)"
+              />
+            }
+          </div>
+        }
+      </section>
+    }
+
     <!-- Global Forge projections are server-projected and read-only. They are not namespace-filtered. -->
     @if (namespaceAvailable()) {
       <agentos-factory-forge-runs />
