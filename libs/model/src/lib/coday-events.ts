@@ -446,6 +446,32 @@ export class DelegationEvent extends CodayEvent {
   }
 }
 
+/**
+ * Union of possible execution statuses for a delegation sub-thread.
+ */
+export type DelegationStatus = 'running' | 'completed' | 'failed' | 'interrupted'
+
+/**
+ * Transient event reporting the execution status of a delegation sub-thread.
+ *
+ * **Never persisted** in thread history — this event must never be added to
+ * `THREAD_MESSAGE_TYPES` nor to the `ThreadMessage` union, as it would be forwarded
+ * to AI providers and trigger unknown-message-type errors.
+ *
+ * Tagged with `threadId: subThread.id` so the frontend routes it via the existing
+ * `subThreadEvents$` channel directly to the matching `DelegationInlineComponent`,
+ * including for nested delegations.
+ */
+export class DelegationStatusEvent extends CodayEvent {
+  status: DelegationStatus
+  static override type = 'delegation_status'
+
+  constructor(event: Partial<DelegationStatusEvent>) {
+    super(event, DelegationStatusEvent.type)
+    this.status = event.status!
+  }
+}
+
 export class UsageEvent extends CodayEvent {
   static override type = 'usage'
 
@@ -491,6 +517,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [AnswerEvent.type]: AnswerEvent,
   [ChoiceEvent.type]: ChoiceEvent,
   [DelegationEvent.type]: DelegationEvent,
+  [DelegationStatusEvent.type]: DelegationStatusEvent,
   [ErrorEvent.type]: ErrorEvent,
   [HeartBeatEvent.type]: HeartBeatEvent,
   [InviteEvent.type]: InviteEvent,
