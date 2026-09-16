@@ -46,7 +46,7 @@ data class UsageRecordNode(
     val cacheWriteTokens: Long = 0L,
     val totalTokens: Long = 0L,
     val cost: Double? = null,
-    val timestamp: Instant = Instant.now(),
+    val timestamp: Instant,
     // Audit fields from EntityMetadata
     val created: Instant = Instant.now(),
     val createdBy: String? = null,

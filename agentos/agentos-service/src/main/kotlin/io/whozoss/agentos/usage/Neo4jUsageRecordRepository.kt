@@ -17,9 +17,10 @@ import java.util.UUID
  *
  * ## Aggregation and null-cost contamination
  *
- * All aggregation queries return raw [Map] rows from Cypher. Each row contains a
- * `nullCostCount` field. When > 0, the cost is unknown and is reported as `null` in
- * [UsageAggregate.cost] — never as the partial sum, which would be a silent undercount.
+ * Aggregations use the repository's single-column list-of-map envelope because this SDN
+ * version maps direct multi-column results through the entity converter. All rows expose
+ * `nullCostCount`: when it is greater than zero, [UsageAggregate.cost] is `null` rather
+ * than a silently incomplete sum.
  *
  * @see UsageRecordNodeNeo4jRepository for the Cypher queries.
  */
@@ -111,9 +112,9 @@ open class Neo4jUsageRecordRepository(
     /**
      * Convert a list of Cypher aggregate rows into a single [UsageAggregate].
      *
-     * All costs are in a single implicit currency unit, so Cypher returns at most one row
-     * (via `collect({...})`). Each row contains: recordCount, inputTokens, outputTokens,
-     * cacheReadTokens, cacheWriteTokens, totalTokens, partialCostSum, nullCostCount.
+     * All costs are in a single implicit currency unit, so Cypher returns at most one row.
+     * Each row contains: recordCount, inputTokens, outputTokens, cacheReadTokens,
+     * cacheWriteTokens, totalTokens, partialCostSum, nullCostCount.
      *
      * Null-cost contamination: when `nullCostCount > 0`, the cost is `null` (not
      * `partialCostSum`, which would be a silent undercount).

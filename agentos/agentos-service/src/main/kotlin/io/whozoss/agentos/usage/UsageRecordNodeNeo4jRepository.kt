@@ -27,10 +27,9 @@ interface UsageRecordNodeNeo4jRepository : Neo4jRepository<UsageRecordNode, Stri
     // =========================================================================
     // Aggregation queries
     //
-    // SDN cannot map a multi-column RETURN into List<Map<String, Any>>. The
-    // workaround is identical to CaseNodeNeo4jRepository.findDirectRelations:
-    // wrap the result row in a Cypher map literal and collect all rows into a
-    // single list column. SDN then maps the whole result as List<Map<String, Any>>.
+    // Aggregations wrap each row in a Cypher map literal and collect the rows into
+    // a single list column. This envelope is intentional: this SDN version tries to
+    // map direct multi-column results through the repository entity converter.
     //
     // Null-cost contamination strategy:
     //   Cypher's sum() silently ignores nulls and would produce a silent undercount.
