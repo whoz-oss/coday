@@ -129,6 +129,8 @@ dependencies {
 
     // Jackson for JSON processing
     implementation(libs.jackson.module.kotlin)
+    // agentos-http-plugin reads YAML OpenAPI documents through the service classloader (explicit contract)
+    implementation(libs.jackson.dataformat.yaml)
 
     // Kotlin
     implementation(libs.bundles.kotlin.common)

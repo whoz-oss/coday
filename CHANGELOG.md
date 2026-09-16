@@ -1,3 +1,111 @@
+# 2.0.0 (2026-09-16)
+
+### 🩹 Fixes
+
+- ⚠️  #WZ-34456 populate startedAt, typed UserContextResult, explicit error handling ([#1334](https://github.com/whoz-oss/coday/pull/1334))
+
+### ⚠️  Breaking Changes
+
+- #WZ-34456 populate startedAt, typed UserContextResult, explicit error handling  ([#1334](https://github.com/whoz-oss/coday/pull/1334))
+  ** `UserContextProvider.provideUserContext `now
+  returns `UserContextResult` instead of `Map<String, Any?>?`. Plugin
+  implementations must be updated to return `UserContextResult.Success` /
+  `PermanentFailure` / `TransientFailure` instead of a raw map.
+  - Set `startedAt = now` in
+  `Neo4jScheduledPromptUserRunRepository.claimBatch` so the field is
+  populated when a `UserRun` transitions from `PENDING` to `RUNNING`
+  - Introduce `UserContextResult` sealed class (Success/PermanentFailure
+  /TransientFailure) in the SDK, replacing the opaque `Map<String, Any?>?`
+  return type of `UserContextProvider.provideUserContext`, errors are now
+  explicit and always logged instead of being silently absorbed as `null`
+  - `ScheduledPromptExecutor.resolveSessionContext` dispatches on
+  `UserContextResult`: PermanentFailure -> marks `UserRun` `FAILED`
+  immediately; `TransientFailure` -> leaves `UserRun` `RUNNING` for
+  lease-based reclaim; unexpected exception -> treated as transient with a
+  warn log
+  Local testing:
+  > 2026-09-15 11:43:02 - [Executor]
+  UserRun=5141a12a-2fdf-4543-bbfd-1d6cc108ef1d
+  user=914b4ea6-b23b-4bfc-bd8e-431ea5ee03fc — transient context failure,
+  leaving RUNNING for lease-based reclaim. Reason: Failed to connect to
+  copilot/127.0.0.1:80"
+  M	agentos/agentos-sdk/src/main/kotlin/io/whozoss/agentos/sdk/scheduledPrompt/UserContextProvider.kt
+  A	agentos/agentos-sdk/src/main/kotlin/io/whozoss/agentos/sdk/scheduledPrompt/UserContextResult.kt
+  M	agentos/agentos-service/src/main/kotlin/io/whozoss/agentos/scheduledPrompt/Neo4jScheduledPromptUserRunRepository.kt
+  M	agentos/agentos-service/src/main/kotlin/io/whozoss/agentos/scheduledPrompt/ScheduledPromptExecutor.kt
+  M	agentos/agentos-service/src/test/kotlin/io/whozoss/agentos/persistence/neo4j/AbstractScheduledPromptUserRunPersistenceSpec.kt
+  M	agentos/agentos-service/src/test/kotlin/io/whozoss/agentos/scheduledPrompt/InMemoryScheduledPromptUserRunRepository.kt
+  M	agentos/agentos-service/src/test/kotlin/io/whozoss/agentos/scheduledPrompt/ScheduledPromptExecutorUnitSpec.kt
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 1.3.7 (2026-09-14)
+
+### 🩹 Fixes
+
+- bump bundled version to 1.3.6 ([00e21ee4](https://github.com/whoz-oss/coday/commit/00e21ee4))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 1.3.6 (2026-09-14)
+
+### 🩹 Fixes
+
+- **agentos:** allow sharing agents across user groups ([#1336](https://github.com/whoz-oss/coday/pull/1336))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 1.3.5 (2026-09-14)
+
+### 🚀 Features
+
+- **agentos:** #1053 HTTP_API plugin exposing OpenAPI-described APIs as agent tools ([#1328](https://github.com/whoz-oss/coday/pull/1328), [#1053](https://github.com/whoz-oss/coday/issues/1053))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 1.3.4 (2026-09-14)
+
+### 🩹 Fixes
+
+- ⚠️  **agentos:** harmonize Integration Config scope filtering ([#1335](https://github.com/whoz-oss/coday/pull/1335))
+
+### ⚠️  Breaking Changes
+
+- **agentos:** harmonize Integration Config scope filtering  ([#1335](https://github.com/whoz-oss/coday/pull/1335))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 1.3.3 (2026-09-14)
+
+### 🩹 Fixes
+
+- **agentos:** load platform Auth Settings with explicit scope ([#1333](https://github.com/whoz-oss/coday/pull/1333))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 1.3.2 (2026-09-14)
+
+### 🚀 Features
+
+- **agentos:** #1053 deliver static AuthSetting credentials to plugins and deny user-scoped network integrations ([#1314](https://github.com/whoz-oss/coday/pull/1314), [#1053](https://github.com/whoz-oss/coday/issues/1053))
+- **agentos:** #1053 credentialType-driven MCP_HTTP auth header and URL validation ([#1315](https://github.com/whoz-oss/coday/pull/1315), [#1053](https://github.com/whoz-oss/coday/issues/1053))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 1.3.1 (2026-09-11)
 
 ### 🩹 Fixes

@@ -572,7 +572,8 @@ paths:
 
         | query                            | mode             | required permission                            |
         |----------------------------------|------------------|------------------------------------------------|
-        | (no params)                      | platform         | authenticated                                  |
+        | (no params)                      | all caller's     | authenticated                                  |
+        | `?namespaceId=none` (no userId)  | platform         | authenticated                                  |
         | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
         | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
         | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
@@ -1511,15 +1512,14 @@ paths:
 
         | query                            | mode             | required permission                            |
         |----------------------------------|------------------|------------------------------------------------|
-        | (no params)                      | platform         | authenticated                                  |
+        | (no params)                      | all caller's     | authenticated                                  |
+        | `?namespaceId=none` (no userId)  | platform         | authenticated                                  |
         | `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |
         | `?namespaceId=<uuid>&userId=me`  | user × namespace | authenticated                                  |
         | `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |
         | `?userId=me` (no namespace)      | all caller's     | authenticated                                  |
 
         `userId` accepts ONLY the literal sentinel `me` — a UUID returns 400. `namespaceId=none` is the sentinel for `namespaceId IS NULL`.
-
-        When called with no params, returns platform-level configs.
       operationId: listIntegrationConfig
       parameters:
       - in: query
@@ -1555,7 +1555,7 @@ paths:
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
 
-        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404.
+        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404. Integration types listed in `agentos.integrations.user-scope-denied-types` (default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`) cannot be created in either user scope (403).
       operationId: createIntegrationConfig
       requestBody:
         content:

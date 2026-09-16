@@ -61,7 +61,7 @@ interface IntegrationConfigService :
      * Find all non-removed platform-level [IntegrationConfig] entries
      * (`namespaceId IS NULL AND userId IS NULL`).
      *
-     * Used by [IntegrationConfigController.list] when called with no query params (Super Admin only).
+     * Used by [IntegrationConfigController.list] with `namespaceId=none` and no `userId` (authenticated users).
      */
     fun findPlatform(): List<IntegrationConfig>
 
@@ -98,6 +98,7 @@ interface IntegrationConfigService :
      * Scope-aware filtered listing used by [IntegrationConfigController.list].
      *
      * Dispatches the query based on the resolved namespace/user filter combination:
+     * - Explicit `namespaceId=none` + no user request → platform configs
      * - Specific namespace + no user request → namespace-shared (guarded by [canReadNamespace])
      * - User requested → user-scoped rows, optionally filtered by namespace
      * - No filters → caller's own overlays
