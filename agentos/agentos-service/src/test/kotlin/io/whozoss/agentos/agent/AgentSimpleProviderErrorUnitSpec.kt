@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
@@ -26,11 +27,8 @@ import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 /**
- * Tests that verify the streaming-path provider error surfacing fix.
- *
- * When the LLM provider rejects a streaming request with an HTTP error, the response body
- * (containing the actionable error description) must appear in the [ErrorEvent] emitted —
- * exactly as it does on the blocking path via [org.springframework.ai.retry.NonTransientAiException].
+ * Tests that verify streaming provider errors emit useful diagnostics without exposing
+ * the provider response body, which may contain sensitive data.
  */
 class AgentSimpleProviderErrorUnitSpec : StringSpec({
     timeout = 5000
@@ -71,10 +69,10 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
         )
 
     // -----------------------------------------------------------------------
-    // 4xx bare — emitted as ErrorEvent (not WarnEvent) with body in message
+    // 4xx bare — emitted as ErrorEvent (not WarnEvent) without body in message
     // -----------------------------------------------------------------------
 
-    "streaming 400 from provider surfaces as ErrorEvent containing the response body" {
+    "streaming 400 emits a diagnostic ErrorEvent without exposing the response body" {
         val namespaceId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
@@ -94,7 +92,10 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
         // Must emit ErrorEvent (not WarnEvent) so the case lifecycle terminates correctly
         val errorEvent = events.filterIsInstance<ErrorEvent>().firstOrNull()
         errorEvent shouldNotBe null
-        errorEvent!!.message shouldContain body
+        errorEvent!!.message shouldContain "AI provider"
+        errorEvent.message shouldContain "400 BAD_REQUEST"
+        errorEvent.message shouldNotContain body
+        errorEvent.message shouldNotContain "tools.9.custom.name"
 
         // Must NOT emit a WarnEvent for a provider error (WarnEvent = generic path)
         events.filterIsInstance<WarnEvent>().size shouldBe 0
@@ -107,7 +108,7 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
     // 4xx Reactor-wrapped — the real production path
     // -----------------------------------------------------------------------
 
-    "streaming 400 wrapped by Reactor surfaces as ErrorEvent containing the response body" {
+    "streaming 400 wrapped by Reactor emits a diagnostic ErrorEvent without exposing the response body" {
         val namespaceId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
@@ -128,7 +129,10 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
 
         val errorEvent = events.filterIsInstance<ErrorEvent>().firstOrNull()
         errorEvent shouldNotBe null
-        errorEvent!!.message shouldContain body
+        errorEvent!!.message shouldContain "AI provider"
+        errorEvent.message shouldContain "400 BAD_REQUEST"
+        errorEvent.message shouldNotContain body
+        errorEvent.message shouldNotContain "bad tool name"
         events.filterIsInstance<WarnEvent>().size shouldBe 0
         events.filterIsInstance<AgentFinishedEvent>().size shouldBe 1
     }
@@ -137,7 +141,7 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
     // 5xx — becomes TransientAiException path — still ErrorEvent
     // -----------------------------------------------------------------------
 
-    "streaming 503 from provider surfaces as ErrorEvent (transient path)" {
+    "streaming 503 emits a transient diagnostic ErrorEvent without exposing the response body" {
         val namespaceId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
@@ -156,7 +160,11 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
 
         val errorEvent = events.filterIsInstance<ErrorEvent>().firstOrNull()
         errorEvent shouldNotBe null
-        errorEvent!!.message shouldContain body
+        errorEvent!!.message shouldContain "AI provider"
+        errorEvent.message shouldContain "transient error"
+        errorEvent.message shouldContain "503 SERVICE_UNAVAILABLE"
+        errorEvent.message shouldNotContain body
+        errorEvent.message shouldNotContain "service unavailable"
         events.filterIsInstance<WarnEvent>().size shouldBe 0
         events.filterIsInstance<AgentFinishedEvent>().size shouldBe 1
     }
