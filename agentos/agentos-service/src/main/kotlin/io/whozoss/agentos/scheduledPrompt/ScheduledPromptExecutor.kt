@@ -361,35 +361,27 @@ class ScheduledPromptExecutor(
         // check for an existing Case before creating one, making execution effectively-once.
         try {
             val runContext = resolveRunContext(userRun)
-            val userContextResult = resolveUserContext(userRun, runContext.userExternalId, runContext.namespaceId)
-            val sessionContext: Map<String, Any?>? = when (userContextResult) {
-                null -> null
-                is UserContextResult.Success -> {
-                    if (userContextResult.sessionContext == null) {
-                        logger.warn {
-                            "[Executor] UserContextProvider returned Success(null) for UserRun=${userRun.id}" +
-                                " userId=${userRun.userId} — no sessionContext will be injected. Check provider configuration."
-                        }
-                    }
-                    userContextResult.sessionContext
+            when (val outcome = resolveUserContext(
+                userRun = userRun,
+                userExternalId = runContext.userExternalId,
+                namespaceId = runContext.namespaceId,
+            )) {
+                is ContextOutcome.Ok -> {
+                    val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = outcome.sessionContext))
+                    awaitLaunch(userRun.id, caseId)
                 }
-                is UserContextResult.PermanentFailure -> {
-                    logger.error { "[Executor] UserRun=${userRun.id} user=${userRun.userId} — permanent context failure, marking FAILED. Reason: ${userContextResult.reason}" }
-                    markFailed(userRun.id, Instant.now(clock), userContextResult.reason)
-                    return
+                is ContextOutcome.Skip -> logger.warn {
+                    "[Executor] UserRun=${userRun.id} user=${userRun.userId} — transient context failure," +
+                        " leaving RUNNING for lease-based reclaim. Reason: ${outcome.reason}"
                 }
-                is UserContextResult.TransientFailure -> {
-                    // Transient failure: do NOT mark the UserRun terminal. The lease will expire and
-                    // the UserRun will be reclaimed by claimBatch on the next scheduler tick.
-                    logger.warn {
-                        "[Executor] UserRun=${userRun.id} user=${userRun.userId} — transient context failure," +
-                            " leaving RUNNING for lease-based reclaim. Reason: ${userContextResult.reason}"
+                is ContextOutcome.Fail -> {
+                    logger.error {
+                        "[Executor] UserRun=${userRun.id} user=${userRun.userId} — permanent context failure," +
+                            " marking FAILED. Reason: ${outcome.reason}"
                     }
-                    return
+                    markFailed(userRun.id, Instant.now(clock), outcome.reason)
                 }
             }
-            val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = sessionContext))
-            awaitLaunch(userRun.id, caseId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -437,24 +429,26 @@ class ScheduledPromptExecutor(
     }
 
     /**
-     * Resolve the [UserContextResult] for a [ScheduledPromptUserRun] by calling [userContextProvider].
+     * Resolves the user context for a [ScheduledPromptUserRun] by calling [userContextProvider].
+     *
+     * Pure — no side effects (no logging, no markFailed). The caller ([processUserRun])
+     * is responsible for acting on the outcome.
      *
      * Returns:
-     * - `null` — no provider registered; execution continues without context.
-     * - the raw [UserContextResult] from the provider otherwise.
+     * - [ContextOutcome.Ok] — no provider, or provider returned [UserContextResult.Success].
+     * - [ContextOutcome.Skip] — transient failure; lease will expire and UserRun will be reclaimed.
+     * - [ContextOutcome.Fail] — permanent failure; caller must mark UserRun FAILED.
      *
-     * Unexpected exceptions from the provider are caught by `runCatching` and converted to
-     * [UserContextResult.TransientFailure] with a warn log — the caller ([processUserRun])
-     * decides how to react to each variant.
+     * Unexpected exceptions from the provider are treated as [ContextOutcome.Skip] (transient).
      */
     private fun resolveUserContext(
         userRun: ScheduledPromptUserRun,
         userExternalId: String,
         namespaceId: UUID,
-    ): UserContextResult? {
-        val provider = userContextProvider ?: return null
+    ): ContextOutcome {
+        val provider = userContextProvider ?: return ContextOutcome.Ok(null)
 
-        return runCatching {
+        val result = runCatching {
             provider.provideUserContext(
                 userExternalId = userExternalId,
                 namespaceId = namespaceId,
@@ -465,6 +459,20 @@ class ScheduledPromptExecutor(
                     " — treating as transient failure, lease will expire and UserRun will be reclaimed"
             }
             UserContextResult.TransientFailure(e.message ?: "Unexpected exception")
+        }
+
+        return when (result) {
+            is UserContextResult.Success -> {
+                if (result.sessionContext == null) {
+                    logger.warn {
+                        "[Executor] UserContextProvider returned Success(null) for UserRun=${userRun.id}" +
+                            " userId=${userRun.userId} — no sessionContext will be injected. Check provider configuration."
+                    }
+                }
+                ContextOutcome.Ok(result.sessionContext)
+            }
+            is UserContextResult.PermanentFailure -> ContextOutcome.Fail(result.reason)
+            is UserContextResult.TransientFailure -> ContextOutcome.Skip(result.reason)
         }
     }
 
@@ -496,6 +504,19 @@ class ScheduledPromptExecutor(
             "[Executor] UserRun=${userRun.id} — Case ${case.id} created and message injected for user=${userRun.userId}"
         }
         return case.id
+    }
+
+    /**
+     * Outcome of [resolveUserContext] — drives [processUserRun] branching with no ambiguous null.
+     *
+     * - [Ok] — continue with the resolved sessionContext (may be null when no provider is configured).
+     * - [Skip] — transient failure; leave UserRun RUNNING for lease-based reclaim.
+     * - [Fail] — permanent failure; mark UserRun FAILED immediately.
+     */
+    private sealed class ContextOutcome {
+        data class Ok(val sessionContext: Map<String, Any?>?) : ContextOutcome()
+        data class Skip(val reason: String) : ContextOutcome()
+        data class Fail(val reason: String) : ContextOutcome()
     }
 
     /** Resolved execution context for a single [ScheduledPromptUserRun]. */
