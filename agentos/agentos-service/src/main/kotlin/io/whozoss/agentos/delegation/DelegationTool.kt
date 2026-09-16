@@ -6,6 +6,9 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseOutcome
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -170,6 +173,12 @@ class DelegationTool(
                     output = "Delegation requires a user context (userId is null).",
                     errorType = "MISSING_USER_CONTEXT",
                 )
+        val toolRequestId =
+            context.toolRequestId
+                ?: return ToolExecutionResult.error(
+                    output = "Delegation requires the originating tool request id.",
+                    errorType = "MISSING_TOOL_REQUEST_ID",
+                )
 
         logger.info {
             "[DelegationTool] Launching ${input.delegations.size} delegation(s) in parallel " +
@@ -183,7 +192,7 @@ class DelegationTool(
             coroutineScope {
                 input.delegations
                     .map { delegation ->
-                        async { runSingleDelegation(delegation, userId) }
+                        async { runSingleDelegation(delegation, userId, toolRequestId) }
                     }.awaitAll()
             }
 
@@ -211,121 +220,75 @@ class DelegationTool(
     private suspend fun runSingleDelegation(
         delegation: Delegation,
         userId: UUID,
+        toolRequestId: String,
     ): DelegationResult {
+        val delegationId = UUID.randomUUID()
         val agentName = delegation.agentName
-        val subRuntime =
-            runCatching {
-                when (val subCaseId = delegation.subCaseId) {
-                    null -> {
-                        logger.info { "[DelegationTool] Starting sub-case for '$agentName'" }
-                        subCaseManager.startSubCase(
-                            parentCaseId = parentCaseId,
-                            namespaceId = namespaceId,
-                            agentName = agentName,
-                            task = delegation.task,
-                            userId = userId,
-                        )
-                    }
-
-                    else -> {
-                        logger.info { "[DelegationTool] Resuming sub-case $subCaseId for '$agentName'" }
-                        subCaseManager.resumeSubCase(
-                            subCaseId = subCaseId,
-                            agentName = agentName,
-                            task = delegation.task,
-                            userId = userId,
-                            allowedAgents = allowedAgents,
-                        )
-                    }
-                }
-            }.getOrElse { e ->
-                logger.warn(e) { "[DelegationTool] Failed to start sub-case for '$agentName'" }
-                return DelegationResult(
-                    agentName = agentName,
-                    subCaseId = delegation.subCaseId,
-                    success = false,
-                    error = "Failed to start sub-case: ${e.message}",
-                )
-            }
-
-        val subCaseId = subRuntime.id
-
-        // Wait for the sub-case to reach IDLE or a terminal status, bounded by the
-        // per-delegation timeout. On timeout the sub-case is killed and a failure
-        // result is returned — sibling delegations running in parallel are unaffected.
-        val finalStatus =
-            try {
-                withTimeout(timeoutMs) {
-                    subRuntime.statusFlow
-                        .filter { it == CaseStatus.IDLE || it.isTerminal() }
-                        .first()
-                }
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                logger.warn { "[DelegationTool] Sub-case $subCaseId timed out after ${timeoutMs}ms, killing" }
-                runCatching { subCaseManager.killCase(subCaseId) }
-                    .onFailure { err -> logger.warn(err) { "[DelegationTool] Failed to kill sub-case $subCaseId after timeout" } }
-                return DelegationResult(
-                    agentName = agentName,
-                    subCaseId = subCaseId,
-                    success = false,
-                    error = "Sub-case timed out after ${timeoutMs / 1000}s.",
-                    errorType = "TIMEOUT",
-                )
-            }
-
-        if (finalStatus.isTerminal()) {
-            logger.warn { "[DelegationTool] Sub-case $subCaseId ended with terminal status $finalStatus" }
-            return DelegationResult(
-                agentName = agentName,
-                subCaseId = subCaseId,
-                success = false,
-                error = "Sub-case ended with status $finalStatus without producing a result.",
-                errorType = "TERMINAL_STATUS",
-            )
+        val resumed = delegation.subCaseId != null
+        val subRuntime = runCatching {
+            delegation.subCaseId?.let { subCaseId ->
+                subCaseManager.resumeSubCase(subCaseId, agentName, delegation.task, userId, allowedAgents)
+            } ?: subCaseManager.startSubCase(parentCaseId, namespaceId, agentName, delegation.task, userId)
+        }.getOrElse { error ->
+            logger.warn(error) { "[DelegationTool] Failed to start sub-case for '$agentName'" }
+            return DelegationResult(agentName, delegation.subCaseId, delegationId, toolRequestId, false,
+                error = "Failed to start sub-case: ${error.message}", errorType = "START_FAILED")
         }
+        val subCaseId = subRuntime.id
+        subCaseManager.emitParentEvent(
+            SubCaseStartedEvent(namespaceId = namespaceId, caseId = parentCaseId, delegationId = delegationId,
+                toolRequestId = toolRequestId, subCaseId = subCaseId, agentName = agentName, task = delegation.task, resumed = resumed),
+        )
 
-        // Load events with an isolated timeout so a slow store doesn't corrupt the batch timeout.
-        val events =
-            try {
-                withTimeout(eventLoadTimeoutMs) { loadCaseEvents(subCaseId) }
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                logger.warn { "[DelegationTool] Sub-case $subCaseId: event load timed out" }
-                return DelegationResult(
-                    agentName = agentName,
-                    subCaseId = subCaseId,
-                    success = false,
-                    error = "Sub-case completed but its event history could not be loaded in time.",
-                    errorType = "EVENT_LOAD_TIMEOUT",
-                )
+        var outcome = SubCaseOutcome.ERROR
+        var finishErrorType: String? = "DELEGATION_ERROR"
+        return try {
+            val finalStatus = try {
+                withTimeout(timeoutMs) { subRuntime.statusFlow.filter { it == CaseStatus.IDLE || it.isTerminal() }.first() }
+            } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+                runCatching { subCaseManager.killCase(subCaseId) }
+                outcome = SubCaseOutcome.TIMEOUT
+                finishErrorType = "TIMEOUT"
+                return DelegationResult(agentName, subCaseId, delegationId, toolRequestId, false,
+                    error = "Sub-case timed out after ${timeoutMs / 1000}s.", errorType = finishErrorType)
             }
-
-        // Detect a pending QuestionEvent (no agent message emitted after it).
-        val lastQuestion = events.filterIsInstance<QuestionEvent>().lastOrNull()
-        val lastAgentMessage =
-            events
-                .filterIsInstance<MessageEvent>()
-                .lastOrNull { it.actor.role == ActorRole.AGENT }
-        val lastQuestionIsPending =
-            lastQuestion != null &&
-                (lastAgentMessage == null || events.indexOf(lastQuestion) > events.indexOf(lastAgentMessage))
-
-        return if (lastQuestionIsPending) {
-            logger.info { "[DelegationTool] Sub-case $subCaseId reached IDLE with a pending question" }
-            DelegationResult(
-                agentName = agentName,
-                subCaseId = subCaseId,
-                success = true,
-                pendingQuestion = lastQuestion.question,
-                options = lastQuestion.options,
-            )
-        } else {
-            val result = extractLastAgentMessage(events)
-            logger.info { "[DelegationTool] Sub-case $subCaseId finished, result length=${result.length}" }
-            DelegationResult(
-                agentName = agentName,
-                subCaseId = subCaseId,
-                success = true,
-                result = result,
+            if (finalStatus.isTerminal()) {
+                outcome = if (finalStatus == CaseStatus.KILLED) SubCaseOutcome.KILLED else SubCaseOutcome.ERROR
+                finishErrorType = if (outcome == SubCaseOutcome.KILLED) null else "DELEGATION_ERROR"
+                return DelegationResult(agentName, subCaseId, delegationId, toolRequestId, false,
+                    error = "Sub-case ended with status $finalStatus without producing a result.", errorType = finishErrorType)
+            }
+            val events = try {
+                withTimeout(eventLoadTimeoutMs) { loadCaseEvents(subCaseId) }
+            } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+                outcome = SubCaseOutcome.ERROR
+                finishErrorType = "EVENT_LOAD_TIMEOUT"
+                return DelegationResult(agentName, subCaseId, delegationId, toolRequestId, false,
+                    error = "Sub-case completed but its event history could not be loaded in time.", errorType = finishErrorType)
+            }
+            val lastQuestion = events.filterIsInstance<QuestionEvent>().lastOrNull()
+            val lastAgentMessage = events.filterIsInstance<MessageEvent>().lastOrNull { it.actor.role == ActorRole.AGENT }
+            val waiting = lastQuestion != null && (lastAgentMessage == null || events.indexOf(lastQuestion) > events.indexOf(lastAgentMessage))
+            if (waiting) {
+                outcome = SubCaseOutcome.WAITING_USER
+                finishErrorType = null
+                DelegationResult(agentName, subCaseId, delegationId, toolRequestId, true,
+                    pendingQuestion = lastQuestion.question, options = lastQuestion.options)
+            } else {
+                outcome = SubCaseOutcome.SUCCESS
+                finishErrorType = null
+                DelegationResult(agentName, subCaseId, delegationId, toolRequestId, true, result = extractLastAgentMessage(events))
+            }
+        } catch (error: Exception) {
+            outcome = SubCaseOutcome.ERROR
+            finishErrorType = "DELEGATION_ERROR"
+            DelegationResult(agentName, subCaseId, delegationId, toolRequestId, false,
+                error = "Delegation failed: ${error.message}", errorType = finishErrorType)
+        } finally {
+            subCaseManager.emitParentEvent(
+                SubCaseFinishedEvent(namespaceId = namespaceId, caseId = parentCaseId, delegationId = delegationId,
+                    toolRequestId = toolRequestId, subCaseId = subCaseId, agentName = agentName,
+                    outcome = outcome, errorType = finishErrorType),
             )
         }
     }
@@ -347,6 +310,8 @@ class DelegationTool(
     private data class DelegationResult(
         val agentName: String,
         val subCaseId: UUID?,
+        val delegationId: UUID,
+        val toolRequestId: String,
         val success: Boolean,
         val result: String? = null,
         val pendingQuestion: String? = null,
@@ -358,6 +323,8 @@ class DelegationTool(
             buildMap {
                 put("agentName", agentName)
                 put("subCaseId", subCaseId?.toString())
+                put("delegationId", delegationId.toString())
+                put("toolRequestId", toolRequestId)
                 put("success", success)
                 result?.let { put("result", it) }
                 pendingQuestion?.let { put("pendingQuestion", it) }

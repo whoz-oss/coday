@@ -526,6 +526,7 @@ class AgentSimple(
                         userId = userId,
                         userExternalId = userExternalId,
                         caseEvents = filteredEvents,
+                        toolRequestId = toolRequestId,
                     )
 
                 val executionResult: ToolExecutionResult
