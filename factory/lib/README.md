@@ -30,6 +30,7 @@ run.mjs (point d'entrée, hors lib/)
         └── (boucle de revue)
               ├── review.mjs              ← parseReviewResult / aggregateReviews / toReviewFacts
               ├── review-engine.mjs       ← runReview (parallèle, préflight, agrégation)
+              ├── diagnostic-synthesis.mjs ← paquet borné + interprétation read-only des échecs oracle
               └── review-agentos-adapter.mjs ← makeReviewAgentOps (câblage AgentOS réel)
 ```
 
@@ -333,6 +334,56 @@ Moteur d'exécution de la boucle de revue. Lance les reviewers en parallèle via
 - `ReviewExecutionResult.rawOutputs` contient la prose brute des reviewers pour affichage humain uniquement — jamais dans les faits.
 
 ---
+
+### diagnostic-synthesis.mjs
+
+Couche d'interprétation **read-only** déclenchée sélectivement après un oracle
+échoué dont les diagnostics déterministes ne suffisent pas à construire un
+brief éditeur. Elle reçoit un paquet borné (commande, cwd, verdict, durées,
+tâches, baseline/post-edit, diagnostics et fichiers), jamais stdout/stderr
+complets. Son agent passe le même préflight strict que les reviewers via une
+**allow-list stricte** : seuls les types d'intégration connus comme read-only
+sont acceptés ; les types inconnus sont refusés (fail-closed). `FILE_ACCESS`
+doit avoir `readOnly: true`. `CASE_FILE_EXCHANGE` et `NAMESPACE_FILE_EXCHANGE`
+ne sont pas dans l'allow-list.
+
+Sa réponse JSON est validée et bornée : `actionable`, `ambiguous` ou
+`insufficient-evidence`. `actionable` requiert un résumé non vide et au moins
+un diagnostic ou un fichier candidat. Elle ne lance pas d'oracle, ne modifie
+aucun verdict et ne transforme jamais un FAIL en PASS. La prose retournée par
+le modèle est stockée dans un artefact JSON structuré (enveloppe avec
+`schemaVersion`, `rawOutput`, `sha256`) à l'aide d'une création exclusive
+(pas d'écrasement de preuve existante) ; les faits JSONL ne conservent que
+statut, compteurs, caseId, identité de l'agent, turnStatus et référence
+d'artefact. `actionable` enrichit un retry éditeur ; les deux autres statuts
+enrichissent la gate humaine/quarantaine existante.
+
+### review-gate.mjs (protocole de gate)
+
+Gate de revue humaine run-scoped avec identité d'instance et sémantique
+single-use.
+
+**Gate instance ID** : chaque ouverture de gate génère un `gateInstanceId`
+cryptographiquement aléatoire. Les réponses doivent porter l'ID exact de la
+gate courante. Une réponse pour une gate précédente (stale), une réponse
+dupliquée, ou une gate inconnue sont toutes refusées.
+
+**Authentification IPC** : le signal stdout `{"__factory_gate":"open",...}` doit
+contenir un secret par processus-enfant (`FACTORY_GATE_IPC_SECRET`) passé par
+le serveur dans l'environnement du processus. Le serveur valide :
+- le secret correspond au processus-enfant connu ;
+- `runId` correspond au run suivi pour ce processus ;
+- le type de gate est connu (`adversarial-review` ou `oracle`) ;
+- le `gateInstanceId` est un token sûr.
+Un signal forgé sans le bon secret ne peut pas enregistrer une gate.
+
+**Pas de prose LLM dans IPC** : les signaux ne transportent que des faits
+déterministes et une référence d'artefact. La prose de synthèse est récupérée
+côté serveur depuis l'artefact.
+
+**Fichiers de réponse par instance** : `<runId>.<gateInstanceId>.gate-reply`.
+Une réponse stale pour une gate précédente ne peut pas être consommée par
+une gate suivante.
 
 ### review-agentos-adapter.mjs
 

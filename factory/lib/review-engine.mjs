@@ -41,14 +41,16 @@
  * Un écart est une faute de sécurité (le reviewer a travaillé sur un
  * artefact différent) et produit un échec immédiat.
  *
- * ## Capacités admises pour les reviewers
+ * ## Capacités admises pour les agents read-only
  *
- * Un reviewer est en lecture seule par contrat. Le préflight vérifie :
+ * Un reviewer ou synthétiseur est en lecture seule par contrat.
+ * Le préflight utilise une ALLOW-LIST stricte :
  * - L'agent existe et est activé.
  * - `subAgents` est vide (pas de délégation parallèle).
- * - Toutes les intégrations `FILE_ACCESS` sont `readOnly: true`.
- * - Aucune intégration mutante (BASH, MCP_STDIO, WEBHOOK, FILE_WRITE)
- *   n'est présente.
+ * - Seuls les types d'intégration connus comme read-only sont acceptés.
+ * - Les types inconnus sont refusés (fail-closed).
+ * - FILE_ACCESS doit avoir readOnly: true.
+ * - CASE_FILE_EXCHANGE et NAMESPACE_FILE_EXCHANGE ne sont PAS dans l'allow-list.
  *
  * ## Lifecycle des cases reviewers
  *
@@ -95,16 +97,63 @@ const DEFAULT_REVIEWER_TIMEOUT_MS = 15 * 60 * 1000
 const DEFAULT_START_TIMEOUT_MS = 30_000
 
 /**
- * Intégrations considérées comme mutantes.
- * Un reviewer ne doit pas avoir ces types d'intégration.
+ * Allow-list stricte des types d'intégration acceptés pour un agent read-only.
+ * Tout type inconnu est refusé (fail-closed).
+ * Chaque entrée est une fonction de validation de la config spécifique.
  */
-const MUTATING_INTEGRATION_TYPES = new Set([
-  'BASH',
-  'MCP_STDIO',
-  'WEBHOOK',
-  'FILE_WRITE',
-  'GIT',
-])
+const READ_ONLY_INTEGRATION_VALIDATORS = {
+  /**
+   * FILE_ACCESS est read-only uniquement quand readOnly: true est explicitement défini.
+   */
+  FILE_ACCESS: (cfg) => cfg.parameters?.readOnly === true,
+
+  /**
+   * AI: fournisseur de modèle. Pas d'accès filesystem ni shell.
+   */
+  AI: (_cfg) => true,
+
+  /**
+   * MEMORY: accepté uniquement si la configuration explicite un mode read-only.
+   * L'intégration MEMORY expose des outils mutants (curate, edit, delete) par
+   * défaut. Seul un paramètre readOnly: true explicite établit la lecture seule.
+   */
+  MEMORY: (cfg) => cfg.parameters?.readOnly === true,
+
+  /**
+   * QUERY_USER: permet à l'agent de poser des questions. Lecture seule.
+   */
+  QUERY_USER: (_cfg) => true,
+
+  /**
+   * ATLASSIAN: accepté uniquement si la liste de tools est explicitement fournie
+   * et ne contient aucun tool mutant. Une liste absente ou vide est refusée car
+   * l'intégration peut accorder des outils mutants par défaut.
+   */
+  ATLASSIAN: (cfg) => {
+    const tools = cfg.parameters?.tools ?? cfg.tools ?? []
+    if (!Array.isArray(tools) || tools.length === 0) return false // fail-closed si pas de liste explicite
+    const mutating = ['create', 'update', 'delete', 'transition', 'assign', 'comment', 'attach']
+    const lower = tools.map((t) => String(t).toLowerCase())
+    return !mutating.some((m) => lower.some((t) => t.includes(m)))
+  },
+
+  /**
+   * GITHUB: accepté uniquement si la liste de tools est explicitement fournie
+   * et ne contient aucun tool mutant. Une liste absente ou vide est refusée.
+   */
+  GITHUB: (cfg) => {
+    const tools = cfg.parameters?.tools ?? cfg.tools ?? []
+    if (!Array.isArray(tools) || tools.length === 0) return false // fail-closed si pas de liste explicite
+    const mutating = ['create', 'update', 'delete', 'merge', 'push', 'comment', 'approve', 'request']
+    const lower = tools.map((t) => String(t).toLowerCase())
+    return !mutating.some((m) => lower.some((t) => t.includes(m)))
+  },
+
+  // Exclus intentionnellement de l'allow-list :
+  // - BASH, GIT, MCP_STDIO, WEBHOOK, FILE_WRITE : mutants
+  // - FETCH : requêtes HTTP arbitraires
+  // - CASE_FILE_EXCHANGE, NAMESPACE_FILE_EXCHANGE : peuvent exposer des écritures
+}
 
 /**
  * Codes d'échec machine-readable pour ReviewExecutionResult.
@@ -513,15 +562,17 @@ async function runOneReviewer(params) {
 // ---------------------------------------------------------------------------
 
 /**
- * Préflight d'un reviewer : agent valide + intégrations en lecture seule.
+ * Préflight d'un agent read-only : agent valide + intégrations en lecture seule.
+ * Utilise une allow-list stricte : tout type d'intégration inconnu est refusé.
  *
  * @param {string} namespaceId
- * @param {ReviewerDef} reviewerDef
+ * @param {string} agentName
  * @param {AgentOps} agentOps
+ * @param {string} [label]  Identifiant pour les messages d'erreur
  * @returns {Promise<{ ok: boolean, reason: string|null }>}
  */
-async function preflightReviewer(namespaceId, reviewerDef, agentOps) {
-  const { reviewerId, agentName } = reviewerDef
+export async function preflightReadOnlyAgent(namespaceId, agentName, agentOps, label = agentName) {
+  const agentLabel = label
 
   // Contrôle 1-3 : agent existe, activé, subAgents vide
   const agentCheck = await agentOps.preflightAgent(namespaceId, agentName)
@@ -539,36 +590,42 @@ async function preflightReviewer(namespaceId, reviewerDef, agentOps) {
 
   const agent = agentCheck.agent
   const declaredKeys = Object.keys(agent?.integrations ?? {})
-  const RESERVED = new Set(['QUERY_USER', 'CASE_FILE_EXCHANGE', 'NAMESPACE_FILE_EXCHANGE'])
   const byName = new Map((integrations ?? []).map((c) => [c.name, c]))
 
   for (const key of declaredKeys) {
-    if (RESERVED.has(key)) continue
     const cfg = byName.get(key)
     if (!cfg) {
       // Intégration non trouvée via REST — fail-closed
       return {
         ok: false,
-        reason: `Reviewer ${reviewerId}: intégration "${key}" introuvable via REST (fail-closed)`,
+        reason: `Agent ${agentLabel}: intégration "${key}" introuvable via REST (fail-closed)`,
       }
     }
-    // Refus des intégrations mutantes
-    if (MUTATING_INTEGRATION_TYPES.has(cfg.integrationType)) {
+    const integrationType = cfg.integrationType
+    const validator = READ_ONLY_INTEGRATION_VALIDATORS[integrationType]
+    if (!validator) {
+      // Type inconnu — refusé (allow-list stricte)
       return {
         ok: false,
-        reason: `Reviewer ${reviewerId}: intégration mutante "${key}" (${cfg.integrationType}) non admise`,
+        reason: `Agent ${agentLabel}: intégration "${key}" de type inconnu "${integrationType}" — non dans l'allow-list read-only (fail-closed)`,
       }
     }
-    // FILE_ACCESS doit être readOnly
-    if (cfg.integrationType === 'FILE_ACCESS' && cfg.parameters?.readOnly !== true) {
+    if (!validator(cfg)) {
       return {
         ok: false,
-        reason: `Reviewer ${reviewerId}: intégration FILE_ACCESS "${key}" n'est pas readOnly`,
+        reason: `Agent ${agentLabel}: intégration "${key}" (${integrationType}) échoue à la validation read-only`,
       }
     }
   }
 
   return { ok: true, reason: null }
+}
+
+/**
+ * Alias interne pour le moteur de revue.
+ */
+async function preflightReviewer(namespaceId, reviewerDef, agentOps) {
+  return preflightReadOnlyAgent(namespaceId, reviewerDef.agentName, agentOps, reviewerDef.reviewerId)
 }
 
 /**

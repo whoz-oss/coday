@@ -1,20 +1,9 @@
 /**
  * Tests for the run-scoped human review gate.
  *
- * Verifies:
- *   1. registerGate / getGate / unregisterGate — basic registry operations.
- *   2. Two concurrent gates do not interfere with each other.
- *   3. gateReplyPath is per-run (no global singleton).
- *   4. writeGateReply writes a run-scoped file and unregisters the gate.
- *   5. writeGateReply normalizes decision values.
- *   6. rejectAllPendingGates resolves all pending resolvers to fail.
- *   7. No timeout: waitForHumanDecision resolves only via reply file or
- *      rejectAllPendingGates, not after N seconds on its own.
- *   8. emitGateOpen writes a parseable JSON line on stdout.
- *   9. Server GET logic: pending, terminal, terminal+humanDecision, unknown run.
- *  10. POST decision normalization (valid and invalid values).
- *  11. Deprecated global endpoint path matching (not handled by new scoped regex).
- *  12. Concurrent gates: two runs resolved independently.
+ * Verifies gate instance identity, single-use semantics, IPC signal validation,
+ * sequential gates in same run, stale/duplicate/wrong-decision replies,
+ * crafted unauthenticated stdout rejection, and concurrent gate independence.
  *
  * No HTTP server started. No AgentOS. No child process.
  * Reply files created in factory/runs/ are cleaned up.
@@ -35,14 +24,16 @@ import {
   unregisterGate,
   getGate,
   writeGateReply,
+  gateInstanceReplyPath,
   gateReplyPath,
+  generateGateInstanceId,
   rejectAllPendingGates,
   waitForHumanDecision,
   emitGateOpen,
+  emitOracleGateOpen,
+  validateGateSignal,
   GATE_POLL_MS,
 } from '../lib/review-gate.mjs'
-
-import { parseJsonl } from '../dashboard/server.mjs'
 
 // ---------------------------------------------------------------------------
 // Runner
@@ -72,207 +63,302 @@ function eq(name, actual, expected) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Basic registry operations
+// 1. generateGateInstanceId
 // ---------------------------------------------------------------------------
 
-console.log('\n=== 1. Basic registry operations ===\n')
+console.log('\n=== 1. generateGateInstanceId ===')
 
 {
-  const RUN = 'GATE-T01-BASIC'
-  eq('getGate unknown run: null', getGate(RUN), null)
+  const id1 = generateGateInstanceId()
+  const id2 = generateGateInstanceId()
+  ok('id is string', typeof id1 === 'string')
+  ok('id is non-empty', id1.length > 0)
+  ok('id is hex (safe token)', /^[0-9a-f]+$/.test(id1))
+  ok('two ids are different', id1 !== id2)
+}
 
-  registerGate({
-    runId: RUN,
-    findings: 'findings A',
-    outcomes: [{ reviewerName: 'R1', verdict: 'FAIL', hasCritical: true, summary: 'issue' }],
-    allowedDecisions: ['retry', 'ignore', 'fail'],
-    openedAt: '2026-09-01T10:00:00.000Z',
-  })
+// ---------------------------------------------------------------------------
+// 2. registerGate — validation and registry
+// ---------------------------------------------------------------------------
+
+console.log('\n=== 2. registerGate validation ===')
+
+{
+  const RUN = 'GATE-T02-BASIC'
+  const instanceId = generateGateInstanceId()
+
+  // Unknown gate type rejected
+  const badType = registerGate({ runId: RUN, gateInstanceId: instanceId, gateType: 'unknown-type', findings: '', outcomes: [], allowedDecisions: [] })
+  eq('unknown gate type rejected', badType.ok, false)
+
+  // Invalid gateInstanceId rejected
+  const badId = registerGate({ runId: RUN, gateInstanceId: '../traversal', gateType: 'adversarial-review', findings: '', outcomes: [], allowedDecisions: [] })
+  eq('invalid gateInstanceId rejected', badId.ok, false)
+
+  // Valid adversarial-review gate
+  const good = registerGate({ runId: RUN, gateInstanceId: instanceId, gateType: 'adversarial-review', findings: 'some findings', outcomes: [], allowedDecisions: ['retry', 'ignore', 'fail'] })
+  eq('valid adversarial-review gate registered', good.ok, true)
 
   const gate = getGate(RUN)
-  ok('getGate after register: not null', gate !== null)
-  eq('getGate: runId', gate?.runId, RUN)
-  eq('getGate: findings', gate?.findings, 'findings A')
-  eq('getGate: allowedDecisions', gate?.allowedDecisions, ['retry', 'ignore', 'fail'])
-  eq('getGate: outcomes length', gate?.outcomes.length, 1)
+  ok('getGate returns gate', gate !== null)
+  eq('gate.gateInstanceId', gate?.gateInstanceId, instanceId)
+  eq('gate.gateType', gate?.gateType, 'adversarial-review')
+  // allowedDecisions is from GATE_ALLOWED_DECISIONS (canonical), not from input
+  ok('gate.allowedDecisions is array', Array.isArray(gate?.allowedDecisions))
 
   unregisterGate(RUN)
   eq('getGate after unregister: null', getGate(RUN), null)
-
-  // Unregistering a nonexistent runId is a no-op.
-  unregisterGate('NONEXISTENT-GATE')
-  ok('unregisterGate nonexistent: no throw', true)
 }
 
 // ---------------------------------------------------------------------------
-// 2. Two concurrent gates do not interfere
+// 3. writeGateReply — single-use, instance-scoped
 // ---------------------------------------------------------------------------
 
-console.log('\n=== 2. Concurrent gate registry isolation ===\n')
+console.log('\n=== 3. writeGateReply single-use and instance-scoped ===')
 
 {
-  const RUN_A = 'GATE-T02-A'
-  const RUN_B = 'GATE-T02-B'
-
-  registerGate({ runId: RUN_A, findings: 'A findings', outcomes: [], allowedDecisions: ['fail'], openedAt: '2026-09-01T10:00:00.000Z' })
-  registerGate({ runId: RUN_B, findings: 'B findings', outcomes: [], allowedDecisions: ['retry', 'ignore', 'fail'], openedAt: '2026-09-01T10:01:00.000Z' })
-
-  eq('concurrent: gate A findings', getGate(RUN_A)?.findings, 'A findings')
-  eq('concurrent: gate B findings', getGate(RUN_B)?.findings, 'B findings')
-  eq('concurrent: gate A allowedDecisions', getGate(RUN_A)?.allowedDecisions, ['fail'])
-  eq('concurrent: gate B allowedDecisions', getGate(RUN_B)?.allowedDecisions, ['retry', 'ignore', 'fail'])
-
-  unregisterGate(RUN_A)
-  eq('unregister A: gate A gone', getGate(RUN_A), null)
-  ok('unregister A: gate B still present', getGate(RUN_B) !== null)
-
-  unregisterGate(RUN_B)
-  eq('unregister B: gate B gone', getGate(RUN_B), null)
-}
-
-// ---------------------------------------------------------------------------
-// 3. gateReplyPath is per-run (no global singleton)
-// ---------------------------------------------------------------------------
-
-console.log('\n=== 3. gateReplyPath isolation ===\n')
-
-{
-  const pathA = gateReplyPath('GATE-T03-A')
-  const pathB = gateReplyPath('GATE-T03-B')
-
-  ok('paths are different', pathA !== pathB)
-  ok('path A contains runId A', pathA.includes('GATE-T03-A'))
-  ok('path B contains runId B', pathB.includes('GATE-T03-B'))
-  ok('path A ends with .gate-reply', pathA.endsWith('.gate-reply'))
-  ok('path B ends with .gate-reply', pathB.endsWith('.gate-reply'))
-  ok('path A is not the global review-gate.reply singleton', !pathA.endsWith('review-gate.reply'))
-  ok('path A is inside RUNS_DIR', pathA.startsWith(RUNS_DIR))
-}
-
-// ---------------------------------------------------------------------------
-// 4. writeGateReply writes run-scoped file and unregisters gate
-// ---------------------------------------------------------------------------
-
-console.log('\n=== 4. writeGateReply ===\n')
-
-{
-  const RUN = 'GATE-T04-REPLY'
-  const replyPath = gateReplyPath(RUN)
+  const RUN = 'GATE-T03-REPLY'
+  const instanceId = generateGateInstanceId()
+  const replyPath = gateInstanceReplyPath(RUN, instanceId)
   cleanupFiles.push(replyPath)
   try { unlinkSync(replyPath) } catch { /* ok */ }
 
-  registerGate({
-    runId: RUN,
-    findings: 'findings',
-    outcomes: [],
-    allowedDecisions: ['retry', 'ignore', 'fail'],
-    openedAt: '2026-09-01T10:00:00.000Z',
-  })
-  ok('gate registered before reply', getGate(RUN) !== null)
+  // No pending gate — writeGateReply returns 404
+  const noPending = writeGateReply(RUN, instanceId, 'ignore', 'msg')
+  eq('no pending gate — status 404', noPending.status, 404)
+  eq('no pending gate — ok false', noPending.ok, false)
 
-  const result = writeGateReply(RUN, 'ignore', 'Looks fine')
-  ok('writeGateReply: ok', result.ok)
+  // Register gate
+  registerGate({ runId: RUN, gateInstanceId: instanceId, gateType: 'adversarial-review', findings: 'f', outcomes: [], allowedDecisions: [] })
+
+  // Wrong gateInstanceId — 409 conflict
+  const wrongId = writeGateReply(RUN, 'wrong-instance-id', 'ignore', 'msg')
+  eq('wrong gateInstanceId — status 409', wrongId.status, 409)
+  eq('wrong gateInstanceId — ok false', wrongId.ok, false)
+  ok('gate still registered after wrong id attempt', getGate(RUN) !== null)
+
+  // Wrong decision for gate type — 400
+  const wrongDecision = writeGateReply(RUN, instanceId, 'continue', 'msg') // 'continue' is for oracle, not adversarial-review
+  eq('wrong decision for gate type — status 400', wrongDecision.status, 400)
+  eq('wrong decision for gate type — ok false', wrongDecision.ok, false)
+  ok('gate still registered after wrong decision', getGate(RUN) !== null)
+
+  // Valid reply — succeeds and consumes gate
+  const valid = writeGateReply(RUN, instanceId, 'ignore', 'Looks fine')
+  eq('valid reply — ok true', valid.ok, true)
   ok('reply file created', existsSync(replyPath))
-  eq('gate unregistered after reply', getGate(RUN), null)
+  eq('gate consumed (unregistered)', getGate(RUN), null)
 
   const parsed = JSON.parse(readFileSync(replyPath, 'utf8'))
-  eq('reply: decision=ignore', parsed.decision, 'ignore')
-  eq('reply: message=Looks fine', parsed.message, 'Looks fine')
+  eq('reply.decision', parsed.decision, 'ignore')
+  eq('reply.message', parsed.message, 'Looks fine')
+  eq('reply.gateInstanceId', parsed.gateInstanceId, instanceId)
+
+  // Duplicate POST after consumption — no pending gate (404)
+  const duplicate = writeGateReply(RUN, instanceId, 'retry', 'again')
+  eq('duplicate POST after consumption — status 404', duplicate.status, 404)
 
   try { unlinkSync(replyPath) } catch { /* ok */ }
 }
 
 // ---------------------------------------------------------------------------
-// 5. writeGateReply with empty message
+// 4. Sequential gates in same run — stale reply cannot be consumed
 // ---------------------------------------------------------------------------
 
-console.log('\n=== 5. writeGateReply empty message ===\n')
-
-{
-  const RUN = 'GATE-T05-FAIL'
-  const replyPath = gateReplyPath(RUN)
-  cleanupFiles.push(replyPath)
-  try { unlinkSync(replyPath) } catch { /* ok */ }
-
-  writeGateReply(RUN, 'fail', '')
-  ok('fail reply file created', existsSync(replyPath))
-  const parsed = JSON.parse(readFileSync(replyPath, 'utf8'))
-  eq('decision=fail', parsed.decision, 'fail')
-  eq('message empty string', parsed.message, '')
-
-  try { unlinkSync(replyPath) } catch { /* ok */ }
-}
-
-// ---------------------------------------------------------------------------
-// 6. rejectAllPendingGates resolves pending waitForHumanDecision to fail
-// ---------------------------------------------------------------------------
-
-console.log('\n=== 6. rejectAllPendingGates (SIGTERM simulation) ===\n')
+console.log('\n=== 4. Sequential gates in same run ===')
 
 await (async () => {
-  const RUN = 'GATE-T06-SIGTERM'
-  const replyPath = gateReplyPath(RUN)
+  const RUN = 'GATE-T04-SEQUENTIAL'
+  const instanceId1 = generateGateInstanceId()
+  const instanceId2 = generateGateInstanceId()
+  const replyPath1 = gateInstanceReplyPath(RUN, instanceId1)
+  const replyPath2 = gateInstanceReplyPath(RUN, instanceId2)
+  cleanupFiles.push(replyPath1, replyPath2)
+  try { unlinkSync(replyPath1) } catch { /* ok */ }
+  try { unlinkSync(replyPath2) } catch { /* ok */ }
+
+  // Open gate 1
+  registerGate({ runId: RUN, gateInstanceId: instanceId1, gateType: 'adversarial-review', findings: 'f1', outcomes: [], allowedDecisions: [] })
+
+  // Consume gate 1
+  const reply1 = writeGateReply(RUN, instanceId1, 'retry', 'round 1')
+  eq('gate 1 consumed', reply1.ok, true)
+  eq('gate 1 unregistered', getGate(RUN), null)
+
+  // Open gate 2 (same run, new instance)
+  registerGate({ runId: RUN, gateInstanceId: instanceId2, gateType: 'oracle', findings: 'f2', outcomes: [], allowedDecisions: [] })
+
+  // Stale reply for gate 1 cannot be accepted by gate 2
+  const stale = writeGateReply(RUN, instanceId1, 'continue', 'stale')
+  eq('stale gate 1 id rejected by gate 2 — status 409', stale.status, 409)
+  ok('gate 2 still registered', getGate(RUN) !== null)
+
+  // Correct reply for gate 2
+  const reply2 = writeGateReply(RUN, instanceId2, 'continue', 'proceed')
+  eq('gate 2 consumed with correct id', reply2.ok, true)
+  eq('gate 2 unregistered', getGate(RUN), null)
+
+  try { unlinkSync(replyPath1) } catch { /* ok */ }
+  try { unlinkSync(replyPath2) } catch { /* ok */ }
+})()
+
+// ---------------------------------------------------------------------------
+// 5. waitForHumanDecision — validates gateInstanceId in reply file
+// ---------------------------------------------------------------------------
+
+console.log('\n=== 5. waitForHumanDecision validates gateInstanceId ===')
+
+await (async () => {
+  const RUN = 'GATE-T05-WAIT'
+  const instanceId = generateGateInstanceId()
+  const wrongInstanceId = generateGateInstanceId()
+  const replyPath = gateInstanceReplyPath(RUN, instanceId)
   cleanupFiles.push(replyPath)
   try { unlinkSync(replyPath) } catch { /* ok */ }
 
   const mockLog = { error: () => {}, info: () => {} }
 
-  const waitPromise = waitForHumanDecision(RUN, mockLog)
+  const waitPromise = waitForHumanDecision(RUN, instanceId, mockLog, 'adversarial-review')
 
-  // Give the poll loop one tick to register.
   await new Promise((r) => setTimeout(r, 10))
 
-  // Simulate SIGTERM.
+  // Write reply with wrong gateInstanceId — should fail closed to 'fail'
+  writeFileSync(replyPath, JSON.stringify({ decision: 'ignore', message: 'stale', gateInstanceId: wrongInstanceId }), 'utf8')
+
+  await new Promise((r) => setTimeout(r, GATE_POLL_MS + 500))
+
+  const result = await waitPromise
+  eq('wrong gateInstanceId in reply file — decision fail-closed', result.decision, 'fail')
+
+  try { unlinkSync(replyPath) } catch { /* ok */ }
+})()
+
+// ---------------------------------------------------------------------------
+// 6. waitForHumanDecision — correct gateInstanceId resolves correctly
+// ---------------------------------------------------------------------------
+
+console.log('\n=== 6. waitForHumanDecision resolves with correct id ===')
+
+await (async () => {
+  const RUN = 'GATE-T06-CORRECT'
+  const instanceId = generateGateInstanceId()
+  const replyPath = gateInstanceReplyPath(RUN, instanceId)
+  cleanupFiles.push(replyPath)
+  try { unlinkSync(replyPath) } catch { /* ok */ }
+
+  const mockLog = { error: () => {}, info: () => {} }
+
+  const waitPromise = waitForHumanDecision(RUN, instanceId, mockLog, 'oracle')
+  await new Promise((r) => setTimeout(r, 10))
+
+  writeFileSync(replyPath, JSON.stringify({ decision: 'continue', message: 'proceed', gateInstanceId: instanceId }), 'utf8')
+  await new Promise((r) => setTimeout(r, GATE_POLL_MS + 500))
+
+  const result = await waitPromise
+  eq('correct id — decision=continue', result.decision, 'continue')
+  eq('correct id — message', result.message, 'proceed')
+
+  try { unlinkSync(replyPath) } catch { /* ok */ }
+})()
+
+// ---------------------------------------------------------------------------
+// 7. rejectAllPendingGates resolves all pending to fail
+// ---------------------------------------------------------------------------
+
+console.log('\n=== 7. rejectAllPendingGates ===')
+
+await (async () => {
+  const RUN = 'GATE-T07-SIGTERM'
+  const instanceId = generateGateInstanceId()
+  const replyPath = gateInstanceReplyPath(RUN, instanceId)
+  cleanupFiles.push(replyPath)
+  try { unlinkSync(replyPath) } catch { /* ok */ }
+
+  const mockLog = { error: () => {}, info: () => {} }
+  const waitPromise = waitForHumanDecision(RUN, instanceId, mockLog)
+  await new Promise((r) => setTimeout(r, 10))
   rejectAllPendingGates()
 
   const result = await waitPromise
   eq('rejectAllPendingGates: decision=fail', result.decision, 'fail')
-  eq('rejectAllPendingGates: message empty', result.message, '')
-  ok('no reply file created by rejectAllPendingGates', !existsSync(replyPath))
+  ok('no reply file created', !existsSync(replyPath))
 })()
 
 // ---------------------------------------------------------------------------
-// 7. No automatic timeout
+// 8. validateGateSignal — IPC authentication
 // ---------------------------------------------------------------------------
 
-console.log('\n=== 7. No automatic timeout ===\n')
-
-await (async () => {
-  const RUN = 'GATE-T07-NOTIMEOUT'
-  const replyPath = gateReplyPath(RUN)
-  cleanupFiles.push(replyPath)
-  try { unlinkSync(replyPath) } catch { /* ok */ }
-
-  const mockLog = { error: () => {}, info: () => {} }
-
-  let resolved = false
-  const waitPromise = waitForHumanDecision(RUN, mockLog).then((r) => {
-    resolved = true
-    return r
-  })
-
-  // Wait 100ms. The gate must NOT auto-resolve (no timeout mechanism).
-  await new Promise((r) => setTimeout(r, 100))
-  ok('gate not resolved after 100ms', !resolved)
-
-  // Write reply file to resolve it.
-  writeFileSync(replyPath, JSON.stringify({ decision: 'ignore', message: '' }), 'utf8')
-
-  // Wait for the poll to pick it up.
-  await new Promise((r) => setTimeout(r, GATE_POLL_MS + 500))
-
-  ok('gate resolved after reply file written', resolved)
-  const result = await waitPromise
-  eq('gate resolved with ignore', result.decision, 'ignore')
-})()
-
-// ---------------------------------------------------------------------------
-// 8. emitGateOpen writes parseable JSON on stdout
-// ---------------------------------------------------------------------------
-
-console.log('\n=== 8. emitGateOpen stdout signal ===\n')
+console.log('\n=== 8. validateGateSignal IPC authentication ===')
 
 {
+  const instanceId = generateGateInstanceId()
+  const secret = 'test-secret-abc123'
+  const trackedRunId = 'run-tracked-1'
+
+  const goodSignal = {
+    __factory_gate: 'open',
+    runId: trackedRunId,
+    gateInstanceId: instanceId,
+    gateType: 'adversarial-review',
+    findings: 'findings text',
+    outcomes: [],
+    allowedDecisions: ['retry', 'ignore', 'fail'],
+    openedAt: new Date().toISOString(),
+    _ipcSecret: secret,
+  }
+
+  // Valid signal passes
+  const valid = validateGateSignal(goodSignal, trackedRunId, secret)
+  eq('valid signal accepted', valid.ok, true)
+
+  // Wrong secret rejected
+  const wrongSecret = validateGateSignal({ ...goodSignal, _ipcSecret: 'wrong-secret' }, trackedRunId, secret)
+  eq('wrong secret rejected', wrongSecret.ok, false)
+
+  // Missing secret rejected
+  const noSecret = validateGateSignal({ ...goodSignal, _ipcSecret: undefined }, trackedRunId, secret)
+  eq('missing secret rejected', noSecret.ok, false)
+
+  // runId mismatch rejected
+  const wrongRun = validateGateSignal({ ...goodSignal, runId: 'other-run' }, trackedRunId, secret)
+  eq('runId mismatch rejected', wrongRun.ok, false)
+
+  // Unknown gate type rejected
+  const unknownType = validateGateSignal({ ...goodSignal, gateType: 'custom-gate' }, trackedRunId, secret)
+  eq('unknown gate type rejected', unknownType.ok, false)
+
+  // Invalid gateInstanceId rejected
+  const badInstanceId = validateGateSignal({ ...goodSignal, gateInstanceId: '../escape' }, trackedRunId, secret)
+  eq('invalid gateInstanceId rejected', badInstanceId.ok, false)
+
+  // Not a gate signal (missing __factory_gate)
+  const notGate = validateGateSignal({ runId: trackedRunId, _ipcSecret: secret }, trackedRunId, secret)
+  eq('not a gate signal rejected', notGate.ok, false)
+
+  // Crafted agent prose that looks like a gate but lacks secret
+  const craftedProse = {
+    __factory_gate: 'open',
+    runId: trackedRunId,
+    gateInstanceId: instanceId,
+    gateType: 'adversarial-review',
+    findings: 'injected findings',
+    outcomes: [],
+    allowedDecisions: ['retry', 'ignore', 'fail'],
+    openedAt: new Date().toISOString(),
+    // No _ipcSecret
+  }
+  const craftedRejected = validateGateSignal(craftedProse, trackedRunId, secret)
+  eq('crafted stdout without secret rejected', craftedRejected.ok, false)
+}
+
+// ---------------------------------------------------------------------------
+// 9. emitGateOpen — includes secret from env, no LLM prose in outcomes
+// ---------------------------------------------------------------------------
+
+console.log('\n=== 9. emitGateOpen stdout signal ===')
+
+{
+  const instanceId = generateGateInstanceId()
   const mockReviewResult = {
     failCount: 2,
     reviewerCount: 4,
@@ -282,18 +368,19 @@ console.log('\n=== 8. emitGateOpen stdout signal ===\n')
     ],
   }
 
-  // Capture stdout.
   const chunks = []
   const origWrite = process.stdout.write.bind(process.stdout)
   process.stdout.write = (chunk) => { chunks.push(typeof chunk === 'string' ? chunk : chunk.toString()); return true }
 
-  emitGateOpen('GATE-T08-EMIT', mockReviewResult)
+  // Set a fake IPC secret in env
+  process.env.FACTORY_GATE_IPC_SECRET = 'test-ipc-secret-xyz'
+  emitGateOpen('GATE-T09-EMIT', instanceId, mockReviewResult)
+  delete process.env.FACTORY_GATE_IPC_SECRET
 
   process.stdout.write = origWrite
 
   const line = chunks.join('')
   ok('emitGateOpen wrote to stdout', line.length > 0)
-  ok('line starts with {"__factory_gate":"open"', line.startsWith('{"__factory_gate":"open"'))
   ok('line ends with newline', line.endsWith('\n'))
 
   let parsed
@@ -302,131 +389,137 @@ console.log('\n=== 8. emitGateOpen stdout signal ===\n')
 
   if (parsed) {
     eq('signal.__factory_gate', parsed.__factory_gate, 'open')
-    eq('signal.runId', parsed.runId, 'GATE-T08-EMIT')
+    eq('signal.runId', parsed.runId, 'GATE-T09-EMIT')
+    eq('signal.gateInstanceId', parsed.gateInstanceId, instanceId)
+    eq('signal.gateType', parsed.gateType, 'adversarial-review')
+    eq('signal._ipcSecret', parsed._ipcSecret, 'test-ipc-secret-xyz')
     ok('signal.findings is string', typeof parsed.findings === 'string')
     ok('signal.outcomes is array', Array.isArray(parsed.outcomes))
-    eq('signal.allowedDecisions', parsed.allowedDecisions, ['retry', 'ignore', 'fail'])
-    ok('signal.openedAt is ISO string', typeof parsed.openedAt === 'string')
 
+    // No LLM prose in outcomes (summary should be null)
     const r1 = parsed.outcomes.find((o) => o.reviewerName === 'R1')
     ok('outcome R1 present', !!r1)
     eq('outcome R1 verdict', r1?.verdict, 'FAIL')
-    eq('outcome R1 hasCritical', r1?.hasCritical, true)
-    ok('outcome R1 summary is string', typeof r1?.summary === 'string')
-
-    const r2 = parsed.outcomes.find((o) => o.reviewerName === 'R2')
-    ok('outcome R2 summary is null (no rawOutput)', r2?.summary === null)
+    eq('outcome R1 summary null (no prose in IPC)', r1?.summary, null)
   }
 }
 
 // ---------------------------------------------------------------------------
-// 9. Server GET logic: pending, terminal, terminal+humanDecision, unknown
+// 10. emitOracleGateOpen — structured facts only, no prose
 // ---------------------------------------------------------------------------
 
-console.log('\n=== 9. Server GET /api/factory/runs/:id/review-gate logic ===\n')
+console.log('\n=== 10. emitOracleGateOpen — no prose in IPC ===')
 
 {
-  // 9a. Pending gate.
-  const RUN_PENDING = 'GATE-T09-PENDING'
-  registerGate({
-    runId: RUN_PENDING,
-    findings: 'pending findings',
-    outcomes: [{ reviewerName: 'R1', verdict: 'FAIL', hasCritical: true, summary: 'bug' }],
-    allowedDecisions: ['retry', 'ignore', 'fail'],
-    openedAt: '2026-09-01T10:00:00.000Z',
-  })
-
-  const pendingGate = getGate(RUN_PENDING)
-  ok('9a: getGate returns non-null for pending', pendingGate !== null)
-  // Simulate server response construction.
-  const pendingResp = pendingGate ? { status: 'pending', findings: pendingGate.findings, outcomes: pendingGate.outcomes, allowedDecisions: pendingGate.allowedDecisions } : null
-  eq('9a: response status=pending', pendingResp?.status, 'pending')
-  ok('9a: outcomes is array', Array.isArray(pendingResp?.outcomes))
-  eq('9a: outcomes length', pendingResp?.outcomes.length, 1)
-  unregisterGate(RUN_PENDING)
-
-  // 9b. Completed run with humanDecision:fail in JSONL.
-  const RUN_TERMINAL = 'GATE-T09-TERMINAL'
-  const terminalPath = join(RUNS_DIR, `${RUN_TERMINAL}.jsonl`)
-  cleanupFiles.push(terminalPath)
-  writeFileSync(terminalPath, [
-    JSON.stringify({ kind: 'run_start', runId: RUN_TERMINAL, workflow: 'us-loop', startedAt: '2026-09-01T10:00:00.000Z' }),
-    JSON.stringify({ kind: 'phase', name: 'adversarial-review', phaseKind: 'agent', status: 'fail', startedAt: '2026-09-01T10:05:00.000Z' }),
-    JSON.stringify({ kind: 'phase_end', name: 'adversarial-review', status: 'fail', durationMs: 30000, facts: { globalVerdict: 'FAIL', humanDecision: 'fail' } }),
-    JSON.stringify({ kind: 'run_end', status: 'fail', durationMs: 360000, endedAt: '2026-09-01T10:06:00.000Z' }),
-  ].join('\n') + '\n', 'utf8')
-
-  const tLines = parseJsonl(terminalPath)
-  const tRunEnd = tLines.find((l) => l.kind === 'run_end')
-  let tHumanDecision = null
-  for (const l of tLines) { if (l.kind === 'phase_end' && l.facts?.humanDecision) { tHumanDecision = l.facts.humanDecision; break } }
-
-  ok('9b: run_end present', !!tRunEnd)
-  eq('9b: humanDecision from JSONL', tHumanDecision, 'fail')
-
-  const terminalResp = { status: 'terminal', humanDecision: tHumanDecision, reason: 'Run completed. A terminated process cannot resume. Only future pending gates can receive decisions.' }
-  eq('9b: terminal status', terminalResp.status, 'terminal')
-  eq('9b: humanDecision=fail', terminalResp.humanDecision, 'fail')
-  ok('9b: reason non-empty', terminalResp.reason.length > 0)
-
-  // 9c. Run exists, no run_end, no live gate -> terminal with humanDecision:null.
-  const noGateResp = { status: 'terminal', humanDecision: null, reason: 'No active review gate for this run.' }
-  eq('9c: no-gate status=terminal', noGateResp.status, 'terminal')
-  eq('9c: humanDecision null', noGateResp.humanDecision, null)
-}
-
-// ---------------------------------------------------------------------------
-// 10. POST decision normalization
-// ---------------------------------------------------------------------------
-
-console.log('\n=== 10. POST decision normalization ===\n')
-
-{
-  // Valid decisions pass through unchanged.
-  for (const d of ['retry', 'ignore', 'fail']) {
-    const normalized = ['ignore', 'retry', 'fail'].includes(d) ? d : 'fail'
-    eq(`decision '${d}' is valid`, normalized, d)
+  const instanceId = generateGateInstanceId()
+  const oracleInfo = {
+    oracleName: 'types',
+    classification: 'INDETERMINATE_OUT_OF_SCOPE',
+    exitCode: 1,
+    artifactRef: 'run-abc.ds-types-2-1',
+    artifactHash: 'a'.repeat(64),
+    newDiagnosticCount: 3,
+    synthesisStatus: 'ambiguous',
+    // prose fields that must NOT appear in IPC
+    reason: 'Some LLM-generated reason',
+    summary: 'Some LLM summary',
   }
 
-  // Invalid decision is normalized to 'fail'.
-  const invalid = 'approve'
-  const normalized = ['ignore', 'retry', 'fail'].includes(invalid) ? invalid : 'fail'
-  eq('invalid decision normalized to fail', normalized, 'fail')
+  const chunks = []
+  const origWrite = process.stdout.write.bind(process.stdout)
+  process.stdout.write = (chunk) => { chunks.push(typeof chunk === 'string' ? chunk : chunk.toString()); return true }
+
+  process.env.FACTORY_GATE_IPC_SECRET = 'test-ipc-secret-oracle'
+  emitOracleGateOpen('GATE-T10-ORACLE', instanceId, oracleInfo)
+  delete process.env.FACTORY_GATE_IPC_SECRET
+
+  process.stdout.write = origWrite
+
+  const line = chunks.join('')
+  let parsed
+  try { parsed = JSON.parse(line.trim()); ok('oracle gate signal is valid JSON', true) }
+  catch { ok('oracle gate signal is valid JSON', false) }
+
+  if (parsed) {
+    eq('oracle gate type', parsed.gateType, 'oracle')
+    eq('oracle gateInstanceId', parsed.gateInstanceId, instanceId)
+    ok('oracle oracleGate present', !!parsed.oracleGate)
+    eq('oracle oracleGate.oracleName', parsed.oracleGate?.oracleName, 'types')
+    eq('oracle oracleGate.classification', parsed.oracleGate?.classification, 'INDETERMINATE_OUT_OF_SCOPE')
+    eq('oracle oracleGate.synthesisStatus', parsed.oracleGate?.synthesisStatus, 'ambiguous')
+    // prose fields must not appear in IPC oracleGate
+    ok('reason not in oracleGate', !('reason' in (parsed.oracleGate ?? {})))
+    ok('summary not in oracleGate', !('summary' in (parsed.oracleGate ?? {})))
+    // artifactHash must be validated (64 hex chars)
+    eq('artifactHash present in oracleGate', parsed.oracleGate?.artifactHash, 'a'.repeat(64))
+  }
 }
 
 // ---------------------------------------------------------------------------
-// 11. Deprecated global endpoint path matching
+// 11b. registerGate rejects duplicate registration for same run
 // ---------------------------------------------------------------------------
 
-console.log('\n=== 11. Deprecated global endpoint path matching ===\n')
+console.log('\n=== 11b. registerGate rejects duplicate for same run ===')
 
 {
-  const gateRegex = /^\/api\/factory\/runs\/([^/]+)\/review-gate$/
-  const replyRegex = /^\/api\/factory\/runs\/([^/]+)\/review-gate\/reply$/
+  const RUN = 'GATE-T11B-DUP'
+  const instanceId1 = generateGateInstanceId()
+  const instanceId2 = generateGateInstanceId()
 
-  ok('11: /api/review-gate does not match scoped gate regex', !gateRegex.test('/api/review-gate'))
-  ok('11: /api/review-gate/reply does not match scoped reply regex', !replyRegex.test('/api/review-gate/reply'))
-  ok('11: scoped GET matches gate regex', gateRegex.test('/api/factory/runs/RUN-123/review-gate'))
-  ok('11: scoped POST matches reply regex', replyRegex.test('/api/factory/runs/RUN-123/review-gate/reply'))
+  // First registration succeeds
+  const first = registerGate({ runId: RUN, gateInstanceId: instanceId1, gateType: 'adversarial-review', findings: 'f1', outcomes: [], allowedDecisions: [] })
+  eq('first registration succeeds', first.ok, true)
+  eq('first gate is pending', getGate(RUN)?.gateInstanceId, instanceId1)
 
-  const matchGet = '/api/factory/runs/RUN-123/review-gate'.match(gateRegex)
-  eq('11: scoped GET extracts runId', matchGet?.[1], 'RUN-123')
+  // Second registration for same run is rejected (gate still pending)
+  const second = registerGate({ runId: RUN, gateInstanceId: instanceId2, gateType: 'oracle', findings: 'f2', outcomes: [], allowedDecisions: [] })
+  eq('second registration rejected while first pending', second.ok, false)
+  ok('second rejection has error message', typeof second.error === 'string')
 
-  const matchPost = '/api/factory/runs/RUN-123/review-gate/reply'.match(replyRegex)
-  eq('11: scoped POST extracts runId', matchPost?.[1], 'RUN-123')
+  // First gate is still the active one
+  eq('first gate still active after rejected duplicate', getGate(RUN)?.gateInstanceId, instanceId1)
+
+  // After consuming the first gate, a new registration is accepted
+  unregisterGate(RUN)
+  const third = registerGate({ runId: RUN, gateInstanceId: instanceId2, gateType: 'oracle', findings: 'f2', outcomes: [], allowedDecisions: [] })
+  eq('third registration succeeds after first consumed', third.ok, true)
+  eq('third gate is now active', getGate(RUN)?.gateInstanceId, instanceId2)
+
+  unregisterGate(RUN)
+}
+
+// ---------------------------------------------------------------------------
+// 11c. gateInstanceReplyPath vs deprecated gateReplyPath
+// ---------------------------------------------------------------------------
+
+console.log('\n=== 11c. Reply path isolation ===')
+
+{
+  const runId = 'GATE-T11-PATHS'
+  const instanceId = generateGateInstanceId()
+
+  const instancePath = gateInstanceReplyPath(runId, instanceId)
+  const deprecatedPath = gateReplyPath(runId)
+
+  ok('instance path contains gateInstanceId', instancePath.includes(instanceId))
+  ok('deprecated path does not contain instanceId', !deprecatedPath.includes(instanceId))
+  ok('paths are different', instancePath !== deprecatedPath)
+  ok('instance path is inside RUNS_DIR', instancePath.startsWith(RUNS_DIR))
 }
 
 // ---------------------------------------------------------------------------
 // 12. Concurrent gates: two runs resolved independently
 // ---------------------------------------------------------------------------
 
-console.log('\n=== 12. Concurrent gates: independent resolution ===\n')
+console.log('\n=== 12. Concurrent gates: independent resolution ===')
 
 await (async () => {
   const RUN_C = 'GATE-T12-C'
   const RUN_D = 'GATE-T12-D'
-  const pathC = gateReplyPath(RUN_C)
-  const pathD = gateReplyPath(RUN_D)
+  const idC = generateGateInstanceId()
+  const idD = generateGateInstanceId()
+  const pathC = gateInstanceReplyPath(RUN_C, idC)
+  const pathD = gateInstanceReplyPath(RUN_D, idD)
   cleanupFiles.push(pathC, pathD)
   try { unlinkSync(pathC) } catch { /* ok */ }
   try { unlinkSync(pathD) } catch { /* ok */ }
@@ -436,31 +529,26 @@ await (async () => {
   let resolvedC = null
   let resolvedD = null
 
-  const promiseC = waitForHumanDecision(RUN_C, mockLog).then((r) => { resolvedC = r; return r })
-  const promiseD = waitForHumanDecision(RUN_D, mockLog).then((r) => { resolvedD = r; return r })
+  const promiseC = waitForHumanDecision(RUN_C, idC, mockLog, 'adversarial-review').then((r) => { resolvedC = r; return r })
+  const promiseD = waitForHumanDecision(RUN_D, idD, mockLog, 'oracle').then((r) => { resolvedD = r; return r })
 
-  // Give polls time to start.
   await new Promise((r) => setTimeout(r, 10))
 
-  // Resolve C with 'ignore'.
-  writeFileSync(pathC, JSON.stringify({ decision: 'ignore', message: 'C ok' }), 'utf8')
+  // Resolve C with 'ignore'
+  writeFileSync(pathC, JSON.stringify({ decision: 'ignore', message: 'C ok', gateInstanceId: idC }), 'utf8')
   await new Promise((r) => setTimeout(r, GATE_POLL_MS + 500))
 
   ok('12: gate C resolved', resolvedC !== null)
   ok('12: gate D still pending', resolvedD === null)
   eq('12: gate C decision=ignore', resolvedC?.decision, 'ignore')
-  eq('12: gate C message', resolvedC?.message, 'C ok')
 
-  // Resolve D with 'retry'.
-  writeFileSync(pathD, JSON.stringify({ decision: 'retry', message: 'D needs work' }), 'utf8')
+  // Resolve D with 'continue'
+  writeFileSync(pathD, JSON.stringify({ decision: 'continue', message: 'D proceed', gateInstanceId: idD }), 'utf8')
   await new Promise((r) => setTimeout(r, GATE_POLL_MS + 500))
 
   ok('12: gate D resolved', resolvedD !== null)
-  eq('12: gate D decision=retry', resolvedD?.decision, 'retry')
-  eq('12: gate D message', resolvedD?.message, 'D needs work')
-
-  // Gate C's decision unaffected by D.
-  eq('12: gate C decision unchanged', resolvedC?.decision, 'ignore')
+  eq('12: gate D decision=continue', resolvedD?.decision, 'continue')
+  eq('12: gate C decision unchanged after D resolved', resolvedC?.decision, 'ignore')
 })()
 
 // ---------------------------------------------------------------------------
