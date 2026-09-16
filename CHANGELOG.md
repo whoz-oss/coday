@@ -1,3 +1,46 @@
+# 2.0.0 (2026-09-16)
+
+### 🩹 Fixes
+
+- ⚠️  #WZ-34456 populate startedAt, typed UserContextResult, explicit error handling ([#1334](https://github.com/whoz-oss/coday/pull/1334))
+
+### ⚠️  Breaking Changes
+
+- #WZ-34456 populate startedAt, typed UserContextResult, explicit error handling  ([#1334](https://github.com/whoz-oss/coday/pull/1334))
+  ** `UserContextProvider.provideUserContext `now
+  returns `UserContextResult` instead of `Map<String, Any?>?`. Plugin
+  implementations must be updated to return `UserContextResult.Success` /
+  `PermanentFailure` / `TransientFailure` instead of a raw map.
+  - Set `startedAt = now` in
+  `Neo4jScheduledPromptUserRunRepository.claimBatch` so the field is
+  populated when a `UserRun` transitions from `PENDING` to `RUNNING`
+  - Introduce `UserContextResult` sealed class (Success/PermanentFailure
+  /TransientFailure) in the SDK, replacing the opaque `Map<String, Any?>?`
+  return type of `UserContextProvider.provideUserContext`, errors are now
+  explicit and always logged instead of being silently absorbed as `null`
+  - `ScheduledPromptExecutor.resolveSessionContext` dispatches on
+  `UserContextResult`: PermanentFailure -> marks `UserRun` `FAILED`
+  immediately; `TransientFailure` -> leaves `UserRun` `RUNNING` for
+  lease-based reclaim; unexpected exception -> treated as transient with a
+  warn log
+  Local testing:
+  > 2026-09-15 11:43:02 - [Executor]
+  UserRun=5141a12a-2fdf-4543-bbfd-1d6cc108ef1d
+  user=914b4ea6-b23b-4bfc-bd8e-431ea5ee03fc — transient context failure,
+  leaving RUNNING for lease-based reclaim. Reason: Failed to connect to
+  copilot/127.0.0.1:80"
+  M	agentos/agentos-sdk/src/main/kotlin/io/whozoss/agentos/sdk/scheduledPrompt/UserContextProvider.kt
+  A	agentos/agentos-sdk/src/main/kotlin/io/whozoss/agentos/sdk/scheduledPrompt/UserContextResult.kt
+  M	agentos/agentos-service/src/main/kotlin/io/whozoss/agentos/scheduledPrompt/Neo4jScheduledPromptUserRunRepository.kt
+  M	agentos/agentos-service/src/main/kotlin/io/whozoss/agentos/scheduledPrompt/ScheduledPromptExecutor.kt
+  M	agentos/agentos-service/src/test/kotlin/io/whozoss/agentos/persistence/neo4j/AbstractScheduledPromptUserRunPersistenceSpec.kt
+  M	agentos/agentos-service/src/test/kotlin/io/whozoss/agentos/scheduledPrompt/InMemoryScheduledPromptUserRunRepository.kt
+  M	agentos/agentos-service/src/test/kotlin/io/whozoss/agentos/scheduledPrompt/ScheduledPromptExecutorUnitSpec.kt
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
 ## 1.3.7 (2026-09-14)
 
 ### 🩹 Fixes
