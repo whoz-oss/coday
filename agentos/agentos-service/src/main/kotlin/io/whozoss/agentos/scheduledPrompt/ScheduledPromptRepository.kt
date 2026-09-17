@@ -77,13 +77,15 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
     fun disableByAgentConfigId(agentConfigId: UUID): Int
 
     /**
-     * Soft-delete all non-removed [ScheduledPrompt]s that reference the given [agentConfigId].
+     * Soft-delete all non-removed [ScheduledPrompt]s referencing the given [agentConfigId]
+     * and their linked [io.whozoss.agentos.prompt.Prompt]s in a single query.
      *
-     * Called when the linked AgentConfig is soft-deleted. Since [agentConfigId] is immutable
-     * after creation, a scheduler referencing a deleted agent cannot be rerouted and is
-     * permanently unusable — soft-deleting it keeps history while removing it from active views.
+     * Called on AgentConfig soft-delete. The linked prompts (named `scheduled--{slug}`) are
+     * looked up by [ScheduledPrompt.promptTemplateId] directly — no graph relation needed.
      *
-     * @return the number of schedulers that were soft-deleted
+     * @return the number of scheduled prompts soft-deleted
      */
-    fun softDeleteByAgentConfigId(agentConfigId: UUID): Int
+    fun softDeleteWithPromptsByAgentConfigId(agentConfigId: UUID): Int
+
+
 }

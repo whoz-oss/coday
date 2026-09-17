@@ -166,9 +166,14 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
     fun disableByAgentConfigId(agentConfigId: String): Int
 
     /**
-     * Soft-delete all non-removed scheduled prompts referencing the given agentConfigId.
-     * Rewrites tripleKey to a tombstone to free the unique slot immediately.
-     * Returns the number of nodes updated.
+     * Soft-delete all non-removed ScheduledPrompts referencing the given agentConfigId,
+     * and soft-delete their linked Prompts in the same query.
+     *
+     * Uses OPTIONAL MATCH for the Prompt so that the SP is always soft-deleted even when
+     * its linked Prompt is already removed or missing (orphaned SP). The Prompt SET clause
+     * only executes when p IS NOT NULL.
+     *
+     * Returns the number of scheduled prompts soft-deleted.
      */
     @Query(
         $$"""
@@ -176,8 +181,15 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
             WHERE sp.agentConfigId = $agentConfigId
               AND NOT COALESCE(sp.removed, false)
             SET sp.removed = true, sp.tripleKey = 'tombstone:' + sp.id
+            WITH sp
+            OPTIONAL MATCH (p:Prompt)
+            WHERE p.id = sp.promptTemplateId
+              AND NOT COALESCE(p.removed, false)
+            WITH sp, p
+            WHERE p IS NOT NULL
+            SET p.removed = true, p.tripleKey = 'tombstone:' + p.id
             RETURN count(sp)
             """,
     )
-    fun softDeleteByAgentConfigId(agentConfigId: String): Int
+    fun softDeleteWithPromptsByAgentConfigId(agentConfigId: String): Int
 }

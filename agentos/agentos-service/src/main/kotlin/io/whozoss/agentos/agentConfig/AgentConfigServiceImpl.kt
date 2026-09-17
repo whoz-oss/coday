@@ -38,10 +38,13 @@ class AgentConfigServiceImpl(
     override fun delete(id: UUID): Boolean {
         val deleted = agentConfigRepository.delete(id)
         if (deleted) {
-            promptRepository.softDeleteByAgentConfigId(id)
-            val deletedCount = scheduledPromptRepository.softDeleteByAgentConfigId(id)
-            if (deletedCount > 0) {
-                logger.info { "[AgentConfigService] Soft-deleted $deletedCount scheduled prompt(s) for deleted agentConfigId=$id" }
+            val deletedPromptsCount = promptRepository.softDeleteByAgentConfigId(id)
+            if (deletedPromptsCount > 0) {
+                logger.info { "[AgentConfigService] Soft-deleted $deletedPromptsCount prompt(s) for deleted agentConfigId=$id" }
+            }
+            val deletedScheduledPromptsCount = scheduledPromptRepository.softDeleteWithPromptsByAgentConfigId(id)
+            if (deletedScheduledPromptsCount > 0) {
+                logger.info { "[AgentConfigService] Soft-deleted $deletedScheduledPromptsCount scheduled prompt(s) and their linked prompts for agentConfigId=$id" }
             }
         }
         return deleted
