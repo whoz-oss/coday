@@ -9,12 +9,12 @@ Use this industrialized run protocol for `/run-factory <business-reference-or-in
 
 ## Conversational entry algorithm
 
-1. Verify that the model-facing tool `FACTORY__publish_projection` is available. If it is absent, refuse to start a Factory run and explain that publication capability is required.
+1. Verify that the model-facing tools `FACTORY__get_workflow` and `FACTORY__publish_projection` are available. If either is absent, refuse to start a Factory run and explain which capability is required.
 2. Inventory the loaded domain workflow declarations owned by the current agent. A compatible declaration must explicitly define `workflowType`, intent/reference compatibility criteria, its stable identity rule, its sole publisher role, and its lifecycle source.
 3. If `--workflow=<workflowType>` is present, use it only when that exact loaded declaration is owned by this agent and compatible with the input. Otherwise refuse and state why. Without a selector, select only when exactly one owned declaration is compatible. If several are compatible, ask the human to choose; if none is compatible, refuse. Having the tool alone never authorizes inventing a workflow.
 4. Interpret the reference or intent and resolve or establish its stable domain identity strictly according to the selected declaration. Ask for missing domain facts when its identity rule requires them. Never create an identity convention, workflow schema, steps, dependencies, actors, or lifecycle from generic intuition.
-5. Before significant domain execution, publish the declaration's complete initial schema-v2 projection with `expectedRevision: 0`. This first successful publication creates the workflow. There is no start-workflow tool. Retain the returned revision, including when publication is idempotent.
-6. Continue through the declaration's normal domain orchestration and authoritative lifecycle. Publish the complete projection after every material transition using the retained revision as `expectedRevision`.
+5. Call `FACTORY__get_workflow` with only the resolved `workflowId`. For `absent`, create by publishing the declaration's complete initial projection with `expectedRevision: 0`. For `existing`, require its `workflowType` to equal the selected declaration; an incompatibility is a hard refusal before any publication. Otherwise resume from the returned complete v1 or v2 projection and authoritative revision. Never ask the human for, infer, or guess a revision. For `removed` or `purged`, halt and report the lifecycle state; this protocol does not authorize restore, tombstone clearing, or identity replacement.
+6. Continue through the declaration's normal domain orchestration and authoritative lifecycle. Publish the complete projection after every material transition using the revision returned by lookup or the last successful publication as `expectedRevision`.
 7. Represent waiting, blocked, failed, cancelled, and completed outcomes honestly. Never auto-approve a human gate. A failed terminal publication must be reported as a synchronization failure alongside the domain outcome.
 
 Namespace, runtime, case, thread, user, and controlling-execution identity are trusted runtime attribution. Never place them in `workflowId`, `workflowType`, title, steps, descriptions, dependencies, responsibilities, or any other model-authored projection field.
@@ -58,7 +58,7 @@ Workflow status summarizes the real current outcome; it must not claim more prog
 
 ## Errors and lifecycle
 
-- On `REVISION_CONFLICT`, do not retry with a guessed revision and do not overwrite newer state. Report the conflict, re-establish the authoritative current revision through an authorized owner flow, reconstruct the complete current projection from domain facts, then publish deliberately.
+- On `REVISION_CONFLICT`, do not retry with a guessed revision and do not overwrite newer state. Call `FACTORY__get_workflow` again, verify `workflowType` compatibility, reconstruct the complete current projection from authoritative domain facts plus the returned snapshot, then publish deliberately with the returned revision.
 - On `FACTORY_UNAVAILABLE`, preserve the domain workflow state, report that projection synchronization is unavailable, and retry only when the Factory is available. Never represent prose as a successful publication.
 - On `WORKFLOW_REMOVED` or authorization/schema errors, stop publishing and report the structured error; do not recreate, restore, or alter identity fields unless separately authorized.
 - Factory and AgentOS persist the projection only. They do not inspect, infer, mutate, clean up, or delete domain artifacts.

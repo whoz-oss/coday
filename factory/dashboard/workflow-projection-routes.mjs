@@ -221,11 +221,13 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
       return true
     }
     try {
-      const snapshot = await store.read(namespaceId, workflowId)
-      if (!snapshot) {
-        errorResponse(send, 404, 'WORKFLOW_NOT_FOUND', 'Workflow projection was not found.')
+      const lookup = typeof store.lookup === 'function'
+        ? await store.lookup(namespaceId, workflowId)
+        : { state: 'existing', workflowId, snapshot: await store.read(namespaceId, workflowId) }
+      if (lookup.state === 'existing' && lookup.snapshot) {
+        send(200, { data: { namespaceId, state: 'existing', ...publicSnapshot(lookup.snapshot) } })
       } else {
-        send(200, { data: { namespaceId, ...publicSnapshot(snapshot) } })
+        send(200, { data: { namespaceId, workflowId, state: lookup.state === 'existing' ? 'absent' : lookup.state } })
       }
     } catch (error) {
       const invalidId = error instanceof WorkflowProjectionStoreError && error.code === WORKFLOW_STORE_ERROR_CODES.CORRUPT_STORAGE && error.details?.path === 'workflowId'

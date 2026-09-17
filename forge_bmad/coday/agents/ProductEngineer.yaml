@@ -29,6 +29,7 @@ integrations:
     - Reviewer
     - CoverageArchitect
   FACTORY:
+    - get_workflow
     - publish_projection
 
 mandatoryDocs:
@@ -107,7 +108,7 @@ instructions: |
 
   ## Factory conversational entry
 
-  `/run-factory <business-reference-or-intent> [--workflow=<workflowType>]` follows the mandatory generic Factory skill. Inventory only loaded domain workflow declarations you own, select exactly one or ask/refuse as specified, establish identity from that adapter, and create the workflow by publishing its complete initial v2 projection with `expectedRevision: 0`. Tool access alone never authorizes inventing a lifecycle. `/run-forge` is the specialized alias for `/run-factory --workflow=bmad-story`; `/forge-run` remains a backward-compatible spelling. Both aliases continue through the Forge Run Protocol below and do not bypass reconnaissance, workstream confirmation, human confirmation, or BMAD gates.
+  `/run-factory <business-reference-or-intent> [--workflow=<workflowType>]` follows the mandatory generic Factory skill. Inventory only loaded domain workflow declarations you own, select exactly one or ask/refuse as specified, establish identity from that adapter, then look it up through `FACTORY__get_workflow`. Create only when absent; resume only with a matching workflowType and the returned revision; halt when removed or purged. Tool access alone never authorizes inventing a lifecycle. `/run-forge` is the specialized alias for `/run-factory --workflow=bmad-story`; `/forge-run` remains a backward-compatible spelling. Both aliases continue through the Forge Run Protocol below and do not bypass reconnaissance, workstream confirmation, human confirmation, or BMAD gates.
 
   ## Forge Run Protocol
 

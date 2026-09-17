@@ -10,7 +10,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.util.concurrent.TimeUnit
 
-/** Config-less built-in bridge; agents must explicitly grant FACTORY/publish_projection. */
+/** Config-less built-in bridge; agents must explicitly grant each FACTORY capability. */
 @Component
 class FactoryToolPlugin(
     private val objectMapper: ObjectMapper,
@@ -27,7 +27,10 @@ class FactoryToolPlugin(
         .build()
 
     override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> =
-        listOf(FactoryPublishProjectionTool(baseUrl, httpClient, objectMapper, runtimeId))
+        listOf(
+            FactoryGetWorkflowTool(baseUrl, httpClient, objectMapper),
+            FactoryPublishProjectionTool(baseUrl, httpClient, objectMapper, runtimeId),
+        )
 
     companion object { const val INTEGRATION_TYPE = "FACTORY" }
 }

@@ -63,6 +63,16 @@ export class WorkflowProjectionStore {
   async _recover(paths) { let pending; try { pending = JSON.parse(await readFile(paths.pending, 'utf8')) } catch (error) { if (error?.code === 'ENOENT') return; throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.CORRUPT_STORAGE, {}, error) } let journal = ''; try { journal = await readFile(paths.events, 'utf8') } catch (error) { if (error?.code !== 'ENOENT') throw error } const committed = journal.trim().split('\n').filter(Boolean).some((line) => { const fact = JSON.parse(line); return fact.revision === pending.revision && fact.projectionHash === pending.projectionHash }); if (committed) await atomicJsonWrite(paths.snapshot, pending); await rm(paths.pending, { force: true }) }
 
   async read(namespaceId, workflowId) { const paths = this.paths(namespaceId, workflowId); await this._recover(paths); return this._readSnapshot(paths) }
+  async lookup(namespaceId, workflowId) {
+    const paths = this.paths(namespaceId, workflowId)
+    const tombstone = await this._tombstone(paths)
+    if (tombstone) {
+      return { state: tombstone.lifecycleState === 'purged' ? 'purged' : 'removed', workflowId }
+    }
+    await this._recover(paths)
+    const snapshot = await this._readSnapshot(paths)
+    return snapshot ? { state: 'existing', workflowId, snapshot } : { state: 'absent', workflowId }
+  }
   async timing(namespaceId, workflowId, now = new Date()) {
     const paths = this.paths(namespaceId, workflowId); await this._recover(paths); const snapshot = await this._readSnapshot(paths)
     if (!snapshot) return null

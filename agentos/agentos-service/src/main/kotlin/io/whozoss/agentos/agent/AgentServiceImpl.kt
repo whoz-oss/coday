@@ -358,8 +358,9 @@ class AgentServiceImpl(
                 emptyList()
             }
         val factoryTools =
-            if (factoryToolGrantService.isGranted(agentConfig.integrations)) factoryToolGrantService.grantTools(toolContext)
-            else emptyList()
+            if (factoryToolGrantService.isGranted(agentConfig.integrations)) {
+                factoryToolGrantService.grantTools(toolContext, agentConfig.integrations)
+            } else emptyList()
         val tools =
             toolResolverService.dedupToolsByName(
                 baseTools +

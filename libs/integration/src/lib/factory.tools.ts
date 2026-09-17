@@ -14,6 +14,16 @@ export class FactoryTools extends AssistantToolFactory {
       {
         type: 'function',
         function: {
+          name: `${this.name}__get_workflow`,
+          description: 'Read the authoritative namespace-scoped state of a Factory workflow before creation or resume.',
+          parameters: workflowLookupSchema,
+          parse: JSON.parse,
+          function: async (input: unknown) => this.getWorkflow(context, input),
+        },
+      },
+      {
+        type: 'function',
+        function: {
           name: `${this.name}__publish_projection`,
           description: 'Publish a generic WorkflowProjection v1 or v2 to the configured Factory runtime.',
           parameters: projectionSchema,
@@ -22,6 +32,52 @@ export class FactoryTools extends AssistantToolFactory {
         },
       },
     ]
+  }
+
+  private async getWorkflow(context: CommandContext, input: unknown): Promise<string> {
+    const config = context.project.factory
+    const configError = validateConfig(config)
+    if (configError) return errorResult('FACTORY_UNAVAILABLE', configError)
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Array.isArray(input) ||
+      Object.keys(input).some((key) => key !== 'workflowId')
+    ) {
+      return errorResult('INVALID_REQUEST', 'Only workflowId is accepted.')
+    }
+    const workflowId = (input as { workflowId?: unknown }).workflowId
+    if (typeof workflowId !== 'string' || !safeId.test(workflowId))
+      return errorResult('INVALID_WORKFLOW_ID', 'workflowId is invalid.')
+    return this.requestLookup(config!.baseUrl!, config!.namespaceId!, workflowId)
+  }
+
+  private async requestLookup(baseUrl: string, namespaceId: string, workflowId: string): Promise<string> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), FactoryTools.TIMEOUT_MS)
+    try {
+      const response = await fetch(
+        `${baseUrl.replace(/\/+$/, '')}/api/factory/workflows/${encodeURIComponent(workflowId)}?namespaceId=${encodeURIComponent(namespaceId)}`,
+        { signal: controller.signal }
+      )
+      const payload: unknown = await response.json().catch(() => undefined)
+      if (!response.ok) {
+        const factoryError = readFactoryError(payload)
+        return factoryError
+          ? errorResult(factoryError.code, factoryError.message)
+          : errorResult('FACTORY_UNAVAILABLE', 'Factory rejected the lookup without a valid error response.')
+      }
+      const data = readLookupSuccess(payload, workflowId)
+      return data
+        ? JSON.stringify(data)
+        : errorResult('MALFORMED_FACTORY_RESPONSE', 'Factory returned a malformed workflow lookup response.')
+    } catch (error) {
+      return error instanceof Error && error.name === 'AbortError'
+        ? errorResult('FACTORY_TIMEOUT', 'Factory lookup timed out.')
+        : errorResult('FACTORY_UNAVAILABLE', 'Factory is unavailable.')
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   private async publish(context: CommandContext, agentName: string, input: unknown): Promise<string> {
@@ -118,6 +174,12 @@ const statuses = [
 ] as const
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const safeRuntimeId = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,255}$/
+const workflowLookupSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { workflowId: { type: 'string', maxLength: 128, pattern: safeId.source } },
+  required: ['workflowId'],
+}
 const projectionSchema = {
   type: 'object',
   additionalProperties: false,
@@ -270,6 +332,32 @@ function readFactoryError(payload: unknown): { code: string; message: string } |
   return error && typeof error.code === 'string' && typeof error.message === 'string'
     ? { code: error.code, message: error.message }
     : undefined
+}
+function readLookupSuccess(payload: unknown, requestedWorkflowId: string): Record<string, unknown> | undefined {
+  const data = (payload as { data?: unknown } | undefined)?.data as Record<string, unknown> | undefined
+  if (
+    !data ||
+    data.workflowId !== requestedWorkflowId ||
+    !['absent', 'existing', 'removed', 'purged'].includes(data.state as string)
+  )
+    return undefined
+  if (data.state !== 'existing') return { state: data.state, workflowId: requestedWorkflowId }
+  const projection = data.projection as Record<string, unknown> | undefined
+  if (
+    !Number.isInteger(data.revision) ||
+    !projection ||
+    projection.workflowId !== requestedWorkflowId ||
+    typeof projection.workflowType !== 'string'
+  )
+    return undefined
+  return {
+    state: 'existing',
+    workflowId: requestedWorkflowId,
+    revision: data.revision,
+    workflowType: projection.workflowType,
+    status: projection.status,
+    projection,
+  }
 }
 function readSuccess(payload: unknown): { workflowId: string; revision: number; changed: boolean } | undefined {
   const data = (payload as { data?: unknown } | undefined)?.data as Record<string, unknown> | undefined

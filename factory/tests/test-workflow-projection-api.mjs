@@ -35,6 +35,7 @@ async function request(store, method, pathname, body, log = { error() {} }) {
 const root = await mkdtemp(join(tmpdir(), 'factory-workflow-api-'))
 try {
   const store = new WorkflowProjectionStore(root)
+  await store.initialize()
   const envelope = { projection, execution: { namespaceId: NS_A, runtimeId: 'agentos-primary', kind: 'agentos', agentId: 'agent-1', caseId: 'case-1' } }
   const expressEnvelope = {
     projection: { ...projection, schemaVersion: '2', workflowId: 'express-wf', steps: [{ ...projection.steps[0], responsibility: { kind: 'agent', name: 'Sway' } }] },
@@ -78,10 +79,23 @@ try {
   expect('unsupported state', [response.status, response.body.error.code], [400, 'UNSUPPORTED_STATE'])
 
   response = await request(store, 'GET', `/api/factory/workflows/wf-1?namespaceId=${NS_A}`)
-  expect('detail', [response.status, response.body.data.workflowId, response.body.data.revision, response.body.data.controllerExecution.runtimeId], [200, 'wf-1', 2, 'agentos-primary'])
+  expect('detail existing', [response.status, response.body.data.state, response.body.data.workflowId, response.body.data.revision, response.body.data.projection.schemaVersion, response.body.data.controllerExecution.runtimeId], [200, 'existing', 'wf-1', 2, '1', 'agentos-primary'])
+
+  response = await request(store, 'GET', `/api/factory/workflows/express-wf?namespaceId=${NS_EXPRESS}`)
+  expect('detail preserves v2 snapshot', [response.status, response.body.data.state, response.body.data.projection.schemaVersion, response.body.data.projection.steps[0].responsibility.kind], [200, 'existing', '2', 'agent'])
+
+  response = await request(store, 'GET', `/api/factory/workflows/wf-1?namespaceId=${NS_B}`)
+  expect('detail lookup is namespace scoped', [response.status, response.body.data.state], [200, 'absent'])
 
   response = await request(store, 'GET', `/api/factory/workflows/missing?namespaceId=${NS_A}`)
-  expect('detail not found', [response.status, response.body.error.code], [404, 'WORKFLOW_NOT_FOUND'])
+  expect('detail absent is an explicit successful lookup', [response.status, response.body.data], [200, { namespaceId: NS_A, workflowId: 'missing', state: 'absent' }])
+
+  await store.remove(NS_EXPRESS, 'express-wf')
+  response = await request(store, 'GET', `/api/factory/workflows/express-wf?namespaceId=${NS_EXPRESS}`)
+  expect('detail removed', [response.status, response.body.data.state], [200, 'removed'])
+  await store.purge(NS_EXPRESS, 'express-wf')
+  response = await request(store, 'GET', `/api/factory/workflows/express-wf?namespaceId=${NS_EXPRESS}`)
+  expect('detail purged', [response.status, response.body.data.state], [200, 'purged'])
 
   response = await request(store, 'GET', `/api/factory/workflows/wf-1/timing?namespaceId=${NS_A}`)
   expect('timing detail', [response.status, response.body.data.workflowId, response.body.data.timing.complete], [200, 'wf-1', true])
