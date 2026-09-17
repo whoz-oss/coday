@@ -423,27 +423,29 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     ): List<String>
 
     /**
-     * Returns `(userId, relation)` pairs for the given [userIds] on an entity.
+     * Returns one `{userId, relation}` map per direct relation of the given [userIds] on an entity.
      *
      * Only direct [:ADMIN] and [:MEMBER] edges are considered — no transitive namespace
      * traversal. Users in [userIds] with no relation on the entity are simply absent
      * from the result.
      *
-     * Returns a list of two-element string arrays `[userId, relationType]`.
+     * Built as a single-column `collect` of maps: Spring Data Neo4j rejects a multi-column `RETURN`
+     * ("Records with more than one value cannot be converted without a mapper"), and a typed projection
+     * is materialized through this repository's [UserNode] domain type, which such a row cannot instantiate.
      */
     @Query(
         $$"""
         UNWIND $userIds AS uid
         MATCH (u:User {id: uid})-[r:ADMIN|MEMBER]->(e {id: $entityId})
         WHERE $entityLabel IN labels(e)
-        RETURN u.id AS userId, type(r) AS relation
+        RETURN collect({userId: u.id, relation: type(r)})
         """,
     )
     fun findRelationsForUsers(
         @Param("userIds") userIds: Collection<String>,
         @Param("entityId") entityId: String,
         @Param("entityLabel") entityLabel: String,
-    ): List<UserRelationRow>
+    ): List<Map<String, Any>>
 
     /**
      * Batch-revoke all relations ([:ADMIN] and [:MEMBER]) from users on an entity.
