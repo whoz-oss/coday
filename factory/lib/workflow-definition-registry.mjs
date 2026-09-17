@@ -12,6 +12,12 @@ export class WorkflowDefinitionRegistry {
   async initialize() { await this.#load(); return this }
   async list() { return [...(await this.#load()).values()].sort((a, b) => a.workflowType.localeCompare(b.workflowType) || a.version.localeCompare(b.version, undefined, { numeric: true })) }
   async get(workflowType, version) { return (await this.#load()).get(`${workflowType}@${version}`) ?? null }
+  async resolveUnique(workflowType) {
+    const matches = (await this.list()).filter((definition) => definition.workflowType === workflowType)
+    if (matches.length === 0) throw new WorkflowDefinitionRegistryError('WORKFLOW_DEFINITION_NOT_FOUND', { workflowType })
+    if (matches.length !== 1) throw new WorkflowDefinitionRegistryError('WORKFLOW_DEFINITION_AMBIGUOUS', { workflowType, versions: matches.map((item) => item.version) })
+    return matches[0]
+  }
 
   async #load() {
     if (this.loaded) return this.loaded

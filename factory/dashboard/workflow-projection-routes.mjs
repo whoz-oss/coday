@@ -73,15 +73,12 @@ function lifecycleStatus(result) {
   return 400
 }
 
-async function publicSnapshot(snapshot, definitionRegistry) {
-  const definition = definitionRegistry && snapshot.projection.workflowType
-    ? (await definitionRegistry.list()).filter((item) => item.workflowType === snapshot.projection.workflowType).at(-1)
-    : null
+async function publicSnapshot(snapshot) {
   return {
     workflowId: snapshot.projection.workflowId,
     revision: snapshot.revision,
     projectionHash: snapshot.projectionHash,
-    ...(definition ? { definitionVersion: definition.version, definitionHash: definition.definitionHash } : {}),
+    ...(snapshot.governanceMode ? { governanceMode: snapshot.governanceMode, definitionVersion: snapshot.definitionVersion, definitionHash: snapshot.definitionHash, instance: snapshot.instance } : {}),
     ...(snapshot.controllerExecution ? { controllerExecution: snapshot.controllerExecution } : {}),
     projection: snapshot.projection,
   }
@@ -102,11 +99,12 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
   const collection = path === '/api/factory/workflows'
   const stream = path === '/api/factory/workflows/stream'
   const projectionMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)\/projection$/)
+  const startMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)\/start$/)
   const timingMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)\/timing$/)
   const restoreMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)\/restore$/)
   const purgeMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)\/purge$/)
   const detailMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)$/)
-  if (!collection && !stream && !projectionMatch && !timingMatch && !restoreMatch && !purgeMatch && !detailMatch) return false
+  if (!collection && !stream && !projectionMatch && !startMatch && !timingMatch && !restoreMatch && !purgeMatch && !detailMatch) return false
 
   if (method === 'GET' && stream) {
     const namespaceId = url.searchParams.get('namespaceId')
@@ -115,6 +113,27 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
       return true
     }
     openStream(namespaceId)
+    return true
+  }
+
+  if (method === 'POST' && startMatch) {
+    const workflowId = decodeURIComponent(startMatch[1])
+    const body = await readBody()
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((field) => !['workflow', 'execution'].includes(field))) { errorResponse(send, 400, 'INVALID_REQUEST', 'Request body must contain workflow and execution.'); return true }
+    const execution = sanitizeWorkflowExecution(body.execution)
+    if (!execution.ok) { errorResponse(send, 400, execution.code, 'Execution attribution is invalid.'); return true }
+    const command = body.workflow
+    if (!command || typeof command !== 'object' || Array.isArray(command) || Object.keys(command).some((field) => !['workflowId','workflowType','title'].includes(field)) || command.workflowId !== workflowId || typeof command.workflowType !== 'string' || typeof command.title !== 'string' || !command.title.trim()) { errorResponse(send, 400, 'INVALID_START_REQUEST', 'workflowId, workflowType and title are required; no other workflow fields are accepted.'); return true }
+    try {
+      const definition = await definitionRegistry.resolveUnique(command.workflowType)
+      const result = await store.start(execution.namespaceId, command, definition, execution.controllerExecution)
+      if (!result.ok) { const status = result.error.code === WORKFLOW_STORE_ERROR_CODES.WORKFLOW_REMOVED || result.error.code === WORKFLOW_STORE_ERROR_CODES.WORKFLOW_ALREADY_EXISTS || result.error.code === WORKFLOW_STORE_ERROR_CODES.WORKFLOW_IDENTITY_CONFLICT ? 409 : 400; errorResponse(send, status, result.error.code, result.error.code === WORKFLOW_STORE_ERROR_CODES.WORKFLOW_ALREADY_EXISTS ? 'Workflow already exists; use get_workflow and resume without converting it.' : 'Workflow instance cannot be created.'); return true }
+      if (result.created) notifier?.publish(execution.namespaceId, { workflowId, namespaceId: execution.namespaceId, revision: 1 })
+      send(result.created ? 201 : 200, { data: { namespaceId: execution.namespaceId, created: result.created, idempotent: result.idempotent, ...await publicSnapshot(result.snapshot) } })
+    } catch (error) {
+      if (error?.code === 'WORKFLOW_DEFINITION_NOT_FOUND' || error?.code === 'WORKFLOW_DEFINITION_AMBIGUOUS') errorResponse(send, 409, error.code, error.code === 'WORKFLOW_DEFINITION_AMBIGUOUS' ? 'Workflow definition selection is ambiguous.' : 'Workflow definition was not found.')
+      else { logStorageFailure(log, { operation: 'start', namespaceId: execution.namespaceId, workflowId }, error); errorResponse(send, 500, 'WORKFLOW_STORAGE_FAILURE', 'Workflow instance storage is unavailable.') }
+    }
     return true
   }
 

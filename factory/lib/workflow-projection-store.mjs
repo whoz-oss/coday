@@ -3,10 +3,12 @@ import { appendFile, mkdir, open, readFile, readdir, rename, rm } from 'node:fs/
 import { dirname, join } from 'node:path'
 import { hashWorkflowProjection, validateWorkflowProjection, validateWorkflowProjectionId } from './workflow-projection.mjs'
 import { projectWorkflowTiming } from './workflow-timing-projector.mjs'
+import { createWorkflowInstance, workflowStartCommandHash } from './workflow-instance.mjs'
 
 export const WORKFLOW_STORE_ERROR_CODES = Object.freeze({
   INVALID_DATA_ROOT: 'INVALID_DATA_ROOT', INVALID_NAMESPACE_ID: 'INVALID_NAMESPACE_ID', REVISION_CONFLICT: 'REVISION_CONFLICT',
   WORKFLOW_REMOVED: 'WORKFLOW_REMOVED', WORKFLOW_NOT_FOUND: 'WORKFLOW_NOT_FOUND', INVALID_LIFECYCLE_TRANSITION: 'INVALID_LIFECYCLE_TRANSITION',
+  WORKFLOW_ALREADY_EXISTS: 'WORKFLOW_ALREADY_EXISTS', WORKFLOW_IDENTITY_CONFLICT: 'WORKFLOW_IDENTITY_CONFLICT',
   CORRUPT_STORAGE: 'CORRUPT_STORAGE', STORAGE_FAILURE: 'STORAGE_FAILURE',
 })
 
@@ -88,6 +90,32 @@ export class WorkflowProjectionStore {
     let entries; try { entries = await readdir(join(this.dataRoot, 'tombstones'), { withFileTypes: true }) } catch (error) { if (error?.code === 'ENOENT') return []; throw error }
     const snapshots = []; for (const entry of entries.filter((item) => item.isFile() && item.name.endsWith('.json'))) { const tombstone = await this._readJson(join(this.dataRoot, 'tombstones', entry.name)); if (!tombstone || typeof tombstone.namespaceId !== 'string' || typeof tombstone.workflowId !== 'string') throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.CORRUPT_STORAGE); const tombstonePaths = this.paths(tombstone.namespaceId, tombstone.workflowId); this._validateTombstone(tombstone, tombstonePaths); if (tombstone.namespaceId !== namespaceId || tombstone.lifecycleState === 'purged') continue;
       if (tombstone.lifecycleState !== 'removed') throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.CORRUPT_STORAGE); const paths = tombstonePaths; const snapshot = await this._readJson(paths.trashSnapshot); if (!snapshot || hashWorkflowProjection(snapshot.projection) !== snapshot.projectionHash) throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.CORRUPT_STORAGE); snapshots.push(snapshot) } return snapshots.sort((a,b) => a.projection.workflowId.localeCompare(b.projection.workflowId))
+  }
+
+  async start(namespaceId, command, definition, controllerExecution) { return this._locked(namespaceId, command.workflowId, () => this._start(namespaceId, command, definition, controllerExecution)) }
+  async _start(namespaceId, command, definition, controllerExecution) {
+    const paths = this.paths(namespaceId, command.workflowId)
+    try {
+      if (await this._tombstone(paths)) return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.WORKFLOW_REMOVED } }
+      await this._recover(paths)
+      const current = await this._readSnapshot(paths)
+      const commandHash = workflowStartCommandHash(command, definition)
+      if (current) {
+        if (current.governanceMode !== 'governed') return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.WORKFLOW_ALREADY_EXISTS, details: { governanceMode: 'declarative' } } }
+        if (current.creationCommandHash === commandHash) return { ok: true, created: false, idempotent: true, snapshot: current }
+        return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.WORKFLOW_IDENTITY_CONFLICT } }
+      }
+      const observedAt = new Date().toISOString()
+      const created = createWorkflowInstance(command, definition, controllerExecution, observedAt)
+      const projectionHash = hashWorkflowProjection(created.projection)
+      const snapshot = { revision: 1, projectionHash, governanceMode: 'governed', definitionVersion: definition.version, definitionHash: definition.definitionHash, creationCommandHash: created.creationCommandHash, controllerExecution: created.instance.controllerExecution, instance: created.instance, projection: created.projection }
+      await mkdir(paths.directory, { recursive: true })
+      await atomicJsonWrite(paths.pending, snapshot)
+      await appendDurable(paths.events, { kind: 'workflow_instance_created', revision: 1, projectionHash, definitionVersion: definition.version, definitionHash: definition.definitionHash, observedAt, timestamp: observedAt, transitionDelta: transitionDelta(null, created.projection), controllerExecution: created.instance.controllerExecution, ...attribution(controllerExecution, ['actorId','agentId','caseId','threadId']) })
+      await atomicJsonWrite(paths.snapshot, snapshot)
+      await rm(paths.pending, { force: true })
+      return { ok: true, created: true, idempotent: false, snapshot }
+    } catch (error) { if (error instanceof WorkflowProjectionStoreError) throw error; throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.STORAGE_FAILURE, {}, error) }
   }
 
   async publish(namespaceId, command, controllerExecution) { const validated = validateWorkflowProjection(command); if (!validated.ok) return validated; return this._locked(namespaceId, validated.projection.workflowId, () => this._publish(namespaceId, validated, controllerExecution)) }

@@ -34,11 +34,80 @@ describe('FactoryTools Phase 1 without Jest/Haste', () => {
   it('filters capabilities and exposes workflowId-only lookup schema', async () => {
     const lookup = await exposed('get_workflow')
     assert.deepEqual(Object.keys((lookup.function.parameters as { properties: object }).properties), ['workflowId'])
+    assert.equal((await exposed('start_workflow')).function.name, 'FACTORY__start_workflow')
     assert.equal((await exposed('publish_projection')).function.name, 'FACTORY__publish_projection')
     const context = new CommandContext(project as never, 'user')
     assert.deepEqual(
       await new FactoryTools(interactor, 'FACTORY', {}).getTools(context, ['unknown'], 'ProductEngineer'),
       []
+    )
+  })
+
+  it('starts independently with a strict schema and trusted Express context', async () => {
+    const start = await exposed('start_workflow')
+    assert.deepEqual(Object.keys((start.function.parameters as { properties: object }).properties), [
+      'workflowId',
+      'workflowType',
+      'title',
+    ])
+    assert.equal((start.function.parameters as { additionalProperties: boolean }).additionalProperties, false)
+    let requestedUrl: string | URL | Request | undefined
+    let request: RequestInit | undefined
+    mock.method(globalThis, 'fetch', async (url: string | URL | Request, init?: RequestInit) => {
+      requestedUrl = url
+      request = init
+      return new Response(
+        JSON.stringify({ data: { workflowId: 'demo.id', revision: 1, created: true, idempotent: false } }),
+        { status: 201 }
+      )
+    })
+    const result = await invoke(start, { workflowId: 'demo.id', workflowType: 'demo', title: 'Demo' })
+    assert.equal(result.created, true)
+    assert.equal(String(requestedUrl), 'http://127.0.0.1:3141/api/factory/workflows/demo.id/start')
+    assert.deepEqual(JSON.parse(request?.body as string), {
+      workflow: { workflowId: 'demo.id', workflowType: 'demo', title: 'Demo' },
+      execution: {
+        namespaceId,
+        runtimeId: 'coday-express-transitional',
+        kind: 'coday-express',
+        actorId: 'benjamin.valdes',
+        agentId: 'ProductEngineer',
+        threadId: 'thread-123',
+      },
+    })
+  })
+
+  it('rejects start attribution fields and preserves Factory errors', async () => {
+    let called = false
+    mock.method(globalThis, 'fetch', async () => {
+      called = true
+      return new Response()
+    })
+    assert.equal(
+      (
+        await invoke(await exposed('start_workflow'), {
+          workflowId: 'demo.id',
+          workflowType: 'demo',
+          title: 'Demo',
+          namespaceId,
+        })
+      ).error.code,
+      'INVALID_START_REQUEST'
+    )
+    assert.equal(called, false)
+    mock.restoreAll()
+    mock.method(
+      globalThis,
+      'fetch',
+      async () =>
+        new Response(JSON.stringify({ error: { code: 'WORKFLOW_DEFINITION_AMBIGUOUS', message: 'safe' } }), {
+          status: 409,
+        })
+    )
+    assert.equal(
+      (await invoke(await exposed('start_workflow'), { workflowId: 'demo.id', workflowType: 'demo', title: 'Demo' }))
+        .error.code,
+      'WORKFLOW_DEFINITION_AMBIGUOUS'
     )
   })
 

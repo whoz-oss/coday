@@ -30,6 +30,7 @@ integrations:
     - CoverageArchitect
   FACTORY:
     - get_workflow
+    - start_workflow
     - publish_projection
 
 mandatoryDocs:

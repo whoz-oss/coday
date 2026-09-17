@@ -24,6 +24,16 @@ export class FactoryTools extends AssistantToolFactory {
       {
         type: 'function',
         function: {
+          name: `${this.name}__start_workflow`,
+          description: 'Create an authoritative governed workflow from the unique configured immutable definition.',
+          parameters: startSchema,
+          parse: JSON.parse,
+          function: async (input: unknown) => this.startWorkflow(context, agentName, input),
+        },
+      },
+      {
+        type: 'function',
+        function: {
           name: `${this.name}__publish_projection`,
           description: 'Publish a generic WorkflowProjection v1 or v2 to the configured Factory runtime.',
           parameters: projectionSchema,
@@ -77,6 +87,59 @@ export class FactoryTools extends AssistantToolFactory {
         : errorResult('FACTORY_UNAVAILABLE', 'Factory is unavailable.')
     } finally {
       clearTimeout(timer)
+    }
+  }
+
+  private async startWorkflow(context: CommandContext, agentName: string, input: unknown): Promise<string> {
+    const config = context.project.factory
+    const configError = validateConfig(config)
+    if (configError) return errorResult('FACTORY_UNAVAILABLE', configError)
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Array.isArray(input) ||
+      Object.keys(input).some((key) => !['workflowId', 'workflowType', 'title'].includes(key))
+    )
+      return errorResult('INVALID_START_REQUEST', 'Only workflowId, workflowType and title are accepted.')
+    const workflow = input as Record<string, unknown>
+    if (
+      typeof workflow.workflowId !== 'string' ||
+      !safeId.test(workflow.workflowId) ||
+      typeof workflow.workflowType !== 'string' ||
+      !workflow.workflowType.trim() ||
+      typeof workflow.title !== 'string' ||
+      !workflow.title.trim()
+    )
+      return errorResult('INVALID_START_REQUEST', 'workflowId, workflowType and title are required.')
+    const threadId = context.aiThread?.id?.trim()
+    if (!threadId) return errorResult('FACTORY_UNAVAILABLE', 'A controlling Coday thread identity is required.')
+    const execution: CodayExpressExecution = {
+      namespaceId: config!.namespaceId!,
+      runtimeId: config!.runtimeId?.trim() || 'coday-express-transitional',
+      kind: 'coday-express',
+      agentId: agentName?.trim() || 'default',
+      threadId,
+    }
+    if (context.username?.trim()) execution.actorId = context.username.trim()
+    try {
+      const response = await fetch(
+        `${config!.baseUrl!.replace(/\/+$/, '')}/api/factory/workflows/${encodeURIComponent(workflow.workflowId)}/start`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ workflow, execution }),
+        }
+      )
+      const payload: unknown = await response.json().catch(() => undefined)
+      if (!response.ok) {
+        const error = readFactoryError(payload)
+        return error
+          ? errorResult(error.code, error.message)
+          : errorResult('FACTORY_UNAVAILABLE', 'Factory rejected workflow creation.')
+      }
+      return JSON.stringify((payload as { data?: unknown }).data ?? payload)
+    } catch {
+      return errorResult('FACTORY_UNAVAILABLE', 'Factory is unavailable.')
     }
   }
 
@@ -179,6 +242,16 @@ const workflowLookupSchema = {
   additionalProperties: false,
   properties: { workflowId: { type: 'string', maxLength: 128, pattern: safeId.source } },
   required: ['workflowId'],
+}
+const startSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    workflowId: { type: 'string', maxLength: 128, pattern: safeId.source },
+    workflowType: { type: 'string', maxLength: 128 },
+    title: { type: 'string', maxLength: 256 },
+  },
+  required: ['workflowId', 'workflowType', 'title'],
 }
 const projectionSchema = {
   type: 'object',

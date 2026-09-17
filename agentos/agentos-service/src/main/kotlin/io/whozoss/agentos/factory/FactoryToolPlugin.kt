@@ -29,6 +29,7 @@ class FactoryToolPlugin(
     override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> =
         listOf(
             FactoryGetWorkflowTool(baseUrl, httpClient, objectMapper),
+            FactoryStartWorkflowTool(baseUrl, httpClient, objectMapper, runtimeId),
             FactoryPublishProjectionTool(baseUrl, httpClient, objectMapper, runtimeId),
         )
 
