@@ -17,10 +17,8 @@ import java.util.UUID
  *
  * ## Aggregation and null-cost contamination
  *
- * Aggregations use the repository's single-column list-of-map envelope because this SDN
- * version maps direct multi-column results through the entity converter. All rows expose
- * `nullCostCount`: when it is greater than zero, [UsageAggregate.cost] is `null` rather
- * than a silently incomplete sum.
+ * Aggregations expose the sum of known costs and the number of records with unknown cost.
+ * The known sum remains available as a lower bound instead of being replaced by zero or null.
  *
  * @see UsageRecordNodeNeo4jRepository for the Cypher queries.
  */
@@ -94,15 +92,17 @@ open class Neo4jUsageRecordRepository(
     override fun sumCostByCaseTreeSince(
         rootCaseId: UUID,
         since: Instant,
-    ): Double? {
-        val rows = usageRecordNodeNeo4jRepository.sumCostByCaseTreeSince(rootCaseId.toString(), since)
-        if (rows.isEmpty()) return null
-        val row = rows.first()
+    ): UsageCostAggregate? {
+        val row = usageRecordNodeNeo4jRepository
+            .sumCostByCaseTreeSince(rootCaseId.toString(), since)
+            .firstOrNull()
+            ?: return null
         val recordCount = (row["recordCount"] as Number).toLong()
         if (recordCount == 0L) return null
-        val nullCostCount = (row["nullCostCount"] as Number).toLong()
-        if (nullCostCount > 0L) return null
-        return (row["partialCostSum"] as Number).toDouble()
+        return UsageCostAggregate(
+            cost = (row["partialCostSum"] as Number).toDouble(),
+            unknownCostCount = (row["nullCostCount"] as Number).toLong(),
+        )
     }
 
     // =========================================================================
@@ -110,22 +110,14 @@ open class Neo4jUsageRecordRepository(
     // =========================================================================
 
     /**
-     * Convert a list of Cypher aggregate rows into a single [UsageAggregate].
-     *
-     * All costs are in a single implicit currency unit, so Cypher returns at most one row.
-     * Each row contains: recordCount, inputTokens, outputTokens, cacheReadTokens,
-     * cacheWriteTokens, totalTokens, partialCostSum, nullCostCount.
-     *
-     * Null-cost contamination: when `nullCostCount > 0`, the cost is `null` (not
-     * `partialCostSum`, which would be a silent undercount).
+     * Convert the single-row Cypher list envelope into a [UsageAggregate].
+     * The list envelope is required by SDN; the row carries both the known-cost lower
+     * bound and the unknown-cost count.
      */
     private fun mapToAggregate(rows: List<Map<String, Any>>): UsageAggregate {
-        if (rows.isEmpty()) return UsageAggregate.EMPTY
-        val row = rows.first()
+        val row = rows.firstOrNull() ?: return UsageAggregate.EMPTY
         val recordCount = (row["recordCount"] as Number).toLong()
         if (recordCount == 0L) return UsageAggregate.EMPTY
-        val nullCostCount = (row["nullCostCount"] as Number).toLong()
-        val partialCostSum = (row["partialCostSum"] as Number).toDouble()
         return UsageAggregate(
             recordCount = recordCount,
             inputTokens = (row["inputTokens"] as Number).toLong(),
@@ -133,7 +125,8 @@ open class Neo4jUsageRecordRepository(
             cacheReadTokens = (row["cacheReadTokens"] as Number).toLong(),
             cacheWriteTokens = (row["cacheWriteTokens"] as Number).toLong(),
             totalTokens = (row["totalTokens"] as Number).toLong(),
-            cost = if (nullCostCount > 0L) null else partialCostSum,
+            cost = (row["partialCostSum"] as Number).toDouble(),
+            unknownCostCount = (row["nullCostCount"] as Number).toLong(),
         )
     }
 
@@ -158,7 +151,8 @@ open class Neo4jUsageRecordRepository(
                     cacheReadTokens = (row["cacheReadTokens"] as Number).toLong(),
                     cacheWriteTokens = (row["cacheWriteTokens"] as Number).toLong(),
                     totalTokens = (row["totalTokens"] as Number).toLong(),
-                    cost = if (nullCostCount > 0L) null else partialCostSum,
+                    cost = partialCostSum,
+                    unknownCostCount = nullCostCount,
                 ),
             )
         }

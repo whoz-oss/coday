@@ -9,7 +9,7 @@ import org.springframework.test.context.ActiveProfiles
  * engine using the Neo4j test harness (`embedded-neo4j` persistence mode).
  *
  * No Docker, no Testcontainers — the harness starts and stops with the Spring context.
- * This catches Cypher query bugs (aggregation nesting, ORDER BY, null-cost contamination)
+ * This catches Cypher query bugs (aggregation nesting, ORDER BY, unknown-cost tracking)
  * that the in-memory [io.whozoss.agentos.usage.InMemoryUsageRecordRepository] cannot detect.
  */
 @SpringBootTest

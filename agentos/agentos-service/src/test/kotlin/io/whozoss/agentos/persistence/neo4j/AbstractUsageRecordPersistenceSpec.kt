@@ -28,7 +28,7 @@ import java.util.UUID
  *
  * Covers:
  * - Basic CRUD: save, findById, findByCaseId
- * - Null-cost contamination in all aggregation paths
+ * - Known-cost lower bounds and unknown-cost counts in all aggregation paths
  * - Tree traversal ([:PARENT_OF] edges) for aggregateByCaseTree / sumCostByCaseTreeSince
  * - ORDER BY totalTokens DESC for aggregateByAgent and aggregateByModel
  * - The sumCostByCaseTreeSince Cypher fix (aggregations in WITH, not inside collect)
@@ -138,7 +138,7 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
             agg.cost!! shouldBe (0.75 plusOrMinus 1e-9)
         }
 
-        "aggregateByCaseId: null cost contaminates the aggregate" {
+        "aggregateByCaseId preserves known cost and counts unknown costs" {
             val ns = namespaceRepo.save(namespace())
             val case = caseRepo.save(case(ns.id))
             repo.save(record(case.id, ns.id, totalTokens = 100L, cost = 0.25))
@@ -146,7 +146,8 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
 
             val agg = repo.aggregateByCaseId(case.id)
             agg.totalTokens shouldBe 300L
-            agg.cost shouldBe null
+            agg.cost shouldBe 0.25
+            agg.unknownCostCount shouldBe 1L
         }
 
         // =====================================================================
@@ -167,7 +168,7 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
             agg.cost!! shouldBe (0.75 plusOrMinus 1e-9)
         }
 
-        "aggregateByCaseTree: null cost in descendant contaminates tree total" {
+        "aggregateByCaseTree preserves known cost and counts unknown descendant costs" {
             val ns = namespaceRepo.save(namespace())
             val root = caseRepo.save(case(ns.id))
             val child = caseRepo.save(case(ns.id).copy(parentCaseId = root.id))
@@ -177,7 +178,8 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
 
             val agg = repo.aggregateByCaseTree(root.id)
             agg.totalTokens shouldBe 300L
-            agg.cost shouldBe null
+            agg.cost shouldBe 0.25
+            agg.unknownCostCount shouldBe 1L
         }
 
         "aggregateByCaseTree does not include unrelated cases" {
@@ -222,7 +224,7 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
             results.map { it.key } shouldBe listOf("high", "mid", "low")
         }
 
-        "aggregateByAgent: null cost contaminates agent group" {
+        "aggregateByAgent preserves known cost and counts unknown costs per group" {
             val ns = namespaceRepo.save(namespace())
             val case = caseRepo.save(case(ns.id))
             val ts = Instant.now()
@@ -232,7 +234,8 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
             val results = repo.aggregateByAgent(ns.id, ts.minusSeconds(1), ts.plusSeconds(1))
             results shouldHaveSize 1
             results.first().aggregate.totalTokens shouldBe 300L
-            results.first().aggregate.cost shouldBe null
+            results.first().aggregate.cost shouldBe 0.25
+            results.first().aggregate.unknownCostCount shouldBe 1L
         }
 
         // =====================================================================
@@ -283,7 +286,8 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
 
             val result = repo.sumCostByCaseTreeSince(root.id, since)
             result shouldNotBe null
-            result!! shouldBe (0.75 plusOrMinus 1e-9)
+            result!!.cost shouldBe (0.75 plusOrMinus 1e-9)
+            result.unknownCostCount shouldBe 0L
         }
 
         "sumCostByCaseTreeSince excludes records before the since instant" {
@@ -297,17 +301,20 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
 
             val result = repo.sumCostByCaseTreeSince(root.id, since)
             result shouldNotBe null
-            result!! shouldBe (0.25 plusOrMinus 1e-9)
+            result!!.cost shouldBe (0.25 plusOrMinus 1e-9)
+            result.unknownCostCount shouldBe 0L
         }
 
-        "sumCostByCaseTreeSince returns null when any record has null cost" {
+        "sumCostByCaseTreeSince preserves known cost and counts unknown costs" {
             val ns = namespaceRepo.save(namespace())
             val root = caseRepo.save(case(ns.id))
             val since = Instant.parse("2025-01-01T10:00:00Z")
             repo.save(record(root.id, ns.id, totalTokens = 100L, cost = 0.25, timestamp = since))
             repo.save(record(root.id, ns.id, totalTokens = 200L, cost = null, timestamp = since))
 
-            repo.sumCostByCaseTreeSince(root.id, since) shouldBe null
+            val result = repo.sumCostByCaseTreeSince(root.id, since)
+            result!!.cost shouldBe (0.25 plusOrMinus 1e-9)
+            result.unknownCostCount shouldBe 1L
         }
 
         "sumCostByCaseTreeSince does not include records from unrelated cases" {
@@ -319,7 +326,8 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
             repo.save(record(unrelated.id, ns.id, totalTokens = 999L, cost = 9.99, timestamp = since))
 
             val result = repo.sumCostByCaseTreeSince(root.id, since)
-            result!! shouldBe (0.25 plusOrMinus 1e-9)
+            result!!.cost shouldBe (0.25 plusOrMinus 1e-9)
+            result.unknownCostCount shouldBe 0L
         }
     }
 }

@@ -124,6 +124,7 @@ private fun UsageAggregate.toDto() =
         cacheWriteTokens = cacheWriteTokens,
         totalTokens = totalTokens,
         cost = cost,
+        unknownCostCount = unknownCostCount,
     )
 
 private fun UsageAggregateByKey.toDto() =

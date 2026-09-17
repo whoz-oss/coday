@@ -27,15 +27,13 @@ interface UsageRecordNodeNeo4jRepository : Neo4jRepository<UsageRecordNode, Stri
     // =========================================================================
     // Aggregation queries
     //
-    // Aggregations wrap each row in a Cypher map literal and collect the rows into
-    // a single list column. This envelope is intentional: this SDN version tries to
-    // map direct multi-column results through the repository entity converter.
+    // Every aggregation wraps its map projection in collect(). This single-column list
+    // envelope is required by the Spring Data Neo4j repository result converter used by
+    // this project; returning a map directly is interpreted as an entity-shaped result
+    // and fails in AbstractNeo4jQuery with a ClassCastException.
     //
-    // Null-cost contamination strategy:
-    //   Cypher's sum() silently ignores nulls and would produce a silent undercount.
-    //   We count records with null cost separately (nullCostCount) and return that count
-    //   alongside the partial sum. The Kotlin caller replaces the partial sum with null
-    //   when nullCostCount > 0.
+    // Cypher's sum() silently ignores nulls. We therefore return the known-cost sum as
+    // a lower bound and count unknown costs separately so no information is discarded.
     //
     // All costs are in a single implicit currency unit — no GROUP BY currency.
     // Token counts use sum() directly because they are Long (never null).
@@ -216,14 +214,13 @@ interface UsageRecordNodeNeo4jRepository : Neo4jRepository<UsageRecordNode, Stri
      * Sum the cost of all active [UsageRecordNode]s in the case tree rooted at [rootCaseId],
      * restricted to records with [UsageRecordNode.timestamp] >= [since].
      *
-     * Returns a single-element list containing a map with:
+     * Returns a single-element list containing an aggregate map with:
      * - `recordCount`    (Long)   — number of matching records (0 = no records yet)
      * - `partialCostSum` (Double) — sum of non-null costs (0.0 when all costs are null)
      * - `nullCostCount`  (Long)   — number of records whose cost is null
      *
-     * When `nullCostCount > 0` the total cost is unknown: the caller must return null
-     * rather than `partialCostSum`, which would be a silent undercount.
-     * When `recordCount == 0` there are no records yet; the caller should also return null.
+     * `partialCostSum` remains the known lower bound when `nullCostCount > 0`.
+     * When `recordCount == 0` there are no records yet; the caller returns null.
      *
      * ## Index usage
      * Phase 1 — `MATCH (root:Case {id: $rootCaseId})` hits the UNIQUE constraint on `Case.id`.

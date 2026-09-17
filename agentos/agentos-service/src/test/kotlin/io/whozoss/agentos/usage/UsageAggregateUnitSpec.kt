@@ -12,7 +12,7 @@ import java.util.UUID
  * Unit tests for aggregation semantics via [InMemoryUsageRecordRepository].
  *
  * These tests validate:
- * - Null-cost contamination: one unpriced record makes the aggregate cost null
+ * - Unknown-cost tracking: known costs remain summed and unpriced records are counted
  * - Tree aggregation: root + descendants are all included
  * - Token counts always sum normally regardless of cost nullability
  *
@@ -69,8 +69,8 @@ class UsageAggregateUnitSpec : StringSpec({
         agg.cost shouldBe 0.75
     }
 
-    "aggregateByCaseId: null cost contaminates the aggregate total" {
-        // One unpriced record makes the whole cost null.
+    "aggregateByCaseId preserves known cost and counts unknown costs" {
+        // One unpriced record is counted without discarding the known-cost lower bound.
         val repo = InMemoryUsageRecordRepository()
         val caseId = UUID.randomUUID()
         repo.save(record(caseId, totalTokens = 100L, cost = 0.25))
@@ -78,7 +78,8 @@ class UsageAggregateUnitSpec : StringSpec({
 
         val agg = repo.aggregateByCaseId(caseId)
         agg.totalTokens shouldBe 300L // tokens sum normally
-        agg.cost shouldBe null         // cost is contaminated
+        agg.cost shouldBe 0.25         // known-cost lower bound is preserved
+        agg.unknownCostCount shouldBe 1L
     }
 
     // =========================================================================
@@ -128,8 +129,8 @@ class UsageAggregateUnitSpec : StringSpec({
         agg.cost shouldBe 1.0
     }
 
-    "aggregateByCaseTree: null cost in descendant contaminates tree total" {
-        // Root is priced, child is not. Tree total must be null.
+    "aggregateByCaseTree preserves known cost and counts unknown descendant costs" {
+        // Root is priced, child is not: preserve the root cost and count the child.
         val repo = InMemoryUsageRecordRepository()
         val rootId = UUID.randomUUID()
         val childId = UUID.randomUUID()
@@ -139,7 +140,8 @@ class UsageAggregateUnitSpec : StringSpec({
 
         val agg = repo.aggregateByCaseTree(rootId)
         agg.totalTokens shouldBe 300L // tokens still sum
-        agg.cost shouldBe null         // contaminated by child
+        agg.cost shouldBe 0.25         // known-cost lower bound is preserved
+        agg.unknownCostCount shouldBe 1L
     }
 
     "aggregateByCaseTree does not include records from unrelated cases" {
@@ -233,7 +235,7 @@ class UsageAggregateUnitSpec : StringSpec({
         results.map { it.key } shouldBe listOf("high", "mid", "low")
     }
 
-    "aggregateByAgent: null cost contaminates agent group total" {
+    "aggregateByAgent preserves known cost and counts unknown costs per group" {
         val repo = InMemoryUsageRecordRepository()
         val caseId = UUID.randomUUID()
         val ts = Instant.now()
@@ -246,7 +248,8 @@ class UsageAggregateUnitSpec : StringSpec({
         results shouldHaveSize 1
         val alpha = results.first()
         alpha.aggregate.totalTokens shouldBe 300L // tokens sum normally
-        alpha.aggregate.cost shouldBe null         // contaminated
+        alpha.aggregate.cost shouldBe 0.25
+        alpha.aggregate.unknownCostCount shouldBe 1L
     }
 
     // =========================================================================
@@ -300,7 +303,7 @@ class UsageAggregateUnitSpec : StringSpec({
         repo.save(record(rootId, totalTokens = 100L, cost = 0.25, timestamp = Instant.parse("2025-01-01T10:00:00Z")))
         repo.save(record(childId, totalTokens = 200L, cost = 0.50, timestamp = Instant.parse("2025-01-01T10:05:00Z")))
 
-        repo.sumCostByCaseTreeSince(rootId, since) shouldBe 0.75
+        repo.sumCostByCaseTreeSince(rootId, since) shouldBe UsageCostAggregate(0.75, 0L)
     }
 
     "sumCostByCaseTreeSince excludes records before the since instant" {
@@ -312,17 +315,17 @@ class UsageAggregateUnitSpec : StringSpec({
         // at exactly since — must be included (inclusive bound)
         repo.save(record(rootId, totalTokens = 100L, cost = 0.25, timestamp = since))
 
-        repo.sumCostByCaseTreeSince(rootId, since) shouldBe 0.25
+        repo.sumCostByCaseTreeSince(rootId, since) shouldBe UsageCostAggregate(0.25, 0L)
     }
 
-    "sumCostByCaseTreeSince returns null when any record has null cost" {
+    "sumCostByCaseTreeSince preserves known cost and counts unknown costs" {
         val repo = InMemoryUsageRecordRepository()
         val rootId = UUID.randomUUID()
         val since = Instant.parse("2025-01-01T10:00:00Z")
         repo.save(record(rootId, totalTokens = 100L, cost = 0.25, timestamp = since))
         repo.save(record(rootId, totalTokens = 200L, cost = null, timestamp = since))
 
-        repo.sumCostByCaseTreeSince(rootId, since) shouldBe null
+        repo.sumCostByCaseTreeSince(rootId, since) shouldBe UsageCostAggregate(0.25, 1L)
     }
 
     "sumCostByCaseTreeSince does not include records from unrelated cases" {
@@ -333,6 +336,6 @@ class UsageAggregateUnitSpec : StringSpec({
         repo.save(record(rootId, totalTokens = 100L, cost = 0.25, timestamp = since))
         repo.save(record(unrelatedId, totalTokens = 999L, cost = 9.99, timestamp = since))
 
-        repo.sumCostByCaseTreeSince(rootId, since) shouldBe 0.25
+        repo.sumCostByCaseTreeSince(rootId, since) shouldBe UsageCostAggregate(0.25, 0L)
     }
 })

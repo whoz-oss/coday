@@ -95,7 +95,7 @@ class InMemoryUsageRecordRepository : UsageRecordRepository {
     override fun sumCostByCaseTreeSince(
         rootCaseId: UUID,
         since: Instant,
-    ): Double? {
+    ): UsageCostAggregate? {
         val caseIds = collectSubtree(rootCaseId)
         val records = store.values.filter {
             !it.metadata.removed &&
@@ -103,8 +103,10 @@ class InMemoryUsageRecordRepository : UsageRecordRepository {
                 !it.timestamp.isBefore(since)
         }
         if (records.isEmpty()) return null
-        if (records.any { it.cost == null }) return null
-        return records.sumOf { it.cost!! }
+        return UsageCostAggregate(
+            cost = records.mapNotNull { it.cost }.sum(),
+            unknownCostCount = records.count { it.cost == null }.toLong(),
+        )
     }
 
     // =========================================================================
@@ -128,14 +130,11 @@ class InMemoryUsageRecordRepository : UsageRecordRepository {
     /**
      * Reduce a flat list of records into a [UsageAggregate].
      *
-     * Null-cost contamination: if any record has `cost == null`, the aggregate cost is
-     * null (pricing unknown). Token counts always sum normally.
+     * Known costs are summed as a lower bound; records with unknown cost are counted
+     * separately. Token counts always sum normally.
      */
     private fun aggregate(records: List<UsageRecord>): UsageAggregate {
         if (records.isEmpty()) return UsageAggregate.EMPTY
-        val cost: Double? =
-            if (records.any { it.cost == null }) null
-            else records.sumOf { it.cost!! }
         return UsageAggregate(
             recordCount = records.size.toLong(),
             inputTokens = records.sumOf { it.inputTokens },
@@ -143,7 +142,8 @@ class InMemoryUsageRecordRepository : UsageRecordRepository {
             cacheReadTokens = records.sumOf { it.cacheReadTokens },
             cacheWriteTokens = records.sumOf { it.cacheWriteTokens },
             totalTokens = records.sumOf { it.totalTokens },
-            cost = cost,
+            cost = records.mapNotNull { it.cost }.sum(),
+            unknownCostCount = records.count { it.cost == null }.toLong(),
         )
     }
 }

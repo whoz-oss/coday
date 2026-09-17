@@ -48,9 +48,9 @@ data class UsageRecordNode(
     val cost: Double? = null,
     val timestamp: Instant,
     // Audit fields from EntityMetadata
-    val created: Instant = Instant.now(),
+    val created: Instant,
     val createdBy: String? = null,
-    val modified: Instant = Instant.now(),
+    val modified: Instant,
     val modifiedBy: String? = null,
     val removed: Boolean? = null,
 ) {

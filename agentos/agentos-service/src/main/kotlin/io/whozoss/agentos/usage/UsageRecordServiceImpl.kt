@@ -44,7 +44,7 @@ class UsageRecordServiceImpl(
     override fun sumCostByCaseTreeSince(
         rootCaseId: UUID,
         since: Instant,
-    ): Double? = repository.sumCostByCaseTreeSince(rootCaseId, since)
+    ): UsageCostAggregate? = repository.sumCostByCaseTreeSince(rootCaseId, since)
 
     companion object : KLogging()
 }
