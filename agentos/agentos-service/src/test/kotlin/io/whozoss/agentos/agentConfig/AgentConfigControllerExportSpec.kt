@@ -393,4 +393,14 @@ class AgentConfigControllerExportSpec : StringSpec({
 
         (body != null) shouldBe true
     }
+    "export preserves an explicit timeout and omits an inherited one" {
+        for (timeout in listOf(null, 3600)) {
+            val c = config().copy(delegationTimeoutSeconds = timeout)
+            every { service.findById(c.id) } returns c
+            val yaml = controller.export(c.id).body!!
+            if (timeout == null) yaml shouldNotContain "delegationTimeoutSeconds"
+            else yaml shouldContain "delegationTimeoutSeconds: 3600"
+        }
+    }
+
 })

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agentConfig
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
 import io.kotest.extensions.spring.SpringExtension
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -16,6 +17,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
@@ -44,6 +46,44 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
     private val namespaceId = UUID.randomUUID()
 
     init {
+        "timeout override survives persistence and PUT null or omission restores inheritance" {
+            val created = mockMvc.perform(
+                post("/api/agent-configs").contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"namespaceId":"$namespaceId","name":"timeout-agent","delegationTimeoutSeconds":3600}"""),
+            ).andExpect(status().isCreated)
+                .andExpect(jsonPath("$.delegationTimeoutSeconds").value(3600))
+                .andReturn().response.contentAsString
+            val id = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(created)["id"].asText()
+            mockMvc.perform(get("/api/agent-configs/$id"))
+                .andExpect(status().isOk).andExpect(jsonPath("$.delegationTimeoutSeconds").value(3600))
+            for (reset in listOf(
+                """{"name":"timeout-agent","delegationTimeoutSeconds":null}""",
+                """{"name":"timeout-agent"}""",
+            )) {
+                mockMvc.perform(put("/api/agent-configs/$id").contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"name":"timeout-agent","delegationTimeoutSeconds":1200}"""))
+                    .andExpect(status().isOk).andExpect(jsonPath("$.delegationTimeoutSeconds").value(1200))
+                mockMvc.perform(put("/api/agent-configs/$id").contentType(MediaType.APPLICATION_JSON).content(reset))
+                    .andExpect(status().isOk).andExpect(jsonPath("$.delegationTimeoutSeconds").doesNotExist())
+                agentConfigService.findById(UUID.fromString(id))!!.delegationTimeoutSeconds shouldBe null
+            }
+            for (invalid in listOf("0", "-1", "2147483648")) {
+                mockMvc.perform(post("/api/agent-configs").contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"namespaceId":"$namespaceId","name":"invalid-timeout","delegationTimeoutSeconds":$invalid}"""))
+                    .andExpect(status().isBadRequest)
+                mockMvc.perform(put("/api/agent-configs/$id").contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"name":"timeout-agent","delegationTimeoutSeconds":$invalid}"""))
+                    .andExpect(status().isBadRequest)
+            }
+        }
+
+        "defaults endpoint exposes the configured timeout" {
+            mockMvc.perform(get("/api/agent-configs/defaults"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.delegationTimeoutSeconds").value(300))
+        }
+
 
         // -------------------------------------------------------------------------
         // POST /api/agent-configs — create
