@@ -11,7 +11,7 @@ function expect(name, actual, expected) {
 const A = '11111111-1111-4111-8111-111111111111'
 const B = '22222222-2222-4222-8222-222222222222'
 const projection = { schemaVersion: '1', workflowId: 'wf-1', workflowType: 'delivery', title: 'W', status: 'ready', steps: [] }
-const envelope = { projection, execution: { namespaceId: A } }
+const envelope = { projection, execution: { namespaceId: A, runtimeId: 'agentos-primary', kind: 'agentos', agentId: 'agent', caseId: 'case-1' } }
 
 let timers = []
 const hub = new WorkflowProjectionSseHub({

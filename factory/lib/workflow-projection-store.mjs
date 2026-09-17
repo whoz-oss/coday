@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { appendFile, mkdir, open, readFile, readdir, rename, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { hashWorkflowProjection, validateWorkflowProjection, validateWorkflowProjectionId } from './workflow-projection.mjs'
+import { projectWorkflowTiming } from './workflow-timing-projector.mjs'
 
 export const WORKFLOW_STORE_ERROR_CODES = Object.freeze({
   INVALID_DATA_ROOT: 'INVALID_DATA_ROOT', INVALID_NAMESPACE_ID: 'INVALID_NAMESPACE_ID', REVISION_CONFLICT: 'REVISION_CONFLICT',
@@ -24,6 +25,18 @@ async function atomicJsonWrite(filePath, value) {
 }
 async function appendDurable(filePath, fact) { await appendFile(filePath, `${JSON.stringify(fact)}\n`, { encoding: 'utf8', mode: 0o600 }); const handle = await open(filePath, 'r'); try { await handle.sync() } finally { await handle.close() } }
 function changedStepIds(previous, next) { const before = new Map((previous?.steps ?? []).map((step) => [step.id, JSON.stringify(step)])); const after = new Map(next.steps.map((step) => [step.id, JSON.stringify(step)])); return [...new Set([...before.keys(), ...after.keys()])].filter((id) => before.get(id) !== after.get(id)).sort() }
+function transitionDelta(previous, next) {
+  const before = new Map((previous?.steps ?? []).map((step) => [step.id, step]))
+  const after = new Map(next.steps.map((step) => [step.id, step]))
+  const steps = []
+  for (const stepId of [...new Set([...before.keys(), ...after.keys()])].sort()) {
+    const prior = before.get(stepId); const current = after.get(stepId)
+    if (!current) steps.push({ kind: 'removed', stepId, status: { from: prior.status, to: null } })
+    else if (!prior) steps.push({ kind: 'added', stepId, status: { from: null, to: current.status } })
+    else if (prior.status !== current.status) steps.push({ kind: 'status_changed', stepId, status: { from: prior.status, to: current.status } })
+  }
+  return { workflow: !previous || previous.status !== next.status ? { from: previous?.status ?? null, to: next.status } : null, steps }
+}
 function attribution(input, fields) { const result = {}; for (const field of fields) if (typeof input?.[field] === 'string' && input[field].length > 0) result[field] = input[field]; return result }
 function exists(path) { return readFile(path).then(() => true, (error) => { if (error?.code === 'ENOENT') return false; throw error }) }
 
@@ -50,6 +63,13 @@ export class WorkflowProjectionStore {
   async _recover(paths) { let pending; try { pending = JSON.parse(await readFile(paths.pending, 'utf8')) } catch (error) { if (error?.code === 'ENOENT') return; throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.CORRUPT_STORAGE, {}, error) } let journal = ''; try { journal = await readFile(paths.events, 'utf8') } catch (error) { if (error?.code !== 'ENOENT') throw error } const committed = journal.trim().split('\n').filter(Boolean).some((line) => { const fact = JSON.parse(line); return fact.revision === pending.revision && fact.projectionHash === pending.projectionHash }); if (committed) await atomicJsonWrite(paths.snapshot, pending); await rm(paths.pending, { force: true }) }
 
   async read(namespaceId, workflowId) { const paths = this.paths(namespaceId, workflowId); await this._recover(paths); return this._readSnapshot(paths) }
+  async timing(namespaceId, workflowId, now = new Date()) {
+    const paths = this.paths(namespaceId, workflowId); await this._recover(paths); const snapshot = await this._readSnapshot(paths)
+    if (!snapshot) return null
+    let journal = ''; try { journal = await readFile(paths.events, 'utf8') } catch (error) { if (error?.code !== 'ENOENT') throw error }
+    const facts = journal.split('\n').filter(Boolean).map((line) => { try { return JSON.parse(line) } catch { return { kind: 'projection_published' } } })
+    return projectWorkflowTiming(facts, now, { snapshot })
+  }
   async list(namespaceId) { return this._listRoot(namespaceId, false) }
   async listRemoved(namespaceId) { return this._listRoot(namespaceId, true) }
   async _listRoot(namespaceId, removed) {
@@ -60,10 +80,10 @@ export class WorkflowProjectionStore {
       if (tombstone.lifecycleState !== 'removed') throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.CORRUPT_STORAGE); const paths = tombstonePaths; const snapshot = await this._readJson(paths.trashSnapshot); if (!snapshot || hashWorkflowProjection(snapshot.projection) !== snapshot.projectionHash) throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.CORRUPT_STORAGE); snapshots.push(snapshot) } return snapshots.sort((a,b) => a.projection.workflowId.localeCompare(b.projection.workflowId))
   }
 
-  async publish(namespaceId, command, attributionValue = {}) { const validated = validateWorkflowProjection(command); if (!validated.ok) return validated; return this._locked(namespaceId, validated.projection.workflowId, () => this._publish(namespaceId, validated, attributionValue)) }
-  async _publish(namespaceId, validated, attributionValue) {
+  async publish(namespaceId, command, controllerExecution) { const validated = validateWorkflowProjection(command); if (!validated.ok) return validated; return this._locked(namespaceId, validated.projection.workflowId, () => this._publish(namespaceId, validated, controllerExecution)) }
+  async _publish(namespaceId, validated, controllerExecution) {
     const paths = this.paths(namespaceId, validated.projection.workflowId)
-    try { if (await this._tombstone(paths)) return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.WORKFLOW_REMOVED } }; await mkdir(paths.directory, { recursive: true }); await this._recover(paths); const current = await this._readSnapshot(paths); const currentRevision = current?.revision ?? 0; if (validated.expectedRevision !== undefined && validated.expectedRevision !== currentRevision) return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.REVISION_CONFLICT, details: { expectedRevision: validated.expectedRevision, actualRevision: currentRevision } } }; const projectionHash = hashWorkflowProjection(validated.projection); if (current?.projectionHash === projectionHash) return { ok: true, changed: false, snapshot: current }; const revision = currentRevision + 1; const snapshot = { revision, projectionHash, projection: validated.projection }; await atomicJsonWrite(paths.pending, snapshot); await appendDurable(paths.events, { kind: current ? 'projection_published' : 'projection_created', revision, projectionHash, changedStepIds: changedStepIds(current?.projection, validated.projection), timestamp: new Date().toISOString(), ...attribution(attributionValue, ['actorId','agentId','caseId','runId']) }); await atomicJsonWrite(paths.snapshot, snapshot); await rm(paths.pending, { force: true }); return { ok: true, changed: true, snapshot } } catch (error) { if (error instanceof WorkflowProjectionStoreError) throw error; throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.STORAGE_FAILURE, {}, error) }
+    try { if (await this._tombstone(paths)) return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.WORKFLOW_REMOVED } }; await mkdir(paths.directory, { recursive: true }); await this._recover(paths); const current = await this._readSnapshot(paths); const currentRevision = current?.revision ?? 0; if (validated.expectedRevision !== undefined && validated.expectedRevision !== currentRevision) return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.REVISION_CONFLICT, details: { expectedRevision: validated.expectedRevision, actualRevision: currentRevision } } }; const projectionHash = hashWorkflowProjection(validated.projection); if (current?.projectionHash === projectionHash) return { ok: true, changed: false, snapshot: current }; const revision = currentRevision + 1; const observedAt = new Date().toISOString(); const trustedControllerExecution = { ...controllerExecution, observedAt }; const snapshot = { revision, projectionHash, controllerExecution: trustedControllerExecution, projection: validated.projection }; await atomicJsonWrite(paths.pending, snapshot); await appendDurable(paths.events, { kind: current ? 'projection_published' : 'projection_created', revision, projectionHash, changedStepIds: changedStepIds(current?.projection, validated.projection), observedAt, timestamp: observedAt, transitionDelta: transitionDelta(current?.projection, validated.projection), controllerExecution: trustedControllerExecution, ...attribution(controllerExecution, ['actorId','agentId','caseId','threadId']) }); await atomicJsonWrite(paths.snapshot, snapshot); await rm(paths.pending, { force: true }); return { ok: true, changed: true, snapshot } } catch (error) { if (error instanceof WorkflowProjectionStoreError) throw error; throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.STORAGE_FAILURE, {}, error) }
   }
 
   async remove(namespaceId, workflowId, actor = {}) { return this._locked(namespaceId, workflowId, () => this._remove(namespaceId, workflowId, actor)) }

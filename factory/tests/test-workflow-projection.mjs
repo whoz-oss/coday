@@ -50,6 +50,9 @@ try {
   expect('raw workflow id not used as directory', paths.directory.endsWith('/wf-1'), false)
   const facts = (await readFile(paths.events, 'utf8')).trim().split('\n').map(JSON.parse)
   expect('facts-only event revisions', facts.map((fact) => [fact.kind, fact.revision, fact.agentId]), [['projection_created', 1, 'agent-1'], ['projection_published', 2, undefined]])
+  expect('publication facts contain bounded transition deltas', facts.map((fact) => fact.transitionDelta.workflow), [{ from: null, to: 'ready' }, null])
+  const timing = await store.timing('namespace-1', 'wf-1', new Date(facts.at(-1).observedAt))
+  expect('idempotent publication creates no timing transition', [facts.length, timing.transitionCount], [2, 1])
 } finally {
   await rm(root, { recursive: true, force: true })
 }

@@ -15,6 +15,7 @@ function expect(name, actual, expected) {
 
 const NS_A = '11111111-1111-4111-8111-111111111111'
 const NS_B = '22222222-2222-4222-8222-222222222222'
+const NS_EXPRESS = '33333333-3333-4333-8333-333333333333'
 const projection = {
   schemaVersion: '1', workflowId: 'wf-1', workflowType: 'delivery', title: 'Workflow', status: 'ready',
   steps: [{ id: 'step-1', name: 'First', status: 'ready' }],
@@ -34,9 +35,16 @@ async function request(store, method, pathname, body, log = { error() {} }) {
 const root = await mkdtemp(join(tmpdir(), 'factory-workflow-api-'))
 try {
   const store = new WorkflowProjectionStore(root)
-  const envelope = { projection, execution: { namespaceId: NS_A, agentId: 'agent-1' } }
+  const envelope = { projection, execution: { namespaceId: NS_A, runtimeId: 'agentos-primary', kind: 'agentos', agentId: 'agent-1', caseId: 'case-1' } }
+  const expressEnvelope = {
+    projection: { ...projection, schemaVersion: '2', workflowId: 'express-wf', steps: [{ ...projection.steps[0], responsibility: { kind: 'agent', name: 'Sway' } }] },
+    execution: { namespaceId: NS_EXPRESS, runtimeId: 'coday-express-transitional', kind: 'coday-express', agentId: 'Sway', threadId: '550e8400-e29b-41d4-a716-446655440000', actorId: 'benjamin.valdes' },
+  }
 
-  let response = await request(store, 'PUT', '/api/factory/workflows/wf-1/projection', envelope)
+  let response = await request(store, 'PUT', '/api/factory/workflows/express-wf/projection', expressEnvelope)
+  expect('Coday Express v2 envelope', [response.status, response.body.data.controllerExecution.kind, response.body.data.controllerExecution.threadId], [201, 'coday-express', expressEnvelope.execution.threadId])
+
+  response = await request(store, 'PUT', '/api/factory/workflows/wf-1/projection', envelope)
   expect('create', [response.status, response.body.data.changed, response.body.data.revision], [201, true, 1])
 
   response = await request(store, 'PUT', '/api/factory/workflows/wf-1/projection', envelope)
@@ -58,7 +66,7 @@ try {
   expect('unknown execution field', [response.status, response.body.error.code], [400, 'INVALID_EXECUTION'])
 
   response = await request(store, 'GET', `/api/factory/workflows?namespaceId=${NS_A}&state=active`)
-  expect('listing', [response.status, response.body.data.items.length, response.body.data.items[0].workflowId], [200, 1, 'wf-1'])
+  expect('listing', [response.status, response.body.data.items.length, response.body.data.items[0].workflowId, response.body.data.items[0].controllerExecution.caseId], [200, 1, 'wf-1', 'case-1'])
 
   response = await request(store, 'GET', `/api/factory/workflows?namespaceId=${NS_B}&state=active`)
   expect('namespace isolation', [response.status, response.body.data.items.length], [200, 0])
@@ -70,10 +78,17 @@ try {
   expect('unsupported state', [response.status, response.body.error.code], [400, 'UNSUPPORTED_STATE'])
 
   response = await request(store, 'GET', `/api/factory/workflows/wf-1?namespaceId=${NS_A}`)
-  expect('detail', [response.status, response.body.data.workflowId, response.body.data.revision], [200, 'wf-1', 2])
+  expect('detail', [response.status, response.body.data.workflowId, response.body.data.revision, response.body.data.controllerExecution.runtimeId], [200, 'wf-1', 2, 'agentos-primary'])
 
   response = await request(store, 'GET', `/api/factory/workflows/missing?namespaceId=${NS_A}`)
   expect('detail not found', [response.status, response.body.error.code], [404, 'WORKFLOW_NOT_FOUND'])
+
+  response = await request(store, 'GET', `/api/factory/workflows/wf-1/timing?namespaceId=${NS_A}`)
+  expect('timing detail', [response.status, response.body.data.workflowId, response.body.data.timing.complete], [200, 'wf-1', true])
+  response = await request(store, 'GET', `/api/factory/workflows/wf-1/timing?namespaceId=${NS_B}`)
+  expect('timing namespace isolation', [response.status, response.body.error.code], [404, 'WORKFLOW_NOT_FOUND'])
+  response = await request(store, 'GET', `/api/factory/workflows/missing/timing?namespaceId=${NS_A}`)
+  expect('timing not found', [response.status, response.body.error.code], [404, 'WORKFLOW_NOT_FOUND'])
 
   const failingStore = { list: async () => { throw new Error('SECRET /private/path') } }
   response = await request(failingStore, 'GET', `/api/factory/workflows?namespaceId=${NS_A}&state=active`)

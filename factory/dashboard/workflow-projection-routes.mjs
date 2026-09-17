@@ -4,8 +4,8 @@ import {
 } from '../lib/workflow-projection-store.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-const EXECUTION_FIELDS = new Set(['namespaceId', 'actorId', 'agentId', 'caseId', 'runId'])
-const ATTRIBUTION_FIELDS = ['actorId', 'agentId', 'caseId', 'runId']
+const EXECUTION_FIELDS = new Set(['namespaceId', 'runtimeId', 'kind', 'actorId', 'agentId', 'caseId', 'threadId'])
+const ATTRIBUTION_FIELDS = ['actorId', 'agentId', 'caseId', 'threadId']
 const SAFE_ATTRIBUTION = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,255}$/
 const LIFECYCLE_FIELDS = new Set(['actorId'])
 const LIFECYCLE_EVENTS = Object.freeze({ remove: 'workflow-projection-removed', restore: 'workflow-projection-restored', purge: 'workflow-projection-purged' })
@@ -24,24 +24,40 @@ export function validateWorkflowNamespaceId(namespaceId) {
  */
 export function sanitizeWorkflowExecution(execution) {
   if (!execution || typeof execution !== 'object' || Array.isArray(execution)) {
-    return { ok: false, code: 'INVALID_EXECUTION' }
+    return { ok: false, code: 'INVALID_EXECUTION', reason: 'not_object' }
   }
   if (Object.keys(execution).some((field) => !EXECUTION_FIELDS.has(field))) {
-    return { ok: false, code: 'INVALID_EXECUTION' }
+    return { ok: false, code: 'INVALID_EXECUTION', reason: 'unknown_field' }
   }
   if (!validateWorkflowNamespaceId(execution.namespaceId)) {
-    return { ok: false, code: 'INVALID_NAMESPACE_ID' }
+    return { ok: false, code: 'INVALID_NAMESPACE_ID', reason: 'namespace_id' }
+  }
+  if (typeof execution.runtimeId !== 'string' || !SAFE_ATTRIBUTION.test(execution.runtimeId)) {
+    return { ok: false, code: 'INVALID_EXECUTION', reason: 'runtime_id' }
+  }
+  if (!['agentos', 'coday-express'].includes(execution.kind)) {
+    return { ok: false, code: 'INVALID_EXECUTION', reason: 'kind' }
+  }
+  if (typeof execution.agentId !== 'string' || !SAFE_ATTRIBUTION.test(execution.agentId)) {
+    return { ok: false, code: 'INVALID_EXECUTION', reason: 'agent_id' }
+  }
+  const hasCase = execution.caseId !== undefined
+  const hasThread = execution.threadId !== undefined
+  if ((execution.kind === 'agentos' && (!hasCase || hasThread)) ||
+      (execution.kind === 'coday-express' && (!hasThread || hasCase))) {
+    return { ok: false, code: 'INVALID_EXECUTION', reason: 'controller_identity' }
   }
   const attribution = {}
   for (const field of ATTRIBUTION_FIELDS) {
     const value = execution[field]
     if (value === undefined) continue
-    if (typeof value !== 'string' || !SAFE_ATTRIBUTION.test(value)) {
-      return { ok: false, code: 'INVALID_EXECUTION' }
-    }
+    if (typeof value !== 'string' || !SAFE_ATTRIBUTION.test(value)) return { ok: false, code: 'INVALID_EXECUTION', reason: `${field}_format` }
     attribution[field] = value
   }
-  return { ok: true, namespaceId: execution.namespaceId, attribution }
+  return { ok: true, namespaceId: execution.namespaceId, controllerExecution: {
+    runtimeId: execution.runtimeId, kind: execution.kind, agentId: execution.agentId,
+    ...attribution,
+  } }
 }
 
 function sanitizeLifecycleActor(body) {
@@ -62,6 +78,7 @@ function publicSnapshot(snapshot) {
     workflowId: snapshot.projection.workflowId,
     revision: snapshot.revision,
     projectionHash: snapshot.projectionHash,
+    ...(snapshot.controllerExecution ? { controllerExecution: snapshot.controllerExecution } : {}),
     projection: snapshot.projection,
   }
 }
@@ -81,10 +98,11 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
   const collection = path === '/api/factory/workflows'
   const stream = path === '/api/factory/workflows/stream'
   const projectionMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)\/projection$/)
+  const timingMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)\/timing$/)
   const restoreMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)\/restore$/)
   const purgeMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)\/purge$/)
   const detailMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)$/)
-  if (!collection && !stream && !projectionMatch && !restoreMatch && !purgeMatch && !detailMatch) return false
+  if (!collection && !stream && !projectionMatch && !timingMatch && !restoreMatch && !purgeMatch && !detailMatch) return false
 
   if (method === 'GET' && stream) {
     const namespaceId = url.searchParams.get('namespaceId')
@@ -106,6 +124,7 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
     }
     const execution = sanitizeWorkflowExecution(body.execution)
     if (!execution.ok) {
+      log.warn?.('Workflow execution attribution rejected', { code: execution.code, reason: execution.reason })
       errorResponse(send, 400, execution.code, 'Execution attribution is invalid.')
       return true
     }
@@ -114,7 +133,7 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
       return true
     }
     try {
-      const result = await store.publish(execution.namespaceId, body.projection, execution.attribution)
+      const result = await store.publish(execution.namespaceId, body.projection, execution.controllerExecution)
       if (!result.ok) {
         if (result.error?.code === WORKFLOW_STORE_ERROR_CODES.REVISION_CONFLICT) {
           errorResponse(send, 409, 'REVISION_CONFLICT', 'The expected revision is stale.')
@@ -134,6 +153,22 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
     } catch (error) {
       logStorageFailure(log, { operation: 'publish', namespaceId: execution.namespaceId, workflowId }, error)
       errorResponse(send, 500, 'WORKFLOW_STORAGE_FAILURE', 'Workflow projection storage is unavailable.')
+    }
+    return true
+  }
+
+  if (method === 'GET' && timingMatch) {
+    const namespaceId = url.searchParams.get('namespaceId')
+    const workflowId = decodeURIComponent(timingMatch[1])
+    if (!validateWorkflowNamespaceId(namespaceId)) { errorResponse(send, 400, 'INVALID_NAMESPACE_ID', 'A valid namespaceId query parameter is required.'); return true }
+    try {
+      const timing = await store.timing(namespaceId, workflowId, new Date())
+      if (!timing) errorResponse(send, 404, 'WORKFLOW_NOT_FOUND', 'Workflow projection was not found.')
+      else send(200, { data: { namespaceId, workflowId, timing } })
+    } catch (error) {
+      const invalidId = error instanceof WorkflowProjectionStoreError && error.code === WORKFLOW_STORE_ERROR_CODES.CORRUPT_STORAGE && error.details?.path === 'workflowId'
+      if (invalidId) errorResponse(send, 400, 'INVALID_WORKFLOW_ID', 'workflowId is invalid.')
+      else { logStorageFailure(log, { operation: 'timing', namespaceId, workflowId }, error); errorResponse(send, 500, 'WORKFLOW_STORAGE_FAILURE', 'Workflow projection storage is unavailable.') }
     }
     return true
   }
