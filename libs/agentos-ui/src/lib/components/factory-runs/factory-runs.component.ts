@@ -120,6 +120,12 @@ export class FactoryRunsComponent {
     this.showLaunchForm.set(true)
   }
 
+  protected readonly selectedWorkflow = computed(() => {
+    const workflows = this.workflowProjectionState.workflows()
+    const selectedId = this.workflowProjectionState.selectedWorkflowId()
+    return workflows.find((workflow) => workflow.workflowId === selectedId) ?? workflows[0] ?? null
+  })
+
   protected workflowPending(workflowId: string): boolean {
     return this.workflowProjectionState.actionWorkflowId() === workflowId
   }
@@ -182,6 +188,13 @@ export class FactoryRunsComponent {
     return value
       ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
       : '—'
+  }
+
+  protected workflowStepSummary(
+    workflow: import('../../services/factory-workflow-projection.model').WorkflowProjectionSnapshotDto
+  ): string {
+    const step = workflow.projection.steps.find((item) => item.status === 'running' || item.status === 'waiting_human')
+    return step ? `${step.status.replace('_', ' ')}: ${step.name}` : `${workflow.projection.steps.length} steps`
   }
 
   protected formatDuration(durationMs: number | null): string {

@@ -19,16 +19,8 @@
         <!-- Spacer so actions stay right-aligned when the heading is hidden -->
         <div aria-hidden="true"></div>
       }
-      <div class="factory-runs__actions">
-        @if (namespaceAvailable()) {
-          <button type="button" class="factory-runs__btn factory-runs__btn--primary" (click)="openLaunchForm()">
-            New run
-          </button>
-          <button type="button" class="factory-runs__refresh" (click)="state.refresh()" [disabled]="state.loading()">
-            Refresh
-          </button>
-        }
-      </div>
+      <!-- Legacy Factory actions hidden — Forge UI takes over -->
+      <div class="factory-runs__actions"></div>
     </header>
 
     @if (!namespaceId()) {
@@ -45,7 +37,7 @@
         <button type="button" class="factory-runs__refresh" (click)="state.refresh()">Try again</button>
       </div>
     } @else if (state.runs().length === 0) {
-      <p class="factory-runs__notice" role="status">No Factory runs exist for this namespace.</p>
+      <!-- Legacy empty state hidden — Forge UI displayed below -->
     } @else {
       <div class="factory-runs__table-wrap">
         <table>
@@ -142,13 +134,39 @@
               No active generic workflows are projected for this namespace.
             </p>
           }
-          <div class="factory-runs__workflow-list">
-            @for (workflow of workflowProjectionState.workflows(); track workflow.workflowId) {
-              <agentos-factory-workflow-projection
-                [snapshot]="workflow"
-                [pending]="workflowPending(workflow.workflowId)"
-                (removeRequested)="workflowProjectionState.remove($event)"
-              />
+          <div class="factory-runs__workflow-cockpit">
+            <nav class="factory-runs__workflow-list" aria-label="Active workflows">
+              @for (workflow of workflowProjectionState.workflows(); track workflow.workflowId) {
+                <button
+                  type="button"
+                  class="factory-runs__workflow-item"
+                  [class.factory-runs__workflow-item--selected]="selectedWorkflow()?.workflowId === workflow.workflowId"
+                  [attr.aria-current]="selectedWorkflow()?.workflowId === workflow.workflowId ? 'true' : null"
+                  (click)="workflowProjectionState.selectWorkflow(workflow.workflowId)"
+                >
+                  <strong>{{ workflow.projection.title }}</strong>
+                  <span
+                    >{{ workflow.projection.workflowType }} · v{{ workflow.projection.schemaVersion }} · revision
+                    {{ workflow.revision }}</span
+                  >
+                  <span>Status: {{ workflow.projection.status.replace('_', ' ') }}</span>
+                  <span>{{ workflowStepSummary(workflow) }}</span>
+                  @if (workflowProjectionState.timings()[workflow.workflowId]; as timing) {
+                    <span>Elapsed: {{ formatDuration(timing.timing.totalElapsedMs) }}</span>
+                  }
+                </button>
+              }
+            </nav>
+            @if (selectedWorkflow(); as workflow) {
+              <div class="factory-runs__workflow-detail">
+                <agentos-factory-workflow-projection
+                  [snapshot]="workflow"
+                  [namespaceId]="namespaceId()!"
+                  [timing]="workflowProjectionState.timings()[workflow.workflowId]"
+                  [pending]="workflowPending(workflow.workflowId)"
+                  (removeRequested)="workflowProjectionState.remove($event)"
+                />
+              </div>
             }
           </div>
         } @else {
@@ -159,6 +177,7 @@
             @for (workflow of workflowProjectionState.removedWorkflows(); track workflow.workflowId) {
               <agentos-factory-workflow-projection
                 [snapshot]="workflow"
+                [namespaceId]="namespaceId()!"
                 mode="removed"
                 [pending]="workflowPending(workflow.workflowId)"
                 (restoreRequested)="workflowProjectionState.restore($event)"

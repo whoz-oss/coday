@@ -25,63 +25,110 @@
       <dt>Schema</dt>
       <dd>v{{ snapshot().projection.schemaVersion }}</dd>
     </div>
+    @if (snapshot().controllerExecution; as execution) {
+      <div>
+        <dt>Controlling runtime</dt>
+        <dd>
+          @if (controllerUrl(); as url) {
+            <a [href]="url">Open {{ execution.agentId }} case</a>
+          } @else if (execution.kind === 'coday-express') {
+            <span
+              >{{ execution.agentId }} thread <code>{{ execution.threadId }}</code></span
+            >
+          }
+        </dd>
+      </div>
+    }
   </dl>
 
-  <h4>
-    Steps <span class="workflow-projection__count">{{ snapshot().projection.steps.length }}</span>
-  </h4>
-  @if (snapshot().projection.steps.length === 0) {
-    <p class="workflow-projection__empty">No steps are currently projected.</p>
+  @if (v2Projection(); as projection) {
+    <agentos-factory-temporal-lanes
+      [projection]="projection"
+      [timing]="timing()?.timing"
+      [selectedStepId]="selectedStep()?.id ?? null"
+      (stepSelected)="selectStep($event)"
+    />
+    @if (selectedStep(); as step) {
+      <section class="workflow-projection__selected-step" aria-live="polite" aria-labelledby="selected-step-title">
+        <h4 id="selected-step-title">Selected step: {{ step.name }}</h4>
+        <p>Status: {{ displayStatus(step.status) }}</p>
+        @if (step.description) {
+          <p>{{ step.description }}</p>
+        }
+        <p><strong>Dependencies:</strong> {{ step.dependsOn.length ? step.dependsOn.join(', ') : 'None' }}</p>
+        @if (selectedStepTiming(); as stepTiming) {
+          <p>
+            <strong>Observed:</strong> Active {{ formatDuration(stepTiming.activeMs) }} · waiting for human
+            {{ formatDuration(stepTiming.waitingHumanMs) }} · blocked {{ formatDuration(stepTiming.blockedMs) }}
+          </p>
+          <p>
+            <strong>Timing:</strong> Started {{ stepTiming.firstStartedAt || 'Unavailable' }} · completed
+            {{ stepTiming.lastCompletedAt || stepTiming.firstCompletedAt || 'Not completed' }} · last transition
+            {{ stepTiming.lastTransitionAt || 'Unavailable' }}
+          </p>
+        }
+      </section>
+    }
   } @else {
-    <ol class="workflow-projection__steps">
-      @for (step of snapshot().projection.steps; track step.id; let index = $index) {
-        <li>
-          <span class="workflow-projection__step-number" aria-hidden="true">{{ index + 1 }}</span>
-          <div class="workflow-projection__step-content">
-            <div class="workflow-projection__step-heading">
-              <strong>{{ step.name }}</strong>
-              <span [class]="'workflow-projection__status ' + statusClass(step.status)"
-                ><span class="sr-only">Step status:</span>{{ displayStatus(step.status) }}</span
-              >
+    <h4>
+      Steps <span class="workflow-projection__count">{{ snapshot().projection.steps.length }}</span>
+    </h4>
+    @if (snapshot().projection.steps.length === 0) {
+      <p class="workflow-projection__empty">No steps are currently projected.</p>
+    } @else {
+      <ol class="workflow-projection__steps">
+        @for (step of snapshot().projection.steps; track step.id; let index = $index) {
+          <li>
+            <span class="workflow-projection__step-number" aria-hidden="true">{{ index + 1 }}</span>
+            <div class="workflow-projection__step-content">
+              <div class="workflow-projection__step-heading">
+                <strong>{{ step.name }}</strong>
+                <span [class]="'workflow-projection__status ' + statusClass(step.status)"
+                  ><span class="sr-only">Step status:</span>{{ displayStatus(step.status) }}</span
+                >
+              </div>
+              @if (step.description) {
+                <p>{{ step.description }}</p>
+              }
+              <p class="workflow-projection__dependencies">
+                <strong>Depends on</strong> {{ step.dependsOn.length ? step.dependsOn.join(', ') : 'No dependencies' }}
+              </p>
             </div>
-            @if (step.description) {
-              <p>{{ step.description }}</p>
-            }
-            <p class="workflow-projection__dependencies">
-              <strong>Depends on</strong> {{ step.dependsOn.length ? step.dependsOn.join(', ') : 'No dependencies' }}
-            </p>
-          </div>
-        </li>
-      }
-    </ol>
+          </li>
+        }
+      </ol>
+    }
   }
 
   <footer class="workflow-projection__actions">
-    @if (mode() === 'active') {
-      <button
-        type="button"
-        class="workflow-projection__button workflow-projection__button--danger"
-        [disabled]="pending()"
-        (click)="openConfirmation('remove')"
-      >
-        Remove from Factory
-      </button>
-    } @else {
-      <button type="button" class="workflow-projection__button" [disabled]="pending()" (click)="restore()">
-        Restore
-      </button>
-      <button
-        type="button"
-        class="workflow-projection__button workflow-projection__button--danger"
-        [disabled]="pending()"
-        (click)="openConfirmation('purge')"
-      >
-        Delete permanently
-      </button>
-    }
-    @if (pending()) {
-      <span role="status">Submitting&hellip;</span>
-    }
+    <details class="workflow-projection__lifecycle">
+      <summary>Lifecycle actions</summary>
+      @if (mode() === 'active') {
+        <button
+          type="button"
+          class="workflow-projection__button workflow-projection__button--danger"
+          [disabled]="pending()"
+          (click)="openConfirmation('remove')"
+        >
+          Remove from Factory
+        </button>
+      } @else {
+        <button type="button" class="workflow-projection__button" [disabled]="pending()" (click)="restore()">
+          Restore
+        </button>
+        <button
+          type="button"
+          class="workflow-projection__button workflow-projection__button--danger"
+          [disabled]="pending()"
+          (click)="openConfirmation('purge')"
+        >
+          Delete permanently
+        </button>
+      }
+      @if (pending()) {
+        <span role="status">Submitting&hellip;</span>
+      }
+    </details>
   </footer>
 
   <dialog #confirmationDialog class="workflow-projection__dialog" (close)="confirmation.set(null)">

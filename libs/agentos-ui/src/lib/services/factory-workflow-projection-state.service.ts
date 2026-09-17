@@ -1,7 +1,11 @@
 import { inject, Injectable, OnDestroy, signal } from '@angular/core'
 import { forkJoin, interval, Subscription, switchMap, take, timer } from 'rxjs'
 import { FactoryApiService } from './factory-api.service'
-import { WorkflowProjectionEvent, WorkflowProjectionSnapshotDto } from './factory-workflow-projection.model'
+import {
+  WorkflowProjectionEvent,
+  WorkflowProjectionSnapshotDto,
+  WorkflowProjectionTimingState,
+} from './factory-workflow-projection.model'
 
 const FALLBACK_POLL_MS = 15_000
 const RECONNECT_MS = 5_000
@@ -15,6 +19,8 @@ export class FactoryWorkflowProjectionStateService implements OnDestroy {
   readonly namespaceId = signal<string | null>(null)
   readonly workflows = signal<WorkflowProjectionSnapshotDto[]>([])
   readonly removedWorkflows = signal<WorkflowProjectionSnapshotDto[]>([])
+  readonly timings = signal<Record<string, WorkflowProjectionTimingState>>({})
+  readonly selectedWorkflowId = signal<string | null>(null)
   readonly loading = signal(false)
   readonly error = signal<string | null>(null)
   readonly actionWorkflowId = signal<string | null>(null)
@@ -34,6 +40,7 @@ export class FactoryWorkflowProjectionStateService implements OnDestroy {
     this.namespaceId.set(namespaceId)
     this.workflows.set([])
     this.removedWorkflows.set([])
+    this.timings.set({})
     this.actionWorkflowId.set(null)
     this.action.set(null)
     this.actionError.set(null)
@@ -44,6 +51,12 @@ export class FactoryWorkflowProjectionStateService implements OnDestroy {
   refresh(): void {
     const id = this.namespaceId()
     if (id) this.loadLists(id, true)
+  }
+
+  selectWorkflow(workflowId: string): void {
+    if (this.workflows().some((workflow) => workflow.workflowId === workflowId)) {
+      this.selectedWorkflowId.set(workflowId)
+    }
   }
 
   remove(workflowId: string): void {
@@ -61,6 +74,7 @@ export class FactoryWorkflowProjectionStateService implements OnDestroy {
     this.namespaceId.set(null)
     this.workflows.set([])
     this.removedWorkflows.set([])
+    this.timings.set({})
     this.loading.set(false)
     this.error.set(null)
     this.actionWorkflowId.set(null)
@@ -130,7 +144,13 @@ export class FactoryWorkflowProjectionStateService implements OnDestroy {
             removed.data.namespaceId !== namespaceId
           )
             return
-          this.workflows.set(this.authoritative(this.workflows(), active.data.items))
+          const reconciled = this.authoritative(this.workflows(), active.data.items)
+          this.workflows.set(reconciled)
+          const selectedId = this.selectedWorkflowId()
+          if (!selectedId || !reconciled.some((item) => item.workflowId === selectedId)) {
+            this.selectedWorkflowId.set(reconciled[0]?.workflowId ?? null)
+          }
+          for (const item of reconciled) this.fetchTiming(namespaceId, item.workflowId, item.revision)
           this.removedWorkflows.set(this.authoritative(this.removedWorkflows(), removed.data.items))
           this.loading.set(false)
           this.error.set(null)
@@ -202,8 +222,36 @@ export class FactoryWorkflowProjectionStateService implements OnDestroy {
           if (!this.isCurrent(namespaceId, generation) || data.namespaceId !== namespaceId || data.revision < revision)
             return
           this.workflows.update((items) => this.upsert(items, data))
+          this.fetchTiming(namespaceId, workflowId, data.revision)
         },
         error: () => this.loadLists(namespaceId, false),
+      })
+  }
+
+  private fetchTiming(namespaceId: string, workflowId: string, revision: number): void {
+    if ((this.timings()[workflowId]?.revision ?? -1) >= revision) return
+    const generation = this.generation
+    this.api
+      .getWorkflowProjectionTiming(namespaceId, workflowId)
+      .pipe(take(1))
+      .subscribe({
+        next: ({ data }) => {
+          if (
+            !this.isCurrent(namespaceId, generation) ||
+            data.namespaceId !== namespaceId ||
+            data.workflowId !== workflowId
+          )
+            return
+          const projectedRevision = this.workflows().find((item) => item.workflowId === workflowId)?.revision
+          if (projectedRevision !== revision) return
+          this.timings.update((current) => ({ ...current, [workflowId]: { revision, timing: data.timing } }))
+        },
+        error: () =>
+          this.timings.update((current) => {
+            const next = { ...current }
+            delete next[workflowId]
+            return next
+          }),
       })
   }
 

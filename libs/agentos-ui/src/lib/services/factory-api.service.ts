@@ -6,6 +6,7 @@ import {
   WorkflowProjectionEvent,
   WorkflowProjectionLifecycleDto,
   WorkflowProjectionListDto,
+  WorkflowProjectionTimingDto,
 } from './factory-workflow-projection.model'
 
 export interface FactoryForgeOracleResult {
@@ -208,6 +209,13 @@ export class FactoryApiService {
     return this.http.get<WorkflowProjectionDetailDto>(`/api/factory/workflows/${encodeURIComponent(workflowId)}`, {
       params: new HttpParams().set('namespaceId', namespaceId),
     })
+  }
+
+  getWorkflowProjectionTiming(namespaceId: string, workflowId: string): Observable<WorkflowProjectionTimingDto> {
+    return this.http.get<WorkflowProjectionTimingDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/timing`,
+      { params: new HttpParams().set('namespaceId', namespaceId) }
+    )
   }
 
   workflowProjectionStreamUrl(namespaceId: string): string {

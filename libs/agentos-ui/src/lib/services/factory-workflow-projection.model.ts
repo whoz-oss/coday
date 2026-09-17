@@ -8,12 +8,22 @@ export type WorkflowProjectionStatus =
   | 'failed'
   | 'cancelled'
 
+export type WorkflowResponsibilityKind = 'human' | 'agent' | 'code'
+export interface WorkflowStepResponsibility {
+  kind: WorkflowResponsibilityKind
+  name?: string
+}
+
 export interface WorkflowProjectionStepV1 {
   id: string
   name: string
   status: WorkflowProjectionStatus
   description?: string
   dependsOn: string[]
+}
+
+export interface WorkflowProjectionStepV2 extends WorkflowProjectionStepV1 {
+  responsibility: WorkflowStepResponsibility
 }
 
 /** Canonical projection persisted by the Factory store. expectedRevision is a write precondition, not persisted state. */
@@ -26,12 +36,36 @@ export interface WorkflowProjectionV1 {
   steps: WorkflowProjectionStepV1[]
 }
 
+export interface WorkflowProjectionV2 extends Omit<WorkflowProjectionV1, 'schemaVersion' | 'steps'> {
+  schemaVersion: '2'
+  steps: WorkflowProjectionStepV2[]
+}
+export type WorkflowProjection = WorkflowProjectionV1 | WorkflowProjectionV2
+
+export type WorkflowControllerExecution =
+  | { runtimeId: string; kind: 'agentos'; caseId: string; agentId: string; actorId?: string; observedAt: string }
+  | {
+      runtimeId: string
+      kind: 'coday-express'
+      threadId: string
+      agentId: string
+      actorId?: string
+      observedAt: string
+    }
+
+export function agentOsControllerUrl(namespaceId: string, execution?: WorkflowControllerExecution): string | undefined {
+  return execution?.kind === 'agentos'
+    ? `/agentos/home?ns=${encodeURIComponent(namespaceId)}&case=${encodeURIComponent(execution.caseId)}`
+    : undefined
+}
+
 /** Exact public snapshot returned by list/detail routes. */
 export interface WorkflowProjectionSnapshotDto {
   workflowId: string
   revision: number
   projectionHash: string
-  projection: WorkflowProjectionV1
+  controllerExecution?: WorkflowControllerExecution
+  projection: WorkflowProjection
 }
 
 export type WorkflowProjectionCollectionState = 'active' | 'removed'
@@ -59,6 +93,47 @@ export type WorkflowProjectionEvent =
   | { type: 'removed'; workflowId: string; namespaceId: string }
   | { type: 'restored'; workflowId: string; namespaceId: string; revision: number }
   | { type: 'purged'; workflowId: string; namespaceId: string }
+
+export interface WorkflowStepTimingDto {
+  stepId: string
+  firstStartedAt?: string
+  firstCompletedAt?: string
+  lastCompletedAt?: string
+  lastTransitionAt?: string
+  activeMs: number
+  waitingHumanMs: number
+  blockedMs: number
+  transitionCount: number
+  attemptCount: number
+  currentStatus: WorkflowProjectionStatus | null
+  currentStatusSince: string | null
+}
+export interface WorkflowTimingDto {
+  complete: boolean
+  incompleteReasons: string[]
+  observedAt?: string
+  createdAt?: string
+  startedAt?: string
+  firstStartedAt?: string
+  firstCompletedAt?: string
+  lastCompletedAt?: string
+  lastActivityAt?: string
+  totalElapsedMs: number
+  activeMs: number
+  waitingHumanMs: number
+  blockedMs: number
+  transitionCount: number
+  currentStatus: WorkflowProjectionStatus | null
+  currentStatusSince: string | null
+  steps: WorkflowStepTimingDto[]
+}
+export interface WorkflowProjectionTimingDto {
+  data: { namespaceId: string; workflowId: string; timing: WorkflowTimingDto }
+}
+export interface WorkflowProjectionTimingState {
+  revision: number
+  timing: WorkflowTimingDto
+}
 
 export interface WorkflowProjectionDetailDto {
   data: WorkflowProjectionSnapshotDto & { namespaceId: string }
