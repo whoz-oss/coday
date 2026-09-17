@@ -79,7 +79,7 @@ try {
   expect('unsupported state', [response.status, response.body.error.code], [400, 'UNSUPPORTED_STATE'])
 
   response = await request(store, 'GET', `/api/factory/workflows/wf-1?namespaceId=${NS_A}`)
-  expect('detail existing', [response.status, response.body.data.state, response.body.data.workflowId, response.body.data.revision, response.body.data.projection.schemaVersion, response.body.data.controllerExecution.runtimeId], [200, 'existing', 'wf-1', 2, '1', 'agentos-primary'])
+  expect('historical declarative workflow remains definition-optional', [response.status, response.body.data.state, response.body.data.workflowId, response.body.data.revision, response.body.data.projection.schemaVersion, response.body.data.controllerExecution.runtimeId, response.body.data.definitionVersion], [200, 'existing', 'wf-1', 2, '1', 'agentos-primary', undefined])
 
   response = await request(store, 'GET', `/api/factory/workflows/express-wf?namespaceId=${NS_EXPRESS}`)
   expect('detail preserves v2 snapshot', [response.status, response.body.data.state, response.body.data.projection.schemaVersion, response.body.data.projection.steps[0].responsibility.kind], [200, 'existing', '2', 'agent'])

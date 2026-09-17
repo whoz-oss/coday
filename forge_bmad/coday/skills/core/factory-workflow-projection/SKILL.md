@@ -10,7 +10,7 @@ Use this industrialized run protocol for `/run-factory <business-reference-or-in
 ## Conversational entry algorithm
 
 1. Verify that the model-facing tools `FACTORY__get_workflow` and `FACTORY__publish_projection` are available. If either is absent, refuse to start a Factory run and explain which capability is required.
-2. Inventory the loaded domain workflow declarations owned by the current agent. A compatible declaration must explicitly define `workflowType`, intent/reference compatibility criteria, its stable identity rule, its sole publisher role, and its lifecycle source.
+2. Inventory the loaded domain workflow declarations owned by the current agent. A compatible declaration must explicitly define `workflowType`, `definitionVersion`, intent/reference compatibility criteria, its stable identity rule, its sole publisher role, and its lifecycle source. The versioned Factory definition is authoritative for stable step IDs, names, responsibilities, and dependencies; prose remains authoritative only for domain identity and instance-state mapping.
 3. If `--workflow=<workflowType>` is present, use it only when that exact loaded declaration is owned by this agent and compatible with the input. Otherwise refuse and state why. Without a selector, select only when exactly one owned declaration is compatible. If several are compatible, ask the human to choose; if none is compatible, refuse. Having the tool alone never authorizes inventing a workflow.
 4. Interpret the reference or intent and resolve or establish its stable domain identity strictly according to the selected declaration. Ask for missing domain facts when its identity rule requires them. Never create an identity convention, workflow schema, steps, dependencies, actors, or lifecycle from generic intuition.
 5. Call `FACTORY__get_workflow` with only the resolved `workflowId`. For `absent`, create by publishing the declaration's complete initial projection with `expectedRevision: 0`. For `existing`, require its `workflowType` to equal the selected declaration; an incompatibility is a hard refusal before any publication. Otherwise resume from the returned complete v1 or v2 projection and authoritative revision. Never ask the human for, infer, or guess a revision. For `removed` or `purged`, halt and report the lifecycle state; this protocol does not authorize restore, tombstone clearing, or identity replacement.
@@ -23,17 +23,17 @@ Namespace, runtime, case, thread, user, and controlling-execution identity are t
 
 Each domain adapter skill must contain one clearly labelled `Domain workflow declaration` section defining exactly:
 
-- `workflowType`
+- `workflowType` and `definitionVersion`
 - compatible intent/reference criteria
 - stable identity rule
 - sole publisher role
-- lifecycle source, including its stable schema-v2 step graph and transition/gate rules
+- lifecycle source and transition/gate rules, referencing the versioned definition for the stable graph
 
-This prose declaration is the registry: do not infer declarations from tool access and do not build an ad hoc code registry.
+Definitions are read-only Factory resources. For `bmad-story`, use `GET /api/factory/workflow-definitions/bmad-story/1.0.0`; do not reconstruct its graph freely from prose. Phase 2 does not yet provide a model-facing definition lookup tool or server-side projection derivation, so the publisher still sends the complete declarative projection through `FACTORY__publish_projection`.
 
 ## Publication contract
 
-- Schema v1 remains valid for publishers that do not know step responsibility. Schema v2 adds a required `responsibility` to every step: `kind` is exactly `human`, `agent`, or `code`, and optional `name` is a bounded display label. Use v2 whenever actor lanes are known. Never infer kinds from names or statuses, and never mix v1 steps with v2 responsibility requirements.
+- Schema v1 remains valid for publishers that do not know step responsibility. Schema v2 adds a required `responsibility` to every step. `kind` identifies the executor, never the deliverable: `human` is work performed by a person; `agent` is all work performed by an agent, including editing source code; `code` is deterministic execution owned by Factory, such as builds, tests, scans, and oracles. Optional `name` is a bounded executor label. Use v2 whenever actor lanes are known. Never infer kinds from step names, artifacts, or statuses, and never mix v1 steps with v2 responsibility requirements.
 
 - Publish the complete current projection through `FACTORY__publish_projection`; never present projection JSON in prose as a substitute for the tool call.
 - Keep `workflowId`, `workflowType`, and every step `id` stable for the lifetime of the represented workflow. Names and descriptions may change without changing IDs.

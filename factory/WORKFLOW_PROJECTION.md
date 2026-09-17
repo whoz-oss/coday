@@ -1,5 +1,11 @@
 # WorkflowProjection v1
 
+## Versioned WorkflowDefinition registry
+
+Factory loads immutable definitions from `factory/workflows/<workflowType>/<version>.json` and exposes namespace-independent read-only list/detail APIs. A definition owns stable step IDs, names, responsibilities, and dependencies; projection statuses and instance descriptions remain declarative runtime state. Historical v1/v2 projections remain valid without a definition reference.
+
+`responsibility.kind` identifies the executor, never the deliverable: `human` means work performed by a person; `agent` covers all agent-performed work, including source-code editing; `code` is deterministic execution owned by Factory, such as builds, tests, scans, and oracles. Factory and UI must not infer the kind from names, artifacts, or statuses.
+
 Stage 1 provides a generic, Forge-independent workflow projection contract and filesystem store. It has no HTTP, AgentOS, UI, watcher, Git, or worktree integration.
 
 ## Contract

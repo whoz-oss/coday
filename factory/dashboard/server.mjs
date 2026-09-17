@@ -48,6 +48,8 @@ import { WorkflowProjectionStore } from '../lib/workflow-projection-store.mjs'
 import { handleWorkflowProjectionRequest } from './workflow-projection-routes.mjs'
 import { WorkflowProjectionSseHub } from './workflow-projection-sse.mjs'
 import { handleForgeWorkflowProjectionRequest } from './forge-workflow-projection-routes.mjs'
+import { WorkflowDefinitionRegistry } from '../lib/workflow-definition-registry.mjs'
+import { handleWorkflowDefinitionRequest } from './workflow-definition-routes.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
@@ -69,6 +71,7 @@ const AGENTOS_URL = process.env.AGENTOS_URL ?? 'http://localhost:8124'
 const FACTORY_DATA_ROOT = process.env.FACTORY_DATA_ROOT ?? join(homedir(), '.coday', 'factory')
 const workflowProjectionStore = new WorkflowProjectionStore(FACTORY_DATA_ROOT)
 const workflowProjectionSseHub = new WorkflowProjectionSseHub()
+const workflowDefinitionRegistry = new WorkflowDefinitionRegistry(join(__dirname, '..', 'workflows'))
 // Explicit store location for Forge Epic/Story projections. It is intentionally
 // independent from both this dashboard's source tree and the target repoRoot.
 // FACTORY_USER: used only to identify the AgentOS user for proxy headers.
@@ -633,6 +636,13 @@ const server = createServer(async (req, res) => {
     return res.end()
   }
 
+  if (await handleWorkflowDefinitionRequest({
+    method, path,
+    send: (status, body) => send(res, status, body),
+    registry: workflowDefinitionRegistry,
+    log: console,
+  })) return
+
   if (await handleForgeWorkflowProjectionRequest({
     method, path, url,
     readBody: () => readBody(req),
@@ -652,6 +662,7 @@ const server = createServer(async (req, res) => {
     readBody: () => readBody(req),
     send: (status, body) => send(res, status, body),
     store: workflowProjectionStore,
+    definitionRegistry: workflowDefinitionRegistry,
     notifier: workflowProjectionSseHub,
     openStream: (namespaceId) => {
       res.writeHead(200, {
@@ -1309,6 +1320,7 @@ const server = createServer(async (req, res) => {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   await workflowProjectionStore.initialize()
+  await workflowDefinitionRegistry.initialize()
   server.listen(PORT, FACTORY_BIND_POLICY.host, () => {
     console.log(`Factory dashboard → http://${FACTORY_BIND_POLICY.host}:${PORT}`)
     console.log(`Factory bind mode  : ${FACTORY_BIND_POLICY.trustMode}${FACTORY_BIND_POLICY.trustMode.startsWith('unsafe') ? ' (explicit unsafe opt-in; routes are unauthenticated)' : ''}`)

@@ -4,6 +4,8 @@ export const WORKFLOW_STATUSES = Object.freeze([
   'pending', 'ready', 'running', 'waiting_human', 'blocked',
   'completed', 'failed', 'cancelled',
 ])
+// Executor semantics shared with WorkflowDefinition: human = person, agent = any
+// agent-performed work (including code edits), code = deterministic Factory execution.
 export const WORKFLOW_RESPONSIBILITY_KINDS = Object.freeze(['human', 'agent', 'code'])
 
 export const WORKFLOW_PROJECTION_LIMITS = Object.freeze({
@@ -84,13 +86,13 @@ export function validateWorkflowProjection(input) {
       const actorName = boundedString(actor.name, WORKFLOW_PROJECTION_LIMITS.actorName, `${base}.responsibility.name`, { optional: true }); if (!actorName.ok) return actorName
       responsibility = { kind: actor.kind, ...(actorName.value === undefined ? {} : { name: actorName.value }) }
     }
-    steps.push({ id: raw.id, name: raw.name, status: raw.status, ...(raw.description === undefined ? {} : { description: raw.description }), dependsOn: [...dependencies], ...(responsibility ? { responsibility } : {}) })
+    steps.push({ id: raw.id, name: raw.name, status: raw.status, ...(raw.description === undefined ? {} : { description: raw.description }), ...(raw.dependsOn === undefined ? {} : { dependsOn: [...dependencies] }), ...(responsibility ? { responsibility } : {}) })
   }
-  for (const step of steps) for (const target of step.dependsOn) {
+  for (const step of steps) for (const target of step.dependsOn ?? []) {
     if (target === step.id) return failure(WORKFLOW_PROJECTION_ERROR_CODES.SELF_DEPENDENCY, `steps.${step.id}.dependsOn`, { stepId: step.id })
     if (!ids.has(target)) return failure(WORKFLOW_PROJECTION_ERROR_CODES.MISSING_DEPENDENCY, `steps.${step.id}.dependsOn`, { stepId: step.id, target })
   }
-  const graph = new Map(steps.map((step) => [step.id, step.dependsOn])), visiting = new Set(), visited = new Set()
+  const graph = new Map(steps.map((step) => [step.id, step.dependsOn ?? []])), visiting = new Set(), visited = new Set()
   function hasCycle(id) { if (visiting.has(id)) return true; if (visited.has(id)) return false; visiting.add(id); for (const target of graph.get(id)) if (hasCycle(target)) return true; visiting.delete(id); visited.add(id); return false }
   for (const step of steps) if (hasCycle(step.id)) return failure(WORKFLOW_PROJECTION_ERROR_CODES.DEPENDENCY_CYCLE, 'steps', { stepId: step.id })
   return { ok: true, projection: { schemaVersion, workflowId: input.workflowId, workflowType: input.workflowType, title: input.title, status: input.status, steps }, expectedRevision: input.expectedRevision }

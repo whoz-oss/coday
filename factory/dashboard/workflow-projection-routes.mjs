@@ -73,11 +73,15 @@ function lifecycleStatus(result) {
   return 400
 }
 
-function publicSnapshot(snapshot) {
+async function publicSnapshot(snapshot, definitionRegistry) {
+  const definition = definitionRegistry && snapshot.projection.workflowType
+    ? (await definitionRegistry.list()).filter((item) => item.workflowType === snapshot.projection.workflowType).at(-1)
+    : null
   return {
     workflowId: snapshot.projection.workflowId,
     revision: snapshot.revision,
     projectionHash: snapshot.projectionHash,
+    ...(definition ? { definitionVersion: definition.version, definitionHash: definition.definitionHash } : {}),
     ...(snapshot.controllerExecution ? { controllerExecution: snapshot.controllerExecution } : {}),
     projection: snapshot.projection,
   }
@@ -94,7 +98,7 @@ function logStorageFailure(log, context, error) {
  * Handle generic workflow projection API requests.
  * Returns true when the path belongs to this API, otherwise false.
  */
-export async function handleWorkflowProjectionRequest({ method, path, url, readBody, send, store, notifier, openStream, log = console }) {
+export async function handleWorkflowProjectionRequest({ method, path, url, readBody, send, store, definitionRegistry, notifier, openStream, log = console }) {
   const collection = path === '/api/factory/workflows'
   const stream = path === '/api/factory/workflows/stream'
   const projectionMatch = path.match(/^\/api\/factory\/workflows\/([^/]+)\/projection$/)
@@ -148,7 +152,7 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
         notifier?.publish(execution.namespaceId, { workflowId, namespaceId: execution.namespaceId, revision: result.snapshot.revision })
       }
       send(result.changed && result.snapshot.revision === 1 ? 201 : 200, {
-        data: { namespaceId: execution.namespaceId, changed: result.changed, ...publicSnapshot(result.snapshot) },
+        data: { namespaceId: execution.namespaceId, changed: result.changed, ...await publicSnapshot(result.snapshot, definitionRegistry) },
       })
     } catch (error) {
       logStorageFailure(log, { operation: 'publish', namespaceId: execution.namespaceId, workflowId }, error)
@@ -185,7 +189,7 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
       return true
     }
     try {
-      const items = (await (state === 'removed' ? store.listRemoved(namespaceId) : store.list(namespaceId))).map(publicSnapshot)
+      const items = await Promise.all((await (state === 'removed' ? store.listRemoved(namespaceId) : store.list(namespaceId))).map((snapshot) => publicSnapshot(snapshot, definitionRegistry)))
       send(200, { data: { namespaceId, state, items } })
     } catch (error) {
       logStorageFailure(log, { operation: 'list', namespaceId }, error)
@@ -225,7 +229,7 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
         ? await store.lookup(namespaceId, workflowId)
         : { state: 'existing', workflowId, snapshot: await store.read(namespaceId, workflowId) }
       if (lookup.state === 'existing' && lookup.snapshot) {
-        send(200, { data: { namespaceId, state: 'existing', ...publicSnapshot(lookup.snapshot) } })
+        send(200, { data: { namespaceId, state: 'existing', ...await publicSnapshot(lookup.snapshot, definitionRegistry) } })
       } else {
         send(200, { data: { namespaceId, workflowId, state: lookup.state === 'existing' ? 'absent' : lookup.state } })
       }

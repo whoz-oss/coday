@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "1",
+  "steps": [
+    {
+      "dependsOn": [],
+      "id": "ticket-analysis",
+      "name": "Ticket analysis",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ProductEngineer"
+      }
+    },
+    {
+      "dependsOn": ["ticket-analysis"],
+      "id": "intent-checkpoint",
+      "name": "Intent checkpoint",
+      "responsibility": {
+        "kind": "human",
+        "name": "Product owner"
+      }
+    },
+    {
+      "dependsOn": ["intent-checkpoint"],
+      "id": "specification",
+      "name": "Specification",
+      "responsibility": {
+        "kind": "agent",
+        "name": "BmadOrchestrator"
+      }
+    },
+    {
+      "dependsOn": ["specification"],
+      "id": "readiness-checkpoint",
+      "name": "Readiness checkpoint",
+      "responsibility": {
+        "kind": "human",
+        "name": "Product owner"
+      }
+    },
+    {
+      "dependsOn": ["readiness-checkpoint"],
+      "id": "implementation",
+      "name": "Implementation",
+      "responsibility": {
+        "kind": "agent",
+        "name": "BmadBuilder"
+      }
+    },
+    {
+      "dependsOn": ["implementation"],
+      "id": "technical-review",
+      "name": "Technical review",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Reviewer"
+      }
+    },
+    {
+      "dependsOn": ["technical-review"],
+      "id": "review-rework",
+      "name": "Review rework",
+      "responsibility": {
+        "kind": "agent",
+        "name": "BmadBuilder"
+      }
+    },
+    {
+      "dependsOn": ["technical-review"],
+      "id": "functional-validation",
+      "name": "Functional validation",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ProductEngineer"
+      }
+    },
+    {
+      "dependsOn": ["functional-validation"],
+      "id": "acceptance-checkpoint",
+      "name": "Acceptance checkpoint",
+      "responsibility": {
+        "kind": "human",
+        "name": "Product owner"
+      }
+    }
+  ],
+  "title": "Forge/BMAD Story",
+  "version": "1.0.0",
+  "workflowType": "bmad-story"
+}

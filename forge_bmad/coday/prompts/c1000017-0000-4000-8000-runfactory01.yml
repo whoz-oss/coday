@@ -2,7 +2,7 @@ name: run-factory
 description: Start or resume one compatible industrialized workflow from a business reference or free-form intent; optionally select --workflow=<workflowType>.
 commands:
   - |
-    @ProductEngineer Apply the generic Factory run protocol to this business reference or intent. Select a compatible owned declaration, resolve its stable workflowId, then call FACTORY__get_workflow with only workflowId. Create only when state is absent; resume an existing workflow only when workflowType matches, using its returned revision; halt for removed or purged. Treat an optional --workflow=<workflowType> as an explicit domain-workflow selector. Do not ask for or guess a revision, source system, identifier syntax, or lifecycle:
+    @ProductEngineer Apply the generic Factory run protocol to this business reference or intent. Select a compatible owned declaration and its definitionVersion (for BMAD: bmad-story@1.0.0), resolve its stable workflowId, then call FACTORY__get_workflow with only workflowId. Create only when state is absent; resume an existing workflow only when workflowType matches, using its returned revision; halt for removed or purged. Treat an optional --workflow=<workflowType> as an explicit domain-workflow selector. Preserve responsibility as executor nature: agent-authored code remains agent work; code is reserved for deterministic Factory execution. Do not ask for or guess a revision, source system, identifier syntax, or lifecycle:
     {{PARAMETERS}}
 webhookEnabled: false
 source: project

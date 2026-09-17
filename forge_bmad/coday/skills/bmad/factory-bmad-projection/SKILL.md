@@ -10,28 +10,17 @@ Apply this adapter together with the generic `core/factory-workflow-projection/S
 ## Domain workflow declaration
 
 - **workflowType:** `bmad-story`.
+- **definitionVersion:** `1.0.0` (immutable definition: `factory/workflows/bmad-story/1.0.0.json`).
 - **Compatible intent/reference:** a request to start or resume the approval-gated Forge/BMAD lifecycle for a Jira Story. Jira and Story interpretation is specific to this adapter, not to Factory's generic entry.
 - **Stable identity rule:** resolve the Jira Story through the deterministic Forge Run reconnaissance; use its Story key unchanged as `workflowId` and its Jira title as `title`. A missing or unavailable Story cannot establish identity and must halt.
 - **Sole publisher role:** ProductEngineer. BmadOrchestrator, BmadBuilder, Designer, and Reviewer report domain facts and outcomes to ProductEngineer and never publish the same workflow.
-- **Lifecycle source:** the Forge Run Protocol, deterministic `forge-run-recon`, confirmed workstream, BMAD Gates 1–4, and the stable schema-v2 step graph and mappings below. Recon, explicit human confirmation, workstream confirmation, and BMAD gates remain mandatory.
+- **Lifecycle source:** the Forge Run Protocol, deterministic `forge-run-recon`, confirmed workstream, BMAD Gates 1–4, and the instance-state mappings below. Recon, explicit human confirmation, workstream confirmation, and BMAD gates remain mandatory. The versioned definition, not this prose, is authoritative for stable graph structure.
 
 The workflow selector for this adapter is `--workflow=bmad-story`.
 
-## Stable steps and explicit actors
+## Stable structure and instance state
 
-Publish schema v2 and this meaningful lifecycle graph. ProductEngineer remains the sole publisher; delegates receive no Factory tools.
-
-1. `ticket-analysis` — qualify intent and evidence; actor `agent`, name `ProductEngineer`; no dependencies.
-2. `intent-checkpoint` — explicit product-owner confirmation when required; actor `human`, name `Product owner`; depends on `ticket-analysis`.
-3. `specification` — produce the implementation-ready specification; actor `agent`, name `BmadOrchestrator`; depends on `intent-checkpoint` (or directly on `ticket-analysis` when the checkpoint is not required).
-4. `readiness-checkpoint` — explicit human readiness approval when required; actor `human`, name `Product owner`; depends on `specification`.
-5. `implementation` — change source and tests; actor `code`, name `BmadBuilder`; depends on `readiness-checkpoint` (or `specification` when no checkpoint is required).
-6. `technical-review` — adversarial technical review; actor `agent`, name `Reviewer`; depends on `implementation`.
-7. `review-rework` — code corrections required by review; actor `code`, name `BmadBuilder`; depends on `technical-review`; keep pending when no rework is required and do not fabricate activity.
-8. `functional-validation` — validate behavior and acceptance criteria; actor `agent`, name `ProductEngineer`; depends on `technical-review` or `review-rework` when rework occurred.
-9. `acceptance-checkpoint` — explicit final human acceptance when required; actor `human`, name `Product owner`; depends on `functional-validation`.
-
-Keep IDs stable. Model lifecycle handoffs, not low-level tool calls. A checkpoint awaiting input is explicitly `waiting_human`; do not hide it in an agent or code step.
+Publish schema v2 using the exact steps, responsibilities, and dependencies from `bmad-story@1.0.0`. Responsibility describes the executor: both `implementation` and `review-rework` are agent work owned by BmadBuilder, even though their deliverable is code. Reserve `code` for deterministic Factory-owned execution; no such extra oracle/build/test step is introduced in this Phase 2 definition. ProductEngineer remains the sole publisher; delegates receive no Factory tools. The definition contains no statuses or instance descriptions. Those remain projection state derived from current Jira/BMAD facts. Phase 2 does not yet let the tool derive a projection automatically from the definition, so copy the structure exactly and vary only statuses and genuinely instance-specific descriptions. Do not add optional dependency branches in prose: a new graph requires a new immutable definition version.
 
 ## BMAD mapping
 
