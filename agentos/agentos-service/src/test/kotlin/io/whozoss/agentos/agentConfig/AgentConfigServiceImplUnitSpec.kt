@@ -306,7 +306,7 @@ class AgentConfigServiceImplUnitSpec :
             nextRunAt = Instant.parse("2025-01-06T09:00:00Z"),
         )
 
-        "delete disables all enabled scheduled prompts referencing the deleted agent" {
+        "delete soft-deletes all scheduled prompts referencing the deleted agent" {
             val repo = repository()
             val scheduledPromptRepo = InMemoryScheduledPromptRepository()
             val svc = service(repo, spr = scheduledPromptRepo)
@@ -314,17 +314,14 @@ class AgentConfigServiceImplUnitSpec :
             val agent = repo.save(config("Dev", nsId = namespaceId))
             val agentId = agent.metadata.id
 
-            // Save two enabled and one already-disabled scheduled prompt for the agent
             scheduledPromptRepo.save(scheduledPrompt(agentId, "sp1", enabled = true))
             scheduledPromptRepo.save(scheduledPrompt(agentId, "sp2", enabled = true))
             scheduledPromptRepo.save(scheduledPrompt(agentId, "sp3", enabled = false))
 
             svc.delete(agentId) shouldBe true
 
-            // All three should now be disabled
-            scheduledPromptRepo.findByScope(null, null, listOf(agentId)).forEach { sp ->
-                sp.enabled shouldBe false
-            }
+            // All schedulers should be soft-deleted (no longer visible in active queries)
+            scheduledPromptRepo.findByScope(null, null, listOf(agentId)) shouldHaveSize 0
         }
 
         "disable disables all enabled scheduled prompts referencing the disabled agent" {

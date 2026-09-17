@@ -39,9 +39,9 @@ class AgentConfigServiceImpl(
         val deleted = agentConfigRepository.delete(id)
         if (deleted) {
             promptRepository.softDeleteByAgentConfigId(id)
-            val disabledCount = scheduledPromptRepository.disableByAgentConfigId(id)
-            if (disabledCount > 0) {
-                logger.info { "[AgentConfigService] Disabled $disabledCount scheduled prompt(s) for deleted agentConfigId=$id" }
+            val deletedCount = scheduledPromptRepository.softDeleteByAgentConfigId(id)
+            if (deletedCount > 0) {
+                logger.info { "[AgentConfigService] Soft-deleted $deletedCount scheduled prompt(s) for deleted agentConfigId=$id" }
             }
         }
         return deleted

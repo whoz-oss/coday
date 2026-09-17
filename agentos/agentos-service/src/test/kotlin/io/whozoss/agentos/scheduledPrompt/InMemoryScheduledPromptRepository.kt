@@ -90,6 +90,13 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
         return toDisable.size
     }
 
+    /** Soft-delete all non-removed scheduled prompts referencing the given agentConfigId. */
+    override fun softDeleteByAgentConfigId(agentConfigId: UUID): Int {
+        val toDelete = delegate.findAll().filter { it.agentConfigId == agentConfigId && !it.metadata.removed }
+        toDelete.forEach { delegate.delete(it.metadata.id) }
+        return toDelete.size
+    }
+
     companion object {
         private const val ALL_KEY = "all"
     }

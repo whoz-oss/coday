@@ -68,10 +68,22 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
     /**
      * Disable all non-removed [ScheduledPrompt]s that reference the given [agentConfigId].
      *
-     * Called when the linked AgentConfig is soft-deleted, to prevent orphaned schedulers
+     * Called when the linked AgentConfig is disabled, to prevent orphaned schedulers
      * from being picked up by the scheduler scanner and failing at execution time.
+     * Reversible: [enableByAgentConfigId] restores them when the agent is re-enabled.
      *
      * @return the number of schedulers that were actually disabled
      */
     fun disableByAgentConfigId(agentConfigId: UUID): Int
+
+    /**
+     * Soft-delete all non-removed [ScheduledPrompt]s that reference the given [agentConfigId].
+     *
+     * Called when the linked AgentConfig is soft-deleted. Since [agentConfigId] is immutable
+     * after creation, a scheduler referencing a deleted agent cannot be rerouted and is
+     * permanently unusable — soft-deleting it keeps history while removing it from active views.
+     *
+     * @return the number of schedulers that were soft-deleted
+     */
+    fun softDeleteByAgentConfigId(agentConfigId: UUID): Int
 }
