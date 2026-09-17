@@ -16,8 +16,10 @@ class FactoryPublishProjectionTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,
     private val objectMapper: ObjectMapper,
+    private val runtimeId: String = "agentos-primary",
 ) : StandardTool<FactoryPublishProjectionTool.Input> {
-    data class Step(val id: String, val name: String, val status: String, val description: String? = null, val dependsOn: List<String> = emptyList())
+    data class Responsibility(val kind: String, val name: String? = null)
+    data class Step(val id: String, val name: String, val status: String, val description: String? = null, val dependsOn: List<String> = emptyList(), val responsibility: Responsibility? = null)
     data class Input(
         val schemaVersion: String,
         val workflowId: String,
@@ -29,10 +31,10 @@ class FactoryPublishProjectionTool(
     )
 
     override val name = "FACTORY__publish_projection"
-    override val description = "Publish a deterministic generic WorkflowProjection v1 to Factory. Execution identity is derived from AgentOS context."
+    override val description = "Publish a deterministic generic WorkflowProjection v1 or v2 to Factory. Execution identity is derived from AgentOS context."
     override val version = "1.0.0"
     override val paramType = Input::class.java
-    override val inputSchema = """{"type":"object","additionalProperties":false,"properties":{"schemaVersion":{"const":"1"},"workflowId":{"type":"string"},"workflowType":{"type":"string"},"title":{"type":"string"},"status":{"enum":["pending","ready","running","waiting_human","blocked","completed","failed","cancelled"]},"expectedRevision":{"type":"integer","minimum":0},"steps":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string"},"name":{"type":"string"},"status":{"enum":["pending","ready","running","waiting_human","blocked","completed","failed","cancelled"]},"description":{"type":"string"},"dependsOn":{"type":"array","items":{"type":"string"}}},"required":["id","name","status"]}}},"required":["schemaVersion","workflowId","workflowType","title","status","steps"]}"""
+    override val inputSchema = """{"type":"object","additionalProperties":false,"properties":{"schemaVersion":{"enum":["1","2"]},"workflowId":{"type":"string"},"workflowType":{"type":"string"},"title":{"type":"string"},"status":{"enum":["pending","ready","running","waiting_human","blocked","completed","failed","cancelled"]},"expectedRevision":{"type":"integer","minimum":0},"steps":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string"},"name":{"type":"string"},"status":{"enum":["pending","ready","running","waiting_human","blocked","completed","failed","cancelled"]},"description":{"type":"string"},"dependsOn":{"type":"array","items":{"type":"string"}},"responsibility":{"type":"object","additionalProperties":false,"properties":{"kind":{"enum":["human","agent","code"]},"name":{"type":"string","maxLength":256}},"required":["kind"]}},"required":["id","name","status"]}}},"required":["schemaVersion","workflowId","workflowType","title","status","steps"]}"""
 
     override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
         FactoryProjectionValidation.validate(input)?.let {
@@ -47,6 +49,8 @@ class FactoryPublishProjectionTool(
             ?: return failure("USER_CONTEXT_UNAVAILABLE", "User identity is required.")
         val execution = mapOf(
             "namespaceId" to context.namespaceId.toString(),
+            "runtimeId" to runtimeId,
+            "kind" to "agentos",
             "actorId" to userIdentity,
             "agentId" to agentName,
             "caseId" to caseIds.single().toString(),
@@ -81,6 +85,7 @@ class FactoryPublishProjectionTool(
                 put("status", step.status)
                 step.description?.let { put("description", it) }
                 put("dependsOn", step.dependsOn)
+                step.responsibility?.let { actor -> put("responsibility", buildMap<String, Any> { put("kind", actor.kind); actor.name?.let { put("name", it) } }) }
             }
         })
     }

@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit
 class FactoryToolPlugin(
     private val objectMapper: ObjectMapper,
     @Value("\${agentos.factory.base-url:http://localhost:3141}") private val baseUrl: String,
+    @Value("\${agentos.factory.runtime-id:agentos-primary}") private val runtimeId: String = "agentos-primary",
 ) : ToolPlugin {
     override val integrationType = "FACTORY"
     override val configSchema: JsonNode? = null
@@ -26,7 +27,7 @@ class FactoryToolPlugin(
         .build()
 
     override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> =
-        listOf(FactoryPublishProjectionTool(baseUrl, httpClient, objectMapper))
+        listOf(FactoryPublishProjectionTool(baseUrl, httpClient, objectMapper, runtimeId))
 
     companion object { const val INTEGRATION_TYPE = "FACTORY" }
 }

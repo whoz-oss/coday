@@ -12,7 +12,7 @@ import java.util.UUID
 
 class FactoryPublishProjectionToolSpec : StringSpec({
     val mapper = jacksonObjectMapper()
-    val tool = FactoryPublishProjectionTool("http://localhost:3141", OkHttpClient(), mapper)
+    val tool = FactoryPublishProjectionTool("http://localhost:3141", OkHttpClient(), mapper, "agentos-test")
     fun input(expectedRevision: Long? = null) = FactoryPublishProjectionTool.Input(
         "1", "wf-1", "delivery", "Workflow", "ready", expectedRevision,
         listOf(FactoryPublishProjectionTool.Step("step-1", "First", "ready")),
@@ -110,7 +110,7 @@ class FactoryPublishProjectionToolSpec : StringSpec({
     }
 
     "grant is explicit and resolves exact tool name" {
-        val plugin = FactoryToolPlugin(mapper, "http://localhost:3141")
+        val plugin = FactoryToolPlugin(mapper, "http://localhost:3141", "agentos-test")
         val grant = FactoryToolGrantService(plugin)
         grant.isGranted(null) shouldBe false
         grant.isGranted(mapOf("FACTORY" to emptyList())) shouldBe false

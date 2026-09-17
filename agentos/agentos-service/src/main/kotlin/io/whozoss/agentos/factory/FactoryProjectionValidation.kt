@@ -12,7 +12,7 @@ internal object FactoryProjectionValidation {
 
     fun validate(input: FactoryPublishProjectionTool.Input?): Failure? {
         if (input == null) return Failure("INVALID_PROJECTION", "$", "projection is required")
-        if (input.schemaVersion != "1") return Failure("UNSUPPORTED_SCHEMA_VERSION", "schemaVersion", "must equal string '1'")
+        if (input.schemaVersion !in setOf("1", "2")) return Failure("UNSUPPORTED_SCHEMA_VERSION", "schemaVersion", "must equal string '1' or '2'")
         if (!safeId.matches(input.workflowId)) return Failure("INVALID_PROJECTION", "workflowId", "must be a safe identifier of at most 128 characters")
         if (!bounded(input.workflowType, maxText)) return Failure("INVALID_PROJECTION", "workflowType", "must be non-blank and at most $maxText characters")
         if (!bounded(input.title, maxText)) return Failure("INVALID_PROJECTION", "title", "must be non-blank and at most $maxText characters")
@@ -30,6 +30,12 @@ internal object FactoryProjectionValidation {
             if (step.dependsOn.size > maxDependencies) return Failure("INVALID_PROJECTION", "$field.dependsOn", "must contain at most $maxDependencies dependencies")
             if (step.dependsOn.toSet().size != step.dependsOn.size) return Failure("INVALID_PROJECTION", "$field.dependsOn", "must not contain duplicates")
             if (step.dependsOn.any { !safeId.matches(it) }) return Failure("INVALID_PROJECTION", "$field.dependsOn", "must contain only safe identifiers")
+            if (input.schemaVersion == "1" && step.responsibility != null) return Failure("INVALID_PROJECTION", "$field.responsibility", "is not allowed in schema v1")
+            if (input.schemaVersion == "2") {
+                val actor = step.responsibility ?: return Failure("INVALID_PROJECTION", "$field.responsibility", "is required in schema v2")
+                if (actor.kind !in setOf("human", "agent", "code")) return Failure("INVALID_PROJECTION", "$field.responsibility.kind", "must be human, agent, or code")
+                if (actor.name?.let { !bounded(it, maxText) } == true) return Failure("INVALID_PROJECTION", "$field.responsibility.name", "must be non-blank and at most $maxText characters")
+            }
         }
         input.steps.forEachIndexed { index, step ->
             if (step.id in step.dependsOn) return Failure("INVALID_PROJECTION", "steps[$index].dependsOn", "must not contain the step itself")
