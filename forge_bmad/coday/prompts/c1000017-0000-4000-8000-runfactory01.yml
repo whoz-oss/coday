@@ -1,0 +1,11 @@
+name: run-factory
+description: Start or resume one compatible industrialized workflow from a business reference or free-form intent; optionally select --workflow=<workflowType>.
+commands:
+  - |
+    @ProductEngineer Apply the generic Factory run protocol to this business reference or intent. Treat an optional --workflow=<workflowType> as an explicit domain-workflow selector. Do not assume a source system, identifier syntax, or lifecycle:
+    {{PARAMETERS}}
+webhookEnabled: false
+source: project
+createdBy: benjamin.valdes
+id: c1000017-0000-4000-8000-runfactory01
+createdAt: 2026-09-01T00:00:00.000Z
