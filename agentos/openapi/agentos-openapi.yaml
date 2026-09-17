@@ -4989,9 +4989,7 @@ components:
           type: integer
           format: int64
         cost:
-          type:
-          - number
-          - "null"
+          type: number
           format: double
         inputTokens:
           type: integer
@@ -5005,13 +5003,18 @@ components:
         totalTokens:
           type: integer
           format: int64
+        unknownCostCount:
+          type: integer
+          format: int64
       required:
       - cacheReadTokens
       - cacheWriteTokens
+      - cost
       - inputTokens
       - outputTokens
       - recordCount
       - totalTokens
+      - unknownCostCount
     UsageAggregateByKey:
       type: object
       properties:
