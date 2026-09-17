@@ -83,6 +83,13 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
         delegate.save(existing.copy(enabled = enabled))
     }
 
+    /** Disable all non-removed scheduled prompts referencing the given agentConfigId. */
+    override fun disableByAgentConfigId(agentConfigId: UUID): Int {
+        val toDisable = delegate.findAll().filter { it.agentConfigId == agentConfigId && !it.metadata.removed && it.enabled }
+        toDisable.forEach { delegate.save(it.copy(enabled = false)) }
+        return toDisable.size
+    }
+
     companion object {
         private const val ALL_KEY = "all"
     }

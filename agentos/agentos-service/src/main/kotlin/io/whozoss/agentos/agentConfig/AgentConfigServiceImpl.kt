@@ -2,6 +2,7 @@ package io.whozoss.agentos.agentConfig
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.prompt.PromptRepository
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -15,6 +16,7 @@ import java.util.UUID
 class AgentConfigServiceImpl(
     private val agentConfigRepository: AgentConfigRepository,
     private val promptRepository: PromptRepository,
+    private val scheduledPromptRepository: ScheduledPromptRepository,
     private val userService: UserService,
 ) : AgentConfigService {
     override fun create(entity: AgentConfig): AgentConfig {
@@ -35,7 +37,13 @@ class AgentConfigServiceImpl(
     @Transactional
     override fun delete(id: UUID): Boolean {
         val deleted = agentConfigRepository.delete(id)
-        if (deleted) promptRepository.softDeleteByAgentConfigId(id)
+        if (deleted) {
+            promptRepository.softDeleteByAgentConfigId(id)
+            val disabledCount = scheduledPromptRepository.disableByAgentConfigId(id)
+            if (disabledCount > 0) {
+                logger.info { "[AgentConfigService] Disabled $disabledCount scheduled prompt(s) for deleted agentConfigId=$id" }
+            }
+        }
         return deleted
     }
 
@@ -91,11 +99,17 @@ class AgentConfigServiceImpl(
         return agentConfigRepository.save(existing.copy(enabled = true))
     }
 
+    @Transactional
     override fun disable(id: UUID): AgentConfig {
         val existing =
             agentConfigRepository.findById(id)
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
-        return agentConfigRepository.save(existing.copy(enabled = false))
+        val disabled = agentConfigRepository.save(existing.copy(enabled = false))
+        val disabledCount = scheduledPromptRepository.disableByAgentConfigId(id)
+        if (disabledCount > 0) {
+            logger.info { "[AgentConfigService] Disabled $disabledCount scheduled prompt(s) for disabled agentConfigId=$id" }
+        }
+        return disabled
     }
 
     /**

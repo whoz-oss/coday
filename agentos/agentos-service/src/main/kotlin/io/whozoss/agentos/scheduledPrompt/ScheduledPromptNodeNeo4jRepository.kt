@@ -148,4 +148,20 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
             """,
     )
     fun updateEnabled(id: String, enabled: Boolean)
+
+    /**
+     * Disable all non-removed scheduled prompts referencing the given agentConfigId.
+     * Returns the number of nodes updated.
+     */
+    @Query(
+        $$"""
+            MATCH (sp:ScheduledPrompt)
+            WHERE sp.agentConfigId = $agentConfigId
+              AND NOT COALESCE(sp.removed, false)
+              AND sp.enabled = true
+            SET sp.enabled = false
+            RETURN count(sp)
+            """,
+    )
+    fun disableByAgentConfigId(agentConfigId: String): Int
 }

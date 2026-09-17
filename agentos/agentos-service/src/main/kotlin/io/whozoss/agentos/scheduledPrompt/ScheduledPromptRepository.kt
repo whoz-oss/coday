@@ -64,4 +64,14 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
      * by the scheduler between the time the caller loaded the aggregate and the time it saves it.
      */
     fun updateEnabled(id: UUID, enabled: Boolean)
+
+    /**
+     * Disable all non-removed [ScheduledPrompt]s that reference the given [agentConfigId].
+     *
+     * Called when the linked AgentConfig is soft-deleted, to prevent orphaned schedulers
+     * from being picked up by the scheduler scanner and failing at execution time.
+     *
+     * @return the number of schedulers that were actually disabled
+     */
+    fun disableByAgentConfigId(agentConfigId: UUID): Int
 }

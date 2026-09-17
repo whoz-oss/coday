@@ -11,8 +11,18 @@ import io.whozoss.agentos.entity.EntityRepository
 import io.whozoss.agentos.entity.InMemoryEntityRepository
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.prompt.PromptRepository
+import io.whozoss.agentos.scheduledPrompt.InMemoryScheduledPromptRepository
+import io.whozoss.agentos.scheduledPrompt.Planning
+import io.whozoss.agentos.scheduledPrompt.Recurrence
+import io.whozoss.agentos.scheduledPrompt.ScheduledPrompt
+import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
+import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
 import java.util.UUID
 
 class AgentConfigServiceImplUnitSpec :
@@ -58,8 +68,9 @@ class AgentConfigServiceImplUnitSpec :
         fun service(
             repo: AgentConfigRepository = repository(),
             pr: PromptRepository = promptRepository,
+            spr: InMemoryScheduledPromptRepository = InMemoryScheduledPromptRepository(),
             us: UserService = userService,
-        ) = AgentConfigServiceImpl(repo, pr, us)
+        ) = AgentConfigServiceImpl(repo, pr, spr, us)
 
         val namespaceId: UUID = UUID.randomUUID()
 
@@ -271,5 +282,97 @@ class AgentConfigServiceImplUnitSpec :
 
             val result = svc.findByNamespace(namespaceId)
             result shouldHaveSize 2
+        }
+
+        // -------------------------------------------------------------------------
+        // delete — scheduler cascade
+        // -------------------------------------------------------------------------
+
+        fun scheduledPrompt(agentConfigId: UUID, name: String, enabled: Boolean = true) = ScheduledPrompt(
+            metadata = EntityMetadata(id = UUID.randomUUID()),
+            agentConfigId = agentConfigId,
+            promptTemplateId = UUID.randomUUID(),
+            name = name,
+            enabled = enabled,
+            recurrence = Recurrence(
+                unit = SchedulerUnit.WEEK,
+                days = listOf(DayOfWeek.MONDAY),
+                timeUtc = LocalTime.of(9, 0),
+            ),
+            planning = Planning(
+                startDate = LocalDate.of(2025, 1, 1),
+                endType = SchedulerEndType.NEVER,
+            ),
+            nextRunAt = Instant.parse("2025-01-06T09:00:00Z"),
+        )
+
+        "delete disables all enabled scheduled prompts referencing the deleted agent" {
+            val repo = repository()
+            val scheduledPromptRepo = InMemoryScheduledPromptRepository()
+            val svc = service(repo, spr = scheduledPromptRepo)
+
+            val agent = repo.save(config("Dev", nsId = namespaceId))
+            val agentId = agent.metadata.id
+
+            // Save two enabled and one already-disabled scheduled prompt for the agent
+            scheduledPromptRepo.save(scheduledPrompt(agentId, "sp1", enabled = true))
+            scheduledPromptRepo.save(scheduledPrompt(agentId, "sp2", enabled = true))
+            scheduledPromptRepo.save(scheduledPrompt(agentId, "sp3", enabled = false))
+
+            svc.delete(agentId) shouldBe true
+
+            // All three should now be disabled
+            scheduledPromptRepo.findByScope(null, null, listOf(agentId)).forEach { sp ->
+                sp.enabled shouldBe false
+            }
+        }
+
+        "disable disables all enabled scheduled prompts referencing the disabled agent" {
+            val repo = repository()
+            val scheduledPromptRepo = InMemoryScheduledPromptRepository()
+            val svc = service(repo, spr = scheduledPromptRepo)
+
+            val agent = repo.save(config("Dev", nsId = namespaceId))
+            val agentId = agent.metadata.id
+
+            scheduledPromptRepo.save(scheduledPrompt(agentId, "sp1", enabled = true))
+            scheduledPromptRepo.save(scheduledPrompt(agentId, "sp2", enabled = false))
+
+            svc.disable(agentId)
+
+            scheduledPromptRepo.findByScope(null, null, listOf(agentId)).forEach { sp ->
+                sp.enabled shouldBe false
+            }
+        }
+
+        "disable does not affect scheduled prompts of other agents" {
+            val repo = repository()
+            val scheduledPromptRepo = InMemoryScheduledPromptRepository()
+            val svc = service(repo, spr = scheduledPromptRepo)
+
+            val agent = repo.save(config("Dev", nsId = namespaceId))
+            val otherAgentId = UUID.randomUUID()
+
+            scheduledPromptRepo.save(scheduledPrompt(otherAgentId, "other-sp", enabled = true))
+
+            svc.disable(agent.metadata.id)
+
+            scheduledPromptRepo.findByScope(null, null, listOf(otherAgentId)).single().enabled shouldBe true
+        }
+
+        "delete does not affect scheduled prompts of other agents" {
+            val repo = repository()
+            val scheduledPromptRepo = InMemoryScheduledPromptRepository()
+            val svc = service(repo, spr = scheduledPromptRepo)
+
+            val agent = repo.save(config("Dev", nsId = namespaceId))
+            val otherAgentId = UUID.randomUUID()
+
+            scheduledPromptRepo.save(scheduledPrompt(otherAgentId, "other-sp", enabled = true))
+
+            svc.delete(agent.metadata.id) shouldBe true
+
+            // The other agent's scheduler must remain enabled
+            scheduledPromptRepo.findByScope(null, null, listOf(otherAgentId)).single().enabled shouldBe true
         }
     })

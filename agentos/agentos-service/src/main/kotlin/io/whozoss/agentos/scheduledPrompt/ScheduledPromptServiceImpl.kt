@@ -123,6 +123,10 @@ class ScheduledPromptServiceImpl(
         val existing = repository.findById(id)
             ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
         if (existing.enabled) return existing
+        agentConfigService.findById(existing.agentConfigId)
+            ?: throw UnprocessableEntityException(
+                "AgentConfig ${existing.agentConfigId} has been deleted — this ScheduledPrompt cannot be enabled",
+            )
         val enabled = existing.copy(enabled = true)
         val withNextRun = enabled.copy(nextRunAt = nextRunCalculatorService.compute(enabled))
         return repository.save(withNextRun)
