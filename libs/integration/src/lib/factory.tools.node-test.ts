@@ -36,6 +36,8 @@ describe('FactoryTools Phase 1 without Jest/Haste', () => {
     assert.deepEqual(Object.keys((lookup.function.parameters as { properties: object }).properties), ['workflowId'])
     assert.equal((await exposed('start_workflow')).function.name, 'FACTORY__start_workflow')
     assert.equal((await exposed('publish_projection')).function.name, 'FACTORY__publish_projection')
+    assert.equal((await exposed('record_agent_result')).function.name, 'FACTORY__record_agent_result')
+    assert.equal((await exposed('record_artifact')).function.name, 'FACTORY__record_artifact')
     const context = new CommandContext(project as never, 'user')
     assert.deepEqual(
       await new FactoryTools(interactor, 'FACTORY', {}).getTools(context, ['unknown'], 'ProductEngineer'),
@@ -108,6 +110,117 @@ describe('FactoryTools Phase 1 without Jest/Haste', () => {
       (await invoke(await exposed('start_workflow'), { workflowId: 'demo.id', workflowType: 'demo', title: 'Demo' }))
         .error.code,
       'WORKFLOW_DEFINITION_AMBIGUOUS'
+    )
+  })
+
+  for (const capability of ['record_agent_result', 'record_artifact'] as const) {
+    it(`records ${capability} with an independent strict schema and trusted Express source`, async () => {
+      const tool = await exposed(capability)
+      const schema = tool.function.parameters as { additionalProperties: boolean; properties: Record<string, unknown> }
+      assert.equal(schema.additionalProperties, false)
+      assert.deepEqual(
+        Object.keys(schema.properties),
+        capability === 'record_agent_result'
+          ? ['workflowId', 'stepId', 'idempotencyKey', 'outcome', 'facts']
+          : ['workflowId', 'stepId', 'idempotencyKey', 'artifactRef', 'artifactHash']
+      )
+      let requestedUrl: string | URL | Request | undefined
+      let request: RequestInit | undefined
+      mock.method(globalThis, 'fetch', async (url: string | URL | Request, init?: RequestInit) => {
+        requestedUrl = url
+        request = init
+        return new Response(
+          JSON.stringify({
+            data: {
+              namespaceId,
+              workflowId: 'wf-1',
+              created: false,
+              idempotent: true,
+              evidence: { evidenceId: 'factory-id' },
+            },
+          }),
+          { status: 200 }
+        )
+      })
+      const business =
+        capability === 'record_agent_result'
+          ? {
+              workflowId: 'wf-1',
+              stepId: 'implement',
+              outcome: 'pass',
+              facts: { resultCode: 'DONE' },
+              idempotencyKey: 'turn-1',
+            }
+          : {
+              workflowId: 'wf-1',
+              stepId: 'implement',
+              artifactRef: 'opaque://artifact',
+              artifactHash: `sha256:${'a'.repeat(64)}`,
+              idempotencyKey: 'artifact-1',
+            }
+      const result = await invoke(tool, business)
+      assert.equal(result.idempotent, true)
+      assert.equal(String(requestedUrl), 'http://127.0.0.1:3141/api/factory/workflows/wf-1/evidence')
+      assert.deepEqual(JSON.parse(request?.body as string), {
+        evidence: { ...business, kind: capability === 'record_agent_result' ? 'agent-result' : 'artifact' },
+        execution: {
+          namespaceId,
+          runtimeId: 'coday-express-transitional',
+          kind: 'coday-express',
+          agentId: 'ProductEngineer',
+          threadId: 'thread-123',
+          actorId: 'benjamin.valdes',
+        },
+      })
+    })
+  }
+
+  it('rejects evidence attribution before HTTP and maps Factory errors and malformed success', async () => {
+    for (const field of ['source', 'namespaceId', 'evidenceId', 'observedAt']) {
+      let called = false
+      mock.method(globalThis, 'fetch', async () => {
+        called = true
+        return new Response()
+      })
+      const result = await invoke(await exposed('record_agent_result'), {
+        workflowId: 'wf-1',
+        stepId: 'implement',
+        facts: { resultCode: 'DONE' },
+        [field]: 'model',
+      })
+      assert.equal(result.error.code, 'INVALID_EVIDENCE')
+      assert.equal(called, false)
+      mock.restoreAll()
+    }
+    mock.method(
+      globalThis,
+      'fetch',
+      async () =>
+        new Response(JSON.stringify({ error: { code: 'WORKFLOW_REMOVED', message: 'removed' } }), { status: 410 })
+    )
+    assert.equal(
+      (
+        await invoke(await exposed('record_artifact'), {
+          workflowId: 'wf-1',
+          stepId: 'implement',
+          artifactRef: 'ref',
+          artifactHash: `sha256:${'a'.repeat(64)}`,
+        })
+      ).error.code,
+      'WORKFLOW_REMOVED'
+    )
+    mock.restoreAll()
+    mock.method(globalThis, 'fetch', async () => new Response('{bad', { status: 200 }))
+    assert.equal(
+      (
+        await invoke(await exposed('record_artifact'), {
+          workflowId: 'wf-1',
+          stepId: 'implement',
+          artifactRef: 'ref',
+          artifactHash: `sha256:${'a'.repeat(64)}`,
+        })
+      ).error.code,
+      'MALFORMED_FACTORY_RESPONSE'
     )
   })
 

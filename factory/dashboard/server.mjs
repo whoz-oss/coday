@@ -50,6 +50,8 @@ import { WorkflowProjectionSseHub } from './workflow-projection-sse.mjs'
 import { handleForgeWorkflowProjectionRequest } from './forge-workflow-projection-routes.mjs'
 import { WorkflowDefinitionRegistry } from '../lib/workflow-definition-registry.mjs'
 import { handleWorkflowDefinitionRequest } from './workflow-definition-routes.mjs'
+import { WorkflowEvidenceStore } from '../lib/workflow-evidence-store.mjs'
+import { handleWorkflowEvidenceRequest } from './workflow-evidence-routes.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
@@ -72,6 +74,7 @@ const FACTORY_DATA_ROOT = process.env.FACTORY_DATA_ROOT ?? join(homedir(), '.cod
 const workflowProjectionStore = new WorkflowProjectionStore(FACTORY_DATA_ROOT)
 const workflowProjectionSseHub = new WorkflowProjectionSseHub()
 const workflowDefinitionRegistry = new WorkflowDefinitionRegistry(join(__dirname, '..', 'workflows'))
+const workflowEvidenceStore = new WorkflowEvidenceStore(FACTORY_DATA_ROOT)
 // Explicit store location for Forge Epic/Story projections. It is intentionally
 // independent from both this dashboard's source tree and the target repoRoot.
 // FACTORY_USER: used only to identify the AgentOS user for proxy headers.
@@ -640,6 +643,16 @@ const server = createServer(async (req, res) => {
     method, path,
     send: (status, body) => send(res, status, body),
     registry: workflowDefinitionRegistry,
+    log: console,
+  })) return
+
+  if (await handleWorkflowEvidenceRequest({
+    method, path, url,
+    readBody: () => readBody(req),
+    send: (status, body) => send(res, status, body),
+    projectionStore: workflowProjectionStore,
+    evidenceStore: workflowEvidenceStore,
+    definitionRegistry: workflowDefinitionRegistry,
     log: console,
   })) return
 

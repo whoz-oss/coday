@@ -1,4 +1,6 @@
 import { AssistantToolFactory, CodayTool, CommandContext, IntegrationConfig, Interactor } from '@coday/model'
+import { agentResultEvidenceSchema, artifactEvidenceSchema } from './factory.schemas'
+import { validateEvidenceToolInput } from './factory.validation'
 
 /** @deprecated Transitional Express adapter. Use AgentOS FactoryPublishProjectionTool when available. */
 export class FactoryTools extends AssistantToolFactory {
@@ -31,6 +33,18 @@ export class FactoryTools extends AssistantToolFactory {
           function: async (input: unknown) => this.startWorkflow(context, agentName, input),
         },
       },
+      ...(['agent-result', 'artifact'] as const).map(
+        (kind): CodayTool => ({
+          type: 'function',
+          function: {
+            name: `${this.name}__record_${kind === 'agent-result' ? 'agent_result' : 'artifact'}`,
+            description: `Record immutable structured ${kind} evidence for a governed Factory workflow step.`,
+            parameters: kind === 'agent-result' ? agentResultEvidenceSchema : artifactEvidenceSchema,
+            parse: JSON.parse,
+            function: async (input: unknown) => this.recordEvidence(context, agentName, kind, input),
+          },
+        })
+      ),
       {
         type: 'function',
         function: {
@@ -138,6 +152,53 @@ export class FactoryTools extends AssistantToolFactory {
           : errorResult('FACTORY_UNAVAILABLE', 'Factory rejected workflow creation.')
       }
       return JSON.stringify((payload as { data?: unknown }).data ?? payload)
+    } catch {
+      return errorResult('FACTORY_UNAVAILABLE', 'Factory is unavailable.')
+    }
+  }
+
+  private async recordEvidence(
+    context: CommandContext,
+    agentName: string,
+    kind: 'agent-result' | 'artifact',
+    input: unknown
+  ): Promise<string> {
+    const config = context.project.factory
+    const configError = validateConfig(config)
+    if (configError) return errorResult('FACTORY_UNAVAILABLE', configError)
+    const validationError = validateEvidenceToolInput(kind, input)
+    if (validationError) return errorResult('INVALID_EVIDENCE', validationError)
+    const threadId = context.aiThread?.id?.trim()
+    if (!threadId) return errorResult('FACTORY_UNAVAILABLE', 'A controlling Coday thread identity is required.')
+    const value = input as Record<string, unknown>
+    const execution: CodayExpressExecution = {
+      namespaceId: config!.namespaceId!,
+      runtimeId: config!.runtimeId?.trim() || 'coday-express-transitional',
+      kind: 'coday-express',
+      agentId: agentName?.trim() || 'default',
+      threadId,
+    }
+    if (context.username?.trim()) execution.actorId = context.username.trim()
+    try {
+      const response = await fetch(
+        `${config!.baseUrl!.replace(/\/+$/, '')}/api/factory/workflows/${encodeURIComponent(value.workflowId as string)}/evidence`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ evidence: { ...value, kind }, execution }),
+        }
+      )
+      const payload: unknown = await response.json().catch(() => undefined)
+      if (!response.ok) {
+        const factoryError = readFactoryError(payload)
+        return factoryError
+          ? errorResult(factoryError.code, factoryError.message)
+          : errorResult('FACTORY_UNAVAILABLE', 'Factory rejected evidence.')
+      }
+      const data = (payload as { data?: Record<string, unknown> } | undefined)?.data
+      return data?.evidence && typeof data.created === 'boolean' && typeof data.idempotent === 'boolean'
+        ? JSON.stringify(data)
+        : errorResult('MALFORMED_FACTORY_RESPONSE', 'Factory returned malformed evidence.')
     } catch {
       return errorResult('FACTORY_UNAVAILABLE', 'Factory is unavailable.')
     }
