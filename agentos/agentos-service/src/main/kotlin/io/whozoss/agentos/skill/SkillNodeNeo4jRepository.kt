@@ -10,13 +10,13 @@ interface SkillNodeNeo4jRepository : Neo4jRepository<SkillNode, String> {
     /**
      * Find all non-removed namespace-scoped skills, ordered by name ASC.
      *
-     * Traverses the BELONGS_TO edge and filters by the Namespace id.
+     * Matches by the scalar [SkillNode.namespaceId] property.
      */
     @Query(
         $$"""
-            MATCH (s:Skill)-[r:BELONGS_TO]->(ns:Namespace)
-            WHERE ns.id = $namespaceId AND (s.removed IS NULL OR s.removed = false)
-            RETURN s, r, ns ORDER BY s.name ASC
+            MATCH (s:Skill)
+            WHERE s.namespaceId = $namespaceId AND (s.removed IS NULL OR s.removed = false)
+            RETURN s ORDER BY s.name ASC
             """,
     )
     fun findActiveByNamespaceId(namespaceId: String): List<SkillNode>

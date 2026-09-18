@@ -4,6 +4,7 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.sdk.util.SensitiveFileDetector
+import io.whozoss.agentos.sdk.util.StringUtils
 import mu.KLogging
 
 /**
@@ -116,7 +117,7 @@ class SkillReadResourceTool(
                 errorType = "NOT_FOUND",
             )
 
-        val normalizedPath = input.path.trim().trimStart('/').replace("\\", "/")
+        val normalizedPath = StringUtils.normalizeRelativePath(input.path)
 
         if (SensitiveFileDetector.isSensitive(normalizedPath.substringAfterLast('/'))) {
             logger.warn { "[SkillReadResourceTool] Sensitive file rejected: $normalizedPath" }

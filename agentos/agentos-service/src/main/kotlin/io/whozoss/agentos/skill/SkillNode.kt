@@ -2,7 +2,6 @@ package io.whozoss.agentos.skill
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.namespace.NamespaceNode
 import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.annotation.CreatedBy
@@ -12,22 +11,17 @@ import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.annotation.Version
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
-import org.springframework.data.neo4j.core.schema.Relationship
-import org.springframework.data.neo4j.core.schema.Relationship.Direction.OUTGOING
 import java.time.Instant
 import java.util.UUID
 
 /**
  * Spring Data Neo4j projection for [Skill].
  *
- * Stored as `(:Skill)-[:BELONGS_TO]->(:Namespace)` for namespace-scoped skills.
- * Both the scalar [namespaceId] property and the [namespace] outgoing @Relationship
- * to [NamespaceNode] are maintained in sync by [Neo4jSkillRepository.save].
+ * Stored as `(:Skill)-[:BELONGS_TO]->(:Namespace)` for namespace-scoped skills via
+ * [io.whozoss.agentos.persistence.Neo4jChildLinkService]. The scalar [namespaceId]
+ * property is indexed and used for direct matching in Cypher queries.
  *
  * Platform-level skills (`namespaceId == null`) have no `BELONGS_TO` edge.
- *
- * [namespace] is a nullable `var` so SDN can call the primary constructor before
- * property-injecting the @Relationship field.
  *
  * [doubleKey] is a denormalised, deterministic discriminator computed from
  * `(namespaceId, name.lowercase())`. It backs uniqueness per level and single-property
@@ -51,8 +45,6 @@ data class SkillNode(
     @LastModifiedDate val modified: Instant = Instant.now(),
     @LastModifiedBy val modifiedBy: String? = null,
     val removed: Boolean? = null,
-    @Relationship(type = "BELONGS_TO", direction = OUTGOING)
-    var namespace: NamespaceNode? = null,
 ) {
     fun toDomain(): Skill =
         Skill(

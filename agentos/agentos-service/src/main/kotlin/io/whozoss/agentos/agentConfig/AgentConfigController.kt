@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigSearchRequest
 import io.whozoss.agentos.sdk.api.agentConfig.AgentDefinitionDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
@@ -86,8 +87,8 @@ class AgentConfigController(
                     advancedExecution = resource.advancedExecution ?: false,
                     externalMetadata = resource.externalMetadata,
                     enabled = resource.enabled ?: false,
-                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
-                    skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
+                    subAgents = resource.subAgents.nullOrNotBlankItems(),
+                    skillSelectors = resource.skillSelectors.nullOrNotBlankItems(),
                 )
             },
         )
@@ -145,8 +146,8 @@ class AgentConfigController(
                     advancedExecution = resource.advancedExecution ?: false,
                     externalMetadata = resource.externalMetadata,
                     enabled = resource.enabled ?: existing.enabled,
-                    subAgents = resource.subAgents?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
-                    skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
+                    subAgents = resource.subAgents.nullOrNotBlankItems(),
+                    skillSelectors = resource.skillSelectors.nullOrNotBlankItems(),
                 ),
             ),
         )
@@ -272,8 +273,8 @@ internal fun toDomain(resource: AgentConfigDto): AgentConfig {
         advancedExecution = resource.advancedExecution ?: false,
         externalMetadata = resource.externalMetadata,
         enabled = resource.enabled ?: false,
-        subAgents = resource.subAgents?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
-        skillSelectors = resource.skillSelectors?.filter { it.isNotBlank() }?.map { it.trim() }?.takeIf { it.isNotEmpty() },
+        subAgents = resource.subAgents.nullOrNotBlankItems(),
+        skillSelectors = resource.skillSelectors.nullOrNotBlankItems(),
     )
 }
 

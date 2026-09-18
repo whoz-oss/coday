@@ -111,6 +111,13 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Constraint skill_double_key_unique ensured" }
 
+        // Index on Skill.namespaceId: accelerates property-based lookup for namespace-scoped and platform skills.
+        neo4jClient
+            .query(
+                "CREATE INDEX skill_namespace_id IF NOT EXISTS FOR (s:Skill) ON (s.namespaceId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index skill_namespace_id created" }
+
         // Backfill @Version on AgentConfig nodes created before the version field was introduced.
         // Spring Data Neo4j's optimistic-locking check generates MATCH WHERE version = ?
         // which fails if the property is absent. Setting version = 0 makes existing nodes

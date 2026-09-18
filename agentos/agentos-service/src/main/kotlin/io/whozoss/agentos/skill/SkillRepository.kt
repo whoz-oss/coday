@@ -35,7 +35,7 @@ interface SkillRepository : EntityRepository<Skill, UUID> {
     ): Skill?
 
     /**
-     * Find skills matching any of [names] (case-insensitive) in [namespaceId] or platform scope.
+     * Find non-removed skills matching any of [names] (case-insensitive) in [namespaceId] or platform scope.
      */
     fun findByNamespaceIdAndNames(
         namespaceId: UUID,

@@ -1,14 +1,11 @@
 package io.whozoss.agentos.skill
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
-import java.io.IOException
-import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.util.UUID
@@ -38,11 +35,13 @@ class FilesystemSkillRepository(
     ttl: Duration = Duration.ofMinutes(5),
 ) : SkillRepository by delegate {
 
+    private val skillFileParser = SkillFileParser(yamlMapper)
+
     private val cacheRegistry =
         FilesystemYamlCacheRegistry(
-            parser = ::parseSkillFile,
+            parser = skillFileParser::parseSkillFile,
             ttl = ttl,
-            filePredicate = { it.fileName.toString() == SKILL_FILE_NAME },
+            filePredicate = { it.fileName.toString() == SkillFileParser.SKILL_FILE_NAME },
             maxDepth = MAX_WALK_DEPTH,
         )
 
@@ -164,224 +163,11 @@ class FilesystemSkillRepository(
         return result
     }
 
-    // -------------------------------------------------------------------------
-    // Parsing (invoked by FilesystemYamlCacheRegistry per matched file)
-    // -------------------------------------------------------------------------
-
-    private fun parseSkillFile(
-        directory: Path,
-        file: Path,
-    ): Skill? {
-        val skillDir = file.parent
-
-        val realSkillsRoot =
-            try {
-                directory.toRealPath()
-            } catch (e: IOException) {
-                logger.warn(e) { "[FilesystemSkillRepository] Cannot resolve skills root: $directory" }
-                return null
-            }
-        val realSkillDir =
-            try {
-                skillDir.toRealPath()
-            } catch (e: IOException) {
-                logger.warn(e) { "[FilesystemSkillRepository] Cannot resolve skill directory: $skillDir" }
-                return null
-            }
-        val realFile =
-            try {
-                file.toRealPath()
-            } catch (e: IOException) {
-                logger.warn(e) { "[FilesystemSkillRepository] Cannot resolve SKILL.md file: $file" }
-                return null
-            }
-
-        // Path containment: reject symlink escapes
-        if (!realSkillDir.startsWith(realSkillsRoot) || !realFile.startsWith(realSkillsRoot)) {
-            logger.warn { "[FilesystemSkillRepository] Symlink escape rejected: $realFile" }
-            return null
-        }
-
-        // Flat layout: skill directory must be directly inside skills root (depth exactly 1)
-        val relativePath = realSkillsRoot.relativize(realSkillDir).toString().replace("\\", "/")
-        val depth = if (relativePath.isEmpty()) 0 else relativePath.split("/").size
-        if (depth > 1) {
-            logger.debug { "[FilesystemSkillRepository] Skipping nested skill in flat layout ($depth > 1): $file" }
-            return null
-        }
-
-        val fileSize =
-            try {
-                Files.size(file)
-            } catch (e: IOException) {
-                logger.warn(e) { "[FilesystemSkillRepository] Cannot stat $file" }
-                return null
-            }
-        if (fileSize > MAX_SKILL_FILE_BYTES) {
-            logger.warn { "[FilesystemSkillRepository] Skipping oversized SKILL.md ($fileSize B): $file" }
-            return null
-        }
-
-        val content =
-            try {
-                Files.readString(file)
-            } catch (e: IOException) {
-                logger.warn(e) { "[FilesystemSkillRepository] Cannot read $file" }
-                return null
-            }
-
-        val (frontmatterYaml, body) = splitFrontmatterAndBody(content) ?: return null
-
-        val model =
-            try {
-                yamlMapper.readValue(frontmatterYaml, SkillFrontmatter::class.java)
-            } catch (e: Exception) {
-                logger.debug(e) { "[FilesystemSkillRepository] Invalid YAML frontmatter in $file" }
-                return null
-            }
-
-        val name = collapseWhitespace(model.name ?: "").truncate(MAX_SKILL_NAME_CHARS)
-        val description = collapseWhitespace(model.description ?: "").truncate(MAX_SKILL_DESCRIPTION_CHARS)
-
-        if (name.isBlank() || description.isBlank()) {
-            logger.debug { "[FilesystemSkillRepository] Skipping $file: blank name or description" }
-            return null
-        }
-
-        val resources = loadSkillResources(realSkillDir)
-
-        return Skill(
-            metadata = EntityMetadata(
-                id = UUID.nameUUIDFromBytes("filesystem-skill:$name".toByteArray(Charsets.UTF_8)),
-            ),
-            namespaceId = null,
-            name = name,
-            description = description,
-            body = body,
-            resources = resources,
-        )
-    }
-
-    private fun loadSkillResources(skillDir: Path): Map<String, String> {
-        val resources = mutableMapOf<String, String>()
-        val realSkillDir =
-            try {
-                skillDir.toRealPath()
-            } catch (e: IOException) {
-                logger.warn(e) { "[FilesystemSkillRepository] Cannot resolve skill directory for resources: $skillDir" }
-                return resources
-            }
-        try {
-            Files.walk(skillDir, MAX_RESOURCE_WALK_DEPTH).use { stream ->
-                stream
-                    // NOFOLLOW_LINKS: a symlink is never treated as a regular file here, even when
-                    // its target is one — symlinks (including ones with an innocuous filename that
-                    // would otherwise bypass the sensitive-file filter) are rejected outright.
-                    .filter {
-                        Files.isRegularFile(it, java.nio.file.LinkOption.NOFOLLOW_LINKS) &&
-                            it.fileName.toString() != SKILL_FILE_NAME
-                    }
-                    .filter { !isJunkOrBinaryResource(skillDir.relativize(it)) }
-                    .forEach { resourceFile ->
-                        val fileName = resourceFile.fileName.toString()
-                        // Defense in depth: even though symlinks are already excluded above,
-                        // re-validate the canonical path stays contained within the skill directory
-                        // before reading — protects against any remaining escape vector (e.g. a
-                        // parent directory itself being replaced by a symlink between the walk and
-                        // this read).
-                        val realResourceFile =
-                            try {
-                                resourceFile.toRealPath()
-                            } catch (e: IOException) {
-                                logger.warn(e) { "[FilesystemSkillRepository] Cannot resolve resource path, skipping: $resourceFile" }
-                                return@forEach
-                            }
-                        if (!realResourceFile.startsWith(realSkillDir)) {
-                            logger.warn {
-                                "[FilesystemSkillRepository] Symlink/path escape rejected for resource: " +
-                                    "$resourceFile -> $realResourceFile"
-                            }
-                            return@forEach
-                        }
-                        if (!SkillReadResourceTool.isSensitiveFile(fileName)) {
-                            val relPath = skillDir.relativize(resourceFile).toString().replace("\\", "/")
-                            try {
-                                if (Files.size(realResourceFile) <= SkillReadResourceTool.MAX_RESOURCE_BYTES) {
-                                    resources[relPath] = Files.readString(realResourceFile)
-                                }
-                            } catch (e: Exception) {
-                                logger.warn(e) { "[FilesystemSkillRepository] Could not read resource: $resourceFile" }
-                            }
-                        }
-                    }
-            }
-        } catch (e: Exception) {
-            logger.warn(e) { "[FilesystemSkillRepository] Error reading resources from $skillDir" }
-        }
-        return resources
-    }
-
-    /**
-     * Excludes files that are expected to be unreadable as text or irrelevant as skill resources:
-     * - any path segment that is a junk directory (`__pycache__`, `pycache`, `node_modules`) or
-     *   hidden (starts with a dot)
-     * - files with a known binary extension (compiled bytecode, native libs, archives, images, pdf)
-     *
-     * These are skipped silently: they are expected byproducts of skill tooling, not errors.
-     */
-    private fun isJunkOrBinaryResource(relativePath: Path): Boolean {
-        val segments = (0 until relativePath.nameCount).map { relativePath.getName(it).toString() }
-        if (segments.any { it in JUNK_DIR_NAMES || it.startsWith(".") }) return true
-        val fileName = segments.last()
-        val dotIndex = fileName.lastIndexOf('.')
-        if (dotIndex <= 0) return false
-        return fileName.substring(dotIndex + 1).lowercase() in BINARY_RESOURCE_EXTENSIONS
-    }
-
-    private fun splitFrontmatterAndBody(content: String): Pair<String, String>? {
-        if (!content.trimStart().startsWith("---")) return null
-        val lines = content.lines()
-        val firstDelimiter = lines.indexOfFirst { it.trim() == "---" }
-        if (firstDelimiter < 0) return null
-        val secondDelimiter = lines.drop(firstDelimiter + 1).indexOfFirst { it.trim() == "---" }
-        if (secondDelimiter < 0) return null
-        val fmEnd = firstDelimiter + 1 + secondDelimiter
-        val frontmatterLines = lines.subList(firstDelimiter + 1, fmEnd)
-        val bodyLines = lines.drop(fmEnd + 1)
-        val trimmedBodyLines = if (bodyLines.firstOrNull()?.isBlank() == true) bodyLines.drop(1) else bodyLines
-        val bodyText = trimmedBodyLines.joinToString("\n")
-        return frontmatterLines.joinToString("\n") to bodyText
-    }
-
-    private fun collapseWhitespace(value: String): String = value.replace(Regex("\\s+"), " ").trim()
-
-    private fun String.truncate(maxChars: Int): String =
-        if (length <= maxChars) this else take(maxChars) + "\u2026"
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private data class SkillFrontmatter(
-        val name: String? = null,
-        val description: String? = null,
-    )
-
     companion object : KLogging() {
         private const val SKILLS_SUBDIR = "skills"
-        private const val SKILL_FILE_NAME = "SKILL.md"
 
-        const val MAX_SKILL_NAME_CHARS = 100
-        const val MAX_SKILL_DESCRIPTION_CHARS = 500
-        const val MAX_SKILL_FILE_BYTES = 512 * 1024L // 512 KiB
         const val MAX_SKILL_COUNT = 500
         const val MAX_WALK_DEPTH = 2
-        private const val MAX_RESOURCE_WALK_DEPTH = 5
-
-        private val JUNK_DIR_NAMES = setOf("__pycache__", "pycache", "node_modules")
-
-        private val BINARY_RESOURCE_EXTENSIONS =
-            setOf(
-                "pyc", "class", "so", "dylib", "dll", "jar",
-                "zip", "gz", "png", "jpg", "jpeg", "pdf",
-            )
 
         fun computeFilesystemSkillId(
             namespaceId: UUID,

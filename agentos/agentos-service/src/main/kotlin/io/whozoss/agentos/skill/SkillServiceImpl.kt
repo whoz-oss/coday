@@ -21,6 +21,7 @@ class SkillServiceImpl(
     // -------------------------------------------------------------------------
 
     override fun create(entity: Skill): Skill {
+        validateSkillName(entity.name)
         requireUniqueName(entity.namespaceId, entity.name, excludeId = null)
         return saveOrConflict(entity)
     }
@@ -33,6 +34,7 @@ class SkillServiceImpl(
                 "Filesystem-backed skill '${existing.name}' is read-only through the API.",
             )
         }
+        validateSkillName(entity.name)
         requireUniqueName(entity.namespaceId, entity.name, excludeId = entity.metadata.id)
         return saveOrConflict(entity)
     }
@@ -76,8 +78,8 @@ class SkillServiceImpl(
             // Apply case-insensitive shadowing: namespace skills shadow platform skills of same name
             val namespaceSkills = matched.filter { it.namespaceId != null }
             val platformSkills = matched.filter { it.namespaceId == null }
-            val namespaceNames = namespaceSkills.mapTo(HashSet()) { it.name.lowercase() }
-            val shadowedPlatform = platformSkills.filter { it.name.lowercase() !in namespaceNames }
+            val namespaceSkillNames = namespaceSkills.mapTo(HashSet()) { it.name.lowercase() }
+            val shadowedPlatform = platformSkills.filter { it.name.lowercase() !in namespaceSkillNames }
             namespaceSkills + shadowedPlatform
         }
     }
@@ -94,8 +96,8 @@ class SkillServiceImpl(
         val namespaceSkills = skillRepository.findByNamespaceId(namespaceId)
         val platformSkills = skillRepository.findPlatform()
 
-        val namespaceNames = namespaceSkills.mapTo(HashSet()) { it.name.lowercase() }
-        val shadowedPlatform = platformSkills.filter { it.name.lowercase() !in namespaceNames }
+        val namespaceSkillNames = namespaceSkills.mapTo(HashSet()) { it.name.lowercase() }
+        val shadowedPlatform = platformSkills.filter { it.name.lowercase() !in namespaceSkillNames }
 
         namespaceSkills + shadowedPlatform
     }
@@ -116,20 +118,28 @@ class SkillServiceImpl(
         val matched = LinkedHashSet<Skill>()
         for (selector in selectors) {
             val normalized = selector.trim().removeSuffix("/SKILL.md").removeSuffix("/").trimStart('/')
-            val beforeCount = matched.size
-            skills.filterTo(matched) { skill ->
-                skill.name.equals(normalized, ignoreCase = true)
-            }
-            if (matched.size == beforeCount) {
+            val matches = skills.filter { it.name.equals(normalized, ignoreCase = true) }
+            if (matches.isEmpty()) {
                 logger.warn { "[SkillService] Skill selector '$selector' did not match any available skill in namespace" }
+            } else {
+                matched.addAll(matches)
             }
         }
-        return skills.filter { it in matched }
+        return matched.toList()
     }
 
     // -------------------------------------------------------------------------
     // Helper methods
     // -------------------------------------------------------------------------
+
+    private fun validateSkillName(name: String) {
+        if (!SkillFileParser.isValidSkillName(name)) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Skill name '$name' is invalid. It must be non-blank, at most ${SkillFileParser.MAX_SKILL_NAME_CHARS} characters, and contain only letters, numbers, spaces, dots, dashes, and underscores.",
+            )
+        }
+    }
 
     /**
      * True when [skill] is backed by a filesystem SKILL.md rather than a persisted Neo4j node.

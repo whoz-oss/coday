@@ -34,7 +34,8 @@ open class Neo4jSkillRepository(
                 }
             }
 
-    override fun findByIds(
+    @Transactional(readOnly = true)
+    open override fun findByIds(
         ids: Collection<UUID>,
         withRemoved: Boolean,
     ): List<Skill> =
@@ -43,19 +44,23 @@ open class Neo4jSkillRepository(
             .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
-    override fun findByParent(parentId: UUID): List<Skill> = findByNamespaceId(parentId)
+    @Transactional(readOnly = true)
+    open override fun findByParent(parentId: UUID): List<Skill> = findByNamespaceId(parentId)
 
-    override fun findByNamespaceId(namespaceId: UUID): List<Skill> =
+    @Transactional(readOnly = true)
+    open override fun findByNamespaceId(namespaceId: UUID): List<Skill> =
         neo4jRepository
             .findActiveByNamespaceId(namespaceId.toString())
             .map { it.toDomain() }
 
-    override fun findPlatform(): List<Skill> =
+    @Transactional(readOnly = true)
+    open override fun findPlatform(): List<Skill> =
         neo4jRepository
             .findActivePlatform()
             .map { it.toDomain() }
 
-    override fun findByNameInNamespace(
+    @Transactional(readOnly = true)
+    open override fun findByNameInNamespace(
         namespaceId: UUID?,
         name: String,
     ): Skill? =
@@ -63,7 +68,8 @@ open class Neo4jSkillRepository(
             .findActiveByDoubleKey(SkillNode.computeDoubleKey(namespaceId, name))
             ?.toDomain()
 
-    override fun findByNamespaceIdAndNames(
+    @Transactional(readOnly = true)
+    open override fun findByNamespaceIdAndNames(
         namespaceId: UUID,
         names: Collection<String>,
     ): List<Skill> {
