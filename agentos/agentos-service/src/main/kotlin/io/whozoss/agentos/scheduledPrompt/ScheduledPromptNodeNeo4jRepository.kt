@@ -166,6 +166,19 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
     fun disableByAgentConfigId(agentConfigId: String): Int
 
     /**
+     * Returns true if at least one non-removed ScheduledPrompt references the given promptTemplateId.
+     */
+    @Query(
+        $$"""
+            MATCH (sp:ScheduledPrompt)
+            WHERE sp.promptTemplateId = $promptTemplateId
+              AND NOT COALESCE(sp.removed, false)
+            RETURN count(sp) > 0
+            """,
+    )
+    fun existsActiveByPromptTemplateId(promptTemplateId: String): Boolean
+
+    /**
      * Soft-delete all non-removed ScheduledPrompts referencing the given agentConfigId,
      * and soft-delete their linked Prompts in the same query.
      *

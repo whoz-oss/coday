@@ -66,6 +66,12 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
     fun updateEnabled(id: UUID, enabled: Boolean)
 
     /**
+     * Returns true if at least one non-removed ScheduledPrompt references the given promptTemplateId.
+     * Used to guard against deleting a Prompt that is still in use.
+     */
+    fun existsActiveByPromptTemplateId(promptTemplateId: UUID): Boolean
+
+    /**
      * Disable all non-removed [ScheduledPrompt]s that reference the given [agentConfigId].
      *
      * Called when the linked AgentConfig is disabled, to prevent orphaned schedulers

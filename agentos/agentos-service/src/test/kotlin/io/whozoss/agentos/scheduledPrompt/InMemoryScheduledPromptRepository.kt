@@ -90,6 +90,10 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
         return toDisable.size
     }
 
+    /** Returns true if at least one non-removed ScheduledPrompt references the given promptTemplateId. */
+    override fun existsActiveByPromptTemplateId(promptTemplateId: UUID): Boolean =
+        delegate.findAll().any { it.promptTemplateId == promptTemplateId && !it.metadata.removed }
+
     /**
      * Soft-delete all non-removed scheduled prompts referencing the given agentConfigId.
      * In-memory: only deletes the scheduled prompts (no access to PromptRepository).

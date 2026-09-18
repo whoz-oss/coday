@@ -104,6 +104,9 @@ open class Neo4jScheduledPromptRepository(
         neo4jRepository.disableByAgentConfigId(agentConfigId.toString())
             .also { count -> logger.debug { "[Neo4jScheduledPromptRepository] Disabled $count scheduled prompts for agentConfigId=$agentConfigId" } }
 
+    override fun existsActiveByPromptTemplateId(promptTemplateId: UUID): Boolean =
+        neo4jRepository.existsActiveByPromptTemplateId(promptTemplateId.toString())
+
     override fun softDeleteWithPromptsByAgentConfigId(agentConfigId: UUID): Int =
         neo4jRepository.softDeleteWithPromptsByAgentConfigId(agentConfigId.toString())
             .also { count -> logger.debug { "[Neo4jScheduledPromptRepository] Soft-deleted $count scheduled prompt(s) and their linked prompts for agentConfigId=$agentConfigId" } }
