@@ -1,6 +1,7 @@
 name: Frontay
 description: Frontend specialist agent for Angular development - components, design system, and modern patterns
-modelName: BIG
+aiProvider: requesty
+modelName: requesty-gemini-3.7-flash
 integrations:
   FILES:
   AI:

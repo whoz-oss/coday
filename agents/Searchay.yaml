@@ -1,6 +1,7 @@
 name: Searchay
 description: Code search specialist - finds relevant files and code patterns from natural language requests
-modelName: SMALL
+aiProvider: requesty
+modelName: requesty-gemini-2.5-flash-lite
 integrations:
   FILES:
     - ls
