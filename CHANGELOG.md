@@ -1,3 +1,13 @@
+## 2.1.1 (2026-09-18)
+
+### 🩹 Fixes
+
+- #1317 surface provider error body on streaming path ([#1318](https://github.com/whoz-oss/coday/pull/1318), [#1317](https://github.com/whoz-oss/coday/issues/1317))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 2.1.0 (2026-09-17)
 
 ### 🚀 Features
