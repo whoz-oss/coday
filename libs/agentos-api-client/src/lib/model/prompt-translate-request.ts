@@ -10,11 +10,11 @@
 
 export interface PromptTranslateRequest {
   /**
-   * Namespace external ID for AI model resolution (resolved server-side). Mutually exclusive with namespaceId; at least one is required.
+   * Namespace external ID for AI model resolution (resolved server-side). Required only for platform-scoped prompts. Mutually exclusive with namespaceId.
    */
   namespaceExternalId?: string
   /**
-   * Namespace UUID for AI model resolution. Mutually exclusive with namespaceExternalId; at least one is required.
+   * Namespace UUID for AI model resolution. Required only for platform-scoped prompts. Mutually exclusive with namespaceExternalId.
    */
   namespaceId?: string
 }
