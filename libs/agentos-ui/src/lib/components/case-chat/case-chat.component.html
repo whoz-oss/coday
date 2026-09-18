@@ -10,74 +10,115 @@
   <div dsDrawerContent class="case-chat__host">
     <!-- ── Case header: glyph + title + status badge ─────────────────────── -->
     <header class="case-chat__header">
-      <!-- Title + status group — flex:1 pushes actions to the right -->
-      <div class="case-chat__header-title-group">
-        <agentos-case-status-glyph [status]="caseStatus()" [size]="16" />
-        <span class="case-chat__header-title">{{ activeCase()?.title ?? '' }}</span>
-        <span
-          class="case-chat__header-badge"
-          [class.case-chat__header-badge--running]="caseStatus() === CaseStatusEnum.RUNNING"
-          [class.case-chat__header-badge--error]="caseStatus() === CaseStatusEnum.ERROR"
-          [class.case-chat__header-badge--pending]="caseStatus() === CaseStatusEnum.PENDING"
-          [class.case-chat__header-badge--killed]="caseStatus() === CaseStatusEnum.KILLED"
-          >{{ caseStatus().toLowerCase() }}</span
-        >
-      </div>
-
-      <!-- Exchange toggle -->
-      <div class="case-chat__header-exchange">
-        <ds-icon-button
-          icon="folder"
-          variant="default"
-          [title]="'Files (' + exchangeFileCount() + ')'"
-          (action)="openFilesPanel()"
-        />
-        @if (exchangeFileCount() > 0 && !exchangeOpen()) {
-          <span class="case-chat__exchange-badge" aria-hidden="true">{{ exchangeFileCount() }}</span>
-        }
-      </div>
-
-      <!-- Share case -->
-      <ds-icon-button icon="group_add" variant="default" title="Share case" (action)="openMembersPanel()" />
-
-      <!-- Separator -->
-      <span class="case-chat__header-sep"></span>
-
-      <!-- Header actions: attach + star + delete (or confirmation) -->
-      @if (!confirmingDelete()) {
-        <!-- Star -->
-        <ds-icon-button
-          [icon]="activeCase()?.favorite ? 'star' : 'star_border'"
-          variant="default"
-          [title]="activeCase()?.favorite ? 'Remove from favorites' : 'Add to favorites'"
-          class="case-chat__header-star"
-          [class.case-chat__header-star--active]="activeCase()?.favorite"
-          (action)="starToggled.emit({ id: caseId, starred: !activeCase()?.favorite })"
-        />
-        <!-- Delete -->
-        <ds-icon-button icon="delete" variant="danger" title="Delete case" (action)="confirmingDelete.set(true)" />
-      } @else {
-        <!-- Confirmation inline -->
-        <span class="case-chat__header-confirm">
-          <span class="case-chat__header-confirm-label">Delete this case?</span>
-          <button
-            type="button"
-            class="case-chat__header-confirm-yes"
-            title="Confirm delete"
-            (click)="deleteRequested.emit(caseId); confirmingDelete.set(false)"
-          >
+      @if (isEditing()) {
+        <!-- ── Edit mode ── -->
+        <div class="case-chat__header-edit">
+          <input
+            class="case-chat__header-edit-title"
+            type="text"
+            placeholder="Case title"
+            [value]="draftTitle()"
+            (input)="draftTitle.set($any($event.target).value)"
+            (keydown)="onEditKeydown($event)"
+            aria-label="Case title"
+            autocomplete="off"
+          />
+          <input
+            class="case-chat__header-edit-threshold"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Cost limit"
+            [value]="draftThreshold()"
+            (input)="draftThreshold.set($any($event.target).value)"
+            (keydown)="onEditKeydown($event)"
+            aria-label="Run cost threshold"
+          />
+          <button type="button" class="case-chat__header-edit-save" title="Save" (click)="commitEdit()">
             <span class="material-icons" aria-hidden="true">check</span>
-            Delete
           </button>
-          <button
-            type="button"
-            class="case-chat__header-confirm-no"
-            title="Cancel"
-            (click)="confirmingDelete.set(false)"
-          >
+          <button type="button" class="case-chat__header-edit-cancel" title="Cancel" (click)="cancelEdit()">
             <span class="material-icons" aria-hidden="true">close</span>
           </button>
-        </span>
+        </div>
+      } @else {
+        <!-- ── View mode ── -->
+        <!-- Title + status group — flex:1 pushes actions to the right -->
+        <div class="case-chat__header-title-group">
+          <agentos-case-status-glyph [status]="caseStatus()" [size]="16" />
+          <button type="button" class="case-chat__header-title" title="Edit title and cost limit" (click)="startEdit()">
+            {{ activeCase()?.title ?? '' }}
+          </button>
+          <span
+            class="case-chat__header-badge"
+            [class.case-chat__header-badge--running]="caseStatus() === CaseStatusEnum.RUNNING"
+            [class.case-chat__header-badge--error]="caseStatus() === CaseStatusEnum.ERROR"
+            [class.case-chat__header-badge--pending]="caseStatus() === CaseStatusEnum.PENDING"
+            [class.case-chat__header-badge--killed]="caseStatus() === CaseStatusEnum.KILLED"
+            >{{ caseStatus().toLowerCase() }}</span
+          >
+          @if (activeCase()?.runCostThreshold !== null && activeCase()?.runCostThreshold !== undefined) {
+            <span class="case-chat__header-cost-threshold" title="Run cost threshold">
+              max {{ activeCase()!.runCostThreshold }}
+            </span>
+          }
+        </div>
+
+        <!-- Exchange toggle -->
+        <div class="case-chat__header-exchange">
+          <ds-icon-button
+            icon="folder"
+            variant="default"
+            [title]="'Files (' + exchangeFileCount() + ')'"
+            (action)="openFilesPanel()"
+          />
+          @if (exchangeFileCount() > 0 && !exchangeOpen()) {
+            <span class="case-chat__exchange-badge" aria-hidden="true">{{ exchangeFileCount() }}</span>
+          }
+        </div>
+
+        <!-- Share case -->
+        <ds-icon-button icon="group_add" variant="default" title="Share case" (action)="openMembersPanel()" />
+
+        <!-- Separator -->
+        <span class="case-chat__header-sep"></span>
+
+        <!-- Header actions: star + delete (or confirmation) -->
+        @if (!confirmingDelete()) {
+          <!-- Star -->
+          <ds-icon-button
+            [icon]="activeCase()?.favorite ? 'star' : 'star_border'"
+            variant="default"
+            [title]="activeCase()?.favorite ? 'Remove from favorites' : 'Add to favorites'"
+            class="case-chat__header-star"
+            [class.case-chat__header-star--active]="activeCase()?.favorite"
+            (action)="starToggled.emit({ id: caseId, starred: !activeCase()?.favorite })"
+          />
+          <!-- Delete -->
+          <ds-icon-button icon="delete" variant="danger" title="Delete case" (action)="confirmingDelete.set(true)" />
+        } @else {
+          <!-- Confirmation inline -->
+          <span class="case-chat__header-confirm">
+            <span class="case-chat__header-confirm-label">Delete this case?</span>
+            <button
+              type="button"
+              class="case-chat__header-confirm-yes"
+              title="Confirm delete"
+              (click)="deleteRequested.emit(caseId); confirmingDelete.set(false)"
+            >
+              <span class="material-icons" aria-hidden="true">check</span>
+              Delete
+            </button>
+            <button
+              type="button"
+              class="case-chat__header-confirm-no"
+              title="Cancel"
+              (click)="confirmingDelete.set(false)"
+            >
+              <span class="material-icons" aria-hidden="true">close</span>
+            </button>
+          </span>
+        }
       }
     </header>
     <div

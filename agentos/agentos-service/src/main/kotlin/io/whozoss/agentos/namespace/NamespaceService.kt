@@ -48,4 +48,18 @@ interface NamespaceService : EntityService<Namespace, String> {
      * Throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the namespace is not found.
      */
     fun undeployAgents(namespaceId: UUID, agentConfigIds: Collection<UUID>)
+
+    /**
+     * Resolves the effective [io.whozoss.agentos.namespace.Namespace.runCostThreshold] for
+     * [namespaceId] following the chain: `Namespace.runCostThreshold ?: platform default`.
+     *
+     * Returns `null` when neither the namespace nor the platform default defines a threshold
+     * (i.e. both are `null`). Callers that materialise the value on a [io.whozoss.agentos.caseFlow.Case]
+     * at creation time should treat `null` as "no limit configured" rather than zero.
+     *
+     * The platform default is owned by [io.whozoss.agentos.config.LimitsConfigProperties] and
+     * is injected into the implementation — callers outside the namespace package do not need
+     * to depend on [io.whozoss.agentos.config.LimitsConfigProperties] for this concern.
+     */
+    fun resolveRunCostThreshold(namespaceId: UUID): Double?
 }

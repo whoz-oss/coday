@@ -96,9 +96,19 @@ class CaseServiceImpl(
 
     override fun create(entity: Case): Case {
         require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
-        // Persist the full entity so client-supplied title and status are preserved
-        // .
-        val saved = caseRepository.save(entity)
+        // Materialise runCostThreshold at creation time from the resolution chain:
+        // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
+        // A non-null value on the incoming entity is an explicit caller override — kept as-is.
+        // Materialising at creation rather than resolving at runtime means the case is
+        // unaffected by later namespace or platform config changes (same principle as
+        // UsageRecord denormalising provider pricing at record time).
+        val resolvedThreshold: Double? =
+            entity.runCostThreshold
+                ?: namespaceService.resolveRunCostThreshold(entity.namespaceId)
+        val caseToSave =
+            entity.copy(runCostThreshold = resolvedThreshold)
+
+        val saved = caseRepository.save(caseToSave)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
