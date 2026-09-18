@@ -14,7 +14,7 @@ import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
-/** Real controller and service: only identity and permission dependencies are mocked. */
+/** Scope filtering uses the real controller and service; unrelated dependencies are mocked. */
 class IntegrationConfigScopeContractSpec : StringSpec({
     val namespaceId = UUID.randomUUID()
     val otherNamespaceId = UUID.randomUUID()
@@ -78,6 +78,7 @@ class IntegrationConfigScopeContractSpec : StringSpec({
                 userService,
                 permissionService,
                 IntegrationConfigScopePolicy(IntegrationsProperties()),
+                mockk<IntegrationConfigToolPreviewService>(),
                 yamlExportMapper(),
             )
 

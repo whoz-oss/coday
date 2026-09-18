@@ -17,6 +17,7 @@ import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
@@ -25,8 +26,10 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.ConfirmationMode
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import java.util.UUID
@@ -53,14 +56,16 @@ class IntegrationConfigControllerSpec : StringSpec({
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
     val scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties())
+    val toolPreviewService = mockk<IntegrationConfigToolPreviewService>()
     val controller =
         IntegrationConfigController(
-            service,
-            namespaceService,
-            userService,
-            permissionService,
-            scopePolicy,
-            yamlExportMapper(),
+            integrationConfigService = service,
+            namespaceService = namespaceService,
+            userService = userService,
+            permissionService = permissionService,
+            scopePolicy = scopePolicy,
+            toolPreviewService = toolPreviewService,
+            yamlExportMapper = yamlExportMapper(),
         )
 
     val namespaceId = UUID.randomUUID()
@@ -68,8 +73,12 @@ class IntegrationConfigControllerSpec : StringSpec({
     val bobId = UUID.randomUUID()
     val params = JsonNodeFactory.instance.objectNode().put("apiUrl", "https://example.com")
 
+    // Shared metadata instance so every aliceUser() call is equal to the one getCurrentUser() returns
+    // (EntityMetadata stamps creation timestamps, which would otherwise differ per call).
+    val aliceMetadata = EntityMetadata(id = aliceId)
+
     fun aliceUser(isAdmin: Boolean = false) = User(
-        metadata = EntityMetadata(id = aliceId),
+        metadata = aliceMetadata,
         externalId = "alice@example.com",
         email = "alice@example.com",
         isAdmin = isAdmin,
@@ -94,6 +103,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         userId: UUID? = null,
         name: String = "JIRA_PROD",
         integrationType: String = "JIRA",
+        authSettingName: String? = null,
     ) = IntegrationConfig(
         metadata = EntityMetadata(id = id),
         namespaceId = nsId,
@@ -102,6 +112,7 @@ class IntegrationConfigControllerSpec : StringSpec({
         integrationType = integrationType,
         description = null,
         parameters = params,
+        authSettingName = authSettingName,
     )
 
     fun resource(
@@ -597,5 +608,190 @@ class IntegrationConfigControllerSpec : StringSpec({
 
         response.headers.contentDisposition.toString() shouldContain "bash-local.yaml"
         response.headers.contentType.toString() shouldBe org.springframework.http.MediaType.APPLICATION_YAML_VALUE
+    }
+
+    // -------------------------------------------------------------------------
+    // previewTools — namespace resolution, platform guard, mapping
+    // -------------------------------------------------------------------------
+
+    fun preview(
+        tools: List<IntegrationConfigToolPreview.ToolPreview> = emptyList(),
+        error: String? = null,
+        namespaceDescription: String? = "MCP line",
+    ) = IntegrationConfigToolPreview(
+        integrationType = "MCP_HTTP",
+        configName = "MCP_PROD",
+        namespaceDescription = namespaceDescription,
+        tools = tools,
+        error = error,
+    )
+
+    "previewTools throws 404 when the config does not exist" {
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns null
+
+        shouldThrow<ResourceNotFoundException> { controller.previewTools(id, namespaceId = null) }
+
+        verify(exactly = 0) { toolPreviewService.preview(any(), any(), any()) }
+    }
+
+    "previewTools rejects a platform row without namespaceId with 400" {
+        val cfg = config(nsId = null, userId = null, integrationType = "MCP_HTTP")
+        every { service.findById(cfg.metadata.id) } returns cfg
+        every { userService.getCurrentUser() } returns aliceUser(isAdmin = true)
+
+        val exception =
+            shouldThrow<BadRequestException> { controller.previewTools(cfg.metadata.id, namespaceId = null) }
+
+        exception.message shouldContain "namespaceId"
+        verify(exactly = 0) { toolPreviewService.preview(any(), any(), any()) }
+    }
+
+    "previewTools rejects a user-global row without namespaceId with 400" {
+        val cfg = config(nsId = null, userId = aliceId, integrationType = "BASH")
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        shouldThrow<BadRequestException> { controller.previewTools(cfg.metadata.id, namespaceId = null) }
+
+        verify(exactly = 0) { toolPreviewService.preview(any(), any(), any()) }
+    }
+
+    "previewTools rejects a namespaceId that does not match the row's namespace with 400" {
+        val cfg = config(nsId = namespaceId, userId = null, integrationType = "MCP_HTTP")
+        every { service.findById(cfg.metadata.id) } returns cfg
+        val otherNamespace = UUID.randomUUID()
+
+        val exception =
+            shouldThrow<BadRequestException> { controller.previewTools(cfg.metadata.id, namespaceId = otherNamespace) }
+
+        exception.message shouldContain otherNamespace.toString()
+        verify(exactly = 0) { toolPreviewService.preview(any(), any(), any()) }
+    }
+
+    "previewTools previews a namespace row in its own namespace for the current user" {
+        val cfg = config(nsId = namespaceId, userId = null, integrationType = "MCP_HTTP")
+        every { service.findById(cfg.metadata.id) } returns cfg
+        every { toolPreviewService.preview(cfg, namespaceId, aliceUser()) } returns preview()
+
+        val dto = controller.previewTools(cfg.metadata.id, namespaceId = null)
+
+        dto.integrationType shouldBe "MCP_HTTP"
+        verify(exactly = 1) { toolPreviewService.preview(cfg, namespaceId, aliceUser()) }
+    }
+
+    "previewTools accepts a namespaceId equal to the row's namespace" {
+        val cfg = config(nsId = namespaceId, userId = aliceId, integrationType = "BASH")
+        every { service.findById(cfg.metadata.id) } returns cfg
+        every { toolPreviewService.preview(cfg, namespaceId, aliceUser()) } returns preview()
+
+        controller.previewTools(cfg.metadata.id, namespaceId = namespaceId)
+
+        verify(exactly = 1) { toolPreviewService.preview(cfg, namespaceId, aliceUser()) }
+    }
+
+    "previewTools previews a platform row in the requested namespace for a super admin" {
+        val cfg = config(nsId = null, userId = null, integrationType = "MCP_HTTP")
+        val admin = aliceUser(isAdmin = true)
+        every { service.findById(cfg.metadata.id) } returns cfg
+        every { userService.getCurrentUser() } returns admin
+        every { toolPreviewService.preview(cfg, namespaceId, admin) } returns preview()
+
+        controller.previewTools(cfg.metadata.id, namespaceId = namespaceId)
+
+        verify(exactly = 1) { toolPreviewService.preview(cfg, namespaceId, admin) }
+    }
+
+    "previewTools refuses a platform row to a non-admin even with a namespaceId" {
+        val cfg = config(nsId = null, userId = null, integrationType = "MCP_HTTP")
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        shouldThrow<AccessDeniedException> { controller.previewTools(cfg.metadata.id, namespaceId = namespaceId) }
+
+        verify(exactly = 0) { toolPreviewService.preview(any(), any(), any()) }
+    }
+
+    "previewTools maps the preview to the DTO field by field" {
+        val cfg = config(nsId = namespaceId, userId = null, integrationType = "MCP_HTTP")
+        every { service.findById(cfg.metadata.id) } returns cfg
+        val tool =
+            IntegrationConfigToolPreview.ToolPreview(
+                name = "MCP_PROD__UpdateTicket",
+                description = "Updates a ticket",
+                inputSchema = "{\"type\":\"object\"}",
+                confirmationMode = ConfirmationMode.EVERY_TIME,
+            )
+        every { toolPreviewService.preview(cfg, namespaceId, aliceUser()) } returns
+            preview(tools = listOf(tool), error = null, namespaceDescription = "42 tickets open")
+
+        val dto = controller.previewTools(cfg.metadata.id, namespaceId = null)
+
+        dto.integrationType shouldBe "MCP_HTTP"
+        dto.configName shouldBe "MCP_PROD"
+        dto.namespaceDescription shouldBe "42 tickets open"
+        dto.error shouldBe null
+        dto.tools.size shouldBe 1
+        dto.tools[0].name shouldBe "MCP_PROD__UpdateTicket"
+        dto.tools[0].description shouldBe "Updates a ticket"
+        dto.tools[0].inputSchema shouldBe "{\"type\":\"object\"}"
+        dto.tools[0].confirmationMode shouldBe ConfirmationMode.EVERY_TIME
+    }
+
+    "previewTools lets the 422 of a missing plugin propagate untouched" {
+        val cfg = config(nsId = namespaceId, userId = null, integrationType = "JIRA")
+        every { service.findById(cfg.metadata.id) } returns cfg
+        every { toolPreviewService.preview(cfg, namespaceId, aliceUser()) } throws
+            UnprocessableEntityException("No plugin is loaded for integration type 'JIRA'")
+
+        val exception =
+            shouldThrow<UnprocessableEntityException> { controller.previewTools(cfg.metadata.id, namespaceId = null) }
+
+        exception.message shouldContain "JIRA"
+    }
+
+    "previewTools maps a timed-out describeNamespace to a null namespaceDescription next to the tools" {
+        val cfg = config(nsId = namespaceId, userId = null, integrationType = "MCP_HTTP")
+        every { service.findById(cfg.metadata.id) } returns cfg
+        val tool =
+            IntegrationConfigToolPreview.ToolPreview(
+                name = "MCP_PROD__ListTickets",
+                description = "Lists tickets",
+                inputSchema = "{\"type\":\"object\"}",
+                confirmationMode = ConfirmationMode.NONE,
+            )
+        every { toolPreviewService.preview(cfg, namespaceId, aliceUser()) } returns
+            preview(tools = listOf(tool), namespaceDescription = null)
+
+        val dto = controller.previewTools(cfg.metadata.id, namespaceId = null)
+
+        dto.namespaceDescription shouldBe null
+        dto.error shouldBe null
+        dto.tools.map { it.name } shouldBe listOf("MCP_PROD__ListTickets")
+    }
+
+    "previewTools hands the stored row (auth setting included) and the current user to the preview service" {
+        val cfg = config(nsId = namespaceId, userId = null, integrationType = "MCP_HTTP", authSettingName = "my-auth")
+        val bob = User(metadata = EntityMetadata(id = bobId), externalId = "bob@example.com", email = "bob@example.com")
+        every { service.findById(cfg.metadata.id) } returns cfg
+        every { userService.getCurrentUser() } returns bob
+        every { toolPreviewService.preview(cfg, namespaceId, bob) } returns preview()
+
+        controller.previewTools(cfg.metadata.id, namespaceId = null)
+
+        // The credential provider is built by the service from this row's authSettingName for this user.
+        verify(exactly = 1) { toolPreviewService.preview(cfg, namespaceId, bob) }
+        verify(exactly = 0) { toolPreviewService.preview(any(), any(), aliceUser()) }
+    }
+
+    "previewTools forwards the plugin failure as the error field with no tools" {
+        val cfg = config(nsId = namespaceId, userId = null, integrationType = "MCP_HTTP")
+        every { service.findById(cfg.metadata.id) } returns cfg
+        every { toolPreviewService.preview(cfg, namespaceId, aliceUser()) } returns
+            preview(error = "IllegalStateException: MCP server unreachable", namespaceDescription = null)
+
+        val dto = controller.previewTools(cfg.metadata.id, namespaceId = null)
+
+        dto.error shouldBe "IllegalStateException: MCP server unreachable"
+        dto.tools shouldBe emptyList()
+        dto.namespaceDescription shouldBe null
     }
 })

@@ -140,8 +140,19 @@
 
   &__actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.75rem;
     padding-top: 0.5rem;
+  }
+
+  &__error {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--color-error);
+    border: 1px solid var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 4%, transparent);
+    white-space: pre-wrap;
   }
 
   &__btn {
@@ -179,7 +190,7 @@
       }
     }
 
-    &--export {
+    &--secondary {
       border-color: var(--color-divider);
       color: var(--color-text-secondary);
 
