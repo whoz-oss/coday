@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { hashWorkflowProjection, validateWorkflowProjection, validateWorkflowProjectionId } from './workflow-projection.mjs'
 import { projectWorkflowTiming } from './workflow-timing-projector.mjs'
 import { createWorkflowInstance, workflowStartCommandHash } from './workflow-instance.mjs'
+import { applyWorkflowTransition, evaluateWorkflowTransition, transitionScopeHash, transitionSemanticHash } from './workflow-transition-policy.mjs'
 
 export const WORKFLOW_STORE_ERROR_CODES = Object.freeze({
   INVALID_DATA_ROOT: 'INVALID_DATA_ROOT', INVALID_NAMESPACE_ID: 'INVALID_NAMESPACE_ID', REVISION_CONFLICT: 'REVISION_CONFLICT',
@@ -118,10 +119,38 @@ export class WorkflowProjectionStore {
     } catch (error) { if (error instanceof WorkflowProjectionStoreError) throw error; throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.STORAGE_FAILURE, {}, error) }
   }
 
+  async transition(namespaceId, request, definition, evidence, controllerExecution, { fault = async () => {} } = {}) { return this._locked(namespaceId, request.workflowId, () => this._transition(namespaceId, request, definition, evidence, controllerExecution, fault)) }
+  async _transition(namespaceId, request, definition, evidence, controllerExecution, fault) {
+    const paths=this.paths(namespaceId,request.workflowId), observedAt=new Date().toISOString(), execution={...controllerExecution,namespaceId}
+    try {
+      const tombstone=await this._tombstone(paths)
+      if(tombstone) return {ok:false,error:{code:tombstone.lifecycleState==='purged'?'WORKFLOW_PURGED':'WORKFLOW_REMOVED'}}
+      await this._recover(paths)
+      const current=await this._readSnapshot(paths)
+      let journal='';try{journal=await readFile(paths.events,'utf8')}catch(error){if(error?.code!=='ENOENT')throw error}
+      const facts=journal.split('\n').filter(Boolean).map(JSON.parse)
+      if(request.idempotencyKey){
+        const scopeHash=transitionScopeHash(namespaceId,request,execution), semanticHash=transitionSemanticHash(request)
+        const prior=facts.find(f=>f.kind==='transition_requested'&&f.idempotency?.scopeHash===scopeHash)
+        if(prior){if(prior.idempotency.semanticHash!==semanticHash)return {ok:false,error:{code:'IDEMPOTENCY_KEY_COLLISION'}};const accepted=facts.find(f=>f.kind==='transition_accepted'&&f.requestId===prior.requestId);const rejected=facts.find(f=>f.kind==='transition_rejected'&&f.requestId===prior.requestId);return accepted?{ok:true,changed:false,idempotent:true,snapshot:current,requestId:prior.requestId}: {ok:false,idempotent:true,requestId:prior.requestId,error:{code:rejected?.policyCode??'TRANSITION_REJECTED'}}}
+      }
+      const from=current?.instance?.steps?.find(s=>s.id===request.stepId)?.status??null
+      const requestFact={kind:'transition_requested',requestId:request.requestId,stepId:request.stepId,from,to:request.requestedStatus,evidenceIds:[...request.evidenceIds],observedAt,timestamp:observedAt,...attribution(controllerExecution,['actorId','agentId','caseId','threadId']),...(request.idempotencyKey?{idempotency:{scopeHash:transitionScopeHash(namespaceId,request,execution),semanticHash:transitionSemanticHash(request)}}:{})}
+      await mkdir(paths.directory,{recursive:true});await appendDurable(paths.events,requestFact)
+      const decision=evaluateWorkflowTransition({request,snapshot:current,definition,evidence,execution})
+      if(!decision.allowed){await appendDurable(paths.events,{kind:'transition_rejected',requestId:request.requestId,policyCode:decision.code,observedRevision:current?.revision??0,observedAt,timestamp:observedAt,...attribution(controllerExecution,['actorId','agentId','caseId','threadId'])});return {ok:false,decision,error:{code:decision.code},requestId:request.requestId}}
+      const applied=applyWorkflowTransition(current,definition,request,observedAt), projectionHash=hashWorkflowProjection(applied.projection)
+      const snapshot={...current,revision:applied.revision,projectionHash,instance:applied.instance,projection:applied.projection,controllerExecution:{...controllerExecution,observedAt}}
+      await atomicJsonWrite(paths.pending,snapshot);await fault('after-pending',{requestId:request.requestId})
+      await appendDurable(paths.events,{kind:'transition_accepted',requestId:request.requestId,revision:snapshot.revision,projectionHash,observedAt,timestamp:observedAt,transitionDelta:transitionDelta(current.projection,snapshot.projection),...attribution(controllerExecution,['actorId','agentId','caseId','threadId'])});await fault('after-accepted',{requestId:request.requestId})
+      await atomicJsonWrite(paths.snapshot,snapshot);await rm(paths.pending,{force:true});return {ok:true,changed:true,idempotent:false,snapshot,requestId:request.requestId,decision}
+    } catch(error){if(error instanceof WorkflowProjectionStoreError)throw error;throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.STORAGE_FAILURE,{},error)}
+  }
+
   async publish(namespaceId, command, controllerExecution) { const validated = validateWorkflowProjection(command); if (!validated.ok) return validated; return this._locked(namespaceId, validated.projection.workflowId, () => this._publish(namespaceId, validated, controllerExecution)) }
   async _publish(namespaceId, validated, controllerExecution) {
     const paths = this.paths(namespaceId, validated.projection.workflowId)
-    try { if (await this._tombstone(paths)) return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.WORKFLOW_REMOVED } }; await mkdir(paths.directory, { recursive: true }); await this._recover(paths); const current = await this._readSnapshot(paths); const currentRevision = current?.revision ?? 0; if (validated.expectedRevision !== undefined && validated.expectedRevision !== currentRevision) return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.REVISION_CONFLICT, details: { expectedRevision: validated.expectedRevision, actualRevision: currentRevision } } }; const projectionHash = hashWorkflowProjection(validated.projection); if (current?.projectionHash === projectionHash) return { ok: true, changed: false, snapshot: current }; const revision = currentRevision + 1; const observedAt = new Date().toISOString(); const trustedControllerExecution = { ...controllerExecution, observedAt }; const snapshot = { revision, projectionHash, controllerExecution: trustedControllerExecution, projection: validated.projection }; await atomicJsonWrite(paths.pending, snapshot); await appendDurable(paths.events, { kind: current ? 'projection_published' : 'projection_created', revision, projectionHash, changedStepIds: changedStepIds(current?.projection, validated.projection), observedAt, timestamp: observedAt, transitionDelta: transitionDelta(current?.projection, validated.projection), controllerExecution: trustedControllerExecution, ...attribution(controllerExecution, ['actorId','agentId','caseId','threadId']) }); await atomicJsonWrite(paths.snapshot, snapshot); await rm(paths.pending, { force: true }); return { ok: true, changed: true, snapshot } } catch (error) { if (error instanceof WorkflowProjectionStoreError) throw error; throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.STORAGE_FAILURE, {}, error) }
+    try { if (await this._tombstone(paths)) return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.WORKFLOW_REMOVED } }; await mkdir(paths.directory, { recursive: true }); await this._recover(paths); const current = await this._readSnapshot(paths); if (current?.governanceMode === 'governed') return { ok: false, error: { code: 'GOVERNED_WORKFLOW_REQUIRES_TRANSITION' } }; const currentRevision = current?.revision ?? 0; if (validated.expectedRevision !== undefined && validated.expectedRevision !== currentRevision) return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.REVISION_CONFLICT, details: { expectedRevision: validated.expectedRevision, actualRevision: currentRevision } } }; const projectionHash = hashWorkflowProjection(validated.projection); if (current?.projectionHash === projectionHash) return { ok: true, changed: false, snapshot: current }; const revision = currentRevision + 1; const observedAt = new Date().toISOString(); const trustedControllerExecution = { ...controllerExecution, observedAt }; const snapshot = { revision, projectionHash, controllerExecution: trustedControllerExecution, projection: validated.projection }; await atomicJsonWrite(paths.pending, snapshot); await appendDurable(paths.events, { kind: current ? 'projection_published' : 'projection_created', revision, projectionHash, changedStepIds: changedStepIds(current?.projection, validated.projection), observedAt, timestamp: observedAt, transitionDelta: transitionDelta(current?.projection, validated.projection), controllerExecution: trustedControllerExecution, ...attribution(controllerExecution, ['actorId','agentId','caseId','threadId']) }); await atomicJsonWrite(paths.snapshot, snapshot); await rm(paths.pending, { force: true }); return { ok: true, changed: true, snapshot } } catch (error) { if (error instanceof WorkflowProjectionStoreError) throw error; throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.STORAGE_FAILURE, {}, error) }
   }
 
   async remove(namespaceId, workflowId, actor = {}) { return this._locked(namespaceId, workflowId, () => this._remove(namespaceId, workflowId, actor)) }

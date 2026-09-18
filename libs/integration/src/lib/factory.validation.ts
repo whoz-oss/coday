@@ -59,6 +59,41 @@ export function validateEvidenceToolInput(kind: 'agent-result' | 'artifact', inp
   )
     return 'facts must be a non-empty allow-listed object.'
 }
+export function validateTransitionToolInput(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return 'Transition must be an object.'
+  const value = input as Record<string, unknown>,
+    allowed = ['workflowId', 'stepId', 'expectedRevision', 'requestedStatus', 'evidenceIds', 'idempotencyKey']
+  if (Object.keys(value).some((k) => !allowed.includes(k)))
+    return 'Transition contains unsupported, attribution, or requestId fields.'
+  if (
+    typeof value.workflowId !== 'string' ||
+    !safeId.test(value.workflowId) ||
+    typeof value.stepId !== 'string' ||
+    !safeId.test(value.stepId)
+  )
+    return 'workflowId and stepId are invalid.'
+  if (
+    !Number.isSafeInteger(value.expectedRevision) ||
+    (value.expectedRevision as number) < 1 ||
+    !statuses.includes(value.requestedStatus as never)
+  )
+    return 'Revision or status is invalid.'
+  if (
+    !Array.isArray(value.evidenceIds) ||
+    value.evidenceIds.length > 100 ||
+    new Set(value.evidenceIds).size !== value.evidenceIds.length ||
+    value.evidenceIds.some((id) => typeof id !== 'string' || !safeId.test(id))
+  )
+    return 'evidenceIds are invalid.'
+  if (
+    value.idempotencyKey !== undefined &&
+    (typeof value.idempotencyKey !== 'string' ||
+      !value.idempotencyKey ||
+      value.idempotencyKey.length > 128 ||
+      /[\r\n]/.test(value.idempotencyKey))
+  )
+    return 'idempotencyKey is invalid.'
+}
 export function validateWorkflowProjection(input: unknown): string | undefined {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return 'Projection must be an object.'
   const p = input as Record<string, unknown>,

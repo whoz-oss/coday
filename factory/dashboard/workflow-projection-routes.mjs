@@ -162,6 +162,8 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
           errorResponse(send, 409, 'REVISION_CONFLICT', 'The expected revision is stale.')
         } else if (result.error?.code === WORKFLOW_STORE_ERROR_CODES.WORKFLOW_REMOVED) {
           errorResponse(send, 409, 'WORKFLOW_REMOVED', 'Workflow projection has been removed.')
+        } else if (result.error?.code === 'GOVERNED_WORKFLOW_REQUIRES_TRANSITION') {
+          errorResponse(send, 409, result.error.code, 'Governed workflow instances can only change through transition requests.')
         } else {
           errorResponse(send, 400, result.error?.code ?? 'INVALID_PROJECTION', 'Workflow projection is invalid.')
         }

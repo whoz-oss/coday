@@ -26,6 +26,7 @@ class FactoryToolGrantService(private val plugin: FactoryToolPlugin) {
                 "publish_projection", "FACTORY__publish_projection" -> "publish_projection"
                 "record_agent_result", "FACTORY__record_agent_result" -> "record_agent_result"
                 "record_artifact", "FACTORY__record_artifact" -> "record_artifact"
+                "request_transition", "FACTORY__request_transition" -> "request_transition"
                 else -> null
             }
         }.toSet()

@@ -32,6 +32,7 @@ class FactoryToolPlugin(
             FactoryStartWorkflowTool(baseUrl, httpClient, objectMapper, runtimeId),
             FactoryRecordAgentResultTool(baseUrl, httpClient, objectMapper, runtimeId),
             FactoryRecordArtifactTool(baseUrl, httpClient, objectMapper, runtimeId),
+            FactoryRequestTransitionTool(baseUrl, httpClient, objectMapper, runtimeId),
             FactoryPublishProjectionTool(baseUrl, httpClient, objectMapper, runtimeId),
         )
 

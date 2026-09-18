@@ -62,6 +62,24 @@ export const artifactEvidenceSchema = {
   },
   required: ['workflowId', 'stepId', 'artifactRef', 'artifactHash'],
 }
+export const transitionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    workflowId: { type: 'string', maxLength: 128, pattern: safeId.source },
+    stepId: { type: 'string', maxLength: 128, pattern: safeId.source },
+    expectedRevision: { type: 'integer', minimum: 1 },
+    requestedStatus: { type: 'string', enum: statuses },
+    evidenceIds: {
+      type: 'array',
+      maxItems: 100,
+      uniqueItems: true,
+      items: { type: 'string', maxLength: 128, pattern: safeId.source },
+    },
+    idempotencyKey: { type: 'string', maxLength: 128 },
+  },
+  required: ['workflowId', 'stepId', 'expectedRevision', 'requestedStatus', 'evidenceIds'],
+}
 export const projectionSchema = {
   type: 'object',
   additionalProperties: false,

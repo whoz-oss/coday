@@ -1,6 +1,6 @@
 import { AssistantToolFactory, CodayTool, CommandContext, IntegrationConfig, Interactor } from '@coday/model'
-import { agentResultEvidenceSchema, artifactEvidenceSchema } from './factory.schemas'
-import { validateEvidenceToolInput } from './factory.validation'
+import { agentResultEvidenceSchema, artifactEvidenceSchema, transitionSchema } from './factory.schemas'
+import { validateEvidenceToolInput, validateTransitionToolInput } from './factory.validation'
 
 /** @deprecated Transitional Express adapter. Use AgentOS FactoryPublishProjectionTool when available. */
 export class FactoryTools extends AssistantToolFactory {
@@ -45,6 +45,16 @@ export class FactoryTools extends AssistantToolFactory {
           },
         })
       ),
+      {
+        type: 'function',
+        function: {
+          name: `${this.name}__request_transition`,
+          description: 'Request a governed transition for an agent-owned step.',
+          parameters: transitionSchema,
+          parse: JSON.parse,
+          function: async (input: unknown) => this.requestTransition(context, agentName, input),
+        },
+      },
       {
         type: 'function',
         function: {
@@ -199,6 +209,48 @@ export class FactoryTools extends AssistantToolFactory {
       return data?.evidence && typeof data.created === 'boolean' && typeof data.idempotent === 'boolean'
         ? JSON.stringify(data)
         : errorResult('MALFORMED_FACTORY_RESPONSE', 'Factory returned malformed evidence.')
+    } catch {
+      return errorResult('FACTORY_UNAVAILABLE', 'Factory is unavailable.')
+    }
+  }
+
+  private async requestTransition(context: CommandContext, agentName: string, input: unknown): Promise<string> {
+    const config = context.project.factory,
+      configError = validateConfig(config)
+    if (configError) return errorResult('FACTORY_UNAVAILABLE', configError)
+    const validationError = validateTransitionToolInput(input)
+    if (validationError) return errorResult('INVALID_TRANSITION_REQUEST', validationError)
+    const value = input as Record<string, unknown>
+    const threadId = context.aiThread?.id?.trim()
+    if (!threadId) return errorResult('FACTORY_UNAVAILABLE', 'A controlling Coday thread identity is required.')
+    const execution: CodayExpressExecution = {
+      namespaceId: config!.namespaceId!,
+      runtimeId: config!.runtimeId?.trim() || 'coday-express-transitional',
+      kind: 'coday-express',
+      agentId: agentName?.trim() || 'default',
+      threadId,
+    }
+    if (context.username?.trim()) execution.actorId = context.username.trim()
+    try {
+      const response = await fetch(
+        `${config!.baseUrl!.replace(/\/+$/, '')}/api/factory/workflows/${encodeURIComponent(value.workflowId)}/transitions`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ transition: value, execution }),
+        }
+      )
+      const payload: unknown = await response.json().catch(() => undefined)
+      if (!response.ok) {
+        const error = readFactoryError(payload)
+        return error
+          ? errorResult(error.code, error.message)
+          : errorResult('FACTORY_UNAVAILABLE', 'Factory rejected transition.')
+      }
+      const data = (payload as any)?.data
+      return data && Number.isInteger(data.revision) && typeof data.changed === 'boolean'
+        ? JSON.stringify(data)
+        : errorResult('MALFORMED_FACTORY_RESPONSE', 'Factory returned malformed transition.')
     } catch {
       return errorResult('FACTORY_UNAVAILABLE', 'Factory is unavailable.')
     }

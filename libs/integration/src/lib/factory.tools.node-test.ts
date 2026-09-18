@@ -38,6 +38,7 @@ describe('FactoryTools Phase 1 without Jest/Haste', () => {
     assert.equal((await exposed('publish_projection')).function.name, 'FACTORY__publish_projection')
     assert.equal((await exposed('record_agent_result')).function.name, 'FACTORY__record_agent_result')
     assert.equal((await exposed('record_artifact')).function.name, 'FACTORY__record_artifact')
+    assert.equal((await exposed('request_transition')).function.name, 'FACTORY__request_transition')
     const context = new CommandContext(project as never, 'user')
     assert.deepEqual(
       await new FactoryTools(interactor, 'FACTORY', {}).getTools(context, ['unknown'], 'ProductEngineer'),
@@ -174,6 +175,147 @@ describe('FactoryTools Phase 1 without Jest/Haste', () => {
       })
     })
   }
+
+  it('requests transitions with strict business schema and trusted Express execution', async () => {
+    const tool = await exposed('request_transition')
+    const schema = tool.function.parameters as { properties: Record<string, unknown>; additionalProperties: boolean }
+    assert.equal(schema.additionalProperties, false)
+    assert.deepEqual(Object.keys(schema.properties), [
+      'workflowId',
+      'stepId',
+      'expectedRevision',
+      'requestedStatus',
+      'evidenceIds',
+      'idempotencyKey',
+    ])
+    for (const forbidden of ['requestId', 'namespaceId', 'runtimeId', 'actorId', 'agentId', 'caseId', 'threadId'])
+      assert.equal(schema.properties[forbidden], undefined)
+    let requestedUrl: string | URL | Request | undefined
+    let request: RequestInit | undefined
+    mock.method(globalThis, 'fetch', async (url: string | URL | Request, init?: RequestInit) => {
+      requestedUrl = url
+      request = init
+      return new Response(
+        JSON.stringify({
+          data: {
+            workflowId: 'wf-1',
+            requestId: 'factory-id',
+            revision: 3,
+            changed: true,
+            idempotent: false,
+            projection: {},
+          },
+        }),
+        { status: 200 }
+      )
+    })
+    const transition = {
+      workflowId: 'wf-1',
+      stepId: 'build',
+      expectedRevision: 2,
+      requestedStatus: 'completed',
+      evidenceIds: ['evidence-1'],
+      idempotencyKey: 'transition-1',
+    }
+    const result = await invoke(tool, transition)
+    assert.equal(result.revision, 3)
+    assert.equal(String(requestedUrl), 'http://127.0.0.1:3141/api/factory/workflows/wf-1/transitions')
+    assert.deepEqual(JSON.parse(request?.body as string), {
+      transition,
+      execution: {
+        namespaceId,
+        runtimeId: 'coday-express-transitional',
+        kind: 'coday-express',
+        agentId: 'ProductEngineer',
+        threadId: 'thread-123',
+        actorId: 'benjamin.valdes',
+      },
+    })
+  })
+
+  it('rejects transition trust fields and maps idempotent policy and malformed responses', async () => {
+    for (const field of ['requestId', 'namespaceId', 'runtimeId', 'actorId', 'agentId', 'caseId', 'threadId']) {
+      let called = false
+      mock.method(globalThis, 'fetch', async () => {
+        called = true
+        return new Response()
+      })
+      const result = await invoke(await exposed('request_transition'), {
+        workflowId: 'wf-1',
+        stepId: 'build',
+        expectedRevision: 2,
+        requestedStatus: 'running',
+        evidenceIds: [],
+        [field]: 'model',
+      })
+      assert.equal(result.error.code, 'INVALID_TRANSITION_REQUEST')
+      assert.equal(called, false)
+      mock.restoreAll()
+    }
+    mock.method(
+      globalThis,
+      'fetch',
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              workflowId: 'wf-1',
+              requestId: 'factory-id',
+              revision: 2,
+              changed: false,
+              idempotent: true,
+              projection: {},
+            },
+          }),
+          { status: 200 }
+        )
+    )
+    assert.equal(
+      (
+        await invoke(await exposed('request_transition'), {
+          workflowId: 'wf-1',
+          stepId: 'build',
+          expectedRevision: 2,
+          requestedStatus: 'running',
+          evidenceIds: [],
+        })
+      ).idempotent,
+      true
+    )
+    mock.restoreAll()
+    mock.method(
+      globalThis,
+      'fetch',
+      async () =>
+        new Response(JSON.stringify({ error: { code: 'ACTOR_NOT_AUTHORIZED', message: 'bounded' } }), { status: 409 })
+    )
+    assert.equal(
+      (
+        await invoke(await exposed('request_transition'), {
+          workflowId: 'wf-1',
+          stepId: 'build',
+          expectedRevision: 2,
+          requestedStatus: 'running',
+          evidenceIds: [],
+        })
+      ).error.code,
+      'ACTOR_NOT_AUTHORIZED'
+    )
+    mock.restoreAll()
+    mock.method(globalThis, 'fetch', async () => new Response('{bad', { status: 200 }))
+    assert.equal(
+      (
+        await invoke(await exposed('request_transition'), {
+          workflowId: 'wf-1',
+          stepId: 'build',
+          expectedRevision: 2,
+          requestedStatus: 'running',
+          evidenceIds: [],
+        })
+      ).error.code,
+      'MALFORMED_FACTORY_RESPONSE'
+    )
+  })
 
   it('rejects evidence attribution before HTTP and maps Factory errors and malformed success', async () => {
     for (const field of ['source', 'namespaceId', 'evidenceId', 'observedAt']) {

@@ -52,6 +52,7 @@ import { WorkflowDefinitionRegistry } from '../lib/workflow-definition-registry.
 import { handleWorkflowDefinitionRequest } from './workflow-definition-routes.mjs'
 import { WorkflowEvidenceStore } from '../lib/workflow-evidence-store.mjs'
 import { handleWorkflowEvidenceRequest } from './workflow-evidence-routes.mjs'
+import { handleWorkflowTransitionRequest } from './workflow-transition-routes.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
@@ -645,6 +646,8 @@ const server = createServer(async (req, res) => {
     registry: workflowDefinitionRegistry,
     log: console,
   })) return
+
+  if (await handleWorkflowTransitionRequest({ method, path, readBody: () => readBody(req), send: (status, body) => send(res, status, body), store: workflowProjectionStore, evidenceStore: workflowEvidenceStore, definitionRegistry: workflowDefinitionRegistry, notifier: workflowProjectionSseHub, log: console })) return
 
   if (await handleWorkflowEvidenceRequest({
     method, path, url,
