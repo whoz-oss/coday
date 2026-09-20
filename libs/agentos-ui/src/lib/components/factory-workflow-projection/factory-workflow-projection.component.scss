@@ -116,6 +116,48 @@ dd {
 .workflow-projection__selected-step p {
   margin: 0.35rem 0 0;
 }
+.workflow-projection__metrics {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-divider, #d1d5db);
+  border-radius: 0.35rem;
+}
+.workflow-projection__metrics-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.workflow-projection__metrics-heading p,
+.workflow-projection__metrics-note {
+  margin: 0;
+  color: var(--color-text-secondary, #4b5563);
+  font-size: 0.75rem;
+}
+.workflow-projection__metrics-heading label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.workflow-projection__metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.5rem;
+  margin: 0.65rem 0 0;
+}
+.workflow-projection__metric-grid div {
+  padding: 0.5rem;
+  background: var(--color-surface-secondary, #f3f4f6);
+  border-radius: 0.3rem;
+}
+.workflow-projection__metric-grid dd {
+  margin-top: 0.2rem;
+  font-weight: 650;
+}
+.workflow-projection__metrics-note {
+  margin-top: 0.55rem;
+}
 .workflow-projection__actions {
   justify-content: flex-end;
   align-items: center;

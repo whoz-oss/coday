@@ -23,6 +23,11 @@ import { FactoryApiService } from '../../services/factory-api.service'
 import { FactoryTemporalLanesComponent } from './factory-temporal-lanes.component'
 import { DeliveryPanelComponent } from '../factory-forge-runs/delivery-panel/delivery-panel.component'
 import { FactoryDeliverySnapshotDto } from '../../services/factory-delivery.model'
+import {
+  FactoryMetricAvailability,
+  FactoryMetricsScope,
+  FactoryOperationalMetricsResponseDto,
+} from '../../services/factory-operational-metrics.model'
 
 export type WorkflowProjectionCardMode = 'active' | 'removed'
 type ConfirmationKind = 'remove' | 'purge'
@@ -76,11 +81,16 @@ export class FactoryWorkflowProjectionComponent {
   protected readonly delivery = signal<FactoryDeliverySnapshotDto | null>(null)
   protected readonly deliveryLoading = signal(false)
   protected readonly deliveryError = signal<string | null>(null)
+  protected readonly metrics = signal<FactoryOperationalMetricsResponseDto | null>(null)
+  protected readonly metricsScope = signal<FactoryMetricsScope>('self')
+  protected readonly metricsLoading = signal(false)
+  protected readonly metricsError = signal<string | null>(null)
 
   constructor() {
     effect(() => {
       const snapshot = this.snapshot(),
         namespaceId = this.namespaceId()
+      this.loadMetrics(namespaceId, snapshot.workflowId, this.metricsScope())
       if (snapshot.projection.steps.some((step) => step.status === 'waiting_human'))
         this.loadInteractions(namespaceId, snapshot.workflowId)
       else this.interactions.set([])
@@ -95,6 +105,52 @@ export class FactoryWorkflowProjectionComponent {
         this.deliveryError.set('Delivery tracking is only available for AgentOS-controlled workflows.')
       }
     })
+  }
+
+  protected selectMetricsScope(scope: FactoryMetricsScope): void {
+    this.metricsScope.set(scope)
+  }
+
+  private loadMetrics(namespaceId: string, workflowId: string, scope: FactoryMetricsScope): void {
+    this.metricsLoading.set(true)
+    this.metricsError.set(null)
+    this.api.getWorkflowOperationalMetrics(namespaceId, workflowId, scope).subscribe({
+      next: ({ data }) => {
+        this.metrics.set(data)
+        this.metricsLoading.set(false)
+      },
+      error: (error) => {
+        this.metrics.set(null)
+        this.metricsError.set(error?.error?.error?.message ?? 'Operational metrics are unavailable.')
+        this.metricsLoading.set(false)
+      },
+    })
+  }
+
+  protected metricDuration(
+    metric: FactoryMetricAvailability<unknown>,
+    kind: 'cycle' | 'review' | 'delivery'
+  ): number | null {
+    if (!metric.available || !metric.value) return null
+    const value = metric.value as Record<string, unknown>
+    if (kind === 'cycle') {
+      if (typeof value['durationMs'] === 'number') return value['durationMs']
+      const envelope = value['envelope'] as { durationMs?: unknown } | undefined
+      return typeof envelope?.durationMs === 'number' ? envelope.durationMs : null
+    }
+    if (kind === 'review') return typeof value['durationMs'] === 'number' ? value['durationMs'] : null
+    const intervals = value['intervals'] as Array<{ durationMs?: unknown }> | undefined
+    if (!intervals?.length) return null
+    const duration = intervals.reduce(
+      (sum, interval) => sum + (typeof interval.durationMs === 'number' ? interval.durationMs : 0),
+      0
+    )
+    return duration
+  }
+
+  protected metricState(metric: FactoryMetricAvailability<unknown>): string {
+    if (!metric.available) return 'Unavailable'
+    return metric.complete ? 'Complete' : 'Incomplete'
   }
 
   private loadEnvironment(namespaceId: string, workflowId: string, caseId: string): void {

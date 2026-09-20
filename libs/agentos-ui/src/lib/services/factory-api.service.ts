@@ -12,6 +12,7 @@ import {
   WorkUnitEnvironmentResponseDto,
 } from './factory-workflow-projection.model'
 import { FactoryDeliveryResponseDto, FactoryDeliveryStage } from './factory-delivery.model'
+import { FactoryMetricsScope, FactoryOperationalMetricsResponseDto } from './factory-operational-metrics.model'
 
 export interface FactoryForgeOracleResult {
   name: string
@@ -236,6 +237,20 @@ export class FactoryApiService {
     return this.http.get<WorkflowProjectionDetailDto>(`/api/factory/workflows/${encodeURIComponent(workflowId)}`, {
       params: new HttpParams().set('namespaceId', namespaceId),
     })
+  }
+
+  getWorkflowOperationalMetrics(
+    namespaceId: string,
+    workflowId: string,
+    scope: FactoryMetricsScope = 'self',
+    observedAt?: string
+  ): Observable<{ data: FactoryOperationalMetricsResponseDto }> {
+    let params = new HttpParams().set('namespaceId', namespaceId).set('scope', scope)
+    if (observedAt) params = params.set('observedAt', observedAt)
+    return this.http.get<{ data: FactoryOperationalMetricsResponseDto }>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/metrics`,
+      { params }
+    )
   }
 
   getWorkflowProjectionTiming(namespaceId: string, workflowId: string): Observable<WorkflowProjectionTimingDto> {

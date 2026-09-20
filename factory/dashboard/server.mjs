@@ -68,6 +68,8 @@ import { DeliveryEvidenceStore } from '../lib/delivery-evidence-store.mjs'
 import { DeliveryGitControlPlane } from '../lib/delivery-git-control-plane.mjs'
 import { DeliveryPullRequestAdapter } from '../lib/delivery-pr-adapter.mjs'
 import { DeliveryController, handleDeliveryRequest } from '../lib/delivery-controller.mjs'
+import { FactoryOperationalMetricsService } from '../lib/factory-operational-metrics-service.mjs'
+import { handleWorkflowOperationalMetricsRequest } from './workflow-operational-metrics-routes.mjs'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
 const RUN_ENTRY = join(__dirname, '..', 'run.mjs')
@@ -102,6 +104,12 @@ const workUnitEnvironmentController = FACTORY_REPO_ROOT && FACTORY_WORKTREES_ROO
 }) : null
 const deliveryStore = new DeliveryStore(FACTORY_DATA_ROOT)
 const deliveryEvidenceStore = new DeliveryEvidenceStore(FACTORY_DATA_ROOT)
+const workflowOperationalMetricsService = new FactoryOperationalMetricsService({
+  workflowStore: workflowProjectionStore,
+  humanInteractionStore: workflowHumanInteractionStore,
+  deliveryStore,
+  deliveryEvidenceStore,
+})
 const deliveryRemote = process.env.FACTORY_DELIVERY_GIT_REMOTE ?? null
 const deliveryAllowedPaths = (process.env.FACTORY_DELIVERY_ALLOWED_PATHS ?? '').split(',').map((value) => value.trim()).filter(Boolean)
 const deliveryProtectedPaths = (process.env.FACTORY_DELIVERY_PROTECTED_PATHS ?? '.git,.coday').split(',').map((value) => value.trim()).filter(Boolean)
@@ -745,6 +753,14 @@ const server = createServer(async (req, res) => {
     projectionStore: workflowProjectionStore,
     evidenceStore: workflowEvidenceStore,
     definitionRegistry: workflowDefinitionRegistry,
+    log: console,
+  })) return
+
+  if (await handleWorkflowOperationalMetricsRequest({
+    method, path, url,
+    send: (status, body) => send(res, status, body),
+    service: workflowOperationalMetricsService,
+    clock: { now: () => new Date() },
     log: console,
   })) return
 

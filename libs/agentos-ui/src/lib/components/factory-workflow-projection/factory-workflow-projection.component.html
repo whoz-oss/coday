@@ -156,6 +156,91 @@
     }
   }
 
+  <section class="workflow-projection__metrics" aria-labelledby="operational-metrics-title">
+    <div class="workflow-projection__metrics-heading">
+      <div>
+        <h4 id="operational-metrics-title">Operational metrics</h4>
+        <p>Scope: {{ metricsScope() === 'self' ? 'This workflow' : 'This workflow and descendants' }}</p>
+      </div>
+      <label>
+        Scope
+        <select [ngModel]="metricsScope()" (ngModelChange)="selectMetricsScope($event)">
+          <option value="self">This workflow</option>
+          <option value="descendants">Include descendants</option>
+        </select>
+      </label>
+    </div>
+    @if (metricsLoading()) {
+      <p role="status">Loading operational metrics…</p>
+    } @else if (metricsError()) {
+      <p role="alert">{{ metricsError() }}</p>
+    } @else if (metrics(); as projection) {
+      <dl class="workflow-projection__metric-grid">
+        <div>
+          <dt>Cycle time</dt>
+          <dd>
+            @if (metricDuration(projection.metrics.cycleTime, 'cycle') !== null) {
+              {{ formatDuration(metricDuration(projection.metrics.cycleTime, 'cycle')!) }}
+            } @else {
+              {{ metricState(projection.metrics.cycleTime) }}
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>Review time</dt>
+          <dd>
+            @if (metricDuration(projection.metrics.reviewTime, 'review') !== null) {
+              {{ formatDuration(metricDuration(projection.metrics.reviewTime, 'review')!) }}
+            } @else {
+              {{ metricState(projection.metrics.reviewTime) }}
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>Current WIP</dt>
+          <dd>
+            @if (projection.metrics.currentWip.available && projection.metrics.currentWip.value; as value) {
+              {{ value.count }}
+            } @else {
+              {{ metricState(projection.metrics.currentWip) }}
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>Deployment delay</dt>
+          <dd>
+            @if (metricDuration(projection.metrics.deploymentDelay, 'delivery') !== null) {
+              {{ formatDuration(metricDuration(projection.metrics.deploymentDelay, 'delivery')!) }}
+            } @else {
+              {{ metricState(projection.metrics.deploymentDelay) }}
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>Created → production verified</dt>
+          <dd>
+            @if (metricDuration(projection.metrics.workflowCreatedToProductionVerified, 'delivery') !== null) {
+              {{ formatDuration(metricDuration(projection.metrics.workflowCreatedToProductionVerified, 'delivery')!) }}
+            } @else {
+              {{ metricState(projection.metrics.workflowCreatedToProductionVerified) }}
+            }
+          </dd>
+        </div>
+      </dl>
+      @if (
+        !projection.metrics.cycleTime.complete ||
+        !projection.metrics.reviewTime.complete ||
+        !projection.metrics.currentWip.complete ||
+        !projection.metrics.deploymentDelay.complete ||
+        !projection.metrics.workflowCreatedToProductionVerified.complete
+      ) {
+        <p class="workflow-projection__metrics-note">
+          Incomplete metrics reflect missing authoritative Factory facts; no values are estimated.
+        </p>
+      }
+    }
+  </section>
+
   @if (selectedStep()?.status === 'waiting_human') {
     <section class="workflow-projection__human-gate" aria-live="polite">
       <h4>Human decision required</h4>
