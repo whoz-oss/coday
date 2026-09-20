@@ -197,6 +197,16 @@
     </section>
   }
 
+  <section class="workflow-projection__selected-step" aria-labelledby="delivery-title">
+    <h4 id="delivery-title">Delivery pipeline</h4>
+    <agentos-delivery-panel
+      [delivery]="delivery()"
+      [loading]="deliveryLoading()"
+      [error]="deliveryError()"
+      (action)="onDeliveryAction($event)"
+    />
+  </section>
+
   <footer class="workflow-projection__actions">
     <details class="workflow-projection__lifecycle">
       <summary>Lifecycle actions</summary>

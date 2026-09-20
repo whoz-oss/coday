@@ -1,0 +1,57 @@
+.delivery {
+  border: 1px solid var(--color-neutral-300);
+  padding: 1rem;
+  background: var(--color-bg);
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+.authority {
+  font-size: 0.75rem;
+  color: var(--color-neutral-700);
+}
+.timeline {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 0;
+  list-style: none;
+}
+.timeline li {
+  padding: 0.5rem;
+  background: var(--color-neutral-200);
+  font-size: 0.75rem;
+}
+.timeline .done {
+  background: #dcece2;
+}
+.timeline .current {
+  outline: 2px solid var(--color-accent-700);
+}
+dl div {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 0.5rem;
+}
+dt {
+  font-weight: 600;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.human {
+  font-weight: 700;
+}
+.blocked,
+.error {
+  color: #7d2b29;
+}
+code {
+  overflow-wrap: anywhere;
+}

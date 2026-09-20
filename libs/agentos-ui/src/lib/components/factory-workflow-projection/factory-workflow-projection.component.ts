@@ -21,13 +21,15 @@ import {
 } from '../../services/factory-workflow-projection.model'
 import { FactoryApiService } from '../../services/factory-api.service'
 import { FactoryTemporalLanesComponent } from './factory-temporal-lanes.component'
+import { DeliveryPanelComponent } from '../factory-forge-runs/delivery-panel/delivery-panel.component'
+import { FactoryDeliverySnapshotDto } from '../../services/factory-delivery.model'
 
 export type WorkflowProjectionCardMode = 'active' | 'removed'
 type ConfirmationKind = 'remove' | 'purge'
 
 @Component({
   selector: 'agentos-factory-workflow-projection',
-  imports: [FormsModule, FactoryTemporalLanesComponent],
+  imports: [FormsModule, FactoryTemporalLanesComponent, DeliveryPanelComponent],
   templateUrl: './factory-workflow-projection.component.html',
   styleUrl: './factory-workflow-projection.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -71,6 +73,9 @@ export class FactoryWorkflowProjectionComponent {
   protected readonly environment = signal<WorkUnitEnvironmentDto | null>(null)
   protected readonly environmentLoading = signal(false)
   protected readonly environmentError = signal<string | null>(null)
+  protected readonly delivery = signal<FactoryDeliverySnapshotDto | null>(null)
+  protected readonly deliveryLoading = signal(false)
+  protected readonly deliveryError = signal<string | null>(null)
 
   constructor() {
     effect(() => {
@@ -80,10 +85,14 @@ export class FactoryWorkflowProjectionComponent {
         this.loadInteractions(namespaceId, snapshot.workflowId)
       else this.interactions.set([])
       const execution = snapshot.controllerExecution
-      if (execution?.kind === 'agentos') this.loadEnvironment(namespaceId, snapshot.workflowId, execution.caseId)
-      else {
+      if (execution?.kind === 'agentos') {
+        this.loadEnvironment(namespaceId, snapshot.workflowId, execution.caseId)
+        this.loadDelivery(namespaceId, snapshot.workflowId, execution.caseId)
+      } else {
         this.environment.set(null)
         this.environmentError.set('Environment binding is only available for AgentOS-controlled workflows.')
+        this.delivery.set(null)
+        this.deliveryError.set('Delivery tracking is only available for AgentOS-controlled workflows.')
       }
     })
   }
@@ -102,6 +111,33 @@ export class FactoryWorkflowProjectionComponent {
         this.environmentLoading.set(false)
       },
     })
+  }
+
+  private loadDelivery(namespaceId: string, workflowId: string, caseId: string): void {
+    this.deliveryLoading.set(true)
+    this.deliveryError.set(null)
+    this.api.getDelivery(namespaceId, caseId, workflowId).subscribe({
+      next: (response) => {
+        this.delivery.set(response.data ?? null)
+        this.deliveryLoading.set(false)
+      },
+      error: (error) => {
+        this.delivery.set(null)
+        const code = error?.error?.error?.code
+        // DELIVERY_BINDING_UNAVAILABLE means no delivery yet — not an error to display prominently.
+        this.deliveryError.set(code === 'DELIVERY_BINDING_UNAVAILABLE' ? null : (code ?? 'DELIVERY_UNAVAILABLE'))
+        this.deliveryLoading.set(false)
+      },
+    })
+  }
+
+  protected onDeliveryAction(action: string): void {
+    // Delivery actions are intentionally not implemented in the generic cockpit:
+    // checkpoint/push/PR require claims (diff hash + file list) that must come from
+    // the Factory control plane, not from the browser. Actions are surfaced here as
+    // visibility only. Promote (human release approval) may be wired in a future pass
+    // once the evidence route is confirmed operational.
+    console.warn('[delivery-panel] Action requested but not yet wired in generic cockpit:', action)
   }
 
   protected reconcileEnvironment(): void {

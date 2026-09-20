@@ -157,6 +157,16 @@ export class WorkflowProjectionStore {
     await atomicJsonWrite(paths.pending,snapshot);await appendDurable(paths.events,{kind:'workflow_environment_bound',revision:current.revision,environmentId:environmentRef.environmentId,environmentHash:environmentRef.environmentHash,observedAt,timestamp:observedAt});await atomicJsonWrite(paths.snapshot,snapshot);await rm(paths.pending,{force:true});return{ok:true,changed:true,snapshot}
   }) }
 
+  async bindDelivery(namespaceId, workflowId, deliveryRef) { return this._locked(namespaceId, workflowId, async () => {
+    if(!deliveryRef||typeof deliveryRef.deliveryId!=='string'||typeof deliveryRef.definitionHash!=='string'||!/^([0-9a-f]{64})$/i.test(deliveryRef.definitionHash))return{ok:false,error:{code:'INVALID_DELIVERY_REFERENCE'}}
+    const paths=this.paths(namespaceId,workflowId);await this._recover(paths);const current=await this._readSnapshot(paths)
+    if(!current?.instance)return{ok:false,error:{code:WORKFLOW_STORE_ERROR_CODES.WORKFLOW_NOT_FOUND}}
+    const existing=current.instance.deliveryRef
+    if(existing){return JSON.stringify(existing)===JSON.stringify(deliveryRef)?{ok:true,changed:false,snapshot:current}:{ok:false,error:{code:'DELIVERY_ALREADY_BOUND'}}}
+    const observedAt=new Date().toISOString(),instance={...current.instance,deliveryRef,updatedAt:observedAt},snapshot={...current,instance}
+    await atomicJsonWrite(paths.pending,snapshot);await appendDurable(paths.events,{kind:'workflow_delivery_bound',revision:current.revision,deliveryId:deliveryRef.deliveryId,definitionHash:deliveryRef.definitionHash,observedAt,timestamp:observedAt});await atomicJsonWrite(paths.snapshot,snapshot);await rm(paths.pending,{force:true});return{ok:true,changed:true,snapshot}
+  }) }
+
   async publish(namespaceId, command, controllerExecution) { const validated = validateWorkflowProjection(command); if (!validated.ok) return validated; return this._locked(namespaceId, validated.projection.workflowId, () => this._publish(namespaceId, validated, controllerExecution)) }
   async _publish(namespaceId, validated, controllerExecution) {
     const paths = this.paths(namespaceId, validated.projection.workflowId)

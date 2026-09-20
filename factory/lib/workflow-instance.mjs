@@ -32,6 +32,7 @@ export function createWorkflowInstance(command, definition, controllerExecution,
     steps: steps.map(({ id, status }) => ({ id, status })),
     controllerExecution: { ...controllerExecution, observedAt },
     environmentRef: null,
+    deliveryRef: null,
     createdAt: observedAt,
     updatedAt: observedAt,
   }

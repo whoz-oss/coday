@@ -1,0 +1,73 @@
+<section class="delivery" aria-labelledby="delivery-title">
+  <header>
+    <h3 id="delivery-title">Livraison gouvernée</h3>
+    <span class="authority">Factory authoritative</span>
+  </header>
+  @if (loading()) {
+    <p role="status">Chargement de l’état de livraison…</p>
+  }
+  @if (error(); as message) {
+    <p role="alert" class="error">{{ message }}</p>
+  }
+  @if (delivery(); as value) {
+    <ol class="timeline">
+      @for (item of stageItems(); track item.stage) {
+        <li [class.current]="item.current" [class.done]="item.done">{{ item.stage }}</li>
+      }
+    </ol>
+    <dl>
+      <div>
+        <dt>Branche</dt>
+        <dd>
+          <code>{{ value.branch }}</code>
+        </dd>
+      </div>
+      <div>
+        <dt>HEAD observé</dt>
+        <dd>
+          <code>{{ value.headCommit }}</code>
+        </dd>
+      </div>
+      <div>
+        <dt>Artefact</dt>
+        <dd>{{ value.artifact.state }}</dd>
+      </div>
+      <div>
+        <dt>Release</dt>
+        <dd>{{ value.release.state }}</dd>
+      </div>
+      <div>
+        <dt>Déploiement</dt>
+        <dd>{{ value.deployment.state }}</dd>
+      </div>
+      <div>
+        <dt>Production</dt>
+        <dd>{{ value.verification.state }}</dd>
+      </div>
+    </dl>
+    @if (value.git.pullRequest; as pr) {
+      @if (trustedUrl(pr.url); as href) {
+        <a [href]="href" target="_blank" rel="noopener noreferrer"
+          >PR #{{ pr.id }} · {{ pr.draft ? 'draft' : pr.state }}</a
+        >
+      }
+    } @else {
+      <p class="blocked">PR non créée ou adaptateur non configuré.</p>
+    }
+    @for (blocker of value.blockers; track blocker.code) {
+      <p class="blocked">{{ blocker.code }}{{ blocker.message ? ' — ' + blocker.message : '' }}</p>
+    }
+    <div class="actions" aria-label="Actions Factory autorisées">
+      <button type="button" (click)="action.emit('checkpoint')">Checkpoint</button>
+      <button type="button" (click)="action.emit('push')">Push</button>
+      <button type="button" (click)="action.emit('pull-request')">Draft PR</button>
+      @if (nextStage(); as next) {
+        <button type="button" [class.human]="humanAction()" (click)="action.emit(next)">
+          {{ humanAction() ? 'Approuver la release' : 'Promouvoir vers ' + next }}
+        </button>
+      }
+    </div>
+  } @else if (!loading()) {
+    <p>La livraison n’est pas encore liée à cette unité de travail.</p>
+  }
+</section>
