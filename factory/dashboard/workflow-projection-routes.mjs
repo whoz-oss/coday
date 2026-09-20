@@ -78,7 +78,7 @@ async function publicSnapshot(snapshot) {
     workflowId: snapshot.projection.workflowId,
     revision: snapshot.revision,
     projectionHash: snapshot.projectionHash,
-    ...(snapshot.governanceMode ? { governanceMode: snapshot.governanceMode, definitionVersion: snapshot.definitionVersion, definitionHash: snapshot.definitionHash, instance: snapshot.instance } : {}),
+    ...(snapshot.governanceMode ? { governanceMode: snapshot.governanceMode, definitionVersion: snapshot.definitionVersion, definitionHash: snapshot.definitionHash, relations: snapshot.instance?.relations ?? { rootWorkflowId: snapshot.projection.workflowId }, instance: snapshot.instance } : { relations: { rootWorkflowId: snapshot.projection.workflowId } }),
     ...(snapshot.controllerExecution ? { controllerExecution: snapshot.controllerExecution } : {}),
     projection: snapshot.projection,
   }
@@ -123,11 +123,11 @@ export async function handleWorkflowProjectionRequest({ method, path, url, readB
     const execution = sanitizeWorkflowExecution(body.execution)
     if (!execution.ok) { errorResponse(send, 400, execution.code, 'Execution attribution is invalid.'); return true }
     const command = body.workflow
-    if (!command || typeof command !== 'object' || Array.isArray(command) || Object.keys(command).some((field) => !['workflowId','workflowType','title'].includes(field)) || command.workflowId !== workflowId || typeof command.workflowType !== 'string' || typeof command.title !== 'string' || !command.title.trim()) { errorResponse(send, 400, 'INVALID_START_REQUEST', 'workflowId, workflowType and title are required; no other workflow fields are accepted.'); return true }
+    if (!command || typeof command !== 'object' || Array.isArray(command) || Object.keys(command).some((field) => !['workflowId','workflowType','title','relations'].includes(field)) || command.workflowId !== workflowId || typeof command.workflowType !== 'string' || typeof command.title !== 'string' || !command.title.trim()) { errorResponse(send, 400, 'INVALID_START_REQUEST', 'workflowId, workflowType and title are required; only optional relations are accepted.'); return true }
     try {
       const definition = await definitionRegistry.resolveUnique(command.workflowType)
       const result = await store.start(execution.namespaceId, command, definition, execution.controllerExecution)
-      if (!result.ok) { const status = result.error.code === WORKFLOW_STORE_ERROR_CODES.WORKFLOW_REMOVED || result.error.code === WORKFLOW_STORE_ERROR_CODES.WORKFLOW_ALREADY_EXISTS || result.error.code === WORKFLOW_STORE_ERROR_CODES.WORKFLOW_IDENTITY_CONFLICT ? 409 : 400; errorResponse(send, status, result.error.code, result.error.code === WORKFLOW_STORE_ERROR_CODES.WORKFLOW_ALREADY_EXISTS ? 'Workflow already exists; use get_workflow and resume without converting it.' : 'Workflow instance cannot be created.'); return true }
+      if (!result.ok) { const status = ['WORKFLOW_REMOVED','WORKFLOW_ALREADY_EXISTS','WORKFLOW_IDENTITY_CONFLICT','WORKFLOW_RELATION_CYCLE'].includes(result.error.code) ? 409 : result.error.code === 'PARENT_WORKFLOW_NOT_FOUND' ? 404 : 400; errorResponse(send, status, result.error.code, result.error.code === WORKFLOW_STORE_ERROR_CODES.WORKFLOW_ALREADY_EXISTS ? 'Workflow already exists; use get_workflow and resume without converting it.' : result.error.code === 'PARENT_WORKFLOW_NOT_FOUND' ? 'Parent workflow was not found in this namespace.' : 'Workflow instance cannot be created.'); return true }
       if (result.created) notifier?.publish(execution.namespaceId, { workflowId, namespaceId: execution.namespaceId, revision: 1 })
       send(result.created ? 201 : 200, { data: { namespaceId: execution.namespaceId, created: result.created, idempotent: result.idempotent, ...await publicSnapshot(result.snapshot) } })
     } catch (error) {

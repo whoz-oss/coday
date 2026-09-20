@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { hashWorkflowProjection, validateWorkflowProjection, validateWorkflowProjectionId } from './workflow-projection.mjs'
 import { projectWorkflowTiming } from './workflow-timing-projector.mjs'
 import { createWorkflowInstance, workflowStartCommandHash } from './workflow-instance.mjs'
+import { collectWorkflowDescendants, deriveWorkflowRelations, validateWorkflowRelationsInput, WORKFLOW_RELATION_ERROR_CODES } from './workflow-relations.mjs'
 import { applyWorkflowTransition, evaluateWorkflowTransition, transitionScopeHash, transitionSemanticHash } from './workflow-transition-policy.mjs'
 
 export const WORKFLOW_STORE_ERROR_CODES = Object.freeze({
@@ -84,6 +85,7 @@ export class WorkflowProjectionStore {
     return projectWorkflowTiming(facts, now, { snapshot })
   }
   async list(namespaceId) { return this._listRoot(namespaceId, false) }
+  async descendants(namespaceId, workflowId) { return collectWorkflowDescendants(await this.list(namespaceId), workflowId) }
   async listRemoved(namespaceId) { return this._listRoot(namespaceId, true) }
   async _listRoot(namespaceId, removed) {
     const namespace = validateWorkflowProjectionId(namespaceId, 'namespaceId'); if (!namespace.ok) throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.INVALID_NAMESPACE_ID, namespace.error)
@@ -100,14 +102,24 @@ export class WorkflowProjectionStore {
       if (await this._tombstone(paths)) return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.WORKFLOW_REMOVED } }
       await this._recover(paths)
       const current = await this._readSnapshot(paths)
-      const commandHash = workflowStartCommandHash(command, definition)
+      const validatedRelations = validateWorkflowRelationsInput(command.relations)
+      if (!validatedRelations.ok) return validatedRelations
+      if (validatedRelations.relations.parentWorkflowId === command.workflowId) return { ok: false, error: { code: WORKFLOW_RELATION_ERROR_CODES.WORKFLOW_RELATION_CYCLE } }
+      let parent = null
+      if (validatedRelations.relations.parentWorkflowId) {
+        parent = await this.lookup(namespaceId, validatedRelations.relations.parentWorkflowId)
+        if (parent.state !== 'existing') return { ok: false, error: { code: WORKFLOW_RELATION_ERROR_CODES.PARENT_WORKFLOW_NOT_FOUND } }
+        if (collectWorkflowDescendants(await this.list(namespaceId), command.workflowId).some((item) => item.projection.workflowId === validatedRelations.relations.parentWorkflowId)) return { ok: false, error: { code: WORKFLOW_RELATION_ERROR_CODES.WORKFLOW_RELATION_CYCLE } }
+      }
+      const commandWithRelations = { ...command, relations: deriveWorkflowRelations(command.workflowId, validatedRelations.relations, parent?.snapshot) }
+      const commandHash = workflowStartCommandHash(commandWithRelations, definition)
       if (current) {
         if (current.governanceMode !== 'governed') return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.WORKFLOW_ALREADY_EXISTS, details: { governanceMode: 'declarative' } } }
         if (current.creationCommandHash === commandHash) return { ok: true, created: false, idempotent: true, snapshot: current }
         return { ok: false, error: { code: WORKFLOW_STORE_ERROR_CODES.WORKFLOW_IDENTITY_CONFLICT } }
       }
       const observedAt = new Date().toISOString()
-      const created = createWorkflowInstance(command, definition, controllerExecution, observedAt)
+      const created = createWorkflowInstance(commandWithRelations, definition, controllerExecution, observedAt)
       const projectionHash = hashWorkflowProjection(created.projection)
       const snapshot = { revision: 1, projectionHash, governanceMode: 'governed', definitionVersion: definition.version, definitionHash: definition.definitionHash, creationCommandHash: created.creationCommandHash, controllerExecution: created.instance.controllerExecution, instance: created.instance, projection: created.projection }
       await mkdir(paths.directory, { recursive: true })

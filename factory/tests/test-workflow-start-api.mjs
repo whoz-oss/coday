@@ -38,6 +38,7 @@ try {
  assert.equal(response.body.data.created, true)
  assert.equal(response.body.data.governanceMode, 'governed')
  assert.equal(response.body.data.definitionVersion, '1.0.0')
+ assert.deepEqual(response.body.data.relations, { rootWorkflowId: 'WZ-1' })
  assert.equal(
    response.body.data.projection.steps.find((step) => step.id === 'implementation').responsibility.name,
    'BmadBuilder',
@@ -45,6 +46,12 @@ try {
 
  response = await request(store, '/api/factory/workflows/WZ-1/start', { workflow, execution })
  assert.equal(response.status, 200)
+ const childResponse = await request(store, '/api/factory/workflows/WZ-2/start', { workflow: { ...workflow, workflowId: 'WZ-2', relations: { parentWorkflowId: 'WZ-1', groupId: 'release-1' } }, execution })
+ assert.equal(childResponse.status, 201)
+ assert.deepEqual(childResponse.body.data.relations, { parentWorkflowId: 'WZ-1', groupId: 'release-1', rootWorkflowId: 'WZ-1' })
+ const missingParent = await request(store, '/api/factory/workflows/orphan/start', { workflow: { ...workflow, workflowId: 'orphan', relations: { parentWorkflowId: 'not-visible' } }, execution })
+ assert.equal(missingParent.status, 404)
+ assert.equal(missingParent.body.error.code, 'PARENT_WORKFLOW_NOT_FOUND')
  assert.equal(response.body.data.idempotent, true)
  assert.equal((await request(store,'/api/factory/workflows/other/start',{workflow,execution})).body.error.code,'INVALID_START_REQUEST')
  assert.equal((await request(store,'/api/factory/workflows/new/start',{workflow:{...workflow,workflowId:'new'},execution:{...execution,namespaceId:OTHER,narrative:'bad'}})).body.error.code,'INVALID_EXECUTION'); assert.equal((await store.lookup(OTHER,'new')).state,'absent')

@@ -28,6 +28,7 @@ assert.equal(derived.projection.steps.find((step) => step.id === 'ticket-analysi
 assert.equal(derived.projection.steps.find((step) => step.id === 'implementation').status, 'pending')
 assert.equal(derived.instance.definitionVersion, '1.0.0')
 assert.equal(derived.instance.definitionHash, definition.definitionHash)
+assert.deepEqual(derived.instance.relations, { rootWorkflowId: 'WZ-1' })
 
 const root = await mkdtemp(join(tmpdir(), 'factory-instance-'))
 try {
@@ -39,6 +40,12 @@ try {
 
   const retried = await store.start(namespace, command, definition, execution)
   assert.equal(retried.idempotent, true)
+  const child = await store.start(namespace, { ...command, workflowId: 'WZ-2', relations: { parentWorkflowId: 'WZ-1', groupId: 'release-1' } }, definition, execution)
+  assert.deepEqual(child.snapshot.instance.relations, { parentWorkflowId: 'WZ-1', groupId: 'release-1', rootWorkflowId: 'WZ-1' })
+  assert.deepEqual((await store.descendants(namespace, 'WZ-1')).map((snapshot) => snapshot.projection.workflowId), ['WZ-2'])
+  assert.equal((await store.start(otherNamespace, { ...command, workflowId: 'WZ-3', relations: { parentWorkflowId: 'WZ-1' } }, definition, execution)).error.code, 'PARENT_WORKFLOW_NOT_FOUND')
+  assert.equal((await store.start(namespace, { ...command, workflowId: 'self', relations: { parentWorkflowId: 'self' } }, definition, execution)).error.code, 'WORKFLOW_RELATION_CYCLE')
+  assert.equal((await store.start(namespace, { ...command, relations: { groupId: 'changed-group' } }, definition, execution)).error.code, 'WORKFLOW_IDENTITY_CONFLICT')
 
   assert.equal((await store.lookup(otherNamespace, 'WZ-1')).state, 'absent')
 

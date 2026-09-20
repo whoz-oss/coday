@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { independentWorkflowRelations } from './workflow-relations.mjs'
 
 export const WORKFLOW_GOVERNANCE_MODE = 'governed'
 
@@ -9,7 +10,8 @@ function canonical(value) {
 }
 
 export function workflowStartCommandHash(command, definition) {
-  return createHash('sha256').update(JSON.stringify(canonical({ workflowId: command.workflowId, workflowType: command.workflowType, title: command.title, definitionVersion: definition.version, definitionHash: definition.definitionHash }))).digest('hex')
+  const relations = command.relations ?? independentWorkflowRelations(command.workflowId)
+  return createHash('sha256').update(JSON.stringify(canonical({ workflowId: command.workflowId, workflowType: command.workflowType, title: command.title, relations: { ...relations }, definitionVersion: definition.version, definitionHash: definition.definitionHash }))).digest('hex')
 }
 
 export function createWorkflowInstance(command, definition, controllerExecution, observedAt = new Date().toISOString()) {
@@ -30,6 +32,7 @@ export function createWorkflowInstance(command, definition, controllerExecution,
     title: command.title,
     status: 'ready',
     steps: steps.map(({ id, status }) => ({ id, status })),
+    relations: { ...(command.relations ?? independentWorkflowRelations(command.workflowId)) },
     controllerExecution: { ...controllerExecution, observedAt },
     environmentRef: null,
     deliveryRef: null,
