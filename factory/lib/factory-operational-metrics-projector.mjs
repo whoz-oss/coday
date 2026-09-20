@@ -29,6 +29,7 @@ function unavailable(reason, sources = []) {
 function workflowId(snapshot) { return snapshot?.projection?.workflowId }
 
 function includedSnapshots(workflows, rootWorkflowId, scope) {
+  if (scope === 'selection') return workflows
   const root = workflows.find((snapshot) => workflowId(snapshot) === rootWorkflowId)
   if (!root) return []
   return scope === 'descendants' ? [root, ...collectWorkflowDescendants(workflows, rootWorkflowId)] : [root]
@@ -151,7 +152,7 @@ function deliveryMetrics(deliveries, evidence, includedIds) {
 }
 
 export function projectFactoryOperationalMetrics({ workflowId: rootWorkflowId, scope = 'self', observedAt, workflows = [], timingsByWorkflowId = {}, interactions = [], deliveries = [], deliveryEvidence = [] }) {
-  if (!['self', 'descendants'].includes(scope)) throw new TypeError('scope must be self or descendants')
+  if (!['self', 'descendants', 'selection'].includes(scope)) throw new TypeError('scope must be self, descendants, or selection')
   if (instant(observedAt) === null) throw new TypeError('observedAt must be a valid explicit instant')
   const snapshots = includedSnapshots(workflows, rootWorkflowId, scope)
   const seen = new Set(), items = []
