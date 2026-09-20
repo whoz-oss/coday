@@ -11,6 +11,7 @@ import {
   WorkflowHumanReplyDto,
   WorkUnitEnvironmentResponseDto,
 } from './factory-workflow-projection.model'
+import { FactoryDeliveryResponseDto, FactoryDeliveryStage } from './factory-delivery.model'
 
 export interface FactoryForgeOracleResult {
   name: string
@@ -268,6 +269,83 @@ export class FactoryApiService {
       source.onerror = () => subscriber.error(new Error('Workflow projection stream disconnected'))
       return () => source.close()
     })
+  }
+
+  getDelivery(namespaceId: string, caseId: string, workflowId: string): Observable<FactoryDeliveryResponseDto> {
+    return this.http.get<FactoryDeliveryResponseDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/delivery`,
+      { headers: { 'X-Factory-Namespace-Id': namespaceId, 'X-Factory-Case-Id': caseId } }
+    )
+  }
+
+  checkpointDelivery(
+    namespaceId: string,
+    caseId: string,
+    workflowId: string,
+    request: {
+      expectedHead: string
+      message: string
+      claims: { paths: string[]; diffHash: string }
+      idempotencyKey: string
+    }
+  ): Observable<unknown> {
+    return this.http.post(`/api/factory/workflows/${encodeURIComponent(workflowId)}/delivery/checkpoint`, request, {
+      headers: { 'X-Factory-Namespace-Id': namespaceId, 'X-Factory-Case-Id': caseId },
+    })
+  }
+
+  pushDelivery(
+    namespaceId: string,
+    caseId: string,
+    workflowId: string,
+    expectedHead: string,
+    idempotencyKey: string
+  ): Observable<unknown> {
+    return this.http.post(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/delivery/push`,
+      { expectedHead, idempotencyKey },
+      { headers: { 'X-Factory-Namespace-Id': namespaceId, 'X-Factory-Case-Id': caseId } }
+    )
+  }
+
+  createDeliveryPullRequest(
+    namespaceId: string,
+    caseId: string,
+    workflowId: string,
+    title: string,
+    body: string,
+    idempotencyKey: string
+  ): Observable<unknown> {
+    return this.http.post(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/delivery/pull-request`,
+      { title, body, idempotencyKey },
+      { headers: { 'X-Factory-Namespace-Id': namespaceId, 'X-Factory-Case-Id': caseId } }
+    )
+  }
+
+  promoteDelivery(
+    namespaceId: string,
+    caseId: string,
+    workflowId: string,
+    request: {
+      deliveryId: string
+      expectedRevision: number
+      requestedStage: FactoryDeliveryStage
+      evidenceIds: string[]
+      idempotencyKey: string
+    }
+  ): Observable<FactoryDeliveryResponseDto> {
+    return this.http.post<FactoryDeliveryResponseDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/delivery/promote`,
+      request,
+      {
+        headers: {
+          'X-Factory-Namespace-Id': namespaceId,
+          'X-Factory-Case-Id': caseId,
+          'X-Factory-Actor-Id': 'factory-ui',
+        },
+      }
+    )
   }
 
   listRuns(namespaceId: string): Observable<FactoryRunSummary[]> {

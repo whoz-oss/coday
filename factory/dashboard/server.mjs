@@ -62,6 +62,12 @@ import { handleWorkflowHumanInteractionRequest } from './workflow-human-interact
 import { WorkUnitEnvironmentStore } from '../lib/work-unit-environment-store.mjs'
 import { GitWorktreeProvisioner } from '../lib/git-worktree.mjs'
 import { WorkUnitEnvironmentController, handleWorkUnitEnvironmentRequest } from '../lib/work-unit-environment-controller.mjs'
+import { defaultDeliveryDefinition } from '../lib/delivery-definition.mjs'
+import { DeliveryStore } from '../lib/delivery-store.mjs'
+import { DeliveryEvidenceStore } from '../lib/delivery-evidence-store.mjs'
+import { DeliveryGitControlPlane } from '../lib/delivery-git-control-plane.mjs'
+import { DeliveryPullRequestAdapter } from '../lib/delivery-pr-adapter.mjs'
+import { DeliveryController, handleDeliveryRequest } from '../lib/delivery-controller.mjs'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
 const RUN_ENTRY = join(__dirname, '..', 'run.mjs')
@@ -93,6 +99,30 @@ const workUnitEnvironmentController = FACTORY_REPO_ROOT && FACTORY_WORKTREES_ROO
   git: new GitWorktreeProvisioner({ worktreesRoot: FACTORY_WORKTREES_ROOT }),
   policy: { resolve: async (_namespaceId, request) => ({ repoRoot: FACTORY_REPO_ROOT, worktreePath: join(FACTORY_WORKTREES_ROOT, `${request.workflowId}-${request.workUnitId}`) }) },
   workflowStore: workflowProjectionStore,
+}) : null
+const deliveryStore = new DeliveryStore(FACTORY_DATA_ROOT)
+const deliveryEvidenceStore = new DeliveryEvidenceStore(FACTORY_DATA_ROOT)
+const deliveryRemote = process.env.FACTORY_DELIVERY_GIT_REMOTE ?? null
+const deliveryAllowedPaths = (process.env.FACTORY_DELIVERY_ALLOWED_PATHS ?? '').split(',').map((value) => value.trim()).filter(Boolean)
+const deliveryProtectedPaths = (process.env.FACTORY_DELIVERY_PROTECTED_PATHS ?? '.git,.coday').split(',').map((value) => value.trim()).filter(Boolean)
+const deliveryGit = new DeliveryGitControlPlane({
+  serviceIdentity: { name: process.env.FACTORY_GIT_COMMITTER_NAME ?? 'Coday Factory', email: process.env.FACTORY_GIT_COMMITTER_EMAIL ?? 'factory@localhost' },
+  configuredRemote: deliveryRemote,
+  allowedPaths: deliveryAllowedPaths,
+  protectedPaths: deliveryProtectedPaths,
+})
+// GitHub provider wiring is intentionally absent until a trusted server-side adapter is configured.
+// The adapter reports PULL_REQUEST_NOT_CONFIGURED; it never fabricates a PR success.
+const deliveryPullRequests = new DeliveryPullRequestAdapter()
+const deliveryController = workUnitEnvironmentController ? new DeliveryController({
+  store: deliveryStore,
+  evidenceStore: deliveryEvidenceStore,
+  environmentController: workUnitEnvironmentController,
+  workflowStore: workflowProjectionStore,
+  git: deliveryGit,
+  pullRequests: deliveryPullRequests,
+  definition: defaultDeliveryDefinition(),
+  trustedConfiguration: process.env.FACTORY_GITHUB_OWNER && process.env.FACTORY_GITHUB_REPO && process.env.FACTORY_DELIVERY_BASE_BRANCH ? { pullRequest: { owner: process.env.FACTORY_GITHUB_OWNER, repo: process.env.FACTORY_GITHUB_REPO, baseBranch: process.env.FACTORY_DELIVERY_BASE_BRANCH } } : {},
 }) : null
 // Oracle definitions are supplied by the trusted composition root. The repository
 // currently publishes no production oracle; source tests inject their fixture registry.
@@ -660,10 +690,38 @@ const server = createServer(async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type,X-Factory-Namespace-Id,X-Factory-Case-Id,X-Factory-Actor-Id',
     })
     return res.end()
   }
+
+  if (deliveryController && await handleDeliveryRequest({
+    method, path,
+    readBody: () => readBody(req),
+    send: (status, body) => send(res, status, body),
+    controller: deliveryController,
+    identity: async () => {
+      const namespaceId = req.headers['x-factory-namespace-id']
+      const caseId = req.headers['x-factory-case-id']
+      const actorId = req.headers['x-factory-actor-id']
+      return typeof namespaceId === 'string' && typeof caseId === 'string' ? { namespaceId, caseId, actorId: typeof actorId === 'string' ? actorId : null } : null
+    },
+    log: console,
+  })) return
+
+  if (workUnitEnvironmentController && await handleWorkUnitEnvironmentRequest({
+    method, path, url,
+    readBody: () => readBody(req),
+    send: (status, body) => send(res, status, body),
+    controller: workUnitEnvironmentController,
+    identity: async () => {
+      const namespaceId = req.headers['x-factory-namespace-id']
+      const caseId = req.headers['x-factory-case-id']
+      const actorId = req.headers['x-factory-actor-id']
+      return typeof namespaceId === 'string' && typeof caseId === 'string' ? { namespaceId, caseId, actorId: typeof actorId === 'string' ? actorId : 'factory-ui' } : null
+    },
+    log: console,
+  })) return
 
   if (await handleWorkflowDefinitionRequest({
     method, path,
@@ -688,20 +746,6 @@ const server = createServer(async (req, res) => {
     evidenceStore: workflowEvidenceStore,
     definitionRegistry: workflowDefinitionRegistry,
     log: console,
-  if (workUnitEnvironmentController && await handleWorkUnitEnvironmentRequest({
-    method, path, url,
-    readBody: () => readBody(req),
-    send: (status, body) => send(res, status, body),
-    controller: workUnitEnvironmentController,
-    identity: async () => {
-      const namespaceId = req.headers['x-factory-namespace-id']
-      const caseId = req.headers['x-factory-case-id']
-      const actorId = req.headers['x-factory-actor-id']
-      return typeof namespaceId === 'string' && typeof caseId === 'string' ? { namespaceId, caseId, actorId: typeof actorId === 'string' ? actorId : 'factory-ui' } : null
-    },
-    log: console,
-  })) return
-
   })) return
 
   if (await handleForgeWorkflowProjectionRequest({
@@ -1382,6 +1426,8 @@ const server = createServer(async (req, res) => {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   await workflowProjectionStore.initialize()
   await workflowDefinitionRegistry.initialize()
+  if (workUnitEnvironmentController) await workUnitEnvironmentController.initialize()
+  if (deliveryController) await deliveryController.initialize()
   if (oracleDefinitionRegistry) await oracleDefinitionRegistry.initialize()
   server.listen(PORT, FACTORY_BIND_POLICY.host, () => {
     console.log(`Factory dashboard → http://${FACTORY_BIND_POLICY.host}:${PORT}`)
@@ -1400,4 +1446,3 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 }
 
 export { parseJsonl, reconstructPhases }
-  if (workUnitEnvironmentController) await workUnitEnvironmentController.initialize()
