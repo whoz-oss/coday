@@ -47,10 +47,37 @@ export class DeliveryStore {
     const current = new Map()
     const resolved = new Set(history.filter((record) => record.resolvedOperationId && ['succeeded', 'failed'].includes(record.state)).map((record) => record.resolvedOperationId))
     for (const record of history) current.set(record.operationId, record)
-    return { history, operations: [...current.values()], rollbackRequests: history.filter((record) => record.kind === 'rollback' && record.state === 'pending'), unresolvedIndeterminate: [...current.values()].filter((record) => record.state === 'indeterminate' && !resolved.has(record.operationId)) }
+    const rollbackHistory = records.filter((record) => record.recordType === 'rollback-request')
+    const rollbackCurrent = new Map()
+    for (const record of rollbackHistory) rollbackCurrent.set(record.rollbackRequestId, record)
+    return { history, operations: [...current.values()], rollbackRequests: [...rollbackCurrent.values()], rollbackRequestHistory: rollbackHistory, unresolvedIndeterminate: [...current.values()].filter((record) => record.state === 'indeterminate' && !resolved.has(record.operationId)) }
   }
   async readWithOperations(namespaceId, deliveryId) { const snapshot = await this.read(namespaceId, deliveryId); if (!snapshot) return null; const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)); return { ...snapshot, deliveryOperations: projection.operations, rollbackRequests: projection.rollbackRequests } }
   async inspectDeliveryOperations(namespaceId, deliveryId) { return this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)) }
+  async createRollbackRequest({ namespaceId, deliveryId, workflowId, caseId, runtimeId, request, execution }) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const snapshot = await this.read(namespaceId, deliveryId); if (!snapshot) return { ok: false, error: { code: 'DELIVERY_NOT_FOUND' } }
+      if (snapshot.workflowId !== workflowId || snapshot.parentCaseId !== caseId || snapshot.runtimeId !== runtimeId) return { ok: false, error: { code: 'DELIVERY_SCOPE_MISMATCH' } }
+      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), prior = projection.rollbackRequestHistory.find((record) => record.scopeHash === request.scopeHash)
+      if (prior) return prior.semanticHash === request.semanticHash ? { ok: true, changed: false, idempotent: true, request: projection.rollbackRequests.find((item) => item.rollbackRequestId === prior.rollbackRequestId) ?? prior } : { ok: false, error: { code: 'IDEMPOTENCY_KEY_COLLISION' } }
+      if (snapshot.revision !== request.expectedRevision) return { ok: false, error: { code: 'REVISION_CONFLICT' } }
+      const record = { recordType: 'rollback-request', schemaVersion: '1', rollbackRequestId: request.rollbackRequestId, deliveryId, workflowId, namespaceId, caseId, runtimeId, status: 'requested', expectedRevision: request.expectedRevision, idempotencyKey: request.idempotencyKey, scopeHash: request.scopeHash, semanticHash: request.semanticHash, targetId: request.targetId, targetHash: request.targetHash, deploymentRef: canonical(request.deploymentRef), priorArtifactRef: canonical(request.priorArtifactRef), priorReleaseRef: canonical(request.priorReleaseRef), reasonCode: request.reasonCode, ...(request.reason ? { reason: request.reason } : {}), requestedAt: new Date().toISOString(), requestedBy: canonical(execution) }
+      await append(this.paths(namespaceId, deliveryId).journal, record); return { ok: true, changed: true, idempotent: false, request: record }
+    })
+  }
+  async approveRollbackRequest(namespaceId, deliveryId, rollbackRequestId, approval) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const snapshot = await this.read(namespaceId, deliveryId); if (!snapshot) return { ok: false, error: { code: 'DELIVERY_NOT_FOUND' } }
+      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), current = projection.rollbackRequests.find((item) => item.rollbackRequestId === rollbackRequestId)
+      if (!current) return { ok: false, error: { code: 'ROLLBACK_REQUEST_NOT_FOUND' } }
+      const scopeHash = `sha256:${hash({ rollbackRequestId, idempotencyKey: approval.idempotencyKey })}`, semanticHash = `sha256:${hash({ rollbackRequestId, expectedRevision: approval.expectedRevision, actorId: approval.execution.actorId })}`, prior = projection.rollbackRequestHistory.find((item) => item.approvalScopeHash === scopeHash)
+      if (prior) return prior.approvalSemanticHash === semanticHash ? { ok: true, changed: false, idempotent: true, request: prior } : { ok: false, error: { code: 'IDEMPOTENCY_KEY_COLLISION' } }
+      if (snapshot.revision !== approval.expectedRevision || current.expectedRevision !== approval.expectedRevision) return { ok: false, error: { code: 'REVISION_CONFLICT' } }
+      if (current.status !== 'requested') return { ok: false, error: { code: 'ROLLBACK_REQUEST_ALREADY_DECIDED' } }
+      const record = { ...current, status: 'approved', approvedAt: new Date().toISOString(), approvedBy: canonical(approval.execution), approvalScopeHash: scopeHash, approvalSemanticHash: semanticHash, approvalIdempotencyKey: approval.idempotencyKey }
+      await append(this.paths(namespaceId, deliveryId).journal, record); return { ok: true, changed: true, idempotent: false, request: record }
+    })
+  }
   async createDeliveryOperation({ namespaceId, workflowId, deliveryId, caseId, runtimeId, request, targetRef, execution }) {
     return this._locked(namespaceId, deliveryId, async () => {
       const normalized = normalizeDeliveryOperationRequest(request); if (!normalized.ok) return normalized

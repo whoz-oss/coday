@@ -68,6 +68,9 @@ import { DeliveryEvidenceStore } from '../lib/delivery-evidence-store.mjs'
 import { DeliveryGitControlPlane } from '../lib/delivery-git-control-plane.mjs'
 import { DeliveryPullRequestAdapter } from '../lib/delivery-pr-adapter.mjs'
 import { DeliveryController, handleDeliveryRequest } from '../lib/delivery-controller.mjs'
+import { DeliveryOperationController } from '../lib/delivery-operation-controller.mjs'
+import { DeliveryTargetRegistry } from '../lib/delivery-target-registry.mjs'
+import { handleDeliveryOperationRequest } from './delivery-operation-routes.mjs'
 import { FactoryOperationalMetricsService } from '../lib/factory-operational-metrics-service.mjs'
 import { handleWorkflowOperationalMetricsRequest } from './workflow-operational-metrics-routes.mjs'
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -131,6 +134,13 @@ const deliveryController = workUnitEnvironmentController ? new DeliveryControlle
   pullRequests: deliveryPullRequests,
   definition: defaultDeliveryDefinition(),
   trustedConfiguration: process.env.FACTORY_GITHUB_OWNER && process.env.FACTORY_GITHUB_REPO && process.env.FACTORY_DELIVERY_BASE_BRANCH ? { pullRequest: { owner: process.env.FACTORY_GITHUB_OWNER, repo: process.env.FACTORY_GITHUB_REPO, baseBranch: process.env.FACTORY_DELIVERY_BASE_BRANCH } } : {},
+}) : null
+// Lot 2 intentionally has no configured deployment provider or target registry.
+// These fail closed with 503 until trusted server-side composition is added.
+const deliveryOperationController = deliveryController ? new DeliveryOperationController({
+  deliveryController,
+  store: deliveryStore,
+  targetRegistry: new DeliveryTargetRegistry(),
 }) : null
 // Oracle definitions are supplied by the trusted composition root. The repository
 // currently publishes no production oracle; source tests inject their fixture registry.
@@ -703,17 +713,23 @@ const server = createServer(async (req, res) => {
     return res.end()
   }
 
+  // Identity headers are trusted only because the dashboard binds to loopback by
+  // default. Unsafe remote binding remains explicitly unauthenticated and must be
+  // fronted by a trusted identity boundary before these routes are exposed.
+  const deliveryIdentity = async () => {
+    const namespaceId = req.headers['x-factory-namespace-id']
+    const caseId = req.headers['x-factory-case-id']
+    const actorId = req.headers['x-factory-actor-id']
+    return typeof namespaceId === 'string' && typeof caseId === 'string' ? { namespaceId, caseId, actorId: typeof actorId === 'string' ? actorId : null, resolvedActorId: RESOLVED_FACTORY_USER ?? undefined } : null
+  }
+  if (deliveryOperationController && await handleDeliveryOperationRequest({ method, path, readBody: () => readBody(req), send: (status, body) => send(res, status, body), controller: deliveryOperationController, identity: deliveryIdentity, log: console })) return
+
   if (deliveryController && await handleDeliveryRequest({
     method, path,
     readBody: () => readBody(req),
     send: (status, body) => send(res, status, body),
     controller: deliveryController,
-    identity: async () => {
-      const namespaceId = req.headers['x-factory-namespace-id']
-      const caseId = req.headers['x-factory-case-id']
-      const actorId = req.headers['x-factory-actor-id']
-      return typeof namespaceId === 'string' && typeof caseId === 'string' ? { namespaceId, caseId, actorId: typeof actorId === 'string' ? actorId : null } : null
-    },
+    identity: deliveryIdentity,
     log: console,
   })) return
 

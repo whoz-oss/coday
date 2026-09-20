@@ -44,7 +44,7 @@ export class DeliveryController {
     return { ok: true, snapshot: existing, environment, reconciliation }
   }
 
-  async status(identity, workflowId) { const resolved = await this.resolve(identity, workflowId); return resolved.ok ? { ok: true, status: 200, data: resolved.snapshot } : resolved }
+  async status(identity, workflowId) { const resolved = await this.resolve(identity, workflowId); if (!resolved.ok) return resolved; const projection = await this.store.inspectDeliveryOperations(identity.namespaceId, resolved.snapshot.deliveryId); return { ok: true, status: 200, data: { ...resolved.snapshot, deliveryOperations: projection.operations, unresolvedIndeterminate: projection.unresolvedIndeterminate, rollbackRequests: projection.rollbackRequests } } }
 
   async checkpoint(identity, workflowId, body) {
     if (rejectUntrusted(body) || Object.keys(body).some((key) => !['expectedHead', 'message', 'claims', 'idempotencyKey'].includes(key))) return { ok: false, status: 400, error: { code: 'UNTRUSTED_DELIVERY_INPUT' } }
@@ -124,8 +124,9 @@ export class DeliveryController {
    * Agents are not permitted to write delivery evidence.
    */
   async recordEvidence(identity, workflowId, input, sourceKind) {
-    const ALLOWED_SOURCE_KINDS = new Set(['factory-build', 'factory-deploy', 'factory-smoke', 'factory-human'])
-    if (!ALLOWED_SOURCE_KINDS.has(sourceKind)) return { ok: false, status: 403, error: { code: 'EVIDENCE_SOURCE_FORBIDDEN' } }
+    const ALLOWED_SOURCE_KINDS = new Set(['factory-build', 'factory-human'])
+    const forbiddenAuthority = new Set(['deployment-result', 'smoke-result', 'rollback-result'])
+    if (!ALLOWED_SOURCE_KINDS.has(sourceKind) || forbiddenAuthority.has(input?.kind)) return { ok: false, status: 403, error: { code: 'DELIVERY_EVIDENCE_AUTHORITY_FORBIDDEN' } }
     const resolved = await this.resolve(identity, workflowId); if (!resolved.ok) return resolved
     const result = await this.evidenceStore.record(identity.namespaceId, { ...input, deliveryId: resolved.snapshot.deliveryId, workflowId, environmentHash: resolved.snapshot.environmentHash, caseId: identity.caseId, runtimeId: 'factory-dashboard', headCommit: resolved.snapshot.headCommit }, { kind: sourceKind, actorId: identity.resolvedActorId ?? 'factory-operator' })
     return result.ok ? { ok: true, status: result.created ? 201 : 200, data: result.evidence } : { ok: false, status: 409, error: result.error }
@@ -144,6 +145,7 @@ export async function handleDeliveryRequest({ method, path, readBody, send, iden
     else if (action === 'push' && method === 'POST') result = await controller.push(trust, workflowId, await readBody())
     else if (action === 'pull-request' && method === 'POST') result = await controller.pullRequest(trust, workflowId, await readBody())
     else if (action === 'promote' && method === 'POST') result = await controller.promote(trust, workflowId, await readBody())
+    else if (action === 'evidence' && method === 'POST') result = await controller.recordEvidence(trust, workflowId, await readBody(), 'factory-build')
     else result = { ok: false, status: 405, error: { code: 'METHOD_NOT_ALLOWED' } }
     send(result.status ?? (result.ok ? 200 : 409), result.ok ? { data: result.data } : { error: result.error }); return true
   } catch (error) { log.error('Delivery control-plane failure', { code: error?.code ?? 'UNEXPECTED' }); send(500, { error: { code: 'DELIVERY_CONTROL_PLANE_FAILURE' } }); return true }
