@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1",
+  "steps": [
+    {
+      "dependsOn": [],
+      "id": "verify-code",
+      "name": "Verify code",
+      "responsibility": {
+        "kind": "code",
+        "name": "node-smoke"
+      }
+    }
+  ],
+  "title": "Deterministic oracle smoke",
+  "version": "1.0.0",
+  "workflowType": "oracle-smoke"
+}

@@ -38,14 +38,20 @@ export function evaluateWorkflowTransition({request,snapshot,definition,evidence
     const missing=declared.dependsOn.filter(id=>instance.steps.find(s=>s.id===id)?.status!=='completed')
     if(missing.length) return deny('DEPENDENCIES_NOT_SATISFIED','dependencies_not_completed',{missingEvidence:missing})
   }
-  if(declared.responsibility.kind!=='agent') return deny('ACTOR_NOT_AUTHORIZED','agent_tool_cannot_transition_non_agent_step')
-  if(declared.responsibility.name&&declared.responsibility.name!==execution.agentId) return deny('ACTOR_NOT_AUTHORIZED','agent_responsibility_mismatch')
+  const factoryOracle = declared.responsibility.kind==='code' && execution.kind==='factory-oracle' && execution.runtimeId==='factory-dashboard'
+  if(declared.responsibility.kind!=='agent'&&!factoryOracle) return deny('ACTOR_NOT_AUTHORIZED','agent_tool_cannot_transition_non_agent_step')
+  if(declared.responsibility.kind==='agent'&&declared.responsibility.name&&declared.responsibility.name!==execution.agentId) return deny('ACTOR_NOT_AUTHORIZED','agent_responsibility_mismatch')
   const selected=[]
   for(const id of request.evidenceIds){const item=evidence.find(e=>e.evidenceId===id);if(!item)return deny('EVIDENCE_NOT_FOUND','evidence_not_found',{missingEvidence:[id]});if(item.namespaceId!==execution.namespaceId||item.workflowId!==request.workflowId||item.stepId!==request.stepId)return deny('EVIDENCE_SCOPE_MISMATCH','evidence_scope_mismatch');selected.push(item)}
   if(request.requestedStatus==='completed'){
-    if(selected.some(e=>e.kind==='agent-result'&&['fail','indeterminate'].includes(e.outcome))) return deny('EVIDENCE_NEGATIVE','agent_result_not_pass')
-    const pass=selected.find(e=>e.kind==='agent-result'&&e.outcome==='pass'&&e.source?.kind===execution.kind&&e.source?.runtimeId===execution.runtimeId&&e.source?.agentId===execution.agentId&&e.source?.caseId===execution.caseId&&e.source?.threadId===execution.threadId)
-    if(!pass)return deny('PASS_EVIDENCE_REQUIRED','matching_agent_result_pass_required',{missingEvidence:['agent-result:pass']})
+    if(factoryOracle){
+      const pass=selected.find(e=>e.kind==='oracle-result'&&e.outcome==='pass'&&e.source?.kind==='factory-oracle'&&e.facts?.oracleId===declared.responsibility.name)
+      if(!pass)return deny('PASS_EVIDENCE_REQUIRED','matching_oracle_result_pass_required',{missingEvidence:['oracle-result:pass']})
+    }else{
+      if(selected.some(e=>e.kind==='agent-result'&&['fail','indeterminate'].includes(e.outcome))) return deny('EVIDENCE_NEGATIVE','agent_result_not_pass')
+      const pass=selected.find(e=>e.kind==='agent-result'&&e.outcome==='pass'&&e.source?.kind===execution.kind&&e.source?.runtimeId===execution.runtimeId&&e.source?.agentId===execution.agentId&&e.source?.caseId===execution.caseId&&e.source?.threadId===execution.threadId)
+      if(!pass)return deny('PASS_EVIDENCE_REQUIRED','matching_agent_result_pass_required',{missingEvidence:['agent-result:pass']})
+    }
   }
   return {allowed:true}
 }

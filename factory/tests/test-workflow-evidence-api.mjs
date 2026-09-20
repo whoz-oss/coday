@@ -10,6 +10,12 @@ async function request(h,method,path,body){let response;const url=new URL(path,'
 const agent={workflowId:'wf-1',stepId:'implement',kind:'agent-result',outcome:'pass',facts:{resultCode:'DONE'},idempotencyKey:'turn-1'}
 const artifact={workflowId:'wf-1',stepId:'implement',kind:'artifact',artifactRef:'opaque://artifact',artifactHash:`sha256:${'a'.repeat(64)}`}
 for(const evidence of [agent,artifact]){const h=harness();const before=structuredClone(governed);const response=await request(h,'POST','/api/factory/workflows/wf-1/evidence',{evidence,execution});assert.equal(response.status,201);assert.equal(response.body.data.evidence.evidenceId,'factory-id');assert.deepEqual(h.recorded[0].source,{runtimeId:'agentos-test',kind:'agentos',agentId:'ProductEngineer',caseId:'case-1',actorId:'user-1'});assert.deepEqual(governed,before)}
+const oracleResult={workflowId:'wf-1',stepId:'implement',kind:'oracle-result',outcome:'pass',facts:{oracleId:'node-smoke',oracleVersion:'1.0.0',classification:'CLEAN'}}
+const forbiddenOracleHarness=harness()
+const forbiddenOracleResponse=await request(forbiddenOracleHarness,'POST','/api/factory/workflows/wf-1/evidence',{evidence:oracleResult,execution})
+assert.equal(forbiddenOracleResponse.status,403)
+assert.equal(forbiddenOracleResponse.body.error.code,'FACTORY_ONLY_EVIDENCE')
+assert.equal(forbiddenOracleHarness.recorded.length,0)
 for(const [state,status,code] of [['absent',404,'WORKFLOW_NOT_FOUND'],['removed',410,'WORKFLOW_REMOVED'],['purged',410,'WORKFLOW_PURGED']]){const response=await request(harness({state}),'POST','/api/factory/workflows/wf-1/evidence',{evidence:agent,execution});assert.equal(response.status,status);assert.equal(response.body.error.code,code)}
 for(const legacy of [{projection:{schemaVersion:'1',workflowId:'wf-1'}},{projection:{schemaVersion:'2',workflowId:'wf-1'}}])assert.equal((await request(harness({snapshot:legacy}),'POST','/api/factory/workflows/wf-1/evidence',{evidence:agent,execution})).body.error.code,'DECLARATIVE_WORKFLOW')
 assert.equal((await request(harness({foundDefinition:null}),'POST','/api/factory/workflows/wf-1/evidence',{evidence:agent,execution})).body.error.code,'WORKFLOW_DEFINITION_NOT_FOUND')

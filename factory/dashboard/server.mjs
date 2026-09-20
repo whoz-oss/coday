@@ -53,6 +53,9 @@ import { handleWorkflowDefinitionRequest } from './workflow-definition-routes.mj
 import { WorkflowEvidenceStore } from '../lib/workflow-evidence-store.mjs'
 import { handleWorkflowEvidenceRequest } from './workflow-evidence-routes.mjs'
 import { handleWorkflowTransitionRequest } from './workflow-transition-routes.mjs'
+import { handleWorkflowOracleRequest } from './workflow-oracle-routes.mjs'
+import { OracleDefinitionRegistry } from '../lib/oracle-definition.mjs'
+import { handleWorkflowCodeTransitionRequest } from './workflow-code-transition-routes.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
@@ -76,6 +79,11 @@ const workflowProjectionStore = new WorkflowProjectionStore(FACTORY_DATA_ROOT)
 const workflowProjectionSseHub = new WorkflowProjectionSseHub()
 const workflowDefinitionRegistry = new WorkflowDefinitionRegistry(join(__dirname, '..', 'workflows'))
 const workflowEvidenceStore = new WorkflowEvidenceStore(FACTORY_DATA_ROOT)
+// Trusted control-plane configuration: never inferred from cwd or namespace configPath.
+const FACTORY_ORACLE_DEFINITIONS_ROOT = process.env.FACTORY_ORACLE_DEFINITIONS_ROOT
+const oracleDefinitionRegistry = FACTORY_ORACLE_DEFINITIONS_ROOT ? new OracleDefinitionRegistry(FACTORY_ORACLE_DEFINITIONS_ROOT) : null
+const FACTORY_ORACLE_REPO_ROOT = process.env.FACTORY_ORACLE_REPO_ROOT
+const FACTORY_ORACLE_NAMESPACE_ID = process.env.FACTORY_ORACLE_NAMESPACE_ID
 // Explicit store location for Forge Epic/Story projections. It is intentionally
 // independent from both this dashboard's source tree and the target repoRoot.
 // FACTORY_USER: used only to identify the AgentOS user for proxy headers.
@@ -646,6 +654,10 @@ const server = createServer(async (req, res) => {
     registry: workflowDefinitionRegistry,
     log: console,
   })) return
+
+  if (await handleWorkflowOracleRequest({ method, path, readBody: () => readBody(req), send: (status, body) => send(res, status, body), projectionStore: workflowProjectionStore, evidenceStore: workflowEvidenceStore, definitionRegistry: workflowDefinitionRegistry, oracleRegistry: oracleDefinitionRegistry, repoRoot: FACTORY_ORACLE_REPO_ROOT, log: console })) return
+
+  if (await handleWorkflowCodeTransitionRequest({ method, path, readBody: () => readBody(req), send: (status, body) => send(res, status, body), store: workflowProjectionStore, evidenceStore: workflowEvidenceStore, definitionRegistry: workflowDefinitionRegistry, namespaceId: FACTORY_ORACLE_NAMESPACE_ID, notifier: workflowProjectionSseHub, log: console })) return
 
   if (await handleWorkflowTransitionRequest({ method, path, readBody: () => readBody(req), send: (status, body) => send(res, status, body), store: workflowProjectionStore, evidenceStore: workflowEvidenceStore, definitionRegistry: workflowDefinitionRegistry, notifier: workflowProjectionSseHub, log: console })) return
 
@@ -1337,6 +1349,7 @@ const server = createServer(async (req, res) => {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   await workflowProjectionStore.initialize()
   await workflowDefinitionRegistry.initialize()
+  if (oracleDefinitionRegistry) await oracleDefinitionRegistry.initialize()
   server.listen(PORT, FACTORY_BIND_POLICY.host, () => {
     console.log(`Factory dashboard → http://${FACTORY_BIND_POLICY.host}:${PORT}`)
     console.log(`Factory bind mode  : ${FACTORY_BIND_POLICY.trustMode}${FACTORY_BIND_POLICY.trustMode.startsWith('unsafe') ? ' (explicit unsafe opt-in; routes are unauthenticated)' : ''}`)
