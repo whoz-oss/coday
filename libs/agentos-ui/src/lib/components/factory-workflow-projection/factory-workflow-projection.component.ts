@@ -187,15 +187,6 @@ export class FactoryWorkflowProjectionComponent {
     })
   }
 
-  protected onDeliveryAction(action: string): void {
-    // Delivery actions are intentionally not implemented in the generic cockpit:
-    // checkpoint/push/PR require claims (diff hash + file list) that must come from
-    // the Factory control plane, not from the browser. Actions are surfaced here as
-    // visibility only. Promote (human release approval) may be wired in a future pass
-    // once the evidence route is confirmed operational.
-    console.warn('[delivery-panel] Action requested but not yet wired in generic cockpit:', action)
-  }
-
   protected reconcileEnvironment(): void {
     const execution = this.snapshot().controllerExecution
     if (execution?.kind !== 'agentos') return

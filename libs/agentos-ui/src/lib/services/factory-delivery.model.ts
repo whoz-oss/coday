@@ -4,7 +4,51 @@ export type FactoryDeliveryStage =
   | 'release-approved'
   | 'deployed'
   | 'production-verified'
+export type FactoryDeliveryOperationKind =
+  | 'deployment'
+  | 'production-verification'
+  | 'rollback'
+  | 'rollback-verification'
 export type FactoryDeliveryOperationState = 'pending' | 'running' | 'succeeded' | 'failed' | 'indeterminate'
+export type FactoryRollbackRequestStatus = 'requested' | 'approved' | 'rejected'
+
+export interface FactoryDeliveryTargetSummaryDto {
+  readonly targetId?: string
+  readonly targetHash?: string
+  readonly adapterId?: string
+}
+
+export interface FactoryDeliveryActorDto {
+  readonly actorId?: string
+  readonly authorityId?: string
+  readonly kind?: string
+}
+
+export interface FactoryDeliveryOperationDto {
+  readonly operationId: string
+  readonly kind: FactoryDeliveryOperationKind
+  readonly state: FactoryDeliveryOperationState
+  readonly targetRef?: FactoryDeliveryTargetSummaryDto
+  readonly attempt: number
+  readonly requestedAt: string
+  readonly startedAt?: string
+  readonly completedAt?: string
+  readonly adapterCorrelation?: Readonly<Record<string, unknown>>
+  readonly result?: Readonly<Record<string, unknown>>
+  readonly error?: Readonly<Record<string, unknown>>
+}
+
+export interface FactoryRollbackRequestDto {
+  readonly rollbackRequestId: string
+  readonly status: FactoryRollbackRequestStatus
+  readonly targetId: string
+  readonly reasonCode: string
+  readonly reason?: string
+  readonly requestedAt: string
+  readonly requestedBy?: FactoryDeliveryActorDto
+  readonly approvedAt?: string
+  readonly approvedBy?: FactoryDeliveryActorDto
+}
 
 export interface FactoryDeliverySnapshotDto {
   readonly deliveryId: string
@@ -34,6 +78,9 @@ export interface FactoryDeliverySnapshotDto {
   readonly deployment: { readonly state: FactoryDeliveryOperationState | 'pending' }
   readonly verification: { readonly state: FactoryDeliveryOperationState | 'pending' }
   readonly blockers: readonly { readonly code: string; readonly message?: string }[]
+  readonly deliveryOperations?: readonly FactoryDeliveryOperationDto[]
+  readonly unresolvedIndeterminate?: readonly FactoryDeliveryOperationDto[]
+  readonly rollbackRequests?: readonly FactoryRollbackRequestDto[]
 }
 
 export interface FactoryDeliveryResponseDto {
