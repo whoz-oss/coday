@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { appendFile, mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { deliveryScopeHash, deliverySemanticHash, evaluateDeliveryPromotion, applyDeliveryPromotion } from './delivery-policy.mjs'
+import { normalizeDeliveryOperationRequest, deriveDeliveryOperationIdentity, validateDeliveryOperationRecord, validateDeliveryOperationTransition } from './delivery-operation-definition.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
@@ -41,8 +42,45 @@ export class DeliveryStore {
   async _write(current, value, operationInput) { const paths = this.paths(value.namespaceId, value.deliveryId), operationId = createHash('sha256').update(`${value.namespaceId}:${value.deliveryId}:${operationInput.idempotencyKey}`).digest('hex'), operation = { schemaVersion: '1', operationId, deliveryId: value.deliveryId, revision: (current?.revision ?? 0) + (current ? 1 : 0), kind: operationInput.kind, state: 'pending', timestamp: new Date().toISOString(), ...(operationInput.scopeHash ? { scopeHash: operationInput.scopeHash, semanticHash: operationInput.semanticHash } : {}), ...(operationInput.evidenceIds ? { evidenceIds: [...operationInput.evidenceIds].sort() } : {}) }; const clean = { ...value }; delete clean.snapshotHash; const snapshot = { ...clean, snapshotHash: hash(clean) }; await atomic(paths.pending, { operation, snapshot, snapshotHash: hash(snapshot) }); await append(paths.journal, operation); await this.fault('after-pending-journal'); const running = { ...operation, state: 'running', timestamp: new Date().toISOString() }; await append(paths.journal, running); await this.fault('after-running'); const succeeded = { ...operation, state: 'succeeded', timestamp: new Date().toISOString(), resultHash: snapshot.snapshotHash }; await append(paths.journal, succeeded); await this.fault('after-success'); await atomic(paths.snapshot, snapshot); await this.fault('after-snapshot'); await rm(paths.pending, { force: true }); return { ok: true, changed: true, idempotent: false, snapshot } }
   async recordOperation(namespaceId, deliveryId, input) { return this._locked(namespaceId, deliveryId, async () => { const records = await this.journal(namespaceId, deliveryId), operationId = createHash('sha256').update(`${namespaceId}:${deliveryId}:${input.idempotencyKey}`).digest('hex'), prior = records.filter((item) => item.operationId === operationId).at(-1); const semanticHash = hash(input.facts); if (prior) { if (prior.semanticHash !== semanticHash) return { ok: false, error: { code: 'IDEMPOTENCY_KEY_COLLISION' } }; return { ok: true, changed: false, operation: prior } } const operation = { schemaVersion: '1', operationId, deliveryId, kind: input.kind, state: input.state, semanticHash, facts: input.facts, timestamp: new Date().toISOString() }; await append(this.paths(namespaceId, deliveryId).journal, operation); return { ok: true, changed: true, operation } }) }
 
-  /** Returns true if any journal entry has state 'indeterminate'. Blocks subsequent Git operations. */
-  async hasIndeterminateOperation(namespaceId, deliveryId) { try { const records = await this.journal(namespaceId, deliveryId); return records.some((item) => item.state === 'indeterminate') } catch { return true } }
+  _deliveryOperationProjection(records) {
+    const history = records.filter((record) => record.recordType === 'delivery-operation')
+    const current = new Map()
+    const resolved = new Set(history.filter((record) => record.resolvedOperationId && ['succeeded', 'failed'].includes(record.state)).map((record) => record.resolvedOperationId))
+    for (const record of history) current.set(record.operationId, record)
+    return { history, operations: [...current.values()], rollbackRequests: history.filter((record) => record.kind === 'rollback' && record.state === 'pending'), unresolvedIndeterminate: [...current.values()].filter((record) => record.state === 'indeterminate' && !resolved.has(record.operationId)) }
+  }
+  async readWithOperations(namespaceId, deliveryId) { const snapshot = await this.read(namespaceId, deliveryId); if (!snapshot) return null; const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)); return { ...snapshot, deliveryOperations: projection.operations, rollbackRequests: projection.rollbackRequests } }
+  async inspectDeliveryOperations(namespaceId, deliveryId) { return this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)) }
+  async createDeliveryOperation({ namespaceId, workflowId, deliveryId, caseId, runtimeId, request, targetRef, execution }) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const normalized = normalizeDeliveryOperationRequest(request); if (!normalized.ok) return normalized
+      const snapshot = await this.read(namespaceId, deliveryId); if (!snapshot) return { ok: false, error: { code: 'DELIVERY_NOT_FOUND' } }
+      const targetHash = targetRef?.targetHash; const identity = deriveDeliveryOperationIdentity({ namespaceId, workflowId, deliveryId, caseId, runtimeId }, normalized.value, targetHash); if (!identity.ok) return identity
+      const records = await this.journal(namespaceId, deliveryId), projection = this._deliveryOperationProjection(records), existing = projection.history.find((record) => record.scopeHash === identity.value.scopeHash)
+      if (existing) return existing.semanticHash === identity.value.semanticHash ? { ok: true, changed: false, idempotent: true, operation: projection.operations.find((record) => record.operationId === existing.operationId) ?? existing } : { ok: false, error: { code: 'IDEMPOTENCY_KEY_COLLISION' } }
+      if (snapshot.revision !== normalized.value.expectedRevision) return { ok: false, error: { code: 'REVISION_CONFLICT' } }
+      if (projection.unresolvedIndeterminate.length) return { ok: false, error: { code: 'DELIVERY_OPERATION_INDETERMINATE' } }
+      const now = new Date().toISOString(), source = normalized.value.artifactRef ?? normalized.value.priorArtifactRef, operation = { recordType: 'delivery-operation', operationId: identity.value.operationId, kind: normalized.value.kind, expectedRevision: normalized.value.expectedRevision, targetRef: canonical(targetRef), artifactRef: normalized.value.artifactRef ?? normalized.value.priorArtifactRef, releaseRef: normalized.value.releaseRef ?? normalized.value.priorReleaseRef, deploymentRef: normalized.value.deploymentRef, rollbackRef: normalized.value.rollbackRef, state: 'pending', attempt: 0, requestedAt: now, startedAt: undefined, completedAt: undefined, execution: canonical(execution), adapterCorrelation: undefined, scopeHash: identity.value.scopeHash, semanticHash: identity.value.semanticHash, result: undefined, error: undefined, resolvedOperationId: undefined, sourceCommit: source?.sourceCommit, artifactDigest: source?.digest, rollbackRequestId: normalized.value.rollbackRequestId, approvedEvidenceId: normalized.value.approvedEvidenceId }
+      const persisted = Object.fromEntries(Object.entries(operation).filter(([, value]) => value !== undefined)); const contract = validateDeliveryOperationRecord(persisted); if (!contract.ok) return { ok: false, error: contract.error }
+      await append(this.paths(namespaceId, deliveryId).journal, persisted); await this.fault('after-delivery-operation-write'); return { ok: true, changed: true, idempotent: false, operation: persisted }
+    })
+  }
+  async recordDeliveryOperation(namespaceId, deliveryId, operationId, transition, options = {}) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      await this.read(namespaceId, deliveryId)
+      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), previous = projection.operations.find((record) => record.operationId === operationId)
+      if (!previous) return { ok: false, error: { code: 'DELIVERY_OPERATION_NOT_FOUND' } }
+      const now = new Date().toISOString(), state = transition.state, next = { ...previous, state, attempt: state === 'running' ? previous.attempt + 1 : previous.attempt, startedAt: state === 'running' ? now : previous.startedAt, completedAt: ['succeeded', 'failed'].includes(state) ? now : undefined, adapterCorrelation: transition.adapterCorrelation ?? previous.adapterCorrelation, result: transition.result, error: transition.error, resolvedOperationId: transition.resolvedOperationId }
+      const clean = Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined)), valid = validateDeliveryOperationTransition(previous, clean, options); if (!valid.ok) return valid
+      const contract = validateDeliveryOperationRecord(clean); if (!contract.ok) return contract
+      await append(this.paths(namespaceId, deliveryId).journal, clean); await this.fault(`after-delivery-operation-${state}`); return { ok: true, changed: true, operation: clean }
+    })
+  }
+  async startDeliveryOperation(namespaceId, deliveryId, operationId, adapterCorrelation) { return this.recordDeliveryOperation(namespaceId, deliveryId, operationId, { state: 'running', adapterCorrelation }) }
+  async reconcileDeliveryOperation(namespaceId, deliveryId, operationId, observation) { return this.recordDeliveryOperation(namespaceId, deliveryId, operationId, { state: observation.state, result: observation.result, error: observation.error, adapterCorrelation: observation.adapterCorrelation, resolvedOperationId: operationId }, { inspectedObservation: { ...observation, operationId } }) }
+
+  /** Only an indeterminate logical operation without a later terminal reconciliation blocks. */
+  async hasIndeterminateOperation(namespaceId, deliveryId) { try { return (await this.inspectDeliveryOperations(namespaceId, deliveryId)).unresolvedIndeterminate.length > 0 } catch { return true } }
 
   /**
    * Atomically patch specific fields in the delivery snapshot and append a journal record.
