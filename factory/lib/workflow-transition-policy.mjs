@@ -39,12 +39,17 @@ export function evaluateWorkflowTransition({request,snapshot,definition,evidence
     if(missing.length) return deny('DEPENDENCIES_NOT_SATISFIED','dependencies_not_completed',{missingEvidence:missing})
   }
   const factoryOracle = declared.responsibility.kind==='code' && execution.kind==='factory-oracle' && execution.runtimeId==='factory-dashboard'
-  if(declared.responsibility.kind!=='agent'&&!factoryOracle) return deny('ACTOR_NOT_AUTHORIZED','agent_tool_cannot_transition_non_agent_step')
+  const factoryHuman = declared.responsibility.kind==='human' && execution.kind==='factory-human' && execution.runtimeId==='factory-dashboard' && typeof execution.actorId==='string' && execution.actorId.length>0
+  if(declared.responsibility.kind!=='agent'&&!factoryOracle&&!factoryHuman) return deny('ACTOR_NOT_AUTHORIZED','runtime_cannot_transition_step_responsibility')
   if(declared.responsibility.kind==='agent'&&declared.responsibility.name&&declared.responsibility.name!==execution.agentId) return deny('ACTOR_NOT_AUTHORIZED','agent_responsibility_mismatch')
+  if(factoryHuman && current.status!=='waiting_human') return deny('INTERACTION_STALE','human_step_is_not_waiting')
   const selected=[]
   for(const id of request.evidenceIds){const item=evidence.find(e=>e.evidenceId===id);if(!item)return deny('EVIDENCE_NOT_FOUND','evidence_not_found',{missingEvidence:[id]});if(item.namespaceId!==execution.namespaceId||item.workflowId!==request.workflowId||item.stepId!==request.stepId)return deny('EVIDENCE_SCOPE_MISMATCH','evidence_scope_mismatch');selected.push(item)}
   if(request.requestedStatus==='completed'){
-    if(factoryOracle){
+    if(factoryHuman){
+      const decision=selected.find(e=>e.kind==='human-decision'&&e.outcome==='pass'&&e.source?.kind==='factory-human'&&e.source?.actorId===execution.actorId)
+      if(!decision)return deny('PASS_EVIDENCE_REQUIRED','matching_human_decision_required',{missingEvidence:['human-decision:pass']})
+    }else if(factoryOracle){
       const pass=selected.find(e=>e.kind==='oracle-result'&&e.outcome==='pass'&&e.source?.kind==='factory-oracle'&&e.facts?.oracleId===declared.responsibility.name)
       if(!pass)return deny('PASS_EVIDENCE_REQUIRED','matching_oracle_result_pass_required',{missingEvidence:['oracle-result:pass']})
     }else{

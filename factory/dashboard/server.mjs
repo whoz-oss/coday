@@ -56,6 +56,8 @@ import { handleWorkflowTransitionRequest } from './workflow-transition-routes.mj
 import { handleWorkflowOracleRequest } from './workflow-oracle-routes.mjs'
 import { OracleDefinitionRegistry } from '../lib/oracle-definition.mjs'
 import { handleWorkflowCodeTransitionRequest } from './workflow-code-transition-routes.mjs'
+import { WorkflowHumanInteractionStore } from '../lib/workflow-human-interaction-store.mjs'
+import { handleWorkflowHumanInteractionRequest } from './workflow-human-interaction-routes.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
@@ -79,6 +81,7 @@ const workflowProjectionStore = new WorkflowProjectionStore(FACTORY_DATA_ROOT)
 const workflowProjectionSseHub = new WorkflowProjectionSseHub()
 const workflowDefinitionRegistry = new WorkflowDefinitionRegistry(join(__dirname, '..', 'workflows'))
 const workflowEvidenceStore = new WorkflowEvidenceStore(FACTORY_DATA_ROOT)
+const workflowHumanInteractionStore = new WorkflowHumanInteractionStore(FACTORY_DATA_ROOT)
 // Trusted control-plane configuration: never inferred from cwd or namespace configPath.
 const FACTORY_ORACLE_DEFINITIONS_ROOT = process.env.FACTORY_ORACLE_DEFINITIONS_ROOT
 const oracleDefinitionRegistry = FACTORY_ORACLE_DEFINITIONS_ROOT ? new OracleDefinitionRegistry(FACTORY_ORACLE_DEFINITIONS_ROOT) : null
@@ -660,6 +663,8 @@ const server = createServer(async (req, res) => {
   if (await handleWorkflowCodeTransitionRequest({ method, path, readBody: () => readBody(req), send: (status, body) => send(res, status, body), store: workflowProjectionStore, evidenceStore: workflowEvidenceStore, definitionRegistry: workflowDefinitionRegistry, namespaceId: FACTORY_ORACLE_NAMESPACE_ID, notifier: workflowProjectionSseHub, log: console })) return
 
   if (await handleWorkflowTransitionRequest({ method, path, readBody: () => readBody(req), send: (status, body) => send(res, status, body), store: workflowProjectionStore, evidenceStore: workflowEvidenceStore, definitionRegistry: workflowDefinitionRegistry, notifier: workflowProjectionSseHub, log: console })) return
+
+  if (await handleWorkflowHumanInteractionRequest({ method, path, url, readBody: () => readBody(req), send: (status, body) => send(res, status, body), projectionStore: workflowProjectionStore, interactionStore: workflowHumanInteractionStore, evidenceStore: workflowEvidenceStore, definitionRegistry: workflowDefinitionRegistry, identity: { actorId: async () => RESOLVED_FACTORY_USER ?? null }, notifier: workflowProjectionSseHub, log: console })) return
 
   if (await handleWorkflowEvidenceRequest({
     method, path, url,

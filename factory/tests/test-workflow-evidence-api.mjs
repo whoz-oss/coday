@@ -16,6 +16,9 @@ const forbiddenOracleResponse=await request(forbiddenOracleHarness,'POST','/api/
 assert.equal(forbiddenOracleResponse.status,403)
 assert.equal(forbiddenOracleResponse.body.error.code,'FACTORY_ONLY_EVIDENCE')
 assert.equal(forbiddenOracleHarness.recorded.length,0)
+const forbiddenHumanHarness=harness()
+const forbiddenHumanResponse=await request(forbiddenHumanHarness,'POST','/api/factory/workflows/wf-1/evidence',{evidence:{workflowId:'wf-1',stepId:'implement',kind:'human-decision',outcome:'pass',facts:{interactionId:'gate-1',actionId:'approve'}},execution})
+assert.equal(forbiddenHumanResponse.status,403);assert.equal(forbiddenHumanResponse.body.error.code,'FACTORY_ONLY_EVIDENCE');assert.equal(forbiddenHumanHarness.recorded.length,0)
 for(const [state,status,code] of [['absent',404,'WORKFLOW_NOT_FOUND'],['removed',410,'WORKFLOW_REMOVED'],['purged',410,'WORKFLOW_PURGED']]){const response=await request(harness({state}),'POST','/api/factory/workflows/wf-1/evidence',{evidence:agent,execution});assert.equal(response.status,status);assert.equal(response.body.error.code,code)}
 for(const legacy of [{projection:{schemaVersion:'1',workflowId:'wf-1'}},{projection:{schemaVersion:'2',workflowId:'wf-1'}}])assert.equal((await request(harness({snapshot:legacy}),'POST','/api/factory/workflows/wf-1/evidence',{evidence:agent,execution})).body.error.code,'DECLARATIVE_WORKFLOW')
 assert.equal((await request(harness({foundDefinition:null}),'POST','/api/factory/workflows/wf-1/evidence',{evidence:agent,execution})).body.error.code,'WORKFLOW_DEFINITION_NOT_FOUND')

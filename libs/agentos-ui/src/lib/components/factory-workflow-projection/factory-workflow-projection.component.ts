@@ -2,7 +2,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   ElementRef,
+  inject,
   input,
   output,
   signal,
@@ -14,7 +16,9 @@ import {
   WorkflowProjectionSnapshotDto,
   WorkflowProjectionTimingState,
   WorkflowProjectionV2,
+  WorkflowHumanInteraction,
 } from '../../services/factory-workflow-projection.model'
+import { FactoryApiService } from '../../services/factory-api.service'
 import { FactoryTemporalLanesComponent } from './factory-temporal-lanes.component'
 
 export type WorkflowProjectionCardMode = 'active' | 'removed'
@@ -28,6 +32,7 @@ type ConfirmationKind = 'remove' | 'purge'
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FactoryWorkflowProjectionComponent {
+  private readonly api = inject(FactoryApiService)
   readonly snapshot = input.required<WorkflowProjectionSnapshotDto>()
   readonly mode = input<WorkflowProjectionCardMode>('active')
   readonly pending = input(false)
@@ -57,6 +62,59 @@ export class FactoryWorkflowProjectionComponent {
     return this.purgeText().trim() === expected
   })
   private readonly dialog = viewChild<ElementRef<HTMLDialogElement>>('confirmationDialog')
+  protected readonly interactions = signal<WorkflowHumanInteraction[]>([])
+  protected readonly interactionLoading = signal(false)
+  protected readonly interactionError = signal<string | null>(null)
+  protected readonly replyingInteractionId = signal<string | null>(null)
+  protected readonly replyText = signal('')
+
+  constructor() {
+    effect(() => {
+      const snapshot = this.snapshot(),
+        namespaceId = this.namespaceId()
+      if (snapshot.projection.steps.some((step) => step.status === 'waiting_human'))
+        this.loadInteractions(namespaceId, snapshot.workflowId)
+      else this.interactions.set([])
+    })
+  }
+
+  private loadInteractions(namespaceId: string, workflowId: string): void {
+    this.interactionLoading.set(true)
+    this.interactionError.set(null)
+    this.api.listWorkflowHumanInteractions(namespaceId, workflowId).subscribe({
+      next: (response) => {
+        this.interactions.set(response.data.items)
+        this.interactionLoading.set(false)
+      },
+      error: () => {
+        this.interactionError.set('Human interaction could not be loaded.')
+        this.interactionLoading.set(false)
+      },
+    })
+  }
+
+  protected reply(interaction: WorkflowHumanInteraction, actionId: string): void {
+    if (this.replyingInteractionId()) return
+    this.replyingInteractionId.set(interaction.interactionId)
+    this.interactionError.set(null)
+    this.api
+      .replyWorkflowHumanInteraction(this.namespaceId(), interaction.workflowId, interaction.interactionId, {
+        expectedRevision: interaction.expectedRevision,
+        actionId,
+        ...(this.replyText().trim() ? { text: this.replyText().trim() } : {}),
+      })
+      .subscribe({
+        next: () => {
+          this.replyingInteractionId.set(null)
+          this.replyText.set('')
+          this.interactions.update((items) => items.filter((item) => item.interactionId !== interaction.interactionId))
+        },
+        error: (error) => {
+          this.replyingInteractionId.set(null)
+          this.interactionError.set(error?.error?.error?.message ?? 'The decision was rejected. Refresh and retry.')
+        },
+      })
+  }
 
   protected selectStep(stepId: string): void {
     this.selectedStepId.set(stepId)

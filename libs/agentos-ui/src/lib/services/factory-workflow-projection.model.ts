@@ -139,6 +139,37 @@ export interface WorkflowProjectionDetailDto {
   data: WorkflowProjectionSnapshotDto & { namespaceId: string }
 }
 
+export interface WorkflowHumanInteractionAction {
+  id: string
+  label: string
+  requestedStatus: WorkflowProjectionStatus
+}
+export interface WorkflowHumanInteraction {
+  interactionId: string
+  workflowId: string
+  stepId: string
+  expectedRevision: number
+  kind: 'approval' | 'choice' | 'text'
+  prompt: string
+  actions: WorkflowHumanInteractionAction[]
+  openedAt: string
+  status: 'open' | 'replied'
+}
+export interface WorkflowHumanInteractionListDto {
+  data: { namespaceId: string; workflowId: string; items: WorkflowHumanInteraction[] }
+}
+export interface WorkflowHumanReplyDto {
+  data: {
+    workflowId: string
+    interactionId: string
+    actorId: string
+    evidenceId: string
+    revision: number
+    projection: WorkflowProjection
+    runtimeNotification: 'not-configured'
+  }
+}
+
 export interface WorkflowProjectionUpdatedEvent {
   workflowId: string
   namespaceId: string

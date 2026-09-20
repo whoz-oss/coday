@@ -100,6 +100,47 @@
     }
   }
 
+  @if (selectedStep()?.status === 'waiting_human') {
+    <section class="workflow-projection__human-gate" aria-live="polite">
+      <h4>Human decision required</h4>
+      @if (interactionLoading()) {
+        <p role="status">Loading available actions…</p>
+      }
+      @if (interactionError()) {
+        <p role="alert">{{ interactionError() }}</p>
+      }
+      @for (interaction of interactions(); track interaction.interactionId) {
+        @if (interaction.stepId === selectedStep()?.id) {
+          <p>{{ interaction.prompt }}</p>
+          @if (interaction.kind === 'text') {
+            <label [for]="'human-reply-' + interaction.interactionId">Response</label>
+            <textarea
+              [id]="'human-reply-' + interaction.interactionId"
+              [ngModel]="replyText()"
+              (ngModelChange)="replyText.set($event)"
+              [disabled]="!!replyingInteractionId()"
+            ></textarea>
+          }
+          <div class="workflow-projection__dialog-actions">
+            @for (action of interaction.actions; track action.id) {
+              <button
+                type="button"
+                class="workflow-projection__button"
+                [disabled]="!!replyingInteractionId()"
+                (click)="reply(interaction, action.id)"
+              >
+                {{ action.label }}
+              </button>
+            }
+          </div>
+          @if (replyingInteractionId() === interaction.interactionId) {
+            <p role="status">Recording decision and evaluating policy…</p>
+          }
+        }
+      }
+    </section>
+  }
+
   <footer class="workflow-projection__actions">
     <details class="workflow-projection__lifecycle">
       <summary>Lifecycle actions</summary>
