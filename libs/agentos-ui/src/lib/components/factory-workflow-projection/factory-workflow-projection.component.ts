@@ -17,6 +17,7 @@ import {
   WorkflowProjectionTimingState,
   WorkflowProjectionV2,
   WorkflowHumanInteraction,
+  WorkUnitEnvironmentDto,
 } from '../../services/factory-workflow-projection.model'
 import { FactoryApiService } from '../../services/factory-api.service'
 import { FactoryTemporalLanesComponent } from './factory-temporal-lanes.component'
@@ -67,6 +68,9 @@ export class FactoryWorkflowProjectionComponent {
   protected readonly interactionError = signal<string | null>(null)
   protected readonly replyingInteractionId = signal<string | null>(null)
   protected readonly replyText = signal('')
+  protected readonly environment = signal<WorkUnitEnvironmentDto | null>(null)
+  protected readonly environmentLoading = signal(false)
+  protected readonly environmentError = signal<string | null>(null)
 
   constructor() {
     effect(() => {
@@ -75,6 +79,45 @@ export class FactoryWorkflowProjectionComponent {
       if (snapshot.projection.steps.some((step) => step.status === 'waiting_human'))
         this.loadInteractions(namespaceId, snapshot.workflowId)
       else this.interactions.set([])
+      const execution = snapshot.controllerExecution
+      if (execution?.kind === 'agentos') this.loadEnvironment(namespaceId, snapshot.workflowId, execution.caseId)
+      else {
+        this.environment.set(null)
+        this.environmentError.set('Environment binding is only available for AgentOS-controlled workflows.')
+      }
+    })
+  }
+
+  private loadEnvironment(namespaceId: string, workflowId: string, caseId: string): void {
+    this.environmentLoading.set(true)
+    this.environmentError.set(null)
+    this.api.getWorkflowEnvironment(namespaceId, workflowId, caseId).subscribe({
+      next: (response) => {
+        this.environment.set(response.data)
+        this.environmentLoading.set(false)
+      },
+      error: (error) => {
+        this.environment.set(null)
+        this.environmentError.set(error?.error?.error?.code ?? 'ENVIRONMENT_NOT_BOUND')
+        this.environmentLoading.set(false)
+      },
+    })
+  }
+
+  protected reconcileEnvironment(): void {
+    const execution = this.snapshot().controllerExecution
+    if (execution?.kind !== 'agentos') return
+    this.environmentLoading.set(true)
+    this.api.reconcileWorkflowEnvironment(this.namespaceId(), this.snapshot().workflowId, execution.caseId).subscribe({
+      next: (response) => {
+        this.environment.set(response.data)
+        this.environmentLoading.set(false)
+        this.environmentError.set(null)
+      },
+      error: (error) => {
+        this.environmentLoading.set(false)
+        this.environmentError.set(error?.error?.error?.code ?? 'OWNERSHIP_UNCERTAIN')
+      },
     })
   }
 

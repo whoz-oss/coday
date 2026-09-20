@@ -147,6 +147,16 @@ export class WorkflowProjectionStore {
     } catch(error){if(error instanceof WorkflowProjectionStoreError)throw error;throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.STORAGE_FAILURE,{},error)}
   }
 
+  async bindEnvironment(namespaceId, workflowId, environmentRef) { return this._locked(namespaceId, workflowId, async () => {
+    if(!environmentRef||typeof environmentRef.environmentId!=='string'||!/^([0-9a-f]{64})$/i.test(environmentRef.environmentHash??''))return{ok:false,error:{code:'INVALID_ENVIRONMENT_REFERENCE'}}
+    const paths=this.paths(namespaceId,workflowId);await this._recover(paths);const current=await this._readSnapshot(paths)
+    if(!current?.instance)return{ok:false,error:{code:WORKFLOW_STORE_ERROR_CODES.WORKFLOW_NOT_FOUND}}
+    const existing=current.instance.environmentRef
+    if(existing){return JSON.stringify(existing)===JSON.stringify(environmentRef)?{ok:true,changed:false,snapshot:current}:{ok:false,error:{code:'ENVIRONMENT_ALREADY_BOUND'}}}
+    const observedAt=new Date().toISOString(),instance={...current.instance,environmentRef,updatedAt:observedAt},snapshot={...current,instance}
+    await atomicJsonWrite(paths.pending,snapshot);await appendDurable(paths.events,{kind:'workflow_environment_bound',revision:current.revision,environmentId:environmentRef.environmentId,environmentHash:environmentRef.environmentHash,observedAt,timestamp:observedAt});await atomicJsonWrite(paths.snapshot,snapshot);await rm(paths.pending,{force:true});return{ok:true,changed:true,snapshot}
+  }) }
+
   async publish(namespaceId, command, controllerExecution) { const validated = validateWorkflowProjection(command); if (!validated.ok) return validated; return this._locked(namespaceId, validated.projection.workflowId, () => this._publish(namespaceId, validated, controllerExecution)) }
   async _publish(namespaceId, validated, controllerExecution) {
     const paths = this.paths(namespaceId, validated.projection.workflowId)

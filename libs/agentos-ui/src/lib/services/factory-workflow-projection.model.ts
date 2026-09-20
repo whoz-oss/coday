@@ -139,6 +139,29 @@ export interface WorkflowProjectionDetailDto {
   data: WorkflowProjectionSnapshotDto & { namespaceId: string }
 }
 
+export interface WorkUnitEnvironmentDto {
+  revision: number
+  environment: {
+    environmentId: string
+    workflowId: string
+    workUnitId: string
+    namespaceId: string
+    parentCaseId?: string
+    repoRoot: string
+    worktreePath: string
+    integrationBranch: string
+    branch: string
+    baseCommit: string | null
+    lifecycleState: 'provisioning' | 'active' | 'completed' | 'abandoned' | 'error' | 'removed'
+  }
+  reconciliation: { status: 'owned' | 'absent' | 'uncertain'; headCommit?: string } | null
+  headCommit: string | null
+  fileAccess: { status: 'bound' | 'blocked'; code: string | null; rootPath: string }
+}
+export interface WorkUnitEnvironmentResponseDto {
+  data: WorkUnitEnvironmentDto
+}
+
 export interface WorkflowHumanInteractionAction {
   id: string
   label: string

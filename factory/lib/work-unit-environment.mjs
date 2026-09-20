@@ -24,6 +24,7 @@ export function validateWorkUnitEnvironment(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_ENVIRONMENT, '$')
   if (input.schemaVersion !== '1') return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_SCHEMA_VERSION, 'schemaVersion')
   for (const field of ['environmentId','workUnitId','createdBy']) { const result = safe(input[field], field); if (!result.ok) return result }
+  const workflow = safe(input.workflowId, 'workflowId', true); if (!workflow.ok) return workflow
   for (const field of ['businessRef','businessType']) { const result = safe(input[field], field, true); if (!result.ok) return result }
   const namespace = validateNamespaceId(input.namespaceId)
   if (!namespace.ok) return namespace
@@ -38,6 +39,6 @@ export function validateWorkUnitEnvironment(input) {
   if (!STATES.has(input.lifecycleState)) return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_STATE, 'lifecycleState')
   if (input.lifecycleState === 'active' && !input.parentCaseId) return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_STATE, 'parentCaseId')
   if (input.lifecycleState === 'provisioning' && input.parentCaseId) return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_STATE, 'parentCaseId')
-  const environment = { schemaVersion:'1', environmentId:input.environmentId, workUnitId:input.workUnitId, namespaceId:input.namespaceId, ...(input.parentCaseId ? { parentCaseId:input.parentCaseId } : {}), ...(input.businessRef ? { businessRef:input.businessRef } : {}), ...(input.businessType ? { businessType:input.businessType } : {}), repoRoot:input.repoRoot, integrationBranch:input.integrationBranch, branch:input.branch, worktreePath:input.worktreePath, baseCommit:input.baseCommit, createdAt:input.createdAt, createdBy:input.createdBy, lifecycleState:input.lifecycleState }
+  const environment = { schemaVersion:'1', environmentId:input.environmentId, workUnitId:input.workUnitId, ...(input.workflowId ? { workflowId:input.workflowId } : {}), namespaceId:input.namespaceId, ...(input.parentCaseId ? { parentCaseId:input.parentCaseId } : {}), ...(input.businessRef ? { businessRef:input.businessRef } : {}), ...(input.businessType ? { businessType:input.businessType } : {}), repoRoot:input.repoRoot, integrationBranch:input.integrationBranch, branch:input.branch, worktreePath:input.worktreePath, baseCommit:input.baseCommit, createdAt:input.createdAt, createdBy:input.createdBy, lifecycleState:input.lifecycleState }
   return { ok: true, environment }
 }

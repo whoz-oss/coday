@@ -59,6 +59,9 @@ import { handleWorkflowCodeTransitionRequest } from './workflow-code-transition-
 import { WorkflowHumanInteractionStore } from '../lib/workflow-human-interaction-store.mjs'
 import { handleWorkflowHumanInteractionRequest } from './workflow-human-interaction-routes.mjs'
 
+import { WorkUnitEnvironmentStore } from '../lib/work-unit-environment-store.mjs'
+import { GitWorktreeProvisioner } from '../lib/git-worktree.mjs'
+import { WorkUnitEnvironmentController, handleWorkUnitEnvironmentRequest } from '../lib/work-unit-environment-controller.mjs'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')
 const RUN_ENTRY = join(__dirname, '..', 'run.mjs')
@@ -82,10 +85,21 @@ const workflowProjectionSseHub = new WorkflowProjectionSseHub()
 const workflowDefinitionRegistry = new WorkflowDefinitionRegistry(join(__dirname, '..', 'workflows'))
 const workflowEvidenceStore = new WorkflowEvidenceStore(FACTORY_DATA_ROOT)
 const workflowHumanInteractionStore = new WorkflowHumanInteractionStore(FACTORY_DATA_ROOT)
-// Trusted control-plane configuration: never inferred from cwd or namespace configPath.
+const FACTORY_REPO_ROOT = process.env.FACTORY_REPO_ROOT
+const FACTORY_WORKTREES_ROOT = process.env.FACTORY_WORKTREES_ROOT
+const workUnitEnvironmentStore = new WorkUnitEnvironmentStore(FACTORY_DATA_ROOT)
+const workUnitEnvironmentController = FACTORY_REPO_ROOT && FACTORY_WORKTREES_ROOT ? new WorkUnitEnvironmentController({
+  store: workUnitEnvironmentStore,
+  git: new GitWorktreeProvisioner({ worktreesRoot: FACTORY_WORKTREES_ROOT }),
+  policy: { resolve: async (_namespaceId, request) => ({ repoRoot: FACTORY_REPO_ROOT, worktreePath: join(FACTORY_WORKTREES_ROOT, `${request.workflowId}-${request.workUnitId}`) }) },
+  workflowStore: workflowProjectionStore,
+}) : null
+// Oracle definitions are supplied by the trusted composition root. The repository
+// currently publishes no production oracle; source tests inject their fixture registry.
 const FACTORY_ORACLE_DEFINITIONS_ROOT = process.env.FACTORY_ORACLE_DEFINITIONS_ROOT
 const oracleDefinitionRegistry = FACTORY_ORACLE_DEFINITIONS_ROOT ? new OracleDefinitionRegistry(FACTORY_ORACLE_DEFINITIONS_ROOT) : null
 const FACTORY_ORACLE_REPO_ROOT = process.env.FACTORY_ORACLE_REPO_ROOT
+// Trusted control-plane configuration: never inferred from cwd or namespace configPath.
 const FACTORY_ORACLE_NAMESPACE_ID = process.env.FACTORY_ORACLE_NAMESPACE_ID
 // Explicit store location for Forge Epic/Story projections. It is intentionally
 // independent from both this dashboard's source tree and the target repoRoot.
@@ -674,6 +688,20 @@ const server = createServer(async (req, res) => {
     evidenceStore: workflowEvidenceStore,
     definitionRegistry: workflowDefinitionRegistry,
     log: console,
+  if (workUnitEnvironmentController && await handleWorkUnitEnvironmentRequest({
+    method, path, url,
+    readBody: () => readBody(req),
+    send: (status, body) => send(res, status, body),
+    controller: workUnitEnvironmentController,
+    identity: async () => {
+      const namespaceId = req.headers['x-factory-namespace-id']
+      const caseId = req.headers['x-factory-case-id']
+      const actorId = req.headers['x-factory-actor-id']
+      return typeof namespaceId === 'string' && typeof caseId === 'string' ? { namespaceId, caseId, actorId: typeof actorId === 'string' ? actorId : 'factory-ui' } : null
+    },
+    log: console,
+  })) return
+
   })) return
 
   if (await handleForgeWorkflowProjectionRequest({
@@ -1372,3 +1400,4 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 }
 
 export { parseJsonl, reconstructPhases }
+  if (workUnitEnvironmentController) await workUnitEnvironmentController.initialize()

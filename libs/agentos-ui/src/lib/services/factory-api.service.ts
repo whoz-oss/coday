@@ -7,6 +7,9 @@ import {
   WorkflowProjectionLifecycleDto,
   WorkflowProjectionListDto,
   WorkflowProjectionTimingDto,
+  WorkflowHumanInteractionListDto,
+  WorkflowHumanReplyDto,
+  WorkUnitEnvironmentResponseDto,
 } from './factory-workflow-projection.model'
 
 export interface FactoryForgeOracleResult {
@@ -202,6 +205,29 @@ export class FactoryApiService {
         params: new HttpParams().set('namespaceId', namespaceId),
         ...(actorId ? { body: { actorId } } : {}),
       }
+    )
+  }
+
+  getWorkflowEnvironment(
+    namespaceId: string,
+    workflowId: string,
+    caseId: string
+  ): Observable<WorkUnitEnvironmentResponseDto> {
+    return this.http.get<WorkUnitEnvironmentResponseDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/environment`,
+      { headers: { 'X-Factory-Namespace-Id': namespaceId, 'X-Factory-Case-Id': caseId } }
+    )
+  }
+
+  reconcileWorkflowEnvironment(
+    namespaceId: string,
+    workflowId: string,
+    caseId: string
+  ): Observable<WorkUnitEnvironmentResponseDto> {
+    return this.http.post<WorkUnitEnvironmentResponseDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/environment/reconcile`,
+      {},
+      { headers: { 'X-Factory-Namespace-Id': namespaceId, 'X-Factory-Case-Id': caseId } }
     )
   }
 

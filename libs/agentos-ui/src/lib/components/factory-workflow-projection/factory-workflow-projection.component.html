@@ -41,6 +41,62 @@
     }
   </dl>
 
+  <section class="workflow-projection__selected-step" aria-labelledby="environment-title">
+    <h4 id="environment-title">Work unit environment</h4>
+    @if (environmentLoading()) {
+      <p role="status">Checking isolated worktree…</p>
+    }
+    @if (environment(); as binding) {
+      <dl class="workflow-projection__metadata">
+        <div>
+          <dt>State</dt>
+          <dd>{{ binding.environment.lifecycleState }}</dd>
+        </div>
+        <div>
+          <dt>Worktree / FILE_ACCESS root</dt>
+          <dd>
+            <code>{{ binding.fileAccess.rootPath }}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>Branch</dt>
+          <dd>
+            <code>{{ binding.environment.branch }}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>Base commit</dt>
+          <dd>
+            <code>{{ binding.environment.baseCommit || 'Unavailable' }}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>Observed HEAD</dt>
+          <dd>
+            <code>{{ binding.headCommit || 'Unavailable' }}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>FILE_ACCESS</dt>
+          <dd>{{ binding.fileAccess.status }}</dd>
+        </div>
+      </dl>
+      <button
+        type="button"
+        class="workflow-projection__button"
+        [disabled]="environmentLoading()"
+        (click)="reconcileEnvironment()"
+      >
+        Verify environment
+      </button>
+    } @else if (environmentError()) {
+      <p role="alert">
+        Blocked: {{ environmentError() }}. Workers must not start until Factory proves the worktree and FILE_ACCESS
+        binding.
+      </p>
+    }
+  </section>
+
   @if (v2Projection(); as projection) {
     <agentos-factory-temporal-lanes
       [projection]="projection"

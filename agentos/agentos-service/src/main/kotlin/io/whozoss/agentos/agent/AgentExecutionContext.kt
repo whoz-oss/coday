@@ -31,6 +31,8 @@ data class AgentExecutionContext(
     val caseId: UUID? = null,
     val caseCreatedAt: Instant? = null,
     val userId: UUID? = null,
+    /** Trusted orchestration binding; never populated from model/tool input. */
+    val workflowId: String? = null,
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     val emitEvent: ((CaseEvent) -> CaseEvent)? = null,
 ) {

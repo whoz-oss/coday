@@ -97,6 +97,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val queryUserToolGrantService: QueryUserToolGrantService = mockk(relaxed = true)
     // Relaxed Boolean defaults to false, preserving the pre-Factory tool set unless a test opts in.
     private val factoryToolGrantService: FactoryToolGrantService = mockk(relaxed = true)
+    private val factoryEnvironmentBindingService: io.whozoss.agentos.factory.FactoryEnvironmentBindingService = mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
             chatClientProvider = chatClientProvider,
@@ -124,6 +125,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentConfigProperties = AgentConfigProperties(),
             queryUserToolGrantService = queryUserToolGrantService,
             factoryToolGrantService = factoryToolGrantService,
+            factoryEnvironmentBindingService = factoryEnvironmentBindingService,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -502,6 +504,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentConfigProperties = AgentConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
                     factoryToolGrantService = factoryToolGrantService,
+                    factoryEnvironmentBindingService = factoryEnvironmentBindingService,
                 )
             val caseTool = mockk<StandardTool<*>>()
             every { caseTool.name } returns "case-exchange__readFile"
@@ -834,6 +837,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentConfigProperties = AgentConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
                     factoryToolGrantService = factoryToolGrantService,
+                    factoryEnvironmentBindingService = factoryEnvironmentBindingService,
                 )
             val configs =
                 listOf(

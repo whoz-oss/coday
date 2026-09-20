@@ -22,6 +22,7 @@ class FactoryToolGrantService(private val plugin: FactoryToolPlugin) {
         return integrations[FactoryToolPlugin.INTEGRATION_TYPE].orEmpty().mapNotNull {
             when (it) {
                 "get_workflow", "FACTORY__get_workflow" -> "get_workflow"
+                "provision_environment", "FACTORY__provision_environment" -> "provision_environment"
                 "start_workflow", "FACTORY__start_workflow" -> "start_workflow"
                 "publish_projection", "FACTORY__publish_projection" -> "publish_projection"
                 "record_agent_result", "FACTORY__record_agent_result" -> "record_agent_result"

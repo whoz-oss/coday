@@ -1,6 +1,6 @@
 # Factory Work Unit Environment v1
 
-Factory exclusively owns Git worktree creation and removal. AgentOS, workflows and model-visible tools are not integrated in this increment.
+Factory exclusively owns Git worktree creation and removal. Phase 8 links each environment durably to a governed `workflowId` and controlling AgentOS case, while keeping repository and worktree roots in the trusted Factory composition root.
 
 ## Contract
 
@@ -32,6 +32,6 @@ The service durably reserves provisioning intent before `git worktree add`. `bas
 
 Absolute paths remain Factory-internal and must not become model-visible tool arguments. Canonicalization and explicit roots limit path confusion, while the mono-host assumption remains a deployment constraint.
 
-Remaining limitations are mono-host/mono-process ownership, no writer lease across processes, and no automatic repair of uncertain Git metadata. There are no watchers or branch cleanup.
+Remaining limitations are mono-host/mono-process ownership, no distributed writer lease, and no automatic repair of uncertain Git metadata. There are no watchers or branch cleanup. Production deployment must run one Factory writer; uncertain reconciliation is surfaced as `OWNERSHIP_UNCERTAIN`/`ENVIRONMENT_NOT_BOUND` and workers receive no work-unit file tools.
 
-The next integration stage is a Case environment token plus case-scoped `FILE_ACCESS` root resolution. Case metadata should be added only with that enforcement; AgentOS still must not own Git lifecycle.
+Phase 8 control-plane roots are mandatory `FACTORY_REPO_ROOT` and `FACTORY_WORKTREES_ROOT`; neither CWD, namespace configPath nor model/client input is used. The authoritative `WorkflowInstance.environmentRef` stores only the environment ID and immutable environment hash; reads resolve through that reference and fail closed if the current environment snapshot no longer matches. AgentOS exposes `FACTORY__provision_environment` without path arguments. Work-unit `FILE_ACCESS` is explicit-only through `WORK_UNIT_FILE_ACCESS`, resolves the environment using trusted namespace/case identity, requires exact canonical equality between the durable worktree path and `toRealPath()`, and otherwise grants no tools. The cockpit displays durable state, base commit, observed HEAD, worktree/root and the fail-closed block code. Git commit/checkpoint remains intentionally absent until Phase 9.
