@@ -243,6 +243,18 @@ class AgentServiceImplUnitSpec : StringSpec() {
         every { toolRegistryService.findPlugin(any()) } returns null
         // reconciliation services are relaxed mocks — return the base entity unchanged (passthrough) by default
 
+        // Re-establish the default findEffective(any(), null) stub before EVERY test, not just once
+        // at spec construction. Several tests below override this stub with a specific set of
+        // IntegrationConfigs to exercise the redirectGuideline merge; without this per-test reset,
+        // a test whose assertions fail before it can restore the stub itself would leak that
+        // override into whichever test runs next, making test order significant. Scoped strictly to
+        // findEffective(any(), null) — this spec does not use a blanket clearAllMocks() because
+        // several other mocks (e.g. namespaceService, toolRegistryService) are also stubbed once
+        // above and rely on surviving across tests.
+        beforeTest {
+            every { integrationConfigService.findEffective(any(), null) } returns emptyList()
+        }
+
         // -------------------------------------------------------------------------
         // findAgentByName — AgentConfig-first resolution
         // -------------------------------------------------------------------------
@@ -903,8 +915,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agent.systemPrompt shouldContain "Jira workspace: ACME Engineering (42 open issues)"
 
-            // restore default stubs
-            every { integrationConfigService.findEffective(any(), null) } returns emptyList()
             every { toolRegistryService.findPlugin(any()) } returns null
         }
 
@@ -935,8 +945,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agent.systemPrompt shouldContain namespace.name
             agent.systemPrompt shouldNotContain "null"
 
-            // restore default stubs
-            every { integrationConfigService.findEffective(any(), null) } returns emptyList()
             every { toolRegistryService.findPlugin(any()) } returns null
         }
 
@@ -966,8 +974,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
             agent.systemPrompt shouldContain namespace.name
 
-            // restore default stubs
-            every { integrationConfigService.findEffective(any(), null) } returns emptyList()
             every { toolRegistryService.findPlugin(any()) } returns null
         }
 
@@ -1011,8 +1017,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             coVerify(exactly = 1) { jiraPlugin.describeNamespace(any(), eq("JIRA_PROD"), any()) }
             coVerify(exactly = 1) { slackPlugin.describeNamespace(any(), eq("SLACK_DEV"), any()) }
 
-            // restore default stubs
-            every { integrationConfigService.findEffective(any(), null) } returns emptyList()
             every { toolRegistryService.findPlugin(any()) } returns null
         }
 
@@ -1779,6 +1783,231 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentService.resolveAgentName("restricted", namespaceId, userId) shouldBe null
 
             verify(exactly = 0) { agentConfigService.findByName(any(), any()) }
+        }
+
+        // -------------------------------------------------------------------------
+        // redirectGuideline extraction — resolveDefinition seam
+        // -------------------------------------------------------------------------
+
+        "resolveDefinition extracts redirectGuideline from a REDIRECT integration config referenced by the agent" {
+            val redirectConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "REDIRECT_PROD",
+                integrationType = "REDIRECT",
+                parameters = testObjectMapper.readTree("""{"guideline": "When done, redirect to TRSharing."}"""),
+            )
+            val config = agentConfig(name = "redirect-agent", modelName = "sonnet")
+                .copy(integrations = mapOf("REDIRECT_PROD" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe "When done, redirect to TRSharing."
+        }
+
+        "resolveDefinition returns null redirectGuideline when no REDIRECT integration config is present" {
+            val config = agentConfig(name = "no-redirect-agent", modelName = "sonnet")
+                .copy(integrations = mapOf("JIRA_PROD" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe null
+        }
+
+        "resolveDefinition returns null redirectGuideline when REDIRECT config exists but is not referenced in agent integrations" {
+            val redirectConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "REDIRECT_PROD",
+                integrationType = "REDIRECT",
+                parameters = testObjectMapper.readTree("""{"guideline": "Redirect to TRSharing."}"""),
+            )
+            // Agent does NOT declare REDIRECT_PROD in its integrations
+            val config = agentConfig(name = "unlinked-agent", modelName = "sonnet")
+                .copy(integrations = mapOf("JIRA_PROD" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe null
+        }
+
+        "resolveDefinition returns null redirectGuideline when REDIRECT config guideline parameter is blank" {
+            val redirectConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "REDIRECT_PROD",
+                integrationType = "REDIRECT",
+                parameters = testObjectMapper.readTree("""{"guideline": "   "}"""),
+            )
+            val config = agentConfig(name = "blank-guideline-agent", modelName = "sonnet")
+                .copy(integrations = mapOf("REDIRECT_PROD" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe null
+        }
+
+        "resolveDefinition merges guidelines from several referenced REDIRECT configs, sorted by config name (deterministic, cache-stable order)" {
+            // Config names are chosen so the ALPHABETICAL order differs from the INSERTION order
+            // below: if resolveRedirectGuideline ever regressed to preserving findEffective's
+            // (unspecified) return order instead of sorting by name, this test would catch it.
+            val zetaConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "REDIRECT_ZETA",
+                integrationType = "REDIRECT",
+                parameters = testObjectMapper.readTree("""{"guideline": "Second guideline (zeta)."}"""),
+            )
+            val alphaConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "REDIRECT_ALPHA",
+                integrationType = "REDIRECT",
+                parameters = testObjectMapper.readTree("""{"guideline": "First guideline (alpha)."}"""),
+            )
+            // Insertion order is [zeta, alpha] — the reverse of the expected sorted output.
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(zetaConfig, alphaConfig)
+            val config = agentConfig(name = "multi-redirect-agent", modelName = "sonnet")
+                .copy(integrations = mapOf("REDIRECT_ZETA" to null, "REDIRECT_ALPHA" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe "First guideline (alpha).\n\nSecond guideline (zeta)."
+        }
+
+        "resolveDefinition merge ignores a blank guideline among several referenced REDIRECT configs, keeping only the non-blank one" {
+            val blankConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "REDIRECT_BLANK",
+                integrationType = "REDIRECT",
+                parameters = testObjectMapper.readTree("""{"guideline": "   "}"""),
+            )
+            val validConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "REDIRECT_VALID",
+                integrationType = "REDIRECT",
+                parameters = testObjectMapper.readTree("""{"guideline": "Only this one counts."}"""),
+            )
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(blankConfig, validConfig)
+            val config = agentConfig(name = "partial-blank-redirect-agent", modelName = "sonnet")
+                .copy(integrations = mapOf("REDIRECT_BLANK" to null, "REDIRECT_VALID" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe "Only this one counts."
+        }
+
+        // -------------------------------------------------------------------------
+        // redirectGuideline routing — AgentSimple (instructions) vs AgentAdvanced (context), no double injection
+        // -------------------------------------------------------------------------
+
+        "findAgentByName with advancedExecution=false wires redirectGuideline into AgentSimple instructions" {
+            val redirectConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "REDIRECT_PROD",
+                integrationType = "REDIRECT",
+                parameters = testObjectMapper.readTree("""{"guideline": "Redirect billing questions to Finance."}"""),
+            )
+            val config = agentConfig(name = "simple-redirect-agent", modelName = "sonnet")
+                .copy(advancedExecution = false, integrations = mapOf("REDIRECT_PROD" to null))
+            every { agentConfigService.findByName(namespaceId, "simple-redirect-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val agent = agentService.findAgentByName("simple-redirect-agent", context) as AgentSimple
+
+            agent.instructions shouldContain "## Redirect Guideline"
+            agent.instructions shouldContain "Redirect billing questions to Finance."
+        }
+
+        "findAgentByName with advancedExecution=true does not duplicate redirectGuideline into resolved instructions" {
+            val redirectConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "REDIRECT_PROD",
+                integrationType = "REDIRECT",
+                parameters = testObjectMapper.readTree("""{"guideline": "Redirect billing questions to Finance."}"""),
+            )
+            val config = agentConfig(name = "advanced-no-dup-agent", modelName = "sonnet")
+                .copy(advancedExecution = true, integrations = mapOf("REDIRECT_PROD" to null))
+            every { agentConfigService.findByName(namespaceId, "advanced-no-dup-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val agent = agentService.findAgentByName("advanced-no-dup-agent", context) as AgentAdvanced
+
+            // Pragmatic reflection use, justified: exercising the guideline routing here would
+            // otherwise require driving a full AgentAdvanced.run() flow (event list, ThinkingEvent,
+            // an intentionGenerator stub returning ANSWER_TOOL to end the loop, flow collection)
+            // just to observe a value set at construction time by createAgentInstance. The
+            // constructed AgentAdvancedContext is not otherwise observable — intentionGenerator is
+            // only invoked once the agent actually runs. Reflection on the private 'context' field
+            // keeps this test focused on the wiring seam (same rationale as the pre-existing
+            // confirmationManager wiring test above).
+            val contextField = AgentAdvanced::class.java.getDeclaredField("context").apply { isAccessible = true }
+            val advancedCtx = contextField.get(agent) as AgentAdvancedContext
+
+            advancedCtx.redirectGuideline shouldBe "Redirect billing questions to Finance."
+            // AgentAdvancedContext.buildMessages already merges `instructions` into the last user
+            // message — so the guideline must NOT also be present in resolved instructions, or it
+            // would be duplicated in the advanced-mode prompt.
+            (advancedCtx.instructions ?: "") shouldNotContain "Redirect billing questions to Finance."
+            (advancedCtx.instructions ?: "") shouldNotContain "## Redirect Guideline"
+        }
+
+        // -------------------------------------------------------------------------
+        // redirectGuideline wiring seam — findAgentByName → AgentAdvancedContext
+        // -------------------------------------------------------------------------
+
+        "findAgentByName with advancedExecution=true wires redirectGuideline into AgentAdvancedContext" {
+            val redirectConfig = IntegrationConfig(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "REDIRECT_PROD",
+                integrationType = "REDIRECT",
+                parameters = testObjectMapper.readTree("""{"guideline": "Always redirect to TRSharing when finished."}"""),
+            )
+            val config = agentConfig(name = "advanced-redirect-agent", modelName = "sonnet")
+                .copy(advancedExecution = true, integrations = mapOf("REDIRECT_PROD" to null))
+            every { agentConfigService.findByName(namespaceId, "advanced-redirect-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val agent = agentService.findAgentByName("advanced-redirect-agent", context) as AgentAdvanced
+
+            val contextField = AgentAdvanced::class.java.getDeclaredField("context").apply { isAccessible = true }
+            val advancedCtx = contextField.get(agent) as AgentAdvancedContext
+            advancedCtx.redirectGuideline shouldBe "Always redirect to TRSharing when finished."
         }
     }
 }
