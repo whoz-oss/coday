@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
 /**
@@ -167,6 +168,7 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
 
     /**
      * Returns true if at least one non-removed ScheduledPrompt references the given promptTemplateId.
+     * Read-only: no write intent, no dirty checking.
      */
     @Query(
         $$"""
@@ -176,14 +178,15 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
             RETURN count(sp) > 0
             """,
     )
+    @Transactional(readOnly = true)
     fun existsActiveByPromptTemplateId(promptTemplateId: String): Boolean
 
     /**
      * Soft-delete all non-removed ScheduledPrompts referencing the given agentConfigId,
      * and soft-delete their linked Prompts in the same query.
      *
-     * Uses OPTIONAL MATCH for the Prompt so that the SP is always soft-deleted even when
-     * its linked Prompt is already removed or missing (orphaned SP). The Prompt SET clause
+     * Uses OPTIONAL MATCH for the Prompt so that the ScheduledPrompt is always soft-deleted even when
+     * its linked Prompt is already removed or missing (orphaned ScheduledPrompt). The Prompt SET clause
      * only executes when p IS NOT NULL.
      *
      * Returns the number of scheduled prompts soft-deleted.
