@@ -1,3 +1,13 @@
+## 3.2.0 (2026-09-21)
+
+### 🚀 Features
+
+- **agentos-service:** #34892 inject redirect guideline into planning prompt ([#1348](https://github.com/whoz-oss/coday/pull/1348), [#34892](https://github.com/whoz-oss/coday/issues/34892))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 3.1.0 (2026-09-21)
 
 ### 🚀 Features
