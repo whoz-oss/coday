@@ -62,6 +62,33 @@ export const artifactEvidenceSchema = {
   },
   required: ['workflowId', 'stepId', 'artifactRef', 'artifactHash'],
 }
+export const humanDecisionRequestSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    workflowId: { type: 'string', maxLength: 128, pattern: safeId.source },
+    stepId: { type: 'string', maxLength: 128, pattern: safeId.source },
+    expectedRevision: { type: 'integer', minimum: 1 },
+    prompt: { type: 'string', minLength: 1, maxLength: 2000 },
+    actions: {
+      type: 'array',
+      minItems: 2,
+      maxItems: 2,
+      uniqueItems: true,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string', enum: ['approve', 'reject'] },
+          label: { type: 'string', minLength: 1, maxLength: 128 },
+        },
+        required: ['id', 'label'],
+      },
+    },
+    idempotencyKey: { type: 'string', minLength: 1, maxLength: 128 },
+  },
+  required: ['workflowId', 'stepId', 'expectedRevision', 'prompt', 'actions', 'idempotencyKey'],
+}
 export const transitionSchema = {
   type: 'object',
   additionalProperties: false,

@@ -15,8 +15,7 @@ export class WorkflowDefinitionRegistry {
   async resolveUnique(workflowType) {
     const matches = (await this.list()).filter((definition) => definition.workflowType === workflowType)
     if (matches.length === 0) throw new WorkflowDefinitionRegistryError('WORKFLOW_DEFINITION_NOT_FOUND', { workflowType })
-    if (matches.length !== 1) throw new WorkflowDefinitionRegistryError('WORKFLOW_DEFINITION_AMBIGUOUS', { workflowType, versions: matches.map((item) => item.version) })
-    return matches[0]
+    return matches.sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))[0]
   }
 
   async #load() {

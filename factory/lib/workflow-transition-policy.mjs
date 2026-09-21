@@ -24,6 +24,41 @@ export function validateWorkflowTransitionRequest(input, expectedWorkflowId) {
 export const transitionSemanticHash=(request)=>createHash('sha256').update(JSON.stringify({workflowId:request.workflowId,stepId:request.stepId,expectedRevision:request.expectedRevision,requestedStatus:request.requestedStatus,evidenceIds:[...request.evidenceIds].sort()})).digest('hex')
 export const transitionScopeHash=(namespaceId,request,execution)=>createHash('sha256').update(JSON.stringify({namespaceId,workflowId:request.workflowId,stepId:request.stepId,source:{kind:execution.kind,runtimeId:execution.runtimeId,agentId:execution.agentId,caseId:execution.caseId,threadId:execution.threadId},idempotencyKey:request.idempotencyKey})).digest('hex')
 
+export function evaluateHumanCheckpointOpen({request,snapshot,definition,execution}) {
+  if(!snapshot)return deny('WORKFLOW_NOT_FOUND','workflow_not_found')
+  if(snapshot.governanceMode!=='governed'||snapshot.instance?.governanceMode!=='governed')return deny('WORKFLOW_NOT_GOVERNED','workflow_not_governed')
+  if(!definition)return deny('WORKFLOW_DEFINITION_NOT_FOUND','definition_not_found')
+  const instance=snapshot.instance
+  if(instance.workflowType!==definition.workflowType||instance.definitionVersion!==definition.version||instance.definitionHash!==definition.definitionHash||snapshot.definitionVersion!==definition.version||snapshot.definitionHash!==definition.definitionHash)return deny('WORKFLOW_DEFINITION_MISMATCH','definition_identity_mismatch')
+  const declared=definition.steps.find(step=>step.id===request.stepId),current=instance.steps.find(step=>step.id===request.stepId)
+  if(!declared||!current)return deny('STEP_NOT_FOUND','step_not_found')
+  if(request.expectedRevision!==snapshot.revision||instance.revision!==snapshot.revision)return deny('REVISION_CONFLICT','revision_mismatch')
+  if(declared.responsibility?.kind!=='human')return deny('ACTOR_NOT_AUTHORIZED','step_is_not_human_owned')
+  if(current.status!=='ready')return deny('ILLEGAL_TRANSITION','human_step_is_not_ready')
+  const missing=declared.dependsOn.filter(id=>instance.steps.find(step=>step.id===id)?.status!=='completed')
+  if(missing.length)return deny('DEPENDENCIES_NOT_SATISFIED','dependencies_not_completed',{missingEvidence:missing})
+  const controller=instance.controllerExecution??snapshot.controllerExecution
+  if(!controller||controller.kind!==execution.kind||controller.runtimeId!==execution.runtimeId||controller.agentId!==execution.agentId||controller.caseId!==execution.caseId||controller.threadId!==execution.threadId)return deny('ACTOR_NOT_AUTHORIZED','execution_does_not_control_workflow')
+  return {allowed:true}
+}
+
+export function evaluateHumanResolutionTransition({request,snapshot,definition,evidence,execution}) {
+  const current=snapshot?.instance?.steps?.find(step=>step.id===request.stepId)
+  if(current?.status!=='waiting_human')return deny('INTERACTION_STALE','human_step_is_not_waiting')
+  if(!['completed','failed'].includes(request.requestedStatus))return deny('ILLEGAL_TRANSITION','human_resolution_target_not_allowed')
+  if(request.requestedStatus==='completed'){
+    const bridged={...snapshot,instance:{...snapshot.instance,steps:snapshot.instance.steps.map(step=>step.id===request.stepId?{...step,status:'running'}:step)}}
+    const decision=evidence.find(item=>request.evidenceIds.includes(item.evidenceId)&&item.kind==='human-decision'&&item.outcome==='pass'&&item.source?.kind==='factory-human'&&item.source?.actorId===execution.actorId)
+    if(!decision)return deny('PASS_EVIDENCE_REQUIRED','matching_human_decision_required',{missingEvidence:['human-decision:pass']})
+    const evaluated=evaluateWorkflowTransition({request:{...request,requestedStatus:'completed'},snapshot:bridged,definition,evidence,execution:{...execution,kind:'factory-human-resolution'}})
+    return evaluated.code==='ACTOR_NOT_AUTHORIZED'&&evaluated.reason==='runtime_cannot_transition_step_responsibility'?{allowed:true}:evaluated
+  }
+  const completion=evaluateWorkflowTransition({request:{...request,requestedStatus:'failed'},snapshot,definition,evidence,execution})
+  if(!completion.allowed)return completion
+  const selected=request.evidenceIds.map(id=>evidence.find(item=>item.evidenceId===id)).filter(Boolean)
+  return selected.some(item=>item.kind==='human-decision'&&item.outcome==='fail'&&item.source?.kind==='factory-human'&&item.source?.actorId===execution.actorId)?{allowed:true}:deny('FAIL_EVIDENCE_REQUIRED','matching_human_decision_fail_required',{missingEvidence:['human-decision:fail']})
+}
+
 export function evaluateWorkflowTransition({request,snapshot,definition,evidence,execution}) {
   if(!snapshot) return deny('WORKFLOW_NOT_FOUND','workflow_not_found')
   if(snapshot.governanceMode!=='governed'||snapshot.instance?.governanceMode!=='governed') return deny('WORKFLOW_NOT_GOVERNED','workflow_not_governed')
@@ -69,5 +104,25 @@ export function applyWorkflowTransition(snapshot,definition,request,observedAt=n
   const revision=snapshot.revision+1
   const instance={...snapshot.instance,revision,status,steps:snapshot.instance.steps.map(s=>({...s,status:previous.get(s.id)})),updatedAt:observedAt}
   const projection={...snapshot.projection,status,steps:snapshot.projection.steps.map(s=>({...s,status:previous.get(s.id)}))}
-  return {instance,projection,revision}
+  return {...snapshot,instance,projection,revision}
+}
+
+/** Dedicated application path after evaluateHumanCheckpointOpen authorizes ready → waiting_human. */
+export function applyHumanCheckpointOpen(snapshot,definition,request,observedAt=new Date().toISOString()){
+  const statuses = new Map(snapshot.instance.steps.map(step => [step.id, step.status]))
+  statuses.set(request.stepId, 'waiting_human')
+  const revision = snapshot.revision + 1
+  const instance = {
+    ...snapshot.instance,
+    revision,
+    status: 'waiting_human',
+    steps: snapshot.instance.steps.map(step => ({ ...step, status: statuses.get(step.id) })),
+    updatedAt: observedAt,
+  }
+  const projection = {
+    ...snapshot.projection,
+    status: 'waiting_human',
+    steps: snapshot.projection.steps.map(step => ({ ...step, status: statuses.get(step.id) })),
+  }
+  return { ...snapshot, instance, projection, revision }
 }

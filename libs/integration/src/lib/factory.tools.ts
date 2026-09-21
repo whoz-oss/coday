@@ -1,6 +1,15 @@
 import { AssistantToolFactory, CodayTool, CommandContext, IntegrationConfig, Interactor } from '@coday/model'
-import { agentResultEvidenceSchema, artifactEvidenceSchema, transitionSchema } from './factory.schemas'
-import { validateEvidenceToolInput, validateTransitionToolInput } from './factory.validation'
+import {
+  agentResultEvidenceSchema,
+  artifactEvidenceSchema,
+  humanDecisionRequestSchema,
+  transitionSchema,
+} from './factory.schemas'
+import {
+  validateEvidenceToolInput,
+  validateHumanDecisionRequestInput,
+  validateTransitionToolInput,
+} from './factory.validation'
 
 /** @deprecated Transitional Express adapter. Use AgentOS FactoryPublishProjectionTool when available. */
 export class FactoryTools extends AssistantToolFactory {
@@ -48,8 +57,29 @@ export class FactoryTools extends AssistantToolFactory {
       {
         type: 'function',
         function: {
+          name: `${this.name}__request_human_decision`,
+          description: 'Open a governed human checkpoint. This only requests a decision; it cannot approve or reject.',
+          parameters: humanDecisionRequestSchema,
+          parse: JSON.parse,
+          function: async (input: unknown) => this.requestHumanDecision(context, agentName, input),
+        },
+      },
+      {
+        type: 'function',
+        function: {
           name: `${this.name}__request_transition`,
           description: 'Request a governed transition for an agent-owned step.',
+          parameters: transitionSchema,
+          parse: JSON.parse,
+          function: async (input: unknown) => this.requestTransition(context, agentName, input),
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: `${this.name}__transition_workflow`,
+          description:
+            'Transition one step of a governed workflow using the current revision and authoritative evidence.',
           parameters: transitionSchema,
           parse: JSON.parse,
           function: async (input: unknown) => this.requestTransition(context, agentName, input),
@@ -209,6 +239,53 @@ export class FactoryTools extends AssistantToolFactory {
       return data?.evidence && typeof data.created === 'boolean' && typeof data.idempotent === 'boolean'
         ? JSON.stringify(data)
         : errorResult('MALFORMED_FACTORY_RESPONSE', 'Factory returned malformed evidence.')
+    } catch {
+      return errorResult('FACTORY_UNAVAILABLE', 'Factory is unavailable.')
+    }
+  }
+
+  private async requestHumanDecision(context: CommandContext, agentName: string, input: unknown): Promise<string> {
+    const config = context.project.factory,
+      configError = validateConfig(config)
+    if (configError) return errorResult('FACTORY_UNAVAILABLE', configError)
+    const validationError = validateHumanDecisionRequestInput(input)
+    if (validationError) return errorResult('INVALID_INTERACTION', validationError)
+    const threadId = context.aiThread?.id?.trim()
+    if (!threadId) return errorResult('FACTORY_UNAVAILABLE', 'A controlling Coday thread identity is required.')
+    const value = input as Record<string, unknown>,
+      headers: Record<string, string> = {
+        'content-type': 'application/json',
+        'x-factory-namespace-id': config!.namespaceId!,
+        'x-factory-runtime-id': config!.runtimeId?.trim() || 'coday-express-transitional',
+        'x-factory-agent-id': agentName?.trim() || 'default',
+        'x-factory-thread-id': threadId,
+      }
+    try {
+      const response = await fetch(
+        `${config!.baseUrl!.replace(/\/+$/, '')}/api/factory/workflows/${encodeURIComponent(value.workflowId as string)}/interactions`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            stepId: value.stepId,
+            expectedRevision: value.expectedRevision,
+            prompt: value.prompt,
+            actions: value.actions,
+            idempotencyKey: value.idempotencyKey,
+          }),
+        }
+      )
+      const payload: unknown = await response.json().catch(() => undefined)
+      if (!response.ok) {
+        const error = readFactoryError(payload)
+        return error
+          ? errorResult(error.code, error.message)
+          : errorResult('FACTORY_UNAVAILABLE', 'Factory rejected the human checkpoint request.')
+      }
+      const data = (payload as { data?: Record<string, unknown> } | undefined)?.data
+      return data && Number.isInteger(data.revision) && data.interaction
+        ? JSON.stringify(data)
+        : errorResult('MALFORMED_FACTORY_RESPONSE', 'Factory returned a malformed human checkpoint response.')
     } catch {
       return errorResult('FACTORY_UNAVAILABLE', 'Factory is unavailable.')
     }

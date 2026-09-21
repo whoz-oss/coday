@@ -5,7 +5,7 @@ import { hashWorkflowProjection, validateWorkflowProjection, validateWorkflowPro
 import { projectWorkflowTiming } from './workflow-timing-projector.mjs'
 import { createWorkflowInstance, workflowStartCommandHash } from './workflow-instance.mjs'
 import { collectWorkflowDescendants, deriveWorkflowRelations, validateWorkflowRelationsInput, WORKFLOW_RELATION_ERROR_CODES } from './workflow-relations.mjs'
-import { applyWorkflowTransition, evaluateWorkflowTransition, transitionScopeHash, transitionSemanticHash } from './workflow-transition-policy.mjs'
+import { applyWorkflowTransition, evaluateHumanCheckpointOpen, evaluateHumanResolutionTransition, evaluateWorkflowTransition, transitionScopeHash, transitionSemanticHash } from './workflow-transition-policy.mjs'
 
 export const WORKFLOW_STORE_ERROR_CODES = Object.freeze({
   INVALID_DATA_ROOT: 'INVALID_DATA_ROOT', INVALID_NAMESPACE_ID: 'INVALID_NAMESPACE_ID', REVISION_CONFLICT: 'REVISION_CONFLICT',
@@ -131,8 +131,10 @@ export class WorkflowProjectionStore {
     } catch (error) { if (error instanceof WorkflowProjectionStoreError) throw error; throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.STORAGE_FAILURE, {}, error) }
   }
 
-  async transition(namespaceId, request, definition, evidence, controllerExecution, { fault = async () => {} } = {}) { return this._locked(namespaceId, request.workflowId, () => this._transition(namespaceId, request, definition, evidence, controllerExecution, fault)) }
-  async _transition(namespaceId, request, definition, evidence, controllerExecution, fault) {
+  async transition(namespaceId, request, definition, evidence, controllerExecution, { fault = async () => {}, policy = evaluateWorkflowTransition } = {}) { return this._locked(namespaceId, request.workflowId, () => this._transition(namespaceId, request, definition, evidence, controllerExecution, fault, policy)) }
+  async openHumanCheckpoint(namespaceId, request, definition, controllerExecution, options={}) { return this.transition(namespaceId, request, definition, [], controllerExecution, {...options,policy:evaluateHumanCheckpointOpen}) }
+  async resolveHumanCheckpoint(namespaceId, request, definition, evidence, humanExecution, options={}) { return this.transition(namespaceId, request, definition, evidence, humanExecution, {...options,policy:evaluateHumanResolutionTransition}) }
+  async _transition(namespaceId, request, definition, evidence, controllerExecution, fault, policy) {
     const paths=this.paths(namespaceId,request.workflowId), observedAt=new Date().toISOString(), execution={...controllerExecution,namespaceId}
     try {
       const tombstone=await this._tombstone(paths)
@@ -149,7 +151,7 @@ export class WorkflowProjectionStore {
       const from=current?.instance?.steps?.find(s=>s.id===request.stepId)?.status??null
       const requestFact={kind:'transition_requested',requestId:request.requestId,stepId:request.stepId,from,to:request.requestedStatus,evidenceIds:[...request.evidenceIds],observedAt,timestamp:observedAt,...attribution(controllerExecution,['actorId','agentId','caseId','threadId']),...(request.idempotencyKey?{idempotency:{scopeHash:transitionScopeHash(namespaceId,request,execution),semanticHash:transitionSemanticHash(request)}}:{})}
       await mkdir(paths.directory,{recursive:true});await appendDurable(paths.events,requestFact)
-      const decision=evaluateWorkflowTransition({request,snapshot:current,definition,evidence,execution})
+      const decision=policy({request,snapshot:current,definition,evidence,execution})
       if(!decision.allowed){await appendDurable(paths.events,{kind:'transition_rejected',requestId:request.requestId,policyCode:decision.code,observedRevision:current?.revision??0,observedAt,timestamp:observedAt,...attribution(controllerExecution,['actorId','agentId','caseId','threadId'])});return {ok:false,decision,error:{code:decision.code},requestId:request.requestId}}
       const applied=applyWorkflowTransition(current,definition,request,observedAt), projectionHash=hashWorkflowProjection(applied.projection)
       const snapshot={...current,revision:applied.revision,projectionHash,instance:applied.instance,projection:applied.projection,controllerExecution:{...controllerExecution,observedAt}}

@@ -20,7 +20,6 @@ integrations:
     - get_me
   PROJECT_SCRIPTS:
     - forge-run-recon
-    - FORGE_COST__report
   DELEGATE:
     - Searcher
     - BmadOrchestrator
@@ -31,6 +30,10 @@ integrations:
   FACTORY:
     - get_workflow
     - start_workflow
+    - transition_workflow
+    - request_human_decision
+    - record_agent_result
+    - record_artifact
     - publish_projection
 
 mandatoryDocs:
@@ -157,9 +160,15 @@ instructions: |
   as `stories[0].id`. Never use the ticket key as both `epic.id` and `stories[0].id`
   when `epicKey` is present — the epic and the story are distinct work items.
 
-  ## Factory Projection Ownership
+  ## Factory Workflow Ownership
 
-  You are the sole publisher of each Forge/BMAD `bmad-story` Factory workflow. Follow the mandatory generic Factory projection and Forge/BMAD adapter skills; delegated agents report facts to you and never publish the same workflow.
+  You are the sole governed transition owner of each Forge/BMAD `bmad-story` Factory workflow. Delegated agents report bounded facts and outcomes; they never mutate the global workflow.
+
+  After `FACTORY__start_workflow`, never update the workflow with `FACTORY__publish_projection`. Refresh with `FACTORY__get_workflow`, record real evidence with `FACTORY__record_agent_result` or `FACTORY__record_artifact`, capture the opaque Factory-generated evidence ID, then perform exactly one `FACTORY__transition_workflow` call using the current revision. Never invent an evidence ID.
+
+  For delegated phases, `agent-result:pass` means that ProductEngineer received and accepted a complete authoritative phase result; the business verdict belongs in bounded facts such as `resultCode` and `category`. For technical review, completion means the review was executed and its verdict was received. A FAIL verdict requires actual review rework; a PASS verdict requires an explicit verified no-op result for the `review-rework` step.
+
+  Human checkpoints remain controlled by the Factory human path. For a ready human-owned step, call `FACTORY__request_human_decision` with the exact current revision, the bounded prompt, fixed approve/reject actions, and an idempotency key. Factory atomically opens the interaction and moves the step to `waiting_human`. Stop immediately after opening it. Resume only after `FACTORY__get_workflow` reports that step `completed` (approved) or `failed` (rejected). Never submit a decision, impersonate human approval, or replace it with agent evidence.
 
   ## BMad Delegation Pattern
 

@@ -59,6 +59,53 @@ export function validateEvidenceToolInput(kind: 'agent-result' | 'artifact', inp
   )
     return 'facts must be a non-empty allow-listed object.'
 }
+export function validateHumanDecisionRequestInput(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return 'Human decision request must be an object.'
+  const value = input as Record<string, unknown>,
+    allowed = ['workflowId', 'stepId', 'expectedRevision', 'prompt', 'actions', 'idempotencyKey']
+  if (Object.keys(value).some((key) => !allowed.includes(key)))
+    return 'Human decision request contains unsupported or attribution fields.'
+  if (
+    typeof value.workflowId !== 'string' ||
+    !safeId.test(value.workflowId) ||
+    typeof value.stepId !== 'string' ||
+    !safeId.test(value.stepId)
+  )
+    return 'workflowId and stepId are invalid.'
+  if (
+    !Number.isSafeInteger(value.expectedRevision) ||
+    (value.expectedRevision as number) < 1 ||
+    typeof value.prompt !== 'string' ||
+    !value.prompt ||
+    value.prompt.length > 2000
+  )
+    return 'Revision or prompt is invalid.'
+  if (
+    typeof value.idempotencyKey !== 'string' ||
+    !value.idempotencyKey ||
+    value.idempotencyKey.length > 128 ||
+    /[\r\n]/.test(value.idempotencyKey)
+  )
+    return 'idempotencyKey is invalid.'
+  const actions = value.actions
+  if (
+    !Array.isArray(actions) ||
+    actions.length !== 2 ||
+    new Set(actions.map((action) => (action as Record<string, unknown>)?.id)).size !== 2 ||
+    actions.some(
+      (action) =>
+        !action ||
+        typeof action !== 'object' ||
+        Array.isArray(action) ||
+        Object.keys(action).some((key) => !['id', 'label'].includes(key)) ||
+        !['approve', 'reject'].includes((action as Record<string, unknown>).id as string) ||
+        typeof (action as Record<string, unknown>).label !== 'string' ||
+        !(action as Record<string, unknown>).label ||
+        ((action as Record<string, unknown>).label as string).length > 128
+    )
+  )
+    return 'actions must be exactly approve and reject with bounded labels.'
+}
 export function validateTransitionToolInput(input: unknown): string | undefined {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return 'Transition must be an object.'
   const value = input as Record<string, unknown>,
