@@ -33,7 +33,13 @@ import java.util.UUID
  * @param advancedExecution Whether the agent should run in advanced multi-step mode.
  * @param namespaceId The namespace this agent is scoped to.
  * @param userId The user the agent is built for, or null for anonymous / system runs.
- * @param redirectGuideline Redirect process guideline extracted from the REDIRECT integration config, or null when absent.
+ * @param redirectGuideline Merged redirect guideline text: the `guideline` parameter of every
+ *   REDIRECT integration config referenced by this agent (via [AgentConfig.integrations]),
+ *   sorted by config name and concatenated, or null when none of them carries a non-blank
+ *   guideline. Its destination in the built [Agent] depends on [advancedExecution]: for an
+ *   `AgentAdvanced` it is passed to [AgentAdvancedContext.redirectGuideline] and consumed by
+ *   [AgentIntentionGenerator]'s planning prompt; for an `AgentSimple` it is appended to
+ *   [instructions] instead. See [io.whozoss.agentos.agent.AgentServiceImpl.resolveRedirectGuideline].
  */
 data class ResolvedAgentDefinition(
     val agentConfigId: UUID,

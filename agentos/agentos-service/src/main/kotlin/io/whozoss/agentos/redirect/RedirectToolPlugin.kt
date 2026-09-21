@@ -46,6 +46,17 @@ import java.util.UUID
  * @param agentResolver Lambda injected by [io.whozoss.agentos.redirect.RedirectConfiguration]
  *   to avoid a circular Spring dependency. Given a namespace UUID, an optional user UUID,
  *   and a list of glob patterns, returns the matching [AgentConfig]s accessible to that user.
+ *
+ * ## The `guideline` config parameter
+ *
+ * The `guideline` property declared in [CONFIG_SCHEMA] is deliberately NOT read by this
+ * plugin — [provideTools] never looks at it. It is instead read directly by
+ * [io.whozoss.agentos.agent.AgentServiceImpl] (via [GUIDELINE_PARAM]) when resolving an
+ * [io.whozoss.agentos.agent.ResolvedAgentDefinition], and from there injected either into
+ * [io.whozoss.agentos.agent.AgentIntentionGenerator]'s planning prompt (`advancedExecution`
+ * agents) or into the agent's own instructions (`AgentSimple`). This plugin only owns the
+ * schema (name + shape of the parameter); the consumption logic lives with the agent
+ * resolution/execution code.
  */
 class RedirectToolPlugin(
     private val agentResolver: (namespaceId: UUID, userId: UUID?, patterns: List<String>) -> List<AgentConfig>,
@@ -101,6 +112,7 @@ class RedirectToolPlugin(
 
     companion object : KLogging() {
         const val INTEGRATION_TYPE = "REDIRECT"
+        const val GUIDELINE_PARAM = "guideline"
 
         val CONFIG_SCHEMA: JsonNode = jacksonObjectMapper().readTree(
             """
@@ -119,7 +131,7 @@ class RedirectToolPlugin(
                     "guideline": {
                         "type": "string",
                         "title": "Process Guideline",
-                        "description": "Optional process guideline returned verbatim by the WhatsNext tool. When present, a WhatsNextTool is added to the agent's tool set so the agent can consult the guideline at the end of its turn and decide whether to hand off to another agent.",
+                        "description": "Optional guideline telling the agent when and to which agent to redirect. It is injected into the agent's planning prompt (advanced agents) or into its instructions (simple agents) \u2014 no tool is added. When several REDIRECT configs are referenced by the same agent, their guidelines are concatenated.",
                         "x-ui-widget": "textarea"
                     }
                 },

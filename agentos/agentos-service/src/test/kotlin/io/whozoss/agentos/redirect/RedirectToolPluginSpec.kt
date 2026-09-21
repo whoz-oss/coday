@@ -198,7 +198,8 @@ class RedirectToolPluginSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // Guideline in config (now injected into intention prompt, not a tool)
+    // Guideline in config (read by AgentServiceImpl and injected into the agent's
+    // intention prompt or instructions — never surfaced as a tool by this plugin)
     // -------------------------------------------------------------------------
 
     "provideTools returns only RedirectTool when config has no guideline" {

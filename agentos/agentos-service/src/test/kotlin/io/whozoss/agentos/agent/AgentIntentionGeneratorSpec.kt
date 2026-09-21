@@ -482,9 +482,8 @@ class AgentIntentionGeneratorSpec :
             makeGenerator().generate("agent", context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
             // The guideline block (header + content) is injected only when redirectGuideline is non-blank.
-            // Note: <redirect_guidelines> also appears as a bare tag reference in the reasoning section
-            // unconditionally, so only the header and guideline text are meaningful discriminators.
-            promptSlot.captured.contents shouldContain "### Redirect Guidelines"
+            promptSlot.captured.contents shouldContain "### Redirect Guideline"
+            promptSlot.captured.contents shouldContain "<redirect_guideline>"
             promptSlot.captured.contents shouldContain "When done, redirect to TRSharing."
         }
 
@@ -500,8 +499,12 @@ class AgentIntentionGeneratorSpec :
 
             makeGenerator().generate("agent", makeContext(mockChatClient), makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
+            // Reinforced: the reference to <redirect_guideline> in the Agent Handoff reasoning step
+            // is now conditional too, so absolutely no occurrence of "redirect_guideline" (tag or
+            // title) should leak into the prompt when no guideline is configured.
             val contents = promptSlot.captured.contents
-            contents shouldNotContain "### Redirect Guidelines"
+            contents shouldNotContain "### Redirect Guideline"
+            contents shouldNotContain "redirect_guideline"
         }
 
         "generate — redirectGuideline blank: prompt does not contain the guideline block" {
@@ -525,6 +528,7 @@ class AgentIntentionGeneratorSpec :
             makeGenerator().generate("agent", context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
 
             val contents = promptSlot.captured.contents
-            contents shouldNotContain "### Redirect Guidelines"
+            contents shouldNotContain "### Redirect Guideline"
+            contents shouldNotContain "redirect_guideline"
         }
     })
