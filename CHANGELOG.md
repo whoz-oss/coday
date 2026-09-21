@@ -1,3 +1,13 @@
+## 3.1.0 (2026-09-21)
+
+### 🚀 Features
+
+- wz-34857 - blacklist in redirect tool plugin ([#1347](https://github.com/whoz-oss/coday/pull/1347))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 # 3.0.0 (2026-09-18)
 
 ### 🚀 Features
