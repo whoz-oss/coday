@@ -1,3 +1,58 @@
+## 3.1.0 (2026-09-21)
+
+### 🚀 Features
+
+- wz-34857 - blacklist in redirect tool plugin ([#1347](https://github.com/whoz-oss/coday/pull/1347))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+# 3.0.0 (2026-09-18)
+
+### 🚀 Features
+
+- #1275 filesystem skill catalog discovery and prompt injection ([#1275](https://github.com/whoz-oss/coday/issues/1275))
+- #1275 promote Skill to Entity with Neo4j persistence layer ([#1275](https://github.com/whoz-oss/coday/issues/1275))
+- add skill discovery and agent capability composition ([2c4b9794](https://github.com/whoz-oss/coday/commit/2c4b9794))
+- #1275 filesystem skill catalog discovery and prompt injection ([#1277](https://github.com/whoz-oss/coday/pull/1277), [#1275](https://github.com/whoz-oss/coday/issues/1275))
+- ⚠️  **skill:** authorize filesystem-backed skills and harden resource reads ([83bab738](https://github.com/whoz-oss/coday/commit/83bab738))
+
+### 🩹 Fixes
+
+- #1275 revert out-of-scope AgentConfigController changes ([#1275](https://github.com/whoz-oss/coday/issues/1275))
+- #1275 harden SkillResolver and document skill trust boundary ([#1275](https://github.com/whoz-oss/coday/issues/1275))
+- stabilize scheduled prompt batch scenario mock ([2d466e41](https://github.com/whoz-oss/coday/commit/2d466e41))
+
+### ⚠️  Breaking Changes
+
+- **skill:** authorize filesystem-backed skills and harden resource reads  ([83bab738](https://github.com/whoz-oss/coday/commit/83bab738))
+
+### ❤️ Thank You
+
+- leo
+- leo-punsola-whoz @leo-punsola-whoz
+
+## 2.1.1 (2026-09-18)
+
+### 🩹 Fixes
+
+- #1317 surface provider error body on streaming path ([#1318](https://github.com/whoz-oss/coday/pull/1318), [#1317](https://github.com/whoz-oss/coday/issues/1317))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 2.1.0 (2026-09-17)
+
+### 🚀 Features
+
+- 1344 - remove kill button from agentos ui ([#1345](https://github.com/whoz-oss/coday/pull/1345))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 # 2.0.0 (2026-09-16)
 
 ### 🩹 Fixes

@@ -4,6 +4,8 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -20,7 +22,10 @@ class RedirectToolPluginSpec : StringSpec({
     val namespaceId: UUID = UUID.randomUUID()
     val userId: UUID = UUID.randomUUID()
 
-    fun agentConfig(name: String, description: String? = null) = AgentConfig(
+    fun agentConfig(
+        name: String,
+        description: String? = null,
+    ) = AgentConfig(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         namespaceId = namespaceId,
         name = name,
@@ -34,6 +39,14 @@ class RedirectToolPluginSpec : StringSpec({
         caseEvents = emptyList(),
         agentName = agentName,
     )
+
+    fun pluginWithAgents(agents: List<AgentConfig>): RedirectToolPlugin =
+        RedirectToolPlugin { _, _, _ -> agents }
+
+    fun configWithDenied(vararg denied: String): JsonNode =
+        jacksonObjectMapper().readTree(
+            """{"agents":["*"],"deniedAgents":${denied.joinToString(",", "[", "]") { "\"$it\"" }}}"""
+        )
 
     // -------------------------------------------------------------------------
     // userId propagation
@@ -87,7 +100,7 @@ class RedirectToolPluginSpec : StringSpec({
             agentConfig("AgentA", "Does A"),
             agentConfig("AgentB", "Does B"),
         )
-        val plugin = RedirectToolPlugin { _, _, _ -> agents }
+        val plugin = pluginWithAgents(agents)
 
         val tools = plugin.provideTools(config = null, context = context(userId = userId))
 
@@ -113,7 +126,7 @@ class RedirectToolPluginSpec : StringSpec({
                 ),
             ),
         )
-        val plugin = RedirectToolPlugin { _, _, _ -> agents }
+        val plugin = pluginWithAgents(agents)
 
         val tool = plugin.provideTools(config = null, context = context(userId = userId)).first() as RedirectTool
         val eligible = tool.eligibleAgents.first()
@@ -134,14 +147,14 @@ class RedirectToolPluginSpec : StringSpec({
                 integrations = null,
             ),
         )
-        val plugin = RedirectToolPlugin { _, _, _ -> agents }
+        val plugin = pluginWithAgents(agents)
 
         val tool = plugin.provideTools(config = null, context = context(userId = userId)).first() as RedirectTool
         tool.eligibleAgents.first().integrations shouldBe emptyList()
     }
 
     "provideTools returns a RedirectTool with no-agents description when resolver returns no agents" {
-        val plugin = RedirectToolPlugin { _, _, _ -> emptyList() }
+        val plugin = pluginWithAgents(emptyList())
 
         val tools = plugin.provideTools(config = null, context = context(userId = userId))
 
@@ -161,7 +174,7 @@ class RedirectToolPluginSpec : StringSpec({
             agentConfig("AgentA", "Does A"),
             agentConfig("AgentB", "Does B"),
         )
-        val plugin = RedirectToolPlugin { _, _, _ -> agents }
+        val plugin = pluginWithAgents(agents)
 
         val tool = plugin.provideTools(config = null, context = context(agentName = "AgentA")).first() as RedirectTool
         tool.eligibleAgents.map { it.name } shouldBe listOf("AgentB")
@@ -169,7 +182,7 @@ class RedirectToolPluginSpec : StringSpec({
 
     "provideTools returns a RedirectTool with no-agents description when calling agent is the only eligible agent" {
         val agents = listOf(agentConfig("AgentA", "Does A"))
-        val plugin = RedirectToolPlugin { _, _, _ -> agents }
+        val plugin = pluginWithAgents(agents)
 
         val tools = plugin.provideTools(config = null, context = context(agentName = "AgentA"))
         tools shouldHaveSize 1
@@ -182,14 +195,14 @@ class RedirectToolPluginSpec : StringSpec({
             agentConfig("AgentA", "Does A"),
             agentConfig("AgentB", "Does B"),
         )
-        val plugin = RedirectToolPlugin { _, _, _ -> agents }
+        val plugin = pluginWithAgents(agents)
 
         val tool = plugin.provideTools(config = null, context = context(agentName = null)).first() as RedirectTool
         tool.eligibleAgents.map { it.name } shouldBe listOf("AgentA", "AgentB")
     }
 
     "provideTools returns empty list when context has no namespaceId" {
-        val plugin = RedirectToolPlugin { _, _, _ -> listOf(agentConfig("AgentA")) }
+        val plugin = pluginWithAgents(listOf(agentConfig("AgentA")))
 
         // ToolContext requires namespaceId — pass null context to simulate missing namespace
         val tools = plugin.provideTools(config = null, context = null)
@@ -198,14 +211,52 @@ class RedirectToolPluginSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // Blacklist (deniedAgents config param)
+    // -------------------------------------------------------------------------
+
+    "provideTools excludes agents listed in deniedAgents config" {
+        val agents = listOf(
+            agentConfig("AgentA", "Does A"),
+            agentConfig("AgentB", "Does B"),
+            agentConfig("AgentC", "Does C"),
+        )
+        val plugin = pluginWithAgents(agents)
+
+        val tool = plugin.provideTools(config = configWithDenied("AgentB"), context = context(userId = userId)).first() as RedirectTool
+        tool.eligibleAgents.map { it.name } shouldBe listOf("AgentA", "AgentC")
+    }
+
+    "provideTools deniedAgents exclusion is case-insensitive" {
+        val agents = listOf(
+            agentConfig("AgentA", "Does A"),
+            agentConfig("AgentB", "Does B"),
+        )
+        val plugin = pluginWithAgents(agents)
+
+        val tool = plugin.provideTools(config = configWithDenied("agentb"), context = context(userId = userId)).first() as RedirectTool
+        tool.eligibleAgents.map { it.name } shouldBe listOf("AgentA")
+    }
+
+    "provideTools keeps all agents when deniedAgents is absent from config" {
+        val agents = listOf(
+            agentConfig("AgentA", "Does A"),
+            agentConfig("AgentB", "Does B"),
+        )
+        val plugin = pluginWithAgents(agents)
+        val config = jacksonObjectMapper().readTree("""{"agents":["*"]}""")
+
+        val tool = plugin.provideTools(config = config, context = context(userId = userId)).first() as RedirectTool
+        tool.eligibleAgents.map { it.name } shouldBe listOf("AgentA", "AgentB")
+    }
+
+    // -------------------------------------------------------------------------
     // Guideline in config (read by AgentServiceImpl and injected into the agent's
     // intention prompt or instructions — never surfaced as a tool by this plugin)
     // -------------------------------------------------------------------------
 
     "provideTools returns only RedirectTool when config has no guideline" {
-        val plugin = RedirectToolPlugin { _, _, _ -> listOf(agentConfig("AgentA")) }
-        val config = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
-            .readTree("""{"agents":["*"]}""")
+        val plugin = pluginWithAgents(listOf(agentConfig("AgentA")))
+        val config = jacksonObjectMapper().readTree("""{"agents":["*"]}""")
 
         val tools = plugin.provideTools(config = config, context = context(userId = userId))
 
@@ -214,7 +265,7 @@ class RedirectToolPluginSpec : StringSpec({
     }
 
     "provideTools returns only RedirectTool when config is null" {
-        val plugin = RedirectToolPlugin { _, _, _ -> listOf(agentConfig("AgentA")) }
+        val plugin = pluginWithAgents(listOf(agentConfig("AgentA")))
 
         val tools = plugin.provideTools(config = null, context = context(userId = userId))
 
@@ -223,8 +274,8 @@ class RedirectToolPluginSpec : StringSpec({
     }
 
     "provideTools returns only RedirectTool even when guideline is present" {
-        val plugin = RedirectToolPlugin { _, _, _ -> listOf(agentConfig("AgentA")) }
-        val config = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(
+        val plugin = pluginWithAgents(listOf(agentConfig("AgentA")))
+        val config = jacksonObjectMapper().readTree(
             """{"agents":["*"],"guideline":"When done, redirect to TRSharing."}"""
         )
 
