@@ -36,6 +36,12 @@ import java.util.UUID
  * that run. Agents that do not exist in the namespace are silently excluded — the LLM
  * never receives a stale or inaccessible name.
  *
+ * ## Blacklist (`deniedAgents`)
+ *
+ * The optional `deniedAgents` array in the config parameters is a list of exact agent names
+ * (case-insensitive) that are excluded from redirection targets, even if they match a
+ * whitelist pattern. Blacklist takes precedence over the whitelist.
+ *
  * ## Authorization
  *
  * When [ToolContext.userId] is available, [agentResolver] applies the same Neo4j graph
@@ -65,29 +71,30 @@ class RedirectToolPlugin(
             return emptyList()
         }
 
-        val patterns = config
-            ?.get("agents")
-            ?.takeIf { it.isArray }
-            ?.map { it.asText() }
-            ?.filter { it.isNotBlank() }
-            ?.takeIf { it.isNotEmpty() }
-            ?: listOf("*")
+        val patterns = config.stringList("agents").takeIf { it.isNotEmpty() } ?: listOf("*")
+        val deniedAgents = config.stringList("deniedAgents").map { it.lowercase() }.toSet()
 
         val userId = context.userId
         val callingAgentName = context.agentName
-        val eligibleAgents = agentResolver(namespaceId, userId, patterns)
-            .filter { agentConfig -> agentConfig.name != callingAgentName }
-            .map { agentConfig ->
-                RedirectTool.EligibleAgent(
-                    name = agentConfig.name,
-                    description = agentConfig.description,
-                    integrations = agentConfig.integrations
-                        ?.map { (integrationName, allowedTools) ->
-                            RedirectTool.Integration(name = integrationName, allowedTools = allowedTools)
-                        }
-                        ?: emptyList(),
-                )
-            }
+        val candidates = agentResolver(namespaceId, userId, patterns)
+        val eligibleAgents =
+            candidates
+                .filter { agentConfig ->
+                    agentConfig.name != callingAgentName &&
+                        agentConfig.name.lowercase() !in deniedAgents
+                }
+                .map { agentConfig ->
+                    RedirectTool.EligibleAgent(
+                        name = agentConfig.name,
+                        description = agentConfig.description,
+                        integrations =
+                            agentConfig.integrations
+                                ?.map { (integrationName, allowedTools) ->
+                                    RedirectTool.Integration(name = integrationName, allowedTools = allowedTools)
+                                }
+                                ?: emptyList(),
+                    )
+                }
 
         if (eligibleAgents.isEmpty()) {
             logger.warn { "[RedirectToolPlugin] No eligible agents found for namespace $namespaceId with patterns $patterns" }
@@ -106,32 +113,44 @@ class RedirectToolPlugin(
     }
 
     companion object : KLogging() {
+        /** Returns the non-blank string values of a JSON array field, or an empty list when absent or not an array. */
+        private fun JsonNode?.stringList(field: String): List<String> =
+            this?.get(field)?.takeIf { it.isArray }?.map { it.asText() }?.filter { it.isNotBlank() } ?: emptyList()
+
         const val INTEGRATION_TYPE = "REDIRECT"
 
-        val CONFIG_SCHEMA: JsonNode = jacksonObjectMapper().readTree(
-            """
-            {
-                "type": "object",
-                "title": "Redirect Configuration",
-                "description": "Allows an agent to delegate the current request to another agent.",
-                "properties": {
-                    "agents": {
-                        "type": "array",
-                        "title": "Allowed Agents",
-                        "description": "Glob patterns matching agent names this integration may redirect to. Use \"*\" for all agents. Examples: [\"*\"], [\"Github*\", \"Jira*\"].",
-                        "items": { "type": "string" },
-                        "default": ["*"]
+        val CONFIG_SCHEMA: JsonNode =
+            jacksonObjectMapper().readTree(
+                """
+                {
+                    "type": "object",
+                    "title": "Redirect Configuration",
+                    "description": "Allows an agent to delegate the current request to another agent.",
+                    "properties": {
+                        "agents": {
+                            "type": "array",
+                            "title": "Allowed Agents",
+                            "description": "Glob patterns matching agent names this integration may redirect to. Use \"*\" for all agents. Examples: [\"*\"], [\"Github*\", \"Jira*\"].",
+                            "items": { "type": "string" },
+                            "default": ["*"]
+                        },
+                        "guideline": {
+                            "type": "string",
+                            "title": "Process Guideline",
+                            "description": "Optional process guideline returned verbatim by the WhatsNext tool. When present, a WhatsNextTool is added to the agent's tool set so the agent can consult the guideline at the end of its turn and decide whether to hand off to another agent.",
+                            "x-ui-widget": "textarea"
+                        },
+                        "deniedAgents": {
+                            "type": "array",
+                            "title": "Denied Agents",
+                            "description": "Exact agent names (case-insensitive) that are excluded from redirection targets, even if they match a whitelist pattern.",
+                            "items": { "type": "string" },
+                            "uniqueItems": true
+                        }
                     },
-                    "guideline": {
-                        "type": "string",
-                        "title": "Process Guideline",
-                        "description": "Optional process guideline returned verbatim by the WhatsNext tool. When present, a WhatsNextTool is added to the agent's tool set so the agent can consult the guideline at the end of its turn and decide whether to hand off to another agent.",
-                        "x-ui-widget": "textarea"
-                    }
-                },
-                "additionalProperties": false
-            }
-            """.trimIndent()
-        )
+                    "additionalProperties": false
+                }
+                """.trimIndent(),
+            )
     }
 }
