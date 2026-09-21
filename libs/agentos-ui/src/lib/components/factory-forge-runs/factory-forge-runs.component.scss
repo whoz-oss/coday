@@ -593,6 +593,107 @@
   @include forge.action-button;
 }
 
+.ws-form {
+  max-width: 480px;
+  padding: 20px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  &__label {
+    @include forge.kicker;
+  }
+
+  &__input {
+    padding: 7px 10px;
+    border: 1px solid var(--sf-rule);
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    color: var(--sf-ink);
+
+    @include forge.focus-ring;
+
+    &::placeholder {
+      color: var(--sf-muted);
+    }
+  }
+
+  &__error {
+    margin: 0;
+    font-size: 13px;
+    color: var(--color-danger-600, #b91c1c);
+  }
+
+  &__actions {
+    display: flex;
+    gap: 10px;
+  }
+}
+
+.btn-refresh {
+  @include forge.action-button;
+}
+
+.story-g1-gate {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 28px;
+  background: var(--sf-accent-wash);
+  border-bottom: 1px solid var(--sf-accent-line);
+
+  &__label {
+    margin: 0;
+    font-size: 13px;
+    color: var(--sf-accent-deep);
+    font-family: var(--sf-heading);
+    letter-spacing: 0.04em;
+  }
+
+  &__error {
+    margin: 0;
+    font-size: 12px;
+    color: var(--color-danger-600, #b91c1c);
+  }
+}
+
+.screen__refresh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 28px 16px;
+  gap: 12px;
+}
+
+.screen__epic-context {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.screen__epic-key {
+  font-family: var(--sf-mono, monospace);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--sf-ink);
+}
+
+.screen__epic-summary {
+  font-size: 14px;
+  color: var(--sf-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 500px;
+}
+
 @container (max-width: 780px) {
   .appbar,
   .crumbs {

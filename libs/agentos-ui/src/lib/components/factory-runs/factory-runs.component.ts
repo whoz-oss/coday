@@ -7,18 +7,12 @@ import { FactoryRunSummary } from '../../services/factory-api.service'
 import { FactoryStateService } from '../../services/factory-state.service'
 import { FactoryRunDetailComponent } from '../factory-run-detail/factory-run-detail.component'
 import { FactoryLaunchComponent } from '../factory-launch/factory-launch.component'
-import { FactoryForgeRunsComponent } from '../factory-forge-runs/factory-forge-runs.component'
 import { FactoryWorkflowProjectionComponent } from '../factory-workflow-projection/factory-workflow-projection.component'
 import { FactoryWorkflowProjectionStateService } from '../../services/factory-workflow-projection-state.service'
 
 @Component({
   selector: 'agentos-factory-runs',
-  imports: [
-    FactoryRunDetailComponent,
-    FactoryLaunchComponent,
-    FactoryForgeRunsComponent,
-    FactoryWorkflowProjectionComponent,
-  ],
+  imports: [FactoryRunDetailComponent, FactoryLaunchComponent, FactoryWorkflowProjectionComponent],
   templateUrl: './factory-runs.component.html',
   styleUrl: './factory-runs.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

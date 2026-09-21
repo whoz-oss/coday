@@ -172,6 +172,8 @@ export interface WorkflowHumanInteraction {
   workflowId: string
   stepId: string
   expectedRevision: number
+  /** Authoritative workflow revision persisted after ready → waiting_human. */
+  revision: number
   kind: 'approval' | 'choice' | 'text'
   prompt: string
   actions: WorkflowHumanInteractionAction[]

@@ -225,7 +225,7 @@ export class FactoryWorkflowProjectionComponent {
     this.interactionError.set(null)
     this.api
       .replyWorkflowHumanInteraction(this.namespaceId(), interaction.workflowId, interaction.interactionId, {
-        expectedRevision: interaction.expectedRevision,
+        expectedRevision: interaction.revision,
         actionId,
         ...(this.replyText().trim() ? { text: this.replyText().trim() } : {}),
       })

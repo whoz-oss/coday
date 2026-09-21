@@ -1,18 +1,6 @@
 @let run = epic();
 
 <section class="screen">
-  <header class="screen__head">
-    <div>
-      <h1 class="screen__title">{{ run.key }}</h1>
-      <p class="screen__subtitle">{{ run.title }}</p>
-    </div>
-    <div class="flags">
-      @for (flag of flags(); track flag.label) {
-        <span class="chip" [style.background]="flag.bg" [style.color]="flag.ink">{{ flag.label }}</span>
-      }
-    </div>
-  </header>
-
   <!-- Ruban agrégé : la distribution des US, mêmes colonnes que la grille. -->
   <div class="plate blueprint">
     <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>

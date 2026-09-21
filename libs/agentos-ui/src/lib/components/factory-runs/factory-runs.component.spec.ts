@@ -5,6 +5,7 @@ import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { signal } from '@angular/core'
 import { BehaviorSubject } from 'rxjs'
 import { FactoryStateService } from '../../services/factory-state.service'
+import { FactoryWorkflowProjectionStateService } from '../../services/factory-workflow-projection-state.service'
 import { FactoryRunsComponent } from './factory-runs.component'
 
 class NamespaceStateStub {
@@ -19,6 +20,7 @@ describe('FactoryRunsComponent', () => {
   let routeParams: BehaviorSubject<ReturnType<typeof convertToParamMap>>
   let namespaceState: NamespaceStateStub
   let factoryState: { namespaceId: jest.Mock; clear: jest.Mock; load: jest.Mock }
+  let workflowProjectionState: ReturnType<typeof makeWorkflowProjectionState>
   let routerMock: { navigate: jest.Mock }
 
   function makeFactoryState() {
@@ -39,6 +41,27 @@ describe('FactoryRunsComponent', () => {
     } as unknown as typeof factoryState
   }
 
+  function makeWorkflowProjectionState() {
+    return {
+      workflows: signal([]),
+      removedWorkflows: signal([]),
+      timings: signal({}),
+      selectedWorkflowId: signal(null),
+      loading: signal(false),
+      error: signal(null),
+      actionError: signal(null),
+      actionWorkflowId: signal(null),
+      synchronization: signal('idle'),
+      selectNamespace: jest.fn(),
+      clear: jest.fn(),
+      refresh: jest.fn(),
+      selectWorkflow: jest.fn(),
+      remove: jest.fn(),
+      restore: jest.fn(),
+      purge: jest.fn(),
+    }
+  }
+
   function create(
     params: Record<string, string> = {},
     embeddedNamespaceId?: string
@@ -47,6 +70,7 @@ describe('FactoryRunsComponent', () => {
     namespaceState = new NamespaceStateStub()
     routerMock = { navigate: jest.fn() }
     factoryState = makeFactoryState()
+    workflowProjectionState = makeWorkflowProjectionState()
 
     TestBed.configureTestingModule({
       imports: [FactoryRunsComponent, RouterTestingModule],
@@ -58,6 +82,7 @@ describe('FactoryRunsComponent', () => {
         { provide: Router, useValue: routerMock },
         { provide: NamespaceStateService, useValue: namespaceState },
         { provide: FactoryStateService, useValue: factoryState },
+        { provide: FactoryWorkflowProjectionStateService, useValue: workflowProjectionState },
       ],
     })
     const fixture = TestBed.createComponent(FactoryRunsComponent)
@@ -117,6 +142,40 @@ describe('FactoryRunsComponent', () => {
 
     expect(factoryState.load).not.toHaveBeenCalled()
     expect(namespaceState.selectNamespace).not.toHaveBeenCalled()
+  })
+
+  // ---------------------------------------------------------------------------
+  // Active Factory composition
+  // ---------------------------------------------------------------------------
+
+  it('keeps the generic workflow cockpit and excludes legacy Forge workstream controls', () => {
+    const { fixture } = create({ ns: 'ns-1' })
+    workflowProjectionState.workflows.set([
+      {
+        workflowId: 'workflow-1',
+        revision: 1,
+        projection: {
+          title: 'Governed delivery',
+          workflowType: 'delivery',
+          schemaVersion: 1,
+          status: 'running',
+          steps: [],
+        },
+      },
+    ])
+    workflowProjectionState.selectedWorkflowId.set('workflow-1')
+    namespaceState.namespacesSubject.next([{ id: 'ns-1', name: 'One' }])
+    namespaceState.initializedSubject.next(true)
+    fixture.detectChanges()
+
+    const content = (fixture.nativeElement as HTMLElement).textContent ?? ''
+    expect(content).toContain('Generic workflows')
+    expect(content).toContain('Governed delivery')
+    expect(content).not.toContain('Lancer un run Forge')
+    expect(content).not.toContain('Workstreams')
+    expect(content).not.toContain('Nouveau workstream')
+    expect(fixture.nativeElement.querySelector('agentos-factory-workflow-projection')).not.toBeNull()
+    expect(fixture.nativeElement.querySelector('agentos-factory-forge-runs')).toBeNull()
   })
 
   // ---------------------------------------------------------------------------

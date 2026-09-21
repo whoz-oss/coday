@@ -144,12 +144,20 @@ export interface JiraTicketResponse {
   ticketId: string
   ticketContent: string
   summary: string
+  epicKey: string | null
+  epicSummary: string | null
   fieldCount: number
   commentCount: number
   commentsIncluded: number
   commentsTruncated: boolean
   /** ISO timestamp of when this fetch occurred (display-time, not run-time). */
   fetchedAt: string
+}
+
+export interface ActiveRunEntry {
+  caseId: string
+  ticketId: string | null
+  launchedAt: string
 }
 
 /** HTTP boundary for the Factory run endpoints. */
@@ -210,6 +218,12 @@ export class FactoryApiService {
     )
   }
 
+  getWorkflowProjection(namespaceId: string, workflowId: string): Observable<WorkflowProjectionDetailDto> {
+    return this.http.get<WorkflowProjectionDetailDto>(`/api/factory/workflows/${encodeURIComponent(workflowId)}`, {
+      params: new HttpParams().set('namespaceId', namespaceId),
+    })
+  }
+
   getWorkflowEnvironment(
     namespaceId: string,
     workflowId: string,
@@ -233,10 +247,24 @@ export class FactoryApiService {
     )
   }
 
-  getWorkflowProjection(namespaceId: string, workflowId: string): Observable<WorkflowProjectionDetailDto> {
-    return this.http.get<WorkflowProjectionDetailDto>(`/api/factory/workflows/${encodeURIComponent(workflowId)}`, {
-      params: new HttpParams().set('namespaceId', namespaceId),
-    })
+  listWorkflowHumanInteractions(namespaceId: string, workflowId: string): Observable<WorkflowHumanInteractionListDto> {
+    return this.http.get<WorkflowHumanInteractionListDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/interactions`,
+      { params: new HttpParams().set('namespaceId', namespaceId) }
+    )
+  }
+
+  replyWorkflowHumanInteraction(
+    namespaceId: string,
+    workflowId: string,
+    interactionId: string,
+    reply: { expectedRevision: number; actionId: string; text?: string }
+  ): Observable<WorkflowHumanReplyDto> {
+    return this.http.post<WorkflowHumanReplyDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/interactions/${encodeURIComponent(interactionId)}/reply`,
+      reply,
+      { params: new HttpParams().set('namespaceId', namespaceId) }
+    )
   }
 
   getWorkflowOperationalMetrics(
@@ -363,6 +391,29 @@ export class FactoryApiService {
     )
   }
 
+  createWorkstream(
+    namespaceId: string,
+    payload: { slug: string; name: string; status: string }
+  ): Observable<WorkstreamEntry> {
+    return this.http.post<WorkstreamEntry>('/api/factory/workstreams', { namespaceId, ...payload })
+  }
+
+  getActiveRun(namespaceId: string): Observable<ActiveRunEntry | null> {
+    return this.http.get<ActiveRunEntry | null>('/api/factory/active-run', {
+      params: new HttpParams().set('namespaceId', namespaceId),
+    })
+  }
+
+  setActiveRun(namespaceId: string, caseId: string, ticketId: string | null): Observable<ActiveRunEntry> {
+    return this.http.post<ActiveRunEntry>('/api/factory/active-run', { namespaceId, caseId, ticketId })
+  }
+
+  clearActiveRun(namespaceId: string): Observable<void> {
+    return this.http.delete<void>('/api/factory/active-run', {
+      params: new HttpParams().set('namespaceId', namespaceId),
+    })
+  }
+
   listRuns(namespaceId: string): Observable<FactoryRunSummary[]> {
     return this.http.get<FactoryRunSummary[]>('/api/factory/runs', {
       params: new HttpParams().set('namespaceId', namespaceId),
@@ -443,8 +494,11 @@ export class FactoryApiService {
         reasonCode: 'intent_confirmed',
       },
       {
+        // Actor identity is resolved server-side from RESOLVED_FACTORY_USER.
+        // The browser does not supply a trusted actor; these headers are advisory only
+        // and the server validates against the configured user.
         headers: {
-          'X-Factory-Actor-Id': 'benjamin.valdes',
+          'X-Factory-Actor-Id': 'factory-operator',
           'X-Factory-Authority-Id': 'product-owner',
         },
       }

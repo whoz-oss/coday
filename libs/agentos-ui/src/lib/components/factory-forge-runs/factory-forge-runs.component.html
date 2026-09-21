@@ -1,9 +1,9 @@
-@let ws = workstream()!;
+@let ws = workstream();
 
 <!-- ── Barre d'application ────────────────────────────────────────────────────── -->
 <header class="appbar">
   <div class="appbar__left">
-    <span class="appbar__brand">Forge</span>
+    <span class="appbar__brand">Software Factory</span>
     <button type="button" class="appbar__root" (click)="goStreams()">Workstreams</button>
 
     @if (inWorkstream()) {
@@ -28,11 +28,11 @@
       <dl class="appbar__meta">
         <div>
           <dt>branche</dt>
-          <dd class="mono">{{ ws.branch }}</dd>
+          <dd class="mono">{{ ws?.branch }}</dd>
         </div>
         <div>
           <dt>preview</dt>
-          <dd class="mono">{{ ws.preview }}</dd>
+          <dd class="mono">{{ ws?.preview }}</dd>
         </div>
       </dl>
     }
@@ -47,12 +47,12 @@
 
   @if (inWorkstream()) {
     <span class="crumbs__sep" aria-hidden="true">▸</span>
-    <button type="button" class="crumbs__link" (click)="goWorkstream()">{{ ws.name }}</button>
+    <button type="button" class="crumbs__link" (click)="goWorkstream()">{{ ws?.name }}</button>
   }
 
   @if (inEpic()) {
     <span class="crumbs__sep" aria-hidden="true">▸</span>
-    <button type="button" class="crumbs__link" (click)="goEpic()">{{ epic()?.key }}</button>
+    <button type="button" class="crumbs__link" (click)="goEpic()">{{ epicKey() ?? '...' }}</button>
   }
 
   @if (screen() === 'story') {
@@ -75,7 +75,6 @@
         </div>
         <div class="screen__actions">
           <span class="screen__hint">cliquez un sujet pour l'ouvrir</span>
-          <button type="button" class="btn-launch" (click)="openLaunchPanel()">Lancer un run Forge</button>
         </div>
       </header>
 
@@ -107,6 +106,58 @@
           }
         </div>
       }
+
+      <div class="screen__actions" style="margin-top: 12px">
+        <button type="button" class="btn-launch" (click)="openNewWorkstreamForm()">+ Nouveau workstream</button>
+      </div>
+
+      @if (showNewWorkstreamForm()) {
+        <form class="ws-form blueprint" (ngSubmit)="submitNewWorkstream()">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div class="ws-form__field">
+            <label class="ws-form__label">Nom</label>
+            <input
+              type="text"
+              class="ws-form__input"
+              placeholder="Talent Portal"
+              [value]="newWsName()"
+              (input)="onNameInput($event)"
+            />
+          </div>
+          <div class="ws-form__field">
+            <label class="ws-form__label">Slug</label>
+            <input
+              type="text"
+              class="ws-form__input mono"
+              placeholder="talent-portal"
+              [value]="newWsSlug()"
+              (input)="onSlugInput($event)"
+            />
+          </div>
+          <div class="ws-form__field">
+            <label class="ws-form__label">Statut</label>
+            <select
+              class="ws-form__input"
+              [value]="newWsStatus()"
+              (change)="newWsStatus.set($any($event.target).value)"
+            >
+              <option value="discovery">Discovery</option>
+              <option value="planning">Planning</option>
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+            </select>
+          </div>
+          @if (newWsError()) {
+            <p class="ws-form__error">{{ newWsError() }}</p>
+          }
+          <div class="ws-form__actions">
+            <button type="submit" class="btn-launch" [disabled]="!newWsSlug() || creatingWorkstream()">
+              {{ creatingWorkstream() ? 'Création…' : 'Créer' }}
+            </button>
+            <button type="button" class="btn-cancel" (click)="closeNewWorkstreamForm()">Annuler</button>
+          </div>
+        </form>
+      }
     </section>
   }
 
@@ -115,12 +166,11 @@
     <section class="screen">
       <header class="screen__head">
         <div>
-          <h1 class="screen__title">{{ ws.name }}</h1>
-          <p class="screen__subtitle">{{ ws.subject }}</p>
+          <h1 class="screen__title">{{ ws?.name }}</h1>
+          <p class="screen__subtitle">{{ ws?.subject }}</p>
         </div>
         <div class="screen__actions">
           <span class="screen__hint">tout ce qui relève de ce sujet</span>
-          <button type="button" class="btn-launch" (click)="openLaunchPanel()">Lancer un run Forge</button>
         </div>
       </header>
 
@@ -133,7 +183,8 @@
           [attr.aria-selected]="tab() === 'epics'"
           (click)="setTab('epics')"
         >
-          Epics <span class="tabs__count">{{ epicRunsForWorkstream().length }}</span>
+          Epics
+          <span class="tabs__count">{{ epicRunsForWorkstream().length + (activeRunHasNoEpicRow() ? 1 : 0) }}</span>
         </button>
         <button
           type="button"
@@ -151,7 +202,12 @@
       @if (tab() === 'epics') {
         <div class="rows">
           @for (row of epicRows(); track row.key) {
-            <button type="button" class="row blueprint" (click)="openEpic(row.index)">
+            <button
+              type="button"
+              class="row blueprint"
+              [class.row--active]="row.index === activeEpicIndex()"
+              (click)="openEpic(row.index)"
+            >
               <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
               <span class="row__head">
                 <span class="row__identity">
@@ -167,12 +223,36 @@
               <agentos-forge-ribbon class="row__bar" mode="distribution" [counts]="row.counts"></agentos-forge-ribbon>
             </button>
           }
+          @if (activeRunHasNoEpicRow()) {
+            <button type="button" class="row blueprint" (click)="openActiveEpic()">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <span class="row__head">
+                <span class="row__identity">
+                  @if (activeEpicKey()) {
+                    <span class="row__key">{{ activeEpicKey() }}</span>
+                    <span class="row__title">{{ activeEpicSummary() ?? 'Run en cours' }}</span>
+                  } @else if (activeTicketId()) {
+                    <span class="row__key row__key--muted">…</span>
+                    <span class="row__title row__title--muted">Chargement des infos du ticket…</span>
+                  } @else {
+                    <span class="row__key">…</span>
+                    <span class="row__title row__title--muted">Run en cours — en attente du ledger</span>
+                  }
+                </span>
+                <span class="flags">
+                  <span class="chip" style="background: var(--sf-accent-wash); color: var(--sf-accent-ink)"
+                    >en cours</span
+                  >
+                </span>
+              </span>
+            </button>
+          }
         </div>
       } @else {
         <div class="docs">
-          <p class="screen__lead">{{ ws.lead }}</p>
+          <p class="screen__lead">{{ ws?.lead }}</p>
 
-          @for (group of ws.docs; track group.category) {
+          @for (group of ws?.docs ?? []; track group.category) {
             <section class="docs__group">
               <header class="docs__head">
                 <h2>{{ group.category }}</h2>
@@ -198,21 +278,57 @@
 
   <!-- ══ 02 · cockpit Epic ══ -->
   @case ('epic') {
-    <agentos-epic-cockpit
-      [epic]="epic()!"
-      [runId]="forgeRunIdForEpic()"
-      [g1WaitingHuman]="isG1WaitingHuman()"
-      [g1EvidenceSetHash]="g1EvidenceSetHash()"
-      [namespaceId]="currentNamespaceId()"
-      [overrides]="overrides()"
-      [answered]="answered()"
-      (storyPicked)="openStory($event)"
-      (g1Approved)="onG1Approved()"
-    ></agentos-epic-cockpit>
+    <div class="screen__refresh">
+      @if (isActiveCaseForCurrentEpic() && activeEpicKey()) {
+        <span class="screen__epic-context">
+          <span class="screen__epic-key mono">{{ activeEpicKey() }}</span>
+          @if (activeEpicSummary()) {
+            <span class="screen__epic-summary">{{ activeEpicSummary() }}</span>
+          }
+        </span>
+      }
+      <button type="button" class="btn-refresh" (click)="onRefresh()">↻ Refresh</button>
+    </div>
+
+    @if (epic()) {
+      <agentos-epic-cockpit
+        [epic]="epic()!"
+        [runId]="forgeRunIdForEpic()"
+        [g1WaitingHuman]="isG1WaitingHuman()"
+        [g1EvidenceSetHash]="g1EvidenceSetHash()"
+        [namespaceId]="currentNamespaceId()"
+        [overrides]="overrides()"
+        [answered]="answered()"
+        (storyPicked)="openStory($event)"
+        (g1Approved)="onG1Approved()"
+      ></agentos-epic-cockpit>
+    }
   }
 
   <!-- ══ 03 · US ══ -->
   @case ('story') {
+    @if (isActiveCaseForCurrentEpic() && activeCaseId() && currentNamespaceId()) {
+      <agentos-forge-activity-panel
+        [caseId]="activeCaseId()!"
+        [namespaceId]="currentNamespaceId()!"
+        [basePath]="agentosBasePath()"
+        [ticketId]="activeTicketId()"
+        (closeRequested)="closeActiveRun()"
+        (ticketResolved)="onTicketResolved($event)"
+        (storyRequested)="openStory({ story: activeTicketId() ?? '', step: 'g1' })"
+      />
+    }
+    @if (isG1WaitingHuman() && forgeRunIdForEpic() && g1EvidenceSetHash()) {
+      <div class="story-g1-gate">
+        <p class="story-g1-gate__label">Gate 1 en attente d’approbation humaine</p>
+        <button type="button" class="btn-launch" [disabled]="approvingG1()" (click)="approveG1()">
+          {{ approvingG1() ? 'Approbation…' : 'Approuver G1' }}
+        </button>
+        @if (g1ApprovalError()) {
+          <p class="story-g1-gate__error">{{ g1ApprovalError() }}</p>
+        }
+      </div>
+    }
     <agentos-story-run
       [story]="story()!"
       [step]="stepKey()"
