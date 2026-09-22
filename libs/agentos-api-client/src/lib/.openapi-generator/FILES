@@ -66,6 +66,7 @@ model/feedback-input.ts
 model/feedback.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
 model/get-by-ids-request.ts
+model/git-workspace-summary.ts
 model/groups-by-external-ids-request.ts
 model/image.ts
 model/integration-config.ts

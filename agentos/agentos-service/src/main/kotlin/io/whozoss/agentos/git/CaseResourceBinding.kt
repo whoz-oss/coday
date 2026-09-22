@@ -27,11 +27,14 @@ data class CaseResourceBinding(
     /** The `GIT_REPOSITORY` configuration this workspace was provisioned from. */
     val integrationConfigId: UUID,
     val status: CaseResourceStatus = CaseResourceStatus.REQUESTED,
+    /** Last observed worktree branch; null for a detached HEAD. Never controls provisioning. */
+    val branchName: String? = null,
     /** Starting commit of the detached worktree, frozen at first successful resolution. */
     val baseSha: String? = null,
     /** Operator-facing failure cause; never a secret. */
     val failureReason: String? = null,
     val settingsJson: String? = null,
+    val summaryJson: String? = null,
     val cleanupReason: String? = null,
     val setupStarted: Boolean = false,
     val setupCompleted: Boolean = false,

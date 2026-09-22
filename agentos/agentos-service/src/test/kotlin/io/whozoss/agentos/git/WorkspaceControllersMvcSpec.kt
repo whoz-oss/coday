@@ -136,10 +136,10 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             verify(exactly = 0) { bindings.findByParent(namespaceId) }
         }
 
-        "case READ alone cannot or retry a workspace" {
+        "case READ alone cannot refresh or retry a workspace" {
             val caseId = UUID.randomUUID()
             allow(EntityType.CASE, caseId, Action.READ)
-            listOf("retry").forEach { action ->
+            listOf("refresh", "retry").forEach { action ->
                 mockMvc.perform(post("/api/cases/$caseId/workspace/$action"))
                     .andExpect(status().isForbidden)
             }
@@ -199,6 +199,7 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             mockMvc.perform(multipart("/api/cases/${child.id}/files")
                 .file(MockMultipartFile("file", "new.txt", "text/plain", "new".toByteArray())))
                 .andExpect(status().isForbidden)
+            mockMvc.perform(post("/api/cases/${child.id}/workspace/refresh")).andExpect(status().isForbidden)
             verify(exactly = 0) { storage.readContent(Path.of("/fixture/exchange/${root.id}"), any()) }
             verify(exactly = 0) { storage.delete(Path.of("/fixture/exchange/${root.id}"), any()) }
         }

@@ -1355,6 +1355,25 @@ paths:
           description: OK
       tags:
       - case-workspace-controller
+  /api/cases/{caseId}/workspace/refresh:
+    post:
+      operationId: refreshCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
   /api/cases/{caseId}/workspace/retry:
     post:
       operationId: retryCaseWorkspace
@@ -4007,12 +4026,16 @@ components:
     CaseWorkspaceView:
       type: object
       properties:
+        branchName:
+          type: string
         cleanupReason:
           type: string
         equipped:
           type: boolean
         failureReason:
           type: string
+        git:
+          $ref: "#/components/schemas/GitWorkspaceSummary"
         rootCaseId:
           type: string
           format: uuid
@@ -4330,6 +4353,37 @@ components:
       required:
       - ids
       - withRemoved
+    GitWorkspaceSummary:
+      type: object
+      properties:
+        branchState:
+          type: string
+        dirty:
+          type: boolean
+        error:
+          type: string
+        headSha:
+          type: string
+        observedAt:
+          type: string
+          format: date-time
+        prHeadSha:
+          type: string
+        prNumber:
+          type: integer
+          format: int32
+        prState:
+          type: string
+        prUrl:
+          type: string
+        remoteSha:
+          type: string
+        unpushedCommits:
+          type: integer
+          format: int32
+      required:
+      - branchState
+      - prState
     GroupsByExternalIdsRequest:
       type: object
       properties:

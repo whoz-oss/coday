@@ -91,6 +91,7 @@
                     [class.mobile-drawer__case-status-label--killed]="c.status === 'KILLED'"
                     >{{ c.status.toLowerCase() }}</span
                   >
+                  <agentos-case-git-badge [view]="workspaces()[c.id!]" />
                 </span>
 
                 <!-- Actions: star + delete (always visible on mobile) -->

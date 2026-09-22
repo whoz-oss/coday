@@ -7,6 +7,7 @@ import io.mockk.mockk
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
 
@@ -52,5 +53,47 @@ class GitWorkspaceSweepSpec : StringSpec({
         val lifecycle = GitWorkspaceLifecycleService(bindings, cases, mockk(), mockk(), mockk(), mockk(), mockk())
         repeat(2) { lifecycle.cleanupDeletedCases() }
         visited shouldBe rows.map { it.rootCaseId } + rows.map { it.rootCaseId }
+    }
+
+    "a full final page starts the next status sweep without losing a scheduled tick" {
+        val bindings = InMemoryCaseResourceBindingService()
+        val rows = rows(bindings, 5)
+        val visited = mutableListOf<UUID>()
+        val roots = mockk<GitExchangeRootResolver> {
+            every { resolveGit(any<UUID>()) } returns GitExchangeRoot(Path.of("/tmp/unused-workspace"), null, UUID.randomUUID())
+        }
+        val statuses = mockk<GitWorkspaceStatusService> {
+            every { refresh(any(), any()) } answers {
+                firstArg<CaseResourceBinding>().also { visited.add(it.rootCaseId) }
+            }
+        }
+        val monitor = GitWorkspaceMonitor(bindings, roots, statuses)
+        repeat(2) { monitor.poll() }
+        visited shouldBe rows.map { it.rootCaseId } + rows.map { it.rootCaseId }
+    }
+
+    "status polling advances after a failure or removal and restarts after the last page" {
+        val bindings = InMemoryCaseResourceBindingService()
+        val rows = rows(bindings)
+        val visited = mutableListOf<UUID>()
+        val roots = mockk<GitExchangeRootResolver> {
+            every { resolveGit(any<UUID>()) } returns GitExchangeRoot(Path.of("/tmp/unused-workspace"), null, UUID.randomUUID())
+        }
+        val statuses = mockk<GitWorkspaceStatusService> {
+            every { refresh(any(), any()) } answers {
+                val binding = firstArg<CaseResourceBinding>()
+                visited.add(binding.rootCaseId)
+                if (binding.id == rows.first().id) error("transient observation failure")
+                binding
+            }
+        }
+        val monitor = GitWorkspaceMonitor(bindings, roots, statuses)
+        monitor.poll()
+        visited shouldBe rows.take(5).map { it.rootCaseId }
+        rows.take(5).forEach { bindings.delete(it.id) }
+        monitor.poll()
+        visited shouldBe rows.map { it.rootCaseId }
+        monitor.poll()
+        visited shouldBe rows.map { it.rootCaseId } + rows.takeLast(2).map { it.rootCaseId }
     }
 })
