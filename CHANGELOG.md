@@ -1,3 +1,14 @@
+## 3.3.0 (2026-09-22)
+
+### 🚀 Features
+
+- #wz-34476 add contextWindow, maxCompletionTokens and pricing fields to AiModel ([#1305](https://github.com/whoz-oss/coday/pull/1305))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+- vincent-audibert-whoz
+
 ## 3.2.1 (2026-09-22)
 
 ### 🩹 Fixes
