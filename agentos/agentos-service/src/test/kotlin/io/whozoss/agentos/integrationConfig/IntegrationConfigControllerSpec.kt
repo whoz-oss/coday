@@ -52,7 +52,16 @@ class IntegrationConfigControllerSpec : StringSpec({
     val namespaceService = mockk<NamespaceService>(relaxed = true)
     val userService = mockk<UserService>(relaxed = true)
     val permissionService = mockk<PermissionService>(relaxed = true)
-    val controller = IntegrationConfigController(service, namespaceService, userService, permissionService, yamlExportMapper())
+    val scopePolicy = IntegrationConfigScopePolicy(IntegrationsProperties())
+    val controller =
+        IntegrationConfigController(
+            service,
+            namespaceService,
+            userService,
+            permissionService,
+            scopePolicy,
+            yamlExportMapper(),
+        )
 
     val namespaceId = UUID.randomUUID()
     val aliceId = UUID.randomUUID()
@@ -183,6 +192,67 @@ class IntegrationConfigControllerSpec : StringSpec({
         captured.captured.namespaceId shouldBe null
         captured.captured.userId shouldBe null
         verify(exactly = 0) { permissionService.hasPermission(any(), any(), any(), any()) }
+    }
+
+    // -------------------------------------------------------------------------
+    // create / update — user-scope denial for network-reaching integration types
+    // -------------------------------------------------------------------------
+
+    "create user-global config of a user-scope-denied type throws AccessDeniedException before any persistence" {
+        withAuth(aliceId) {
+            shouldThrow<org.springframework.security.access.AccessDeniedException> {
+                controller.create(resource(id = null, nsId = null, userId = aliceId, integrationType = "MCP_HTTP"))
+            }
+        }
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "create user-namespace config of a user-scope-denied type throws AccessDeniedException even with namespace READ" {
+        every {
+            permissionService.hasPermission(
+                aliceId.toString(),
+                EntityType.NAMESPACE,
+                namespaceId.toString(),
+                Action.READ,
+            )
+        } returns true
+
+        withAuth(aliceId) {
+            shouldThrow<org.springframework.security.access.AccessDeniedException> {
+                controller.create(resource(id = null, userId = aliceId, integrationType = "HTTP_API"))
+            }
+        }
+        verify(exactly = 0) { service.create(any()) }
+    }
+
+    "create NS-shared config of a user-scope-denied type is still allowed with namespace WRITE" {
+        every {
+            permissionService.hasPermission(
+                aliceId.toString(),
+                EntityType.NAMESPACE,
+                namespaceId.toString(),
+                Action.WRITE,
+            )
+        } returns true
+        every { service.create(any()) } answers { firstArg() }
+
+        withAuth(aliceId) { controller.create(resource(id = null, userId = null, integrationType = "MCP_HTTP")) }
+
+        verify(exactly = 1) { service.create(any()) }
+    }
+
+    "update on an existing user-scoped config of a denied type is refused based on the persisted type" {
+        // integrationType is immutable, so the persisted type decides — not whatever the body claims.
+        val cfg = config(userId = aliceId, integrationType = "MCP_STDIO")
+        every { service.findById(cfg.metadata.id) } returns cfg
+
+        shouldThrow<org.springframework.security.access.AccessDeniedException> {
+            controller.update(
+                cfg.metadata.id,
+                resource(id = cfg.metadata.id, userId = aliceId, integrationType = "JIRA"),
+            )
+        }
+        verify(exactly = 0) { service.update(any()) }
     }
 
     // -------------------------------------------------------------------------
@@ -343,7 +413,7 @@ class IntegrationConfigControllerSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // list — three modes, mass-assignment guard
+    // list — scope dispatch, mass-assignment guard
     // -------------------------------------------------------------------------
 
     "list without namespace filter and userId=me returns caller's own rows" {
@@ -359,18 +429,18 @@ class IntegrationConfigControllerSpec : StringSpec({
         resp.map { it.name } shouldContainExactlyInAnyOrder listOf("GLOBAL_JIRA", "NS_JIRA")
     }
 
-    "list without any param returns platform configs for any authenticated user" {
+    "list without any param delegates to the caller overlay filter" {
         val rows = listOf(
-            config(nsId = null, userId = null, name = "PLATFORM_JIRA"),
+            config(nsId = null, userId = aliceId, name = "PERSONAL_JIRA"),
         )
-        every { service.findPlatform() } returns rows
+        every { service.findFiltered(null, false, aliceId, false, any()) } returns rows
 
         val resp = controller.list(namespaceId = null, userId = null)
 
-        resp.map { it.name } shouldBe listOf("PLATFORM_JIRA")
+        resp.map { it.name } shouldBe listOf("PERSONAL_JIRA")
     }
 
-    "list with namespaceId=none returns only user-global rows" {
+    "list with namespaceId=none and userId=me returns only user-global rows" {
         val rows = listOf(
             config(nsId = null, userId = aliceId, name = "GLOBAL"),
         )

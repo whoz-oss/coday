@@ -1,6 +1,7 @@
 <ds-entity-list
   title="Agent Configs"
   [items]="(configItems$ | async) ?? []"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No agent configs defined yet. Add one above."
   cardMinWidth="400px"

@@ -58,6 +58,50 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Index message_event_caseId created" }
 
+        // Index on CaseEvent.caseId (generic label) — the MessageEvent sub-label index above
+        // is not used when queries match on the base CaseEvent label.
+        neo4jClient
+            .query(
+                "CREATE INDEX case_event_case_id IF NOT EXISTS FOR (e:CaseEvent) ON (e.caseId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index case_event_case_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX case_namespace_id IF NOT EXISTS FOR (c:Case) ON (c.namespaceId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index case_namespace_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX case_parent_case_id IF NOT EXISTS FOR (c:Case) ON (c.parentCaseId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index case_parent_case_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX agent_config_namespace_id IF NOT EXISTS FOR (a:AgentConfig) ON (a.namespaceId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index agent_config_namespace_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX user_group_namespace_id IF NOT EXISTS FOR (g:UserGroup) ON (g.namespaceId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index user_group_namespace_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX feedback_case_id IF NOT EXISTS FOR (f:Feedback) ON (f.caseId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index feedback_case_id created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX feedback_case_event_id IF NOT EXISTS FOR (f:Feedback) ON (f.caseEventId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index feedback_case_event_id created" }
+
         // ── Per-node id uniqueness constraints ──────────────────────────────
         // Every node label that carries an `id` property gets a UNIQUE
         // constraint so Neo4j enforces identity at the storage level and
@@ -77,6 +121,7 @@ class Neo4jSchemaInitializer(
                 "feedback_id_unique" to "Feedback",
                 "prompt_id_unique" to "Prompt",
                 "usage_record_id_unique" to "UsageRecord",
+                "skill_id_unique" to "Skill",
             )
 
         // CaseEvent base label + one entry per subtype derived from the canonical enum.
@@ -101,6 +146,22 @@ class Neo4jSchemaInitializer(
                 ).run()
             logger.info { "[Neo4jSchemaInitializer] Constraint $constraintName ensured" }
         }
+
+        // Skill doubleKey uniqueness constraint: enforces uniqueness on (namespaceId, lowercased name)
+        // while allowing soft-deleted entities via tombstoned doubleKeys.
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT skill_double_key_unique IF NOT EXISTS " +
+                    "FOR (s:Skill) REQUIRE s.doubleKey IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint skill_double_key_unique ensured" }
+
+        // Index on Skill.namespaceId: accelerates property-based lookup for namespace-scoped and platform skills.
+        neo4jClient
+            .query(
+                "CREATE INDEX skill_namespace_id IF NOT EXISTS FOR (s:Skill) ON (s.namespaceId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index skill_namespace_id created" }
 
         // Backfill @Version on AgentConfig nodes created before the version field was introduced.
         // Spring Data Neo4j's optimistic-locking check generates MATCH WHERE version = ?

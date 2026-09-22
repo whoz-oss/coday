@@ -1,6 +1,7 @@
 <ds-entity-list
   title="Platform AI Providers"
   [items]="(providerItems$ | async) ?? []"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No platform AI providers defined yet. Add one above."
   cardMinWidth="400px"

@@ -4,6 +4,7 @@ import {
   Component,
   computed,
   DestroyRef,
+  effect,
   ElementRef,
   inject,
   input,
@@ -118,8 +119,19 @@ export class CaseHomeComponent implements OnInit {
     this.destroyRef.onDestroy(() => (this.destroyed = true))
     this.autocomplete.init(this.namespaceId)
 
+    // Track both the value and the view query. This covers programmatic writes
+    // (autocomplete, namespace reset, and post-submit clear) once the textarea exists.
+    effect(() => {
+      this.inputValue()
+      const input = this.composerInput()?.nativeElement
+      if (!input) return
+      queueMicrotask(() => this.resizeComposer(input))
+    })
+
     afterNextRender(() => {
-      this.composerInput()?.nativeElement.focus()
+      const input = this.composerInput()?.nativeElement
+      input?.focus()
+      this.resizeComposer(input)
     })
   }
 
@@ -128,8 +140,18 @@ export class CaseHomeComponent implements OnInit {
   }
 
   protected onInput(event: Event): void {
-    const value = (event.target as HTMLTextAreaElement).value
-    this.autocomplete.onInput(value, this.inputValue)
+    const input = event.target as HTMLTextAreaElement
+    this.autocomplete.onInput(input.value, this.inputValue)
+    // `input` fires after the browser updates the DOM value, so scrollHeight is current.
+    this.resizeComposer(input)
+  }
+
+  /** Size to the complete content height; programmatic changes are handled by the effect above. */
+  private resizeComposer(input?: HTMLTextAreaElement): void {
+    if (!input) return
+
+    input.style.height = 'auto'
+    input.style.height = `${input.scrollHeight}px`
   }
 
   protected onKeydown(event: KeyboardEvent): void {

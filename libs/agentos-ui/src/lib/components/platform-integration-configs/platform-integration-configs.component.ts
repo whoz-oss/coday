@@ -1,17 +1,19 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { IntegrationConfig, IntegrationConfigControllerService } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, map, switchMap } from 'rxjs'
+import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
 import { IntegrationConfigItemComponent } from '../integration-config-item/integration-config-item.component'
 
 /**
  * PlatformIntegrationConfigsComponent — list view for platform-level integration configs.
  *
  * Loaded at /agentos/admin/integration-configs. Accessible to super-admins only
- * (backend enforces via 403; frontend shows the link only when user.isAdmin).
+ * (the admin UI is restricted; backend platform writes require super-admin).
+ * The list endpoint itself is available to any authenticated user.
  *
  * Platform integration configs have no namespaceId and no userId — they are shared
  * across all namespaces.
@@ -26,13 +28,19 @@ import { IntegrationConfigItemComponent } from '../integration-config-item/integ
 export class PlatformIntegrationConfigsComponent {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly state = inject(IntegrationConfigStateService)
   private readonly integrationConfigController = inject(IntegrationConfigControllerService)
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
+  protected readonly isLoading = signal(true)
+
   /** Raw platform configs, kept for delete lookups. */
   private readonly configs$ = this.refresh$.pipe(
-    switchMap(() => this.integrationConfigController.listIntegrationConfig())
+    switchMap(() => {
+      this.isLoading.set(true)
+      return this.state.loadPlatformConfigs()
+    })
   )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
@@ -52,8 +60,12 @@ export class PlatformIntegrationConfigsComponent {
   private configsById = new Map<string, IntegrationConfig>()
 
   constructor() {
-    this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((configs) => {
-      this.configsById = new Map(configs.map((c: IntegrationConfig) => [c.id ?? '', c]))
+    this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (configs) => {
+        this.configsById = new Map(configs.map((c: IntegrationConfig) => [c.id ?? '', c]))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
 

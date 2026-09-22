@@ -27,6 +27,7 @@ class AuthSettingSchemaInitializer(
 
     override fun run(args: ApplicationArguments) {
         backfillTripleKey()
+        ensureIdUniqueConstraint()
         ensureTripleKeyUniqueConstraint()
         ensureReconciliationIndexes()
     }
@@ -54,6 +55,15 @@ class AuthSettingSchemaInitializer(
                 .one()
                 .orElse(0L)
         logger.info { "[AuthSettingSchema] tripleKey backfill migrated=$migrated row(s)" }
+    }
+
+    private fun ensureIdUniqueConstraint() {
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT auth_setting_id_unique IF NOT EXISTS " +
+                    "FOR (n:AuthSetting) REQUIRE n.id IS UNIQUE",
+            ).run()
+        logger.info { "[AuthSettingSchema] constraint 'auth_setting_id_unique' ensured" }
     }
 
     private fun ensureTripleKeyUniqueConstraint() {

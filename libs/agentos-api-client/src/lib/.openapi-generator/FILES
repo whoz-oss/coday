@@ -22,6 +22,7 @@ api/o-auth-callback-controller.service.ts
 api/plugin-controller.service.ts
 api/prompt-controller.service.ts
 api/scheduled-prompt-controller.service.ts
+api/skill-controller.service.ts
 api/sse.service.ts
 api/usage-record-controller.service.ts
 api/user-controller.service.ts
@@ -73,6 +74,7 @@ model/member-item.ts
 model/message-content.ts
 model/message-event-all-of-content.ts
 model/message-event.ts
+model/model-pricing.ts
 model/models.ts
 model/namespace-agent-deploy-request.ts
 model/namespace-list-item.ts
@@ -99,6 +101,7 @@ model/recurrence.ts
 model/scheduled-prompt-effective-request.ts
 model/scheduled-prompt-search-request.ts
 model/scheduled-prompt.ts
+model/skill.ts
 model/sync-user-roles-request.ts
 model/text-chunk-event.ts
 model/text.ts
