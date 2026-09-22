@@ -38,6 +38,8 @@ export * from './skill-controller.service'
 import { SkillControllerService } from './skill-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
+export * from './usage-record-controller.service'
+import { UsageRecordControllerService } from './usage-record-controller.service'
 export * from './user-controller.service'
 import { UserControllerService } from './user-controller.service'
 export * from './user-group-controller.service'
@@ -63,6 +65,7 @@ export const APIS = [
   ScheduledPromptControllerService,
   SkillControllerService,
   SseService,
+  UsageRecordControllerService,
   UserControllerService,
   UserGroupControllerService,
 ]

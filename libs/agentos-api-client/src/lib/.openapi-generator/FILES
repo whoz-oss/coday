@@ -24,6 +24,7 @@ api/prompt-controller.service.ts
 api/scheduled-prompt-controller.service.ts
 api/skill-controller.service.ts
 api/sse.service.ts
+api/usage-record-controller.service.ts
 api/user-controller.service.ts
 api/user-group-controller.service.ts
 configuration.ts
@@ -110,6 +111,9 @@ model/tool-response-event-all-of-output.ts
 model/tool-response-event.ts
 model/tool-selected-event.ts
 model/unread-count-response.ts
+model/usage-aggregate-by-key.ts
+model/usage-aggregate.ts
+model/usage-record.ts
 model/user-group-create-request.ts
 model/user-group-member.ts
 model/user-group-search-result.ts
