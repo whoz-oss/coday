@@ -22,6 +22,8 @@ export * from './integration-type-controller.service'
 import { IntegrationTypeControllerService } from './integration-type-controller.service'
 export * from './namespace-controller.service'
 import { NamespaceControllerService } from './namespace-controller.service'
+export * from './namespace-git-controller.service'
+import { NamespaceGitControllerService } from './namespace-git-controller.service'
 export * from './namespace-membership-controller.service'
 import { NamespaceMembershipControllerService } from './namespace-membership-controller.service'
 export * from './namespace-permission-endpoints.service'
@@ -34,6 +36,8 @@ export * from './prompt-controller.service'
 import { PromptControllerService } from './prompt-controller.service'
 export * from './scheduled-prompt-controller.service'
 import { ScheduledPromptControllerService } from './scheduled-prompt-controller.service'
+export * from './skill-controller.service'
+import { SkillControllerService } from './skill-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
 export * from './user-controller.service'
@@ -53,12 +57,14 @@ export const APIS = [
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,
   NamespaceControllerService,
+  NamespaceGitControllerService,
   NamespaceMembershipControllerService,
   NamespacePermissionEndpointsService,
   OAuthCallbackControllerService,
   PluginControllerService,
   PromptControllerService,
   ScheduledPromptControllerService,
+  SkillControllerService,
   SseService,
   UserControllerService,
   UserGroupControllerService,

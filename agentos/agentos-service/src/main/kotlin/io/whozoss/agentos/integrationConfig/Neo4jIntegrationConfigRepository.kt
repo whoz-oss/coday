@@ -2,6 +2,7 @@ package io.whozoss.agentos.integrationConfig
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
+import io.whozoss.agentos.persistence.OverlayKeyEncoding
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
@@ -78,6 +79,14 @@ open class Neo4jIntegrationConfigRepository(
             .findActiveByTripleKey(IntegrationConfigNode.computeTripleKey(namespaceId, userId, name))
             ?.toDomain(objectMapper)
 
+    override fun findActiveNamespaceSingleton(
+        namespaceId: UUID,
+        integrationType: String,
+    ): IntegrationConfig? =
+        neo4jRepository
+            .findActiveBySingletonKey(OverlayKeyEncoding.namespaceSingletonKey(namespaceId, integrationType))
+            ?.toDomain(objectMapper)
+
     override fun findAllForNamespaceIdAndUserId(
         namespaceId: UUID?,
         userId: UUID?,
@@ -97,10 +106,14 @@ open class Neo4jIntegrationConfigRepository(
             ?.let { node ->
                 // Switch the unique-constraint discriminant to a per-id tombstone so a future
                 // create with the same triple is not blocked by this row's lingering active key.
+                // `singletonKey` is cleared for the same reason: uniqueness there is expressed by
+                // the property's *absence*, so leaving it set would keep a soft-deleted row
+                // holding the namespace's only slot for its type.
                 neo4jRepository.save(
                     node.copy(
                         removed = true,
                         tripleKey = IntegrationConfigNode.tombstoneTripleKey(node.id),
+                        singletonKey = null,
                     ),
                 )
                 logger.debug { "[Neo4jIntegrationConfigRepository] Soft-deleted config $id" }
@@ -115,6 +128,7 @@ open class Neo4jIntegrationConfigRepository(
                 it.copy(
                     removed = true,
                     tripleKey = IntegrationConfigNode.tombstoneTripleKey(it.id),
+                    singletonKey = null,
                 )
             },
         )

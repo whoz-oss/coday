@@ -23,6 +23,7 @@ export class NamespaceItemComponent {
   readonly scheduledPromptsRequested = output<Namespace>()
   readonly userGroupsRequested = output<Namespace>()
   readonly membersRequested = output<Namespace>()
+  readonly gitRequested = output<Namespace>()
   readonly authSettingsRequested = output<Namespace>()
   readonly deleteRequested = output<Namespace>()
 
@@ -60,6 +61,9 @@ export class NamespaceItemComponent {
   }
   protected onMembers(): void {
     this.membersRequested.emit(this.namespace())
+  }
+  protected onGit(): void {
+    this.gitRequested.emit(this.namespace())
   }
   protected onAuthSettings(): void {
     this.authSettingsRequested.emit(this.namespace())

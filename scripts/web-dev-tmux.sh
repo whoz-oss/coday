@@ -131,12 +131,16 @@ done
 
 # ---------------------------------------------------------------------------
 # Session: AgentOS (Spring Boot)
-# Plugins must be deployed before starting — run deploy-plugins.sh first.
+# deployPlugins runs in the same pane, before bootRun, because the plugin JARs are
+# gitignored and PF4J only scans agentos/plugins/ once at startup. A fresh worktree
+# otherwise boots with zero plugins: no FILE_ACCESS, so the exchange integrations are
+# not registered either and every agent runs with no file tools at all — which looks
+# like the agent answering nonsense rather than like a missing build step.
 # bootRun is invoked via pnpm nx from the worktree root.
 # ---------------------------------------------------------------------------
 ROOT_DIR="$(pwd)"
 tmux new-session -d -s "${SESSION_AGENTOS}" \
-  "cd '${ROOT_DIR}' && SERVER_PORT=${AGENTOS_PORT} pnpm nx bootRun agentos-service"
+  "cd '${ROOT_DIR}/agentos' && ./gradlew deployPlugins && cd '${ROOT_DIR}' && SERVER_PORT=${AGENTOS_PORT} pnpm nx bootRun agentos-service"
 
 # ---------------------------------------------------------------------------
 # Session: Express server

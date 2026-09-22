@@ -1004,7 +1004,7 @@ export class CaseControllerService extends BaseService {
 
   /**
    * Mark case as read
-   * POST /api/cases/{caseId}/read — record that the current user has read this case. Sets readAt &#x3D; now() on the User↔Case relation. Idempotent. Returns 200 with no body.
+   * POST /api/cases/{caseId}/read — record that the current user has read this case. Sets readAt on the User↔Case relation. Idempotent. Returns 200 with the updated Case DTO.
    * @param caseId
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
@@ -1013,25 +1013,25 @@ export class CaseControllerService extends BaseService {
     caseId: string,
     observe?: 'body',
     reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<any>
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<Case>
   public markCaseRead(
     caseId: string,
     observe?: 'response',
     reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<any>>
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<Case>>
   public markCaseRead(
     caseId: string,
     observe?: 'events',
     reportProgress?: boolean,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<any>>
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<Case>>
   public markCaseRead(
     caseId: string,
     observe: any = 'body',
     reportProgress: boolean = false,
-    options?: { httpHeaderAccept?: undefined; context?: HttpContext; transferCache?: boolean }
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
     if (caseId === null || caseId === undefined) {
       throw new Error('Required parameter caseId was null or undefined when calling markCaseRead.')
@@ -1040,7 +1040,7 @@ export class CaseControllerService extends BaseService {
     let localVarHeaders = this.defaultHeaders
 
     const localVarHttpHeaderAcceptSelected: string | undefined =
-      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([])
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
     if (localVarHttpHeaderAcceptSelected !== undefined) {
       localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
     }
@@ -1062,7 +1062,7 @@ export class CaseControllerService extends BaseService {
 
     let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'caseId', value: caseId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/read`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<any>('post', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Case>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),

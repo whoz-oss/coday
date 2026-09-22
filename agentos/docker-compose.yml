@@ -13,6 +13,8 @@ services:
       # Spring Boot configuration
       - SPRING_PROFILES_ACTIVE=docker
       - SERVER_PORT=8080
+      - AGENTOS_ENCRYPTION_KEY=${AGENTOS_ENCRYPTION_KEY:?Set the AgentOS encryption key}
+      - AGENTOS_ENCRYPTION_SALT=${AGENTOS_ENCRYPTION_SALT:?Set the AgentOS encryption salt}
       
       # PF4J configuration
       - PLUGINS_DIR=/app/plugins
@@ -29,8 +31,10 @@ services:
       - LOGGING_LEVEL_IO_BIZNET_AGENTOS=DEBUG
     
     volumes:
-      # Mount plugins directory for hot-reload
-      - ./plugins:/app/plugins:ro
+      # Keep internal repositories, case worktrees and Exchange documents across restarts.
+      - agentos-data:/app/data
+      # The image includes its plugins. Uncomment to use locally built jars instead.
+      # - ./plugins:/app/plugins:ro
       
       # Optional: Mount logs directory
       - ./logs:/app/logs
@@ -39,7 +43,7 @@ services:
       - agentos-network
     
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/management/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -84,6 +88,7 @@ networks:
     driver: bridge
 
 volumes:
+  agentos-data:
   plugins-data:
   logs-data:
   neo4j-data:

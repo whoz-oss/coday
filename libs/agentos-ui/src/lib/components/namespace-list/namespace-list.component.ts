@@ -119,6 +119,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'members'])
   }
 
+  protected openGit(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'git'])
+  }
+
   // --- Delete ---
 
   protected deleteNamespace(ns: Namespace): void {

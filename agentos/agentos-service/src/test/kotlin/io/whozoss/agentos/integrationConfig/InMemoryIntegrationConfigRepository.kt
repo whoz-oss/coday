@@ -49,6 +49,22 @@ class InMemoryIntegrationConfigRepository : IntegrationConfigRepository {
             it.namespaceId == namespaceId && it.userId == userId && it.name == name
         }
 
+    /**
+     * Mirrors the Neo4j semantics: active, namespace-shared, matching type.
+     *
+     * Note this fixture has no unique constraint, so it can hold two rows the database would
+     * refuse. Uniqueness under concurrency belongs to the persistence specs, not here.
+     */
+    override fun findActiveNamespaceSingleton(
+        namespaceId: UUID,
+        integrationType: String,
+    ): IntegrationConfig? =
+        delegate.findAll().firstOrNull {
+            it.namespaceId == namespaceId &&
+                it.userId == null &&
+                it.integrationType.equals(integrationType, ignoreCase = true)
+        }
+
     companion object {
         private const val ALL_KEY = "all"
     }

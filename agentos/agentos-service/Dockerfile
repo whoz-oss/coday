@@ -1,68 +1,30 @@
-# Multi-stage Dockerfile for AgentOS Service
-
-# Stage 1: Build stage
-FROM eclipse-temurin:17-jdk-jammy AS builder
-
+# Build from the agentos/ directory. The runtime includes the standard development tools;
+# repository-specific toolchains can extend this image.
+FROM eclipse-temurin:25-jdk-jammy AS builder
 WORKDIR /workspace
+COPY . .
+RUN --mount=type=cache,target=/root/.gradle chmod +x gradlew && ./gradlew :agentos-service:bootJar deployPlugins --no-daemon
+RUN mkdir /out && cp agentos-service/build/libs/agentos-service.jar /out/agentos.jar
 
-# Copy Gradle wrapper and configuration files
-COPY gradlew .
-COPY gradle gradle
-COPY settings.gradle.kts .
-COPY build.gradle.kts .
-COPY gradle.properties .
+FROM node:22-bullseye-slim AS node-toolchain
 
-# Copy SDK source code
-COPY agentos-sdk agentos-sdk
-
-# Copy Service source code
-COPY agentos-service agentos-service
-
-# Make gradlew executable
-RUN chmod +x gradlew
-
-# Build the application (this will build SDK first due to dependency)
-RUN ./gradlew :agentos-service:build -x test --no-daemon
-
-# TODO build default plugins to generate jars
-
-# Extract the built JAR
-RUN mkdir -p /workspace/extracted && \
-    cd /workspace/extracted && \
-    java -Djarmode=layertools -jar /workspace/agentos-service/build/libs/*.jar extract
-
-# Stage 2: Runtime stage
-FROM eclipse-temurin:17-jre-jammy
-
-# Create non-root user for security
-RUN groupadd -r agentos && useradd -r -g agentos agentos
-
-# Set working directory
+FROM eclipse-temurin:25-jre-jammy
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git bash tmux lsof curl ca-certificates python3 make g++ util-linux \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=node-toolchain /usr/local/ /usr/local/
+COPY --from=node-toolchain /opt/ /opt/
+RUN corepack enable
+RUN groupadd -r agentos && useradd -r -m -g agentos agentos
 WORKDIR /app
-
-# Copy layers from builder stage (optimized for Docker layer caching)
-COPY --from=builder --chown=agentos:agentos /workspace/extracted/dependencies/ ./
-COPY --from=builder --chown=agentos:agentos /workspace/extracted/spring-boot-loader/ ./
-COPY --from=builder --chown=agentos:agentos /workspace/extracted/snapshot-dependencies/ ./
-COPY --from=builder --chown=agentos:agentos /workspace/extracted/application/ ./
-
-# Create plugins directory
-RUN mkdir -p /app/plugins && chown -R agentos:agentos /app/plugins
-
-# TODO copy default plugins jar to plugin directory
-
-# Switch to non-root user
-USER agentos
-
-# Expose application port
-EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8123/actuator/health || exit 1
-
-# Set JVM options for containerized environment
+COPY --from=builder --chown=agentos:agentos /out/agentos.jar /app/agentos.jar
+COPY --from=builder --chown=agentos:agentos /workspace/plugins/ /app/plugins/
+RUN mkdir -p /app/data/exchange && chown -R agentos:agentos /app/data
+ENV AGENTOS_EXCHANGE_MOUNT_ROOT=/app/data/exchange
+ENV SERVER_PORT=8124
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0"
-
-# Run the application
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS org.springframework.boot.loader.launch.JarLauncher"]
+USER agentos
+EXPOSE 8124
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+    CMD curl -f "http://localhost:${SERVER_PORT}/management/health" || exit 1
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/agentos.jar"]

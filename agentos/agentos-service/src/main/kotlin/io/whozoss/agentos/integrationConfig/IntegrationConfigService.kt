@@ -116,4 +116,20 @@ interface IntegrationConfigService :
         userRequested: Boolean,
         canReadNamespace: (UUID) -> Boolean,
     ): List<IntegrationConfig>
+
+    /**
+     * The one active namespace-shared configuration of a singleton [integrationType], or null.
+     *
+     * This is the read a namespace *capability* must use, as opposed to [findEffective]:
+     * - it never merges the platform, user-global or user×namespace layers, so the identity of
+     *   whoever triggered the lookup cannot change the answer;
+     * - it never falls back to a YAML file in the namespace config directory, so a capability
+     *   always corresponds to an explicitly saved, audited row.
+     *
+     * See [IntegrationTypeConstraints] for why those two properties matter.
+     */
+    fun findActiveNamespaceSingleton(
+        namespaceId: UUID,
+        integrationType: String,
+    ): IntegrationConfig?
 }

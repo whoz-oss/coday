@@ -69,4 +69,18 @@ object OverlayKeyEncoding {
      * rows of the same entity type.
      */
     fun tombstoneKey(id: String): String = TOMBSTONE_PREFIX + id
+
+    /**
+     * Build the discriminator enforcing "at most one active row of [integrationType] per
+     * namespace" (e.g. one Git association per namespace).
+     *
+     * Unlike [activeKey] this one is **nullable at the call site**: a row that is not subject to
+     * the rule — wrong scope, non-singleton type, or soft-deleted — stores no value at all. Neo4j
+     * property uniqueness exempts nodes that lack the property, so absence is what frees the slot,
+     * and a tombstone form would be redundant here.
+     */
+    fun namespaceSingletonKey(
+        namespaceId: UUID,
+        integrationType: String,
+    ): String = namespaceId.toString() + SEPARATOR + integrationType.uppercase()
 }

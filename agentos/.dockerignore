@@ -41,3 +41,7 @@ logs/
 plugins/
 !plugins/.gitkeep
 *.pid
+
+# Local repositories, credentials and persisted databases must not enter the image context
+data/
+.env*
