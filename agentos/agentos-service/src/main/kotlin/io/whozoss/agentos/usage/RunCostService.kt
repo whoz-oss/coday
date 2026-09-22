@@ -71,6 +71,11 @@ class RunCostService(
                     ).thenApply { null }
             }
 
+        /** Read before finish removes this registration; a graceful stop is not a failure. */
+        fun isStopped(): Boolean = synchronized(this@RunCostService) {
+            caseIds.any { sessions[it]?.stopped == true }
+        }
+
         /** Keep the transfer from live usage to persisted usage atomic for readers. */
         fun finish(persist: () -> Unit) =
             synchronized(this@RunCostService) {

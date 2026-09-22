@@ -709,7 +709,11 @@ class CaseServiceImpl(
             outcome = UsageOutcome.FAILED
             throw e
         } finally {
-            if (usageAccumulator.failed) outcome = UsageOutcome.FAILED
+            if (usageAccumulator.failed) {
+                outcome = UsageOutcome.FAILED
+            } else if (outcome == UsageOutcome.COMPLETED && costRegistration?.isStopped() == true) {
+                outcome = UsageOutcome.INTERRUPTED
+            }
             val persistUsage: () -> Unit = {
                 // Write an analytical UsageRecord only when the accumulator has data.
                 // A run with no LLM calls must not produce a zero-cost record.

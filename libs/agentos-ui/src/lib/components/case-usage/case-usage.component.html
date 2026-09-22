@@ -11,7 +11,7 @@
         <strong>Usage</strong>
       }
       <span>{{ state.unknownCostCount > 0 ? 'At least ' : '' }}{{ state.cost | number: '1.2-6' }} this run</span>
-      @if (state.runCostThreshold != null) {
+      @if (state.runCostThreshold !== null && state.runCostThreshold !== undefined) {
         <span> / {{ state.runCostThreshold | number: '1.2-6' }} threshold</span>
       }
     </summary>

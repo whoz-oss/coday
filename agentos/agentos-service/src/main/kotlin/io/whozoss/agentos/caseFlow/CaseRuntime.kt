@@ -406,7 +406,7 @@ class CaseRuntime(
                         eventList.getAll(),
                         { eventList.getAll() },
                         resolveUserId(events),
-                    ) { !killRequested.get() && !interruptRequested.get() }
+                    ) { !killRequested.get() }
                     return StepResult.CONTINUE
                 }
 
@@ -469,7 +469,7 @@ class CaseRuntime(
                         eventList.getAll(),
                         { eventList.getAll() },
                         userId,
-                    ) { !killRequested.get() && !interruptRequested.get() }
+                    ) { !killRequested.get() }
                     return if (killRequested.get()) StepResult.STOP else StepResult.CONTINUE
                 }
 

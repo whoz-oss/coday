@@ -188,4 +188,19 @@ class RunCostServiceSpec :
             service.isPaused(root.id) shouldBe true
             service.isPaused(child.id) shouldBe true
         }
+
+        "graceful stop is observable without a pending cost confirmation" {
+            val (service, case, _) = fixture()
+            val usage = UsageAccumulator()
+            val registration = service.register(case.id, usage)
+            registration.isStopped() shouldBe false
+            usage.beforeCall().join()
+            service.stop(case.id)
+            // A response already in flight can finish and retain its usage.
+            usage.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 2.0))
+            registration.isStopped() shouldBe true
+            usage.total.estimatedCostUsd shouldBe 2.0
+            shouldThrow<CompletionException> { usage.beforeCall().join() }
+            registration.finish {}
+        }
     })
