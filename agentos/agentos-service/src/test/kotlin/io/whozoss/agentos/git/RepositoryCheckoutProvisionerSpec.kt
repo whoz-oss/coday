@@ -111,6 +111,8 @@ class RepositoryCheckoutProvisionerSpec :
                 repositoryUrl = origin.toUri().toString(),
                 mainBranch = "main",
                 serviceAuthSettingId = UUID.randomUUID(),
+                autoWorktreeForRootCases = false,
+                setupCommand = null,
             )
 
         "the bare repository lives outside both browsable Exchange roots" {
@@ -299,7 +301,7 @@ class RepositoryCheckoutProvisionerSpec :
                     runner = runner,
                     gitProperties = gitProperties,
                     exchangeStorageService = storage,
-                    checkoutService = InMemoryRepositoryCheckoutService(),
+                    checkoutService = InMemoryRepositoryCheckouts(),
                     serviceAccountResolver = GitServiceAccountResolver(authSettings),
                 )
 
@@ -312,6 +314,8 @@ class RepositoryCheckoutProvisionerSpec :
                             repositoryUrl = originRepository().toUri().toString(),
                             mainBranch = "main",
                             serviceAuthSettingId = UUID.randomUUID(),
+                            autoWorktreeForRootCases = false,
+                            setupCommand = null,
                         ),
                     )
 
@@ -377,6 +381,7 @@ class RepositoryCheckoutProvisionerSpec :
         "a requested checkout is cloned even though no case ever asks for a worktree" {
             val (storage, provisioner, namespaceId) = fixture()
             val configured = settings(namespaceId, originRepository())
+            configured.autoWorktreeForRootCases shouldBe false
             provisioner.requestPreparation(configured)
 
             val ready = provisioner.ensureReady(configured)
@@ -423,7 +428,7 @@ class RepositoryCheckoutProvisionerSpec :
     })
 
 /** Minimal in-memory [RepositoryCheckoutService] for the provisioning tests. */
-internal class InMemoryRepositoryCheckoutService : RepositoryCheckoutService {
+private class InMemoryRepositoryCheckoutService : RepositoryCheckoutService {
     private val rows = mutableMapOf<UUID, RepositoryCheckout>()
 
     override fun create(entity: RepositoryCheckout): RepositoryCheckout = entity.also { rows[it.id] = it }

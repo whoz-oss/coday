@@ -71,12 +71,24 @@ class GitRepositorySettingsFactory(
                 )
             }
 
+        val setupCommand = parameters.textOrNull(GitRepositoryIntegration.PARAM_SETUP_COMMAND)
+        if (setupCommand != null && setupCommand.length > MAX_SETUP_COMMAND_LENGTH) {
+            throw BadRequestException("'${GitRepositoryIntegration.PARAM_SETUP_COMMAND}' exceeds $MAX_SETUP_COMMAND_LENGTH characters")
+        }
+
         return GitRepositorySettings(
             configId = config.id,
             namespaceId = namespaceId,
             repositoryUrl = repositoryUrl,
             mainBranch = mainBranch,
             serviceAuthSettingId = serviceAuthSettingId,
+            autoWorktreeForRootCases =
+                parameters
+                    .get(GitRepositoryIntegration.PARAM_AUTO_WORKTREE)
+                    ?.takeIf { !it.isNull }
+                    ?.asBoolean(false)
+                    ?: false,
+            setupCommand = setupCommand,
         )
     }
 
@@ -87,4 +99,8 @@ class GitRepositorySettingsFactory(
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
 
+    companion object {
+        /** Keeps an accidental paste (or a whole script) out of a configuration field. */
+        const val MAX_SETUP_COMMAND_LENGTH: Int = 4_000
+    }
 }

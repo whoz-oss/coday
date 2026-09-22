@@ -25,7 +25,7 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
  *
  * Selecting a file swaps the list for the content viewer (narrow drawer); the viewer's back
  * button returns to the lists. A section is hidden entirely when not visible (forbidden →
- * zero disclosure). Per-section states: loading (spinner) / error (retry banner) / empty
+ * zero disclosure). Per-section states: loading / preparing (spinner and explanation) / error (retry banner) / empty
  * (empty-state) / ready (list).
  *
  * Kept presentational, OnPush, I/O in signals (decision #8).

@@ -33,6 +33,7 @@ describe('Namespace Git API', () => {
     const association = {
       repositoryUrl: 'https://example.com/repo.git',
       mainBranch: 'main',
+      autoWorktreeForRootCases: false,
       serviceAuthSettingId: 'shared-credential',
     }
     TestBed.inject(NamespaceGitControllerService).setAssociationNamespaceGit('namespace', association).subscribe()

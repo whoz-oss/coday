@@ -59,6 +59,7 @@ export class NamespaceGitComponent implements OnInit {
 
   readonly isLoading = signal(true)
   readonly isSaving = signal(false)
+  readonly associationLoaded = signal(false)
   readonly errorMessage = signal<string | null>(null)
   readonly association = signal<NamespaceGit | null>(null)
   readonly authSettings = signal<AuthSettingDto[]>([])
@@ -67,6 +68,8 @@ export class NamespaceGitComponent implements OnInit {
   readonly repositoryUrl = signal('')
   readonly mainBranch = signal('main')
   readonly serviceAuthSettingId = signal('')
+  readonly autoWorktree = signal(false)
+  readonly setupCommand = signal('')
 
   private namespaceId = ''
 
@@ -83,7 +86,12 @@ export class NamespaceGitComponent implements OnInit {
   }
 
   readonly canSave = computed(
-    () => this.repositoryUrl().trim().length > 0 && this.serviceAuthSettingId().length > 0 && !this.isSaving()
+    () =>
+      this.associationLoaded() &&
+      !this.isLoading() &&
+      !this.isSaving() &&
+      this.repositoryUrl().trim().length > 0 &&
+      this.serviceAuthSettingId().length > 0
   )
 
   /** Preparation state of the managed clone, when one has been attempted. */
@@ -94,39 +102,59 @@ export class NamespaceGitComponent implements OnInit {
     this.load()
   }
 
+  retryLoad(): void {
+    if (this.isLoading() || this.isSaving()) return
+    this.load()
+  }
+
   private load(): void {
     this.isLoading.set(true)
+    this.associationLoaded.set(false)
+    this.errorMessage.set(null)
     forkJoin({
-      association: this.gitApi.getAssociationNamespaceGit(this.namespaceId).pipe(
-        catchError((error: HttpErrorResponse) => {
-          // A fail-safe must still be diagnosable.
-          console.error('Failed to load the Git association', error)
-          this.errorMessage.set(this.messageOf(error))
-          return of(null)
-        })
-      ),
-      authSettings: this.authSettingState.loadNamespaceSettings(this.namespaceId).pipe(
-        catchError((error: HttpErrorResponse) => {
-          console.error('Failed to load namespace auth settings', error)
-          return of([] as AuthSettingDto[])
-        })
-      ),
+      association: this.gitApi.getAssociationNamespaceGit(this.namespaceId),
+      authSettings: this.authSettingState.loadNamespaceSettings(this.namespaceId),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(({ association, authSettings }) => {
-        this.authSettings.set(authSettings ?? [])
-        if (association) {
-          this.association.set(association)
-          this.applyToForm(association)
-        }
-        this.isLoading.set(false)
+      .subscribe({
+        next: ({ association, authSettings }) => {
+          this.authSettings.set(authSettings ?? [])
+          this.acceptAssociation(association)
+          this.isLoading.set(false)
+        },
+        error: (error: HttpErrorResponse) => {
+          console.error('Failed to load the Git repository settings', error)
+          this.errorMessage.set(this.messageOf(error))
+          this.isLoading.set(false)
+        },
       })
+  }
+
+  /** An incomplete error response must never turn existing setup/automation into empty defaults. */
+  private acceptAssociation(association: NamespaceGit): void {
+    this.association.set(association)
+    const complete =
+      association?.associated === false ||
+      (association?.associated === true &&
+        typeof association.repositoryUrl === 'string' &&
+        typeof association.mainBranch === 'string' &&
+        typeof association.serviceAuthSettingId === 'string' &&
+        typeof association.autoWorktreeForRootCases === 'boolean' &&
+        (association.setupCommand == null || typeof association.setupCommand === 'string'))
+    this.associationLoaded.set(complete)
+    if (complete) {
+      this.applyToForm(association)
+    } else {
+      this.errorMessage.set('The repository settings could not be loaded completely. Retry before making changes.')
+    }
   }
 
   private applyToForm(association: NamespaceGit): void {
     this.repositoryUrl.set(association.repositoryUrl ?? '')
     this.mainBranch.set(association.mainBranch ?? 'main')
     this.serviceAuthSettingId.set(association.serviceAuthSettingId ?? '')
+    this.autoWorktree.set(association.autoWorktreeForRootCases ?? false)
+    this.setupCommand.set(association.setupCommand ?? '')
   }
 
   save(): void {
@@ -139,6 +167,8 @@ export class NamespaceGitComponent implements OnInit {
         repositoryUrl: this.repositoryUrl().trim(),
         mainBranch: this.mainBranch().trim() || undefined,
         serviceAuthSettingId: this.serviceAuthSettingId(),
+        autoWorktreeForRootCases: this.autoWorktree(),
+        setupCommand: this.setupCommand().trim() || undefined,
       })
       .pipe(
         takeUntilDestroyed(this.destroyRef),
@@ -153,15 +183,15 @@ export class NamespaceGitComponent implements OnInit {
       )
       .subscribe((association) => {
         if (association) {
-          this.association.set(association)
-          this.applyToForm(association)
+          this.acceptAssociation(association)
         }
         this.isSaving.set(false)
       })
   }
 
   remove(): void {
-    if (!confirm('Remove the repository association? The internal clone is preserved.')) return
+    if (!this.associationLoaded() || this.isLoading() || this.isSaving() || !this.isAssociated()) return
+    if (!confirm('Remove the repository association? Existing workspaces keep their worktree.')) return
     this.isSaving.set(true)
 
     this.gitApi
@@ -177,8 +207,7 @@ export class NamespaceGitComponent implements OnInit {
       )
       .subscribe((association) => {
         if (association) {
-          this.association.set(association)
-          this.applyToForm(association)
+          this.acceptAssociation(association)
         }
         this.isSaving.set(false)
       })

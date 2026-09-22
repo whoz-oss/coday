@@ -178,6 +178,17 @@
 
 // ── Case action buttons (star + delete) ──────────────────────────────────
 
+.mobile-drawer__case-statuses {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mobile-drawer__case-status-label {
+  @include ds.status-tag;
+}
+
 .mobile-drawer__case-actions,
 .mobile-drawer__case-confirm {
   display: flex;

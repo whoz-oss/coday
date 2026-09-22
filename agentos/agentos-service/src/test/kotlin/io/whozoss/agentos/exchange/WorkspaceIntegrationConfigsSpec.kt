@@ -40,6 +40,16 @@ class WorkspaceIntegrationConfigsSpec : StringSpec({
             WorkspaceIntegrationConfigs.resolve(listOf(original), root.copy(workspace = null)).single() shouldBe original
         }
     }
+    "shell tools entering the workspace use the family HOME prepared by setup" {
+        val home = Path.of("/tmp/workspace-support/family")
+        val equipped = root.copy(workspace = ExchangeWorkspace(ownerId, Path.of("/tmp/project-source"), home))
+        listOf("BASH", "TMUX").forEach { type ->
+            val effective = WorkspaceIntegrationConfigs.resolve(listOf(config(type)), equipped).single()
+            effective.parameters!!["workspaceHome"].asText() shouldBe home.toString()
+        }
+        WorkspaceIntegrationConfigs.resolve(listOf(config("BASH", optOut = true)), equipped).single()
+            .parameters!!.has("workspaceHome") shouldBe false
+    }
     "stdio MCP servers enter the workspace only when explicitly configured to" {
         val saved = IntegrationConfig(
             namespaceId = ns, userId = null, name = "github", integrationType = "MCP_STDIO",
@@ -66,6 +76,37 @@ class WorkspaceIntegrationConfigsSpec : StringSpec({
         WorkspaceIntegrationConfigs.resolve(independent, root, mayWriteWorkspace = false) shouldBe independent
         // An inaccessible workspace is never materialized just to filter its tools.
         WorkspaceIntegrationConfigs.resolve(targeting, root.copy(unavailableReason = "Preparing"), false) shouldBe emptyList()
+    }
+    val gitParameters = mapOf(
+        "gitDir" to "/data/ns/repository.git/worktrees/$ownerId",
+        "commonGitDir" to "/data/ns/repository.git",
+        "repositoryUrl" to "https://forge.example/org/project.git",
+        "mainBranch" to "main",
+    )
+    val gitRoot = root.copy(workspace = ExchangeWorkspace(ownerId, Path.of("/tmp/project-source"), toolParameters = gitParameters))
+    fun gitConfig(parameters: String = "{}") = IntegrationConfig(
+        namespaceId = ns, userId = null, name = "git", integrationType = "GIT", authSettingName = "github",
+        parameters = mapper.readTree(parameters),
+    )
+    "Git tools receive the family worktree and the Git context the workspace provider trusts" {
+        val saved = gitConfig(
+            """{"workingDirectory":"/elsewhere","gitDir":"/elsewhere/.git","repositoryUrl":"https://other.example/x.git","useCaseExchangeDirectory":false}""",
+        )
+
+        val effective = WorkspaceIntegrationConfigs.resolve(listOf(saved), gitRoot).single()
+
+        effective.parameters!!["workingDirectory"].asText() shouldBe "/tmp/project-source"
+        effective.parameters!!["workspaceId"].asText() shouldBe ownerId.toString()
+        gitParameters.forEach { (key, value) -> effective.parameters!![key].asText() shouldBe value }
+        effective.authSettingName shouldBe "github"
+        saved.parameters!!["gitDir"].asText() shouldBe "/elsewhere/.git"
+    }
+    "Git tools exist only inside a Git workspace the user may write" {
+        val git = listOf(gitConfig())
+        WorkspaceIntegrationConfigs.resolve(git, null) shouldBe emptyList()
+        WorkspaceIntegrationConfigs.resolve(git, root.copy(workspace = null)) shouldBe emptyList()
+        WorkspaceIntegrationConfigs.resolve(git, root) shouldBe emptyList()
+        WorkspaceIntegrationConfigs.resolve(git, gitRoot, mayWriteWorkspace = false) shouldBe emptyList()
     }
     "failed and deleting workspaces do not fall back to the configured server directory" {
         shouldThrow<ExchangeUnavailableException> { WorkspaceIntegrationConfigs.resolve(listOf(config("BASH")), root.copy(unavailableReason = "Preparation failed")) }

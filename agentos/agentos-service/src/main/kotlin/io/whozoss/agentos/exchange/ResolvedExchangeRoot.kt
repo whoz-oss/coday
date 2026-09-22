@@ -5,8 +5,18 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import java.nio.file.Path
 import java.util.UUID
 
-/** Optional execution directory shared by a family of cases. */
-data class ExchangeWorkspace(val id: UUID, val workingDirectory: Path)
+/**
+ * Optional execution directory shared by a family of cases.
+ *
+ * [toolParameters] are values the workspace provider hands to the tool integration bound to this
+ * workspace. They come from trusted server-side metadata, never from files inside the workspace.
+ */
+data class ExchangeWorkspace(
+    val id: UUID,
+    val workingDirectory: Path,
+    val home: Path? = null,
+    val toolParameters: Map<String, String> = emptyMap(),
+)
 
 /** Storage ownership and availability; backing resources and their lifecycle stay in the provider. */
 data class ResolvedExchangeRoot(

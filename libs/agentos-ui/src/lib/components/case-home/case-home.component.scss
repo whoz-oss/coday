@@ -47,6 +47,28 @@
     line-height: 1.1;
   }
 
+  &__parent {
+    @include ds.button-reset;
+
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    align-self: flex-start;
+    margin-bottom: 12px;
+    color: var(--color-accent-700);
+    font-size: 13px;
+    text-align: left;
+    overflow-wrap: anywhere;
+
+    .material-icons {
+      font-size: 16px;
+    }
+
+    &:focus-visible {
+      @include ds.focus-ring;
+    }
+  }
+
   // ── Composer — blueprint pattern ─────────────────────────────────────────────
 
   &__composer {

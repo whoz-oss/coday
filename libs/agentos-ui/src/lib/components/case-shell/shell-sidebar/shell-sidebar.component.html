@@ -105,6 +105,7 @@
         [filterQuery]="caseFilter()"
         (caseSelected)="caseSelected.emit($event)"
         (createRequested)="createRequested.emit()"
+        (subCaseCreateRequested)="subCaseCreateRequested.emit($event)"
         (deleteRequested)="deleteRequested.emit($event)"
         (starToggled)="starToggled.emit($event)"
         (renameRequested)="renameRequested.emit($event)"
@@ -304,6 +305,7 @@
         [filterQuery]="caseFilter()"
         (caseSelected)="caseSelected.emit($event)"
         (createRequested)="createRequested.emit()"
+        (subCaseCreateRequested)="subCaseCreateRequested.emit($event)"
         (deleteRequested)="deleteRequested.emit($event)"
         (starToggled)="starToggled.emit($event)"
       />

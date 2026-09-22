@@ -26,6 +26,7 @@ class BashTool(
     private val integrationConfig: BashIntegrationConfig,
     configName: String? = null,
     private val workspaceId: String? = null,
+    private val workspaceHome: String? = null,
 ) : StandardTool<BashTool.Input> {
     private val isParameterised: Boolean = toolConfig.command.contains(PARAMETERS_PLACEHOLDER)
 
@@ -93,7 +94,9 @@ class BashTool(
 
         logger.debug { "Executing tool '${toolConfig.name}' in ${workDir.absolutePath} (timeout: ${timeout}s)" }
 
-        return when (val result = BashCommandExecutor.execute(resolvedCommand, workDir, timeout, workspaceId = workspaceId)) {
+        return when (val result = BashCommandExecutor.execute(
+            resolvedCommand, workDir, timeout, workspaceId = workspaceId, home = workspaceHome?.let(::File),
+        )) {
             is BashExecutionResult.Completed ->
                 when {
                     result.exitCode != 0 -> ToolExecutionResult.error(

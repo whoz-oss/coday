@@ -7,9 +7,10 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfig
 /** Per-run copies only: the namespace's saved integration is never rewritten. */
 object WorkspaceIntegrationConfigs {
     fun resolve(configs: List<IntegrationConfig>, root: ResolvedExchangeRoot?, mayWriteWorkspace: Boolean = true): List<IntegrationConfig> {
-        val workspace = root?.workspace ?: return configs
+        val workspace = root?.workspace ?: return configs.filterNot { it.integrationType == GIT_TOOLS }
         val path = if (mayWriteWorkspace) root.requireWorkingDirectory().toAbsolutePath().normalize().toString() else null
         return configs.mapNotNull { config ->
+            if (config.integrationType == GIT_TOOLS) return@mapNotNull gitTools(config, workspace, path)
             val key = when (config.integrationType) {
                 "BASH", "TMUX" -> "workingDirectory"
                 "MCP_STDIO" -> "cwd"
@@ -32,6 +33,11 @@ object WorkspaceIntegrationConfigs {
                 if (!mayWriteWorkspace) return@mapNotNull null
                 parameters.put(key, path)
                 parameters.put("workspaceId", workspace.id.toString())
+                if (config.integrationType != "MCP_STDIO") {
+                    // Shell tools use the HOME setup used: package stores and daemons then match
+                    // what setup installed and are never shared with another family.
+                    workspace.home?.let { parameters.put("workspaceHome", it.toString()) }
+                }
                 if (config.integrationType == "TMUX") {
                     parameters.put("socketName", "agentos-${workspace.id}")
                 }
@@ -39,4 +45,24 @@ object WorkspaceIntegrationConfigs {
             config.copy(parameters = parameters)
         }
     }
+
+    /**
+     * Git tools only ever work in the family's worktree, with the Git context the workspace
+     * provider trusts. They disappear outside a Git workspace and for a reader, and saved values
+     * never override the injected ones.
+     */
+    private fun gitTools(config: IntegrationConfig, workspace: ExchangeWorkspace, path: String?): IntegrationConfig? {
+        if (path == null || workspace.toolParameters.isEmpty()) return null
+        val parameters = when (val saved = config.parameters) {
+            null -> JsonNodeFactory.instance.objectNode()
+            is ObjectNode -> saved.deepCopy()
+            else -> if (saved.isNull) JsonNodeFactory.instance.objectNode() else return null
+        }
+        parameters.put("workingDirectory", path)
+        parameters.put("workspaceId", workspace.id.toString())
+        workspace.toolParameters.forEach { (key, value) -> parameters.put(key, value) }
+        return config.copy(parameters = parameters)
+    }
+
+    private const val GIT_TOOLS = "GIT"
 }

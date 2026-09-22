@@ -16,11 +16,15 @@ data class GitExchangeRoot(
     val path: Path,
     val binding: CaseResourceBinding?,
     val ownerCaseId: UUID,
+    /** HOME shared by the family's setup and shell tools; null for an ordinary family. */
+    val supportDirectory: Path? = null,
+    /** Git context handed to the `GIT` tool integration; empty for an ordinary family. */
+    val toolParameters: Map<String, String> = emptyMap(),
 ) {
     val exchange: ResolvedExchangeRoot get() = ResolvedExchangeRoot(
         path = path,
         ownerCaseId = ownerCaseId,
-        workspace = binding?.let { ExchangeWorkspace(it.rootCaseId, repositoryPath) },
+        workspace = binding?.let { ExchangeWorkspace(it.rootCaseId, repositoryPath, supportDirectory, toolParameters) },
         unavailableReason = if (isUsable) null else unavailableMessage(),
     )
 

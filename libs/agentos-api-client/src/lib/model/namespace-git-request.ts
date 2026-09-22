@@ -9,7 +9,9 @@
  */
 
 export interface NamespaceGitRequest {
+  autoWorktreeForRootCases: boolean
   mainBranch?: string
   repositoryUrl: string
   serviceAuthSettingId: string
+  setupCommand?: string
 }
