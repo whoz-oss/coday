@@ -32,6 +32,7 @@ import { debugLog } from './log'
 import { McpInstancePool } from '@coday/mcp'
 import { AgentService } from '@coday/agent'
 import { settleBackgroundRun } from './settle-background-run'
+import { persistThreadMetadataUpdate } from './thread-metadata-update'
 
 /**
  * Represents a Coday instance associated with a specific thread.
@@ -412,31 +413,16 @@ class ThreadCodayInstance {
     // The ThreadPostProcessor handles name/summary updates after autoSave completes.
     if (event instanceof ThreadUpdateEvent && (event.name || event.summary) && !this.isCleaningUp) {
       debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} name/summary`)
-      // Update only the metadata (name/summary) in the thread service cache.
-      // IMPORTANT: do NOT reload from disk and re-save — that would overwrite the in-memory
-      // messages with the empty disk version if the thread hasn't been saved yet.
-      // Instead, update the cache entry directly and patch the on-disk file only if it
-      // already has messages (i.e. autoSave has already run).
-      ;(async () => {
-        try {
-          const thread = await this.threadService.getThread(this.projectName, this.threadId)
-          if (!thread) return
-          if (event.name) thread.name = event.name
-          if (event.summary) thread.summary = event.summary
-          // Only persist if the thread already has messages on disk — avoids overwriting
-          // a future autoSave with an empty-messages snapshot.
-          if (thread.messagesLength > 0) {
-            await this.threadService.updateThread(this.projectName, this.threadId, {
-              name: event.name,
-              summary: event.summary,
-            })
-          }
-          // Thread has no messages yet — just update the in-memory cache without disk write
-          // autoSave() will persist both messages and name/summary later.
-        } catch (error) {
-          debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
-        }
-      })()
+      // Built-in autosave and THREADS tool producers mark metadataPersisted,
+      // so their notifications refresh the cache without a second YAML write.
+      // Unmarked events keep the legacy persistence path for compatibility.
+      void persistThreadMetadataUpdate(this.threadService, this.projectName, this.threadId, {
+        name: event.name,
+        summary: event.summary,
+        metadataPersisted: event.metadataPersisted,
+      }).catch((error) => {
+        debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
+      })
       // Notify project-level SSE clients so Mission Control refreshes automatically
       this.projectEventManager?.broadcast(this.projectName, event)
     }
