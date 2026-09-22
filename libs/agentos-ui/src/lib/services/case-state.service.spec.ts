@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing'
 import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
-import { of, throwError } from 'rxjs'
+import { of, Subject, throwError } from 'rxjs'
 import { CaseStateService } from './case-state.service'
 
 describe('CaseStateService', () => {
@@ -19,7 +19,7 @@ describe('CaseStateService', () => {
       deleteCase: jest.fn().mockReturnValue(of(undefined)),
       starCase: jest.fn().mockReturnValue(of(undefined)),
       unstarCase: jest.fn().mockReturnValue(of(undefined)),
-      updateCase: jest.fn().mockReturnValue(of(caseWith('a'))),
+      updateCase: jest.fn().mockImplementation((_id: string, body: Case) => of(body)),
     }
     TestBed.configureTestingModule({
       providers: [CaseStateService, { provide: CaseControllerService, useValue: controllerMock }],
@@ -158,7 +158,7 @@ describe('CaseStateService', () => {
       expect(listMine).toHaveBeenCalledTimes(1)
     })
 
-    it('ignores the response so favorite and role survive the rename', () => {
+    it('preserves favorite and role while syncing the rename response', () => {
       // Single-case endpoints map a DTO that carries neither favorite nor role: merging the
       // response back would silently un-star the case and drop its ADMIN-gated actions.
       const stored = titledCase('a', 'Old', { favorite: true, role: 'ADMIN' } as Partial<Case>)
@@ -218,37 +218,117 @@ describe('CaseStateService', () => {
       expect(svc.cases()[0].runCostThreshold).toBe(10)
     })
 
-    it('does not revert when a later request has already updated the field (out-of-order failure)', () => {
-      // Scenario from the review: save to 20 is issued first, then save to 30 succeeds,
-      // then the earlier save to 20 fails. The UI must keep 30, not revert to the
-      // original 10.
-      const { Subject } = jest.requireActual<typeof import('rxjs')>('rxjs')
-      const firstRequest = new Subject<Case>()
-      const secondRequest = new Subject<Case>()
+    it('waits for the first save to complete before sending the next one', () => {
+      const first = new Subject<Case>()
+      const second = new Subject<Case>()
+      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a')])))
+      svc.loadCases('ns')
+      controllerMock.updateCase.mockReturnValueOnce(first).mockReturnValueOnce(second)
 
-      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a', { runCostThreshold: 10 })])))
-      svc.loadCases('ns-1')
+      svc.updateCaseFields('a', { runCostThreshold: 20 }).subscribe()
+      svc.updateCaseFields('a', { runCostThreshold: 30 }).subscribe()
+      expect(controllerMock.updateCase).toHaveBeenCalledTimes(1)
+      expect(svc.cases()[0].runCostThreshold).toBe(20)
 
-      controllerMock.updateCase
-        .mockReturnValueOnce(firstRequest.asObservable()) // slow request (will fail later)
-        .mockReturnValueOnce(secondRequest.asObservable()) // fast request (succeeds first)
+      first.next(fieldCase('a', { runCostThreshold: 20 }))
+      expect(controllerMock.updateCase).toHaveBeenCalledTimes(1)
+      first.complete()
+      expect(controllerMock.updateCase).toHaveBeenCalledTimes(2)
+      expect(svc.cases()[0].runCostThreshold).toBe(30)
+      second.next(fieldCase('a', { runCostThreshold: 30 }))
+      second.complete()
+      expect(svc.cases()[0].runCostThreshold).toBe(30)
+    })
 
-      // Issue first update (threshold → 20), still in-flight
+    it('restores the confirmed value when both queued saves fail and allows retry', () => {
+      const first = new Subject<Case>()
+      const second = new Subject<Case>()
+      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a')])))
+      svc.loadCases('ns')
+      controllerMock.updateCase.mockReturnValueOnce(first).mockReturnValueOnce(second)
+
       svc.updateCaseFields('a', { runCostThreshold: 20 }).subscribe({ error: () => undefined })
-      expect(svc.cases()[0].runCostThreshold).toBe(20) // optimistic
-
-      // Issue second update (threshold → 30), still in-flight
       svc.updateCaseFields('a', { runCostThreshold: 30 }).subscribe({ error: () => undefined })
-      expect(svc.cases()[0].runCostThreshold).toBe(30) // optimistic
-
-      // Second request resolves successfully first
-      secondRequest.next(fieldCase('a', { runCostThreshold: 30 }))
-      secondRequest.complete()
+      first.error(new Error('first rejected'))
+      expect(controllerMock.updateCase).toHaveBeenCalledTimes(2)
       expect(svc.cases()[0].runCostThreshold).toBe(30)
+      second.error(new Error('second rejected'))
+      expect(svc.cases()[0].runCostThreshold).toBe(10)
 
-      // First (older) request now fails — must NOT roll back to 10
-      firstRequest.error(new Error('network error'))
+      svc.updateCaseFields('a', { runCostThreshold: 40 }).subscribe()
+      expect(controllerMock.updateCase).toHaveBeenCalledTimes(3)
+      expect(svc.cases()[0].runCostThreshold).toBe(40)
+    })
+
+    it('preserves a successful save when the following save fails', () => {
+      const first = new Subject<Case>()
+      const second = new Subject<Case>()
+      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a')])))
+      svc.loadCases('ns')
+      controllerMock.updateCase.mockReturnValueOnce(first).mockReturnValueOnce(second)
+
+      svc.updateCaseFields('a', { runCostThreshold: 20 }).subscribe()
+      svc.updateCaseFields('a', { runCostThreshold: 30 }).subscribe({ error: () => undefined })
+      first.next(fieldCase('a', { runCostThreshold: 20 }))
+      first.complete()
+      second.error(new Error('second rejected'))
+      expect(svc.cases()[0].runCostThreshold).toBe(20)
+    })
+
+    it('queues renames using the confirmed threshold, independently of other cases', () => {
+      const first = new Subject<Case>()
+      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a'), fieldCase('b')])))
+      svc.loadCases('ns')
+      controllerMock.updateCase.mockReturnValueOnce(first)
+
+      svc.updateCaseFields('a', { runCostThreshold: 20 }).subscribe({ error: () => undefined })
+      svc.renameCase('a', 'Renamed').subscribe()
+      svc.updateCaseFields('b', { runCostThreshold: 50 }).subscribe()
+      expect(controllerMock.updateCase).toHaveBeenCalledTimes(2)
+      expect(svc.cases()[1].runCostThreshold).toBe(50)
+
+      first.error(new Error('threshold rejected'))
+      expect(controllerMock.updateCase).toHaveBeenLastCalledWith(
+        'a',
+        expect.objectContaining({ title: 'Renamed', runCostThreshold: 10 })
+      )
+      expect(svc.cases()[0]).toEqual(expect.objectContaining({ title: 'Renamed', runCostThreshold: 10 }))
+    })
+
+    it('finishes subscribed saves in order when the first caller unsubscribes', () => {
+      const first = new Subject<Case>()
+      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a')])))
+      svc.loadCases('ns')
+      controllerMock.updateCase.mockReturnValueOnce(first)
+
+      const subscription = svc.updateCaseFields('a', { runCostThreshold: 20 }).subscribe()
+      svc.updateCaseFields('a', { runCostThreshold: 30 }).subscribe()
+      subscription.unsubscribe()
+      expect(controllerMock.updateCase).toHaveBeenCalledTimes(1)
+      first.next(fieldCase('a', { runCostThreshold: 20 }))
+      first.complete()
+      expect(controllerMock.updateCase).toHaveBeenCalledTimes(2)
       expect(svc.cases()[0].runCostThreshold).toBe(30)
+    })
+
+    it('keeps queued saves after navigation replaces the visible case list', () => {
+      const first = new Subject<Case>()
+      const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a')])))
+      svc.loadCases('ns')
+      controllerMock.updateCase.mockReturnValueOnce(first)
+
+      const subscription = svc.updateCaseFields('a', { runCostThreshold: 20 }).subscribe({ error: () => undefined })
+      svc.renameCase('a', 'Renamed').subscribe()
+      subscription.unsubscribe()
+      controllerMock.listMineByParentCase.mockReturnValue(of([fieldCase('b')]))
+      svc.loadCases('other-ns')
+      first.error(new Error('threshold rejected'))
+
+      expect(controllerMock.updateCase).toHaveBeenLastCalledWith(
+        'a',
+        expect.objectContaining({ title: 'Renamed', runCostThreshold: 10 })
+      )
+      expect(svc.cases()).toEqual([fieldCase('b')])
     })
 
     it('errors without calling the controller when the case is not in the list', () => {
