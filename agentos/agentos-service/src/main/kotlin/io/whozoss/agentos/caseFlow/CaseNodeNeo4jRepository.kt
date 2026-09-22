@@ -10,6 +10,9 @@ import java.time.Instant
  * Spring Data Neo4j repository for [CaseNode].
  */
 interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
+    @Query($$"MATCH (c:Case)-[r:BELONGS_TO]->(ns:Namespace {id: $namespaceId}) RETURN c, r, ns ORDER BY c.created ASC")
+    fun findIncludingRemovedByNamespace(namespaceId: String): List<CaseNode>
+
     /**
      * Find all non-removed cases belonging to a namespace, ordered by creation time.
      *

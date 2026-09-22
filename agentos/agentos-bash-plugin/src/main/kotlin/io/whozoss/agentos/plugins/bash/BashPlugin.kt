@@ -32,7 +32,8 @@ class BashPlugin : Plugin() {
  * config logs an error and returns an empty list rather than crashing the service.
  */
 @Extension
-class BashToolProvider : ToolPlugin {
+class BashToolProvider : ToolPlugin, io.whozoss.agentos.sdk.tool.WorkspaceToolLifecycle {
+    override fun releaseWorkspace(workspaceId: String, directory: String) = WorkspaceBashProcesses.release(workspaceId)
 
     override val integrationType: String = "BASH"
 
@@ -61,6 +62,7 @@ class BashToolProvider : ToolPlugin {
                 toolConfig = toolConfig,
                 integrationConfig = integrationConfig,
                 configName = configName,
+                workspaceId = config.get("workspaceId")?.asText(),
             )
         }
     }
@@ -73,6 +75,12 @@ class BashToolProvider : ToolPlugin {
                 "title": "Bash Integration Configuration",
                 "description": "Exposes configured bash commands as individual tools for the LLM.",
                 "properties": {
+                    "useCaseExchangeDirectory": {
+                        "type": "boolean",
+                        "title": "Use case workspace directory",
+                        "description": "Run in the shared Case Exchange when this case has a Git workspace. Otherwise use the configured directory.",
+                        "default": true
+                    },
                     "workingDirectory": {
                         "type": "string",
                         "title": "Working Directory",

@@ -251,4 +251,56 @@ class GitRepositoryConfigPolicySpec :
             newService().create(config(mapOf("anything" to "goes"), name = "JIRA", integrationType = "JIRA")).id.shouldNotBeNull()
             verify(exactly = 0) { provisioner.requestPreparation(any()) }
         }
+        "an unused first failed checkout can be corrected through the ordinary config API" {
+            val checkoutStore = InMemoryRepositoryCheckoutService()
+            val bindingStore = InMemoryCaseResourceBindingService()
+            val root = java.nio.file.Files.createTempDirectory("unused-checkout-policy-")
+            val storage = mockk<io.whozoss.agentos.exchange.ExchangeStorageService> {
+                every { namespaceGitDirectory(namespaceId) } returns root.resolve("repository.git")
+            }
+            val factory = GitRepositorySettingsFactory(GitRemoteUrlValidator(GitExecutionProperties()))
+            val actualProvisioner = RepositoryCheckoutProvisioner(mockk(), GitExecutionProperties(), storage, checkoutStore, mockk(), bindingStore)
+            val service = IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository(), IntegrationConfigMergeStrategy(),
+                listOf(GitRepositoryConfigPolicy(factory, checkoutStore, actualProvisioner, availability)))
+            val saved = service.create(config(validParameters()))
+            val failed = checkoutStore.markStatus(checkoutStore.findByNamespaceId(namespaceId)!!.id, RepositoryCheckoutStatus.FAILED, "first clone failed")
+            val corrected = saved.copy(parameters = objectMapper.valueToTree(validParameters().also {
+                it[GitRepositoryIntegration.PARAM_REPOSITORY_URL] = "https://forge.example/org/correct.git"
+                it[GitRepositoryIntegration.PARAM_MAIN_BRANCH] = "develop"
+            }))
+            service.update(corrected)
+            checkoutStore.findByNamespaceId(namespaceId)!!.let {
+                it.id shouldBe failed.id
+                it.repositoryUrl shouldBe "https://forge.example/org/correct.git"
+                it.mainBranch shouldBe "develop"
+                it.status shouldBe RepositoryCheckoutStatus.PREPARING
+            }
+        }
+
+        "failed checkout replacement cannot orphan a family or existing files" {
+            val checkoutStore = InMemoryRepositoryCheckoutService()
+            val bindingStore = InMemoryCaseResourceBindingService()
+            val root = java.nio.file.Files.createTempDirectory("used-checkout-policy-")
+            val directory = root.resolve("repository.git")
+            val storage = mockk<io.whozoss.agentos.exchange.ExchangeStorageService> {
+                every { namespaceGitDirectory(namespaceId) } returns directory
+            }
+            val actualProvisioner = RepositoryCheckoutProvisioner(mockk(), GitExecutionProperties(), storage, checkoutStore, mockk(), bindingStore)
+            val checkout = checkoutStore.create(RepositoryCheckout(namespaceId = namespaceId, integrationConfigId = UUID.randomUUID(),
+                repositoryUrl = "https://forge.example/org/project.git", mainBranch = "main", status = RepositoryCheckoutStatus.FAILED))
+            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe true
+            java.nio.file.Files.createDirectory(directory)
+            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false
+            java.nio.file.Files.delete(directory)
+            val unused = bindingStore.create(CaseResourceBinding(rootCaseId = UUID.randomUUID(), namespaceId = namespaceId,
+                integrationConfigId = checkout.integrationConfigId))
+            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false
+            bindingStore.update(unused.copy(status = CaseResourceStatus.FAILED))
+            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false
+            bindingStore.update(unused.copy(status = CaseResourceStatus.REMOVED))
+            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe true
+            bindingStore.update(unused.copy(status = CaseResourceStatus.REMOVED, baseSha = "a".repeat(40)))
+            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false
+        }
+
     })

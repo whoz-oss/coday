@@ -235,7 +235,10 @@ describe('CaseChatComponent — submit with attachments', () => {
 
     await ref.instance['submit']()
 
-    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'hello', userId: 'default-user' })
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: 'hello',
+      userId: 'default-user',
+    })
     expect(exchangeState.uploadFile).not.toHaveBeenCalled()
   })
 
@@ -305,5 +308,80 @@ describe('CaseChatComponent — submit with attachments', () => {
     attachments(ref).isUploading.set(false)
     ref.instance['isTerminal'].set(true)
     expect(ref.instance['canSend']).toBe(false)
+  })
+})
+
+/**
+ * A notice is the only thing the user sees when a turn produces no message. It used to be
+ * rendered only under the technical toggle, so a case that stopped for want of an agent
+ * selection looked exactly like an agent that never answered.
+ */
+describe('CaseChatComponent — timeline notices', () => {
+  function makeComponent(): ComponentRef<CaseChatComponent> {
+    return createComponent(CaseChatComponent, { environmentInjector: TestBed.inject(EnvironmentInjector) })
+  }
+
+  function warn(message: string) {
+    return { id: 'w-1', type: 'WarnEvent', message, timestamp: '2026-09-21T18:41:13Z' }
+  }
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: HttpClient, useValue: { post: jest.fn().mockReturnValue(of({})) } },
+        { provide: Configuration, useValue: { basePath: '' } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParams: { case: 'c-1', ns: 'ns-1' } }, queryParams: of({}) },
+        },
+        {
+          provide: ExchangeStateService,
+          useValue: {
+            uploadFile: jest.fn(),
+            canWriteCase: signal(true),
+            canWriteNamespace: signal(false),
+            fileCount: signal(0),
+            refreshManifest: jest.fn(),
+            refreshCase: jest.fn(),
+            refreshNamespace: jest.fn(),
+          },
+        },
+        {
+          provide: CaseStateService,
+          useValue: { addCase: jest.fn(), updateCaseTitle: jest.fn(), updateCaseStatus: jest.fn() },
+        },
+        { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
+        {
+          provide: USER_PREFERENCES_PORT,
+          useValue: { shouldSend: jest.fn().mockReturnValue(false), composerHint: () => 'hint' },
+        },
+      ],
+    })
+  })
+
+  afterEach(() => TestBed.resetTestingModule())
+
+  it('shows a warning in the conversation even when technical details are hidden', () => {
+    const ref = makeComponent()
+    ref.setInput('showTechnicalOverride', false)
+    ref.instance['events'].set([warn('No default agent configured for this namespace.')] as never)
+
+    const notices = ref.instance['timeline']().filter((i: { kind: string }) => i.kind === 'notice')
+
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toMatchObject({
+      notice: { severity: 'warning', detail: 'No default agent configured for this namespace.' },
+    })
+  })
+
+  it('keeps an unrecognised event behind the technical toggle', () => {
+    const ref = makeComponent()
+    ref.setInput('showTechnicalOverride', false)
+    ref.instance['events'].set([{ id: 'x-1', type: 'SomeInternalEvent' }] as never)
+
+    expect(ref.instance['timeline']()).toHaveLength(0)
+
+    ref.setInput('showTechnicalOverride', true)
+    expect(ref.instance['timeline']()).toHaveLength(1)
   })
 })

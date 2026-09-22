@@ -25,6 +25,7 @@ private const val TMUX_TIMEOUT_SECONDS = 30L
 class TmuxTool(
     internal val workingDirectory: String? = null,
     configName: String? = null,
+    internal val socketName: String? = null,
 ) : StandardTool<TmuxTool.Input> {
     override val name: String =
         when (configName) {
@@ -333,7 +334,7 @@ class TmuxTool(
     internal fun runTmux(vararg args: String): Result<String> =
         runCatching {
             val process =
-                ProcessBuilder("tmux", *args)
+                ProcessBuilder(listOf("tmux") + (socketName?.let { listOf("-L", it) } ?: emptyList()) + args)
                     .redirectErrorStream(true)
                     .start()
             val timedOut = !process.waitFor(TMUX_TIMEOUT_SECONDS, TimeUnit.SECONDS)

@@ -6,8 +6,12 @@ import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
-/** Owns both output pipes and applies one deadline to the process and their readers. */
-internal object BoundedProcessOutput {
+/**
+ * Owns both output pipes and applies one deadline to the process and their readers.
+ *
+ * Public so the service bounds its other subprocesses (process inspection, setup) the same way.
+ */
+object BoundedProcessOutput {
     data class Result(
         val exitCode: Int,
         val stdout: String,

@@ -1,5 +1,7 @@
 package io.whozoss.agentos.exchange
 
+import org.springframework.security.access.AccessDeniedException
+import java.util.UUID
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -20,6 +22,22 @@ import org.springframework.stereotype.Service
 class ExchangeCapabilityService(
     private val permissionService: PermissionService,
 ) {
+    /** Sharing a directory never grants access to the case that owns it. Soft deletion keeps
+     * the owner's permission relationships, so surviving descendants use the same checks. */
+    fun canAccessCase(userId: String?, caseId: UUID, root: ResolvedExchangeRoot, action: Action): Boolean {
+        if (userId == null) return false
+        val ownerId = root.ownerCaseId
+        return permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), action) &&
+            (ownerId == caseId || permissionService.hasPermission(userId, EntityType.CASE, ownerId.toString(), action))
+    }
+
+    fun requireCaseAccess(userId: String?, caseId: UUID, root: ResolvedExchangeRoot, action: Action) {
+        if (!canAccessCase(userId, caseId, root, action)) throw AccessDeniedException("Case exchange access denied")
+    }
+
+    fun caseCapability(userId: String, caseId: UUID, root: ResolvedExchangeRoot): ExchangeCapability =
+        if (canAccessCase(userId, caseId, root, Action.WRITE)) ExchangeCapability.READ_WRITE else ExchangeCapability.READ
+
     /** True when [userId] may read the given exchange scope entity. */
     fun canRead(
         userId: String,

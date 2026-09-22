@@ -113,6 +113,9 @@ agentos:
   # Interval (ms) between SSE keep-alive comment frames sent to connected clients.
   # Override with env var: AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
   # sse-heartbeat-interval-ms: 30000
+  # Delays (ms) between retries when a turn's launch check fails (e.g. a transient database error).
+  # Override with env var: AGENTOS_CASE_ADMISSION_RETRY_DELAYS_MS
+  # admission-retry-delays-ms: 1000,5000,30000
   exchange:
     # Root directory for file-exchange files (relative to the working directory).
     # Override with env var: AGENTOS_EXCHANGE_MOUNT_ROOT

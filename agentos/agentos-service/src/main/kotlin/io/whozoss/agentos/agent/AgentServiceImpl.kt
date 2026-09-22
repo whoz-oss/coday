@@ -19,6 +19,8 @@ import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeStorageService
+import io.whozoss.agentos.exchange.ExchangeRootResolver
+import io.whozoss.agentos.exchange.WorkspaceIntegrationConfigs
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
@@ -84,6 +86,7 @@ class AgentServiceImpl(
     private val skillToolGrantService: SkillToolGrantService,
     private val agentConfigProperties: AgentConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
+    private val exchangeRootResolver: ExchangeRootResolver,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -229,7 +232,13 @@ class AgentServiceImpl(
                 namespaceId = context.namespaceId,
                 userId = context.userId,
             )
-        val effectiveIntegrationConfigs = integrationConfigService.findEffective(context.namespaceId, context.userId)
+        val exchangeRoot = context.caseId?.let { exchangeRootResolver.resolve(it) }
+        val mayWriteWorkspace = exchangeRoot?.workspace == null || exchangeCapabilityService.canAccessCase(
+            context.userId?.toString(), requireNotNull(context.caseId), exchangeRoot, io.whozoss.agentos.permissions.Action.WRITE,
+        )
+        val effectiveIntegrationConfigs = WorkspaceIntegrationConfigs.resolve(
+            integrationConfigService.findEffective(context.namespaceId, context.userId), exchangeRoot, mayWriteWorkspace,
+        )
         val namespace = namespaceService.findById(context.namespaceId)
         val namespaceSystemPrompt =
             buildNamespaceSystemPrompt(
@@ -834,8 +843,8 @@ class AgentServiceImpl(
      *   (the empty list would otherwise filter every tool out *after* the grant had materialised the
      *   root);
      * - the case scope additionally requires a live [context.caseId]; it needs no permission gate of
-     *   its own because its root is the run's own case, which the invoking user already holds Case
-     *   WRITE on to have reached this point;
+     *   its own for an ordinary case, whose WRITE permission admits the run. Shared family storage
+     *   additionally requires the invoking user's READ/WRITE permission on the owning root case;
      * - the namespace scope requires the invoking user to hold Namespace READ, the same floor every
      *   REST namespace-file endpoint enforces via `@PreAuthorize`. A run without an identified user
      *   is denied fail-closed, so a definition preview resolved without a user reports no namespace
@@ -858,17 +867,24 @@ class AgentServiceImpl(
 
         val caseGrant = exchangeToolGrantService.resolveCaseGrant(integrations)
         if (caseGrant != null && caseId != null && caseCreatedAt != null) {
-            // The agent gets read/write on the case exchange by design (it produces files during a run).
-            // User-facing write is separately gated: the exchange upload/delete endpoints require Case
-            // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
-            tools +=
-                exchangeToolGrantService.grantTools(
-                    root = exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
-                    readOnly = false,
+            val root = exchangeRootResolver.resolve(caseId)
+            // Ordinary runs already require their own case WRITE. A shared family directory
+            // additionally belongs to the root case; delegation does not confer its permissions.
+            val canRead = root.workspace == null || exchangeCapabilityService.canAccessCase(
+                context.userId?.toString(), caseId, root, io.whozoss.agentos.permissions.Action.READ,
+            )
+            if (canRead) {
+                val canWrite = root.workspace == null || exchangeCapabilityService.canAccessCase(
+                    context.userId?.toString(), caseId, root, io.whozoss.agentos.permissions.Action.WRITE,
+                )
+                tools += exchangeToolGrantService.grantTools(
+                    root = root.requireUsable(),
+                    readOnly = !canWrite,
                     configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
                     allowedTools = caseGrant.allowedTools,
                     toolContext = toolContext,
                 )
+            }
         }
 
         val namespaceGrant = exchangeToolGrantService.resolveNamespaceGrant(integrations)

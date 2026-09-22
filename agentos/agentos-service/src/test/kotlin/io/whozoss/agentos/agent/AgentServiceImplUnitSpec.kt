@@ -32,6 +32,9 @@ import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeGrant
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeStorageService
+import io.whozoss.agentos.exchange.ExchangeRootResolver
+import io.whozoss.agentos.exchange.ResolvedExchangeRoot
+import io.whozoss.agentos.exchange.ExchangeWorkspace
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
 import io.whozoss.agentos.queryUser.QueryUserConfigProperties
@@ -93,6 +96,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
 
+    // The case exchange root now comes from the shared resolver, so REST and the tools agree on
+    // one directory. Tests drive it here rather than through ExchangeStorageService.caseRoot.
+    private val exchangeRootResolver: ExchangeRootResolver = mockk()
+
     // Strict on purpose: a relaxed mock would return a non-null ExchangeGrant and silently grant the
     // exchange in every unrelated test. The defaults stubbed in init deny both scopes.
     private val exchangeToolGrantService: ExchangeToolGrantService = mockk()
@@ -127,6 +134,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             idCompressorService = IdCompressorService(),
             agentConfigProperties = AgentConfigProperties(),
             queryUserToolGrantService = queryUserToolGrantService,
+            exchangeRootResolver = exchangeRootResolver,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -234,6 +242,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
         every { exchangeToolGrantService.resolveCaseGrant(any()) } returns null
         every { exchangeToolGrantService.resolveNamespaceGrant(any()) } returns null
         every { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any()) } returns emptyList()
+        every { exchangeRootResolver.resolve(any<UUID>()) } returns
+            ResolvedExchangeRoot(Path.of("/tmp/default-case-exchange"), ownerCaseId = caseId)
 
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
@@ -284,7 +294,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         "case exchange is granted at the case root with read/write when a live case is present" {
             val caseRootPath = Path.of("/tmp/case-exchange-test")
             every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(allowedTools = null)
-            every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns caseRootPath
+            every { exchangeRootResolver.resolve(caseId) } returns ResolvedExchangeRoot(caseRootPath, ownerCaseId = caseId)
 
             val config = agentConfig(name = "case-agent", modelName = "sonnet").copy(integrations = mapOf("CASE_FILE_EXCHANGE" to null))
             every { agentConfigService.findByName(namespaceId, "case-agent") } returns config
@@ -309,10 +319,33 @@ class AgentServiceImplUnitSpec : StringSpec() {
             }
         }
 
+        listOf(false to false, true to false, true to true).forEach { (canRead, canWrite) ->
+            "shared case file tools follow the owner's permissions (read=$canRead, write=$canWrite)" {
+                val ownerId = UUID.randomUUID()
+                val root = ResolvedExchangeRoot(
+                    Path.of("/tmp/shared-case-test"), ownerId,
+                    ExchangeWorkspace(ownerId, Path.of("/tmp/shared-case-test/project")),
+                )
+                every { exchangeRootResolver.resolve(caseId) } returns root
+                every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(null)
+                every { exchangeCapabilityService.canAccessCase(any(), caseId, root, io.whozoss.agentos.permissions.Action.READ) } returns canRead
+                every { exchangeCapabilityService.canAccessCase(any(), caseId, root, io.whozoss.agentos.permissions.Action.WRITE) } returns canWrite
+                every { agentConfigService.findByName(namespaceId, "shared-agent") } returns agentConfig(name = "shared-agent", modelName = "sonnet")
+                every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+                every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+                every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+                agentService.findAgentByName("shared-agent", context)
+                verify(exactly = if (canRead) 1 else 0) {
+                    exchangeToolGrantService.grantTools(root.path, !canWrite, "case-exchange", null, any())
+                }
+                every { exchangeRootResolver.resolve(caseId) } returns ResolvedExchangeRoot(Path.of("/tmp/default-case-exchange"), caseId)
+            }
+        }
+
         "the per-tool allowlist carried by the grant is forwarded to the file-plugin grant" {
             val caseRootPath = Path.of("/tmp/case-exchange-allowlist-test")
             every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(allowedTools = listOf("readFile"))
-            every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns caseRootPath
+            every { exchangeRootResolver.resolve(caseId) } returns ResolvedExchangeRoot(caseRootPath, ownerCaseId = caseId)
 
             val config =
                 agentConfig(name = "case-agent-filtered", modelName = "sonnet")
@@ -518,6 +551,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
+                    exchangeRootResolver = exchangeRootResolver,
                 )
             val caseTool = mockk<StandardTool<*>>()
             every { caseTool.name } returns "case-exchange__readFile"
@@ -535,7 +569,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             // No integrations key at all: the platform default grants the case exchange.
             val silentRoot = Files.createTempDirectory("agent-exchange-compose").resolve("case-root")
-            every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns silentRoot
+            every { exchangeRootResolver.resolve(caseId) } returns ResolvedExchangeRoot(silentRoot, ownerCaseId = caseId)
             val silentConfig = agentConfig(name = "silent-agent", modelName = "sonnet")
             every { agentConfigService.findByName(namespaceId, "silent-agent") } returns silentConfig
 
@@ -546,7 +580,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             // An explicit [] opts out even on the default-on instance: no tools, no scope directory.
             val optedOutRoot = Files.createTempDirectory("agent-exchange-optout").resolve("case-root")
-            every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns optedOutRoot
+            every { exchangeRootResolver.resolve(caseId) } returns ResolvedExchangeRoot(optedOutRoot, ownerCaseId = caseId)
             val optedOutConfig =
                 agentConfig(name = "opted-out-agent", modelName = "sonnet")
                     .copy(integrations = mapOf("CASE_FILE_EXCHANGE" to emptyList()))
@@ -851,6 +885,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
+                    exchangeRootResolver = exchangeRootResolver,
                 )
             val configs =
                 listOf(

@@ -10,6 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * Override with environment variables (Spring Boot relaxed binding):
  * - AGENTOS_CASE_IDLE_EVICTION_GRACE_MS
  * - AGENTOS_CASE_SSE_HEARTBEAT_INTERVAL_MS
+ * - AGENTOS_CASE_ADMISSION_RETRY_DELAYS_MS (comma-separated)
  *
  * Example (application.yml):
  * ```yaml
@@ -17,6 +18,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *   case:
  *     idle-eviction-grace-ms: 300000   # 5 min (default)
  *     sse-heartbeat-interval-ms: 30000 # 30 s (default)
+ *     admission-retry-delays-ms: 1000,5000,30000 # (default)
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.case")
@@ -47,4 +49,12 @@ data class CaseConfigProperties(
      * Defaults to 30 s (30 000 ms).
      */
     val sseHeartbeatIntervalMs: Long = 30_000L,
+    /**
+     * Delays between attempts when the launch gate cannot decide whether a turn may start,
+     * typically because of a transient database error. After the last attempt the instruction is
+     * dropped with a warning and the case returns to IDLE, so the user can send it again.
+     *
+     * Defaults to 1 s, 5 s and 30 s.
+     */
+    val admissionRetryDelaysMs: List<Long> = listOf(1_000L, 5_000L, 30_000L),
 )

@@ -10,9 +10,9 @@ import org.springframework.stereotype.Component
 /**
  * Validates namespace Git settings and queues preparation after either configuration API saves them.
  *
- * Reuses [GitRepositorySettingsFactory], so the rules that govern *reading* an association are
- * exactly the rules that govern *saving* one — the two cannot drift, and a configuration that
- * saves is one the provisioner can actually use.
+ * Reuses [GitRepositorySettingsFactory] for the same stored shape on reads and saves. Saving
+ * additionally validates the remote URL and its current DNS resolution; ordinary reads avoid
+ * network validation, and the Git runner checks the destination again before remote work.
  */
 @Component
 class GitRepositoryConfigPolicy(
@@ -24,11 +24,16 @@ class GitRepositoryConfigPolicy(
     override fun supports(integrationType: String): Boolean =
         integrationType.equals(GitRepositoryIntegration.TYPE, ignoreCase = true)
 
+    override fun <T> aroundSave(config: IntegrationConfig, action: () -> T): T {
+        val namespaceId = config.namespaceId ?: return action() // Validation reports an invalid scope.
+        return WorkspaceLifecycleLocks.withNamespace(namespaceId, action)
+    }
+
     override fun afterSave(config: IntegrationConfig) {
         // Both the dedicated settings screen and generic integration CRUD use this path.
         // Keep a saved association usable if queuing fails; the first workspace also ensures readiness.
         try {
-            checkoutProvisioner.requestPreparation(settingsFactory.fromConfig(config))
+            checkoutProvisioner.requestPreparation(settingsFactory.fromConfig(config, validateRemote = false))
         } catch (e: Exception) {
             logger.error { "Could not queue the checkout of namespace ${config.namespaceId} (${e.javaClass.simpleName})" }
         }
@@ -41,7 +46,8 @@ class GitRepositoryConfigPolicy(
         // Parsing is the validation: the factory raises BadRequestException on anything unusable.
         val settings = settingsFactory.fromConfig(config)
         val checkout = checkoutService.findByNamespaceId(settings.namespaceId) ?: return
-        if (checkout.repositoryUrl != settings.repositoryUrl || checkout.mainBranch != settings.mainBranch) {
+        if ((checkout.repositoryUrl != settings.repositoryUrl || checkout.mainBranch != settings.mainBranch) &&
+            !checkoutProvisioner.canReplaceFailedCheckout(checkout)) {
             throw ConflictException(
                 "This namespace already has a checkout of a different repository or main branch. " +
                     "Changing it requires an explicit migration; other settings can still be changed.",
