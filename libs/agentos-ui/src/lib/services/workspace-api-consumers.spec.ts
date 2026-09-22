@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { fakeAsync, TestBed, tick } from '@angular/core/testing'
 import { Configuration } from '@whoz-oss/agentos-api-client'
 import { CaseWorkspaceService, WorkspaceAction } from './case-workspace.service'
+import { ExchangeEnvironmentService } from './exchange-environment.service'
 
 describe('Workspace API consumers', () => {
   let http: HttpTestingController
@@ -55,4 +56,18 @@ describe('Workspace API consumers', () => {
       expect(service.byRoot()['root']?.equipped).toBe(true)
     }
   )
+
+  it('uses case environment and diff endpoints with JSON and encoded file paths', () => {
+    const service = TestBed.inject(ExchangeEnvironmentService)
+    const scope = { kind: 'cases' as const, id: 'root' }
+    service.get(scope).subscribe()
+    const environment = http.expectOne('/agentos-api/api/cases/root/exchange/environment')
+    expect(environment.request.responseType).toBe('json')
+    environment.flush({ equipped: false, agents: [] })
+    service.diff(scope, 'space & name.txt').subscribe()
+    const diff = http.expectOne((request) => request.url === '/agentos-api/api/cases/root/exchange/diff')
+    expect(diff.request.responseType).toBe('json')
+    expect(diff.request.params.get('path')).toBe('space & name.txt')
+    diff.flush({ patch: '' })
+  })
 })

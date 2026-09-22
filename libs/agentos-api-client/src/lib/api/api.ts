@@ -16,6 +16,8 @@ export * from './case-workspace-controller.service'
 import { CaseWorkspaceControllerService } from './case-workspace-controller.service'
 export * from './exchange-controller.service'
 import { ExchangeControllerService } from './exchange-controller.service'
+export * from './exchange-environment-controller.service'
+import { ExchangeEnvironmentControllerService } from './exchange-environment-controller.service'
 export * from './feedback-controller.service'
 import { FeedbackControllerService } from './feedback-controller.service'
 export * from './integration-config-controller.service'
@@ -54,6 +56,7 @@ export const APIS = [
   CaseMembershipControllerService,
   CaseWorkspaceControllerService,
   ExchangeControllerService,
+  ExchangeEnvironmentControllerService,
   FeedbackControllerService,
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,

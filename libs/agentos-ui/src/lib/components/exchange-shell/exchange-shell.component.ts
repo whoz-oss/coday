@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, output, signal } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import { ExchangeDirectoryEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
@@ -30,6 +40,7 @@ export class ExchangeShellComponent {
   private readonly destroyRef = inject(DestroyRef)
   protected readonly state = inject(ExchangeStateService)
 
+  readonly active = input(false)
   readonly closeRequested = output<void>()
 
   // ── Current selection / viewer content ────────────────────────────────────────
@@ -50,6 +61,7 @@ export class ExchangeShellComponent {
   })
 
   /** The case currently initialised, so an unrelated query-param change does not re-init. */
+  protected readonly environmentCaseId = signal<string | null>(null)
 
   private activeCaseId: string | null = null
 
@@ -62,6 +74,7 @@ export class ExchangeShellComponent {
     this.route.queryParams.pipe(takeUntilDestroyed()).subscribe((params) => {
       const namespaceId = params['ns'] as string | undefined
       const caseId = params['case'] as string | undefined
+      this.environmentCaseId.set(caseId ?? null)
       if (namespaceId && caseId) {
         // Guard on the case actually changing (like case-chat): a re-emission for some other query
         // param must not wipe the open file and double-refetch both manifests.
