@@ -15,6 +15,9 @@ COPY gradle.properties .
 # Copy SDK source code
 COPY agentos-sdk agentos-sdk
 
+# Copy the shared Git core
+COPY agentos-git agentos-git
+
 # Copy Service source code
 COPY agentos-service agentos-service
 
@@ -34,6 +37,10 @@ RUN mkdir -p /workspace/extracted && \
 # Stage 2: Runtime stage
 FROM eclipse-temurin:17-jre-jammy
 
+# Managed repositories/worktrees and safe cleanup require these runtime tools.
+RUN apt-get update && apt-get install -y --no-install-recommends git git-lfs lsof ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user for security
 RUN groupadd -r agentos && useradd -r -g agentos agentos
 
@@ -50,6 +57,9 @@ COPY --from=builder --chown=agentos:agentos /workspace/extracted/application/ ./
 RUN mkdir -p /app/plugins && chown -R agentos:agentos /app/plugins
 
 # TODO copy default plugins jar to plugin directory
+
+# Persist Git repositories/worktrees under a writable Exchange mount.
+RUN mkdir -p /app/data/exchange && chown -R agentos:agentos /app/data
 
 # Switch to non-root user
 USER agentos
