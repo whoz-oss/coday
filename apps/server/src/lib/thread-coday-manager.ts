@@ -31,14 +31,13 @@ import { ThreadPostProcessor } from './thread-post-processor'
 import { debugLog } from './log'
 import { McpInstancePool } from '@coday/mcp'
 import { AgentService } from '@coday/agent'
-import { settleBackgroundRun } from './settle-background-run'
 import { persistThreadMetadataUpdate } from './thread-metadata-update'
 
 /**
  * Represents a Coday instance associated with a specific thread.
  * Manages the lifecycle and SSE connections for a single thread.
  */
-class ThreadCodayInstance {
+export class ThreadCodayInstance {
   private readonly connections: Set<Response> = new Set()
   private lastActivity: number = Date.now()
   private inactivityTimeout?: NodeJS.Timeout
@@ -310,11 +309,12 @@ class ThreadCodayInstance {
     } else {
       // Start the run without waiting in the caller, but return the run promise so its
       // lifecycle owner can defer cleanup until the agent has actually finished.
-      return settleBackgroundRun(
-        () => this.coday!.run(),
+      return this.coday.run().then(
+        () => undefined,
         (error) => {
           debugLog('THREAD_CODAY', `Error during oneshot run for thread ${this.threadId}:`, error)
           console.error(`Oneshot run failed for thread ${this.threadId}:`, error)
+          return undefined
         }
       )
     }
