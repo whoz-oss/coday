@@ -63,6 +63,14 @@ class CaseServiceImpl(
     private val permissionService: PermissionService,
     private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
+    /**
+     * Optional capability hook. Defaults to a no-op so a deployment without the Git workspace
+     * feature — and every unit test that builds this service directly — behaves exactly as before.
+     */
+    private val caseWorkspaceProvisioning: CaseWorkspaceProvisioning = CaseWorkspaceProvisioning.NOOP,
+    /** Optional gate. Defaults to permissive, so behaviour is unchanged without the feature. */
+    private val caseLaunchGate: CaseLaunchGate = CaseLaunchGate.ALWAYS,
+    private val commandJournal: CaseCommandJournal? = null,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -80,6 +88,13 @@ class CaseServiceImpl(
      * Cancelled whenever the runtime leaves [activeRuntimes] (terminal status or eviction).
      */
     private val watcherJobs = ConcurrentHashMap<UUID, Job>()
+    private val executionJobs = ConcurrentHashMap<UUID, Job>()
+
+    override fun hasRunningExecutions(caseIds: Collection<UUID>): Boolean =
+        caseIds.any { executionJobs[it]?.isActive == true || activeRuntimes[it]?.isRunning() == true }
+
+    override fun hasUnfinishedWorkspaceCommands(caseIds: Collection<UUID>): Boolean =
+        caseIds.any { commandJournal?.hasUnfinished(it) == true }
 
     /**
      * Number of active coroutines running in the service scope.
@@ -94,11 +109,22 @@ class CaseServiceImpl(
     // EntityService
     // ======================================================
 
+    @Transactional
     override fun create(entity: Case): Case {
-        require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
+        // Soft-deleted ids count: reusing one would resurrect the old node with its existing
+        // relationships and, for an equipped family, re-attach a new case to a previous workspace.
+        require(findById(entity.id, withRemoved = true) == null) { "Duplicate entity id: ${entity.id}" }
+        entity.parentCaseId?.let { parentId ->
+            val parent = getById(parentId)
+            check(caseRepository.countAncestorDepth(parentId) < MAX_DELEGATION_DEPTH) { "Case hierarchy depth limit reached" }
+            require(parent.namespaceId == entity.namespaceId) { "A sub-case must belong to its parent's namespace" }
+            commandJournal?.takeIf { it.equipped(parentId) }?.accepting(parentId)
+        }
         // Persist the full entity so client-supplied title and status are preserved
         // .
         val saved = caseRepository.save(entity)
+        saved.parentCaseId?.let { caseRepository.linkParentToChild(it, saved.id) }
+        caseWorkspaceProvisioning.onCaseCreated(saved)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
@@ -109,6 +135,9 @@ class CaseServiceImpl(
         val current =
             findById(entity.id)
                 ?: throw ResourceNotFoundException("Case not found: ${entity.id}")
+        require(entity.namespaceId == current.namespaceId && entity.parentCaseId == current.parentCaseId) {
+            "Case parent and namespace cannot be changed"
+        }
         return if (entity.status != current.status) {
             // Route status changes through handleStatusChange so the runtime and
             // SSE clients stay consistent with the persisted state.
@@ -276,6 +305,7 @@ class CaseServiceImpl(
             },
             inputEvents = inputEvents,
             initialStatus = case.status,
+            commandJournal = commandJournal?.takeIf { it.equipped(case.id) },
         ).also { startEvictionWatcher(case.id, it) }
 
     // ======================================================
@@ -288,8 +318,24 @@ class CaseServiceImpl(
         content: List<MessageContent>,
         answerToEventId: UUID?,
         sessionContext: Map<String, Any?>?,
+        requestId: UUID?,
     ) {
+        val isAnswer = answerToEventId?.let { getCaseRuntime(caseId).acceptsAnswer(it, content) } == true
+        val journal = commandJournal?.takeIf { it.equipped(caseId) && !isAnswer }
+        val receiptId = requestId ?: UUID.randomUUID()
+        val original = mapOf("actor" to actor, "content" to content, "sessionContext" to sessionContext)
+        if (journal != null) {
+            if (journal.duplicate(caseId, receiptId, original)) return
+            if (findById(caseId)?.status == CaseStatus.KILLED) throw io.whozoss.agentos.exception.ConflictException("This case was killed; reset the execution before sending new instructions")
+            if (journal.recoveryRequired(caseId)) throw io.whozoss.agentos.exception.ConflictException("An interrupted command requires explicit recovery")
+        }
+        commandJournal?.takeIf { it.equipped(caseId) }?.accepting(caseId)
         val runtime = getCaseRuntime(caseId)
+        if (isAnswer) {
+            runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+            launchRun(runtime)
+            return
+        }
         val userId = actor.id.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
         // Resolve prompt commands — a single user input may expand to multiple sequential
@@ -311,7 +357,10 @@ class CaseServiceImpl(
                     }
                 } catch (e: PromptResolutionException) {
                     logger.warn(e) { "Prompt resolution failed for case $caseId: ${e.message}" }
-                    runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+                    if (journal != null) {
+                        val received = journal.append(caseId, receiptId, original, listOf(DurableCaseCommand(actor = actor, content = content, sessionContext = sessionContext)))
+                        runtime.emitEvent(received)
+                    } else runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
                     runtime.emitEvent(
                         storeEvent(
                             WarnEvent(
@@ -325,7 +374,7 @@ class CaseServiceImpl(
                     // an AgentSelectedEvent. Without run(), the runtime has a pending
                     // AgentSelectedEvent in its history but no execution loop to process it,
                     // leaving the case blocked in PENDING status forever.
-                    scope.launch { runtime.run() }
+                    launchRun(runtime)
                     return
                 }
             } else {
@@ -351,6 +400,20 @@ class CaseServiceImpl(
             return if (agentName != null) "@$agentName ${cmd.text}" else cmd.text
         }
 
+        if (journal != null) {
+            val commands = if (resolvedCommands.isNullOrEmpty()) listOf(DurableCaseCommand(actor = actor, content = content, sessionContext = sessionContext))
+            else resolvedCommands.mapIndexed { index, cmd -> DurableCaseCommand(
+                actor = actor, content = listOf(MessageContent.Text(resolvedText(cmd))) + if (index == 0) nonTextContent else emptyList(),
+                sessionContext = sessionContext,
+            ) }
+            val received = journal.append(caseId, receiptId, original, commands)
+            // Display the durable receipt immediately, including while preparation holds the run.
+            // It is deliberately not pushed into the agent's event list until its turn starts.
+            runtime.emitEvent(received)
+            launchRun(runtime)
+            return
+        }
+
         when {
             resolvedCommands.isNullOrEmpty() -> {
                 runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
@@ -373,7 +436,7 @@ class CaseServiceImpl(
         }
 
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
-        scope.launch { runtime.run() }
+        launchRun(runtime)
         // Trigger post-processing after each user message (e.g. automatic title generation).
         // Events are fetched fresh from the service so the newly stored MessageEvent is included.
         val case = findById(caseId) ?: return
@@ -731,10 +794,10 @@ class CaseServiceImpl(
 
     override fun interruptCase(caseId: UUID) {
         val runtime =
-            activeRuntimes[caseId]
-                ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
+            activeRuntimes[caseId] ?: getCaseRuntime(caseId)
         logger.info { "Interrupting case: $caseId" }
         runtime.requestInterrupt()
+        if (!runtime.isRunning()) handleStatusChange(caseId, CaseStatus.IDLE)
     }
 
     /**
@@ -756,6 +819,7 @@ class CaseServiceImpl(
 
     private fun killSingleCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
+        commandJournal?.takeIf { it.equipped(caseId) }?.cancel(caseId)
         activeRuntimes[caseId]?.requestKill()
         handleStatusChange(caseId, CaseStatus.KILLED)
     }
@@ -788,8 +852,7 @@ class CaseServiceImpl(
         }
         val actor = resolveActor(userId)
         val runtime = getCaseRuntime(subCaseId)
-        runtime.addUserMessage(actor, listOf(MessageContent.Text("@$agentName $task")))
-        scope.launch { runtime.run() }
+        addMessage(subCaseId, actor, listOf(MessageContent.Text("@$agentName $task")), null, null, null)
         logger.info { "Sub-case $subCaseId resumed, agent=$agentName" }
         return runtime
     }
@@ -821,11 +884,6 @@ class CaseServiceImpl(
                 ),
             )
 
-        // Create the [:PARENT_OF] graph edge so countAncestorDepth can traverse the chain.
-        // This runs inside the same @Transactional boundary as create() above: if the
-        // link fails, the sub-case node is rolled back too — no orphaned cases.
-        caseRepository.linkParentToChild(parentCaseId, subCase.id)
-
         // Grant the delegating user ADMIN on the sub-case so they can list, open, and
         // stream it — same grant that CaseController.create applies for user-created cases.
         // The permission write runs outside the Neo4j transaction boundary (it is a separate
@@ -849,10 +907,85 @@ class CaseServiceImpl(
         }
 
         val runtime = activeRuntimes[subCase.id]!!
-        runtime.addUserMessage(actor, listOf(MessageContent.Text(mentionedTask)))
-        scope.launch { runtime.run() }
+        addMessage(subCase.id, actor, listOf(MessageContent.Text(mentionedTask)), null, null, null)
         logger.info { "Sub-case ${subCase.id} started under parent $parentCaseId, agent=$agentName (depth=${ancestorDepth + 1})" }
         return runtime
+    }
+
+
+    /**
+     * Start an agent turn, unless something asks for it to wait.
+     *
+     * The single place a run is launched, so a capability that needs to hold runs back — currently
+     * a Git workspace still being prepared — has one place to say so. A deferred run is not an
+     * error: the user's message is already persisted, and [resumeIfPending] picks it up once the
+     * obstacle clears.
+     */
+    private fun launchRun(runtime: CaseRuntime) {
+        val rootId = commandJournal?.rootId(runtime.id)
+        if (rootId == null) admitRun(runtime)
+        else io.whozoss.agentos.git.WorkspaceLifecycleLocks.withRoot(rootId) { admitRun(runtime) }
+    }
+
+    private fun admitRun(runtime: CaseRuntime) {
+        if (!caseLaunchGate.canLaunch(runtime.id)) return
+        if (commandJournal?.equipped(runtime.id) == true && findById(runtime.id)?.status == CaseStatus.KILLED) return
+        executionJobs.compute(runtime.id) { _, previous ->
+            if (previous?.isActive == true) previous else scope.launch {
+                if (caseLaunchGate.canLaunch(runtime.id) && !(commandJournal?.equipped(runtime.id) == true && findById(runtime.id)?.status == CaseStatus.KILLED)) runtime.run()
+            }
+        }
+    }
+
+    override fun recoverWorkspaceCase(caseId: UUID) {
+        val journal = requireNotNull(commandJournal)
+        val rootId = journal.rootId(caseId) ?: throw io.whozoss.agentos.exception.ConflictException("No workspace")
+        io.whozoss.agentos.git.WorkspaceLifecycleLocks.withRoot(rootId) {
+            if (hasRunningExecutions(listOf(caseId))) throw io.whozoss.agentos.exception.ConflictException("The case is still executing")
+            journal.accepting(caseId)
+            journal.acknowledge(caseId)
+            activeRuntimes.remove(caseId)?.requestInterrupt()
+            watcherJobs.remove(caseId)?.cancel()
+            handleStatusChange(caseId, CaseStatus.IDLE)
+        }
+    }
+
+    override fun resumeIfPending(caseId: UUID) {
+        // The status is the whole guard, and it has to be read from the store rather than from a
+        // runtime. A kill sets its flags on the runtime that was live at the time; that object dies
+        // with the process or with memory eviction, and `CaseRuntime.run()` clears `killRequested`
+        // on entry. So without this check, a case killed while its workspace was being prepared
+        // comes back as RUNNING the moment preparation ends — the late run §9 forbids.
+        //
+        // PENDING is also exactly "has a message nobody has run yet": an IDLE case whose message was
+        // already consumed must not be re-launched either.
+        val case = runCatching { getById(caseId) }.getOrNull() ?: return
+        if (case.status != CaseStatus.PENDING && !(case.status == CaseStatus.IDLE && commandJournal?.hasPending(caseId) == true)) {
+            logger.debug { "Not resuming case $caseId: status is ${case.status}, not PENDING" }
+            return
+        }
+        val runtime = activeRuntimes[caseId] ?: runCatching { getCaseRuntime(caseId) }.getOrNull() ?: return
+        if (commandJournal?.isWaiting(caseId) == true && !runtime.hasAnsweredQuestion()) return
+        launchRun(runtime)
+    }
+
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent::class)
+    @org.springframework.core.annotation.Order(org.springframework.core.Ordered.LOWEST_PRECEDENCE)
+    fun recoverUnstartedWorkspaceCommands() {
+        commandJournal?.recordedCases()?.forEach { id ->
+            val case = findById(id) ?: return@forEach
+            if (case.status == CaseStatus.RUNNING && !commandJournal.recoveryRequired(id)) {
+                caseRepository.save(case.copy(status = if (commandJournal.hasPending(id)) CaseStatus.PENDING else CaseStatus.IDLE))
+            }
+        }
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(initialDelay = 20000, fixedDelay = 5000)
+    fun resumeQueuedWorkspaceCommands() {
+        commandJournal?.pendingCases()?.forEach { caseId ->
+            if (commandJournal.recoveryRequired(caseId)) return@forEach
+            resumeIfPending(caseId)
+        }
     }
 
     // ======================================================
@@ -864,7 +997,7 @@ class CaseServiceImpl(
         logger.info { "Shutting down CaseService..." }
         activeRuntimes.keys.toList().forEach {
             try {
-                killSingleCase(it)
+                if (commandJournal?.equipped(it) != true) killSingleCase(it)
             } catch (e: Exception) {
                 logger.warn(e) { "Error killing case $it during shutdown" }
             }

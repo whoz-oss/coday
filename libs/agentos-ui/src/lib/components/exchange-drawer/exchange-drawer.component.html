@@ -53,6 +53,15 @@
             @case ('loading') {
               <div class="exchange-drawer__center"><ds-spinner size="md" label="Loading case files" /></div>
             }
+            @case ('preparing') {
+              <div class="exchange-drawer__preparing" role="status" aria-live="polite">
+                <ds-spinner size="sm" label="Création du worktree en cours" />
+                <p>Création du worktree en cours…</p>
+                <p class="exchange-drawer__preparing-hint">
+                  Les fichiers s’afficheront automatiquement dès qu’il sera prêt.
+                </p>
+              </div>
+            }
             @case ('error') {
               <div class="exchange-drawer__error" role="alert">
                 <span>Couldn't load case files.</span>

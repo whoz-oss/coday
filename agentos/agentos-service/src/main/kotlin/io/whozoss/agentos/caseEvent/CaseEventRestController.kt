@@ -41,6 +41,7 @@ class CaseEventRestController(
     private val caseEventService: CaseEventService,
     private val userService: UserService,
     private val permissionService: PermissionService,
+    private val conversationHistory: CaseConversationHistory = CaseConversationHistory(caseEventService),
 ) {
     /** GET /api/case-events/{id} — get a single event. READ on the parent Case required. */
     @GetMapping("/{id}")
@@ -105,10 +106,13 @@ class CaseEventRestController(
         return events.filter { it.caseId.toString() in visibleCaseIds }
     }
 
-    /** GET /api/case-events/by-parentId/{caseId} — list all events for a case, ordered by timestamp. */
+    /**
+     * Conversation history, ordered by timestamp. Includes durable inputs waiting for execution;
+     * these share the identity of the MessageEvent materialized when their turn starts.
+     */
     @GetMapping("/by-parentId/{caseId}")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     fun listByCase(
         @PathVariable caseId: UUID,
-    ): List<CaseEvent> = caseEventService.findByParent(caseId)
+    ): List<CaseEvent> = conversationHistory.findByCase(caseId)
 }

@@ -19,6 +19,7 @@ import java.util.UUID
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class AddMessageRequest(
     val content: String,
+    val requestId: UUID? = null,
     val answerToEventId: UUID? = null,
     val sessionContext: Map<String, Any?>? = null,
 )

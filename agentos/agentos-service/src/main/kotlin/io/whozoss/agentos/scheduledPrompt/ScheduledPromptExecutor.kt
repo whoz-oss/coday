@@ -140,6 +140,7 @@ class ScheduledPromptExecutor(
      * Defaults to always-open so tests and non-windowed deployments are unaffected.
      */
     private val executionWindowService: ExecutionWindowService = ExecutionWindowService(SchedulerProperties()),
+    private val workspaceDispatch: ScheduledWorkspaceDispatch? = null,
 ) {
     /** When true, the poller skips claimBatch and delays instead. */
     private val consumePaused = AtomicBoolean(false)
@@ -472,7 +473,8 @@ class ScheduledPromptExecutor(
      * Returns the created [Case] id.
      */
     private fun createAndInjectCase(userRun: ScheduledPromptUserRun, context: UserRunContext): UUID {
-        val case = caseService.create(
+        val workspaceCase = workspaceDispatch?.caseFor(userRun.id, context.namespaceId, context.caseTitle, context.scheduledPromptId)
+        val case = workspaceCase ?: caseService.create(
             Case(
                 namespaceId = context.namespaceId,
                 title = context.caseTitle,
@@ -485,11 +487,12 @@ class ScheduledPromptExecutor(
             case.id.toString(),
             PermissionRelation.ADMIN,
         )
-        caseService.addMessage(
+        if (workspaceCase == null || workspaceDispatch.alreadyAccepted(case.id, userRun.id) != true) caseService.addMessage(
             caseId = case.id,
             actor = context.actor,
             content = listOf(MessageContent.Text(context.message)),
             sessionContext = context.sessionContext,
+            requestId = if (workspaceCase != null) userRun.id else null,
         )
         logger.info {
             "[Executor] UserRun=${userRun.id} — Case ${case.id} created and message injected for user=${userRun.userId}"

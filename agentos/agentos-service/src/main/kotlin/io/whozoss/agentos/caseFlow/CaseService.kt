@@ -89,6 +89,12 @@ interface CaseService : EntityService<Case, UUID> {
      */
     fun findActiveRuntime(caseId: UUID): CaseRuntime?
 
+    fun recoverWorkspaceCase(caseId: UUID) { throw UnsupportedOperationException("Workspace recovery is unavailable") }
+
+    fun hasRunningExecutions(caseIds: Collection<UUID>): Boolean = caseIds.any { findActiveRuntime(it)?.isRunning() == true }
+
+    fun hasUnfinishedWorkspaceCommands(caseIds: Collection<UUID>): Boolean = false
+
     /**
      * Retrieve all active [CaseRuntime] instances for a given namespace.
      */
@@ -119,6 +125,7 @@ interface CaseService : EntityService<Case, UUID> {
         content: List<io.whozoss.agentos.sdk.caseEvent.MessageContent>,
         answerToEventId: UUID? = null,
         sessionContext: Map<String, Any?>? = null,
+        requestId: UUID? = null,
     )
 
     // ========================================
@@ -154,4 +161,18 @@ interface CaseService : EntityService<Case, UUID> {
      * @param caseId The unique identifier of the case to kill
      */
     fun killCase(caseId: UUID)
+
+    /**
+     * Start a turn that was held back, if there is one to start.
+     *
+     * Called when whatever a [CaseLaunchGate] was waiting for has cleared — today, a Git workspace
+     * finishing its preparation. The user's message was persisted when it arrived, so nothing was
+     * lost while the case waited; this simply lets the runtime pick it up.
+     *
+     * Resumes a `PENDING` case and nothing else. A case that was killed, errored or has already
+     * consumed its message is left alone: a kill only sets flags on the runtime that was live when
+     * it happened, and `CaseRuntime.run()` clears them on entry, so relaunching a terminal case
+     * would silently revive it.
+     */
+    fun resumeIfPending(caseId: UUID) = Unit
 }

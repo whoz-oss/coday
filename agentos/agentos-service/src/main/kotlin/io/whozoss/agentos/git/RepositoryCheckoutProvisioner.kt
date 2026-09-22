@@ -10,7 +10,7 @@ import java.time.Instant
 import kotlin.io.path.exists
 import kotlin.io.path.name
 
-/** Prepares an internal bare repository outside the browsable Exchanges. */
+/** Prepares an internal bare repository. Exchanges only expose documents and case worktrees. */
 @Service
 class RepositoryCheckoutProvisioner(
     private val runner: GitCommandRunner,
@@ -64,7 +64,8 @@ class RepositoryCheckoutProvisioner(
      * Record that a namespace's checkout has to be prepared, without preparing it.
      *
      * Associating a repository has to return immediately: a clone takes minutes and a request thread
-     * is the wrong place for it. This writes the intent, and [CaseWorkspaceWorker] picks it up — a queued state which survives process restarts.
+     * is the wrong place for it. This writes the intent, and [CaseWorkspaceWorker] picks it up — the
+     * same shape as a case workspace, where creation records `REQUESTED` and the sweep does the work.
      *
      * Saving the namespace settings explicitly retries a failed checkout. The worker only picks
      * up PREPARING rows, so a misconfigured repository is never retried on every timer tick.

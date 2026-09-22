@@ -46,6 +46,8 @@ data class GitExecutionProperties(
     val defaultTimeout: Duration = Duration.ofMinutes(2),
     /** Timeout applied to network-bound commands (clone, fetch). */
     val cloneTimeout: Duration = Duration.ofMinutes(30),
+    /** Timeout applied to the configured setup command run inside a new worktree. */
+    val setupTimeout: Duration = Duration.ofMinutes(15),
     /** Upper bound on captured stdout/stderr characters, to keep a runaway command out of the heap. */
     val maxOutputChars: Int = 100_000,
     /**

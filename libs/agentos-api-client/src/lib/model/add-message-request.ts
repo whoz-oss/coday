@@ -11,5 +11,6 @@
 export interface AddMessageRequest {
   answerToEventId?: string
   content: string
+  requestId?: string
   sessionContext?: { [key: string]: any }
 }

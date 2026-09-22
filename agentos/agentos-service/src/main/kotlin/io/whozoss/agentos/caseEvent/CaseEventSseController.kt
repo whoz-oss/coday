@@ -40,6 +40,7 @@ class CaseEventSseController(
     private val caseService: CaseService,
     private val caseEventService: CaseEventService,
     private val caseConfig: CaseConfigProperties,
+    private val conversationHistory: CaseConversationHistory = CaseConversationHistory(caseEventService),
 ) {
     private val heartbeatIntervalMs get() = caseConfig.sseHeartbeatIntervalMs
 
@@ -129,7 +130,7 @@ class CaseEventSseController(
                 if (includePreviousEvents == true) {
                     // Replay persisted history first so clients connecting mid-run
                     // or reconnecting after a disconnect receive the full sequence.
-                    caseEventService.findByParent(caseId).forEach { sendEvent(it, emitter) }
+                    conversationHistory.findByCase(caseId).forEach { sendEvent(it, emitter) }
                 }
 
                 // If the case is still active, subscribe to the live flow.

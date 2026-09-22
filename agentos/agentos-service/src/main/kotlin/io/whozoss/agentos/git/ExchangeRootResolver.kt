@@ -1,0 +1,118 @@
+package io.whozoss.agentos.git
+
+import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.caseFlow.CaseRepository
+import io.whozoss.agentos.exchange.ExchangeStorageService
+import mu.KLogging
+import org.springframework.stereotype.Component
+import java.nio.file.Path
+import java.util.UUID
+
+/**
+ * Resolves the directory a case's files actually live in.
+ *
+ * One seam for REST and for the agent tools, so a user and an agent looking at "the files of this
+ * case" always see the same directory. Without it the two layers compute the path independently
+ * and drift the moment a family is equipped.
+ *
+ * For an ordinary family this is the historic per-case directory. For an equipped family it is the
+ * root case's Exchange directory — documents and repo/ — for every descendant, which is what makes grooming,
+ * development and review sub-cases work on the same files and the same branch.
+ */
+@Component
+class ExchangeRootResolver(
+    private val caseRepository: CaseRepository,
+    private val bindingService: CaseResourceBindingService,
+    private val exchangeStorageService: ExchangeStorageService,
+) {
+    /**
+     * Where [case]'s files live, and the workspace backing it when the family is equipped.
+     */
+    fun resolve(case: Case): ResolvedExchangeRoot {
+        val rootCase = resolveRootCase(case)
+        val binding = bindingService.findByRootCaseId(rootCase.id)
+
+        return when (binding) {
+            null ->
+                ResolvedExchangeRoot(
+                    path = exchangeStorageService.caseRoot(case.namespaceId, case.id, case.metadata.created),
+                    binding = null,
+                )
+
+            else ->
+                ResolvedExchangeRoot(
+                    path =
+                        exchangeStorageService.caseRoot(
+                            rootCase.namespaceId,
+                            rootCase.id,
+                            rootCase.metadata.created,
+                        ),
+                    binding = binding,
+                )
+        }
+    }
+
+    /** Convenience for callers holding only an id. */
+    fun resolve(caseId: UUID): ResolvedExchangeRoot = resolve(requireCase(caseId))
+
+    /** The Namespace Exchange root, containing shared documents only. */
+    fun resolveNamespaceRoot(namespaceId: UUID): Path = exchangeStorageService.namespaceRoot(namespaceId)
+
+    /**
+     * Walk up to the technical root of the family (`parentCaseId == null`).
+     *
+     * Ancestors are read **including soft-deleted ones**: deleting a parent does not delete its
+     * children, and a family whose root was removed must keep resolving to the same directory
+     * rather than having every descendant silently fall back to its own — which would strand the
+     * shared worktree while agents kept writing elsewhere.
+     *
+     * The walk is bounded: a cycle introduced by a bad write must not spin here.
+     */
+    fun resolveRootCase(case: Case): Case {
+        var current = case
+        var hops = 0
+        while (true) {
+            val parentId = current.parentCaseId ?: return current
+            if (++hops > MAX_ANCESTOR_HOPS) {
+                throw CaseWorkspaceUnavailableException("Invalid case ancestry: cycle or excessive depth")
+            }
+            current =
+                caseRepository.findByIds(listOf(parentId), withRemoved = true).firstOrNull()
+                    ?: throw CaseWorkspaceUnavailableException("The parent case $parentId is unavailable")
+            check(current.namespaceId == case.namespaceId) { "Case ancestry crosses namespaces" }
+        }
+    }
+
+    /**
+     * Read the namespace once, then follow parent ids in memory. Older cases need not have a
+     * PARENT_OF edge, so using that graph edge alone could miss a surviving child during cleanup.
+     * Unrelated families must not trigger individual ancestor queries on every environment poll.
+     */
+    fun familyMembers(rootCase: Case): List<Case> {
+        val children = caseRepository.findIncludingRemovedByNamespace(rootCase.namespaceId)
+            .filter { it.namespaceId == rootCase.namespaceId }.groupBy { it.parentCaseId }
+        val pending = ArrayDeque<Case>()
+        val visited = mutableSetOf<UUID>()
+        val family = mutableListOf<Case>()
+        pending.add(rootCase)
+        while (pending.isNotEmpty()) {
+            val member = pending.removeFirst()
+            if (!visited.add(member.id)) continue
+            family.add(member)
+            children[member.id].orEmpty().forEach(pending::addLast)
+        }
+        return family
+    }
+
+    private fun requireCase(caseId: UUID): Case =
+        caseRepository.findByIds(listOf(caseId), withRemoved = true).firstOrNull()
+            ?: throw IllegalArgumentException("Case $caseId not found")
+
+    companion object : KLogging() {
+        /**
+         * Generous bound relative to the delegation depth limit: the walk must tolerate a legal
+         * hierarchy and only defend against a cycle.
+         */
+        private const val MAX_ANCESTOR_HOPS = 32
+    }
+}

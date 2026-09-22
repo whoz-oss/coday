@@ -78,6 +78,19 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Index case_parent_case_id created" }
 
+        // Inbox admission reads one case and relevant states, without hydrating old payloads.
+        neo4jClient
+            .query(
+                "CREATE INDEX case_command_receipt_case_state IF NOT EXISTS " +
+                    "FOR (r:CaseCommandReceipt) ON (r.caseId, r.state)",
+            ).run()
+        // The periodic resume sweep and startup recovery select states across all cases.
+        neo4jClient
+            .query(
+                "CREATE INDEX case_command_receipt_state IF NOT EXISTS FOR (r:CaseCommandReceipt) ON (r.state)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Case command inbox indexes ensured" }
+
         neo4jClient
             .query(
                 "CREATE INDEX agent_config_namespace_id IF NOT EXISTS FOR (a:AgentConfig) ON (a.namespaceId)",
@@ -113,6 +126,7 @@ class Neo4jSchemaInitializer(
                 "namespace_id_unique" to "Namespace",
                 "user_id_unique" to "User",
                 "case_id_unique" to "Case",
+                "case_command_receipt_id_unique" to "CaseCommandReceipt",
                 "agent_config_id_unique" to "AgentConfig",
                 "ai_provider_id_unique" to "AiProvider",
                 "ai_model_id_unique" to "AiModel",

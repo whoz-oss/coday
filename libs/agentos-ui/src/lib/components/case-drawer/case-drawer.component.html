@@ -54,6 +54,28 @@
       >
       <span class="case-drawer-compact__tooltip-actions">
         @if (compactConfirmingDeleteId() !== hovered.id) {
+          @if (hovered.canCreateSubCase) {
+            <button
+              type="button"
+              class="case-drawer-compact__tooltip-btn"
+              title="Create sub-case"
+              (click)="subCaseCreateRequested.emit(hovered.id); $event.stopPropagation()"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16l4-4h4M18 14v8m-4-4h8" />
+              </svg>
+            </button>
+          }
           <!-- Actions normales : star + delete -->
           <button
             type="button"
@@ -238,20 +260,43 @@
         </button>
       }
 
-      <!-- Status label — hidden on hover to reveal action buttons -->
-      <span
-        class="case-tree-node__status-label"
-        [class.case-tree-node__status-label--running]="node.status === Status.RUNNING"
-        [class.case-tree-node__status-label--error]="node.status === Status.ERROR"
-        [class.case-tree-node__status-label--pending]="node.status === Status.PENDING"
-        [class.case-tree-node__status-label--killed]="node.status === Status.KILLED"
-        aria-hidden="true"
-        >{{ node.status.toLowerCase() }}</span
-      >
+      <!-- Case and PR statuses share the same display area, separate from actions. -->
+      <span class="case-tree-node__statuses">
+        <span
+          class="case-tree-node__status-label"
+          [class.case-tree-node__status-label--running]="node.status === Status.RUNNING"
+          [class.case-tree-node__status-label--error]="node.status === Status.ERROR"
+          [class.case-tree-node__status-label--pending]="node.status === Status.PENDING"
+          [class.case-tree-node__status-label--killed]="node.status === Status.KILLED"
+          >{{ node.status.toLowerCase() }}</span
+        >
+      </span>
 
       <!-- Inline actions: star + delete (ou confirmation), visibles au hover -->
       <span class="case-tree-node__actions">
         @if (expandedConfirmingDeleteId() !== node.id) {
+          @if (node.canCreateSubCase) {
+            <button
+              type="button"
+              class="case-tree-node__action-btn"
+              title="Create sub-case"
+              (click)="subCaseCreateRequested.emit(node.id); $event.stopPropagation()"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16l4-4h4M18 14v8m-4-4h8" />
+              </svg>
+            </button>
+          }
           <!-- Actions normales -->
           <button
             type="button"

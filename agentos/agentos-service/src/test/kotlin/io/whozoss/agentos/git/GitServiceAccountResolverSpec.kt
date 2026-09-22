@@ -12,7 +12,7 @@ import java.util.UUID
 
 class GitServiceAccountResolverSpec : StringSpec({
     val namespaceId = UUID.randomUUID()
-    val settings = GitRepositorySettings(UUID.randomUUID(), namespaceId, "https://example.com/repo.git", "main", UUID.randomUUID())
+    val settings = GitRepositorySettings(UUID.randomUUID(), namespaceId, "https://example.com/repo.git", "main", UUID.randomUUID(), autoWorktreeForRootCases = false, setupCommand = null)
     val authSettings = mockk<AuthSettingService>()
     val resolver = GitServiceAccountResolver(authSettings)
     val shared = BearerTokenAuthSetting(namespaceId = namespaceId, name = "service", token = "fixture-token")

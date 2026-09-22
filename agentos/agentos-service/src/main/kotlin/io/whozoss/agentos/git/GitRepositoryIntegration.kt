@@ -24,11 +24,17 @@ object GitRepositoryIntegration {
     /** HTTPS URL of the repository to clone. */
     const val PARAM_REPOSITORY_URL: String = "repositoryUrl"
 
-    /** Remote branch used when preparing the repository. */
+    /** Remote branch fetched when freezing the base of each new case worktree. */
     const val PARAM_MAIN_BRANCH: String = "mainBranch"
 
     /** UUID of the namespace-shared AuthSetting holding the service account secret. */
     const val PARAM_SERVICE_AUTH_SETTING_ID: String = "serviceAuthSettingId"
+
+    /** Whether a new root case gets its own detached worktree. Off unless explicitly enabled. */
+    const val PARAM_AUTO_WORKTREE: String = "autoWorktreeForRootCases"
+
+    /** Optional command run once inside a freshly created worktree (dependency install, codegen). */
+    const val PARAM_SETUP_COMMAND: String = "setupCommand"
 
     /** Default when [PARAM_MAIN_BRANCH] is absent. */
     const val DEFAULT_MAIN_BRANCH: String = "main"

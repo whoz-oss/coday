@@ -25,11 +25,12 @@ object BashCommandExecutor : KLogging() {
         workingDirectory: File,
         timeoutSeconds: Long,
         maxOutputChars: Int = DEFAULT_MAX_OUTPUT_CHARS,
+        workspaceId: String? = null,
     ): BashExecutionResult {
         logger.debug { "Running bash command in ${workingDirectory.absolutePath}: $command" }
 
         val process = try {
-            ProcessBuilder("/bin/bash", "-c", command)
+            ProcessBuilder("/bin/bash", "-c", if (workspaceId == null) command else "trap 'wait' EXIT\n$command")
                 .directory(workingDirectory)
                 .redirectErrorStream(false)
                 .start()
@@ -37,6 +38,8 @@ object BashCommandExecutor : KLogging() {
             logger.error(e) { "Failed to start process for command: $command" }
             return BashExecutionResult.Error(e.message ?: e.javaClass.simpleName)
         }
+
+        if (workspaceId != null) WorkspaceBashProcesses.track(workspaceId, process)
 
         // Drain stdout and stderr asynchronously — same anti-deadlock pattern as SearchFilesTool.
         // If we read stdout synchronously after waitFor(), the process may never exit because
@@ -57,13 +60,14 @@ object BashCommandExecutor : KLogging() {
                 // are closed, which happens once destroyForcibly() kills the process.
                 stdoutFuture.cancel(true)
                 stderrFuture.cancel(true)
+                process.descendants().use { children -> children.forEach { it.destroyForcibly() } }
                 process.destroyForcibly()
                 BashExecutionResult.Timeout(timeoutSeconds)
             }
             else -> {
                 try {
-                    val stdout = stdoutFuture.get()
-                    val stderr = stderrFuture.get()
+                    val stdout = stdoutFuture.get(timeoutSeconds, TimeUnit.SECONDS)
+                    val stderr = stderrFuture.get(timeoutSeconds, TimeUnit.SECONDS)
                     BashExecutionResult.Completed(
                         exitCode = process.exitValue(),
                         stdout = stdout.take(maxOutputChars),

@@ -7,6 +7,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.clearMocks
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -14,7 +15,15 @@ import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.caseEvent.CaseConversationHistory
+import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
+import io.whozoss.agentos.git.CaseResourceBinding
+import io.whozoss.agentos.git.ExchangeRootResolver
+import io.whozoss.agentos.git.ResolvedExchangeRoot
+import java.nio.file.Path
+import java.util.Optional
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
@@ -38,6 +47,7 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -197,6 +207,10 @@ class CaseServiceImplSpec :
             environmentAgentName: String? = null,
             agentConfigService: AgentConfigService = allowAllAgentConfigService,
             idleEvictionGraceMs: Long = 5_000L,
+            caseRepository: CaseRepository = InMemoryCaseRepository(),
+            caseLaunchGate: CaseLaunchGate = CaseLaunchGate.ALWAYS,
+            commandJournal: CaseCommandJournal? = null,
+            caseEventService: CaseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository()),
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -210,8 +224,6 @@ class CaseServiceImplSpec :
                     every { resolveAgentName(any(), any(), any()) } returns agentName
                     coEvery { findAgentByName(agentName, any(), any()) } returns agent
                 }
-            val caseRepository = InMemoryCaseRepository()
-            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             return CaseServiceImpl(
                 agentService = agentService,
                 agentConfigService = agentConfigService,
@@ -224,7 +236,153 @@ class CaseServiceImplSpec :
                 permissionService = permissionService,
                 promptService = promptService,
                 caseNamingService = noOpCaseNamingService,
+                caseLaunchGate = caseLaunchGate,
+                commandJournal = commandJournal,
             )
+        }
+
+        /** A gate that holds runs back until [open] is set, as a workspace being prepared does. */
+        class TestLaunchGate : CaseLaunchGate {
+            var open: Boolean = false
+
+            override fun canLaunch(caseId: UUID): Boolean = open
+        }
+
+        fun workspaceJournal(): CaseCommandJournal {
+            val rows = mutableMapOf<String, CaseCommandReceipt>()
+            val repository = mockk<CaseCommandReceiptRepository> {
+                every { save(any<CaseCommandReceipt>()) } answers { firstArg<CaseCommandReceipt>().also { rows[it.id] = it } }
+                every { findById(any()) } answers { Optional.ofNullable(rows[firstArg<String>()]) }
+                every { forCase(any()) } answers { rows.values.filter { it.caseId == firstArg<String>() }.sortedBy { it.created } }
+            every { hasState(any(), any()) } answers {
+                val id = firstArg<String>(); val states = secondArg<Collection<String>>()
+                rows.values.any { it.caseId == id && it.state in states }
+            }
+            every { firstInState(any(), any()) } answers {
+                val id = firstArg<String>(); val states = secondArg<Collection<String>>()
+                rows.values.filter { it.caseId == id && it.state in states }.minWithOrNull(compareBy<CaseCommandReceipt> { it.created }.thenBy { it.id })
+            }
+            every { transition(any(), any(), any()) } answers {
+                val id = firstArg<String>(); val states = secondArg<Collection<String>>(); val target = thirdArg<String>()
+                rows.replaceAll { _, row -> if (row.caseId == id && row.state in states) row.copy(state = target) else row }
+            }
+            }
+            val roots = mockk<ExchangeRootResolver> {
+                every { resolve(any<UUID>()) } answers { ResolvedExchangeRoot(Path.of("/tmp/case"), CaseResourceBinding(
+                    rootCaseId = firstArg(), namespaceId = namespaceId, integrationConfigId = UUID.randomUUID(),
+                )) }
+            }
+            return CaseCommandJournal(repository, jacksonObjectMapper().findAndRegisterModules(), roots)
+        }
+
+        "workspace input is emitted before preparation and survives cancellation in conversation history" {
+            val gate = TestLaunchGate()
+            val journal = workspaceJournal()
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(caseLaunchGate = gate, commandJournal = journal, caseEventService = events)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                val runtime = service.getCaseRuntime(case.id)
+                val receipt = async { runtime.events.filterIsInstance<MessageEvent>().first() }
+                awaitSubscribers(runtime)
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")), requestId = UUID.randomUUID())
+                val displayed = withTimeout(2_000) { receipt.await() }
+                displayed.content shouldBe listOf(MessageContent.Text("Do the work"))
+                events.findByParent(case.id).filterIsInstance<MessageEvent>() shouldBe emptyList()
+                CaseConversationHistory(events, journal).findByCase(case.id) shouldBe listOf(displayed)
+                service.interruptCase(case.id)
+                CaseConversationHistory(events, journal).findByCase(case.id).filterIsInstance<MessageEvent>() shouldBe listOf(displayed)
+                journal.hasUnfinished(case.id) shouldBe false
+                runtime.isRunning() shouldBe false
+            } finally { service.shutdown() }
+        }
+
+        "an invalid answer reference follows durable message admission in a workspace" {
+            val gate = TestLaunchGate()
+            val journal = workspaceJournal()
+            val agent = finishingAgent()
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(agent = agent, caseLaunchGate = gate, commandJournal = journal, caseEventService = events)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                val requestId = UUID.randomUUID()
+                val answerReference = UUID.randomUUID()
+                val context = mapOf("ticket" to "WZ-123")
+                repeat(2) {
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("Continue")),
+                        answerToEventId = answerReference, sessionContext = context, requestId = requestId)
+                }
+                shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("Different")),
+                        answerToEventId = answerReference, sessionContext = context, requestId = requestId)
+                }
+                CaseConversationHistory(events, journal).findByCase(case.id).filterIsInstance<MessageEvent>().single().sessionContext shouldBe context
+                journal.hasPending(case.id) shouldBe true
+                events.findByParent(case.id).filterIsInstance<MessageEvent>() shouldBe emptyList()
+                gate.open = true
+                service.resumeIfPending(case.id)
+                withTimeout(5_000) { while (journal.hasUnfinished(case.id)) delay(10) }
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+                val stored = events.findByParent(case.id).filterIsInstance<MessageEvent>().single()
+                stored.content shouldBe listOf(MessageContent.Text("Continue"))
+                stored.actor shouldBe userActor
+                stored.sessionContext shouldBe context
+            } finally { service.shutdown() }
+        }
+
+        // -------------------------------------------------------------------------
+        // Regression: a held-back run must not revive a case that is no longer PENDING
+        // -------------------------------------------------------------------------
+
+        /**
+         * Reproduces the real sequence: a message arrives while the workspace is preparing, so the
+         * gate holds the run back and the message stays persisted. The case is then left in
+         * [statusWhileWaiting] before the gate opens and the sweep resumes it.
+         *
+         * The message matters: a case with no pending message never reaches the agent anyway, so a
+         * test built on an empty case would pass with or without the guard.
+         */
+        suspend fun resumeAfterDeferral(statusWhileWaiting: CaseStatus): Agent {
+            val agent = finishingAgent()
+            val caseRepository = InMemoryCaseRepository()
+            val gate = TestLaunchGate()
+            val service = buildService(agent = agent, caseRepository = caseRepository, caseLaunchGate = gate)
+            val case = service.create(Case(namespaceId = namespaceId))
+
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            caseRepository.save(case.copy(status = statusWhileWaiting))
+
+            gate.open = true
+            service.resumeIfPending(case.id)
+            // Give a launch, if one happens, the chance to reach the agent before asserting.
+            delay(200)
+            return agent
+        }
+
+        "resumeIfPending does not relaunch a case killed while its workspace was preparing" {
+            // A kill sets its flags on the runtime that was live at the time, and CaseRuntime.run()
+            // clears them on entry. Without a status guard read from the store, the case comes back
+            // as RUNNING the moment preparation ends — the late run the plan forbids.
+            val agent = resumeAfterDeferral(CaseStatus.KILLED)
+
+            coVerify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+        }
+
+        "resumeIfPending does not relaunch a case that already consumed its message" {
+            val agent = resumeAfterDeferral(CaseStatus.IDLE)
+
+            coVerify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+        }
+
+        "resumeIfPending still launches a case that is genuinely pending" {
+            // The guard must not turn into a blanket refusal: this is the case the sweep resumes.
+            val agent = resumeAfterDeferral(CaseStatus.PENDING)
+
+            coVerify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
         }
 
         // -------------------------------------------------------------------------

@@ -12,8 +12,9 @@
   } @else {
     <div class="namespace-git__body">
       <p class="namespace-git__hint">
-        Associate a repository with this namespace and prepare an internal clone. Namespace files remain shared
-        documents outside Git.
+        Associating a repository enables Git workspaces for this namespace. When worktree creation is enabled, every new
+        top-level case gets a repo/ directory shared by its sub-cases. Namespace files remain shared documents outside
+        Git. Agents create branches and pull requests in their workflows.
       </p>
 
       @if (errorMessage()) {
@@ -59,7 +60,9 @@
             (ngModelChange)="mainBranch.set($event)"
             name="mainBranch"
           />
-          <span class="namespace-git__field-hint">The internal clone starts from this remote branch.</span>
+          <span class="namespace-git__field-hint"
+            >New worktrees start at this branch’s commit, without creating a branch.</span
+          >
         </label>
 
         <label class="namespace-git__field">
@@ -84,6 +87,40 @@
               No usable auth setting in this namespace. Create a BEARER_TOKEN one first.
             </span>
           }
+        </label>
+      </fieldset>
+
+      <fieldset class="namespace-git__section">
+        <legend class="namespace-git__label">Automation</legend>
+
+        <label class="namespace-git__checkbox">
+          <input
+            type="checkbox"
+            [ngModel]="autoWorktree()"
+            (ngModelChange)="autoWorktree.set($event)"
+            name="autoWorktree"
+          />
+          <span>Create a worktree for every new top-level case</span>
+        </label>
+        <span class="namespace-git__field-hint">
+          Applies to cases created from now on. Turning this on later never equips existing cases, and turning it off
+          never removes a worktree already created.
+        </span>
+
+        <label class="namespace-git__field">
+          <span class="namespace-git__field-label">Setup command (optional)</span>
+          <input
+            class="namespace-git__input"
+            type="text"
+            placeholder="pnpm install --ignore-scripts"
+            [ngModel]="setupCommand()"
+            (ngModelChange)="setupCommand.set($event)"
+            name="setupCommand"
+          />
+          <span class="namespace-git__field-hint namespace-git__field-hint--warn">
+            Runs on the server, as the service user, in each new worktree. It executes code from the branch — prefer a
+            command that disables lifecycle scripts.
+          </span>
         </label>
       </fieldset>
 

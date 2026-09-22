@@ -11,6 +11,7 @@ api/auth-setting-controller.service.ts
 api/case-controller.service.ts
 api/case-event-rest-controller.service.ts
 api/case-membership-controller.service.ts
+api/case-workspace-controller.service.ts
 api/exchange-controller.service.ts
 api/feedback-controller.service.ts
 api/integration-config-controller.service.ts
@@ -50,6 +51,7 @@ model/bearer-token-auth-setting.ts
 model/case-event.ts
 model/case-status-event.ts
 model/case-updated-event.ts
+model/case-workspace-view.ts
 model/case.ts
 model/confirmation-resolved-event.ts
 model/enrichment-phase-trace.ts
@@ -123,6 +125,7 @@ model/user-group-update-request.ts
 model/user-membership-role.ts
 model/user.ts
 model/warn-event.ts
+model/workspace-retry-request.ts
 param.ts
 provide-api.ts
 variables.ts

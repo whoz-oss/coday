@@ -189,7 +189,7 @@ class ExchangeStorageService(
         root: Path,
         relativePath: String,
     ): ExchangeFileContent {
-        val resolved = resolveWithin(root, relativePath)
+        val resolved = resolveReadPath(root, relativePath)
         val bytes = readWithinLimit(resolved)
         val lastModified = Files.getLastModifiedTime(resolved).toInstant()
         val size = bytes.size.toLong()
@@ -211,7 +211,7 @@ class ExchangeStorageService(
         root: Path,
         relativePath: String,
     ): Pair<ByteArray, String?> {
-        val resolved = resolveWithin(root, relativePath)
+        val resolved = resolveReadPath(root, relativePath)
         return readWithinLimit(resolved) to mimeTypeFor(resolved.fileName.toString())
     }
 
@@ -271,6 +271,24 @@ class ExchangeStorageService(
      * [java.nio.file.NoSuchFileException] (missing → 404) and other [IOException] (e.g. a directory →
      * 400) so the controller error mapping is unchanged.
      */
+    /** Compatibility for relative links written before the offline repo/ migration. */
+    private fun resolveReadPath(root: Path, relativePath: String): Path {
+        val direct = resolveWithin(root, relativePath)
+        if (Files.exists(direct, LinkOption.NOFOLLOW_LINKS)) return direct
+        var ancestor: Path? = root.toAbsolutePath().normalize().parent
+        val mount = mountRoot.toAbsolutePath().normalize()
+        repeat(6) {
+            val current = ancestor ?: return direct
+            if (!current.startsWith(mount)) return direct
+            if (Files.isRegularFile(current.resolve(".exchange-repo-migration.json"))) {
+                val legacy = resolveWithin(root, "repo/$relativePath")
+                return if (Files.exists(legacy, LinkOption.NOFOLLOW_LINKS)) legacy else direct
+            }
+            ancestor = current.parent
+        }
+        return direct
+    }
+
     private fun readWithinLimit(resolved: Path): ByteArray {
         val limit = config.readMaxSizeBytes
         val probe = (limit + 1).coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()

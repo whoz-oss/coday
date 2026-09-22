@@ -21,7 +21,9 @@ class GitRepositoryAssociationService(
      * The namespace's validated Git association, or null when it has none.
      *
      * A row that exists but does not validate raises rather than returning null. Silently
-     * treating a broken association as "no Git" would hide a configuration error and defer the failure until the background clone.
+     * treating a broken association as "no Git" would create unequipped cases in a namespace
+     * whose users expect a worktree, and the mistake would only surface much later, as a missing
+     * working directory.
      *
      * @throws io.whozoss.agentos.exception.BadRequestException when the stored row is not a usable
      *   association.
@@ -33,6 +35,17 @@ class GitRepositoryAssociationService(
 
     /** Whether the namespace has a repository associated at all. */
     fun isAssociated(namespaceId: UUID): Boolean = findSettings(namespaceId) != null
+
+    /**
+     * Whether a *new* root case in this namespace should be equipped with a detached
+     * worktree.
+     *
+     * Only ever consulted when a root case is created; the answer is then persisted on that
+     * family's binding. Turning the flag on later must not retro-equip existing families, and
+     * turning it off must not strip equipped ones.
+     */
+    fun isAutoWorktreeEnabled(namespaceId: UUID): Boolean =
+        findSettings(namespaceId)?.autoWorktreeForRootCases ?: false
 
     companion object : KLogging()
 }

@@ -5,6 +5,11 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.mockk.every
 import io.mockk.verify
+import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.caseFlow.CaseCommandJournal
+import io.whozoss.agentos.caseFlow.CaseRepository
+import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -22,14 +27,16 @@ import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.nio.file.Path
 import java.util.UUID
 
 /**
- * Real namespace Git MVC and method-security wiring.
+ * Real MVC and method-security wiring, with the real root resolver and workspace projection.
  * Permission answers and persistence are controlled fixtures: this verifies routing, filtering
  * and JSON contracts, not the Neo4j implementation of permission inheritance.
  */
@@ -44,6 +51,12 @@ class WorkspaceControllersMvcSpec : StringSpec() {
 
     @MockkBean(relaxed = true) lateinit var users: UserService
     @MockkBean(relaxed = true) lateinit var permissions: PermissionService
+    @MockkBean(relaxed = true) lateinit var cases: CaseRepository
+    @MockkBean(relaxed = true) lateinit var caseService: CaseService
+    @MockkBean(relaxed = true) lateinit var bindings: CaseResourceBindingService
+    @MockkBean(relaxed = true) lateinit var storage: ExchangeStorageService
+    @MockkBean(relaxed = true) lateinit var lifecycle: GitWorkspaceLifecycleService
+    @MockkBean(relaxed = true) lateinit var journal: CaseCommandJournal
     @MockkBean(relaxed = true) lateinit var associations: GitRepositoryAssociationService
     @MockkBean(relaxed = true) lateinit var integrationConfigs: IntegrationConfigService
     @MockkBean(relaxed = true) lateinit var checkoutProvisioner: RepositoryCheckoutProvisioner
@@ -59,19 +72,60 @@ class WorkspaceControllersMvcSpec : StringSpec() {
         every { permissions.hasPermission(user.id.toString(), type, id.toString(), action) } returns true
     }
 
+    private fun stubCase(case: Case, binding: CaseResourceBinding? = null) {
+        every { cases.findByIds(listOf(case.id), any()) } returns listOf(case)
+        every { storage.caseRoot(case.namespaceId, case.id, case.metadata.created) } returns Path.of("/fixture/exchange/${case.id}")
+        every { bindings.findByRootCaseId(case.id) } returns binding
+    }
+
     init {
         beforeTest {
             every { users.getCurrentUser() } returns user
             every { permissions.hasPermission(any(), any(), any(), any()) } returns false
         }
 
-        "a caller without namespace READ cannot inspect Git settings" {
+        "a non-Git case returns an unequipped JSON workspace" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            stubCase(case)
+            allow(EntityType.CASE, case.id, Action.READ)
+
+            mockMvc.perform(get("/api/cases/${case.id}/workspace"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.equipped").value(false))
+                .andExpect(jsonPath("$.recoveryRequired").value(false))
+                .andExpect(jsonPath("$.branchName").doesNotExist())
+        }
+
+        "a caller without case READ cannot inspect a workspace" {
+            val caseId = UUID.randomUUID()
+            listOf("workspace").forEach { suffix ->
+                mockMvc.perform(get("/api/cases/$caseId/$suffix"))
+                    .andExpect(status().isForbidden)
+            }
+            verify(exactly = 0) { cases.findByIds(listOf(caseId), any()) }
+        }
+
+        "a caller without namespace READ cannot inspect Git settings or workspace inventory" {
             val namespaceId = UUID.randomUUID()
-            listOf("git").forEach { suffix ->
+            listOf("git", "workspaces").forEach { suffix ->
                 mockMvc.perform(get("/api/namespaces/$namespaceId/$suffix"))
                     .andExpect(status().isForbidden)
             }
             verify(exactly = 0) { associations.findSettings(namespaceId) }
+            verify(exactly = 0) { bindings.findByParent(namespaceId) }
+        }
+
+        "case READ alone cannot retry or recover a workspace" {
+            val caseId = UUID.randomUUID()
+            allow(EntityType.CASE, caseId, Action.READ)
+            listOf("retry", "recover").forEach { action ->
+                mockMvc.perform(post("/api/cases/$caseId/workspace/$action"))
+                    .andExpect(status().isForbidden)
+            }
+            verify(exactly = 0) { cases.findByIds(listOf(caseId), any()) }
+            verify(exactly = 0) { lifecycle.retry(caseId) }
+            verify(exactly = 0) { caseService.recoverWorkspaceCase(caseId) }
         }
 
         "namespace READ alone cannot associate or remove its repository" {
@@ -83,6 +137,43 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             mockMvc.perform(delete("/api/namespaces/$namespaceId/git"))
                 .andExpect(status().isForbidden)
             verify(exactly = 0) { integrationConfigs.findActiveNamespaceSingleton(namespaceId, GitRepositoryIntegration.TYPE) }
+        }
+
+        "namespace inventory excludes private cases even when their bindings exist" {
+            val namespaceId = UUID.randomUUID()
+            val visible = Case(namespaceId = namespaceId)
+            val hidden = Case(namespaceId = namespaceId)
+            val visibleBinding = CaseResourceBinding(rootCaseId = visible.id, namespaceId = namespaceId, integrationConfigId = UUID.randomUUID())
+            val hiddenBinding = CaseResourceBinding(rootCaseId = hidden.id, namespaceId = namespaceId, integrationConfigId = UUID.randomUUID())
+            stubCase(visible, visibleBinding)
+            stubCase(hidden, hiddenBinding)
+            every { bindings.findByParent(namespaceId) } returns listOf(visibleBinding, hiddenBinding)
+            allow(EntityType.NAMESPACE, namespaceId, Action.READ)
+            allow(EntityType.CASE, visible.id, Action.READ)
+
+            mockMvc.perform(get("/api/namespaces/$namespaceId/workspaces"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].rootCaseId").value(visible.id.toString()))
+                .andExpect(jsonPath("$[0].status").value("REQUESTED"))
+            verify(exactly = 0) { cases.findByIds(listOf(hidden.id), any()) }
+        }
+
+        "a writer can explicitly acknowledge setup replay and receives a JSON workspace" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            stubCase(case)
+            allow(EntityType.CASE, case.id, Action.WRITE)
+            mockMvc.perform(
+                post("/api/cases/${case.id}/workspace/retry")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"acknowledgeSetupReplay":true}"""),
+            )
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.equipped").value(false))
+            verify(exactly = 1) { lifecycle.acknowledgeSetup(case.id) }
+            verify(exactly = 0) { lifecycle.retry(case.id) }
         }
 
         "an unassociated namespace returns its explicit JSON state" {

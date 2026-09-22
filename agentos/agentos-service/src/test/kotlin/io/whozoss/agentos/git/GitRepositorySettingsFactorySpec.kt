@@ -41,15 +41,20 @@ class GitRepositorySettingsFactorySpec :
         "a complete configuration parses" {
             val settings =
                 factory.fromConfig(
-                    config(validParameters()),
+                    config(validParameters().also { it[GitRepositoryIntegration.PARAM_AUTO_WORKTREE] = true }),
                 )
 
             settings.namespaceId shouldBe namespaceId
             settings.repositoryUrl shouldBe "https://github.com/org/project.git"
             settings.mainBranch shouldBe "main"
             settings.serviceAuthSettingId shouldBe authSettingId
+            settings.autoWorktreeForRootCases shouldBe true
+            settings.setupCommand shouldBe null
         }
 
+        "automation is off unless explicitly enabled" {
+            factory.fromConfig(config(validParameters())).autoWorktreeForRootCases shouldBe false
+        }
 
         "the main branch defaults when absent" {
             val parameters = validParameters().also { it.remove(GitRepositoryIntegration.PARAM_MAIN_BRANCH) }
@@ -100,4 +105,11 @@ class GitRepositorySettingsFactorySpec :
             shouldThrow<BadRequestException> { factory.fromConfig(bare) }
         }
 
+        "an oversized setup command is refused" {
+            val parameters =
+                validParameters().also {
+                    it[GitRepositoryIntegration.PARAM_SETUP_COMMAND] = "x".repeat(GitRepositorySettingsFactory.MAX_SETUP_COMMAND_LENGTH + 1)
+                }
+            shouldThrow<BadRequestException> { factory.fromConfig(config(parameters)) }
+        }
     })

@@ -1,3 +1,4 @@
+import { CaseWorkspaceComponent } from '../case-workspace/case-workspace.component'
 import {
   ChangeDetectionStrategy,
   Component,
@@ -41,6 +42,7 @@ import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/s
 @Component({
   selector: 'agentos-case-shell',
   imports: [
+    CaseWorkspaceComponent,
     CaseChatComponent,
     CaseHomeComponent,
     ShellSidebarComponent,
@@ -228,6 +230,13 @@ export class CaseShellComponent {
   protected onCreateRequested(): void {
     this.router.navigate(['/agentos/home'], {
       queryParams: { ns: this.namespaceId() },
+    })
+  }
+
+  protected onSubCaseCreateRequested(parentCaseId: string): void {
+    this.mobileDrawerOpen.set(false)
+    this.router.navigate(['/agentos/home'], {
+      queryParams: { ns: this.namespaceId(), parentCase: parentCaseId },
     })
   }
 

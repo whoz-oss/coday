@@ -177,6 +177,11 @@ class CaseController(
     override fun create(
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
+        resource.parentCaseId?.let { parentId ->
+            if (!permissionService.hasPermission(userService.getCurrentUser().id.toString(), EntityType.CASE, parentId.toString(), io.whozoss.agentos.permissions.Action.WRITE)) {
+                throw org.springframework.security.access.AccessDeniedException("No write permission on the parent case")
+            }
+        }
         val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
         val domain =
             Case(
@@ -184,6 +189,7 @@ class CaseController(
                 namespaceId = resource.namespaceId,
                 status = resource.status,
                 title = resource.title ?: "Case ${metadata.id}",
+                parentCaseId = resource.parentCaseId,
             )
         val saved = caseService.create(domain)
         val userId = userService.getCurrentUser().id.toString()
@@ -305,6 +311,7 @@ class CaseController(
             content = listOf(MessageContent.Text(request.content)),
             answerToEventId = request.answerToEventId,
             sessionContext = request.sessionContext,
+            requestId = request.requestId,
         )
         logger.info { "Message added to case: $caseId" }
     }

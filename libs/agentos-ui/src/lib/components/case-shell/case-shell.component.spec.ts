@@ -80,6 +80,18 @@ describe('CaseShellComponent', () => {
     TestBed.resetTestingModule()
   })
 
+  it('opens the sub-case composer for the chosen parent and closes the mobile drawer', () => {
+    const component = makeComponent({ ns: NS_ID, case: 'root' })
+    component['mobileDrawerOpen'].set(true)
+
+    component['onSubCaseCreateRequested']('root')
+
+    expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos/home'], {
+      queryParams: { ns: NS_ID, parentCase: 'root' },
+    })
+    expect(component['mobileDrawerOpen']()).toBe(false)
+  })
+
   describe('soft-delete', () => {
     it('calls deleteCase on the state service', () => {
       const component = makeComponent({ ns: NS_ID })

@@ -76,6 +76,7 @@ class CaseRuntime(
     inputEvents: List<CaseEvent> = emptyList(),
     initialStatus: CaseStatus = CaseStatus.PENDING,
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
+    private val commandJournal: CaseCommandJournal? = null,
 ) : CaseEventEmitter by emitter {
     private val eventList = InMemoryCaseEventList(inputEvents)
 
@@ -112,6 +113,7 @@ class CaseRuntime(
      * they are plain text, never slash-commands.
      */
     private val commandQueue = ConcurrentLinkedQueue<PendingCommand>()
+    private var currentCommand: DurableCaseCommand? = null
 
     private val _statusFlow = MutableStateFlow(initialStatus)
 
@@ -136,6 +138,7 @@ class CaseRuntime(
      * and the SSE flow stays open for the next user message.
      */
     fun requestInterrupt() {
+        commandJournal?.cancel(id)
         commandQueue.clear()
         interruptRequested.set(true)
     }
@@ -147,6 +150,7 @@ class CaseRuntime(
      * Also clears the command queue so no orphaned commands are left behind.
      */
     fun requestKill() {
+        commandJournal?.cancel(id)
         killRequested.set(true)
         interruptRequested.set(true)
         commandQueue.clear()
@@ -161,6 +165,12 @@ class CaseRuntime(
     }
 
     fun isRunning(): Boolean = runInFlight.get()
+    fun hasAnsweredQuestion(): Boolean = findUnresolvedQuestion(eventList.getAll()) != null
+
+    /** A stale reference or an empty answer follows the ordinary-message admission path. */
+    fun acceptsAnswer(eventId: UUID, content: List<MessageContent>): Boolean =
+        eventList.getById(eventId) is QuestionEvent &&
+            content.filterIsInstance<MessageContent.Text>().any { it.content.isNotBlank() }
 
     /** Number of active SSE subscribers. Useful as a synchronisation barrier in tests. */
     val subscriptionCount get() = emitter.subscriptionCount
@@ -280,6 +290,12 @@ class CaseRuntime(
         iterationCount = 0
 
         try {
+            if (commandJournal != null) {
+                if (commandJournal.recoveryRequired(id)) { updateStatus(CaseStatus.IDLE); return }
+                val answeredQuestion = findUnresolvedQuestion(eventList.getAll())
+                if (currentCommand == null && answeredQuestion != null) currentCommand = commandJournal.resumeAnswer(id)
+                if (currentCommand == null && !loadNextCommand()) { updateStatus(CaseStatus.IDLE); return }
+            }
             // Pre-flight: resume an agent whose run was terminated by AwaitAnswer and
             // whose question has since been answered. Must come AFTER the runInFlight
             // guard (above) to avoid double execution on concurrent callers, and BEFORE
@@ -299,15 +315,18 @@ class CaseRuntime(
 
             val finalStatus = runTurns()
             logger.info { "[CaseRuntime $id] Exited loop → $finalStatus, iterations: $iterationCount" }
-            if (finalStatus != CaseStatus.IDLE) commandQueue.clear()
+            if (finalStatus != CaseStatus.IDLE) { commandQueue.clear(); commandJournal?.fail(id) }
             updateStatus(finalStatus)
         } catch (e: kotlinx.coroutines.CancellationException) {
+            commandJournal?.fail(id)
             throw e
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Unexpected error during execution" }
             commandQueue.clear()
+            commandJournal?.fail(id)
             updateStatus(CaseStatus.ERROR)
         } finally {
+            currentCommand = null
             runInFlight.set(false)
         }
     }
@@ -331,6 +350,32 @@ class CaseRuntime(
                 StepResult.STOP -> return CaseStatus.KILLED
                 StepResult.AGENT_FINISHED -> {
                     if (interruptRequested.get()) return CaseStatus.IDLE
+                    if (commandJournal != null) {
+                        val events = eventList.getAll()
+                        val readyAnswer = findUnresolvedQuestion(events)
+                        if (readyAnswer != null) {
+                            storeAndEmitEvent(AgentSelectedEvent(namespaceId = namespaceId, caseId = id, agentId = readyAnswer.agentId, agentName = readyAnswer.agentName))
+                            iterationCount = 0
+                            continue
+                        }
+                        val lastUser = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+                        // AwaitAnswer closes the agent turn, then emits its question. Questions
+                        // before that closing event (for example an expired OAuth flow) belong to
+                        // a completed turn and must not hold later commands indefinitely.
+                        val lastFinished = events.indexOfLast { it is AgentFinishedEvent }
+                        val question = events.drop(maxOf(lastUser, lastFinished) + 1)
+                            .filterIsInstance<QuestionEvent>().lastOrNull()
+                        if (question != null && events.none { isLegitimateAnswer(it, question) }) {
+                            commandJournal.waitForAnswer(id)
+                            currentCommand = null
+                            return CaseStatus.IDLE
+                        }
+                        currentCommand?.let { commandJournal.complete(id, it.id) }
+                        currentCommand = null
+                        if (!loadNextCommand()) return CaseStatus.IDLE
+                        iterationCount = 0
+                        continue
+                    }
                     val nextCommand = commandQueue.poll()
                         ?: return CaseStatus.IDLE
                     logger.info {
@@ -345,6 +390,18 @@ class CaseRuntime(
         }
         logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
         return CaseStatus.ERROR
+    }
+
+    private fun loadNextCommand(): Boolean {
+        val command = commandJournal?.next(id) ?: return false
+        currentCommand = command
+        storeAndEmitEvent(MessageEvent(
+            metadata = io.whozoss.agentos.sdk.entity.EntityMetadata(id = command.id),
+            caseId = id, namespaceId = namespaceId, actor = command.actor,
+            content = command.content, sessionContext = command.sessionContext,
+        ))
+        selectAgent(command.content, eventList.getAll()).forEach { storeAndEmitEvent(it) }
+        return true
     }
 
     private fun updateStatus(caseStatus: CaseStatus) {
@@ -539,19 +596,7 @@ class CaseRuntime(
         // Find the first LEGITIMATE answer: paired by questionId AND from the right recipient.
         // The recipient check is intentionally inside this predicate — see KDoc for why moving
         // it outside causes a permanent-deadlock bug on shared cases.
-        val legitimateAnswerIndex = events.indexOfFirst { event ->
-            if (event !is AnswerEvent || event.questionId != lastQuestion.id) return@indexOfFirst false
-            val targetUserId = lastQuestion.userId
-                ?: return@indexOfFirst true // unaddressed question: any respondent qualifies
-            val respondentId = runCatching { UUID.fromString(event.actor.id) }.getOrElse {
-                logger.debug {
-                    "[CaseRuntime $id] AnswerEvent actor id '${event.actor.id}' is not a UUID — " +
-                        "does not qualify as a legitimate answer for question ${lastQuestion.id}"
-                }
-                return@indexOfFirst false
-            }
-            respondentId == targetUserId
-        }
+        val legitimateAnswerIndex = events.indexOfFirst { isLegitimateAnswer(it, lastQuestion) }
         if (legitimateAnswerIndex < 0) return null // no legitimate answer yet
 
         // OAuth guard: if any AgentFinishedEvent appears STRICTLY AFTER the legitimate
@@ -561,6 +606,12 @@ class CaseRuntime(
             .any { it is AgentFinishedEvent }
 
         return if (hasAgentFinishedAfterAnswer) null else lastQuestion
+    }
+
+    private fun isLegitimateAnswer(event: CaseEvent, question: QuestionEvent): Boolean {
+        if (event !is AnswerEvent || event.questionId != question.id) return false
+        val targetUser = question.userId ?: return true
+        return runCatching { UUID.fromString(event.actor.id) }.getOrNull() == targetUser
     }
 
     /**

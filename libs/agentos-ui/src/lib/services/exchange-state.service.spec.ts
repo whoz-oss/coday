@@ -8,6 +8,7 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { of, Subject, throwError } from 'rxjs'
 import { ExchangeStateService } from './exchange-state.service'
+import { CaseWorkspaceService } from './case-workspace.service'
 
 describe('ExchangeStateService', () => {
   let controller: {
@@ -23,6 +24,7 @@ describe('ExchangeStateService', () => {
     getNamespaceFilesManifestExchange: jest.Mock
   }
   let service: ExchangeStateService
+  let workspaces: { get: jest.Mock }
 
   const caseFile: ExchangeDirectoryEntry = {
     path: 'a.txt',
@@ -67,8 +69,13 @@ describe('ExchangeStateService', () => {
       getCaseFilesManifestExchange: jest.fn(),
       getNamespaceFilesManifestExchange: jest.fn(),
     }
+    workspaces = { get: jest.fn().mockReturnValue(of({ equipped: false })) }
     TestBed.configureTestingModule({
-      providers: [ExchangeStateService, { provide: ExchangeControllerService, useValue: controller }],
+      providers: [
+        ExchangeStateService,
+        { provide: ExchangeControllerService, useValue: controller },
+        { provide: CaseWorkspaceService, useValue: workspaces },
+      ],
     })
     service = TestBed.inject(ExchangeStateService)
   })
@@ -95,6 +102,7 @@ describe('ExchangeStateService', () => {
       expect(service.caseFiles()).toEqual([caseFile])
       expect(service.canWriteCase()).toBe(true)
       expect(service.caseSectionVisible()).toBe(true)
+      expect(workspaces.get).not.toHaveBeenCalled()
     })
 
     it('READ → read-only (no write), section visible', () => {
@@ -131,6 +139,109 @@ describe('ExchangeStateService', () => {
       expect(service.caseStatus()).toBe('error')
       expect(service.caseSectionVisible()).toBe(true)
       expect(service.canWriteCase()).toBe(false)
+    })
+  })
+
+  describe('worktree preparation', () => {
+    beforeEach(() => jest.useFakeTimers())
+    afterEach(() => {
+      TestBed.resetTestingModule()
+      jest.useRealTimers()
+    })
+
+    it('waits through requested and preparing, then loads files automatically and stops polling', () => {
+      controller.browseCaseFilesExchange
+        .mockReturnValueOnce(throwError(() => ({ status: 409 })))
+        .mockReturnValue(of(listing(ExchangeDirectoryListingCapabilityEnum.READ_WRITE, [caseFile])))
+      workspaces.get
+        .mockReturnValueOnce(of({ equipped: true, status: 'REQUESTED' }))
+        .mockReturnValueOnce(of({ equipped: true, status: 'PREPARING' }))
+        .mockReturnValue(of({ equipped: true, status: 'READY' }))
+
+      init()
+      expect(service.caseStatus()).toBe('preparing')
+      expect(service.canWriteCase()).toBe(false)
+      expect(service.caseFiles()).toEqual([])
+      expect(service.namespaceStatus()).toBe('ready')
+
+      jest.advanceTimersByTime(2000)
+      expect(service.caseStatus()).toBe('preparing')
+      expect(controller.browseCaseFilesExchange).toHaveBeenCalledTimes(1)
+      jest.advanceTimersByTime(2000)
+      expect(service.caseStatus()).toBe('ready')
+      expect(service.caseFiles()).toEqual([caseFile])
+      expect(service.canWriteCase()).toBe(true)
+      jest.advanceTimersByTime(10000)
+      expect(workspaces.get).toHaveBeenCalledTimes(3)
+      expect(controller.browseCaseFilesExchange).toHaveBeenCalledTimes(2)
+      expect(controller.browseNamespaceFilesExchange).toHaveBeenCalledTimes(1)
+    })
+
+    it('stops waiting and shows an error if preparation fails', () => {
+      controller.browseCaseFilesExchange.mockReturnValue(throwError(() => ({ status: 409 })))
+      workspaces.get
+        .mockReturnValueOnce(of({ equipped: true, status: 'PREPARING' }))
+        .mockReturnValue(of({ equipped: true, status: 'FAILED' }))
+      init()
+      jest.advanceTimersByTime(2000)
+      expect(service.caseStatus()).toBe('error')
+      expect(service.canWriteCase()).toBe(false)
+      jest.advanceTimersByTime(10000)
+      expect(workspaces.get).toHaveBeenCalledTimes(2)
+    })
+
+    it.each(['FAILED', 'DELETING', 'UNKNOWN'])('does not mistake %s for preparation', (status) => {
+      controller.browseCaseFilesExchange.mockReturnValue(throwError(() => ({ status: 409 })))
+      workspaces.get.mockReturnValue(of({ equipped: true, status }))
+      init()
+      expect(service.caseStatus()).toBe('error')
+      expect(service.canWriteCase()).toBe(false)
+      jest.advanceTimersByTime(10000)
+      expect(workspaces.get).toHaveBeenCalledTimes(1)
+    })
+
+    it('retries once if the worktree becomes ready before the status check, without looping on another conflict', () => {
+      controller.browseCaseFilesExchange.mockReturnValue(throwError(() => ({ status: 409 })))
+      workspaces.get.mockReturnValue(of({ equipped: true, status: 'READY' }))
+      init()
+      expect(service.caseStatus()).toBe('error')
+      expect(controller.browseCaseFilesExchange).toHaveBeenCalledTimes(2)
+      jest.advanceTimersByTime(10000)
+      expect(workspaces.get).toHaveBeenCalledTimes(1)
+    })
+
+    it('hides the scope if workspace access is denied', () => {
+      controller.browseCaseFilesExchange.mockReturnValue(throwError(() => ({ status: 409 })))
+      workspaces.get.mockReturnValue(throwError(() => ({ status: 403 })))
+      init()
+      expect(service.caseStatus()).toBe('forbidden')
+      expect(service.caseSectionVisible()).toBe(false)
+      expect(service.canWriteCase()).toBe(false)
+    })
+
+    it.each(['case', 'home', 'clear'])('cancels preparation polling when navigating to %s', (destination) => {
+      controller.browseCaseFilesExchange.mockReturnValue(throwError(() => ({ status: 409 })))
+      workspaces.get.mockReturnValue(of({ equipped: true, status: 'PREPARING' }))
+      init()
+      expect(service.caseStatus()).toBe('preparing')
+
+      controller.browseCaseFilesExchange.mockReturnValue(
+        of(listing(ExchangeDirectoryListingCapabilityEnum.READ_WRITE, [caseFile]))
+      )
+      if (destination === 'case') service.initializeForCase('ns-1', 'c-2')
+      else if (destination === 'home') service.initializeForNamespace('ns-1')
+      else service.clear()
+
+      jest.advanceTimersByTime(10000)
+      expect(workspaces.get).toHaveBeenCalledTimes(1)
+      if (destination === 'case') {
+        expect(service.caseStatus()).toBe('ready')
+        expect(service.caseFiles()).toEqual([caseFile])
+        expect(controller.browseCaseFilesExchange).toHaveBeenLastCalledWith('c-2', '', 0)
+      } else {
+        expect(service.caseStatus()).toBe('loading')
+        expect(service.caseFiles()).toEqual([])
+      }
     })
   })
 
@@ -191,6 +302,21 @@ describe('ExchangeStateService', () => {
       const result = await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'a.txt'))
       expect(result.success).toBe(false)
       expect(result.error).toBe('A file with this name already exists.')
+    })
+
+    it('upload 409 → prefers the server reason, because a preparing workspace shares that status', async () => {
+      // Announcing a duplicate that does not exist sends people looking for a file they never
+      // uploaded. The Git workspace answers 409 while it is still being prepared.
+      init()
+      controller.uploadCaseFileExchange.mockReturnValue(
+        throwError(() => ({
+          status: 409,
+          error: { message: 'The workspace for this case is still being prepared. It will be ready in a moment.' },
+        }))
+      )
+      const result = await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'a.txt'))
+      expect(result.success).toBe(false)
+      expect(result.error).toBe('The workspace for this case is still being prepared. It will be ready in a moment.')
     })
 
     it('upload 400 → surfaces the disallowed file type error from the backend', async () => {

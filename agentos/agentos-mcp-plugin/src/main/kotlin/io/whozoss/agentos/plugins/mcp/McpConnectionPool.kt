@@ -32,12 +32,29 @@ class McpConnectionPool(
     },
 ) {
     private val pool = ConcurrentHashMap<String, PoolEntry>()
+    private val retired = java.util.concurrent.CopyOnWriteArrayList<PoolEntry>()
     private lateinit var evictionExecutor: ScheduledExecutorService
 
     private data class PoolEntry(
         val connection: PooledMcpConnection,
         val config: McpServerConfig,
     )
+
+    fun releaseDirectory(directory: String) {
+        val entries = (pool.values.filter { it.config.cwd == directory } + retired.filter { it.config.cwd == directory }).distinct()
+        entries.forEach { entry ->
+            entry.connection.close()
+            check(entry.connection.awaitTermination()) { "A workspace MCP process has not confirmed termination" }
+            pool.entries.removeIf { it.value === entry }
+            retired.remove(entry)
+        }
+    }
+
+    private fun retire(entry: PoolEntry) {
+        if (entry.config.cwd != null) retired.addIfAbsent(entry)
+        entry.connection.close()
+        if (entry.config.cwd != null && entry.connection.awaitTermination()) retired.remove(entry)
+    }
 
     fun start() {
         evictionExecutor =
@@ -89,7 +106,7 @@ class McpConnectionPool(
 
                 existing != null -> {
                     logger.warn { "[McpPool] Connection ${hash.take(8)} is dead, reconnecting" }
-                    existing.connection.close()
+                    retire(existing)
                     PoolEntry(connection = createConnection(config, hash), config = config)
                 }
 
@@ -135,8 +152,7 @@ class McpConnectionPool(
             }
         toEvict.forEach { (hash, pooled) ->
             logger.info { "[McpPool] Evicting idle connection ${hash.take(8)} for '${pooled.config.command}'" }
-            pool.remove(hash)
-            pooled.connection.close()
+            if (pool.remove(hash, pooled)) retire(pooled)
         }
         if (toEvict.isNotEmpty()) {
             logger.info { "[McpPool] Evicted ${toEvict.size} idle connection(s), pool size=${pool.size}" }

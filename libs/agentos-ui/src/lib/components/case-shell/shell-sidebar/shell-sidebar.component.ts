@@ -30,8 +30,8 @@ import { BlueprintDirective } from '@whoz-oss/design-system'
  * - State is local to this component (no need to bubble up to the shell)
  */
 @Component({
-  selector: 'agentos-shell-sidebar',
   imports: [CaseDrawerComponent, ShellUserMenuComponent, BlueprintDirective],
+  selector: 'agentos-shell-sidebar',
   templateUrl: './shell-sidebar.component.html',
   styleUrl: './shell-sidebar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -160,6 +160,7 @@ export class ShellSidebarComponent {
   readonly nsMenuClosed = output<Event>()
   readonly caseSelected = output<string>()
   readonly createRequested = output<void>()
+  readonly subCaseCreateRequested = output<string>()
   readonly deleteRequested = output<string>()
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly renameRequested = output<{ id: string; title: string }>()

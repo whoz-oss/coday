@@ -16,6 +16,7 @@
   <!-- ═══ MOBILE CASE DRAWER (overlay slide-in) ═══ -->
   <agentos-shell-case-switcher-mobile
     [open]="mobileDrawerOpen()"
+    [namespaceId]="selectedNamespace()?.id"
     [cases]="cases()"
     [activeCaseId]="activeCaseId()"
     [userInitials]="userInitials()"
@@ -25,6 +26,7 @@
     [showToolCalls]="showToolCalls()"
     (closed)="mobileDrawerOpen.set(false)"
     (caseSelected)="onMobileCaseSelect($event)"
+    (subCaseCreateRequested)="onSubCaseCreateRequested($event)"
     (starToggled)="onStarToggled($event)"
     (deleteRequested)="onDeleteRequested($event)"
     (navigateTo)="onMenuNavigate($event)"
@@ -58,6 +60,7 @@
     (nsMenuClosed)="closeNsMenu($event)"
     (caseSelected)="onCaseSelected($event)"
     (createRequested)="onCreateRequested()"
+    (subCaseCreateRequested)="onSubCaseCreateRequested($event)"
     (deleteRequested)="onDeleteRequested($event)"
     (starToggled)="onStarToggled($event)"
     (renameRequested)="onRenameRequested($event)"
@@ -91,6 +94,7 @@
   <!-- ═══ MAIN ═══ -->
   <main class="case-shell__main">
     @if (activeCaseId()) {
+      <agentos-case-workspace [caseId]="activeCaseId()!" />
       <agentos-case-chat
         [showTechnicalOverride]="showTechnical()"
         [showToolCallsOverride]="showToolCalls()"

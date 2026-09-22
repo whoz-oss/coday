@@ -416,17 +416,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         // A question is answered when there is a corresponding AnswerEvent in the stream.
         const answered = allEvents.some((ae) => ae.type === 'AnswerEvent' && (ae as AnswerEvent).questionId === qe.id)
         items.push({ kind: 'question', event: qe, answered })
-      } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
-        // Execution notices and the generic fallback are diagnostics: keep them entirely
-        // behind the technical toggle, while dedicated conversation/tool renderers stay visible.
+      } else if (!this.isEventConsumedElsewhere(e)) {
+        // A notice says why a turn produced nothing, so it belongs in the conversation rather
+        // than behind the technical toggle. Hidden, a case that stops for want of an agent
+        // selection is indistinguishable from an agent that never answers: the warning naming
+        // the cause ("no default agent configured, use @agentName") was dropped by default.
+        // The generic fallback stays a diagnostic, inspectable only in technical mode.
         const notice = this.toExecutionNotice(e)
         if (notice) {
           items.push({ kind: 'notice', notice, eventId: e.id })
-        } else {
-          // Every event not already represented elsewhere remains inspectable in technical mode.
+          lastMessageRole = null
+        } else if (showTechnical) {
           items.push({ kind: 'technical', item: this.toTechnicalItem(e), eventId: e.id })
+          lastMessageRole = null
         }
-        lastMessageRole = null
       }
     }
 
@@ -590,7 +593,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       try {
         const event = JSON.parse(raw) as CaseEvent
         this.zone.run(() => {
-          // A reconnection replays history: deduplicate before file refresh and stream side effects.
+          // Reconnection replays persisted history. Deduplicate before every side effect,
+          // including file refreshes and streamed text, not just before adding timeline rows.
           if (this.events().some((previous) => previous.id === event.id)) return
           const beforeLen = this.events().length
 
@@ -874,17 +878,26 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     void this.postMessage(content)
   }
 
+  private pendingMessageReceipt: { caseId: string; content: string; requestId: string } | null = null
   private postMessage(content: string): Promise<boolean> {
+    if (this.pendingMessageReceipt?.caseId !== this.caseId || this.pendingMessageReceipt.content !== content) {
+      this.pendingMessageReceipt = { caseId: this.caseId, content, requestId: crypto.randomUUID() }
+    }
+    const receipt = this.pendingMessageReceipt
     this.isRunning.set(true)
     this.streamingText.set('')
 
     return firstValueFrom(
       this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
         content,
+        requestId: receipt.requestId,
         userId: 'default-user',
       })
     ).then(
-      () => true,
+      () => {
+        if (this.pendingMessageReceipt === receipt) this.pendingMessageReceipt = null
+        return true
+      },
       (err) => {
         console.error('[CaseChat] Failed to send message', err)
         this.isRunning.set(false)

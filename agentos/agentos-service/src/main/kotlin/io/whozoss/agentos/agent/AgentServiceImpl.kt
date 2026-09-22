@@ -19,6 +19,7 @@ import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeStorageService
+import io.whozoss.agentos.git.ExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
@@ -84,6 +85,7 @@ class AgentServiceImpl(
     private val skillToolGrantService: SkillToolGrantService,
     private val agentConfigProperties: AgentConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
+    private val exchangeRootResolver: ExchangeRootResolver,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -229,7 +231,10 @@ class AgentServiceImpl(
                 namespaceId = context.namespaceId,
                 userId = context.userId,
             )
-        val effectiveIntegrationConfigs = integrationConfigService.findEffective(context.namespaceId, context.userId)
+        val effectiveIntegrationConfigs = io.whozoss.agentos.git.WorkspaceIntegrationConfigs.resolve(
+            integrationConfigService.findEffective(context.namespaceId, context.userId),
+            context.caseId?.let { exchangeRootResolver.resolve(it) },
+        )
         val namespace = namespaceService.findById(context.namespaceId)
         val namespaceSystemPrompt =
             buildNamespaceSystemPrompt(
@@ -861,9 +866,14 @@ class AgentServiceImpl(
             // The agent gets read/write on the case exchange by design (it produces files during a run).
             // User-facing write is separately gated: the exchange upload/delete endpoints require Case
             // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
+            // Resolve through the shared seam rather than computing the shard here, so an agent
+            // and a user looking at "the files of this case" always see the same directory. For a
+            // case belonging to an equipped family that is the family's worktree, not this case's
+            // own shard. requireUsable() refuses while the workspace is preparing or broken: an
+            // agent must not write the case's work into a directory the family does not use.
             tools +=
                 exchangeToolGrantService.grantTools(
-                    root = exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
+                    root = exchangeRootResolver.resolve(caseId).requireUsable(),
                     readOnly = false,
                     configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
                     allowedTools = caseGrant.allowedTools,

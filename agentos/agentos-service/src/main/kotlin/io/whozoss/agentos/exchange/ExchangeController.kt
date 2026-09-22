@@ -9,6 +9,7 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.git.ExchangeRootResolver
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.sdk.api.exchange.ExchangeApi
 import io.whozoss.agentos.sdk.api.exchange.ExchangeCapability
@@ -70,6 +71,7 @@ class ExchangeController(
     private val caseService: CaseService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val userService: UserService,
+    private val exchangeRootResolver: ExchangeRootResolver,
 ) : ExchangeApi {
     // ========================================
     // Case scope
@@ -132,14 +134,17 @@ class ExchangeController(
     fun uploadCaseFile(
         @PathVariable caseId: UUID,
         @RequestParam("file") file: MultipartFile,
-    ): ExchangeFileEntry = uploadTo(caseRootFor(caseId), ExchangeScope.CASE, file, "case $caseId")
+    ): ExchangeFileEntry = withCaseMutation(caseId) {
+        val root = caseRootFor(caseId)
+        uploadTo(root, ExchangeScope.CASE, file, "case $caseId")
+    }
 
     @DeleteMapping("/api/cases/{caseId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
     override fun deleteCaseFile(
         @PathVariable caseId: UUID,
         @RequestParam path: String,
-    ): ExchangeDeleteResponse = deleteFrom(caseRootFor(caseId), path, "case $caseId")
+    ): ExchangeDeleteResponse = withCaseMutation(caseId) { deleteFrom(caseRootFor(caseId), path, "case $caseId") }
 
     // ========================================
     // Namespace scope (reads for any member; writes gated on Namespace WRITE = namespace admin / super-admin)
@@ -231,6 +236,7 @@ class ExchangeController(
     // Helpers
     // ========================================
 
+    /** Build the manifest for a scope root, embedding the caller's server-computed capability. */
     /**
      * One page of one directory level, with the caller's capability attached.
      *
@@ -316,10 +322,31 @@ class ExchangeController(
         return ExchangeDeleteResponse(true, "Deleted $path")
     }
 
-    /** Resolve the existing per-case date-sharded Exchange directory. */
+    /**
+     * Resolve where this case's files live; 404s when the case does not exist.
+     *
+     * Goes through [ExchangeRootResolver] rather than computing the shard directly, so REST and
+     * the agent tools always agree: for an ordinary case this is still its own date-sharded
+     * directory, and for a case belonging to an equipped family it is the family's shared
+     * worktree.
+     *
+     * [io.whozoss.agentos.git.ResolvedExchangeRoot.requireUsable] refuses while a workspace is
+     * preparing, failed or removed. That refusal is deliberate: falling back to the per-case
+     * directory would silently split the family's files across two locations.
+     */
+    private fun resolvedCase(caseId: UUID): io.whozoss.agentos.git.ResolvedExchangeRoot {
+        val case = caseService.findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        return exchangeRootResolver.resolve(case)
+    }
+
+    private fun <T> withCaseMutation(caseId: UUID, action: () -> T): T {
+        val rootId = resolvedCase(caseId).binding?.rootCaseId ?: return action()
+        return io.whozoss.agentos.git.WorkspaceLifecycleLocks.withRoot(rootId, action)
+    }
+
     private fun caseRootFor(caseId: UUID): Path {
         val case = caseService.findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
-        return exchangeStorageService.caseRoot(case.namespaceId, caseId, case.metadata.created)
+        return exchangeRootResolver.resolve(case).requireUsable()
     }
 
     private fun currentUserId(): String = userService.getCurrentUser().id.toString()

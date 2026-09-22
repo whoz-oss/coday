@@ -82,9 +82,42 @@
                 <!-- Title -->
                 <span class="mobile-drawer__case-title">{{ c.title ?? c.id }}</span>
 
+                <span class="mobile-drawer__case-statuses">
+                  <span
+                    class="mobile-drawer__case-status-label"
+                    [class.mobile-drawer__case-status-label--running]="c.status === 'RUNNING'"
+                    [class.mobile-drawer__case-status-label--error]="c.status === 'ERROR'"
+                    [class.mobile-drawer__case-status-label--pending]="c.status === 'PENDING'"
+                    [class.mobile-drawer__case-status-label--killed]="c.status === 'KILLED'"
+                    >{{ c.status.toLowerCase() }}</span
+                  >
+                </span>
+
                 <!-- Actions: star + delete (always visible on mobile) -->
                 @if (confirmingDeleteId() !== c.id) {
                   <div class="mobile-drawer__case-actions">
+                    @if (!c.parentCaseId && c.role === 'ADMIN') {
+                      <button
+                        class="mobile-drawer__case-btn"
+                        type="button"
+                        title="Create sub-case"
+                        (click)="subCaseCreateRequested.emit(c.id!); $event.stopPropagation()"
+                      >
+                        <svg
+                          width="15"
+                          height="15"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16l4-4h4M18 14v8m-4-4h8" />
+                        </svg>
+                      </button>
+                    }
                     <button
                       class="mobile-drawer__case-btn"
                       [class.mobile-drawer__case-btn--active]="!!$any(c).favorite || !!c.starred"

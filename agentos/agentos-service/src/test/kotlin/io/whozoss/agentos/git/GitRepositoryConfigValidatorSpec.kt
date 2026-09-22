@@ -131,10 +131,10 @@ class GitRepositoryConfigValidatorSpec :
                 shouldThrow<ConflictException> { service.update(changed) }
                 service.findById(saved.id)?.parameters shouldBe saved.parameters
             }
-            val credentials = saved.copy(parameters = objectMapper.valueToTree(validParameters().also {
-                it[GitRepositoryIntegration.PARAM_SERVICE_AUTH_SETTING_ID] = UUID.randomUUID().toString()
+            val automation = saved.copy(parameters = objectMapper.valueToTree(validParameters().also {
+                it[GitRepositoryIntegration.PARAM_AUTO_WORKTREE] = true
             }))
-            service.update(credentials).parameters shouldBe credentials.parameters
+            service.update(automation).parameters shouldBe automation.parameters
         }
 
         "a configuration of another type is untouched by this validator" {

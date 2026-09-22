@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * Namespace settings: associate a repository and prepare its internal clone.
+ * Namespace settings: associate a repository, and choose whether new root cases get a worktree.
  *
  * A dedicated surface rather than the generic integration-configuration screens, for three
  * reasons this feature made concrete:
@@ -62,6 +62,8 @@ class NamespaceGitController(
             repositoryUrl = settings.repositoryUrl,
             mainBranch = settings.mainBranch,
             serviceAuthSettingId = settings.serviceAuthSettingId,
+            autoWorktreeForRootCases = settings.autoWorktreeForRootCases,
+            setupCommand = settings.setupCommand,
             checkoutStatus = checkout?.status?.name,
             checkoutFailureReason = checkout?.failureReason,
             lastFetchedAt = checkout?.lastFetchedAt,
@@ -95,6 +97,10 @@ class NamespaceGitController(
                         request.mainBranch?.trim()?.takeIf { it.isNotEmpty() } ?: GitRepositoryIntegration.DEFAULT_MAIN_BRANCH,
                     )
                     put(GitRepositoryIntegration.PARAM_SERVICE_AUTH_SETTING_ID, request.serviceAuthSettingId.toString())
+                    put(GitRepositoryIntegration.PARAM_AUTO_WORKTREE, request.autoWorktreeForRootCases)
+                    request.setupCommand?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                        put(GitRepositoryIntegration.PARAM_SETUP_COMMAND, it)
+                    }
                 },
             )
 
@@ -115,7 +121,7 @@ class NamespaceGitController(
         }
         logger.info { "Namespace $namespaceId associated with ${request.repositoryUrl}" }
 
-        // Prepare the internal repository asynchronously, without blocking the settings request.
+        // Prepare the internal repository asynchronously, even when worktree creation is disabled.
         // A clone takes minutes; a failure must not undo an association that was saved.
         runCatching { associationService.findSettings(namespaceId)?.let(checkoutProvisioner::requestPreparation) }
             .onFailure { logger.error(it) { "Could not queue the checkout of namespace $namespaceId" } }
@@ -126,8 +132,9 @@ class NamespaceGitController(
     /**
      * Remove the association.
      *
-     * Only the configuration is removed. The internal repository remains on disk so that
-     * re-associating the same repository preserves its clone.
+     * Only the configuration is removed. Existing workspaces keep their binding and their
+     * worktree: a family is equipped by the presence of its binding, never by the namespace's
+     * current settings, so disassociating must not strip work in progress.
      */
     @DeleteMapping("/api/namespaces/{namespaceId}/git", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")

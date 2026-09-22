@@ -67,6 +67,8 @@ export class NamespaceGitComponent implements OnInit {
   readonly repositoryUrl = signal('')
   readonly mainBranch = signal('main')
   readonly serviceAuthSettingId = signal('')
+  readonly autoWorktree = signal(false)
+  readonly setupCommand = signal('')
 
   private namespaceId = ''
 
@@ -127,6 +129,8 @@ export class NamespaceGitComponent implements OnInit {
     this.repositoryUrl.set(association.repositoryUrl ?? '')
     this.mainBranch.set(association.mainBranch ?? 'main')
     this.serviceAuthSettingId.set(association.serviceAuthSettingId ?? '')
+    this.autoWorktree.set(association.autoWorktreeForRootCases ?? false)
+    this.setupCommand.set(association.setupCommand ?? '')
   }
 
   save(): void {
@@ -139,6 +143,8 @@ export class NamespaceGitComponent implements OnInit {
         repositoryUrl: this.repositoryUrl().trim(),
         mainBranch: this.mainBranch().trim() || undefined,
         serviceAuthSettingId: this.serviceAuthSettingId(),
+        autoWorktreeForRootCases: this.autoWorktree(),
+        setupCommand: this.setupCommand().trim() || undefined,
       })
       .pipe(
         takeUntilDestroyed(this.destroyRef),
@@ -161,7 +167,7 @@ export class NamespaceGitComponent implements OnInit {
   }
 
   remove(): void {
-    if (!confirm('Remove the repository association? The internal clone is preserved.')) return
+    if (!confirm('Remove the repository association? Existing workspaces keep their worktree.')) return
     this.isSaving.set(true)
 
     this.gitApi

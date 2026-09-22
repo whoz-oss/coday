@@ -12,15 +12,17 @@ interface CaseGroup {
  * Slides in from the left. Contains search, grouped case list, and user menu.
  */
 @Component({
-  selector: 'agentos-shell-case-switcher-mobile',
   imports: [CaseStatusGlyphComponent],
+  selector: 'agentos-shell-case-switcher-mobile',
   templateUrl: './shell-case-switcher-mobile.component.html',
   styleUrl: './shell-case-switcher-mobile.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ShellCaseSwitcherMobileComponent {
   // ── Inputs ────────────────────────────────────────────
+  readonly namespaceId = input<string | null | undefined>(null)
   readonly open = input.required<boolean>()
+  readonly subCaseCreateRequested = output<string>()
   readonly cases = input.required<(Case & { starred?: boolean })[]>()
   readonly activeCaseId = input.required<string | null>()
   readonly userInitials = input.required<string>()
