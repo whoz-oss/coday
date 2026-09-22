@@ -11,9 +11,10 @@
 export interface UsageAggregate {
   cacheReadTokens: number
   cacheWriteTokens: number
-  cost?: number | null
+  cost: number
   inputTokens: number
   outputTokens: number
   recordCount: number
   totalTokens: number
+  unknownCostCount: number
 }
