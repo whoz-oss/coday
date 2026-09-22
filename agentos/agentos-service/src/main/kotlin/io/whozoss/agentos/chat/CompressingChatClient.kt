@@ -4,9 +4,13 @@ import io.whozoss.agentos.util.IdCompressorService
 import io.whozoss.agentos.util.MessageCompressorBuffer
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.client.ChatClient.AdvisorSpec
 import org.springframework.ai.chat.client.ChatClient.CallResponseSpec
 import org.springframework.ai.chat.client.ChatClient.ChatClientRequestSpec
+import org.springframework.ai.chat.client.ChatClient.PromptSystemSpec
+import org.springframework.ai.chat.client.ChatClient.PromptUserSpec
 import org.springframework.ai.chat.client.ChatClient.StreamResponseSpec
+import org.springframework.ai.chat.client.advisor.api.Advisor
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
@@ -14,9 +18,16 @@ import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
+import org.springframework.ai.chat.prompt.ChatOptions
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.template.TemplateRenderer
+import org.springframework.ai.tool.ToolCallback
+import org.springframework.ai.tool.ToolCallbackProvider
+import org.springframework.core.io.Resource
 import reactor.core.publisher.Flux
+import java.nio.charset.Charset
 import java.util.concurrent.atomic.AtomicReference
+import java.util.function.Consumer
 
 /**
  * A proper [ChatClient] decorator that compresses UUIDs/ObjectIds in outgoing
@@ -39,7 +50,6 @@ class CompressingChatClient(
     private val delegate: ChatClient,
     private val compressorService: IdCompressorService,
 ) : ChatClient by delegate {
-
     companion object : KLogging()
 
     override fun prompt(): ChatClientRequestSpec {
@@ -58,7 +68,9 @@ class CompressingChatClient(
     override fun prompt(content: String): ChatClientRequestSpec {
         val buffer = compressorService.newBuffer()
         val compressed = compressorService.compress(content, buffer)
-        logger.debug { "[CompressingChatClient] prompt(String) — ${content.length} chars → ${compressed.length} chars compressed, buffer=${buffer.hashCode()}" }
+        logger.debug {
+            "[CompressingChatClient] prompt(String) — ${content.length} chars → ${compressed.length} chars compressed, buffer=${buffer.hashCode()}"
+        }
         return CompressingRequestSpec(delegate.prompt(compressed), buffer)
     }
 
@@ -67,16 +79,98 @@ class CompressingChatClient(
     // -------------------------------------------------------------------------
 
     /**
-     * Wraps a [ChatClientRequestSpec], delegating all methods transparently except
-     * [call] and [stream], which are intercepted to inject decompression wrappers.
+     * Wraps a [ChatClientRequestSpec], intercepting [call] and [stream] to inject
+     * decompression wrappers, and re-wrapping every other fluent method so callers
+     * always stay inside this envelope.
      *
      * The [buffer] is the same one used to compress the outgoing prompt, so the
-     * decompressor can resolve aliases back to the original IDs.
+     * decompressor can resolve aliases back to the original IDs. It must be propagated
+     * as-is to every re-wrap — creating a new buffer would break alias resolution.
+     *
+     * ## Why every fluent method must be overridden here
+     *
+     * Spring AI's fluent methods (e.g. [toolCallbacks], [messages], [system], …)
+     * return the *implementation* instance, not the interface type. Kotlin `by`
+     * delegation only intercepts methods declared on this class; any method that is
+     * NOT overridden here will return the bare delegate, silently escaping the wrapper.
+     * The next call in the chain then runs on the unwrapped delegate, so [call]/[stream]
+     * would never be intercepted and decompression would be silently skipped.
+     *
+     * **Maintenance rule:** every method of [ChatClientRequestSpec] whose return type
+     * is [ChatClientRequestSpec] MUST be listed here and re-wrap its result in a fresh
+     * [CompressingRequestSpec] carrying the same [buffer]. Only [mutate] (which returns
+     * [ChatClient.Builder]) and the terminal methods [call]/[stream] are exempt.
+     *
+     * If a future Spring AI upgrade adds a new fluent method to [ChatClientRequestSpec],
+     * it must be added here to preserve the decompression invariant.
      */
     private inner class CompressingRequestSpec(
         private val delegate: ChatClientRequestSpec,
         private val buffer: MessageCompressorBuffer,
     ) : ChatClientRequestSpec by delegate {
+        // --- fluent methods that must re-wrap to stay inside the compression envelope ---
+
+        override fun advisors(consumer: Consumer<AdvisorSpec>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.advisors(consumer), buffer)
+
+        override fun advisors(vararg advisors: Advisor): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.advisors(*advisors), buffer)
+
+        override fun advisors(advisors: List<Advisor>): ChatClientRequestSpec = CompressingRequestSpec(delegate.advisors(advisors), buffer)
+
+        override fun messages(vararg messages: Message): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.messages(*messages), buffer)
+
+        override fun messages(messages: List<Message>): ChatClientRequestSpec = CompressingRequestSpec(delegate.messages(messages), buffer)
+
+        override fun <T : ChatOptions> options(options: T): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.options(options), buffer)
+
+        override fun toolNames(vararg toolNames: String): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.toolNames(*toolNames), buffer)
+
+        override fun tools(vararg toolObjects: Any): ChatClientRequestSpec = CompressingRequestSpec(delegate.tools(*toolObjects), buffer)
+
+        override fun toolCallbacks(vararg toolCallbacks: ToolCallback): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.toolCallbacks(*toolCallbacks), buffer)
+
+        override fun toolCallbacks(toolCallbacks: List<ToolCallback>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.toolCallbacks(toolCallbacks), buffer)
+
+        override fun toolCallbacks(vararg toolCallbackProviders: ToolCallbackProvider): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.toolCallbacks(*toolCallbackProviders), buffer)
+
+        override fun toolContext(toolContext: Map<String, Any>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.toolContext(toolContext), buffer)
+
+        override fun system(text: String): ChatClientRequestSpec = CompressingRequestSpec(delegate.system(text), buffer)
+
+        override fun system(
+            textResource: Resource,
+            charset: Charset,
+        ): ChatClientRequestSpec = CompressingRequestSpec(delegate.system(textResource, charset), buffer)
+
+        override fun system(text: Resource): ChatClientRequestSpec = CompressingRequestSpec(delegate.system(text), buffer)
+
+        override fun system(consumer: Consumer<PromptSystemSpec>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.system(consumer), buffer)
+
+        override fun user(text: String): ChatClientRequestSpec = CompressingRequestSpec(delegate.user(text), buffer)
+
+        override fun user(
+            text: Resource,
+            charset: Charset,
+        ): ChatClientRequestSpec = CompressingRequestSpec(delegate.user(text, charset), buffer)
+
+        override fun user(text: Resource): ChatClientRequestSpec = CompressingRequestSpec(delegate.user(text), buffer)
+
+        override fun user(consumer: Consumer<PromptUserSpec>): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.user(consumer), buffer)
+
+        override fun templateRenderer(templateRenderer: TemplateRenderer): ChatClientRequestSpec =
+            CompressingRequestSpec(delegate.templateRenderer(templateRenderer), buffer)
+
+        // --- terminal methods: intercept and wrap ---
 
         override fun call(): CallResponseSpec {
             logger.debug { "[CompressingChatClient] call() — buffer=${buffer.hashCode()}" }
@@ -97,12 +191,12 @@ class CompressingChatClient(
         private val delegate: CallResponseSpec,
         private val buffer: MessageCompressorBuffer,
     ) : CallResponseSpec by delegate {
-
         override fun content(): String? {
-            val raw = delegate.content()?.trim() ?: run {
-                logger.debug { "[CompressingChatClient] call.content() — null response from delegate" }
-                return null
-            }
+            val raw =
+                delegate.content()?.trim() ?: run {
+                    logger.debug { "[CompressingChatClient] call.content() — null response from delegate" }
+                    return null
+                }
             val decompressed = compressorService.uncompress(raw, buffer)
             logger.debug {
                 "[CompressingChatClient] call.content() — ${raw.length} chars raw → ${decompressed.length} chars decompressed, buffer=${buffer.hashCode()}"
@@ -111,13 +205,18 @@ class CompressingChatClient(
         }
 
         override fun chatResponse(): ChatResponse? {
-            val response = delegate.chatResponse() ?: run {
-                logger.debug { "[CompressingChatClient] call.chatResponse() — null response from delegate" }
-                return null
-            }
+            val response =
+                delegate.chatResponse() ?: run {
+                    logger.debug { "[CompressingChatClient] call.chatResponse() — null response from delegate" }
+                    return null
+                }
             // A metadata-only response (e.g. an Anthropic MESSAGE_START chunk with an empty
             // content list) has a null result; it carries no text, so pass it through untouched.
-            val raw = response.result?.output?.text?.trim() ?: return response
+            val raw =
+                response.result
+                    ?.output
+                    ?.text
+                    ?.trim() ?: return response
             val decompressed = compressorService.uncompress(raw, buffer)
             logger.debug {
                 "[CompressingChatClient] call.chatResponse() — ${raw.length} chars raw → ${decompressed.length} chars decompressed, buffer=${buffer.hashCode()}"
@@ -142,7 +241,6 @@ class CompressingChatClient(
         private val delegate: StreamResponseSpec,
         private val buffer: MessageCompressorBuffer,
     ) : StreamResponseSpec by delegate {
-
         /**
          * Intercepts the upstream [Flux] to feed each chunk through the streaming
          * decompressor and flush any carry at the end.
@@ -161,13 +259,18 @@ class CompressingChatClient(
             val lastResponseRef = AtomicReference<ChatResponse?>(null)
             var totalRawChars = 0
             var totalDecompressedChars = 0
-            return delegate.chatResponse()
+            return delegate
+                .chatResponse()
                 .doOnNext { lastResponseRef.set(it) }
                 .flatMapIterable { response ->
                     val results = mutableListOf<ChatResponse>()
                     // Streaming metadata chunks (e.g. Anthropic MESSAGE_START, content=[]) have a
                     // null result and no text to compress, so skip them.
-                    val chunk = response.result?.output?.text?.takeIf { it.isNotEmpty() }
+                    val chunk =
+                        response.result
+                            ?.output
+                            ?.text
+                            ?.takeIf { it.isNotEmpty() }
                     if (chunk != null) {
                         totalRawChars += chunk.length
                         val decompressed = compressorService.feed(chunk, buffer)
@@ -177,8 +280,7 @@ class CompressingChatClient(
                         }
                     }
                     results
-                }
-                .concatWith(
+                }.concatWith(
                     Flux.defer {
                         val flushed = compressorService.flush(buffer)
                         val carrier = lastResponseRef.get()
@@ -193,13 +295,18 @@ class CompressingChatClient(
                         } else {
                             Flux.empty()
                         }
-                    }
+                    },
                 )
         }
 
         override fun content(): Flux<String> {
             logger.debug { "[CompressingChatClient] stream.content() started — buffer=${buffer.hashCode()}" }
-            return chatResponse().mapNotNull { it.result?.output?.text?.takeIf { t -> t.isNotEmpty() } }
+            return chatResponse().mapNotNull {
+                it.result
+                    ?.output
+                    ?.text
+                    ?.takeIf { t -> t.isNotEmpty() }
+            }
         }
     }
 
@@ -230,26 +337,28 @@ class CompressingChatClient(
                     AssistantMessage(compressorService.compress(this.text ?: return this, buffer))
                 } else {
                     // Tool-call message: compress each call's arguments JSON
-                    val compressedCalls = toolCalls.map { call ->
-                        AssistantMessage.ToolCall(
-                            call.id(),
-                            call.type(),
-                            call.name(),
-                            compressorService.compress(call.arguments(), buffer),
-                        )
-                    }
+                    val compressedCalls =
+                        toolCalls.map { call ->
+                            AssistantMessage.ToolCall(
+                                call.id(),
+                                call.type(),
+                                call.name(),
+                                compressorService.compress(call.arguments(), buffer),
+                            )
+                        }
                     AssistantMessage.builder().toolCalls(compressedCalls).build()
                 }
             }
             is ToolResponseMessage -> {
                 // Compress each tool response body
-                val compressedResponses = this.responses.map { r ->
-                    ToolResponseMessage.ToolResponse(
-                        r.id(),
-                        r.name(),
-                        compressorService.compress(r.responseData(), buffer),
-                    )
-                }
+                val compressedResponses =
+                    this.responses.map { r ->
+                        ToolResponseMessage.ToolResponse(
+                            r.id(),
+                            r.name(),
+                            compressorService.compress(r.responseData(), buffer),
+                        )
+                    }
                 ToolResponseMessage.builder().responses(compressedResponses).build()
             }
             else -> this
@@ -267,7 +376,7 @@ class CompressingChatClient(
                 Generation(
                     patched,
                     this.result.metadata,
-                )
+                ),
             ),
             this.metadata,
         )

@@ -132,6 +132,7 @@ class ChatModelFactory(
             OpenAiChatOptions
                 .builder()
                 .temperature(temp)
+                .streamUsage(true)
                 .model(model)
         if (maxCompletionTokens != null) {
             optionsBuilder.maxCompletionTokens(maxCompletionTokens)
@@ -170,6 +171,7 @@ class ChatModelFactory(
             OpenAiChatOptions
                 .builder()
                 .temperature(temp)
+                .streamUsage(true)
                 .model(model)
         if (maxCompletionTokens != null) {
             optionsBuilder.maxTokens(maxCompletionTokens)

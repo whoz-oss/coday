@@ -87,11 +87,12 @@ class CompressingChatClientSpec :
             val service = IdCompressorService()
             val (delegate, _, _) = stubDelegate(callContent = "ok")
             val captured = slot<Prompt>()
-            every { delegate.prompt(capture(captured)) } returns mockk<ChatClient.ChatClientRequestSpec>(relaxed = true).also {
-                val cs = mockk<ChatClient.CallResponseSpec>(relaxed = true)
-                every { it.call() } returns cs
-                every { cs.content() } returns "ok"
-            }
+            every { delegate.prompt(capture(captured)) } returns
+                mockk<ChatClient.ChatClientRequestSpec>(relaxed = true).also {
+                    val cs = mockk<ChatClient.CallResponseSpec>(relaxed = true)
+                    every { it.call() } returns cs
+                    every { cs.content() } returns "ok"
+                }
 
             val client = CompressingChatClient(delegate, service)
             client.prompt(Prompt(listOf(UserMessage(REAL_UUID)))).call().content()
@@ -113,15 +114,22 @@ class CompressingChatClientSpec :
             every { reqP1.call() } returns callP1
             every { callP1.content() } returns "ok"
             CompressingChatClient(delegateP1, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID)))).call().content()
-            val alias = Regex("UI[0-9a-z]+").find(
-                capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
-            )?.value ?: error("No alias found")
+                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                .call()
+                .content()
+            val alias =
+                Regex("UI[0-9a-z]+")
+                    .find(
+                        capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
+                    )?.value ?: error("No alias found")
 
             // Pass 2: delegate echoes the alias; client must return the original UUID
             val (delegate, _, _) = stubDelegate(callContent = alias)
-            val result = CompressingChatClient(delegate, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID)))).call().content()
+            val result =
+                CompressingChatClient(delegate, service)
+                    .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                    .call()
+                    .content()
 
             result shouldContain REAL_UUID
             result shouldNotContain alias
@@ -139,15 +147,22 @@ class CompressingChatClientSpec :
             every { reqP1.call() } returns callP1
             every { callP1.content() } returns "ok"
             CompressingChatClient(delegateP1, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID)))).call().content()
-            val alias = Regex("UI[0-9a-z]+").find(
-                capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
-            )?.value ?: error("No alias found")
+                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                .call()
+                .content()
+            val alias =
+                Regex("UI[0-9a-z]+")
+                    .find(
+                        capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
+                    )?.value ?: error("No alias found")
 
             // Pass 2: delegate echoes alias in chatResponse; client must decompress
             val (delegate, _, _) = stubDelegate(callContent = alias)
-            val response = CompressingChatClient(delegate, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID)))).call().chatResponse()
+            val response =
+                CompressingChatClient(delegate, service)
+                    .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                    .call()
+                    .chatResponse()
 
             response shouldNotBe null
             response!!.result.output.text shouldContain REAL_UUID
@@ -194,7 +209,11 @@ class CompressingChatClientSpec :
             every { streamSpec.chatResponse() } returns Flux.empty()
 
             val client = CompressingChatClient(delegate, service)
-            client.prompt(Prompt(listOf(UserMessage(REAL_UUID)))).stream().chatResponse().blockLast()
+            client
+                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                .stream()
+                .chatResponse()
+                .blockLast()
 
             val sentText = captured.captured.instructions.joinToString("") { it.text ?: "" }
             sentText shouldNotContain REAL_UUID
@@ -213,16 +232,24 @@ class CompressingChatClientSpec :
             every { reqP1.call() } returns callP1
             every { callP1.content() } returns "ok"
             CompressingChatClient(delegateP1, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID)))).call().content()
-            val alias = Regex("UI[0-9a-z]+").find(
-                capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
-            )?.value ?: error("No alias found")
+                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                .call()
+                .content()
+            val alias =
+                Regex("UI[0-9a-z]+")
+                    .find(
+                        capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
+                    )?.value ?: error("No alias found")
 
             // Pass 2: stream returns alias; client must decompress it
             val (delegate, _, _) = stubDelegate(streamChunks = listOf("found: $alias"))
-            val responses = CompressingChatClient(delegate, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
-                .stream().chatResponse().collectList().block()!!
+            val responses =
+                CompressingChatClient(delegate, service)
+                    .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                    .stream()
+                    .chatResponse()
+                    .collectList()
+                    .block()!!
 
             val combined = responses.joinToString("") { it.result.output.text ?: "" }
             combined shouldContain REAL_UUID
@@ -241,19 +268,27 @@ class CompressingChatClientSpec :
             every { reqP1.call() } returns callP1
             every { callP1.content() } returns "ok"
             CompressingChatClient(delegateP1, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID)))).call().content()
-            val alias = Regex("UI[0-9a-z]+").find(
-                capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
-            )?.value ?: error("No alias found")
+                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                .call()
+                .content()
+            val alias =
+                Regex("UI[0-9a-z]+")
+                    .find(
+                        capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
+                    )?.value ?: error("No alias found")
 
             // Pass 2: split alias across two chunks
             val mid = alias.length / 2
             val chunk1 = "Profile: ${alias.substring(0, mid)}"
             val chunk2 = "${alias.substring(mid)} done."
             val (delegate, _, _) = stubDelegate(streamChunks = listOf(chunk1, chunk2))
-            val responses = CompressingChatClient(delegate, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
-                .stream().chatResponse().collectList().block()!!
+            val responses =
+                CompressingChatClient(delegate, service)
+                    .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                    .stream()
+                    .chatResponse()
+                    .collectList()
+                    .block()!!
 
             val combined = responses.joinToString("") { it.result.output.text ?: "" }
             combined shouldContain REAL_UUID
@@ -272,16 +307,24 @@ class CompressingChatClientSpec :
             every { reqP1.call() } returns callP1
             every { callP1.content() } returns "ok"
             CompressingChatClient(delegateP1, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID)))).call().content()
-            val alias = Regex("UI[0-9a-z]+").find(
-                capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
-            )?.value ?: error("No alias found")
+                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                .call()
+                .content()
+            val alias =
+                Regex("UI[0-9a-z]+")
+                    .find(
+                        capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
+                    )?.value ?: error("No alias found")
 
             // Pass 2: single chunk is the alias alone — sits in carry until flush
             val (delegate, _, _) = stubDelegate(streamChunks = listOf(alias))
-            val responses = CompressingChatClient(delegate, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
-                .stream().chatResponse().collectList().block()!!
+            val responses =
+                CompressingChatClient(delegate, service)
+                    .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                    .stream()
+                    .chatResponse()
+                    .collectList()
+                    .block()!!
 
             val combined = responses.joinToString("") { it.result.output.text ?: "" }
             combined shouldContain REAL_UUID
@@ -299,16 +342,24 @@ class CompressingChatClientSpec :
             every { reqP1.call() } returns callP1
             every { callP1.content() } returns "ok"
             CompressingChatClient(delegateP1, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID)))).call().content()
-            val alias = Regex("UI[0-9a-z]+").find(
-                capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
-            )?.value ?: error("No alias found")
+                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                .call()
+                .content()
+            val alias =
+                Regex("UI[0-9a-z]+")
+                    .find(
+                        capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
+                    )?.value ?: error("No alias found")
 
             // Pass 2: stream via content()
             val (delegate, _, _) = stubDelegate(streamChunks = listOf("id=$alias"))
-            val strings = CompressingChatClient(delegate, service)
-                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
-                .stream().content().collectList().block()!!
+            val strings =
+                CompressingChatClient(delegate, service)
+                    .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                    .stream()
+                    .content()
+                    .collectList()
+                    .block()!!
 
             val combined = strings.joinToString("")
             combined shouldContain REAL_UUID
@@ -331,21 +382,26 @@ class CompressingChatClientSpec :
             every { delegate.prompt(any<Prompt>()) } returns reqSpec
             every { reqSpec.stream() } returns streamSpec
             // First chunk carries no generations (getResult() == null), then a real text chunk.
-            every { streamSpec.chatResponse() } returns Flux.just(
-                ChatResponse(emptyList<Generation>()),
-                ChatResponse(
-                    listOf(
-                        Generation(
-                            AssistantMessage("hello"),
-                            ChatGenerationMetadata.builder().finishReason("stop").build(),
+            every { streamSpec.chatResponse() } returns
+                Flux.just(
+                    ChatResponse(emptyList<Generation>()),
+                    ChatResponse(
+                        listOf(
+                            Generation(
+                                AssistantMessage("hello"),
+                                ChatGenerationMetadata.builder().finishReason("stop").build(),
+                            ),
                         ),
                     ),
-                ),
-            )
+                )
 
-            val responses = CompressingChatClient(delegate, service)
-                .prompt(Prompt(listOf(UserMessage("hi"))))
-                .stream().chatResponse().collectList().block()!!
+            val responses =
+                CompressingChatClient(delegate, service)
+                    .prompt(Prompt(listOf(UserMessage("hi"))))
+                    .stream()
+                    .chatResponse()
+                    .collectList()
+                    .block()!!
 
             responses.joinToString("") { it.result?.output?.text ?: "" } shouldContain "hello"
         }
@@ -357,21 +413,26 @@ class CompressingChatClientSpec :
             val streamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { delegate.prompt(any<Prompt>()) } returns reqSpec
             every { reqSpec.stream() } returns streamSpec
-            every { streamSpec.chatResponse() } returns Flux.just(
-                ChatResponse(emptyList<Generation>()),
-                ChatResponse(
-                    listOf(
-                        Generation(
-                            AssistantMessage("world"),
-                            ChatGenerationMetadata.builder().finishReason("stop").build(),
+            every { streamSpec.chatResponse() } returns
+                Flux.just(
+                    ChatResponse(emptyList<Generation>()),
+                    ChatResponse(
+                        listOf(
+                            Generation(
+                                AssistantMessage("world"),
+                                ChatGenerationMetadata.builder().finishReason("stop").build(),
+                            ),
                         ),
                     ),
-                ),
-            )
+                )
 
-            val strings = CompressingChatClient(delegate, service)
-                .prompt(Prompt(listOf(UserMessage("hi"))))
-                .stream().content().collectList().block()!!
+            val strings =
+                CompressingChatClient(delegate, service)
+                    .prompt(Prompt(listOf(UserMessage("hi"))))
+                    .stream()
+                    .content()
+                    .collectList()
+                    .block()!!
 
             strings.joinToString("") shouldContain "world"
         }
@@ -385,8 +446,11 @@ class CompressingChatClientSpec :
             every { reqSpec.call() } returns callSpec
             every { callSpec.chatResponse() } returns ChatResponse(emptyList<Generation>())
 
-            val response = CompressingChatClient(delegate, service)
-                .prompt(Prompt(listOf(UserMessage("hi")))).call().chatResponse()
+            val response =
+                CompressingChatClient(delegate, service)
+                    .prompt(Prompt(listOf(UserMessage("hi"))))
+                    .call()
+                    .chatResponse()
 
             response shouldNotBe null
             response!!.result shouldBe null
@@ -426,8 +490,9 @@ class CompressingChatClientSpec :
             every { captureCallSpec.content() } returns "ok"
 
             CompressingChatClient(captureDelegate, service).prompt(REAL_UUID).call().content()
-            val alias = Regex("UI[0-9a-z]+").find(capturedStr.captured)?.value
-                ?: error("No alias found in captured string")
+            val alias =
+                Regex("UI[0-9a-z]+").find(capturedStr.captured)?.value
+                    ?: error("No alias found in captured string")
 
             // Pass 2: make the delegate echo the alias; client must decompress it
             val delegate = mockk<ChatClient>(relaxed = true)
@@ -480,6 +545,63 @@ class CompressingChatClientSpec :
         // -----------------------------------------------------------------------
         // Non-intercepted methods pass through
         // -----------------------------------------------------------------------
+
+        // -----------------------------------------------------------------------
+        // Fluent chain regression — toolCallbacks must not escape the compression envelope
+        //
+        // Before the fix, toolCallbacks() was delegated transparently and returned the
+        // bare delegate spec. The subsequent stream() call then ran on the unwrapped
+        // delegate, skipping CompressingStreamSpec, so IDs in the response were never
+        // decompressed. This test fails without the fix and passes with it.
+        // -----------------------------------------------------------------------
+
+        "prompt(Prompt) with toolCallbacks fluent call: response is still decompressed" {
+            val service = IdCompressorService()
+
+            // Pass 1: learn the alias the client assigns for REAL_UUID
+            val capturedP1 = slot<Prompt>()
+            val delegateP1 = mockk<ChatClient>(relaxed = true)
+            val reqP1 = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val callP1 = mockk<ChatClient.CallResponseSpec>(relaxed = true)
+            every { delegateP1.prompt(capture(capturedP1)) } returns reqP1
+            every { reqP1.call() } returns callP1
+            every { callP1.content() } returns "ok"
+            CompressingChatClient(delegateP1, service)
+                .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                .call()
+                .content()
+            val alias =
+                Regex("UI[0-9a-z]+")
+                    .find(
+                        capturedP1.captured.instructions.joinToString("") { it.text ?: "" },
+                    )?.value ?: error("No alias found")
+
+            // Pass 2: go through toolCallbacks() before stream()
+            val delegate = mockk<ChatClient>(relaxed = true)
+            val reqSpec = mockk<ChatClient.ChatClientRequestSpec>(relaxed = true)
+            val streamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val toolCallback = mockk<org.springframework.ai.tool.ToolCallback>(relaxed = true)
+
+            every { delegate.prompt(any<Prompt>()) } returns reqSpec
+            // toolCallbacks must return the same reqSpec (simulates the real fluent chain)
+            every { reqSpec.toolCallbacks(*anyVararg<org.springframework.ai.tool.ToolCallback>()) } returns reqSpec
+            every { reqSpec.stream() } returns streamSpec
+            // The response contains the alias — decompression must still happen
+            every { streamSpec.chatResponse() } returns makeFlux(listOf("answer: $alias"))
+
+            val responses =
+                CompressingChatClient(delegate, service)
+                    .prompt(Prompt(listOf(UserMessage(REAL_UUID))))
+                    .toolCallbacks(toolCallback) // fluent — must stay inside compression envelope
+                    .stream()
+                    .chatResponse()
+                    .collectList()
+                    .block()!!
+
+            val combined = responses.joinToString("") { it.result?.output?.text ?: "" }
+            combined shouldContain REAL_UUID
+            combined shouldNotContain alias
+        }
 
         "non-intercepted request-spec methods delegate transparently" {
             val service = IdCompressorService()
@@ -623,9 +745,11 @@ class CompressingChatClientSpec :
             every { callSpec.content() } returns "ok"
 
             val client = CompressingChatClient(delegate, service)
-            client.prompt(
-                Prompt(listOf(AssistantMessage("assistant said $REAL_UUID")))
-            ).call().content()
+            client
+                .prompt(
+                    Prompt(listOf(AssistantMessage("assistant said $REAL_UUID"))),
+                ).call()
+                .content()
 
             val sentText = captured.captured.instructions.joinToString("") { it.text ?: "" }
             sentText shouldNotContain REAL_UUID
@@ -665,7 +789,12 @@ class CompressingChatClientSpec :
                     .mimeType(MimeTypeUtils.IMAGE_JPEG)
                     .data(ByteArrayResource(byteArrayOf(1, 2, 3)))
                     .build()
-            val message = UserMessage.builder().text("image for id=$REAL_UUID").media(media).build()
+            val message =
+                UserMessage
+                    .builder()
+                    .text("image for id=$REAL_UUID")
+                    .media(media)
+                    .build()
 
             val client = CompressingChatClient(delegate, service)
             client.prompt(Prompt(listOf<Message>(message))).call().content()

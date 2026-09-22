@@ -1,3 +1,4 @@
+import { CaseUsageComponent } from '../case-usage/case-usage.component'
 import { HttpClient } from '@angular/common/http'
 import { JsonPipe } from '@angular/common'
 import { firstValueFrom } from 'rxjs'
@@ -126,6 +127,7 @@ function hasActiveSelection(): boolean {
   selector: 'agentos-case-chat',
   imports: [
     IconButtonComponent,
+    CaseUsageComponent,
     JsonPipe,
     DrawerComponent,
     ExchangeShellComponent,

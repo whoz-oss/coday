@@ -121,6 +121,8 @@
         }
       }
     </header>
+  @if (caseId) { <agentos-case-usage [caseId]="caseId" [canWrite]="canAttach()" /> }
+
     <div
       class="case-chat"
       (dragenter)="canStageFiles() && attachments.onDragEnter($event)"

@@ -8,13 +8,14 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Immutable analytical record capturing the cost and token usage of a single agent turn.
+ * Immutable analytical record capturing cost and token usage from an agent turn.
+ * Priced and unpriced calls are stored separately when a turn contains both.
  *
  * ## Semantics of [cost]
  * `null` means the cost is **unknown** — the pricing for the model was not configured at
  * the time of the call. It does NOT mean zero cost. Callers must never treat `null` as `0.0`
- * in aggregations; instead they must propagate the unknown upward (e.g. sum returns null if
- * any addend is null, matching the semantics of [LlmUsage.plus]).
+ * in aggregations. Report the sum of known costs together with unknownCostCount, so a
+ * partial estimate cannot be mistaken for a complete total.
  *
  * ## Single implicit currency
  * All costs in AgentOS are expressed in a single implicit currency unit. There is no

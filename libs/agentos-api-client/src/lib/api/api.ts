@@ -32,6 +32,8 @@ export * from './plugin-controller.service'
 import { PluginControllerService } from './plugin-controller.service'
 export * from './prompt-controller.service'
 import { PromptControllerService } from './prompt-controller.service'
+export * from './run-cost-controller.service'
+import { RunCostControllerService } from './run-cost-controller.service'
 export * from './scheduled-prompt-controller.service'
 import { ScheduledPromptControllerService } from './scheduled-prompt-controller.service'
 export * from './skill-controller.service'
@@ -62,6 +64,7 @@ export const APIS = [
   OAuthCallbackControllerService,
   PluginControllerService,
   PromptControllerService,
+  RunCostControllerService,
   ScheduledPromptControllerService,
   SkillControllerService,
   SseService,

@@ -139,6 +139,28 @@ export class CaseStateService {
     })
   }
 
+  /** Refresh configuration after a cost confirmation without copying the live run snapshot. */
+  refreshCaseThreshold(caseId: string): void {
+    const pending = this.pendingUpdates.get(caseId)
+    const ready = pending
+      ? pending.request.pipe(
+          catchError(() => EMPTY),
+          ignoreElements(),
+          endWith(undefined)
+        )
+      : of(undefined)
+    ready.pipe(concatMap(() => this.caseController.getByIdCase(caseId))).subscribe({
+      next: (updated) => {
+        if (!this.pendingUpdates.has(caseId)) {
+          this.patchFields(caseId, { runCostThreshold: updated.runCostThreshold })
+        }
+      },
+      error: () => {
+        /* The next case load will refresh configuration. */
+      },
+    })
+  }
+
   private saveCaseFields(
     caseId: string,
     patch: { title?: string; runCostThreshold?: number },
@@ -150,7 +172,7 @@ export class CaseStateService {
       this.patchFields(caseId, patch)
       // Keep required fields such as namespaceId. Undefined values are omitted from
       // JSON; the server treats an omitted threshold as "keep existing".
-      const payload: Case = { ...existing, ...patch }
+      const payload: Case = { ...existing, ...patch, runCostThreshold: patch.runCostThreshold }
       return this.caseController.updateCase(caseId, payload).pipe(
         tap((updated) => {
           state.confirmed = { ...existing, title: updated.title, runCostThreshold: updated.runCostThreshold }

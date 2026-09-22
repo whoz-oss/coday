@@ -41,8 +41,7 @@ data class Case(
      * - **Upfront configuration**: set before a run when the caller knows the work ahead will
      *   be costly (e.g. a large refactoring session). Lets the user pre-authorise a higher spend
      *   without being interrupted mid-run.
-     * - **Negotiation materialisation**: written by the cost-enforcement mechanism (to be
-     *   implemented) when the user chooses to continue after a threshold breach. A new absolute
+     * - **Negotiation materialisation**: written by the cost-enforcement mechanism when the user chooses to continue after a threshold breach. A new absolute
      *   value is persisted, never a delta or a multiplier, so the stored fact is independent of
      *   any platform or namespace configuration that may change later.
      */

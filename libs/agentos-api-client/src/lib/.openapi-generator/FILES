@@ -21,6 +21,7 @@ api/namespace-permission-endpoints.service.ts
 api/o-auth-callback-controller.service.ts
 api/plugin-controller.service.ts
 api/prompt-controller.service.ts
+api/run-cost-controller.service.ts
 api/scheduled-prompt-controller.service.ts
 api/skill-controller.service.ts
 api/sse.service.ts
@@ -52,6 +53,7 @@ model/case-status-event.ts
 model/case-updated-event.ts
 model/case.ts
 model/confirmation-resolved-event.ts
+model/continue-cost-request.ts
 model/enrichment-phase-trace.ts
 model/entity-metadata.ts
 model/error-event.ts
@@ -70,6 +72,7 @@ model/integration-type-descriptor.ts
 model/intention-generated-event.ts
 model/list-auth-setting200-response-inner.ts
 model/list-by-user-in-namespace-request.ts
+model/llm-usage.ts
 model/member-item.ts
 model/message-content.ts
 model/message-event-all-of-content.ts
@@ -85,6 +88,7 @@ model/o-auth-custom-auth-setting.ts
 model/o-auth-discoverable-auth-setting.ts
 model/o-auth-mcp-discoverable-auth-setting.ts
 model/o-auth-registered-auth-setting.ts
+model/paused-cost-dto.ts
 model/pending-confirmation-event.ts
 model/planning.ts
 model/plugin-action-response.ts
@@ -98,6 +102,7 @@ model/prompt-translation.ts
 model/prompt.ts
 model/question-event.ts
 model/recurrence.ts
+model/run-cost-dto.ts
 model/scheduled-prompt-effective-request.ts
 model/scheduled-prompt-search-request.ts
 model/scheduled-prompt.ts

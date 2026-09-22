@@ -1,0 +1,64 @@
+@if (run(); as state) {
+  <details
+    [open]="state.paused || state.pausedCases.length > 0"
+    class="usage"
+    [class.usage--paused]="state.paused || state.pausedCases.length > 0"
+  >
+    <summary>
+      @if (state.paused || state.pausedCases.length > 0) {
+        <strong>Paused · cost threshold reached</strong>
+      } @else {
+        <strong>Usage</strong>
+      }
+      <span>{{ state.unknownCostCount > 0 ? 'At least ' : '' }}{{ state.cost | number: '1.2-6' }} this run</span>
+      @if (state.runCostThreshold != null) {
+        <span> / {{ state.runCostThreshold | number: '1.2-6' }} threshold</span>
+      }
+    </summary>
+    <div class="usage__body">
+      <p>Includes delegated work. Costs are estimates in the platform currency.</p>
+      @if (total(); as all) {
+        <p>
+          Conversation: {{ all.unknownCostCount > 0 ? 'at least ' : '' }}{{ all.cost | number: '1.2-6' }} recorded ·
+          {{ all.totalTokens | number }} recorded tokens
+        </p>
+      }
+      @if (state.liveTokens > 0) {
+        <p>{{ state.liveTokens | number }} tokens in active agent runs.</p>
+      }
+      @if (state.unknownCostCount > 0) {
+        <p class="usage__warning">
+          Some usage has no reliable price. The displayed cost is a lower bound; the threshold cannot guarantee a
+          spending cap.
+        </p>
+      }
+      @if (state.paused || state.pausedCases.length > 0) {
+        <p>The next request is waiting for your decision. Continuing keeps the current execution context.</p>
+        @if (canWrite()) {
+          @for (limit of state.pausedCases; track limit.caseId) {
+            <p>
+              {{ limit.caseId === caseId() ? 'Conversation' : 'Delegated run' }}:
+              {{ limit.cost | number: '1.2-6' }} consumed.
+            </p>
+            @if (limit.threshold > 0) {
+              <button type="button" (click)="continue(limit)" [disabled]="saving() || !!error()">
+                Continue · double threshold to {{ limit.threshold * 2 | number: '1.2-6' }}
+              </button>
+            } @else {
+              <p>Set a positive threshold in the conversation settings before continuing.</p>
+              <button type="button" (click)="continue(limit)" [disabled]="saving()">
+                Continue with updated threshold
+              </button>
+            }
+          }
+          <button type="button" (click)="stop()" [disabled]="saving()">Stop</button>
+        } @else {
+          <p>A member with edit permission must approve continuation.</p>
+        }
+      }
+    </div>
+  </details>
+}
+@if (error(); as message) {
+  <p role="status" class="usage__warning">{{ message }}</p>
+}
