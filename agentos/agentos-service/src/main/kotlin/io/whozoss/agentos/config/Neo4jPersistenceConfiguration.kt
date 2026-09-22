@@ -55,6 +55,10 @@ import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunNodeNeo4jRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptUserRunNodeNeo4jRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptUserRunRepository
+import io.whozoss.agentos.skill.FilesystemSkillRepository
+import io.whozoss.agentos.skill.Neo4jSkillRepository
+import io.whozoss.agentos.skill.SkillNodeNeo4jRepository
+import io.whozoss.agentos.skill.SkillRepository
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
@@ -72,6 +76,9 @@ import org.springframework.context.annotation.Primary
 import org.springframework.data.neo4j.config.EnableNeo4jAuditing
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 /**
  * Registers Neo4j-backed repository beans.
@@ -108,6 +115,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.agentos.integrationConfig",
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.prompt",
+        "io.whozoss.agentos.skill",
         "io.whozoss.agentos.userGroup",
         "io.whozoss.agentos.authSetting",
         "io.whozoss.agentos.credential",
@@ -140,9 +148,14 @@ class Neo4jPersistenceConfiguration {
     fun neo4jCaseRepository(
         caseNodeNeo4jRepository: CaseNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
+        clock: Clock,
     ): CaseRepository {
         logger.info { "[Persistence] Neo4jCaseRepository active" }
-        return Neo4jCaseRepository(caseNodeNeo4jRepository, childLinkService)
+        return Neo4jCaseRepository(
+            caseNodeNeo4jRepository = caseNodeNeo4jRepository,
+            childLinkService = childLinkService,
+            clock = clock,
+        )
     }
 
     @Bean
@@ -288,6 +301,39 @@ class Neo4jPersistenceConfiguration {
         )
     }
 
+    /**
+     * Inner Neo4j-backed bean, declared explicitly so that Spring AOP can proxy it and honour
+     * the [org.springframework.transaction.annotation.Transactional] boundaries declared on
+     * [Neo4jSkillRepository.save] and [Neo4jSkillRepository.deleteByParent].
+     *
+     * If this bean were constructed inline (via `Neo4jSkillRepository(...)` inside the outer
+     * factory method), it would not be managed by Spring and the AOP proxy would never be
+     * applied, silently disabling rollback semantics. This matters for [Neo4jSkillRepository.save]
+     * in particular: it creates the Skill node then the BELONGS_TO edge to the namespace as two
+     * separate Neo4j operations — without a transaction, a failure on the edge step would leave
+     * an orphan Skill node behind.
+     */
+    @Bean
+    fun neo4jSkillRepositoryDelegate(
+        skillNodeNeo4jRepository: SkillNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): Neo4jSkillRepository = Neo4jSkillRepository(skillNodeNeo4jRepository, childLinkService)
+
+    @Bean
+    @Primary
+    fun neo4jSkillRepository(
+        neo4jSkillRepositoryDelegate: Neo4jSkillRepository,
+        namespaceRepository: NamespaceRepository,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
+    ): SkillRepository {
+        logger.info { "[Persistence] Neo4jSkillRepository active (filesystem augmentation enabled)" }
+        return FilesystemSkillRepository(
+            delegate = neo4jSkillRepositoryDelegate,
+            namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
+        )
+    }
+
     @Bean
     fun neo4jScheduledPromptRepository(
         scheduledPromptNodeNeo4jRepository: ScheduledPromptNodeNeo4jRepository,
@@ -323,6 +369,41 @@ class Neo4jPersistenceConfiguration {
     }
 
     /**
+     * One-time migration: copies `maxTokens → maxCompletionTokens` on AiModel nodes that were
+     * populated before the rename.
+     *
+     * The legacy `maxTokens` property is left untouched on the node so that any tooling or
+     * rollback path that still reads it keeps working.
+     *
+     * A separate marker prevents a later restart from restoring the legacy value when
+     * the user intentionally clears maxCompletionTokens to use the provider default.
+     * Models with an explicit completion limit are marked too, preserving that limit.
+     * SDN retains both unmapped properties when saving an AiModelNode.
+     */
+    @Bean
+    fun migrateAiModelMaxTokens(neo4jClient: Neo4jClient): CommandLineRunner =
+        CommandLineRunner {
+            val result =
+                neo4jClient
+                    .query(
+                        """
+                        MATCH (m:AiModel)
+                        WHERE m.maxTokens IS NOT NULL AND coalesce(m.maxCompletionTokensMigrated, false) = false
+                        SET m.maxCompletionTokens = coalesce(m.maxCompletionTokens, m.maxTokens),
+                            m.maxCompletionTokensMigrated = true
+                        RETURN count(m) AS migrated
+                        """.trimIndent(),
+                    ).fetch()
+                    .one()
+            val count = result.map { it["migrated"] as Long }.orElse(0L) ?: 0L
+            if (count > 0L) {
+                logger.info { "[Migration] Migrated maxTokens → maxCompletionTokens on $count AiModel node(s)" }
+            } else {
+                logger.debug { "[Migration] No AiModel nodes needed maxTokens → maxCompletionTokens migration" }
+            }
+        }
+
+    /**
      * One-time migration: converts legacy `[:STARRED]` plain edges to
      * `[:WATCHES]` relationship-with-properties edges.
      *
@@ -354,6 +435,66 @@ class Neo4jPersistenceConfiguration {
                 logger.info { "[Migration] Converted $count [:STARRED] edges to [:WATCHES]" }
             } else {
                 logger.debug { "[Migration] No legacy [:STARRED] edges found — nothing to migrate" }
+            }
+        }
+
+    /**
+     * One-time initialisation: creates `[:WATCHES]` edges with `readAt = now` for every
+     * `(User)-[:ADMIN|MEMBER]->(Case)` relation in the database that has no WATCHES edge yet.
+     *
+     * This prevents cases that existed before the read-state feature was introduced from
+     * appearing as "unread" for all their members on first startup.
+     *
+     * Idempotency is guaranteed by a `(:CompletedMigration {id: 'readAtFeat20260908'})` flag
+     * node in Neo4j: the node is created (MERGE ON CREATE) on the first run and the heavy
+     * WATCHES backfill only executes when the node is brand-new. On every subsequent startup
+     * the flag node already exists, the WITH/WHERE clause filters it out, and the body of the
+     * migration is never reached.
+     *
+     * Runs after [migrateStarredEdges] (via bean dependency) so that edges converted from
+     * `[:STARRED]` — which carry `readAt = null` — are also initialised here.
+     */
+    @Bean
+    fun initCaseReadAt(
+        neo4jClient: Neo4jClient,
+        clock: Clock,
+        @Suppress("UNUSED_PARAMETER") migrateStarredEdges: CommandLineRunner,
+    ): CommandLineRunner =
+        CommandLineRunner {
+            // Neo4j driver does not accept java.time.Instant directly — convert to ZonedDateTime
+            // (stored as a Neo4j DateTime value) so the driver can serialise it correctly.
+            val now = Instant.now(clock).atZone(ZoneOffset.UTC)
+            // The flag node ensures this migration runs exactly once across all restarts.
+            // ON CREATE SET flag.isNew = true marks the node as brand-new; the WITH/WHERE
+            // clause lets the rest of the query through only on that first creation.
+            // On every subsequent startup the MERGE matches the existing node (isNew absent),
+            // the WHERE filters it out, and the MATCH below never executes.
+            val result =
+                neo4jClient
+                    .query(
+                        $$"""
+                        MERGE (flag:CompletedMigration {id: 'readAtFeat20260908'})
+                        ON CREATE SET flag.isNew = true
+                        WITH flag
+                        WHERE flag.isNew = true
+                        REMOVE flag.isNew
+                        WITH count(flag) AS guard
+                        MATCH (u:User)-[:ADMIN|MEMBER]->(c:Case)
+                        WHERE (c.removed IS NULL OR c.removed = false) and guard > 0
+                        MERGE (u)-[s:WATCHES]->(c)
+                        ON CREATE SET s.readAt = $readAt
+                        ON MATCH SET s.readAt = CASE WHEN s.readAt IS NULL THEN $readAt ELSE s.readAt END
+                        RETURN count(c) AS initialised
+                        """.trimIndent(),
+                    ).bind(now)
+                    .to("readAt")
+                    .fetch()
+                    .one()
+            val count = result.map { it["initialised"] as Long }.orElse(0L) ?: 0L
+            if (count > 0L) {
+                logger.info { "[Migration] Initialised readAt on $count WATCHES edges" }
+            } else {
+                logger.debug { "[Migration] readAtFeat20260908 already applied — skipping" }
             }
         }
 

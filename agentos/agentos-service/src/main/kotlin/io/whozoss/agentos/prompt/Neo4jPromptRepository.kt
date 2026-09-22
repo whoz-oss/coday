@@ -116,9 +116,10 @@ open class Neo4jPromptRepository(
         return active.size
     }
 
-    override fun softDeleteByAgentConfigId(agentConfigId: UUID) {
-        neo4jRepository.softDeleteByAgentConfigId(agentConfigId.toString())
-        logger.debug { "[Neo4jPromptRepository] Soft-deleted prompts linked to agentConfigId=$agentConfigId" }
+    override fun softDeleteByAgentConfigId(agentConfigId: UUID): Int {
+        val count = neo4jRepository.softDeleteByAgentConfigId(agentConfigId.toString())
+        if (count > 0) logger.debug { "[Neo4jPromptRepository] Soft-deleted $count prompt(s) linked to agentConfigId=$agentConfigId" }
+        return count
     }
 
     override fun findByScope(

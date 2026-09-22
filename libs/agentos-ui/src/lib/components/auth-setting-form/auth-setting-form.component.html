@@ -13,7 +13,7 @@
     <form class="auth-setting-form__form" [formGroup]="form" (ngSubmit)="submit()">
       @if (!isPlatformMode) {
         <fieldset class="auth-setting-form__scope" [disabled]="isEditMode()">
-          <legend class="auth-setting-form__label">Portée de la configuration</legend>
+          <legend class="auth-setting-form__label">Configuration scope</legend>
           @for (opt of scopeOptions; track trackByScope($index, opt)) {
             <label class="auth-setting-form__scope-option">
               <input
@@ -86,7 +86,11 @@
                   [placeholder]="field.placeholder"
                   [formControl]="ctrl"
                   [autocomplete]="field.secret ? 'new-password' : 'off'"
+                  [attr.aria-describedby]="field.hint ? 'as-hint-' + field.key : null"
                 />
+                @if (field.hint) {
+                  <p class="auth-setting-form__field-hint" [id]="'as-hint-' + field.key">{{ field.hint }}</p>
+                }
               }
             </div>
           }

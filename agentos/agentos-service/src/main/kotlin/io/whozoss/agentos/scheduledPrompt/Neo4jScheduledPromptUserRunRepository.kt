@@ -58,6 +58,7 @@ open class Neo4jScheduledPromptUserRunRepository(
                 val claimed = node.copy(
                     status = UserRunStatus.RUNNING.name,
                     leaseUntil = leaseUntil,
+                    startedAt = now,
                 )
                 neo4jRepository.save(claimed).toDomain()
             } catch (e: OptimisticLockingFailureException) {

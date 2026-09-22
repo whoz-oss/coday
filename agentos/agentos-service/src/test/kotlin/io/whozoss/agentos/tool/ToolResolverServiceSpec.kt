@@ -317,6 +317,127 @@ class ToolResolverServiceSpec :
         }
 
         // -------------------------------------------------------------------------
+        // dedupToolsByName — ordering guarantee (prompt-cache stability)
+        // -------------------------------------------------------------------------
+
+        "dedupToolsByName returns tools in alphabetical order by name" {
+            // Tools intentionally given in reverse-alphabetical order to detect sort.
+            val tools =
+                listOf(
+                    makeTool("Zebra"),
+                    makeTool("Mango"),
+                    makeTool("Apple"),
+                )
+
+            val result = buildService().dedupToolsByName(tools)
+
+            result.map { it.name } shouldBe listOf("Apple", "Mango", "Zebra")
+        }
+
+        "dedupToolsByName produces the same ordered list regardless of the input order" {
+            // Core regression guard: two calls with the same logical tool set but different
+            // input orderings must produce identical output. This is the property that
+            // prevents OpenAI prompt-cache invalidation when Neo4j changes its return order.
+            val service = buildService()
+            val toolsAbc =
+                listOf(
+                    makeTool("Alpha"),
+                    makeTool("Beta"),
+                    makeTool("Gamma"),
+                )
+            val toolsCba =
+                listOf(
+                    makeTool("Gamma"),
+                    makeTool("Beta"),
+                    makeTool("Alpha"),
+                )
+
+            val resultAbc = service.dedupToolsByName(toolsAbc)
+            val resultCba = service.dedupToolsByName(toolsCba)
+
+            resultAbc.map { it.name } shouldBe resultCba.map { it.name }
+        }
+
+        "dedupToolsByName keeps the first-encountered tool when names collide" {
+            // Non-regression: the first tool in the input list is the one kept, not
+            // the first alphabetically. Sorting happens AFTER selection, so this is
+            // unaffected by the sort.
+            val keeper = makeTool("tool").also { _ -> }   // will be first in input
+            // Build a second tool with the same name but a different description
+            // so we can distinguish them.
+            val duplicate =
+                object : io.whozoss.agentos.sdk.tool.StandardTool<Nothing> {
+                    override val name = "tool"
+                    override val description = "DUPLICATE — must be dropped"
+                    override val inputSchema = """{"type":"object"}"""
+                    override val version = "1.0.0"
+                    override val paramType: Class<Nothing>? = null
+
+                    override suspend fun execute(
+                        input: Nothing?,
+                        context: ToolContext,
+                    ): io.whozoss.agentos.sdk.tool.ToolExecutionResult =
+                        io.whozoss.agentos.sdk.tool.ToolExecutionResult.success(name)
+                }
+
+            val result = buildService().dedupToolsByName(listOf(keeper, duplicate))
+
+            result shouldHaveSize 1
+            // The kept tool must be the first one from the original list, not the duplicate.
+            result.first().description shouldBe keeper.description
+            result.first().description shouldNotBe "DUPLICATE — must be dropped"
+        }
+
+        "dedupToolsByName on an empty list returns an empty list" {
+            buildService().dedupToolsByName(emptyList()).shouldBeEmpty()
+        }
+
+        "dedupToolsByName on a single-element list returns that element" {
+            val tool = makeTool("OnlyTool")
+
+            val result = buildService().dedupToolsByName(listOf(tool))
+
+            result shouldHaveSize 1
+            result.first().name shouldBe "OnlyTool"
+        }
+
+        "dedupToolsByName uses binary (locale-independent) ordering" {
+            // Uppercase ASCII letters sort before lowercase in binary order (A=65, Z=90, a=97).
+            // A locale-sensitive sort (e.g. Locale.FRENCH) would treat 'A' and 'a' as equal
+            // and produce a different, locale-dependent order. We verify the binary contract.
+            val tools =
+                listOf(
+                    makeTool("zebra"),   // lowercase z = 122
+                    makeTool("Apple"),   // uppercase A = 65
+                    makeTool("Banana"),  // uppercase B = 66
+                )
+
+            val result = buildService().dedupToolsByName(tools)
+
+            // Binary order: 'A'(65) < 'B'(66) < 'z'(122)
+            result.map { it.name } shouldBe listOf("Apple", "Banana", "zebra")
+        }
+
+        "resolveToolsForRun returns tools in alphabetical order" {
+            // End-to-end: the order guarantee must hold even when tools come from the
+            // integration-config resolution path, not just from a direct dedupToolsByName call.
+            val nsId = UUID.randomUUID()
+            val jiraPlugin = makePlugin("JIRA", "SearchIssues", "GetIssue")  // reversed alphabetical
+            val service = buildService(plugins = listOf(jiraPlugin))
+            val config = integrationConfig(namespaceId = nsId, name = "JIRA_PROD", integrationType = "JIRA")
+
+            val tools =
+                service.resolveToolsForRun(
+                    agentIntegrations = mapOf("JIRA_PROD" to null),
+                    context = ctx(nsId),
+                    allIntegrationConfigs = listOf(config),
+                )
+
+            // Alphabetical: JIRA_PROD__GetIssue < JIRA_PROD__SearchIssues
+            tools.map { it.name } shouldBe listOf("JIRA_PROD__GetIssue", "JIRA_PROD__SearchIssues")
+        }
+
+        // -------------------------------------------------------------------------
         // ToolContext forwarding
         // -------------------------------------------------------------------------
 

@@ -237,14 +237,7 @@ class AgentAdvanced(
                     ),
                 )
             } catch (e: Exception) {
-                logger.error(e) { "Error during agent execution" }
-                emit(
-                    WarnEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        message = "Error during agent execution: ${e.message}",
-                    ),
-                )
+                handleGenericAgentException(this@AgentAdvanced, e, namespaceId, caseId, logger)
             }
         }
 
@@ -534,6 +527,8 @@ class AgentAdvanced(
                         caseId = caseId,
                         actor = Actor(id.toString(), name, ActorRole.AGENT),
                         content = listOf(MessageContent.Text(question)),
+                        llmProvider = llmProvider,
+                        llmModel = llmModel,
                     ),
                 )
                 emitEvent(
@@ -658,6 +653,8 @@ class AgentAdvanced(
                 caseId = caseId,
                 actor = Actor(id.toString(), name, ActorRole.AGENT),
                 content = listOf(MessageContent.Text(errorText)),
+                llmProvider = llmProvider,
+                llmModel = llmModel,
             ),
             WarnEvent(
                 namespaceId = namespaceId,
@@ -758,6 +755,8 @@ class AgentAdvanced(
                                         caseId = caseId,
                                         actor = Actor(id.toString(), name, ActorRole.AGENT),
                                         content = listOf(MessageContent.Text(clarificationQuestion)),
+                                        llmProvider = llmProvider,
+                                        llmModel = llmModel,
                                     )
                                 emitEvent(clarification)
                                 appendTo += clarification
@@ -874,6 +873,8 @@ class AgentAdvanced(
                 caseId = caseId,
                 actor = Actor(id.toString(), name, ActorRole.AGENT),
                 content = listOf(MessageContent.Text("$decisionPrefix$resultText")),
+                llmProvider = llmProvider,
+                llmModel = llmModel,
             )
         emitEvent(resolutionMessage)
         appendTo += resolutionMessage
@@ -1033,8 +1034,8 @@ class AgentAdvanced(
         if (isTruncated(lastFinishReason)) {
             val msg =
                 "LLM response was truncated (finish_reason=$lastFinishReason). " +
-                    "The configured maxTokens limit may be too low. " +
-                    "Consider increasing the model's maxTokens configuration."
+                    "The configured maxCompletionTokens limit may be too low. " +
+                    "Consider increasing the model's maxCompletionTokens configuration."
             logger.warn { "[$name] $msg" }
             emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
         }
@@ -1046,6 +1047,8 @@ class AgentAdvanced(
                     caseId = caseId,
                     actor = Actor(id.toString(), name, ActorRole.AGENT),
                     content = listOf(MessageContent.Text(content)),
+                    llmProvider = llmProvider,
+                    llmModel = llmModel,
                 )
             emitEvent(msg)
         }

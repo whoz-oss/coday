@@ -1,0 +1,23 @@
+openapi: 3.0.0
+info:
+  title: Form
+  version: 1.0.0
+paths:
+  /token:
+    post:
+      operationId: createToken
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type]
+              properties:
+                grant_type:
+                  type: string
+                scope:
+                  type: string
+      responses:
+        '200':
+          description: Token

@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
 /**
@@ -148,4 +149,63 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
             """,
     )
     fun updateEnabled(id: String, enabled: Boolean)
+
+    /**
+     * Disable all non-removed scheduled prompts referencing the given agentConfigId.
+     * Returns the number of nodes updated.
+     */
+    @Query(
+        $$"""
+            MATCH (sp:ScheduledPrompt)
+            WHERE sp.agentConfigId = $agentConfigId
+              AND NOT COALESCE(sp.removed, false)
+              AND sp.enabled = true
+            SET sp.enabled = false
+            RETURN count(sp)
+            """,
+    )
+    fun disableByAgentConfigId(agentConfigId: String): Int
+
+    /**
+     * Returns true if at least one non-removed ScheduledPrompt references the given promptTemplateId.
+     * Read-only: no write intent, no dirty checking.
+     */
+    @Query(
+        $$"""
+            MATCH (sp:ScheduledPrompt)
+            WHERE sp.promptTemplateId = $promptTemplateId
+              AND NOT COALESCE(sp.removed, false)
+            RETURN count(sp) > 0
+            """,
+    )
+    @Transactional(readOnly = true)
+    fun existsActiveByPromptTemplateId(promptTemplateId: String): Boolean
+
+    /**
+     * Soft-delete all non-removed ScheduledPrompts referencing the given agentConfigId,
+     * and soft-delete their linked Prompts in the same query.
+     *
+     * Uses OPTIONAL MATCH for the Prompt so that the ScheduledPrompt is always soft-deleted even when
+     * its linked Prompt is already removed or missing (orphaned ScheduledPrompt). The Prompt SET clause
+     * only executes when p IS NOT NULL.
+     *
+     * Returns the number of scheduled prompts soft-deleted.
+     */
+    @Query(
+        $$"""
+            MATCH (sp:ScheduledPrompt)
+            WHERE sp.agentConfigId = $agentConfigId
+              AND NOT COALESCE(sp.removed, false)
+            SET sp.removed = true, sp.tripleKey = 'tombstone:' + sp.id
+            WITH sp
+            OPTIONAL MATCH (p:Prompt)
+            WHERE p.id = sp.promptTemplateId
+              AND NOT COALESCE(p.removed, false)
+            WITH sp, p
+            WHERE p IS NOT NULL
+            SET p.removed = true, p.tripleKey = 'tombstone:' + p.id
+            RETURN count(sp)
+            """,
+    )
+    fun softDeleteWithPromptsByAgentConfigId(agentConfigId: String): Int
 }

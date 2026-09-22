@@ -4,6 +4,8 @@ import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -17,14 +19,15 @@ import java.util.UUID
 open class Neo4jCaseRepository(
     private val caseNodeNeo4jRepository: CaseNodeNeo4jRepository,
     private val childLinkService: Neo4jChildLinkService,
+    private val clock: Clock,
 ) : CaseRepository {
     override fun save(entity: Case): Case =
         caseNodeNeo4jRepository
-            .save(CaseNode.fromDomain(entity))
+            .save(CaseNode.fromDomain(entity.copy(metadata = entity.metadata.copy(modified = Instant.now(clock)))))
             .also { childLinkService.link("Case", it.id, "Namespace", entity.namespaceId.toString()) }
-            .also {
-                it.createdBy?.let { createdBy ->
-                    childLinkService.link("Case", it.id, "User", createdBy, relationship = "CREATED_BY")
+            .also { savedCase ->
+                savedCase.createdBy?.let { createdBy ->
+                    childLinkService.link("Case", savedCase.id, "User", createdBy, relationship = "CREATED_BY")
                 }
             }.toDomain()
             .also { logger.debug { "[Neo4jCaseRepository] Saved case ${it.id} under namespace ${entity.namespaceId}" } }

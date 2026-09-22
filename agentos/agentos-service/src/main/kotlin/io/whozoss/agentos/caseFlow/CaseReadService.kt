@@ -12,14 +12,18 @@ import java.util.UUID
  * concern isolated. It is injected into [CaseController] and [CaseServiceImpl].
  */
 interface CaseReadService {
-
     /**
-     * Records that [userId] has read [caseId] at the current instant.
+     * Records that [userId] has read [caseId].
      *
-     * Idempotent: calling it repeatedly only advances `readAt`. The controller must
-     * already have verified that the user has Case READ permission before calling this.
+     * When [at] is supplied the edge's `readAt` is set to that timestamp; otherwise
+     * the current server time is used. Idempotent: calling it repeatedly only advances
+     * `readAt`. The controller must already have verified that the user has Case READ
+     * permission before calling this.
      */
-    fun markRead(userId: String, caseId: UUID)
+    fun markRead(
+        userId: String,
+        caseId: UUID,
+    )
 
     /**
      * Counts the number of unread cases in [namespaceId] for [userId].
@@ -28,5 +32,8 @@ interface CaseReadService {
      * or when the most recent event's timestamp is after the edge's `readAt`.
      * Only cases the user has a direct `[:ADMIN|MEMBER]` edge on are counted.
      */
-    fun countUnread(userId: String, namespaceId: UUID): Long
+    fun countUnread(
+        userId: String,
+        namespaceId: UUID,
+    ): Long
 }

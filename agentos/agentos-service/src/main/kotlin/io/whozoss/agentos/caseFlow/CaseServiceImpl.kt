@@ -6,6 +6,7 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
+import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -128,6 +129,11 @@ class CaseServiceImpl(
             caseRepository.save(entity)
         }
     }
+
+    override fun findById(
+        id: UUID,
+        withRemoved: Boolean,
+    ): Case? = caseRepository.findByIds(listOf(id), withRemoved).firstOrNull()
 
     override fun findByIds(
         ids: Collection<UUID>,
@@ -697,7 +703,10 @@ class CaseServiceImpl(
         if (newStatus == CaseStatus.IDLE) {
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
-                triggerNamingIfNeeded(updated, caseEventService.findByParent(caseId)) { event -> runtime.emitEvent(event) }
+                triggerNamingIfNeeded(
+                    case = updated,
+                    events = caseEventService.findByParent(caseId),
+                ) { event -> runtime.emitEvent(event) }
             }
         }
 

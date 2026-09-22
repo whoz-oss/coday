@@ -337,16 +337,17 @@ class CaseController(
         logger.info { "Case killed: $caseId" }
     }
 
-    /** POST /api/cases/{caseId}/read — record that the current user has read this case. */
-    @PostMapping("/{caseId}/read")
+    /** POST /api/cases/{caseId}/read — record that the current user has read this case. Returns the updated case. */
+    @PostMapping("/{caseId}/read", consumes = [MediaType.APPLICATION_JSON_VALUE, MediaType.ALL_VALUE])
     @ResponseStatus(HttpStatus.OK)
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     override fun markCaseRead(
         @PathVariable caseId: UUID,
-    ) {
+    ): CaseDto {
         val userId = userService.getCurrentUser().id.toString()
         caseReadService.markRead(userId, caseId)
         logger.debug { "User $userId marked case $caseId as read" }
+        return caseService.getById(caseId).withCallerMeta(userId)
     }
 
     /** GET /api/cases/unread-count?namespaceId= — count of unread cases for the current user. */
