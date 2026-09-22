@@ -898,13 +898,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     })
   }
 
-  protected kill(): void {
-    this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/kill`, {}).subscribe({
-      // Server transitions to KILLED; SSE handler will close the EventSource.
-      error: (err) => console.error('[CaseChat] Failed to kill case', err),
-    })
-  }
-
   protected extractText(event: CaseMessageEvent): string {
     return (
       event.content

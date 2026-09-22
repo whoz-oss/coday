@@ -83,6 +83,28 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
         delegate.save(existing.copy(enabled = enabled))
     }
 
+    /** Disable all non-removed scheduled prompts referencing the given agentConfigId. */
+    override fun disableByAgentConfigId(agentConfigId: UUID): Int {
+        val toDisable = delegate.findAll().filter { it.agentConfigId == agentConfigId && !it.metadata.removed && it.enabled }
+        toDisable.forEach { delegate.save(it.copy(enabled = false)) }
+        return toDisable.size
+    }
+
+    /** Returns true if at least one non-removed ScheduledPrompt references the given promptTemplateId. */
+    override fun existsActiveByPromptTemplateId(promptTemplateId: UUID): Boolean =
+        delegate.findAll().any { it.promptTemplateId == promptTemplateId && !it.metadata.removed }
+
+    /**
+     * Soft-delete all non-removed scheduled prompts referencing the given agentConfigId.
+     * In-memory: only deletes the scheduled prompts (no access to PromptRepository).
+     * Sufficient for unit tests of AgentConfigServiceImpl.
+     */
+    override fun softDeleteWithPromptsByAgentConfigId(agentConfigId: UUID): Int {
+        val toDelete = delegate.findAll().filter { it.agentConfigId == agentConfigId && !it.metadata.removed }
+        toDelete.forEach { delegate.delete(it.metadata.id) }
+        return toDelete.size
+    }
+
     companion object {
         private const val ALL_KEY = "all"
     }
