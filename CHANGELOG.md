@@ -1,3 +1,13 @@
+## 3.2.1 (2026-09-22)
+
+### 🩹 Fixes
+
+- #WZ-34801 Cascade agent soft-delete and disable to its scheduled prompts ([#1346](https://github.com/whoz-oss/coday/pull/1346))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
 ## 3.2.0 (2026-09-21)
 
 ### 🚀 Features
