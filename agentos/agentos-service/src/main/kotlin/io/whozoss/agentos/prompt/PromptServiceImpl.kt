@@ -6,6 +6,7 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -30,6 +31,7 @@ class PromptServiceImpl(
     private val repository: PromptRepository,
     private val agentConfigService: AgentConfigService,
     private val translationService: PromptTranslationService,
+    private val scheduledPromptRepository: ScheduledPromptRepository,
 ) : PromptService {
     override fun create(entity: Prompt): Prompt {
         validate(entity)
@@ -208,6 +210,9 @@ class PromptServiceImpl(
 
     override fun delete(id: UUID): Boolean {
         rejectIfFilesystemBacked(id, "deleted")
+        if (scheduledPromptRepository.existsActiveByPromptTemplateId(id)) {
+            throw ConflictException("Prompt $id is referenced by at least one active ScheduledPrompt and cannot be deleted")
+        }
         return repository.delete(id)
     }
 

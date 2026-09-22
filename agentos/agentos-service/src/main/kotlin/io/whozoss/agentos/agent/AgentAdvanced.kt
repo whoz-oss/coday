@@ -237,14 +237,7 @@ class AgentAdvanced(
                     ),
                 )
             } catch (e: Exception) {
-                logger.error(e) { "Error during agent execution" }
-                emit(
-                    WarnEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        message = "Error during agent execution: ${e.message}",
-                    ),
-                )
+                handleGenericAgentException(this@AgentAdvanced, e, namespaceId, caseId, logger)
             }
         }
 

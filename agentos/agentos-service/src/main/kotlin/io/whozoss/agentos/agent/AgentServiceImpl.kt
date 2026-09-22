@@ -26,6 +26,7 @@ import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.queryUser.QueryUserToolGrantService
+import io.whozoss.agentos.redirect.RedirectToolPlugin
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -35,6 +36,10 @@ import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.skill.Skill
+import io.whozoss.agentos.skill.SkillCatalogRenderer
+import io.whozoss.agentos.skill.SkillService
+import io.whozoss.agentos.skill.SkillToolGrantService
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
@@ -75,6 +80,8 @@ class AgentServiceImpl(
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val exchangeToolGrantService: ExchangeToolGrantService,
     private val agentDocumentResolver: AgentDocumentResolver,
+    private val skillService: SkillService,
+    private val skillToolGrantService: SkillToolGrantService,
     private val agentConfigProperties: AgentConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
 ) : AgentService {
@@ -231,6 +238,11 @@ class AgentServiceImpl(
                 resolvedUser = resolvedUser,
                 effectiveIntegrationConfigs = effectiveIntegrationConfigs,
             )
+        val resolvedSkills =
+            skillService.findSkills(
+                namespaceId = context.namespaceId,
+                selectors = agentConfig.skillSelectors,
+            )
         val instructions =
             buildInstructions(
                 baseInstructions = agentConfig.instructions,
@@ -238,6 +250,7 @@ class AgentServiceImpl(
                 resolvedUser = resolvedUser,
                 effectiveIntegrationConfigs = effectiveIntegrationConfigs,
                 docs = agentConfig.docs,
+                resolvedSkills = resolvedSkills,
             )
         val toolContext =
             context.toToolContext(
@@ -355,6 +368,12 @@ class AgentServiceImpl(
             } else {
                 emptyList()
             }
+        val skillTools =
+            if (skillToolGrantService.isGranted(resolvedSkills)) {
+                skillToolGrantService.grantTools(resolvedSkills, toolContext)
+            } else {
+                emptyList()
+            }
         val tools =
             toolResolverService.dedupToolsByName(
                 baseTools +
@@ -368,8 +387,11 @@ class AgentServiceImpl(
                         },
                     ) +
                     buildExchangeTools(agentConfig, context, toolContext) +
-                    queryUserTools,
+                    queryUserTools +
+                    skillTools,
             )
+
+        val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
 
         return ResolvedAgentDefinition(
             agentConfigId = agentConfig.metadata.id,
@@ -386,8 +408,41 @@ class AgentServiceImpl(
             advancedExecution = agentConfig.advancedExecution,
             namespaceId = context.namespaceId,
             userId = context.userId,
+            redirectGuideline = redirectGuideline,
         )
     }
+
+    /**
+     * Resolves the merged redirect guideline for [agentConfig] from [effectiveIntegrationConfigs].
+     *
+     * Several [io.whozoss.agentos.integrationConfig.IntegrationConfig] entries of type
+     * [RedirectToolPlugin.INTEGRATION_TYPE] can be referenced by the same agent (via
+     * [AgentConfig.integrations]). Rather than arbitrarily picking one (the previous
+     * `firstNotNullOfOrNull` behaviour, which depended on the unspecified return order of
+     * [IntegrationConfigService.findEffective]), all matching, non-blank guidelines are
+     * concatenated into a single text.
+     *
+     * The matching configs are sorted by [io.whozoss.agentos.integrationConfig.IntegrationConfig.name]
+     * before concatenation. This is not cosmetic: [IntegrationConfigService.findEffective]'s
+     * return order is not a contract, and an agent's resolved prompt must not vary from one
+     * resolution to the next for the same configuration — an unstable order would produce a
+     * different [redirectGuideline] string on each run, which would defeat prompt caching on
+     * the LLM provider side (and make the resolved prompt non-reproducible for debugging).
+     * Sorting by name gives a simple, deterministic, and stable order.
+     *
+     * @return the concatenated guideline text (guidelines joined with a blank line), or `null`
+     *   when no referenced REDIRECT config carries a non-blank guideline.
+     */
+    private fun resolveRedirectGuideline(
+        agentConfig: AgentConfig,
+        effectiveIntegrationConfigs: List<IntegrationConfig>,
+    ): String? =
+        effectiveIntegrationConfigs
+            .filter { it.integrationType == RedirectToolPlugin.INTEGRATION_TYPE && agentConfig.integrations?.containsKey(it.name) == true }
+            .sortedBy { it.name }
+            .mapNotNull { it.parameters?.get(RedirectToolPlugin.GUIDELINE_PARAM)?.asText()?.takeIf { g -> g.isNotBlank() } }
+            .joinToString("\n\n")
+            .takeUnless { it.isBlank() }
 
     /**
      * Phase 2: instantiate a live [Agent] from a [ResolvedAgentDefinition].
@@ -415,6 +470,7 @@ class AgentServiceImpl(
             context = context,
             resolvedTools = definition.tools,
             resolvedUser = resolvedUser,
+            redirectGuideline = definition.redirectGuideline,
         )
     }
 
@@ -460,6 +516,14 @@ class AgentServiceImpl(
      * [resolvedInstructions] are the final system instructions (built by [resolveAgentDefinition]).
      * [resolvedTools] is the pre-resolved and pre-filtered tool set.
      * [resolvedUser] is the pre-resolved user (may be null for anonymous / system runs).
+     *
+     * [redirectGuideline] destination depends on [advancedExecution]: for an `AgentAdvanced`
+     * it is passed to [AgentAdvancedContext.redirectGuideline] and consumed by
+     * [AgentIntentionGenerator]'s planning prompt; for an `AgentSimple` it is appended to
+     * [resolvedInstructions] instead (see [withRedirectGuideline]). It is never put in both
+     * places for the same agent: [AgentAdvancedContext.buildMessages] already merges
+     * [AgentAdvancedContext.instructions] into the last user message, so injecting the
+     * guideline there as well would duplicate it in the advanced-mode prompt.
      */
     private fun createAgentInstance(
         agentName: String,
@@ -472,6 +536,7 @@ class AgentServiceImpl(
         context: AgentExecutionContext,
         resolvedTools: Collection<StandardTool<*>>,
         resolvedUser: User?,
+        redirectGuideline: String? = null,
     ): Agent {
         logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
         logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
@@ -493,6 +558,7 @@ class AgentServiceImpl(
                     systemPrompt = resolvedSystemPrompt,
                     imageCharCost = agentConfigProperties.imageCharCost,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                    redirectGuideline = redirectGuideline,
                 )
             AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),
@@ -514,7 +580,7 @@ class AgentServiceImpl(
                 chatClient = chatClient,
                 tools = resolvedTools,
                 systemPrompt = resolvedSystemPrompt,
-                instructions = resolvedInstructions,
+                instructions = withRedirectGuideline(resolvedInstructions, redirectGuideline),
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
@@ -569,7 +635,8 @@ class AgentServiceImpl(
 
     /**
      * Compose the agent's instructions from [baseInstructions] (the agent's own instructions
-     * from [AgentConfig]), an integrations block, and a user context block.
+     * from [AgentConfig]), an integrations block, a user context block, a docs block, and
+     * a skills block.
      *
      * The namespace context is intentionally NOT part of this — it is built separately
      * by [buildNamespaceSystemPrompt] and sent as a system prompt.
@@ -589,6 +656,7 @@ class AgentServiceImpl(
         resolvedUser: User?,
         effectiveIntegrationConfigs: List<IntegrationConfig>,
         docs: List<String>? = null,
+        resolvedSkills: List<Skill> = emptyList(),
     ): String {
         val integrationsBlock =
             when {
@@ -640,9 +708,44 @@ class AgentServiceImpl(
             }
 
         val docsBlock = agentDocumentResolver.buildDocsBlock(docs)
+        val skillsBlock = SkillCatalogRenderer.buildBlock(resolvedSkills)
 
-        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock)
+        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock, skillsBlock)
             .joinToString("\n")
+    }
+
+    /**
+     * Appends a `## Redirect Guideline` block to [instructions] when [redirectGuideline] is
+     * present, for the `AgentSimple` path only.
+     *
+     * Mirrors the block style already used by [buildInstructions] (blank line, `##` title,
+     * content, `trimEnd()`), and composes with [instructions] the same way [buildInstructions]
+     * composes its own blocks: via `listOfNotNull(...).joinToString("\n")`, so a null
+     * [instructions] does not produce a leading blank line.
+     *
+     * Only called from the `else` (non-`advancedExecution`) branch of [createAgentInstance]:
+     * for `AgentAdvanced`, the guideline goes exclusively into
+     * [AgentAdvancedContext.redirectGuideline] (consumed by [AgentIntentionGenerator]), never
+     * here, because [AgentAdvancedContext.buildMessages] already merges [instructions] into the
+     * last user message — adding the guideline to both would duplicate it in that mode.
+     */
+    private fun withRedirectGuideline(
+        instructions: String?,
+        redirectGuideline: String?,
+    ): String? {
+        val guidelineBlock =
+            redirectGuideline
+                ?.takeIf { it.isNotBlank() }
+                ?.let {
+                    buildString {
+                        appendLine()
+                        appendLine("## Redirect Guideline")
+                        append(it)
+                    }.trimEnd()
+                }
+        return listOfNotNull(instructions.takeUnless { it.isNullOrBlank() }, guidelineBlock)
+            .joinToString("\n")
+            .takeUnless { it.isBlank() }
     }
 
     /**

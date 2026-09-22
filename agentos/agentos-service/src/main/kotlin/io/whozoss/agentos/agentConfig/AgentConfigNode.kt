@@ -44,6 +44,7 @@ data class AgentConfigNode(
     val enabled: Boolean,
     val subAgentsJson: String? = null,
     val delegationTimeoutSeconds: Int? = null,
+    val skillSelectorsJson: String? = null,
     // EntityMetadata fields
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
@@ -77,6 +78,7 @@ data class AgentConfigNode(
             enabled = enabled,
             subAgents = subAgentsJson?.let { MAPPER.readValue(it, STRING_LIST_TYPE) },
             delegationTimeoutSeconds = delegationTimeoutSeconds,
+            skillSelectors = skillSelectorsJson?.let { MAPPER.readValue(it, STRING_LIST_TYPE) },
         )
 
     companion object {
@@ -98,6 +100,7 @@ data class AgentConfigNode(
                 advancedExecution = config.advancedExecution,
                 subAgentsJson = config.subAgents?.let { MAPPER.writeValueAsString(it) },
                 delegationTimeoutSeconds = config.delegationTimeoutSeconds,
+                skillSelectorsJson = config.skillSelectors?.let { MAPPER.writeValueAsString(it) },
                 version = config.metadata.version,
                 enabled = config.enabled,
                 created = config.metadata.created,

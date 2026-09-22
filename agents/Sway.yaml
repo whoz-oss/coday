@@ -1,7 +1,7 @@
 name: Sway
 description: Software Agent - bridges user needs and code implementation with technical autonomy and business understanding.
-aiProvider: anthropic
-modelName: BIG
+aiProvider: requesty
+modelName: requesty-claude-sonnet-5
 integrations:
   FILES:
   FETCH:

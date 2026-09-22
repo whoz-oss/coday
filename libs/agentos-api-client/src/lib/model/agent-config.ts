@@ -25,6 +25,7 @@ export interface AgentConfig {
   modelName?: string
   name: string
   namespaceId?: string
+  skillSelectors?: Array<string>
   subAgents?: Array<string>
   updatedBy?: string
   updatedOn?: string

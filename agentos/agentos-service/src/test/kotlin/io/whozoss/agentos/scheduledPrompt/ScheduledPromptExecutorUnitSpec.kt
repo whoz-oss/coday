@@ -25,6 +25,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -630,7 +631,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val expectedContext = mapOf("userContext" to mapOf("talentId" to "t1"))
             val provider = mockk<UserContextProvider>().also {
-                every { it.provideUserContext(user1.externalId, namespaceId) } returns expectedContext
+                every { it.provideUserContext(user1.externalId, namespaceId) } returns UserContextResult.Success(expectedContext)
             }
 
             executor(
@@ -657,7 +658,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             sessionContextSlot.captured shouldBe expectedContext
         }
 
-        "Phase B: addMessage is called with null sessionContext when UserContextProvider throws" {
+        "Phase B: UserContextProvider throws unexpectedly — UserRun stays RUNNING (treated as transient)" {
+            // An unexpected exception from provideUserContext is treated as a transient failure:
+            // the UserRun is NOT marked terminal so the lease expiry mechanism can reclaim it.
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
@@ -675,12 +678,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
             }
-            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
-            val caseService = mockk<CaseService>(relaxed = true).also {
-                every { it.create(any()) } returns createdCase
-                every { it.findActiveRuntime(caseId) } returns null
-                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
-            }
             val provider = mockk<UserContextProvider>().also {
                 every { it.provideUserContext(any(), any()) } throws RuntimeException("Copilot unreachable")
             }
@@ -691,22 +688,95 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 userRunRepo = userRunRepo,
                 promptService = promptService,
                 agentConfigService = agentConfigService,
-                caseService = caseService,
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+                userContextProvider = provider,
+            ).processUserRun(userRun)
+
+            // UserRun stays RUNNING — transient failure, lease will expire and it will be reclaimed
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.RUNNING
+        }
+
+        "Phase B: UserContextProvider returns PermanentFailure — UserRun marked FAILED immediately" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+            val provider = mockk<UserContextProvider>().also {
+                every { it.provideUserContext(any(), any()) } returns
+                    UserContextResult.PermanentFailure("User not found in external system (404)")
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
                 userContextProvider = provider,
             ).processUserRun(userRun)
 
             val updated = userRunRepo.all().first { it.id == userRun.id }
-            updated.status shouldBe UserRunStatus.DONE
-            verify(exactly = 1) {
-                caseService.addMessage(
-                    caseId = caseId,
-                    actor = any(),
-                    content = any(),
-                    sessionContext = null,
-                )
+            updated.status shouldBe UserRunStatus.FAILED
+            updated.error shouldBe "User not found in external system (404)"
+        }
+
+        "Phase B: UserContextProvider returns TransientFailure — UserRun stays RUNNING for reclaim" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
             }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+            val provider = mockk<UserContextProvider>().also {
+                every { it.provideUserContext(any(), any()) } returns
+                    UserContextResult.TransientFailure("External service timeout (503)")
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+                userContextProvider = provider,
+            ).processUserRun(userRun)
+
+            // UserRun stays RUNNING — lease will expire and it will be reclaimed on next tick
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.RUNNING
         }
 
         // -------------------------------------------------------------------------
@@ -1098,6 +1168,62 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             verify(exactly = 0) { spyUserRunRepo.claimBatch(any(), any()) }
             // All UserRuns must still be PENDING.
             userRunRepo.all().all { it.status == UserRunStatus.PENDING } shouldBe true
+        }
+
+        "Phase B: UserContextProvider returns Success(null) — UserRun completes normally with a warn log" {
+            // Success(null) means the provider intentionally produced no context.
+            // Execution must continue (UserRun reaches DONE), but a warn log is emitted.
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+            // Provider returns Success(null) — intentional no-context
+            val provider = mockk<UserContextProvider>().also {
+                every { it.provideUserContext(user1.externalId, namespaceId) } returns UserContextResult.Success(null)
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+                userContextProvider = provider,
+            ).processUserRun(userRun)
+
+            // Execution completes normally — UserRun is DONE
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.DONE
+            // addMessage is called with null sessionContext (default parameter)
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = any(),
+                )
+            }
         }
 
         "Phase B: agent config not found marks UserRun FAILED" {
