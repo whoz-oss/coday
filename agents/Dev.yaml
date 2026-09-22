@@ -1,7 +1,7 @@
 name: Dev
 description: Backend specialist for AgentOS — Kotlin, Spring Boot, Gradle, PF4J plugin system
-aiProvider: requesty
-modelName: requesty-gemini-3.7-flash
+aiProvider: anthropic
+modelName: BIG
 integrations:
   FILES:
   FETCH:
