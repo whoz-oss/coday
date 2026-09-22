@@ -266,3 +266,14 @@
     color: var(--color-text-secondary, #6b7280);
   }
 }
+
+.exchange-drawer__git-dot {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--color-warning, #ff9500);
+  font-size: 9px;
+
+  + .exchange-drawer__folder-chevron {
+    margin-left: 0;
+  }
+}
