@@ -82,7 +82,10 @@ function parseBlock(lines, start, indent) {
     const trimmed = line.trimStart()
 
     // Ignorer les lignes vides et les commentaires
-    if (trimmed === '' || trimmed.startsWith('#')) { i++; continue }
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      i++
+      continue
+    }
 
     const currentIndent = indentOf(line)
 
@@ -90,10 +93,16 @@ function parseBlock(lines, start, indent) {
     if (currentIndent < indent) break
 
     // Ignorer les lignes plus indentées que prévu (données multi-lignes, etc.)
-    if (currentIndent > indent) { i++; continue }
+    if (currentIndent > indent) {
+      i++
+      continue
+    }
 
     const colonIdx = trimmed.indexOf(':')
-    if (colonIdx < 0) { i++; continue }
+    if (colonIdx < 0) {
+      i++
+      continue
+    }
 
     const key = trimmed.slice(0, colonIdx).trim()
     const rest = trimmed.slice(colonIdx + 1)
@@ -306,18 +315,25 @@ function validateStrictForgeYamlSyntax(content) {
       if (quote) {
         if (char === quote && (quote === "'" || text[i - 1] !== '\\')) quote = null
       } else if (char === "'" || char === '"') quote = char
-      else if (char === ':') { colon = i; break }
+      else if (char === ':') {
+        colon = i
+        break
+      }
     }
     if (quote || colon <= 0 || !/^[A-Za-z0-9_-]+$/.test(text.slice(0, colon).trim())) return false
 
     const rawValue = text.slice(colon + 1).trim()
-    if (rawValue.startsWith('|') || rawValue.startsWith('>') || rawValue.startsWith('[') || rawValue.startsWith('{')) return false
+    if (rawValue.startsWith('|') || rawValue.startsWith('>') || rawValue.startsWith('[') || rawValue.startsWith('{'))
+      return false
     if (rawValue) {
       const first = rawValue[0]
       if (first === "'" || first === '"') {
         let closedAt = -1
         for (let i = 1; i < rawValue.length; i++) {
-          if (rawValue[i] === first && (first === "'" || rawValue[i - 1] !== '\\')) { closedAt = i; break }
+          if (rawValue[i] === first && (first === "'" || rawValue[i - 1] !== '\\')) {
+            closedAt = i
+            break
+          }
         }
         if (closedAt < 0 || !/^\s*(?:#.*)?$/.test(rawValue.slice(closedAt + 1))) return false
       }
@@ -337,24 +353,43 @@ export function readForgeRunYamlStrict(repoRoot, ticketId) {
   const yamlPath = join(repoRoot, 'forge', 'state', 'forge-runs', `${ticketId}.yaml`)
   if (!existsSync(yamlPath)) return { ok: false, error: { code: 'FORGE_RUN_NOT_FOUND' } }
   let content
-  try { content = readFileSync(yamlPath, 'utf8') } catch { return { ok: false, error: { code: 'FORGE_RUN_READ_FAILURE' } } }
+  try {
+    content = readFileSync(yamlPath, 'utf8')
+  } catch {
+    return { ok: false, error: { code: 'FORGE_RUN_READ_FAILURE' } }
+  }
   if (!content.trim()) return { ok: false, error: { code: 'FORGE_RUN_TRUNCATED' } }
   if (!validateStrictForgeYamlSyntax(content)) return { ok: false, error: { code: 'FORGE_RUN_PARSE_INVALID' } }
   let raw
-  try { raw = parseYaml(content) } catch { return { ok: false, error: { code: 'FORGE_RUN_PARSE_INVALID' } } }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).length === 0) return { ok: false, error: { code: 'FORGE_RUN_TRUNCATED' } }
-  if (!Object.hasOwn(raw, 'ticket_id') || typeof raw.ticket_id !== 'string' || raw.ticket_id !== ticketId) return { ok: false, error: { code: 'FORGE_TICKET_MISMATCH' } }
+  try {
+    raw = parseYaml(content)
+  } catch {
+    return { ok: false, error: { code: 'FORGE_RUN_PARSE_INVALID' } }
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).length === 0)
+    return { ok: false, error: { code: 'FORGE_RUN_TRUNCATED' } }
+  if (!Object.hasOwn(raw, 'ticket_id') || typeof raw.ticket_id !== 'string' || raw.ticket_id !== ticketId)
+    return { ok: false, error: { code: 'FORGE_TICKET_MISMATCH' } }
   const outcome = raw.run_outcome
-  if (!outcome || typeof outcome !== 'object' || Array.isArray(outcome) || !Object.hasOwn(outcome, 'status') || typeof outcome.status !== 'string' || !['in-progress', 'completed', 'abandoned'].includes(outcome.status)) {
+  if (
+    !outcome ||
+    typeof outcome !== 'object' ||
+    Array.isArray(outcome) ||
+    !Object.hasOwn(outcome, 'status') ||
+    typeof outcome.status !== 'string' ||
+    !['in-progress', 'completed', 'abandoned'].includes(outcome.status)
+  ) {
     return { ok: false, error: { code: 'INVALID_FORGE_RUN_STRUCTURE', path: 'run_outcome.status' } }
   }
   for (let number = 1; number <= 4; number++) {
     const key = `gate_${number}`
     if (!Object.hasOwn(raw, key)) continue
     const gate = raw[key]
-    if (!gate || typeof gate !== 'object' || Array.isArray(gate)) return { ok: false, error: { code: 'INVALID_FORGE_RUN_STRUCTURE', path: key } }
+    if (!gate || typeof gate !== 'object' || Array.isArray(gate))
+      return { ok: false, error: { code: 'INVALID_FORGE_RUN_STRUCTURE', path: key } }
     for (const field of STRICT_GATE_FIELDS) {
-      if (!Object.hasOwn(gate, field) || (gate[field] !== null && typeof gate[field] !== 'string')) return { ok: false, error: { code: 'INVALID_FORGE_RUN_STRUCTURE', path: `${key}.${field}` } }
+      if (!Object.hasOwn(gate, field) || (gate[field] !== null && typeof gate[field] !== 'string'))
+        return { ok: false, error: { code: 'INVALID_FORGE_RUN_STRUCTURE', path: `${key}.${field}` } }
     }
   }
   const normalized = readForgeRunYaml(repoRoot, ticketId)
@@ -411,8 +446,12 @@ export function readStoryFrontmatter(repoRoot, storePath) {
 export function readSprintStatus(repoRoot, workstreamSlug) {
   const yamlPath = join(
     repoRoot,
-    'forge', 'bmad', 'workstreams', workstreamSlug,
-    'implementation-artifacts', 'sprint-status.yaml'
+    'forge',
+    'bmad',
+    'workstreams',
+    workstreamSlug,
+    'implementation-artifacts',
+    'sprint-status.yaml'
   )
   const raw = readYamlFile(yamlPath)
   if (!raw) return null

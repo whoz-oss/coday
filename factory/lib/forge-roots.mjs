@@ -14,7 +14,9 @@ function resolveExistingDirectory(value, field) {
     const real = realpathSync(resolve(value))
     if (!statSync(real).isDirectory()) throw new Error('not a directory')
     return real
-  } catch { throw new Error(`${field} must exist as a directory and resolve without a broken symlink`) }
+  } catch {
+    throw new Error(`${field} must exist as a directory and resolve without a broken symlink`)
+  }
 }
 
 function isWithin(child, parent) {
@@ -43,19 +45,31 @@ export function resolveForgeRoots(input) {
   if (!input || typeof input !== 'object') throw new Error('roots object is required')
   const orchestratorRoot = resolveExistingDirectory(input.orchestratorRoot, 'roots.orchestratorRoot')
   const repoRoot = resolveExistingDirectory(input.repoRoot, 'roots.repoRoot')
-  const forgeRoot = input.forgeRoot === undefined ? undefined : resolveExistingDirectory(input.forgeRoot, 'roots.forgeRoot')
+  const forgeRoot =
+    input.forgeRoot === undefined ? undefined : resolveExistingDirectory(input.forgeRoot, 'roots.forgeRoot')
   const runStoreRoot = resolveStoreRoot(input.runStoreRoot)
   const runStorePolicy = input.runStorePolicy ?? DEFAULT_RUN_STORE_POLICY
   if (![DEFAULT_RUN_STORE_POLICY, EXTERNAL_RUN_STORE_POLICY, REPO_RUN_STORE_POLICY].includes(runStorePolicy)) {
-    throw new Error(`roots.runStorePolicy must be ${DEFAULT_RUN_STORE_POLICY}, ${EXTERNAL_RUN_STORE_POLICY}, or ${REPO_RUN_STORE_POLICY}`)
+    throw new Error(
+      `roots.runStorePolicy must be ${DEFAULT_RUN_STORE_POLICY}, ${EXTERNAL_RUN_STORE_POLICY}, or ${REPO_RUN_STORE_POLICY}`
+    )
   }
   if (runStorePolicy === DEFAULT_RUN_STORE_POLICY && !isWithin(runStoreRoot, orchestratorRoot)) {
-    throw new Error('roots.runStoreRoot must remain under roots.orchestratorRoot unless runStorePolicy is external_allowed')
+    throw new Error(
+      'roots.runStoreRoot must remain under roots.orchestratorRoot unless runStorePolicy is external_allowed'
+    )
   }
   if (runStorePolicy === REPO_RUN_STORE_POLICY && !isWithin(runStoreRoot, repoRoot)) {
     throw new Error('roots.runStoreRoot must remain under roots.repoRoot when runStorePolicy is under_repo')
   }
-  return Object.freeze({ schemaVersion: FORGE_ROOTS_SCHEMA_VERSION, orchestratorRoot, runStoreRoot, repoRoot, ...(forgeRoot ? { forgeRoot } : {}), runStorePolicy })
+  return Object.freeze({
+    schemaVersion: FORGE_ROOTS_SCHEMA_VERSION,
+    orchestratorRoot,
+    runStoreRoot,
+    repoRoot,
+    ...(forgeRoot ? { forgeRoot } : {}),
+    runStorePolicy,
+  })
 }
 
 /**

@@ -1,30 +1,263 @@
 import { createHash } from 'node:crypto'
 
-export const DELIVERY_OPERATION_KINDS = Object.freeze(['deployment', 'production-verification', 'rollback', 'rollback-verification'])
+export const DELIVERY_OPERATION_KINDS = Object.freeze([
+  'deployment',
+  'production-verification',
+  'rollback',
+  'rollback-verification',
+])
 export const DELIVERY_OPERATION_STATES = Object.freeze(['pending', 'running', 'succeeded', 'failed', 'indeterminate'])
-export const DELIVERY_OPERATION_ERROR_CODES = Object.freeze({ INVALID_REQUEST:'INVALID_DELIVERY_OPERATION_REQUEST', INVALID_RECORD:'INVALID_DELIVERY_OPERATION_RECORD', INVALID_TRANSITION:'INVALID_DELIVERY_OPERATION_TRANSITION', RECONCILIATION_REQUIRED:'DELIVERY_OPERATION_RECONCILIATION_REQUIRED' })
-const SAFE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/, SHA=/^[0-9a-f]{40}$/i, DIGEST=/^sha256:[0-9a-f]{64}$/i, MEDIA=/^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
-const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonical(value[k])])):value
-export const canonicalDeliveryHash=value=>`sha256:${createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex')}`
-const fail=(path,reason='invalid_value')=>({ok:false,error:{code:DELIVERY_OPERATION_ERROR_CODES.INVALID_REQUEST,path,reason}})
-const exact=(v,fields)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).every(k=>fields.includes(k))
-const id=(v)=>typeof v==='string'&&SAFE.test(v), digest=v=>typeof v==='string'&&DIGEST.test(v), sha=v=>typeof v==='string'&&SHA.test(v)
-function artifact(v,path='artifactRef') { if(!exact(v,['digest','mediaType','producerRef','buildRef','sourceCommit'])||!digest(v.digest)||!MEDIA.test(v.mediaType??'')||!id(v.producerRef)||!id(v.buildRef)||!sha(v.sourceCommit)) return fail(path); return {ok:true,value:Object.freeze({...v,digest:v.digest.toLowerCase(),sourceCommit:v.sourceCommit.toLowerCase()})} }
-function release(v,path='releaseRef') { if(!exact(v,['releaseId','artifactDigest','sourceCommit','approvedEvidenceId'])||!id(v.releaseId)||!digest(v.artifactDigest)||!sha(v.sourceCommit)||!id(v.approvedEvidenceId)) return fail(path); return {ok:true,value:Object.freeze({...v,artifactDigest:v.artifactDigest.toLowerCase(),sourceCommit:v.sourceCommit.toLowerCase()})} }
-function operationRef(v,path,kind) { if(!exact(v,['operationId','kind','state','targetHash','sourceCommit','artifactDigest'])||!id(v.operationId)||v.kind!==kind||v.state!=='succeeded'||!digest(v.targetHash)||!sha(v.sourceCommit)||!digest(v.artifactDigest)) return fail(path); return {ok:true,value:Object.freeze({...v,targetHash:v.targetHash.toLowerCase(),sourceCommit:v.sourceCommit.toLowerCase(),artifactDigest:v.artifactDigest.toLowerCase()})} }
-const BASE=['kind','expectedRevision','idempotencyKey','targetId']
-const SPEC={deployment:['artifactRef','releaseRef'], 'production-verification':['deploymentRef'], rollback:['deploymentRef','priorArtifactRef','priorReleaseRef','rollbackRequestId','approvedEvidenceId'], 'rollback-verification':['rollbackRef']}
-export function normalizeDeliveryOperationRequest(input) {
- if(!input||!DELIVERY_OPERATION_KINDS.includes(input.kind)||!exact(input,[...BASE,...SPEC[input.kind]])) return fail('$','unknown_or_missing_field')
- if(!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<1||!id(input.idempotencyKey)||!id(input.targetId)) return fail('$')
- const out={kind:input.kind,expectedRevision:input.expectedRevision,idempotencyKey:input.idempotencyKey,targetId:input.targetId}
- if(input.kind==='deployment'){const a=artifact(input.artifactRef),r=release(input.releaseRef);if(!a.ok)return a;if(!r.ok)return r;if(a.value.digest!==r.value.artifactDigest||a.value.sourceCommit!==r.value.sourceCommit)return fail('releaseRef','artifact_identity_mismatch');Object.assign(out,{artifactRef:a.value,releaseRef:r.value})}
- if(input.kind==='production-verification'){const d=operationRef(input.deploymentRef,'deploymentRef','deployment');if(!d.ok)return d;out.deploymentRef=d.value}
- if(input.kind==='rollback'){const d=operationRef(input.deploymentRef,'deploymentRef','deployment'),a=artifact(input.priorArtifactRef,'priorArtifactRef'),r=release(input.priorReleaseRef,'priorReleaseRef');if(!d.ok)return d;if(!a.ok)return a;if(!r.ok)return r;if(!id(input.rollbackRequestId)||!id(input.approvedEvidenceId)||a.value.digest!==r.value.artifactDigest||a.value.sourceCommit!==r.value.sourceCommit)return fail('$','rollback_identity_mismatch');Object.assign(out,{deploymentRef:d.value,priorArtifactRef:a.value,priorReleaseRef:r.value,rollbackRequestId:input.rollbackRequestId,approvedEvidenceId:input.approvedEvidenceId})}
- if(input.kind==='rollback-verification'){const r=operationRef(input.rollbackRef,'rollbackRef','rollback');if(!r.ok)return r;out.rollbackRef=r.value}
- return {ok:true,value:Object.freeze(out)}
+export const DELIVERY_OPERATION_ERROR_CODES = Object.freeze({
+  INVALID_REQUEST: 'INVALID_DELIVERY_OPERATION_REQUEST',
+  INVALID_RECORD: 'INVALID_DELIVERY_OPERATION_RECORD',
+  INVALID_TRANSITION: 'INVALID_DELIVERY_OPERATION_TRANSITION',
+  RECONCILIATION_REQUIRED: 'DELIVERY_OPERATION_RECONCILIATION_REQUIRED',
+})
+const SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/,
+  SHA = /^[0-9a-f]{40}$/i,
+  DIGEST = /^sha256:[0-9a-f]{64}$/i,
+  MEDIA = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i
+const canonical = (value) =>
+  Array.isArray(value)
+    ? value.map(canonical)
+    : value && typeof value === 'object'
+      ? Object.fromEntries(
+          Object.keys(value)
+            .sort()
+            .map((k) => [k, canonical(value[k])])
+        )
+      : value
+export const canonicalDeliveryHash = (value) =>
+  `sha256:${createHash('sha256')
+    .update(JSON.stringify(canonical(value)))
+    .digest('hex')}`
+const fail = (path, reason = 'invalid_value') => ({
+  ok: false,
+  error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_REQUEST, path, reason },
+})
+const exact = (v, fields) =>
+  v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).every((k) => fields.includes(k))
+const id = (v) => typeof v === 'string' && SAFE.test(v),
+  digest = (v) => typeof v === 'string' && DIGEST.test(v),
+  sha = (v) => typeof v === 'string' && SHA.test(v)
+function artifact(v, path = 'artifactRef') {
+  if (
+    !exact(v, ['digest', 'mediaType', 'producerRef', 'buildRef', 'sourceCommit']) ||
+    !digest(v.digest) ||
+    !MEDIA.test(v.mediaType ?? '') ||
+    !id(v.producerRef) ||
+    !id(v.buildRef) ||
+    !sha(v.sourceCommit)
+  )
+    return fail(path)
+  return {
+    ok: true,
+    value: Object.freeze({ ...v, digest: v.digest.toLowerCase(), sourceCommit: v.sourceCommit.toLowerCase() }),
+  }
 }
-export function deriveDeliveryOperationIdentity({namespaceId,workflowId,deliveryId,caseId,runtimeId},request,targetHash){for(const v of [namespaceId,workflowId,deliveryId,caseId,runtimeId])if(!id(v))return fail('scope');if(!digest(targetHash))return fail('targetHash');const scopeHash=canonicalDeliveryHash({namespaceId,workflowId,deliveryId,caseId,runtimeId,idempotencyKey:request.idempotencyKey});const semanticHash=canonicalDeliveryHash({kind:request.kind,expectedRevision:request.expectedRevision,targetHash,...Object.fromEntries(Object.entries(request).filter(([k])=>/Ref$/.test(k)||['rollbackRequestId','approvedEvidenceId'].includes(k)))});return{ok:true,value:{operationId:`dop_${scopeHash.slice(7,39)}`,scopeHash,semanticHash}}}
-const ALLOWED={pending:['running','failed'],running:['succeeded','failed','indeterminate'],indeterminate:['succeeded','failed'],succeeded:[],failed:[]}
-export function validateDeliveryOperationTransition(previous,next,{inspectedObservation}={}){if(!previous||!next||previous.operationId!==next.operationId||!DELIVERY_OPERATION_STATES.includes(previous.state)||!ALLOWED[previous.state]?.includes(next.state))return{ok:false,error:{code:DELIVERY_OPERATION_ERROR_CODES.INVALID_TRANSITION}};if(previous.state==='indeterminate'&&(!inspectedObservation||inspectedObservation.operationId!==previous.operationId||inspectedObservation.state!==next.state||!['succeeded','failed'].includes(next.state)||next.resolvedOperationId!==previous.operationId))return{ok:false,error:{code:DELIVERY_OPERATION_ERROR_CODES.RECONCILIATION_REQUIRED}};return{ok:true}}
-export function validateDeliveryOperationRecord(v){const fields=['recordType','operationId','kind','expectedRevision','targetRef','artifactRef','releaseRef','deploymentRef','rollbackRef','state','attempt','requestedAt','startedAt','completedAt','execution','adapterCorrelation','scopeHash','semanticHash','result','error','resolvedOperationId','sourceCommit','artifactDigest','rollbackRequestId','approvedEvidenceId'];if(!exact(v,fields)||v.recordType!=='delivery-operation'||!id(v.operationId)||!DELIVERY_OPERATION_KINDS.includes(v.kind)||!DELIVERY_OPERATION_STATES.includes(v.state)||!Number.isSafeInteger(v.expectedRevision)||!Number.isSafeInteger(v.attempt)||v.attempt<0||!digest(v.scopeHash)||!digest(v.semanticHash))return{ok:false,error:{code:DELIVERY_OPERATION_ERROR_CODES.INVALID_RECORD}};for(const key of ['requestedAt','startedAt','completedAt'])if(v[key]!==undefined&&(!Number.isFinite(Date.parse(v[key]))||new Date(Date.parse(v[key])).toISOString()!==v[key]))return{ok:false,error:{code:DELIVERY_OPERATION_ERROR_CODES.INVALID_RECORD,path:key}};return{ok:true,value:Object.freeze({...v})}}
+function release(v, path = 'releaseRef') {
+  if (
+    !exact(v, ['releaseId', 'artifactDigest', 'sourceCommit', 'approvedEvidenceId']) ||
+    !id(v.releaseId) ||
+    !digest(v.artifactDigest) ||
+    !sha(v.sourceCommit) ||
+    !id(v.approvedEvidenceId)
+  )
+    return fail(path)
+  return {
+    ok: true,
+    value: Object.freeze({
+      ...v,
+      artifactDigest: v.artifactDigest.toLowerCase(),
+      sourceCommit: v.sourceCommit.toLowerCase(),
+    }),
+  }
+}
+function operationRef(v, path, kind) {
+  if (
+    !exact(v, ['operationId', 'kind', 'state', 'targetHash', 'sourceCommit', 'artifactDigest']) ||
+    !id(v.operationId) ||
+    v.kind !== kind ||
+    v.state !== 'succeeded' ||
+    !digest(v.targetHash) ||
+    !sha(v.sourceCommit) ||
+    !digest(v.artifactDigest)
+  )
+    return fail(path)
+  return {
+    ok: true,
+    value: Object.freeze({
+      ...v,
+      targetHash: v.targetHash.toLowerCase(),
+      sourceCommit: v.sourceCommit.toLowerCase(),
+      artifactDigest: v.artifactDigest.toLowerCase(),
+    }),
+  }
+}
+const BASE = ['kind', 'expectedRevision', 'idempotencyKey', 'targetId']
+const SPEC = {
+  deployment: ['artifactRef', 'releaseRef'],
+  'production-verification': ['deploymentRef'],
+  rollback: ['deploymentRef', 'priorArtifactRef', 'priorReleaseRef', 'rollbackRequestId', 'approvedEvidenceId'],
+  'rollback-verification': ['rollbackRef'],
+}
+export function normalizeDeliveryOperationRequest(input) {
+  if (!input || !DELIVERY_OPERATION_KINDS.includes(input.kind) || !exact(input, [...BASE, ...SPEC[input.kind]]))
+    return fail('$', 'unknown_or_missing_field')
+  if (
+    !Number.isSafeInteger(input.expectedRevision) ||
+    input.expectedRevision < 1 ||
+    !id(input.idempotencyKey) ||
+    !id(input.targetId)
+  )
+    return fail('$')
+  const out = {
+    kind: input.kind,
+    expectedRevision: input.expectedRevision,
+    idempotencyKey: input.idempotencyKey,
+    targetId: input.targetId,
+  }
+  if (input.kind === 'deployment') {
+    const a = artifact(input.artifactRef),
+      r = release(input.releaseRef)
+    if (!a.ok) return a
+    if (!r.ok) return r
+    if (a.value.digest !== r.value.artifactDigest || a.value.sourceCommit !== r.value.sourceCommit)
+      return fail('releaseRef', 'artifact_identity_mismatch')
+    Object.assign(out, { artifactRef: a.value, releaseRef: r.value })
+  }
+  if (input.kind === 'production-verification') {
+    const d = operationRef(input.deploymentRef, 'deploymentRef', 'deployment')
+    if (!d.ok) return d
+    out.deploymentRef = d.value
+  }
+  if (input.kind === 'rollback') {
+    const d = operationRef(input.deploymentRef, 'deploymentRef', 'deployment'),
+      a = artifact(input.priorArtifactRef, 'priorArtifactRef'),
+      r = release(input.priorReleaseRef, 'priorReleaseRef')
+    if (!d.ok) return d
+    if (!a.ok) return a
+    if (!r.ok) return r
+    if (
+      !id(input.rollbackRequestId) ||
+      !id(input.approvedEvidenceId) ||
+      a.value.digest !== r.value.artifactDigest ||
+      a.value.sourceCommit !== r.value.sourceCommit
+    )
+      return fail('$', 'rollback_identity_mismatch')
+    Object.assign(out, {
+      deploymentRef: d.value,
+      priorArtifactRef: a.value,
+      priorReleaseRef: r.value,
+      rollbackRequestId: input.rollbackRequestId,
+      approvedEvidenceId: input.approvedEvidenceId,
+    })
+  }
+  if (input.kind === 'rollback-verification') {
+    const r = operationRef(input.rollbackRef, 'rollbackRef', 'rollback')
+    if (!r.ok) return r
+    out.rollbackRef = r.value
+  }
+  return { ok: true, value: Object.freeze(out) }
+}
+export function deriveDeliveryOperationIdentity(
+  { namespaceId, workflowId, deliveryId, caseId, runtimeId },
+  request,
+  targetHash
+) {
+  for (const v of [namespaceId, workflowId, deliveryId, caseId, runtimeId]) if (!id(v)) return fail('scope')
+  if (!digest(targetHash)) return fail('targetHash')
+  const scopeHash = canonicalDeliveryHash({
+    namespaceId,
+    workflowId,
+    deliveryId,
+    caseId,
+    runtimeId,
+    idempotencyKey: request.idempotencyKey,
+  })
+  const semanticHash = canonicalDeliveryHash({
+    kind: request.kind,
+    expectedRevision: request.expectedRevision,
+    targetHash,
+    ...Object.fromEntries(
+      Object.entries(request).filter(([k]) => /Ref$/.test(k) || ['rollbackRequestId', 'approvedEvidenceId'].includes(k))
+    ),
+  })
+  return { ok: true, value: { operationId: `dop_${scopeHash.slice(7, 39)}`, scopeHash, semanticHash } }
+}
+const ALLOWED = {
+  pending: ['running', 'failed'],
+  running: ['succeeded', 'failed', 'indeterminate'],
+  indeterminate: ['succeeded', 'failed'],
+  succeeded: [],
+  failed: [],
+}
+export function validateDeliveryOperationTransition(previous, next, { inspectedObservation } = {}) {
+  if (
+    !previous ||
+    !next ||
+    previous.operationId !== next.operationId ||
+    !DELIVERY_OPERATION_STATES.includes(previous.state) ||
+    !ALLOWED[previous.state]?.includes(next.state)
+  )
+    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_TRANSITION } }
+  if (
+    previous.state === 'indeterminate' &&
+    (!inspectedObservation ||
+      inspectedObservation.operationId !== previous.operationId ||
+      inspectedObservation.state !== next.state ||
+      !['succeeded', 'failed'].includes(next.state) ||
+      next.resolvedOperationId !== previous.operationId)
+  )
+    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.RECONCILIATION_REQUIRED } }
+  return { ok: true }
+}
+export function validateDeliveryOperationRecord(v) {
+  const fields = [
+    'recordType',
+    'operationId',
+    'kind',
+    'expectedRevision',
+    'targetRef',
+    'artifactRef',
+    'releaseRef',
+    'deploymentRef',
+    'rollbackRef',
+    'state',
+    'attempt',
+    'requestedAt',
+    'startedAt',
+    'completedAt',
+    'execution',
+    'adapterCorrelation',
+    'scopeHash',
+    'semanticHash',
+    'result',
+    'error',
+    'resolvedOperationId',
+    'sourceCommit',
+    'artifactDigest',
+    'rollbackRequestId',
+    'approvedEvidenceId',
+  ]
+  if (
+    !exact(v, fields) ||
+    v.recordType !== 'delivery-operation' ||
+    !id(v.operationId) ||
+    !DELIVERY_OPERATION_KINDS.includes(v.kind) ||
+    !DELIVERY_OPERATION_STATES.includes(v.state) ||
+    !Number.isSafeInteger(v.expectedRevision) ||
+    !Number.isSafeInteger(v.attempt) ||
+    v.attempt < 0 ||
+    !digest(v.scopeHash) ||
+    !digest(v.semanticHash)
+  )
+    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_RECORD } }
+  for (const key of ['requestedAt', 'startedAt', 'completedAt'])
+    if (
+      v[key] !== undefined &&
+      (!Number.isFinite(Date.parse(v[key])) || new Date(Date.parse(v[key])).toISOString() !== v[key])
+    )
+      return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_RECORD, path: key } }
+  return { ok: true, value: Object.freeze({ ...v }) }
+}

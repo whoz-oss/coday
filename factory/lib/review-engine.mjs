@@ -162,17 +162,17 @@ const READ_ONLY_INTEGRATION_VALIDATORS = {
  * @readonly
  */
 export const ENGINE_ERROR_CODES = /** @type {const} */ ({
-  DUPLICATE_REVIEWER_IDS:  'DUPLICATE_REVIEWER_IDS',
-  NO_REVIEWERS:            'NO_REVIEWERS',
-  PREFLIGHT_FAILED:        'PREFLIGHT_FAILED',
-  REVIEWER_TIMEOUT:        'REVIEWER_TIMEOUT',
-  REVIEWER_PENDING:        'REVIEWER_PENDING',
-  REVIEWER_AGENT_ERROR:    'REVIEWER_AGENT_ERROR',
-  REVIEWER_NO_JSON:        'REVIEWER_NO_JSON',
-  REVIEWER_INVALID_JSON:   'REVIEWER_INVALID_JSON',
+  DUPLICATE_REVIEWER_IDS: 'DUPLICATE_REVIEWER_IDS',
+  NO_REVIEWERS: 'NO_REVIEWERS',
+  PREFLIGHT_FAILED: 'PREFLIGHT_FAILED',
+  REVIEWER_TIMEOUT: 'REVIEWER_TIMEOUT',
+  REVIEWER_PENDING: 'REVIEWER_PENDING',
+  REVIEWER_AGENT_ERROR: 'REVIEWER_AGENT_ERROR',
+  REVIEWER_NO_JSON: 'REVIEWER_NO_JSON',
+  REVIEWER_INVALID_JSON: 'REVIEWER_INVALID_JSON',
   REVIEWER_INVALID_RESULT: 'REVIEWER_INVALID_RESULT',
-  ARTIFACT_HASH_MISMATCH:  'ARTIFACT_HASH_MISMATCH',
-  AGGREGATE_INVALID:       'AGGREGATE_INVALID',
+  ARTIFACT_HASH_MISMATCH: 'ARTIFACT_HASH_MISMATCH',
+  AGGREGATE_INVALID: 'AGGREGATE_INVALID',
 })
 
 // ---------------------------------------------------------------------------
@@ -287,7 +287,7 @@ export async function runReview(params) {
         `reviewerId dupliqué : ${r.reviewerId}`,
         [],
         null,
-        revisionMeta,
+        revisionMeta
       )
     }
     idSet.add(r.reviewerId)
@@ -304,13 +304,7 @@ export async function runReview(params) {
   }
 
   if (preflightErrors.length > 0) {
-    return engineFail(
-      ENGINE_ERROR_CODES.PREFLIGHT_FAILED,
-      preflightErrors.join(' | '),
-      [],
-      null,
-      revisionMeta,
-    )
+    return engineFail(ENGINE_ERROR_CODES.PREFLIGHT_FAILED, preflightErrors.join(' | '), [], null, revisionMeta)
   }
 
   // --- Construction du brief commun ---
@@ -338,7 +332,6 @@ export async function runReview(params) {
       activeCases,
     })
   )
-
 
   // Promise.allSettled garantit qu'on attend tous même si l'un échoue.
   const settled = await Promise.allSettled(promises)
@@ -396,10 +389,7 @@ export async function runReview(params) {
 
   // --- Agrégation ---
   const parseOutcomes = reviewerResults.map((r) => r.parseOutcome)
-  const aggregate = aggregateReviews(
-    /** @type {import('./review.mjs').ParseOutcome[]} */ (parseOutcomes),
-    config,
-  )
+  const aggregate = aggregateReviews(/** @type {import('./review.mjs').ParseOutcome[]} */ (parseOutcomes), config)
 
   if (aggregate.verdict === 'invalid-output') {
     return {
@@ -448,7 +438,8 @@ export async function runReview(params) {
  * @returns {Promise<ReviewerRunResult>}
  */
 async function runOneReviewer(params) {
-  const { namespaceId, reviewerDef, config, subject, sharedBrief, agentOps, timeoutMs, startTimeoutMs, activeCases } = params
+  const { namespaceId, reviewerDef, config, subject, sharedBrief, agentOps, timeoutMs, startTimeoutMs, activeCases } =
+    params
   const { reviewerId, agentName } = reviewerDef
 
   /** @type {string|null} */
@@ -456,10 +447,7 @@ async function runOneReviewer(params) {
 
   try {
     // Créer le case
-    const created = await agentOps.createCase(
-      namespaceId,
-      `review:${reviewerId}`,
-    )
+    const created = await agentOps.createCase(namespaceId, `review:${reviewerId}`)
     caseId = created.id
 
     // Enregistrer dans les deux registres :
@@ -469,12 +457,10 @@ async function runOneReviewer(params) {
     registerActiveCase(caseId, `review:${reviewerId}`)
 
     // Lancer le tour d'agent
-    const turn = await agentOps.runAgentTurn(
-      caseId,
-      agentName,
-      sharedBrief,
-      { startTimeoutMs, workTimeoutMs: timeoutMs },
-    )
+    const turn = await agentOps.runAgentTurn(caseId, agentName, sharedBrief, {
+      startTimeoutMs,
+      workTimeoutMs: timeoutMs,
+    })
 
     // Retirer du registre local (le turn est terminé).
     // Le désenregistrement global se fait dans le bloc finally ci-dessous.
@@ -507,19 +493,40 @@ async function runOneReviewer(params) {
     try {
       parsed = JSON.parse(fragment)
     } catch {
-      return reviewerFail(reviewerId, agentName, caseId, turn.status, rawOutput, ENGINE_ERROR_CODES.REVIEWER_INVALID_JSON)
+      return reviewerFail(
+        reviewerId,
+        agentName,
+        caseId,
+        turn.status,
+        rawOutput,
+        ENGINE_ERROR_CODES.REVIEWER_INVALID_JSON
+      )
     }
 
     // Vérifier le hash de l'artefact si le reviewer l'a inclus
     const reportedHash = parsed?.artifactDescriptor?.hash
     if (reportedHash !== undefined && reportedHash !== subject.hash) {
-      return reviewerFail(reviewerId, agentName, caseId, turn.status, rawOutput, ENGINE_ERROR_CODES.ARTIFACT_HASH_MISMATCH)
+      return reviewerFail(
+        reviewerId,
+        agentName,
+        caseId,
+        turn.status,
+        rawOutput,
+        ENGINE_ERROR_CODES.ARTIFACT_HASH_MISMATCH
+      )
     }
 
     // Parser et valider la structure
     const outcome = parseReviewResult(parsed, { subjectType: config.subjectType, axes: reviewerDef.axes })
     if (!outcome.ok) {
-      return reviewerFail(reviewerId, agentName, caseId, turn.status, rawOutput, ENGINE_ERROR_CODES.REVIEWER_INVALID_RESULT)
+      return reviewerFail(
+        reviewerId,
+        agentName,
+        caseId,
+        turn.status,
+        rawOutput,
+        ENGINE_ERROR_CODES.REVIEWER_INVALID_RESULT
+      )
     }
 
     return {
@@ -528,25 +535,17 @@ async function runOneReviewer(params) {
       agentName,
       caseId,
       turnStatus: turn.status,
-      rawOutput,  // prose, pour affichage humain uniquement
+      rawOutput, // prose, pour affichage humain uniquement
       parseOutcome: outcome,
       errorCode: null,
       errorDetail: null,
     }
-
   } catch (err) {
     // Exception réseau ou autre — NE PAS retirer le case de activeCases ici.
     // Si le case existe, il est peut-être encore actif côté AgentOS.
     // killActiveCases() s'en chargera après Promise.allSettled.
     // Le désenregistrement global se fait dans le bloc finally ci-dessous.
-    return reviewerFail(
-      reviewerId,
-      agentName,
-      caseId,
-      null,
-      null,
-      ENGINE_ERROR_CODES.REVIEWER_AGENT_ERROR,
-    )
+    return reviewerFail(reviewerId, agentName, caseId, null, null, ENGINE_ERROR_CODES.REVIEWER_AGENT_ERROR)
   } finally {
     // Désenregistrement du registre global SIGTERM.
     // Toujours exécuté quel que soit le chemin de sortie (succès, échec, exception).
@@ -641,9 +640,7 @@ async function preflightReviewer(namespaceId, reviewerDef, agentOps) {
  * @returns {string}
  */
 function buildReviewerBrief(subject, config, extraBrief) {
-  const axisLines = config.axes
-    .map((a) => `- ${a.id}${a.veto ? ' [VETO]' : ''} (poids ${a.weight ?? 1})`)
-    .join('\n')
+  const axisLines = config.axes.map((a) => `- ${a.id}${a.veto ? ' [VETO]' : ''} (poids ${a.weight ?? 1})`).join('\n')
 
   return [
     `## Revue de ${subject.subjectType}`,
@@ -670,7 +667,9 @@ function buildReviewerBrief(subject, config, extraBrief) {
     '- findings : [{ severity, axisId, title, evidence, recommendation, file?, line? }]',
     '- sensitiveAreas? : string[]',
     `- artifactDescriptor : { path: "${subject.path}", hash: "${subject.hash}" }`,
-  ].filter((l) => l !== undefined).join('\n')
+  ]
+    .filter((l) => l !== undefined)
+    .join('\n')
 }
 
 /**

@@ -49,10 +49,19 @@ export const NAMESPACE_METRICS_MAX_LIMIT = 500
  * Validate and parse the limit query parameter.
  * Returns { ok: true, limit } or { ok: false, code, message }.
  */
-export function parseNamespaceMetricsLimit(raw, defaultLimit = NAMESPACE_METRICS_DEFAULT_LIMIT, maxLimit = NAMESPACE_METRICS_MAX_LIMIT) {
+export function parseNamespaceMetricsLimit(
+  raw,
+  defaultLimit = NAMESPACE_METRICS_DEFAULT_LIMIT,
+  maxLimit = NAMESPACE_METRICS_MAX_LIMIT
+) {
   if (raw === undefined || raw === null) return { ok: true, limit: defaultLimit }
   const parsed = Number(raw)
-  if (!Number.isInteger(parsed) || parsed < 1) return { ok: false, code: 'INVALID_LIMIT', message: `limit must be a positive integer (default ${defaultLimit}, max ${maxLimit}).` }
+  if (!Number.isInteger(parsed) || parsed < 1)
+    return {
+      ok: false,
+      code: 'INVALID_LIMIT',
+      message: `limit must be a positive integer (default ${defaultLimit}, max ${maxLimit}).`,
+    }
   if (parsed > maxLimit) return { ok: false, code: 'INVALID_LIMIT', message: `limit must not exceed ${maxLimit}.` }
   return { ok: true, limit: parsed }
 }
@@ -72,7 +81,8 @@ export function selectWorkflows(allActive, scope, { groupId, rootWorkflowId } = 
   }
 
   if (scope === 'group') {
-    if (groupId === undefined) return { ok: false, code: 'MISSING_GROUP_ID', message: 'groupId is required when scope=group.' }
+    if (groupId === undefined)
+      return { ok: false, code: 'MISSING_GROUP_ID', message: 'groupId is required when scope=group.' }
     const validated = validateWorkflowProjectionId(groupId, 'groupId')
     if (!validated.ok) return { ok: false, code: 'INVALID_GROUP_ID', message: 'groupId is invalid.' }
     const selected = allActive.filter((snapshot) => {
@@ -83,7 +93,8 @@ export function selectWorkflows(allActive, scope, { groupId, rootWorkflowId } = 
   }
 
   // scope === 'root'
-  if (rootWorkflowId === undefined) return { ok: false, code: 'MISSING_ROOT_WORKFLOW_ID', message: 'rootWorkflowId is required when scope=root.' }
+  if (rootWorkflowId === undefined)
+    return { ok: false, code: 'MISSING_ROOT_WORKFLOW_ID', message: 'rootWorkflowId is required when scope=root.' }
   const validatedRoot = validateWorkflowProjectionId(rootWorkflowId, 'rootWorkflowId')
   if (!validatedRoot.ok) return { ok: false, code: 'INVALID_ROOT_WORKFLOW_ID', message: 'rootWorkflowId is invalid.' }
   const selected = allActive.filter((snapshot) => {
@@ -92,7 +103,11 @@ export function selectWorkflows(allActive, scope, { groupId, rootWorkflowId } = 
   })
   // The root workflow itself must be present in the active set.
   if (!selected.some((snapshot) => snapshot?.projection?.workflowId === rootWorkflowId)) {
-    return { ok: false, code: 'ROOT_WORKFLOW_NOT_FOUND', message: 'Root workflow was not found in the active set for this namespace.' }
+    return {
+      ok: false,
+      code: 'ROOT_WORKFLOW_NOT_FOUND',
+      message: 'Root workflow was not found in the active set for this namespace.',
+    }
   }
   return { ok: true, selected }
 }
@@ -128,9 +143,30 @@ export function applyNamespaceMetricsLimit(selected, limit) {
  * incomplete with reason 'selection_truncated' appended. WIP is still
  * counted over the included set (explicitly noted as partial).
  */
-export function projectNamespaceOperationalMetrics({ namespaceId, scope, selector, observedAt, workflows, timingsByWorkflowId, interactions, deliveries, deliveryEvidence, matchedWorkflowCount, includedWorkflowCount, truncated }) {
+export function projectNamespaceOperationalMetrics({
+  namespaceId,
+  scope,
+  selector,
+  observedAt,
+  workflows,
+  timingsByWorkflowId,
+  interactions,
+  deliveries,
+  deliveryEvidence,
+  matchedWorkflowCount,
+  includedWorkflowCount,
+  truncated,
+}) {
   if (workflows.length === 0) {
-    return buildEmptyRollup({ namespaceId, scope, selector, observedAt, matchedWorkflowCount, includedWorkflowCount, truncated })
+    return buildEmptyRollup({
+      namespaceId,
+      scope,
+      selector,
+      observedAt,
+      matchedWorkflowCount,
+      includedWorkflowCount,
+      truncated,
+    })
   }
 
   const projection = projectFactoryOperationalMetrics({
@@ -171,9 +207,20 @@ function buildSelector(scope, { groupId, rootWorkflowId } = {}) {
   return { scope }
 }
 
-function buildEmptyRollup({ namespaceId, scope, selector, observedAt, matchedWorkflowCount, includedWorkflowCount, truncated }) {
+function buildEmptyRollup({
+  namespaceId,
+  scope,
+  selector,
+  observedAt,
+  matchedWorkflowCount,
+  includedWorkflowCount,
+  truncated,
+}) {
   const unavailable = (reason, sources) => ({
-    available: false, complete: false, reasons: [reason], sourceCategories: sources,
+    available: false,
+    complete: false,
+    reasons: [reason],
+    sourceCategories: sources,
   })
   return {
     schemaVersion: '1',
@@ -191,9 +238,17 @@ function buildEmptyRollup({ namespaceId, scope, selector, observedAt, matchedWor
     metrics: {
       cycleTime: unavailable('no_active_workflows_in_selection', ['workflow-journal']),
       reviewTime: unavailable('no_active_workflows_in_selection', ['human-interaction-journal']),
-      currentWip: { available: true, complete: true, reasons: [], sourceCategories: ['workflow-snapshot'], value: { semantics: 'unique_workflows_in_non_terminal_states', count: 0, byState: {} } },
+      currentWip: {
+        available: true,
+        complete: true,
+        reasons: [],
+        sourceCategories: ['workflow-snapshot'],
+        value: { semantics: 'unique_workflows_in_non_terminal_states', count: 0, byState: {} },
+      },
       deploymentDelay: unavailable('no_active_workflows_in_selection', ['delivery-operation-journal']),
-      workflowCreatedToProductionVerified: unavailable('no_active_workflows_in_selection', ['delivery-operation-journal']),
+      workflowCreatedToProductionVerified: unavailable('no_active_workflows_in_selection', [
+        'delivery-operation-journal',
+      ]),
     },
     capabilities: {
       llmUsage: { available: false, reason: 'llm_usage_capture_not_implemented' },
@@ -219,7 +274,10 @@ function applyTruncationToMetrics(metrics) {
     cycleTime: markIncomplete(metrics.cycleTime, 'selection_truncated'),
     reviewTime: markIncomplete(metrics.reviewTime, 'selection_truncated'),
     deploymentDelay: markIncomplete(metrics.deploymentDelay, 'selection_truncated'),
-    workflowCreatedToProductionVerified: markIncomplete(metrics.workflowCreatedToProductionVerified, 'selection_truncated'),
+    workflowCreatedToProductionVerified: markIncomplete(
+      metrics.workflowCreatedToProductionVerified,
+      'selection_truncated'
+    ),
     // currentWip: counts the included set; marked incomplete separately below.
     currentWip: markIncomplete(metrics.currentWip, 'selection_truncated'),
   }

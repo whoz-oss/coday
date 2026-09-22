@@ -77,9 +77,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
  * Le chemin est résolu en absolu pour éviter toute ambiguïté sur le `cwd`
  * des commandes oracle.
  */
-const REPO_ROOT = process.env.FACTORY_ROOT
-  ? resolve(process.env.FACTORY_ROOT)
-  : join(__dirname, '..', '..')
+const REPO_ROOT = process.env.FACTORY_ROOT ? resolve(process.env.FACTORY_ROOT) : join(__dirname, '..', '..')
 
 /**
  * Définition d'un oracle.
@@ -155,10 +153,8 @@ export const domains = {
     oracles: [
       {
         name: 'build',
-        command: process.env.FACTORY_COMMAND_BACK
-          ?? './gradlew :agentos-service:build --rerun-tasks --console=plain',
-        cwd: process.env.FACTORY_CWD_BACK
-          ?? join(REPO_ROOT, 'agentos'),
+        command: process.env.FACTORY_COMMAND_BACK ?? './gradlew :agentos-service:build --rerun-tasks --console=plain',
+        cwd: process.env.FACTORY_CWD_BACK ?? join(REPO_ROOT, 'agentos'),
       },
     ],
     // lock: null  — placeholder pour le verrou lecteurs/écrivain à venir
@@ -212,10 +208,10 @@ export const domains = {
         // la chaîne d'extension vers `tsconfig.base.json`). Ne pas le supprimer —
         // il documente l'intention et la raison de la désactivation.
         name: 'build',
-        command: process.env.FACTORY_COMMAND_FRONT_BUILD
-          ?? 'pnpm nx run-many --target=build --configuration=development --skip-nx-cache',
-        cwd: process.env.FACTORY_CWD_FRONT
-          ?? REPO_ROOT,
+        command:
+          process.env.FACTORY_COMMAND_FRONT_BUILD ??
+          'pnpm nx run-many --target=build --configuration=development --skip-nx-cache',
+        cwd: process.env.FACTORY_CWD_FRONT ?? REPO_ROOT,
         buildHostArg: true,
       },
       // ORACLE `types` DÉSACTIVÉ — TS5090 systématique dans le dépôt cible.
@@ -272,10 +268,10 @@ export const domains = {
         // Un oracle sans `filesArg` ni `buildHostArg` (comme `build` Gradle) reçoit
         // sa commande telle quelle — périmètre fixe, indépendant du diff.
         name: 'tests',
-        command: process.env.FACTORY_COMMAND_FRONT
-          ?? `pnpm nx affected -t ${process.env.FACTORY_FRONT_TEST_TARGET ?? 'frontend-test'}`,
-        cwd: process.env.FACTORY_CWD_FRONT
-          ?? REPO_ROOT,
+        command:
+          process.env.FACTORY_COMMAND_FRONT ??
+          `pnpm nx affected -t ${process.env.FACTORY_FRONT_TEST_TARGET ?? 'frontend-test'}`,
+        cwd: process.env.FACTORY_CWD_FRONT ?? REPO_ROOT,
         filesArg: true,
       },
     ],

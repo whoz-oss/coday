@@ -160,7 +160,7 @@ export function countTaskOutcomes(output) {
   let fromCache = 0
   let skipped = 0
   let executed = 0
-  let nxTaskLines = 0  // count of '> nx run' lines seen
+  let nxTaskLines = 0 // count of '> nx run' lines seen
 
   // Champs de la vérification croisée par la ligne de synthèse cache Nx.
   // Présente uniquement quand ≥1 tâche est servie par le cache.
@@ -239,9 +239,7 @@ export function countTaskOutcomes(output) {
     // run-many à une seule cible, projets == tâches. Pour un run multi-cibles,
     // ce serait faux. L'oracle factory utilise toujours run-many à une seule
     // cible (type-check ou frontend-test) — l'hypothèse est donc safe.
-    const successMatch = line.match(
-      /NX\s+Successfully\s+ran\s+target\s+\S+\s+for\s+(\d+)\s+projects?/
-    )
+    const successMatch = line.match(/NX\s+Successfully\s+ran\s+target\s+\S+\s+for\s+(\d+)\s+projects?/)
     if (successMatch) {
       successSummaryFound = true
       successSummaryTotal = parseInt(successMatch[1], 10)
@@ -256,11 +254,7 @@ export function countTaskOutcomes(output) {
   // (plus précise : donne fromCache ET total). Si absente, on utilise la ligne
   // de succès pour le total uniquement (fromCache reste null).
   const summaryFromCache = cacheSummaryFound ? cacheSummaryFromCache : null
-  const summaryTotal = cacheSummaryFound
-    ? cacheSummaryTotal
-    : successSummaryFound
-      ? successSummaryTotal
-      : null
+  const summaryTotal = cacheSummaryFound ? cacheSummaryTotal : successSummaryFound ? successSummaryTotal : null
 
   // Raison de l'absence de summaryFound, quand applicable.
   // null si summaryFound est true.
@@ -367,7 +361,9 @@ export function countTaskOutcomes(output) {
  */
 function contentFingerprint(cwd, relPath) {
   try {
-    return createHash('sha256').update(readFileSync(join(cwd, relPath))).digest('hex')
+    return createHash('sha256')
+      .update(readFileSync(join(cwd, relPath)))
+      .digest('hex')
   } catch {
     // Fichier disparu ou illisible entre le listing et la lecture.
     // Sentinelle distincte de tout condensat : une disparition est un changement.

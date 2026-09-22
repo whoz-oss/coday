@@ -6,16 +6,198 @@ import { parseForgeLedger } from './forge-ledger.mjs'
 import { snapshotDiff, diffSince } from './oracle.mjs'
 import { parsePlan, checkPlanFiles } from './plan.mjs'
 import * as runtimeDefault from './agentos.mjs'
-export const STORY_EDIT_SCHEMA_VERSION=1
-export const STORY_EDIT_POLICY_VERSION='forge-story-edit-v1'
-const fail=(code,message=code)=>{const error=new Error(message);error.code=code;throw error}
-const hash=value=>`sha256:${createHash('sha256').update(value).digest('hex')}`
-const append=(path,event)=>appendFileSync(path,`${JSON.stringify(event)}\n`,'utf8')
-const safeArtifact=(store,descriptor)=>{if(!descriptor?.path||!descriptor?.sha256)fail('STORY_EDIT_ANALYSIS_ARTIFACT_INVALID','Analysis artifact descriptor requires path and sha256.');const root=resolve(store),path=resolve(root,descriptor.path);if(!path.startsWith(`${root}/`))fail('STORY_EDIT_ANALYSIS_ARTIFACT_PATH_INVALID','Analysis artifact path escapes the run store.');if(!existsSync(path))fail('STORY_EDIT_ANALYSIS_ARTIFACT_INVALID','Analysis artifact does not exist.');const text=readFileSync(path,'utf8');if(hash(text)!==descriptor.sha256)fail('STORY_EDIT_ANALYSIS_ARTIFACT_HASH_MISMATCH','Analysis artifact content does not match its SHA-256.');return text}
-const matches=(pattern,file)=>new RegExp(`^${pattern.split('/').map(p=>p==='**'?'.*':p==='*'?'[^/]+':p.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('/')}$`).test(file)
-const allowedModified=(file,scope,plan)=>plan.files.includes(file)&&!scope.deny.some(p=>matches(p,file))
-const allowedCreated=(file,scope)=>scope.create.some(p=>matches(p,file))&&!scope.deny.some(p=>matches(p,file))
-function planFromArtifact(text){const blocks=[...text.matchAll(/```json\s*([\s\S]*?)```/g)].map(m=>m[1].trim());if(blocks.length!==1)fail('STORY_EDIT_ANALYSIS_PLAN_INVALID','Analysis artifact must contain exactly one JSON plan.');let raw;try{raw=JSON.parse(blocks[0])}catch{fail('STORY_EDIT_ANALYSIS_PLAN_INVALID','Analysis artifact JSON plan is invalid.')}if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['files','doneWhen','steps'].includes(k)))fail('STORY_EDIT_ANALYSIS_PLAN_INVALID','Analysis artifact plan schema is invalid.');const parsed=parsePlan(`\`\`\`json\n${blocks[0]}\n\`\`\``);if(!parsed.ok)fail('STORY_EDIT_ANALYSIS_PLAN_INVALID',parsed.error);return parsed.plan}
-export async function executeStoryEdit({roots,epicRunId,storyRunId,analysisExecutionId,namespaceId,agentName,expectedSpecHash,storySpecHash,supplement,runtime=runtimeDefault,now=()=>new Date().toISOString()}){
- if(!namespaceId||!agentName)fail('STORY_EDIT_INPUT_INVALID','namespaceId and agentName are required.');if(supplement!==undefined&&(typeof supplement!=='string'||supplement.length>4000))fail('STORY_EDIT_SUPPLEMENT_INVALID','supplement must be a string of at most 4000 characters.');const store=ensureForgeRunStore(roots),filePath=join(store,`${epicRunId}.jsonl`);if(!existsSync(filePath))fail('STORY_EDIT_RUN_NOT_FOUND',`Epic run ${epicRunId} has no ledger.`);const events=parseForgeLedger(filePath),epic=events.find(e=>e.event==='run_started'&&e.runId===epicRunId);if(!epic)fail('STORY_EDIT_RUN_NOT_FOUND',`Epic run ${epicRunId} is absent from its ledger.`);const story=events.find(e=>e.event==='story_run_created'&&e.runId===storyRunId&&e.parentRunId===epicRunId);if(!story)fail('STORY_EDIT_STORY_NOT_FOUND',`Story run ${storyRunId} is absent from Epic run ${epicRunId}.`);if(events.some(e=>e.event==='story_edit_started'&&e.storyRunId===storyRunId&&!events.some(f=>f.event==='story_edit_finished'&&f.editId===e.editId)))fail('STORY_EDIT_ALREADY_RUNNING','A Story edit is already active.');const g1=events.find(e=>e.event==='human_decision_recorded'&&e.runId===epicRunId&&e.gate==='G1');if(g1?.decision?.outcome!=='approved')fail('STORY_EDIT_G1_NOT_APPROVED');const g2=events.filter(e=>e.event==='g2_evaluated'&&e.runId===epicRunId&&e.status==='passed').at(-1);if(!g2||g2.spec?.sha256!==expectedSpecHash)fail('STORY_EDIT_G2_NOT_PASSED');if(storySpecHash!==undefined){const g2us=events.find(e=>e.event==='g2_us_evaluated'&&e.storyRunId===storyRunId&&e.status==='passed'&&e.storySpec?.sha256===storySpecHash);if(!g2us)fail('STORY_EDIT_G2_US_NOT_PASSED')}const analysis=events.find(e=>e.event==='agent_execution_finished'&&e.executionId===analysisExecutionId&&e.storyRunId===storyRunId&&e.status==='finished');const validation=events.find(e=>e.event==='story_analysis_plan_validated'&&e.executionId===analysisExecutionId&&e.status==='valid');if(!analysis||!validation)fail('STORY_EDIT_ANALYSIS_NOT_VALID');const text=safeArtifact(store,analysis.artifact);if(validation.artifact?.sha256!==analysis.artifact?.sha256||validation.artifact?.path!==analysis.artifact?.path)fail('STORY_EDIT_ANALYSIS_PLAN_STALE','Analysis validation does not reference the finished artifact.');const plan=planFromArtifact(text);const missing=checkPlanFiles(plan.files,roots.repoRoot).missingFiles;if(missing.length)fail('STORY_EDIT_ANALYSIS_PLAN_STALE',`Analysis plan files are missing: ${missing.join(', ')}.`);const spec=(await import('./forge-spec.mjs')).loadForgeSpec({specPath:g2.spec.path,roots,workItem:epic.workItem});if(spec.sha256!==g2.spec.sha256)fail('STORY_EDIT_SPEC_HASH_STALE');const agent=await runtime.preflightAgent(namespaceId,agentName);if(!agent.ok)fail('STORY_EDIT_AGENT_PREFLIGHT_FAILED');const writable=await runtime.preflightWritableWorkspace(namespaceId,agent.agent,roots.repoRoot);if(!writable.ok)fail('STORY_EDIT_WRITABLE_PREFLIGHT_FAILED',writable.reason);const editId=`edit_${randomUUID()}`,brief=[`Epic: ${epic.workItem.id}`,`Story: ${story.workItem.id}`,`Spec SHA-256: ${spec.sha256}`,`Files to modify: ${plan.files.join(', ')}`,`Done when: ${plan.doneWhen}`,`Allow: ${spec.frontmatter.scope.allow.join(', ')}`,`Create: ${spec.frontmatter.scope.create.join(', ')}`,`Deny: ${spec.frontmatter.scope.deny.join(', ')}`,supplement?`Supplement: ${supplement}`:'','Implement only this plan. Do not run shell, git, tests, builds, or oracles.'].filter(Boolean).join('\n');const before=snapshotDiff(roots.repoRoot),created=await runtime.createCase(namespaceId,`Forge edit ${story.workItem.id}`);append(filePath,{schemaVersion:1,event:'story_edit_started',runId:epicRunId,storyRunId,editId,analysisExecutionId,caseId:created.id,policyVersion:STORY_EDIT_POLICY_VERSION,at:now()});const turn=await runtime.runAgentTurn(created.id,agentName,brief);const changed=diffSince(before,roots.repoRoot),invalid=[...changed.modified.filter(file=>!allowedModified(file,spec.frontmatter.scope,plan)),...changed.untracked.filter(file=>!allowedCreated(file,spec.frontmatter.scope))];const status=turn.status==='finished'&&invalid.length===0?'finished':'failed';append(filePath,{schemaVersion:1,event:'story_edit_finished',runId:epicRunId,storyRunId,editId,caseId:created.id,status,outcome:turn.status,caseStatus:turn.caseStatus??null,killedByBudget:turn.killedByBudget===true,filesModified:changed.modified,filesCreated:changed.untracked,diffValidation:{status:invalid.length?'invalid':'valid',code:invalid.length?'STORY_EDIT_DIFF_OUT_OF_SCOPE':'STORY_EDIT_DIFF_VALID',invalidFiles:invalid},at:now()});return {editId,status,filesModified:changed.modified,filesCreated:changed.untracked,diffValidation:{status:invalid.length?'invalid':'valid',invalidFiles:invalid}}
+export const STORY_EDIT_SCHEMA_VERSION = 1
+export const STORY_EDIT_POLICY_VERSION = 'forge-story-edit-v1'
+const fail = (code, message = code) => {
+  const error = new Error(message)
+  error.code = code
+  throw error
+}
+const hash = (value) => `sha256:${createHash('sha256').update(value).digest('hex')}`
+const append = (path, event) => appendFileSync(path, `${JSON.stringify(event)}\n`, 'utf8')
+const safeArtifact = (store, descriptor) => {
+  if (!descriptor?.path || !descriptor?.sha256)
+    fail('STORY_EDIT_ANALYSIS_ARTIFACT_INVALID', 'Analysis artifact descriptor requires path and sha256.')
+  const root = resolve(store),
+    path = resolve(root, descriptor.path)
+  if (!path.startsWith(`${root}/`))
+    fail('STORY_EDIT_ANALYSIS_ARTIFACT_PATH_INVALID', 'Analysis artifact path escapes the run store.')
+  if (!existsSync(path)) fail('STORY_EDIT_ANALYSIS_ARTIFACT_INVALID', 'Analysis artifact does not exist.')
+  const text = readFileSync(path, 'utf8')
+  if (hash(text) !== descriptor.sha256)
+    fail('STORY_EDIT_ANALYSIS_ARTIFACT_HASH_MISMATCH', 'Analysis artifact content does not match its SHA-256.')
+  return text
+}
+const matches = (pattern, file) =>
+  new RegExp(
+    `^${pattern
+      .split('/')
+      .map((p) => (p === '**' ? '.*' : p === '*' ? '[^/]+' : p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+      .join('/')}$`
+  ).test(file)
+const allowedModified = (file, scope, plan) => plan.files.includes(file) && !scope.deny.some((p) => matches(p, file))
+const allowedCreated = (file, scope) =>
+  scope.create.some((p) => matches(p, file)) && !scope.deny.some((p) => matches(p, file))
+function planFromArtifact(text) {
+  const blocks = [...text.matchAll(/```json\s*([\s\S]*?)```/g)].map((m) => m[1].trim())
+  if (blocks.length !== 1)
+    fail('STORY_EDIT_ANALYSIS_PLAN_INVALID', 'Analysis artifact must contain exactly one JSON plan.')
+  let raw
+  try {
+    raw = JSON.parse(blocks[0])
+  } catch {
+    fail('STORY_EDIT_ANALYSIS_PLAN_INVALID', 'Analysis artifact JSON plan is invalid.')
+  }
+  if (
+    !raw ||
+    typeof raw !== 'object' ||
+    Array.isArray(raw) ||
+    Object.keys(raw).some((k) => !['files', 'doneWhen', 'steps'].includes(k))
+  )
+    fail('STORY_EDIT_ANALYSIS_PLAN_INVALID', 'Analysis artifact plan schema is invalid.')
+  const parsed = parsePlan(`\`\`\`json\n${blocks[0]}\n\`\`\``)
+  if (!parsed.ok) fail('STORY_EDIT_ANALYSIS_PLAN_INVALID', parsed.error)
+  return parsed.plan
+}
+export async function executeStoryEdit({
+  roots,
+  epicRunId,
+  storyRunId,
+  analysisExecutionId,
+  namespaceId,
+  agentName,
+  expectedSpecHash,
+  storySpecHash,
+  supplement,
+  runtime = runtimeDefault,
+  now = () => new Date().toISOString(),
+}) {
+  if (!namespaceId || !agentName) fail('STORY_EDIT_INPUT_INVALID', 'namespaceId and agentName are required.')
+  if (supplement !== undefined && (typeof supplement !== 'string' || supplement.length > 4000))
+    fail('STORY_EDIT_SUPPLEMENT_INVALID', 'supplement must be a string of at most 4000 characters.')
+  const store = ensureForgeRunStore(roots),
+    filePath = join(store, `${epicRunId}.jsonl`)
+  if (!existsSync(filePath)) fail('STORY_EDIT_RUN_NOT_FOUND', `Epic run ${epicRunId} has no ledger.`)
+  const events = parseForgeLedger(filePath),
+    epic = events.find((e) => e.event === 'run_started' && e.runId === epicRunId)
+  if (!epic) fail('STORY_EDIT_RUN_NOT_FOUND', `Epic run ${epicRunId} is absent from its ledger.`)
+  const story = events.find(
+    (e) => e.event === 'story_run_created' && e.runId === storyRunId && e.parentRunId === epicRunId
+  )
+  if (!story) fail('STORY_EDIT_STORY_NOT_FOUND', `Story run ${storyRunId} is absent from Epic run ${epicRunId}.`)
+  if (
+    events.some(
+      (e) =>
+        e.event === 'story_edit_started' &&
+        e.storyRunId === storyRunId &&
+        !events.some((f) => f.event === 'story_edit_finished' && f.editId === e.editId)
+    )
+  )
+    fail('STORY_EDIT_ALREADY_RUNNING', 'A Story edit is already active.')
+  const g1 = events.find((e) => e.event === 'human_decision_recorded' && e.runId === epicRunId && e.gate === 'G1')
+  if (g1?.decision?.outcome !== 'approved') fail('STORY_EDIT_G1_NOT_APPROVED')
+  const g2 = events.filter((e) => e.event === 'g2_evaluated' && e.runId === epicRunId && e.status === 'passed').at(-1)
+  if (!g2 || g2.spec?.sha256 !== expectedSpecHash) fail('STORY_EDIT_G2_NOT_PASSED')
+  if (storySpecHash !== undefined) {
+    const g2us = events.find(
+      (e) =>
+        e.event === 'g2_us_evaluated' &&
+        e.storyRunId === storyRunId &&
+        e.status === 'passed' &&
+        e.storySpec?.sha256 === storySpecHash
+    )
+    if (!g2us) fail('STORY_EDIT_G2_US_NOT_PASSED')
+  }
+  const analysis = events.find(
+    (e) =>
+      e.event === 'agent_execution_finished' &&
+      e.executionId === analysisExecutionId &&
+      e.storyRunId === storyRunId &&
+      e.status === 'finished'
+  )
+  const validation = events.find(
+    (e) => e.event === 'story_analysis_plan_validated' && e.executionId === analysisExecutionId && e.status === 'valid'
+  )
+  if (!analysis || !validation) fail('STORY_EDIT_ANALYSIS_NOT_VALID')
+  const text = safeArtifact(store, analysis.artifact)
+  if (
+    validation.artifact?.sha256 !== analysis.artifact?.sha256 ||
+    validation.artifact?.path !== analysis.artifact?.path
+  )
+    fail('STORY_EDIT_ANALYSIS_PLAN_STALE', 'Analysis validation does not reference the finished artifact.')
+  const plan = planFromArtifact(text)
+  const missing = checkPlanFiles(plan.files, roots.repoRoot).missingFiles
+  if (missing.length) fail('STORY_EDIT_ANALYSIS_PLAN_STALE', `Analysis plan files are missing: ${missing.join(', ')}.`)
+  const spec = (await import('./forge-spec.mjs')).loadForgeSpec({
+    specPath: g2.spec.path,
+    roots,
+    workItem: epic.workItem,
+  })
+  if (spec.sha256 !== g2.spec.sha256) fail('STORY_EDIT_SPEC_HASH_STALE')
+  const agent = await runtime.preflightAgent(namespaceId, agentName)
+  if (!agent.ok) fail('STORY_EDIT_AGENT_PREFLIGHT_FAILED')
+  const writable = await runtime.preflightWritableWorkspace(namespaceId, agent.agent, roots.repoRoot)
+  if (!writable.ok) fail('STORY_EDIT_WRITABLE_PREFLIGHT_FAILED', writable.reason)
+  const editId = `edit_${randomUUID()}`,
+    brief = [
+      `Epic: ${epic.workItem.id}`,
+      `Story: ${story.workItem.id}`,
+      `Spec SHA-256: ${spec.sha256}`,
+      `Files to modify: ${plan.files.join(', ')}`,
+      `Done when: ${plan.doneWhen}`,
+      `Allow: ${spec.frontmatter.scope.allow.join(', ')}`,
+      `Create: ${spec.frontmatter.scope.create.join(', ')}`,
+      `Deny: ${spec.frontmatter.scope.deny.join(', ')}`,
+      supplement ? `Supplement: ${supplement}` : '',
+      'Implement only this plan. Do not run shell, git, tests, builds, or oracles.',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  const before = snapshotDiff(roots.repoRoot),
+    created = await runtime.createCase(namespaceId, `Forge edit ${story.workItem.id}`)
+  append(filePath, {
+    schemaVersion: 1,
+    event: 'story_edit_started',
+    runId: epicRunId,
+    storyRunId,
+    editId,
+    analysisExecutionId,
+    caseId: created.id,
+    policyVersion: STORY_EDIT_POLICY_VERSION,
+    at: now(),
+  })
+  const turn = await runtime.runAgentTurn(created.id, agentName, brief)
+  const changed = diffSince(before, roots.repoRoot),
+    invalid = [
+      ...changed.modified.filter((file) => !allowedModified(file, spec.frontmatter.scope, plan)),
+      ...changed.untracked.filter((file) => !allowedCreated(file, spec.frontmatter.scope)),
+    ]
+  const status = turn.status === 'finished' && invalid.length === 0 ? 'finished' : 'failed'
+  append(filePath, {
+    schemaVersion: 1,
+    event: 'story_edit_finished',
+    runId: epicRunId,
+    storyRunId,
+    editId,
+    caseId: created.id,
+    status,
+    outcome: turn.status,
+    caseStatus: turn.caseStatus ?? null,
+    killedByBudget: turn.killedByBudget === true,
+    filesModified: changed.modified,
+    filesCreated: changed.untracked,
+    diffValidation: {
+      status: invalid.length ? 'invalid' : 'valid',
+      code: invalid.length ? 'STORY_EDIT_DIFF_OUT_OF_SCOPE' : 'STORY_EDIT_DIFF_VALID',
+      invalidFiles: invalid,
+    },
+    at: now(),
+  })
+  return {
+    editId,
+    status,
+    filesModified: changed.modified,
+    filesCreated: changed.untracked,
+    diffValidation: { status: invalid.length ? 'invalid' : 'valid', invalidFiles: invalid },
+  }
 }

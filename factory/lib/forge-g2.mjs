@@ -20,8 +20,8 @@ export function evaluateG2({ roots, runId, specPath, now = () => new Date().toIS
   // A previous G1-precondition block is deliberately not terminal: the human
   // approval is an append-only event that can arrive later. All other matching
   // spec/policy results are idempotent.
-  if (prior?.spec?.sha256 === spec.sha256 && prior.policyVersion === G2_POLICY_VERSION && prior.code !== 'G2_G1_NOT_APPROVED') return { status: 'idempotent', event: prior }
-  if (prior && prior.spec?.sha256 !== spec.sha256) return { status: 'conflict', code: 'G2_SPEC_HASH_CHANGED', event: prior }
+  if (prior?.status === 'passed' && prior.spec?.sha256 === spec.sha256 && prior.policyVersion === G2_POLICY_VERSION) return { status: 'idempotent', event: prior }
+  if (prior?.status === 'passed' && prior.spec?.sha256 !== spec.sha256) return { status: 'conflict', code: 'G2_SPEC_HASH_CHANGED', event: prior }
   if (g1Status(events, runId) !== 'approved') return record(filePath, runId, prior, spec, 'blocked', 'G2_G1_NOT_APPROVED', now)
   return record(filePath, runId, prior, spec, 'passed', 'G2_SPEC_VALID', now)
 }

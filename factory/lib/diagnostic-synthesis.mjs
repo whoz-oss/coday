@@ -72,7 +72,14 @@ function clampFiniteNonNegativeInt(value) {
 }
 
 /** Build the only evidence made available to the synthesizer. */
-export function buildDiagnosticPacket({ oracle, baseline, postEdit, classificationResult, plannedFiles, changedFiles }) {
+export function buildDiagnosticPacket({
+  oracle,
+  baseline,
+  postEdit,
+  classificationResult,
+  plannedFiles,
+  changedFiles,
+}) {
   const limit = (values, max, maxLen = MAX_IDENTITY_LENGTH) =>
     [...new Set((values ?? []).filter((v) => typeof v === 'string' && v.length > 0))]
       .slice(0, max)
@@ -96,13 +103,15 @@ export function buildDiagnosticPacket({ oracle, baseline, postEdit, classificati
       },
     },
     classification: bounded(classificationResult.classification, 64),
-    baseline: baseline ? {
-      exitCode: clampFiniteNonNegativeInt(baseline.exitCode),
-      timedOut: Boolean(baseline.timedOut),
-      emptySuccess: Boolean(baseline.emptySuccess),
-      durationMs: clampFiniteNonNegativeInt(baseline.durationMs),
-      diagnosticIdentities: limit(baseline.diagnosticIdentities, MAX_DIAGNOSTICS),
-    } : null,
+    baseline: baseline
+      ? {
+          exitCode: clampFiniteNonNegativeInt(baseline.exitCode),
+          timedOut: Boolean(baseline.timedOut),
+          emptySuccess: Boolean(baseline.emptySuccess),
+          durationMs: clampFiniteNonNegativeInt(baseline.durationMs),
+          diagnosticIdentities: limit(baseline.diagnosticIdentities, MAX_DIAGNOSTICS),
+        }
+      : null,
     postEdit: {
       diagnosticIdentities: limit(classificationResult.postEditIdentities, MAX_DIAGNOSTICS),
       newDiagnostics: limit(classificationResult.newDiagnostics, MAX_DIAGNOSTICS),
@@ -149,7 +158,11 @@ export function parseDiagnosticSynthesis(raw) {
   const fragment = extractJsonFragment(raw ?? '')
   if (!fragment) return { ok: false, errorCode: 'SYNTHESIS_NO_JSON' }
   let value
-  try { value = JSON.parse(fragment) } catch { return { ok: false, errorCode: 'SYNTHESIS_INVALID_JSON' } }
+  try {
+    value = JSON.parse(fragment)
+  } catch {
+    return { ok: false, errorCode: 'SYNTHESIS_INVALID_JSON' }
+  }
   if (!value || !SYNTHESIS_STATUSES.has(value.status)) {
     return { ok: false, errorCode: 'SYNTHESIS_INVALID_RESULT' }
   }
@@ -176,7 +189,16 @@ export function parseDiagnosticSynthesis(raw) {
       return { ok: false, errorCode: 'SYNTHESIS_INSUFFICIENT_EVIDENCE' }
     }
   }
-  return { ok: true, value: { status: value.status, summary: value.summary, reason: value.reason ?? null, diagnostics: candidates, files } }
+  return {
+    ok: true,
+    value: {
+      status: value.status,
+      summary: value.summary,
+      reason: value.reason ?? null,
+      diagnostics: candidates,
+      files,
+    },
+  }
 }
 
 function validCandidate(candidate) {
@@ -200,7 +222,9 @@ export function buildDiagnosticSynthesisBrief(packet) {
     'Do not invent evidence. Return ONLY JSON:',
     '{"status":"actionable|ambiguous|insufficient-evidence","summary":"<=600 chars","reason":"optional <=600 chars","diagnostics":[{"diagnostic":"...","evidence":"...","provenance":"baseline|post-edit|classification"}],"files":["relative/path"]}',
     'Use actionable only when the bounded evidence supports a concrete editor next step AND you provide at least one diagnostic or file.',
-    '```json', JSON.stringify(packet), '```',
+    '```json',
+    JSON.stringify(packet),
+    '```',
   ].join('\n')
 }
 
@@ -217,35 +241,98 @@ export function buildDiagnosticSynthesisBrief(packet) {
  * }} SynthesisRunResult
  */
 
-export async function runDiagnosticSynthesis({ namespaceId, agentName, packet, agentOps, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+export async function runDiagnosticSynthesis({
+  namespaceId,
+  agentName,
+  packet,
+  agentOps,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+}) {
   // Preflight is wrapped in try/catch so any network/API exception also returns
   // a structured result rather than an unhandled rejection.
   let preflight
   try {
     preflight = await preflightReadOnlyAgent(namespaceId, agentName, agentOps, `diagnostic-synthesis:${agentName}`)
   } catch {
-    return { ok: false, errorCode: 'SYNTHESIS_PREFLIGHT_ERROR', rawOutput: null, synthesis: null, caseId: null, agentIdentity: agentName, turnStatus: null, killedByBudget: false }
+    return {
+      ok: false,
+      errorCode: 'SYNTHESIS_PREFLIGHT_ERROR',
+      rawOutput: null,
+      synthesis: null,
+      caseId: null,
+      agentIdentity: agentName,
+      turnStatus: null,
+      killedByBudget: false,
+    }
   }
   if (!preflight.ok) {
-    return { ok: false, errorCode: 'SYNTHESIS_PREFLIGHT_FAILED', rawOutput: null, synthesis: null, caseId: null, agentIdentity: agentName, turnStatus: null, killedByBudget: false }
+    return {
+      ok: false,
+      errorCode: 'SYNTHESIS_PREFLIGHT_FAILED',
+      rawOutput: null,
+      synthesis: null,
+      caseId: null,
+      agentIdentity: agentName,
+      turnStatus: null,
+      killedByBudget: false,
+    }
   }
   let caseId = null
   try {
     const created = await agentOps.createCase(namespaceId, 'diagnostic-synthesis')
     caseId = created.id
     registerActiveCase(caseId, 'diagnostic-synthesis')
-    const turn = await agentOps.runAgentTurn(caseId, agentName, buildDiagnosticSynthesisBrief(packet), { startTimeoutMs: 30_000, workTimeoutMs: timeoutMs })
+    const turn = await agentOps.runAgentTurn(caseId, agentName, buildDiagnosticSynthesisBrief(packet), {
+      startTimeoutMs: 30_000,
+      workTimeoutMs: timeoutMs,
+    })
     const turnStatus = turn.status
     const killedByBudget = Boolean(turn.killedByBudget)
     if (turn.status !== 'finished') {
-      return { ok: false, errorCode: 'SYNTHESIS_AGENT_' + String(turn.status).toUpperCase(), rawOutput: null, synthesis: null, caseId, agentIdentity: agentName, turnStatus, killedByBudget }
+      return {
+        ok: false,
+        errorCode: 'SYNTHESIS_AGENT_' + String(turn.status).toUpperCase(),
+        rawOutput: null,
+        synthesis: null,
+        caseId,
+        agentIdentity: agentName,
+        turnStatus,
+        killedByBudget,
+      }
     }
     const parsed = parseDiagnosticSynthesis(turn.message)
     return parsed.ok
-      ? { ok: true, errorCode: null, rawOutput: turn.message, synthesis: parsed.value, caseId, agentIdentity: agentName, turnStatus, killedByBudget }
-      : { ok: false, errorCode: parsed.errorCode, rawOutput: turn.message, synthesis: null, caseId, agentIdentity: agentName, turnStatus, killedByBudget }
+      ? {
+          ok: true,
+          errorCode: null,
+          rawOutput: turn.message,
+          synthesis: parsed.value,
+          caseId,
+          agentIdentity: agentName,
+          turnStatus,
+          killedByBudget,
+        }
+      : {
+          ok: false,
+          errorCode: parsed.errorCode,
+          rawOutput: turn.message,
+          synthesis: null,
+          caseId,
+          agentIdentity: agentName,
+          turnStatus,
+          killedByBudget,
+        }
   } catch {
-    return { ok: false, errorCode: 'SYNTHESIS_AGENT_ERROR', rawOutput: null, synthesis: null, caseId, agentIdentity: agentName, turnStatus: null, killedByBudget: false }
+    return {
+      ok: false,
+      errorCode: 'SYNTHESIS_AGENT_ERROR',
+      rawOutput: null,
+      synthesis: null,
+      caseId,
+      agentIdentity: agentName,
+      turnStatus: null,
+      killedByBudget: false,
+    }
   } finally {
     if (caseId) unregisterActiveCase(caseId)
   }

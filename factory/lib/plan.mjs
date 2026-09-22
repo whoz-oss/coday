@@ -106,7 +106,7 @@ export function isSafePath(p) {
 export function parsePlan(agentMessage) {
   const fragment = extractJsonFragment(agentMessage)
   if (!fragment) {
-    return { ok: false, error: 'Aucun bloc JSON trouvé dans la réponse de l\'analyste.' }
+    return { ok: false, error: "Aucun bloc JSON trouvé dans la réponse de l'analyste." }
   }
 
   let raw

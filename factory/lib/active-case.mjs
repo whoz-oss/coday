@@ -56,7 +56,11 @@ export function registerActiveCase(caseId, label) {
   if (_registry.has(caseId)) return
   _registry.set(caseId, label ?? caseId)
   if (_observabilityFile) {
-    try { writeFileSync(_observabilityFile, caseId, 'utf8') } catch { /* ignore */ }
+    try {
+      writeFileSync(_observabilityFile, caseId, 'utf8')
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -69,7 +73,11 @@ export function registerActiveCase(caseId, label) {
 export function unregisterActiveCase(caseId) {
   _registry.delete(caseId)
   if (_observabilityFile && _registry.size === 0) {
-    try { unlinkSync(_observabilityFile) } catch { /* ignore */ }
+    try {
+      unlinkSync(_observabilityFile)
+    } catch {
+      /* ignore */
+    }
   }
 }
 

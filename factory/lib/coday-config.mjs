@@ -59,9 +59,9 @@ export function parseJiraFromYaml(text) {
   const jiraStart = text.indexOf(jiraBlockMatch[0])
   const afterJira = text.slice(jiraStart + jiraBlockMatch[0].length)
 
-  const apiUrl   = afterJira.match(/apiUrl:\s*(.+)/)?.[1]?.trim()
+  const apiUrl = afterJira.match(/apiUrl:\s*(.+)/)?.[1]?.trim()
   const username = afterJira.match(/username:\s*(.+)/)?.[1]?.trim()
-  const apiKey   = afterJira.match(/apiKey:\s*(.+)/)?.[1]?.trim()
+  const apiKey = afterJira.match(/apiKey:\s*(.+)/)?.[1]?.trim()
 
   if (!apiUrl || !username || !apiKey) return null
   return { codayUsername, apiUrl, username, apiKey }
@@ -117,9 +117,7 @@ export function discoverJiraCredentials(factoryUser) {
         configPath,
         source: 'explicit',
       },
-      diagnostics: [
-        `Coday user: ${parsed.codayUsername ?? factoryUser} (${configPath}) [explicit via FACTORY_USER]`,
-      ],
+      diagnostics: [`Coday user: ${parsed.codayUsername ?? factoryUser} (${configPath}) [explicit via FACTORY_USER]`],
     }
   }
 
@@ -127,8 +125,11 @@ export function discoverJiraCredentials(factoryUser) {
   let dirs
   try {
     dirs = readdirSync(usersDir).filter((d) => {
-      try { return statSync(join(usersDir, d)).isDirectory() }
-      catch { return false }
+      try {
+        return statSync(join(usersDir, d)).isDirectory()
+      } catch {
+        return false
+      }
     })
   } catch {
     return {
@@ -145,8 +146,11 @@ export function discoverJiraCredentials(factoryUser) {
   for (const dir of dirs) {
     const configPath = join(usersDir, dir, 'user.yaml')
     let text
-    try { text = readFileSync(configPath, 'utf8') }
-    catch { continue }
+    try {
+      text = readFileSync(configPath, 'utf8')
+    } catch {
+      continue
+    }
 
     const parsed = parseJiraFromYaml(text)
     if (parsed) valid.push({ configPath, parsed })
@@ -185,8 +189,6 @@ export function discoverJiraCredentials(factoryUser) {
       configPath,
       source: 'auto',
     },
-    diagnostics: [
-      `Coday user: ${parsed.codayUsername ?? '(unknown)'} (${configPath}) [auto-discovered]`,
-    ],
+    diagnostics: [`Coday user: ${parsed.codayUsername ?? '(unknown)'} (${configPath}) [auto-discovered]`],
   }
 }

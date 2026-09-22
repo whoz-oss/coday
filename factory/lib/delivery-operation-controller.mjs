@@ -4,24 +4,267 @@ import { evaluateDeliveryOperationPolicy, resolveDeliveryVerificationRequest } f
 
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const REASON = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
-const FORBIDDEN = new Set(['targetConfig','adapterId','adapterTargetRef','callbackUrl','command','env','credentials','result','outcome','success','sourceKind','facts'])
-const exact = (value, fields) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every((key) => fields.includes(key)) && !Object.keys(value).some((key) => FORBIDDEN.has(key))
-const response = (error, fallback = 409) => ({ ok: false, status: error?.code?.includes('NOT_CONFIGURED') || error?.code === 'DELIVERY_TARGET_REGISTRY_UNAVAILABLE' ? 503 : fallback, error })
-const execution = (identity, workflowId) => ({ kind: 'factory-control-plane', namespaceId: identity.namespaceId, workflowId, caseId: identity.caseId, runtimeId: 'factory-dashboard', actorId: identity.resolvedActorId ?? identity.actorId ?? 'factory-operator' })
-const requestId = (scopeHash) => `rrq_${scopeHash.slice(7,39)}`
+const FORBIDDEN = new Set([
+  'targetConfig',
+  'adapterId',
+  'adapterTargetRef',
+  'callbackUrl',
+  'command',
+  'env',
+  'credentials',
+  'result',
+  'outcome',
+  'success',
+  'sourceKind',
+  'facts',
+])
+const exact = (value, fields) =>
+  value &&
+  typeof value === 'object' &&
+  !Array.isArray(value) &&
+  Object.keys(value).every((key) => fields.includes(key)) &&
+  !Object.keys(value).some((key) => FORBIDDEN.has(key))
+const response = (error, fallback = 409) => ({
+  ok: false,
+  status:
+    error?.code?.includes('NOT_CONFIGURED') || error?.code === 'DELIVERY_TARGET_REGISTRY_UNAVAILABLE' ? 503 : fallback,
+  error,
+})
+const execution = (identity, workflowId) => ({
+  kind: 'factory-control-plane',
+  namespaceId: identity.namespaceId,
+  workflowId,
+  caseId: identity.caseId,
+  runtimeId: 'factory-dashboard',
+  actorId: identity.resolvedActorId ?? identity.actorId ?? 'factory-operator',
+})
+const requestId = (scopeHash) => `rrq_${scopeHash.slice(7, 39)}`
 
 export class DeliveryOperationController {
-  constructor({ deliveryController, store, targetRegistry, deploymentAdapters = new Map(), verificationAdapters = new Map() }) { this.deliveryController=deliveryController; this.store=store; this.targetRegistry=targetRegistry; this.deploymentAdapters=deploymentAdapters; this.verificationAdapters=verificationAdapters }
-  async resolve(identity, workflowId) { return this.deliveryController.resolve(identity, workflowId) }
-  async target(targetId) { const found=await this.targetRegistry.lookup(targetId); return found.ok ? found : response(found.error, found.error?.code === 'DELIVERY_TARGET_REGISTRY_UNAVAILABLE' ? 503 : 404) }
-  adapter(registry, target) { const adapter=registry.get?.(target.adapterId); return adapter ? {ok:true,adapter} : response({code:'DELIVERY_ADAPTER_NOT_CONFIGURED'},503) }
-  async status(identity, workflowId) { const resolved=await this.resolve(identity,workflowId); if(!resolved.ok)return resolved; const projection=await this.store.inspectDeliveryOperations(identity.namespaceId,resolved.snapshot.deliveryId); return {ok:true,status:200,data:{...resolved.snapshot,deliveryOperations:projection.operations,unresolvedIndeterminate:projection.unresolvedIndeterminate,rollbackRequests:projection.rollbackRequests}} }
-  async prepare(identity,workflowId,body,kind,fields,adapterRegistry){ if(!exact(body,fields))return response({code:'UNTRUSTED_DELIVERY_INPUT'},400); const normalized=normalizeDeliveryOperationRequest({...body,kind}); if(!normalized.ok)return response(normalized.error,400); const resolved=await this.resolve(identity,workflowId); if(!resolved.ok)return resolved; const targetResult=await this.target(normalized.value.targetId); if(!targetResult.ok)return targetResult; const projection=await this.store.inspectDeliveryOperations(identity.namespaceId,resolved.snapshot.deliveryId); const decision=evaluateDeliveryOperationPolicy({request:normalized.value,snapshot:resolved.snapshot,target:targetResult.target,identity:{targetHash:targetResult.target.targetHash},existingOperations:projection.operations}); if(!decision.allowed)return response({code:decision.code,reason:decision.reason}); const available=this.adapter(adapterRegistry,targetResult.target); if(!available.ok)return available; return {ok:true,resolved,target:targetResult.target,request:normalized.value,adapter:available.adapter,projection} }
-  async deploy(identity,workflowId,body){ const prepared=await this.prepare(identity,workflowId,body,'deployment',['expectedRevision','idempotencyKey','targetId','artifactRef','releaseRef'],this.deploymentAdapters); if(!prepared.ok)return prepared; return response({code:'DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED'},503) }
-  async verify(identity,workflowId,body){ const prepared=await this.prepare(identity,workflowId,body,'production-verification',['expectedRevision','idempotencyKey','targetId','deploymentRef'],this.verificationAdapters); if(!prepared.ok)return prepared; const suite=resolveDeliveryVerificationRequest(prepared.request,prepared.target); if(!suite.ok)return response(suite.error); return response({code:'DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED'},503) }
-  async reconcile(identity,workflowId,body){ if(!exact(body,['operationId']))return response({code:'UNTRUSTED_DELIVERY_INPUT'},400); const resolved=await this.resolve(identity,workflowId); if(!resolved.ok)return resolved; const projection=await this.store.inspectDeliveryOperations(identity.namespaceId,resolved.snapshot.deliveryId); const operation=projection.operations.find((item)=>item.operationId===body.operationId); if(!operation||!['running','indeterminate'].includes(operation.state))return response({code:'DELIVERY_OPERATION_NOT_RECONCILABLE'},409); const adapterResult=this.adapter(operation.kind.includes('verification')?this.verificationAdapters:this.deploymentAdapters,operation.targetRef); if(!adapterResult.ok)return adapterResult; return response({code:'DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED'},503) }
-  async requestRollback(identity,workflowId,body){ const fields=['expectedRevision','idempotencyKey','targetId','deploymentRef','priorArtifactRef','priorReleaseRef','reasonCode','reason']; if(!exact(body,fields)||!SAFE.test(body.idempotencyKey??'')||!SAFE.test(body.targetId??'')||!REASON.test(body.reasonCode??'')||(body.reason!==undefined&&(typeof body.reason!=='string'||body.reason.length<1||body.reason.length>512)))return response({code:'INVALID_ROLLBACK_REQUEST'},400); const resolved=await this.resolve(identity,workflowId); if(!resolved.ok)return resolved; const targetResult=await this.target(body.targetId); if(!targetResult.ok)return targetResult; if(resolved.snapshot.revision!==body.expectedRevision)return response({code:'REVISION_CONFLICT'}); const scopeHash=canonicalDeliveryHash({namespaceId:identity.namespaceId,workflowId,deliveryId:resolved.snapshot.deliveryId,caseId:identity.caseId,runtimeId:'factory-dashboard',idempotencyKey:body.idempotencyKey}); const semanticHash=canonicalDeliveryHash({targetHash:targetResult.target.targetHash,deploymentRef:body.deploymentRef,priorArtifactRef:body.priorArtifactRef,priorReleaseRef:body.priorReleaseRef,reasonCode:body.reasonCode,reason:body.reason??null,expectedRevision:body.expectedRevision}); const result=await this.store.createRollbackRequest({namespaceId:identity.namespaceId,deliveryId:resolved.snapshot.deliveryId,workflowId,caseId:identity.caseId,runtimeId:'factory-dashboard',request:{rollbackRequestId:requestId(scopeHash),expectedRevision:body.expectedRevision,idempotencyKey:body.idempotencyKey,targetId:body.targetId,targetHash:targetResult.target.targetHash,deploymentRef:body.deploymentRef,priorArtifactRef:body.priorArtifactRef,priorReleaseRef:body.priorReleaseRef,reasonCode:body.reasonCode,reason:body.reason,scopeHash,semanticHash},execution:execution(identity,workflowId)}); return result.ok?{ok:true,status:result.changed?201:200,data:result.request}:response(result.error) }
-  async approveRollback(identity,workflowId,requestIdValue,body){ if(!exact(body,['expectedRevision','idempotencyKey'])||!SAFE.test(requestIdValue??'')||!SAFE.test(body.idempotencyKey??''))return response({code:'INVALID_ROLLBACK_APPROVAL'},400); const resolved=await this.resolve(identity,workflowId); if(!resolved.ok)return resolved; const result=await this.store.approveRollbackRequest(identity.namespaceId,resolved.snapshot.deliveryId,requestIdValue,{expectedRevision:body.expectedRevision,idempotencyKey:body.idempotencyKey,execution:execution(identity,workflowId)}); return result.ok?{ok:true,status:result.changed?201:200,data:result.request}:response(result.error) }
-  async executeRollback(identity,workflowId,requestIdValue,body){ if(!exact(body,['expectedRevision','idempotencyKey'])||!SAFE.test(requestIdValue??''))return response({code:'UNTRUSTED_DELIVERY_INPUT'},400); const resolved=await this.resolve(identity,workflowId); if(!resolved.ok)return resolved; const projection=await this.store.inspectDeliveryOperations(identity.namespaceId,resolved.snapshot.deliveryId); const rollback=projection.rollbackRequests.find((item)=>item.rollbackRequestId===requestIdValue); if(!rollback)return response({code:'ROLLBACK_REQUEST_NOT_FOUND'},404); if(rollback.status!=='approved')return response({code:'ROLLBACK_APPROVAL_REQUIRED'}); const targetResult=await this.target(rollback.targetId); if(!targetResult.ok)return targetResult; const available=this.adapter(this.deploymentAdapters,targetResult.target); if(!available.ok)return available; return response({code:'DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED'},503) }
-  async verifyRollback(identity,workflowId,requestIdValue,body){ if(!exact(body,['expectedRevision','idempotencyKey','rollbackRef','targetId'])||!SAFE.test(requestIdValue??''))return response({code:'UNTRUSTED_DELIVERY_INPUT'},400); const resolved=await this.resolve(identity,workflowId); if(!resolved.ok)return resolved; const targetResult=await this.target(body.targetId); if(!targetResult.ok)return targetResult; const available=this.adapter(this.verificationAdapters,targetResult.target); if(!available.ok)return available; return response({code:'DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED'},503) }
+  constructor({
+    deliveryController,
+    store,
+    targetRegistry,
+    deploymentAdapters = new Map(),
+    verificationAdapters = new Map(),
+  }) {
+    this.deliveryController = deliveryController
+    this.store = store
+    this.targetRegistry = targetRegistry
+    this.deploymentAdapters = deploymentAdapters
+    this.verificationAdapters = verificationAdapters
+  }
+  async resolve(identity, workflowId) {
+    return this.deliveryController.resolve(identity, workflowId)
+  }
+  async target(targetId) {
+    const found = await this.targetRegistry.lookup(targetId)
+    return found.ok
+      ? found
+      : response(found.error, found.error?.code === 'DELIVERY_TARGET_REGISTRY_UNAVAILABLE' ? 503 : 404)
+  }
+  adapter(registry, target) {
+    const adapter = registry.get?.(target.adapterId)
+    return adapter ? { ok: true, adapter } : response({ code: 'DELIVERY_ADAPTER_NOT_CONFIGURED' }, 503)
+  }
+  async status(identity, workflowId) {
+    const resolved = await this.resolve(identity, workflowId)
+    if (!resolved.ok) return resolved
+    const projection = await this.store.inspectDeliveryOperations(identity.namespaceId, resolved.snapshot.deliveryId)
+    return {
+      ok: true,
+      status: 200,
+      data: {
+        ...resolved.snapshot,
+        deliveryOperations: projection.operations,
+        unresolvedIndeterminate: projection.unresolvedIndeterminate,
+        rollbackRequests: projection.rollbackRequests,
+      },
+    }
+  }
+  async prepare(identity, workflowId, body, kind, fields, adapterRegistry) {
+    if (!exact(body, fields)) return response({ code: 'UNTRUSTED_DELIVERY_INPUT' }, 400)
+    const normalized = normalizeDeliveryOperationRequest({ ...body, kind })
+    if (!normalized.ok) return response(normalized.error, 400)
+    const resolved = await this.resolve(identity, workflowId)
+    if (!resolved.ok) return resolved
+    const targetResult = await this.target(normalized.value.targetId)
+    if (!targetResult.ok) return targetResult
+    const projection = await this.store.inspectDeliveryOperations(identity.namespaceId, resolved.snapshot.deliveryId)
+    const decision = evaluateDeliveryOperationPolicy({
+      request: normalized.value,
+      snapshot: resolved.snapshot,
+      target: targetResult.target,
+      identity: { targetHash: targetResult.target.targetHash },
+      existingOperations: projection.operations,
+    })
+    if (!decision.allowed) return response({ code: decision.code, reason: decision.reason })
+    const available = this.adapter(adapterRegistry, targetResult.target)
+    if (!available.ok) return available
+    return {
+      ok: true,
+      resolved,
+      target: targetResult.target,
+      request: normalized.value,
+      adapter: available.adapter,
+      projection,
+    }
+  }
+  async deploy(identity, workflowId, body) {
+    const prepared = await this.prepare(
+      identity,
+      workflowId,
+      body,
+      'deployment',
+      ['expectedRevision', 'idempotencyKey', 'targetId', 'artifactRef', 'releaseRef'],
+      this.deploymentAdapters
+    )
+    if (!prepared.ok) return prepared
+    return response({ code: 'DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED' }, 503)
+  }
+  async verify(identity, workflowId, body) {
+    const prepared = await this.prepare(
+      identity,
+      workflowId,
+      body,
+      'production-verification',
+      ['expectedRevision', 'idempotencyKey', 'targetId', 'deploymentRef'],
+      this.verificationAdapters
+    )
+    if (!prepared.ok) return prepared
+    const suite = resolveDeliveryVerificationRequest(prepared.request, prepared.target)
+    if (!suite.ok) return response(suite.error)
+    return response({ code: 'DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED' }, 503)
+  }
+  async reconcile(identity, workflowId, body) {
+    if (!exact(body, ['operationId'])) return response({ code: 'UNTRUSTED_DELIVERY_INPUT' }, 400)
+    const resolved = await this.resolve(identity, workflowId)
+    if (!resolved.ok) return resolved
+    const projection = await this.store.inspectDeliveryOperations(identity.namespaceId, resolved.snapshot.deliveryId)
+    const operation = projection.operations.find((item) => item.operationId === body.operationId)
+    if (!operation || !['running', 'indeterminate'].includes(operation.state))
+      return response({ code: 'DELIVERY_OPERATION_NOT_RECONCILABLE' }, 409)
+    const adapterResult = this.adapter(
+      operation.kind.includes('verification') ? this.verificationAdapters : this.deploymentAdapters,
+      operation.targetRef
+    )
+    if (!adapterResult.ok) return adapterResult
+    return response({ code: 'DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED' }, 503)
+  }
+  async requestRollback(identity, workflowId, body) {
+    const fields = [
+      'expectedRevision',
+      'idempotencyKey',
+      'targetId',
+      'deploymentRef',
+      'priorArtifactRef',
+      'priorReleaseRef',
+      'reasonCode',
+      'reason',
+    ]
+    if (
+      !exact(body, fields) ||
+      !SAFE.test(body.idempotencyKey ?? '') ||
+      !SAFE.test(body.targetId ?? '') ||
+      !REASON.test(body.reasonCode ?? '') ||
+      (body.reason !== undefined &&
+        (typeof body.reason !== 'string' || body.reason.length < 1 || body.reason.length > 512))
+    )
+      return response({ code: 'INVALID_ROLLBACK_REQUEST' }, 400)
+    const resolved = await this.resolve(identity, workflowId)
+    if (!resolved.ok) return resolved
+    const targetResult = await this.target(body.targetId)
+    if (!targetResult.ok) return targetResult
+    if (resolved.snapshot.revision !== body.expectedRevision) return response({ code: 'REVISION_CONFLICT' })
+    const scopeHash = canonicalDeliveryHash({
+      namespaceId: identity.namespaceId,
+      workflowId,
+      deliveryId: resolved.snapshot.deliveryId,
+      caseId: identity.caseId,
+      runtimeId: 'factory-dashboard',
+      idempotencyKey: body.idempotencyKey,
+    })
+    const semanticHash = canonicalDeliveryHash({
+      targetHash: targetResult.target.targetHash,
+      deploymentRef: body.deploymentRef,
+      priorArtifactRef: body.priorArtifactRef,
+      priorReleaseRef: body.priorReleaseRef,
+      reasonCode: body.reasonCode,
+      reason: body.reason ?? null,
+      expectedRevision: body.expectedRevision,
+    })
+    const result = await this.store.createRollbackRequest({
+      namespaceId: identity.namespaceId,
+      deliveryId: resolved.snapshot.deliveryId,
+      workflowId,
+      caseId: identity.caseId,
+      runtimeId: 'factory-dashboard',
+      request: {
+        rollbackRequestId: requestId(scopeHash),
+        expectedRevision: body.expectedRevision,
+        idempotencyKey: body.idempotencyKey,
+        targetId: body.targetId,
+        targetHash: targetResult.target.targetHash,
+        deploymentRef: body.deploymentRef,
+        priorArtifactRef: body.priorArtifactRef,
+        priorReleaseRef: body.priorReleaseRef,
+        reasonCode: body.reasonCode,
+        reason: body.reason,
+        scopeHash,
+        semanticHash,
+      },
+      execution: execution(identity, workflowId),
+    })
+    return result.ok ? { ok: true, status: result.changed ? 201 : 200, data: result.request } : response(result.error)
+  }
+  async approveRollback(identity, workflowId, requestIdValue, body) {
+    if (
+      !exact(body, ['expectedRevision', 'idempotencyKey']) ||
+      !SAFE.test(requestIdValue ?? '') ||
+      !SAFE.test(body.idempotencyKey ?? '')
+    )
+      return response({ code: 'INVALID_ROLLBACK_APPROVAL' }, 400)
+    const resolved = await this.resolve(identity, workflowId)
+    if (!resolved.ok) return resolved
+    const result = await this.store.approveRollbackRequest(
+      identity.namespaceId,
+      resolved.snapshot.deliveryId,
+      requestIdValue,
+      {
+        expectedRevision: body.expectedRevision,
+        idempotencyKey: body.idempotencyKey,
+        execution: execution(identity, workflowId),
+      }
+    )
+    return result.ok ? { ok: true, status: result.changed ? 201 : 200, data: result.request } : response(result.error)
+  }
+  async executeRollback(identity, workflowId, requestIdValue, body) {
+    if (!exact(body, ['expectedRevision', 'idempotencyKey']) || !SAFE.test(requestIdValue ?? ''))
+      return response({ code: 'UNTRUSTED_DELIVERY_INPUT' }, 400)
+    const resolved = await this.resolve(identity, workflowId)
+    if (!resolved.ok) return resolved
+    const projection = await this.store.inspectDeliveryOperations(identity.namespaceId, resolved.snapshot.deliveryId)
+    const rollback = projection.rollbackRequests.find((item) => item.rollbackRequestId === requestIdValue)
+    if (!rollback) return response({ code: 'ROLLBACK_REQUEST_NOT_FOUND' }, 404)
+    if (rollback.status !== 'approved') return response({ code: 'ROLLBACK_APPROVAL_REQUIRED' })
+    const targetResult = await this.target(rollback.targetId)
+    if (!targetResult.ok) return targetResult
+    const available = this.adapter(this.deploymentAdapters, targetResult.target)
+    if (!available.ok) return available
+    return response({ code: 'DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED' }, 503)
+  }
+  async verifyRollback(identity, workflowId, requestIdValue, body) {
+    if (
+      !exact(body, ['expectedRevision', 'idempotencyKey', 'rollbackRef', 'targetId']) ||
+      !SAFE.test(requestIdValue ?? '')
+    )
+      return response({ code: 'UNTRUSTED_DELIVERY_INPUT' }, 400)
+    const resolved = await this.resolve(identity, workflowId)
+    if (!resolved.ok) return resolved
+    const targetResult = await this.target(body.targetId)
+    if (!targetResult.ok) return targetResult
+    const available = this.adapter(this.verificationAdapters, targetResult.target)
+    if (!available.ok) return available
+    return response({ code: 'DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED' }, 503)
+  }
 }

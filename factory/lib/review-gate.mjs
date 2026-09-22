@@ -61,7 +61,7 @@ export const GATE_POLL_MS = 2_000
 /** Known gate types and their allowed decisions (allow-list). */
 const GATE_ALLOWED_DECISIONS = /** @type {const} */ ({
   'adversarial-review': ['retry', 'ignore', 'fail'],
-  'oracle':             ['continue', 'fail'],
+  oracle: ['continue', 'fail'],
 })
 
 /** Maximum length for findings string in IPC signal. */
@@ -129,9 +129,7 @@ export function registerGate(signal) {
     return { ok: false, error: 'Invalid runId' }
   }
   // Validate findings
-  const findings = typeof signal.findings === 'string'
-    ? signal.findings.slice(0, MAX_FINDINGS_LENGTH)
-    : ''
+  const findings = typeof signal.findings === 'string' ? signal.findings.slice(0, MAX_FINDINGS_LENGTH) : ''
   // Validate outcomes
   const rawOutcomes = Array.isArray(signal.outcomes) ? signal.outcomes.slice(0, MAX_OUTCOMES) : []
   const outcomes = rawOutcomes.map((o) => ({
@@ -145,13 +143,19 @@ export function registerGate(signal) {
   if (signal.oracleGate && typeof signal.oracleGate === 'object') {
     oracleGate = {
       oracleName: isSafeToken(signal.oracleGate.oracleName) ? signal.oracleGate.oracleName : null,
-      classification: typeof signal.oracleGate.classification === 'string' ? signal.oracleGate.classification.slice(0, 64) : null,
+      classification:
+        typeof signal.oracleGate.classification === 'string' ? signal.oracleGate.classification.slice(0, 64) : null,
       exitCode: Number.isFinite(Number(signal.oracleGate.exitCode)) ? Number(signal.oracleGate.exitCode) : null,
       artifactRef: isSafeToken(signal.oracleGate.artifactRef) ? signal.oracleGate.artifactRef : null,
-      artifactHash: typeof signal.oracleGate.artifactHash === 'string' && /^[0-9a-f]{64}$/.test(signal.oracleGate.artifactHash)
-        ? signal.oracleGate.artifactHash : null,
-      newDiagnosticCount: Number.isFinite(Number(signal.oracleGate.newDiagnosticCount)) ? Number(signal.oracleGate.newDiagnosticCount) : 0,
-      synthesisStatus: typeof signal.oracleGate.synthesisStatus === 'string' ? signal.oracleGate.synthesisStatus.slice(0, 32) : null,
+      artifactHash:
+        typeof signal.oracleGate.artifactHash === 'string' && /^[0-9a-f]{64}$/.test(signal.oracleGate.artifactHash)
+          ? signal.oracleGate.artifactHash
+          : null,
+      newDiagnosticCount: Number.isFinite(Number(signal.oracleGate.newDiagnosticCount))
+        ? Number(signal.oracleGate.newDiagnosticCount)
+        : 0,
+      synthesisStatus:
+        typeof signal.oracleGate.synthesisStatus === 'string' ? signal.oracleGate.synthesisStatus.slice(0, 32) : null,
     }
   }
 
@@ -215,11 +219,19 @@ export function writeGateReply(runId, gateInstanceId, decision, message = '') {
     return { ok: false, status: 409, error: 'Gate instance mismatch — stale or duplicate reply' }
   }
   if (!pending.allowedDecisions.includes(decision)) {
-    return { ok: false, status: 400, error: `Decision "${decision}" not allowed for gate type "${pending.gateType}". Allowed: ${pending.allowedDecisions.join(', ')}` }
+    return {
+      ok: false,
+      status: 400,
+      error: `Decision "${decision}" not allowed for gate type "${pending.gateType}". Allowed: ${pending.allowedDecisions.join(', ')}`,
+    }
   }
   const replyPath = gateInstanceReplyPath(runId, gateInstanceId)
   try {
-    const content = JSON.stringify({ decision, message: typeof message === 'string' ? message.trim() : '', gateInstanceId })
+    const content = JSON.stringify({
+      decision,
+      message: typeof message === 'string' ? message.trim() : '',
+      gateInstanceId,
+    })
     writeFileSync(replyPath, content, 'utf8')
     unregisterGate(runId)
     return { ok: true }
@@ -343,9 +355,13 @@ export function emitOracleGateOpen(runId, gateInstanceId, oracleInfo) {
       classification: typeof oracleInfo.classification === 'string' ? oracleInfo.classification.slice(0, 64) : null,
       exitCode: Number.isFinite(Number(oracleInfo.exitCode)) ? Number(oracleInfo.exitCode) : null,
       artifactRef: isSafeToken(oracleInfo.artifactRef) ? oracleInfo.artifactRef : null,
-      artifactHash: typeof oracleInfo.artifactHash === 'string' && /^[0-9a-f]{64}$/.test(oracleInfo.artifactHash)
-        ? oracleInfo.artifactHash : null,
-      newDiagnosticCount: Number.isFinite(Number(oracleInfo.newDiagnosticCount)) ? Number(oracleInfo.newDiagnosticCount) : 0,
+      artifactHash:
+        typeof oracleInfo.artifactHash === 'string' && /^[0-9a-f]{64}$/.test(oracleInfo.artifactHash)
+          ? oracleInfo.artifactHash
+          : null,
+      newDiagnosticCount: Number.isFinite(Number(oracleInfo.newDiagnosticCount))
+        ? Number(oracleInfo.newDiagnosticCount)
+        : 0,
       synthesisStatus: typeof oracleInfo.synthesisStatus === 'string' ? oracleInfo.synthesisStatus.slice(0, 32) : null,
     },
     allowedDecisions: GATE_ALLOWED_DECISIONS['oracle'],
@@ -378,7 +394,11 @@ export async function waitForHumanDecision(runId, gateInstanceId, log, gateType 
   const allowedDecisions = GATE_ALLOWED_DECISIONS[gateType] ?? ['fail']
 
   // Clean up any stale reply file for this gate instance.
-  try { unlinkSync(replyPath) } catch { /* absent = ok */ }
+  try {
+    unlinkSync(replyPath)
+  } catch {
+    /* absent = ok */
+  }
 
   if (gateType === 'oracle') {
     log.error('\u25b6 HUMAN GATE: oracle failure \u2014 waiting for human decision.')
@@ -406,7 +426,9 @@ export async function waitForHumanDecision(runId, gateInstanceId, log, gateType 
         const parsed = JSON.parse(raw)
         // Validate gate instance ID in reply
         if (parsed.gateInstanceId !== gateInstanceId) {
-          log.error(`Gate instance mismatch in reply file (expected ${gateInstanceId}, got ${parsed.gateInstanceId}). Decision = fail.`)
+          log.error(
+            `Gate instance mismatch in reply file (expected ${gateInstanceId}, got ${parsed.gateInstanceId}). Decision = fail.`
+          )
           resolve({ decision: 'fail', message: '' })
           return
         }
@@ -418,7 +440,11 @@ export async function waitForHumanDecision(runId, gateInstanceId, log, gateType 
         log.error(`Error reading gate reply: ${err}. Decision = fail.`)
         resolve({ decision: 'fail', message: '' })
       } finally {
-        try { unlinkSync(replyPath) } catch { /* ok */ }
+        try {
+          unlinkSync(replyPath)
+        } catch {
+          /* ok */
+        }
       }
     }, GATE_POLL_MS)
   })
@@ -443,7 +469,9 @@ export function rejectAllPendingGates() {
   for (const [runId, resolve] of _pendingResolvers) {
     try {
       resolve({ decision: 'fail', message: '' })
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     _pendingResolvers.delete(runId)
   }
 }

@@ -47,9 +47,7 @@ async function request(method, path, body) {
     } catch {
       // ignore
     }
-    throw new Error(
-      `AgentOS ${method} ${url} → HTTP ${res.status}\n${responseBody}`
-    )
+    throw new Error(`AgentOS ${method} ${url} → HTTP ${res.status}\n${responseBody}`)
   }
 
   return res
@@ -303,7 +301,7 @@ export async function preflightWorkspace(namespaceId, agent, repoRoot) {
   // sont ignorées ici même si elles ne figurent pas dans l'API REST : elles n'écrivent
   // pas dans l'arbre mesuré par l'oracle et ne peuvent pas produire de verdict fantôme.
   const unverifiable = declared.filter((name) => {
-    if (byName.has(name)) return false          // connue de l'API : vérifiable
+    if (byName.has(name)) return false // connue de l'API : vérifiable
     const fromAgent = (agent.integrations ?? {})[name]
     // Si la valeur côté agent est null/undefined ou un tableau d'outils sans rootPath,
     // ce n'est pas une FILE_ACCESS — on l'ignore.
@@ -331,8 +329,7 @@ export async function preflightWorkspace(namespaceId, agent, repoRoot) {
   if (fileAccess.length === 0) {
     return {
       ok: false,
-      reason:
-        `Agent "${agent.name}" n'a aucune intégration FILE_ACCESS : il ne peut rien écrire.`,
+      reason: `Agent "${agent.name}" n'a aucune intégration FILE_ACCESS : il ne peut rien écrire.`,
       rootPath: null,
     }
   }
@@ -380,14 +377,46 @@ export async function preflightWorkspace(namespaceId, agent, repoRoot) {
  */
 export async function preflightWritableWorkspace(namespaceId, agent, repoRoot) {
   const reserved = new Set(['QUERY_USER', 'CASE_FILE_EXCHANGE', 'NAMESPACE_FILE_EXCHANGE'])
-  if (!Array.isArray(agent.integrations?.QUERY_USER) || agent.integrations.QUERY_USER.length !== 0) return { ok:false, reason:'QUERY_USER must be explicitly disabled with an empty allowlist.', rootPath:null, integration:null }
-  const names=Object.keys(agent.integrations??{}).filter(name=>!reserved.has(name))
-  if(names.length!==1) return { ok:false, reason:`Editor must declare exactly one non-reserved integration; found: ${names.join(', ')||'(none)'}.`, rootPath:null, integration:null }
-  let configs; try { configs=await listIntegrations(namespaceId) } catch(error) { return {ok:false,reason:`Unable to list integrations: ${error}`,rootPath:null,integration:null} }
-  const integration=configs.find(config=>config.name===names[0])
-  let actual=null; try { actual=integration?.parameters?.rootPath ? realpathSync(integration.parameters.rootPath) : null } catch {}
-  if(!integration || integration.integrationType!=='FILE_ACCESS' || !actual || normalizeRoot(actual)!==normalizeRoot(repoRoot) || integration.parameters?.readOnly!==false) return {ok:false,reason:'FILE_ACCESS must use canonical repoRoot with readOnly:false.',rootPath:integration?.parameters?.rootPath??null,integration:null}
-  return {ok:true,reason:null,rootPath:normalizeRoot(actual),integration}
+  if (!Array.isArray(agent.integrations?.QUERY_USER) || agent.integrations.QUERY_USER.length !== 0)
+    return {
+      ok: false,
+      reason: 'QUERY_USER must be explicitly disabled with an empty allowlist.',
+      rootPath: null,
+      integration: null,
+    }
+  const names = Object.keys(agent.integrations ?? {}).filter((name) => !reserved.has(name))
+  if (names.length !== 1)
+    return {
+      ok: false,
+      reason: `Editor must declare exactly one non-reserved integration; found: ${names.join(', ') || '(none)'}.`,
+      rootPath: null,
+      integration: null,
+    }
+  let configs
+  try {
+    configs = await listIntegrations(namespaceId)
+  } catch (error) {
+    return { ok: false, reason: `Unable to list integrations: ${error}`, rootPath: null, integration: null }
+  }
+  const integration = configs.find((config) => config.name === names[0])
+  let actual = null
+  try {
+    actual = integration?.parameters?.rootPath ? realpathSync(integration.parameters.rootPath) : null
+  } catch {}
+  if (
+    !integration ||
+    integration.integrationType !== 'FILE_ACCESS' ||
+    !actual ||
+    normalizeRoot(actual) !== normalizeRoot(repoRoot) ||
+    integration.parameters?.readOnly !== false
+  )
+    return {
+      ok: false,
+      reason: 'FILE_ACCESS must use canonical repoRoot with readOnly:false.',
+      rootPath: integration?.parameters?.rootPath ?? null,
+      integration: null,
+    }
+  return { ok: true, reason: null, rootPath: normalizeRoot(actual), integration }
 }
 
 /**
@@ -405,23 +434,53 @@ export async function preflightReadOnlyWorkspace(namespaceId, agent, repoRoot) {
   const RESERVED = new Set(['QUERY_USER', 'CASE_FILE_EXCHANGE', 'NAMESPACE_FILE_EXCHANGE'])
   const declared = Object.keys(agent.integrations ?? {})
   if (!Array.isArray(agent.integrations?.QUERY_USER) || agent.integrations.QUERY_USER.length !== 0) {
-    return { ok: false, reason: 'QUERY_USER must be explicitly disabled with an empty allowlist for automated analysis.', rootPath: null, integration: null }
+    return {
+      ok: false,
+      reason: 'QUERY_USER must be explicitly disabled with an empty allowlist for automated analysis.',
+      rootPath: null,
+      integration: null,
+    }
   }
   const nonReserved = declared.filter((name) => !RESERVED.has(name))
   if (nonReserved.length !== 1) {
-    return { ok: false, reason: `Read-only analyst must declare exactly one non-reserved integration; found: ${nonReserved.join(', ') || '(none)'}.`, rootPath: null, integration: null }
+    return {
+      ok: false,
+      reason: `Read-only analyst must declare exactly one non-reserved integration; found: ${nonReserved.join(', ') || '(none)'}.`,
+      rootPath: null,
+      integration: null,
+    }
   }
   let configs
-  try { configs = await listIntegrations(namespaceId) } catch (error) { return { ok: false, reason: `Unable to list integrations: ${error}`, rootPath: null, integration: null } }
+  try {
+    configs = await listIntegrations(namespaceId)
+  } catch (error) {
+    return { ok: false, reason: `Unable to list integrations: ${error}`, rootPath: null, integration: null }
+  }
   const integration = configs.find((config) => config.name === nonReserved[0])
   if (!integration || integration.integrationType !== 'FILE_ACCESS') {
-    return { ok: false, reason: `Read-only analyst integration ${nonReserved[0]} must resolve to FILE_ACCESS.`, rootPath: null, integration: null }
+    return {
+      ok: false,
+      reason: `Read-only analyst integration ${nonReserved[0]} must resolve to FILE_ACCESS.`,
+      rootPath: null,
+      integration: null,
+    }
   }
   const rootPath = integration.parameters?.rootPath
   let canonicalRoot = null
-  try { canonicalRoot = rootPath ? realpathSync(rootPath) : null } catch {}
-  if (!canonicalRoot || normalizeRoot(canonicalRoot) !== normalizeRoot(repoRoot) || integration.parameters?.readOnly !== true) {
-    return { ok: false, reason: 'FILE_ACCESS must use the canonical target repoRoot with readOnly:true.', rootPath: rootPath ?? null, integration: null }
+  try {
+    canonicalRoot = rootPath ? realpathSync(rootPath) : null
+  } catch {}
+  if (
+    !canonicalRoot ||
+    normalizeRoot(canonicalRoot) !== normalizeRoot(repoRoot) ||
+    integration.parameters?.readOnly !== true
+  ) {
+    return {
+      ok: false,
+      reason: 'FILE_ACCESS must use the canonical target repoRoot with readOnly:true.',
+      rootPath: rootPath ?? null,
+      integration: null,
+    }
   }
   return { ok: true, reason: null, rootPath: normalizeRoot(canonicalRoot), integration }
 }
@@ -616,9 +675,7 @@ function findLastStatusEvent(events, statuses) {
  * @returns {object[]}
  */
 function findUnansweredQuestions(allEvents) {
-  const answered = new Set(
-    allEvents.filter((e) => e.type === 'AnswerEvent').map((e) => e.questionId)
-  )
+  const answered = new Set(allEvents.filter((e) => e.type === 'AnswerEvent').map((e) => e.questionId))
   return allEvents.filter((e) => e.type === 'QuestionEvent' && !answered.has(e.id))
 }
 
@@ -687,10 +744,7 @@ export async function runAgentTurn(
   caseId,
   agentName,
   brief,
-  {
-    startTimeoutMs = DEFAULT_START_TIMEOUT_MS,
-    workTimeoutMs = DEFAULT_WORK_TIMEOUT_MS,
-  } = {}
+  { startTimeoutMs = DEFAULT_START_TIMEOUT_MS, workTimeoutMs = DEFAULT_WORK_TIMEOUT_MS } = {}
 ) {
   /** Résultat d'échec, avec des compteurs à zéro plutôt qu'absents. */
   const failure = (status, message, extra = {}) => ({
@@ -777,11 +831,10 @@ export async function runAgentTurn(
           workDeadline = Date.now() + workTimeoutMs
         } else if (Date.now() > startDeadline) {
           await killQuietly(caseId)
-          return failure(
-            'start_timeout',
-            `Le case n'est pas passé à RUNNING en ${startTimeoutMs}ms.`,
-            { killedByBudget: true, anchored }
-          )
+          return failure('start_timeout', `Le case n'est pas passé à RUNNING en ${startTimeoutMs}ms.`, {
+            killedByBudget: true,
+            anchored,
+          })
         } else {
           continue
         }
@@ -818,9 +871,7 @@ export async function runAgentTurn(
           agentsSelected: collectAgentsSelected(turnEvents),
           agentTurns: countType(turnEvents, 'AgentFinishedEvent'),
           toolCallCount: turnEvents.filter((e) => e.type === 'ToolResponseEvent').length,
-          failedToolCalls: buildFailedToolCalls(
-            turnEvents.filter((e) => e.type === 'ToolResponseEvent')
-          ),
+          failedToolCalls: buildFailedToolCalls(turnEvents.filter((e) => e.type === 'ToolResponseEvent')),
           killedByBudget: true,
           anchored,
           llmModels: collectLlmModels(turnEvents),
@@ -938,9 +989,7 @@ function collectAgentsSelected(events) {
  * @returns {string}
  */
 function extractLastAgentMessage(events) {
-  const last = events
-    .filter((e) => e.type === 'MessageEvent' && e.actor?.role === 'AGENT')
-    .at(-1)
+  const last = events.filter((e) => e.type === 'MessageEvent' && e.actor?.role === 'AGENT').at(-1)
   if (!last) return ''
   return (last.content ?? [])
     .filter((p) => typeof p.content === 'string')

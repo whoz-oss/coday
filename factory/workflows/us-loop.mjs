@@ -104,6 +104,14 @@ import { buildOracleCommand, resolveOwnerProjects } from '../lib/oracle-command.
 import { extractTicketId, extractAdfText, fetchJiraTicket } from '../lib/jira.mjs'
 import { runAdversarialReview } from '../lib/adversarial-review.mjs'
 import { emitGateOpen, emitOracleGateOpen, waitForHumanDecision } from '../lib/review-gate.mjs'
+import { makeReviewAgentOps } from '../lib/review-agentos-adapter.mjs'
+import {
+  buildDiagnosticPacket,
+  shouldSynthesizeDiagnostics,
+  runDiagnosticSynthesis,
+  routeDiagnosticSynthesis,
+  writeDiagnosticSynthesisArtifact,
+} from '../lib/diagnostic-synthesis.mjs'
 import {
   runBaselineOracle,
   classifyOracleResult,
@@ -606,7 +614,7 @@ function buildEditorBrief(task, scope, plan) {
  * @param {number} attempt
  * @returns {string}
  */
-function buildEditorFixBrief(task, scope, plan, errorLines, attempt) {
+function buildEditorFixBrief(task, scope, plan, errorLines, attempt, diagnosticSynthesis = null) {
   const sections = [
     `## Task\n${task}`,
 
@@ -620,6 +628,16 @@ function buildEditorFixBrief(task, scope, plan, errorLines, attempt) {
 
   if (scope) {
     sections.push(`## Scope\n${scope}`)
+  }
+
+  if (diagnosticSynthesis?.status === 'actionable') {
+    sections.push(
+      '## Read-only diagnostic synthesis\n' +
+      `${diagnosticSynthesis.summary}\n` +
+      (diagnosticSynthesis.reason ? `Reason: ${diagnosticSynthesis.reason}\n` : '') +
+      (diagnosticSynthesis.files?.length ? `Candidate files:\n${diagnosticSynthesis.files.map((file) => `- ${file}`).join('\n')}` : '') +
+      '\n\nThis is interpretation, not proof. The oracle remains failed; use the deterministic diagnostics above as the evidence.'
+    )
   }
 
   // Périmètre de fichiers uniquement — les étapes du plan ne sont pas rejouées.
@@ -715,6 +733,8 @@ export async function run(log) {
   const namespaceId = process.env.FACTORY_NAMESPACE_ID
   const analystName = process.env.FACTORY_AGENT_ANALYST ?? 'factory-analyst'
   const editorName = process.env.FACTORY_AGENT_EDITOR ?? 'factory-editor'
+  const diagnosticSynthesizerName = process.env.FACTORY_AGENT_DIAGNOSTIC_SYNTHESIZER ?? 'factory-diagnostic-synthesizer'
+  const diagnosticAgentOps = makeReviewAgentOps(namespaceId)
   const task = process.env.FACTORY_TASK ?? null
   const scope = process.env.FACTORY_SCOPE ?? null
   const domainName = process.env.FACTORY_DOMAIN ?? 'front'
@@ -1259,6 +1279,7 @@ export async function run(log) {
     // -----------------------------------------------------------------------
     let innerPass = false
     let errorLines = null
+    let editorDiagnosticSynthesis = null
 
     for (let attempt = 1; attempt <= MAX_FIX_LOOPS; attempt++) {
 
@@ -1284,7 +1305,7 @@ export async function run(log) {
       const editorBrief =
         attempt === 1
           ? buildEditorBrief(task, scope, plan)
-          : buildEditorFixBrief(task, scope, planForBrief, errorLines, attempt)
+          : buildEditorFixBrief(task, scope, planForBrief, errorLines, attempt, editorDiagnosticSynthesis)
 
       const beforeAgent = snapshotDiff(REPO_ROOT)
 
@@ -1732,9 +1753,55 @@ export async function run(log) {
         )
         log.error(`Classification reason: ${classResult.reason}`)
 
+        // The synthesizer observes only a bounded packet. It is never an oracle:
+        // it cannot alter this FAIL, and it is invoked once at most per oracle/attempt.
+        let diagnosticSynthesis = null
+        let diagnosticSynthesisRef = null
+        if (shouldSynthesizeDiagnostics({ classificationResult: classResult, postEdit: { ...result, emptySuccess: false } })) {
+          const synthesisPhaseName = `diagnostic-synthesis-${oracle.name}-${revision}-${attempt}`
+          const synthesisPhase = startPhase(theRun, synthesisPhaseName, 'agent')
+          log.phaseStart(synthesisPhaseName, 'agent')
+          const packet = buildDiagnosticPacket({
+            oracle,
+            baseline: baselineResults.get(oracle.name) ?? null,
+            postEdit: { ...result, tasks, command: effectiveCommand, emptySuccess: false },
+            classificationResult: classResult,
+            plannedFiles: plan.files,
+            changedFiles: agentChanged.modified,
+          })
+          const synthesisRun = await runDiagnosticSynthesis({
+            namespaceId,
+            agentName: diagnosticSynthesizerName,
+            packet,
+            agentOps: diagnosticAgentOps,
+          })
+          if (synthesisRun.ok) {
+            diagnosticSynthesis = synthesisRun.synthesis
+            diagnosticSynthesisRef = writeDiagnosticSynthesisArtifact(
+              theRun.runId, oracle.name, revision, attempt, synthesisRun.rawOutput,
+            )
+            // JSONL keeps only structured status and the artifact reference;
+            // generated prose remains solely in the referenced artifact.
+            passPhase(synthesisPhase, {
+              oracle: oracle.name,
+              revision,
+              attempt,
+              status: diagnosticSynthesis.status,
+              diagnosticCount: diagnosticSynthesis.diagnostics.length,
+              fileCount: diagnosticSynthesis.files.length,
+              artifact: diagnosticSynthesisRef,
+            })
+            log.phaseEnd(synthesisPhaseName, 'pass', { status: diagnosticSynthesis.status })
+          } else {
+            failPhase(synthesisPhase, { oracle: oracle.name, revision, attempt, errorCode: synthesisRun.errorCode })
+            log.phaseEnd(synthesisPhaseName, 'fail', { errorCode: synthesisRun.errorCode })
+          }
+        }
+
         // Route by classification.
-        if (classification === 'PRODUCT_REGRESSION') {
-          // Send only NEW diagnostics to the editor retry.
+        if (classification === 'PRODUCT_REGRESSION' || routeDiagnosticSynthesis(diagnosticSynthesis) === 'editor') {
+          // Send deterministic diagnostics only; actionable synthesis may add
+          // interpretation to the next editor brief, never replace evidence.
           oracleErrorLines = classResult.newDiagnosticLines.length > 0
             ? classResult.newDiagnosticLines
             : (oracle.name === 'types' || oracle.name === 'build'
@@ -1750,6 +1817,11 @@ export async function run(log) {
             log.error(line)
           }
 
+          // Only a validated actionable synthesis can enrich the editor brief.
+          // It does not alter the deterministic classification or the failed phase.
+          editorDiagnosticSynthesis = diagnosticSynthesis?.status === 'actionable' ? diagnosticSynthesis : null
+          // The failed verify phase was already recorded before synthesis; the
+          // artifact reference remains transient until the next editor brief.
           oraclePass = false
           break // Editor retry with new diagnostics only.
         }
@@ -1770,6 +1842,9 @@ export async function run(log) {
             preExistingDiagnostics: classResult.preExistingDiagnostics,
             newDiagnosticLines: classResult.newDiagnosticLines,
             baselineEvidence: baselineResults.get(oracle.name)?.executionEvidence ?? 'no baseline',
+            diagnosticSynthesis: routeDiagnosticSynthesis(diagnosticSynthesis) === 'human-gate'
+              ? { ...diagnosticSynthesis, ...diagnosticSynthesisRef }
+              : null,
           }
 
           log.error(`Opening human oracle gate for classification: ${classification}`)

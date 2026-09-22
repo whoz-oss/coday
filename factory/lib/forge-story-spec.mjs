@@ -6,7 +6,14 @@ export const FORGE_STORY_SPEC_SCHEMA_VERSION = 1
 export const G2_US_POLICY_VERSION = 'forge-g2-us-deterministic-v1'
 
 // Allowed top-level keys in a Story spec frontmatter
-const STORY_SPEC_ALLOWED_KEYS = new Set(['schemaVersion', 'workItem', 'scope', 'oracles', 'acceptanceCriteria', 'impacts'])
+const STORY_SPEC_ALLOWED_KEYS = new Set([
+  'schemaVersion',
+  'workItem',
+  'scope',
+  'oracles',
+  'acceptanceCriteria',
+  'impacts',
+])
 
 function inside(child, root) {
   const rel = relative(root, child)
@@ -23,7 +30,8 @@ function scalar(value) {
   const trimmed = value.trim()
   if (/^(true|false)$/.test(trimmed)) return trimmed === 'true'
   if (/^\d+$/.test(trimmed)) return Number(trimmed)
-  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) return trimmed.slice(1, -1)
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'")))
+    return trimmed.slice(1, -1)
   return trimmed
 }
 
@@ -43,7 +51,13 @@ function parseFrontmatter(text) {
       if (!match) fail('G2_FRONTMATTER_INVALID')
       const [, key, value] = match
       if (Object.hasOwn(out, key)) fail('G2_FRONTMATTER_INVALID')
-      if (value) { out[key] = scalar(value); section = null } else { out[key] = {}; section = key }
+      if (value) {
+        out[key] = scalar(value)
+        section = null
+      } else {
+        out[key] = {}
+        section = key
+      }
       list = null
       continue
     }
@@ -55,7 +69,11 @@ function parseFrontmatter(text) {
     }
     if (indent === 2 && section) {
       const match = line.match(/^([A-Za-z][A-Za-z0-9]*):\s*(.+)$/)
-      if (match) { out[section][match[1]] = scalar(match[2]); list = null; continue }
+      if (match) {
+        out[section][match[1]] = scalar(match[2])
+        list = null
+        continue
+      }
     }
     // Root-level list items (oracles, acceptanceCriteria, impacts)
     if (indent === 2 && section && line.startsWith('- ')) {
@@ -128,16 +146,19 @@ export function validateInheritance(storySpec, epicSpec) {
   const epicOracles = new Set(epicSpec.oracles ?? [])
 
   // allow(Story) ⊆ allow(Epic)
-  for (const pattern of (storySpec.scope?.allow ?? [])) {
+  for (const pattern of storySpec.scope?.allow ?? []) {
     if (!epicAllow.has(pattern)) {
       violations.push({ code: 'G2_US_ALLOW_EXCEEDS_EPIC', detail: `allow pattern "${pattern}" not in Epic allow set` })
     }
   }
 
   // create(Story) ⊆ create(Epic)
-  for (const pattern of (storySpec.scope?.create ?? [])) {
+  for (const pattern of storySpec.scope?.create ?? []) {
     if (!epicCreate.has(pattern)) {
-      violations.push({ code: 'G2_US_CREATE_EXCEEDS_EPIC', detail: `create pattern "${pattern}" not in Epic create set` })
+      violations.push({
+        code: 'G2_US_CREATE_EXCEEDS_EPIC',
+        detail: `create pattern "${pattern}" not in Epic create set`,
+      })
     }
   }
 
@@ -145,14 +166,20 @@ export function validateInheritance(storySpec, epicSpec) {
   const storyDeny = new Set(storySpec.scope?.deny ?? [])
   for (const pattern of epicDeny) {
     if (!storyDeny.has(pattern)) {
-      violations.push({ code: 'G2_US_DENY_WEAKER_THAN_EPIC', detail: `Epic deny pattern "${pattern}" missing from Story deny set` })
+      violations.push({
+        code: 'G2_US_DENY_WEAKER_THAN_EPIC',
+        detail: `Epic deny pattern "${pattern}" missing from Story deny set`,
+      })
     }
   }
 
   // oracles(Story) ⊆ oracles(Epic)
-  for (const oracle of (storySpec.oracles ?? [])) {
+  for (const oracle of storySpec.oracles ?? []) {
     if (!epicOracles.has(oracle)) {
-      violations.push({ code: 'G2_US_ORACLE_UNKNOWN_IN_EPIC', detail: `oracle "${oracle}" not declared in Epic oracles` })
+      violations.push({
+        code: 'G2_US_ORACLE_UNKNOWN_IN_EPIC',
+        detail: `oracle "${oracle}" not declared in Epic oracles`,
+      })
     }
   }
 
@@ -177,10 +204,8 @@ export function readStorySpec(specPath, roots) {
     if (error.code?.startsWith('G2_')) throw error
     fail('G2_US_SPEC_PATH_INVALID')
   }
-  if (
-    !inside(realPath, roots.repoRoot) &&
-    !(roots.forgeRoot && inside(realPath, roots.forgeRoot))
-  ) fail('G2_US_SPEC_OUTSIDE_ROOT')
+  if (!inside(realPath, roots.repoRoot) && !(roots.forgeRoot && inside(realPath, roots.forgeRoot)))
+    fail('G2_US_SPEC_OUTSIDE_ROOT')
 
   const rawContent = readFileSync(realPath, 'utf8')
   const match = rawContent.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)

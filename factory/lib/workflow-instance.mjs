@@ -5,16 +5,39 @@ export const WORKFLOW_GOVERNANCE_MODE = 'governed'
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical)
-  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]))
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonical(value[key])])
+    )
   return value
 }
 
 export function workflowStartCommandHash(command, definition) {
   const relations = command.relations ?? independentWorkflowRelations(command.workflowId)
-  return createHash('sha256').update(JSON.stringify(canonical({ workflowId: command.workflowId, workflowType: command.workflowType, title: command.title, relations: { ...relations }, definitionVersion: definition.version, definitionHash: definition.definitionHash }))).digest('hex')
+  return createHash('sha256')
+    .update(
+      JSON.stringify(
+        canonical({
+          workflowId: command.workflowId,
+          workflowType: command.workflowType,
+          title: command.title,
+          relations: { ...relations },
+          definitionVersion: definition.version,
+          definitionHash: definition.definitionHash,
+        })
+      )
+    )
+    .digest('hex')
 }
 
-export function createWorkflowInstance(command, definition, controllerExecution, observedAt = new Date().toISOString()) {
+export function createWorkflowInstance(
+  command,
+  definition,
+  controllerExecution,
+  observedAt = new Date().toISOString()
+) {
   const steps = definition.steps.map((step) => ({
     id: step.id,
     name: step.name,
@@ -39,6 +62,13 @@ export function createWorkflowInstance(command, definition, controllerExecution,
     createdAt: observedAt,
     updatedAt: observedAt,
   }
-  const projection = { schemaVersion: '2', workflowId: instance.workflowId, workflowType: instance.workflowType, title: instance.title, status: instance.status, steps }
+  const projection = {
+    schemaVersion: '2',
+    workflowId: instance.workflowId,
+    workflowType: instance.workflowType,
+    title: instance.title,
+    status: instance.status,
+    steps,
+  }
   return { instance, projection, creationCommandHash: workflowStartCommandHash(command, definition) }
 }

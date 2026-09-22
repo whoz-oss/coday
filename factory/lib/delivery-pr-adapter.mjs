@@ -1,11 +1,17 @@
 const TRUSTED_PR_HOSTS = new Set(['github.com', 'www.github.com'])
 function trustedPullRequestUrl(value) {
-  try { const url = new URL(value); return url.protocol === 'https:' && TRUSTED_PR_HOSTS.has(url.hostname) }
-  catch { return false }
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && TRUSTED_PR_HOSTS.has(url.hostname)
+  } catch {
+    return false
+  }
 }
 
 export class DeliveryPullRequestAdapter {
-  constructor({ provider = null } = {}) { this.provider = provider }
+  constructor({ provider = null } = {}) {
+    this.provider = provider
+  }
 
   /**
    * Find an existing PR by stable identity (head branch + base branch from trusted configuration).
@@ -18,8 +24,12 @@ export class DeliveryPullRequestAdapter {
     try {
       const result = await this.provider.findExisting(context)
       if (!result) return { ok: true, pullRequest: null }
-      if (!result.id || !trustedPullRequestUrl(result.url) || !result.state) return { ok: false, blocked: true, error: { code: 'PULL_REQUEST_RESULT_INDETERMINATE' } }
-      return { ok: true, pullRequest: { id: String(result.id), url: result.url, draft: result.draft === true, state: result.state } }
+      if (!result.id || !trustedPullRequestUrl(result.url) || !result.state)
+        return { ok: false, blocked: true, error: { code: 'PULL_REQUEST_RESULT_INDETERMINATE' } }
+      return {
+        ok: true,
+        pullRequest: { id: String(result.id), url: result.url, draft: result.draft === true, state: result.state },
+      }
     } catch {
       return { ok: false, blocked: true, error: { code: 'PULL_REQUEST_INSPECTION_FAILED' } }
     }
@@ -33,8 +43,13 @@ export class DeliveryPullRequestAdapter {
     if (existing.pullRequest) return { ok: true, pullRequest: existing.pullRequest, reused: true }
     try {
       const result = await this.provider.createDraft(context)
-      if (!result?.id || !trustedPullRequestUrl(result.url) || result.draft !== true) return { ok: false, blocked: true, error: { code: 'PULL_REQUEST_RESULT_INDETERMINATE' } }
-      return { ok: true, pullRequest: { id: String(result.id), url: result.url, draft: true, state: 'open' }, reused: false }
+      if (!result?.id || !trustedPullRequestUrl(result.url) || result.draft !== true)
+        return { ok: false, blocked: true, error: { code: 'PULL_REQUEST_RESULT_INDETERMINATE' } }
+      return {
+        ok: true,
+        pullRequest: { id: String(result.id), url: result.url, draft: true, state: 'open' },
+        reused: false,
+      }
     } catch {
       return { ok: false, blocked: true, error: { code: 'PULL_REQUEST_CREATION_FAILED' } }
     }
@@ -43,6 +58,8 @@ export class DeliveryPullRequestAdapter {
   async inspect(context) {
     if (!this.provider) return { ok: false, blocked: true, error: { code: 'PULL_REQUEST_NOT_CONFIGURED' } }
     const result = await this.provider.inspect(context)
-    return result?.id && trustedPullRequestUrl(result.url) && result?.state ? { ok: true, pullRequest: result } : { ok: false, blocked: true, error: { code: 'PULL_REQUEST_RESULT_INDETERMINATE' } }
+    return result?.id && trustedPullRequestUrl(result.url) && result?.state
+      ? { ok: true, pullRequest: result }
+      : { ok: false, blocked: true, error: { code: 'PULL_REQUEST_RESULT_INDETERMINATE' } }
   }
 }

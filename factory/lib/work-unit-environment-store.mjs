@@ -2,26 +2,297 @@ import { createHash, randomBytes } from 'node:crypto'
 import { appendFile, lstat, mkdir, open, readFile, readdir, realpath, rename, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { validateNamespaceId, validateWorkUnitEnvironment } from './work-unit-environment.mjs'
-export const ENVIRONMENT_STORE_ERROR_CODES=Object.freeze({INVALID_DATA_ROOT:'INVALID_DATA_ROOT',INVALID_ENVIRONMENT:'INVALID_ENVIRONMENT',INVALID_NAMESPACE:'INVALID_NAMESPACE',NOT_FOUND:'NOT_FOUND',REVISION_CONFLICT:'REVISION_CONFLICT',INVALID_TRANSITION:'INVALID_TRANSITION',CORRUPT_STORAGE:'CORRUPT_STORAGE'})
-export class WorkUnitEnvironmentStoreError extends Error{constructor(code,details={},cause){super(code,cause?{cause}:undefined);this.code=code;this.details=details}}
-const digest=value=>createHash('sha256').update(value).digest('hex'); const snapshotHash=e=>digest(JSON.stringify(e,Object.keys(e).sort()))
-const contained=(root,path)=>{const r=relative(root,path);return r!==''&&!r.startsWith(`..${sep}`)&&r!=='..'&&!isAbsolute(r)}
-async function syncDir(p){const h=await open(p,'r');try{await h.sync()}finally{await h.close()}}
-async function atomic(p,v){await mkdir(dirname(p),{recursive:true});const t=`${p}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`,h=await open(t,'wx',0o600);try{await h.writeFile(`${JSON.stringify(v)}\n`);await h.sync()}finally{await h.close()}await rename(t,p);await syncDir(dirname(p))}
-async function append(p,v){await appendFile(p,`${JSON.stringify(v)}\n`,{encoding:'utf8',mode:0o600});const h=await open(p,'r');try{await h.sync()}finally{await h.close()}}
-export class WorkUnitEnvironmentStore{
- constructor(dataRoot,{fault=async()=>{}}={}){if(typeof dataRoot!=='string'||!isAbsolute(dataRoot))throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_DATA_ROOT);this.dataRoot=dataRoot;this.fault=fault;this.locks=new Map();this.root=null}
- async initialize(){await mkdir(join(this.dataRoot,'environments'),{recursive:true});this.root=await realpath(join(this.dataRoot,'environments'))}
- async _safeDirectory(path,{missing=true}={}){let stat;try{stat=await lstat(path)}catch(error){if(error?.code==='ENOENT'&&missing)return false;throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE,{artifact:'path'},error)}if(stat.isSymbolicLink()||!stat.isDirectory())throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE,{artifact:'unsafe_path'});const canonical=await realpath(path);if(path!==this.root&&!contained(this.root,canonical))throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE,{artifact:'path_escape'});return true}
- async _guard(p,{environmentMayBeMissing=true}={}){await this._safeDirectory(this.root,{missing:false});const namespaceDirectory=dirname(p.directory);const namespaceExists=await this._safeDirectory(namespaceDirectory,{missing:true});if(!namespaceExists)return;await this._safeDirectory(p.directory,{missing:environmentMayBeMissing})}
- _namespace(ns){if(!validateNamespaceId(ns).ok)throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_NAMESPACE)}
- paths(ns,id){this._namespace(ns);if(!this.root||typeof id!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id))throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);const directory=join(this.root,ns,digest(`${ns}:${id}`));if(!contained(this.root,directory))throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);return{directory,snapshot:join(directory,'environment.json'),events:join(directory,'events.jsonl'),pending:join(directory,'pending.json')}}
- _locked(ns,id,fn){this._namespace(ns);const k=`${ns}\0${id}`,p=this.locks.get(k)??Promise.resolve(),o=p.then(fn),t=o.catch(()=>{});this.locks.set(k,t);return o.finally(()=>{if(this.locks.get(k)===t)this.locks.delete(k)})}
- async _json(p,missing=null){try{return JSON.parse(await readFile(p,'utf8'))}catch(e){if(e?.code==='ENOENT')return missing;throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE,{},e)}}
- async _recover(p,ns,id){const q=await this._json(p.pending);if(!q)return;const valid=q&&Number.isSafeInteger(q.revision)&&q.revision>0&&q.environment?.namespaceId===ns&&q.environment?.environmentId===id&&validateWorkUnitEnvironment(q.environment).ok&&q.environmentHash===snapshotHash(q.environment);if(!valid)throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE,{artifact:'pending'});let facts;try{facts=(await readFile(p.events,'utf8')).split('\n').filter(Boolean).map(JSON.parse)}catch(e){throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE,{artifact:'journal'},e)}if(!facts.some(f=>f.revision===q.revision&&f.environmentId===id&&f.environmentHash===q.environmentHash))throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE,{artifact:'recovery_binding'});await atomic(p.snapshot,q);await rm(p.pending);await syncDir(p.directory)}
- async read(ns,id){this._namespace(ns);const p=this.paths(ns,id);await this._guard(p);await this._recover(p,ns,id);const s=await this._json(p.snapshot);if(!s)return null;if(!Number.isSafeInteger(s.revision)||s.environmentHash!==snapshotHash(s.environment)||!validateWorkUnitEnvironment(s.environment).ok)throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE);return s}
- async list(ns,{states}={}){this._namespace(ns);let es;const root=join(this.root,ns);const probe=this.paths(ns,'list-probe');await this._guard(probe);try{es=await readdir(root,{withFileTypes:true})}catch(e){if(e?.code==='ENOENT')return[];throw e}const out=[];for(const x of es){const d=join(root,x.name),p={directory:d,snapshot:join(d,'environment.json'),events:join(d,'events.jsonl'),pending:join(d,'pending.json')};await this._guard(p,{environmentMayBeMissing:false});const pending=await this._json(p.pending);if(pending)await this._recover(p,ns,pending.environment?.environmentId);const s=await this._json(p.snapshot);if(s&&s.environment.namespaceId===ns&&(!states||states.includes(s.environment.lifecycleState)))out.push(s)}return out}
- async reserve(e){const v=validateWorkUnitEnvironment(e);if(!v.ok)return v;this._namespace(e.namespaceId);return this._locked(e.namespaceId,e.environmentId,async()=>{const c=await this.read(e.namespaceId,e.environmentId);if(c)return JSON.stringify(c.environment)===JSON.stringify(v.environment)?{ok:true,changed:false,snapshot:c}:{ok:false,error:{code:ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION}};return this._write(null,v.environment,'provisioning_reserved')})}
- async transition(ns,id,next,{expectedRevision,errorCode}={}){this._namespace(ns);return this._locked(ns,id,async()=>{const c=await this.read(ns,id);if(!c)return{ok:false,error:{code:ENVIRONMENT_STORE_ERROR_CODES.NOT_FOUND}};if(expectedRevision!==undefined&&expectedRevision!==c.revision)return{ok:false,error:{code:ENVIRONMENT_STORE_ERROR_CODES.REVISION_CONFLICT}};if(JSON.stringify(c.environment)===JSON.stringify(next))return{ok:true,changed:false,snapshot:c};for(const field of ['schemaVersion','environmentId','workUnitId','workflowId','namespaceId','repoRoot','integrationBranch','branch','worktreePath','baseCommit','createdAt','createdBy'])if(c.environment[field]!==next[field])return{ok:false,error:{code:ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION}};if(c.environment.parentCaseId&&next.parentCaseId!==c.environment.parentCaseId)return{ok:false,error:{code:ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION}};const f=c.environment.lifecycleState,t=next.lifecycleState,allowed=(f==='provisioning'&&['provisioning','active','error'].includes(t))||(f==='active'&&['completed','abandoned','error'].includes(t))||(['completed','abandoned','error'].includes(f)&&t==='removed');if(!allowed)return{ok:false,error:{code:ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION}};const v=validateWorkUnitEnvironment(next);if(!v.ok)return v;return this._write(c,v.environment,t==='active'?'parent_case_bound':t==='removed'?'environment_removed':f===t?'environment_provisioned':'environment_state_changed',errorCode)})}
- async _write(c,e,kind,errorCode){const p=this.paths(e.namespaceId,e.environmentId);await this._guard(p);const revision=(c?.revision??0)+1,environmentHash=snapshotHash(e),s={revision,environmentHash,environment:e};await mkdir(p.directory,{recursive:true});await this._guard(p,{environmentMayBeMissing:false});await atomic(p.pending,s);await this.fault('after-pending');await append(p.events,{kind,revision,environmentId:e.environmentId,environmentHash,lifecycleState:e.lifecycleState,timestamp:new Date().toISOString(),...(errorCode?{errorCode}:{})});await this.fault('after-journal');await atomic(p.snapshot,s);await this.fault('after-snapshot');await rm(p.pending,{force:true});return{ok:true,changed:true,snapshot:s}}
+export const ENVIRONMENT_STORE_ERROR_CODES = Object.freeze({
+  INVALID_DATA_ROOT: 'INVALID_DATA_ROOT',
+  INVALID_ENVIRONMENT: 'INVALID_ENVIRONMENT',
+  INVALID_NAMESPACE: 'INVALID_NAMESPACE',
+  NOT_FOUND: 'NOT_FOUND',
+  REVISION_CONFLICT: 'REVISION_CONFLICT',
+  INVALID_TRANSITION: 'INVALID_TRANSITION',
+  CORRUPT_STORAGE: 'CORRUPT_STORAGE',
+})
+export class WorkUnitEnvironmentStoreError extends Error {
+  constructor(code, details = {}, cause) {
+    super(code, cause ? { cause } : undefined)
+    this.code = code
+    this.details = details
+  }
+}
+const digest = (value) => createHash('sha256').update(value).digest('hex')
+const snapshotHash = (e) => digest(JSON.stringify(e, Object.keys(e).sort()))
+const contained = (root, path) => {
+  const r = relative(root, path)
+  return r !== '' && !r.startsWith(`..${sep}`) && r !== '..' && !isAbsolute(r)
+}
+async function syncDir(p) {
+  const h = await open(p, 'r')
+  try {
+    await h.sync()
+  } finally {
+    await h.close()
+  }
+}
+async function atomic(p, v) {
+  await mkdir(dirname(p), { recursive: true })
+  const t = `${p}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`,
+    h = await open(t, 'wx', 0o600)
+  try {
+    await h.writeFile(`${JSON.stringify(v)}\n`)
+    await h.sync()
+  } finally {
+    await h.close()
+  }
+  await rename(t, p)
+  await syncDir(dirname(p))
+}
+async function append(p, v) {
+  await appendFile(p, `${JSON.stringify(v)}\n`, { encoding: 'utf8', mode: 0o600 })
+  const h = await open(p, 'r')
+  try {
+    await h.sync()
+  } finally {
+    await h.close()
+  }
+}
+export class WorkUnitEnvironmentStore {
+  constructor(dataRoot, { fault = async () => {} } = {}) {
+    if (typeof dataRoot !== 'string' || !isAbsolute(dataRoot))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_DATA_ROOT)
+    this.dataRoot = dataRoot
+    this.fault = fault
+    this.locks = new Map()
+    this.root = null
+  }
+  async initialize() {
+    await mkdir(join(this.dataRoot, 'environments'), { recursive: true })
+    this.root = await realpath(join(this.dataRoot, 'environments'))
+  }
+  async _safeDirectory(path, { missing = true } = {}) {
+    let stat
+    try {
+      stat = await lstat(path)
+    } catch (error) {
+      if (error?.code === 'ENOENT' && missing) return false
+      throw new WorkUnitEnvironmentStoreError(
+        ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE,
+        { artifact: 'path' },
+        error
+      )
+    }
+    if (stat.isSymbolicLink() || !stat.isDirectory())
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
+        artifact: 'unsafe_path',
+      })
+    const canonical = await realpath(path)
+    if (path !== this.root && !contained(this.root, canonical))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
+        artifact: 'path_escape',
+      })
+    return true
+  }
+  async _guard(p, { environmentMayBeMissing = true } = {}) {
+    await this._safeDirectory(this.root, { missing: false })
+    const namespaceDirectory = dirname(p.directory)
+    const namespaceExists = await this._safeDirectory(namespaceDirectory, { missing: true })
+    if (!namespaceExists) return
+    await this._safeDirectory(p.directory, { missing: environmentMayBeMissing })
+  }
+  _namespace(ns) {
+    if (!validateNamespaceId(ns).ok)
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_NAMESPACE)
+  }
+  paths(ns, id) {
+    this._namespace(ns)
+    if (!this.root || typeof id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT)
+    const directory = join(this.root, ns, digest(`${ns}:${id}`))
+    if (!contained(this.root, directory))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT)
+    return {
+      directory,
+      snapshot: join(directory, 'environment.json'),
+      events: join(directory, 'events.jsonl'),
+      pending: join(directory, 'pending.json'),
+    }
+  }
+  _locked(ns, id, fn) {
+    this._namespace(ns)
+    const k = `${ns}\0${id}`,
+      p = this.locks.get(k) ?? Promise.resolve(),
+      o = p.then(fn),
+      t = o.catch(() => {})
+    this.locks.set(k, t)
+    return o.finally(() => {
+      if (this.locks.get(k) === t) this.locks.delete(k)
+    })
+  }
+  async _json(p, missing = null) {
+    try {
+      return JSON.parse(await readFile(p, 'utf8'))
+    } catch (e) {
+      if (e?.code === 'ENOENT') return missing
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {}, e)
+    }
+  }
+  async _recover(p, ns, id) {
+    const q = await this._json(p.pending)
+    if (!q) return
+    const valid =
+      q &&
+      Number.isSafeInteger(q.revision) &&
+      q.revision > 0 &&
+      q.environment?.namespaceId === ns &&
+      q.environment?.environmentId === id &&
+      validateWorkUnitEnvironment(q.environment).ok &&
+      q.environmentHash === snapshotHash(q.environment)
+    if (!valid)
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, { artifact: 'pending' })
+    let facts
+    try {
+      facts = (await readFile(p.events, 'utf8')).split('\n').filter(Boolean).map(JSON.parse)
+    } catch (e) {
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, { artifact: 'journal' }, e)
+    }
+    if (
+      !facts.some((f) => f.revision === q.revision && f.environmentId === id && f.environmentHash === q.environmentHash)
+    )
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
+        artifact: 'recovery_binding',
+      })
+    await atomic(p.snapshot, q)
+    await rm(p.pending)
+    await syncDir(p.directory)
+  }
+  async read(ns, id) {
+    this._namespace(ns)
+    const p = this.paths(ns, id)
+    await this._guard(p)
+    await this._recover(p, ns, id)
+    const s = await this._json(p.snapshot)
+    if (!s) return null
+    if (
+      !Number.isSafeInteger(s.revision) ||
+      s.environmentHash !== snapshotHash(s.environment) ||
+      !validateWorkUnitEnvironment(s.environment).ok
+    )
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE)
+    return s
+  }
+  async list(ns, { states } = {}) {
+    this._namespace(ns)
+    let es
+    const root = join(this.root, ns)
+    const probe = this.paths(ns, 'list-probe')
+    await this._guard(probe)
+    try {
+      es = await readdir(root, { withFileTypes: true })
+    } catch (e) {
+      if (e?.code === 'ENOENT') return []
+      throw e
+    }
+    const out = []
+    for (const x of es) {
+      const d = join(root, x.name),
+        p = {
+          directory: d,
+          snapshot: join(d, 'environment.json'),
+          events: join(d, 'events.jsonl'),
+          pending: join(d, 'pending.json'),
+        }
+      await this._guard(p, { environmentMayBeMissing: false })
+      const pending = await this._json(p.pending)
+      if (pending) await this._recover(p, ns, pending.environment?.environmentId)
+      const s = await this._json(p.snapshot)
+      if (s && s.environment.namespaceId === ns && (!states || states.includes(s.environment.lifecycleState)))
+        out.push(s)
+    }
+    return out
+  }
+  async reserve(e) {
+    const v = validateWorkUnitEnvironment(e)
+    if (!v.ok) return v
+    this._namespace(e.namespaceId)
+    return this._locked(e.namespaceId, e.environmentId, async () => {
+      const c = await this.read(e.namespaceId, e.environmentId)
+      if (c)
+        return JSON.stringify(c.environment) === JSON.stringify(v.environment)
+          ? { ok: true, changed: false, snapshot: c }
+          : { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } }
+      return this._write(null, v.environment, 'provisioning_reserved')
+    })
+  }
+  async transition(ns, id, next, { expectedRevision, errorCode } = {}) {
+    this._namespace(ns)
+    return this._locked(ns, id, async () => {
+      const c = await this.read(ns, id)
+      if (!c) return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.NOT_FOUND } }
+      if (expectedRevision !== undefined && expectedRevision !== c.revision)
+        return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.REVISION_CONFLICT } }
+      if (JSON.stringify(c.environment) === JSON.stringify(next)) return { ok: true, changed: false, snapshot: c }
+      for (const field of [
+        'schemaVersion',
+        'environmentId',
+        'workUnitId',
+        'workflowId',
+        'namespaceId',
+        'repoRoot',
+        'integrationBranch',
+        'branch',
+        'worktreePath',
+        'baseCommit',
+        'createdAt',
+        'createdBy',
+      ])
+        if (c.environment[field] !== next[field])
+          return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } }
+      if (c.environment.parentCaseId && next.parentCaseId !== c.environment.parentCaseId)
+        return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } }
+      const f = c.environment.lifecycleState,
+        t = next.lifecycleState,
+        allowed =
+          (f === 'provisioning' && ['provisioning', 'active', 'error'].includes(t)) ||
+          (f === 'active' && ['completed', 'abandoned', 'error'].includes(t)) ||
+          (['completed', 'abandoned', 'error'].includes(f) && t === 'removed')
+      if (!allowed) return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } }
+      const v = validateWorkUnitEnvironment(next)
+      if (!v.ok) return v
+      return this._write(
+        c,
+        v.environment,
+        t === 'active'
+          ? 'parent_case_bound'
+          : t === 'removed'
+            ? 'environment_removed'
+            : f === t
+              ? 'environment_provisioned'
+              : 'environment_state_changed',
+        errorCode
+      )
+    })
+  }
+  async _write(c, e, kind, errorCode) {
+    const p = this.paths(e.namespaceId, e.environmentId)
+    await this._guard(p)
+    const revision = (c?.revision ?? 0) + 1,
+      environmentHash = snapshotHash(e),
+      s = { revision, environmentHash, environment: e }
+    await mkdir(p.directory, { recursive: true })
+    await this._guard(p, { environmentMayBeMissing: false })
+    await atomic(p.pending, s)
+    await this.fault('after-pending')
+    await append(p.events, {
+      kind,
+      revision,
+      environmentId: e.environmentId,
+      environmentHash,
+      lifecycleState: e.lifecycleState,
+      timestamp: new Date().toISOString(),
+      ...(errorCode ? { errorCode } : {}),
+    })
+    await this.fault('after-journal')
+    await atomic(p.snapshot, s)
+    await this.fault('after-snapshot')
+    await rm(p.pending, { force: true })
+    return { ok: true, changed: true, snapshot: s }
+  }
 }

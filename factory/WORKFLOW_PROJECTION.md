@@ -1,12 +1,40 @@
-# WorkflowProjection v1
+# WorkflowProjection v1/v2
 
-## Versioned WorkflowDefinition registry
+## Phase 9 — livraison gouvernée
 
-Factory loads immutable definitions from `factory/workflows/<workflowType>/<version>.json` and exposes namespace-independent read-only list/detail APIs. A definition owns stable step IDs, names, responsibilities, and dependencies; projection statuses and instance descriptions remain declarative runtime state. Historical v1/v2 projections remain valid without a definition reference.
+La livraison est une projection distincte de l'exécution du workflow. Elle conserve cinq frontières explicites : `implementation-ready`, `artifact-ready`, `release-approved`, `deployed`, puis `production-verified`. Le JSONL Factory reste l'autorité d'exécution ; Git persiste le code et GitHub reste seulement la surface de diff, checks et collaboration.
 
-`responsibility.kind` identifies the executor, never the deliverable: `human` means work performed by a person; `agent` covers all agent-performed work, including source-code editing; `code` is deterministic execution owned by Factory, such as builds, tests, scans, and oracles. Factory and UI must not infer the kind from names, artifacts, or statuses.
+Le control-plane Factory possède exclusivement inspection, staging, checkpoint commit, push et création de draft PR. Roots, remote, owner/repository, branche de base, identité de service, scopes et fichiers protégés viennent de configuration serveur de confiance. Les payloads client ne peuvent fournir ni root, URL, remote, commande ou credentials. Une PR sans adaptateur configuré reste explicitement `PULL_REQUEST_NOT_CONFIGURED`. Aucun merge automatique n'est livré dans cette phase.
+
+Les opérations delivery sont journalisées append-only avec états `pending`, `running`, `succeeded`, `failed` ou `indeterminate`, clés d'idempotence et faits bornés. Toute opération est liée au namespace, workflow, worktree canonique, hash d'environnement, case/runtime contrôlant et HEAD attendu. Un crash ou résultat Git incertain bloque la promotion. L'approbation de release est une preuve humaine Factory ; déploiement et smoke production sont des preuves control-plane/oracle, jamais des verdicts d'agents. Worktree et branche ne sont pas supprimés avant vérification production et application d'une politique de rétention explicite.
+
+## Governed human interactions
+
+A `waiting_human` step is answered through a durable Factory interaction, never by directly editing projection status. The trusted Factory control plane opens an interaction at an exact workflow revision. A reply is authenticated server-side, single-use, action-whitelisted, and revision-checked. It appends audited `human-decision` evidence and then invokes the existing transition policy/store with the action's declared transition. Generic evidence POST rejects `human-decision`, as it does `oracle-result`.
+
+Interactions replay from `human-interactions.jsonl`; evidence remains in `evidence.jsonl`, so reload/restart preserves state and actor attribution. Reply processing serializes contenders per interaction journal, records evidence first, asks the governed transition store to durably accept/reject, and appends `interaction_transitioned` only after an accepted transition. A crash before transition acceptance leaves the interaction open; retry reuses the idempotent evidence/transition keys. A crash after durable transition acceptance but before interaction closure is reconciled by retry through the transition store's idempotent result, then closes the interaction. No safe controller resume endpoint exists yet: replies explicitly return `runtimeNotification: not-configured`; projection SSE refreshes the cockpit. No client callback URL is accepted.
+
+## Version 2 responsibility and temporal lanes
+
+Version 1 remains fully readable with unchanged projection cards. Version 2 requires every step to carry `responsibility: { kind, name? }`: `kind` is exactly `human`, `agent`, or `code`, while optional `name` is a non-blank display label bounded to 256 characters. Responsibility identifies the executor, never the deliverable: `human` means work performed by a person; `agent` covers all agent-performed work, including source-code editing; `code` is deterministic execution owned by Factory, such as builds, tests, scans, and oracles. Unknown fields and malformed mixed contracts are rejected. Factory and UI never infer actor kind from names, artifacts, or statuses.
+
+The read-only Angular temporal view groups v2 steps in Human, Agent, and Code lanes in deterministic source/dependency order and uses only Factory-observed timing. Closed intervals use observed completion. Open intervals may extend only to a trusted observation instant returned by Factory; incomplete timing remains explicitly untimed rather than receiving invented dates or durations. V1 uses the existing linear-card fallback. `waiting_human` is prominent but provides no reply or approval action.
+
+Non-goals are workflow mutation, human response endpoints, question answering, costs/tokens, hierarchy aggregation, and live case activity. Remove, Restore, and Purge remain lifecycle controls outside the diagram.
 
 Stage 1 provides a generic, Forge-independent workflow projection contract and filesystem store. It has no HTTP, AgentOS, UI, watcher, Git, or worktree integration.
+
+## Conversational Factory entry
+
+The canonical conversational entry is `/run-factory <business-reference-or-intent> [--workflow=<workflowType>]`. Its argument is opaque domain input: the generic protocol assumes neither a source system nor an identifier syntax, ticket model, software lifecycle, or BMAD. The `FACTORY__publish_projection` tool is only the technical publication capability; industrialized execution comes from the generic run protocol plus a compatible loaded domain workflow declaration owned by the selected agent.
+
+Before execution, the agent verifies the tool, inventories its loaded declarations, and selects exactly one compatible workflow. An explicit selector must name a compatible workflow owned by that agent. Without a selector, one match is selected, several matches require a human choice, and no match requires refusal. Tool availability without a compatible declaration is never permission to invent identity, steps, dependencies, actors, gates, or lifecycle. Each declaration explicitly supplies `workflowType`, compatibility criteria, stable identity rule, sole publisher role, and lifecycle source including its stable v2 graph.
+
+Workflow identity is opaque to Factory and is established by the selected domain declaration. Namespace and controlling runtime/case/thread/user identity remain trusted adapter attribution and must never be encoded in model-authored projection fields. The first complete v2 publication uses `expectedRevision: 0`; this successful publication creates the workflow, and there is no separate start-workflow tool. The publisher retains the returned revision, follows normal domain orchestration, and republishes complete snapshots for material transitions. Waiting, blocked, failed, cancelled, and terminal states must be represented honestly; human gates are never automatically approved and sole publisher ownership prevents co-publisher ambiguity.
+
+`/run-forge` is the BMAD adapter alias for `/run-factory --workflow=bmad-story`; legacy `/forge-run` remains a backward-compatible spelling. Its Jira Story identity, deterministic reconnaissance, workstream confirmation, human confirmation, BMAD gates, graph, and ProductEngineer publisher ownership are domain-specific and do not alter the generic contract.
+
+The Factory Cockpit launch button remains a transitional entry while conversational smoke is being validated. It is neither removed nor demoted by this contract. Conversational smoke must first demonstrate prompt discovery, compatible declaration selection, revision-zero creation, material updates, and honest waiting/terminal publication in both AgentOS and transitional Coday Express.
 
 ## Contract
 
@@ -21,6 +49,18 @@ A publication contains `schemaVersion: "1"`, safe bounded `workflowId` and `work
 - `store.initialize()`, `store.publish(namespaceId, command, attribution?)`, `store.read(namespaceId, workflowId)`, and `store.list(namespaceId)`.
 
 The data root is always explicit. A later composition layer may pass `FACTORY_DATA_ROOT`; the store never infers a root from the current working directory.
+
+## Trusted controlling runtime reference
+
+Every changed publication carries a server-trusted `controllerExecution`, stored beside `projection` in the snapshot and excluded from `projectionHash`:
+
+- common: bounded `runtimeId`, `kind`, `agentId`, optional `actorId`, and Factory-generated `observedAt`;
+- AgentOS: `kind: agentos` with trusted `caseId`;
+- transitional Coday Express: `kind: coday-express` with trusted `threadId` (never represented as a case ID).
+
+Namespace and execution identity originate in runtime adapters, not model-authored projection arguments. AgentOS uses the configured `agentos.factory.runtime-id` (default `agentos-primary`); Express uses project `factory.runtimeId` or `coday-express-transitional`. Runtime URLs are never persisted or returned. Future activity enrichment must resolve `runtimeId` through trusted Factory server configuration, preserving the SSRF invariant that publications and read DTOs cannot choose network destinations.
+
+The reference updates only with a semantically changed projection, in the same pending-intent → journal → snapshot ordering as projection state. A semantically identical publication is a complete no-op: no revision, fact, activity, or reference mutation, even if the caller's execution reference differs. This avoids unjournaled metadata mutation and fake activity. Legacy snapshots without `controllerExecution` remain valid and are returned without the field; workflow reads never require the controlling runtime to be available.
 
 ## Storage and concurrency
 
@@ -50,6 +90,22 @@ Changed publications use a small intent protocol:
 The method reports success only after the durable journal and snapshot exist. On the next read, list, or publication, recovery examines `pending.json`: if the matching durable journal fact exists it completes the snapshot rename; otherwise it discards the uncommitted intent. Malformed snapshots, intents, or journal lines fail closed as storage errors. This keeps recovery deterministic without pretending to provide multi-process transactions.
 
 An identical semantic publication returns `changed: false` without a journal append or revision increment. A stale `expectedRevision` returns `REVISION_CONFLICT` before any write.
+
+## Temporal observability
+
+Every changed publication appends one atomic publication fact containing the Factory-observed `observedAt`, revision, and a bounded `transitionDelta`. The delta contains only workflow/step status transitions plus step additions/removals; it contains no model timestamp or free prose. Keeping one fact per publication preserves recovery atomicity and prevents partially recorded transition sets. Idempotent publications append nothing and therefore cannot create activity or transitions.
+
+`projectWorkflowTiming(facts, now, { snapshot })` is a pure projector. The journal is authoritative for history; the snapshot is used only to expose current status when a legacy journal lacks transition deltas. Such results use `complete: false` and machine-readable `incompleteReasons` and never invent status start times or historical durations.
+
+Duration semantics are centralized in `lib/workflow-timing-projector.mjs`: `ready` and `running` count as active, `waiting_human` and `blocked` have separate buckets, and `pending`, `completed`, `failed`, and `cancelled` accrue no duration. `startedAt` is first entry into `ready`/`running`. Attempts increment on entry into either active status from a non-active status, not on `ready` to `running` or the reverse. First completion is retained across reopening; last completion advances on later completion. Open intervals close against the trusted `now` argument. Invalid, future, or non-monotonic facts are skipped fail-closed so durations cannot become negative or NaN.
+
+The authoritative namespace-scoped read API is:
+
+```http
+GET /api/factory/workflows/:workflowId/timing?namespaceId=<uuid>
+```
+
+This slice is the durable basis for later US/Epic/Workstream statistics and temporal lane/Gantt UI. It does not yet aggregate hierarchy, cost, or token data.
 
 ## Stage 2 HTTP API
 
@@ -94,6 +150,8 @@ GET /api/factory/workflows?namespaceId=<uuid>&state=active
 GET /api/factory/workflows/:workflowId?namespaceId=<uuid>
 ```
 
+Detail is also the lookup contract used by runtime tools. It returns HTTP 200 with `state` equal to `absent`, `existing`, `removed`, or `purged`; only `existing` carries the complete snapshot. Collection/list reads remain authoritative for the cockpit, so an absent lookup is not treated as an empty detail DTO by Angular.
+
 Only `state=active` is currently supported. Every read requires a valid namespace UUID. List responses use:
 
 ```json
@@ -113,6 +171,26 @@ Errors have a stable shape:
 Malformed input and unsupported state return `400`, stale revisions return `409`, and missing projections return `404`. Corrupt, pending/inconsistent, or unexpectedly failing persistence returns a non-leaking `500 WORKFLOW_STORAGE_FAILURE`; detailed context is written only to the server log.
 
 For Stage 2, the HTTP caller supplying `execution` is assumed to be a trusted Factory runtime. There is not yet authentication or AgentOS identity verification in this endpoint. It must not be exposed to untrusted callers until that boundary is replaced. No SSE or notification is emitted in this stage.
+
+## Transitional Coday Express adapter
+
+For demos while delegation is more stable on Express, Coday can expose the same `FACTORY__publish_projection` capability. This adapter is deprecated and intentionally contains no workflow/BMAD protocol logic; the durable target remains the AgentOS Kotlin `FactoryPublishProjectionTool`.
+
+It is disabled by default and reads endpoint and namespace only from the current project's trusted `coday.yaml` configuration:
+
+```yaml
+factory:
+  enabled: true
+  baseUrl: http://127.0.0.1:3141
+  namespaceId: <agentos-namespace-uuid>
+
+agents:
+  - name: ProductEngineer
+    integrations:
+      FACTORY: [publish_projection]
+```
+
+Do not grant `FACTORY` to delegates unless they independently need this capability. The namespace, URL, and runtime attribution are never model arguments.
 
 ## Stage 3 AgentOS tool
 

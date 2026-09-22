@@ -165,8 +165,9 @@ export function normalizeDiagnosticLine(rawLine) {
 
   // TypeScript error: `path/to/file.ts(line,col): error TSxxxx: message`
   // Also matches tsconfig.json files (e.g. TS5090 from tsconfig.app.json).
-  const tsMatch = line.match(/([^\s(]+(?:\.tsx?|\.json))(\(\d+,\d+\))?:\s*error\s+(TS\d+):/)
-    ?? line.match(/([^\s(]+)(\(\d+,\d+\))?:\s*error\s+(TS\d+):/)
+  const tsMatch =
+    line.match(/([^\s(]+(?:\.tsx?|\.json))(\(\d+,\d+\))?:\s*error\s+(TS\d+):/) ??
+    line.match(/([^\s(]+)(\(\d+,\d+\))?:\s*error\s+(TS\d+):/)
   if (tsMatch) {
     const filePath = tsMatch[1]
     const location = tsMatch[2] ?? ''
@@ -302,9 +303,7 @@ export function runBaselineOracle({ oracle, planFiles, repoRoot, timeoutMs }) {
 
   // Resolve and record the projects that this baseline covers (for durable facts
   // and comparability assertion in tests).
-  const projects = oracle.filesArg
-    ? resolveOwnerProjects(planFiles, repoRoot)
-    : []
+  const projects = oracle.filesArg ? resolveOwnerProjects(planFiles, repoRoot) : []
 
   const result = runCommand(command, { cwd, timeoutMs })
   const tasks = countTaskOutcomes(result.stdout + '\n' + result.stderr)
@@ -312,9 +311,10 @@ export function runBaselineOracle({ oracle, planFiles, repoRoot, timeoutMs }) {
   const timedOut = result.timedOut
   const emptySuccess = result.exitCode === 0 && tasks.executed === 0
 
-  const { identities, rawLines } = result.exitCode !== 0 && !timedOut && !emptySuccess
-    ? extractOracleDiagnostics(oracle.name, result.stdout, result.stderr)
-    : { identities: [], rawLines: [] }
+  const { identities, rawLines } =
+    result.exitCode !== 0 && !timedOut && !emptySuccess
+      ? extractOracleDiagnostics(oracle.name, result.stdout, result.stderr)
+      : { identities: [], rawLines: [] }
 
   // Build a brief execution evidence string for the review packet.
   const evidenceParts = [
@@ -387,7 +387,7 @@ export function classifyOracleResult({ oracle, baseline, postEdit, changedFiles,
 
   // Post-edit failed (or infrastructure issue). Extract diagnostics.
   const { identities: postEditIdentities, rawLines: postEditRawLines } =
-    (!postEdit.timedOut && !postEdit.emptySuccess)
+    !postEdit.timedOut && !postEdit.emptySuccess
       ? extractOracleDiagnostics(oracle.name, postEdit.stdout, postEdit.stderr)
       : { identities: [], rawLines: [] }
 
@@ -457,7 +457,10 @@ export function classifyOracleResult({ oracle, baseline, postEdit, changedFiles,
   // Also check infra identities for pre-existing status
   const newInfraDiagnostics = infraIdentities.filter((id) => !baselineSet.has(id))
   const newDiagnostics = [...newProductDiagnostics, ...newInfraDiagnostics]
-  const preExistingDiagnostics = [...preExistingProductDiagnostics, ...infraIdentities.filter((id) => baselineSet.has(id))]
+  const preExistingDiagnostics = [
+    ...preExistingProductDiagnostics,
+    ...infraIdentities.filter((id) => baselineSet.has(id)),
+  ]
 
   // Build raw lines for new diagnostics (for editor brief)
   // We include lines that contain any new identity's key parts.
@@ -569,16 +572,8 @@ export function classifyOracleResult({ oracle, baseline, postEdit, changedFiles,
  * @returns {object}
  */
 export function buildQuarantineRecord(params) {
-  const {
-    oracleName,
-    classification,
-    reason,
-    baseline,
-    postEdit,
-    classificationResult,
-    humanDecision,
-    humanMessage,
-  } = params
+  const { oracleName, classification, reason, baseline, postEdit, classificationResult, humanDecision, humanMessage } =
+    params
 
   return {
     quarantinedAt: new Date().toISOString(),
@@ -589,13 +584,15 @@ export function buildQuarantineRecord(params) {
     humanMessage: humanMessage || null,
     // The oracle remains visibly failed — never rewritten as passed.
     oracleFailed: true,
-    baseline: baseline ? {
-      exitCode: baseline.exitCode,
-      timedOut: baseline.timedOut,
-      emptySuccess: baseline.emptySuccess,
-      executionEvidence: baseline.executionEvidence,
-      diagnosticCount: baseline.diagnosticIdentities.length,
-    } : null,
+    baseline: baseline
+      ? {
+          exitCode: baseline.exitCode,
+          timedOut: baseline.timedOut,
+          emptySuccess: baseline.emptySuccess,
+          executionEvidence: baseline.executionEvidence,
+          diagnosticCount: baseline.diagnosticIdentities.length,
+        }
+      : null,
     postEdit: {
       exitCode: postEdit.exitCode,
       timedOut: postEdit.timedOut,

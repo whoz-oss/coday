@@ -35,13 +35,7 @@
  * Les tests de cet adaptateur vérifient le câblage sans appeler AgentOS réel.
  */
 
-import {
-  createCase,
-  runAgentTurn,
-  killCase,
-  preflightAgent,
-  listIntegrations,
-} from './agentos.mjs'
+import { createCase, runAgentTurn, killCase, preflightAgent, listIntegrations } from './agentos.mjs'
 
 // ---------------------------------------------------------------------------
 // Types

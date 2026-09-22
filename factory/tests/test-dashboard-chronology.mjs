@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { parseJsonl, reconstructPhases } from '../dashboard/server.mjs'
+import { reconstructPhases } from '../dashboard/server.mjs'
 
 const html = readFileSync(new URL('../dashboard/index.html', import.meta.url), 'utf8')
 // Extract the Gantt block from the inline <script>.
@@ -22,7 +22,20 @@ const timeline = new Function('document', `
   return { buildGlobalTimeline, layoutLaneBars, renderGantt }
 `)(documentStub)
 
-const phases = reconstructPhases(parseJsonl(new URL('../runs/20260820T132311Z-5b34.jsonl', import.meta.url)))
+// Keep chronology deterministic and independent from ephemeral factory/runs artifacts.
+// These starts deliberately preserve the secure workflow lifecycle:
+// ticket → preflight → analysis → plan gate → edit.
+const chronologyRecords = [
+  ['fetch-ticket', 'code', '2026-08-20T13:23:11.133Z', 1000],
+  ['preflight', 'code', '2026-08-20T13:23:12.133Z', 1000],
+  ['analyse-1', 'agent', '2026-08-20T13:23:13.133Z', 1000],
+  ['plan-gate-1', 'code', '2026-08-20T13:23:14.133Z', 1000],
+  ['edit-1-1', 'agent', '2026-08-20T13:23:15.133Z', 1000],
+].flatMap(([name, phaseKind, startedAt, durationMs]) => [
+  { kind: 'phase', name, phaseKind, startedAt },
+  { kind: 'phase_end', name, status: 'pass', durationMs, facts: {} },
+])
+const phases = reconstructPhases(chronologyRecords)
 const byName = Object.fromEntries(phases.map((phase) => [phase.name, phase]))
 const run = { startedAt: '2026-08-20T13:23:11.133Z', durationMs: 352800, status: 'pass', phases }
 const global = timeline.buildGlobalTimeline(run, phases, 0)

@@ -147,7 +147,8 @@ export function resolveBuildHosts(ownerProjects, repoRoot) {
       reason:
         'FACTORY_FRONT_BUILD_HOST_MAP is not set. ' +
         'Cannot resolve buildable host applications for owner projects: ' +
-        ownerProjects.join(', ') + '. ' +
+        ownerProjects.join(', ') +
+        '. ' +
         'Set this env var to a JSON map of owner project → host app(s). ' +
         'Example: \'{"*":["aphrodite","admin","agentic-studio","copilot-chat"]}\'. ' +
         'See factory/lib/domains.mjs for documentation.',
@@ -162,8 +163,7 @@ export function resolveBuildHosts(ownerProjects, repoRoot) {
     return {
       noHost: true,
       reason:
-        'FACTORY_FRONT_BUILD_HOST_MAP is not valid JSON: ' + String(err) + '. ' +
-        'Raw value: ' + mapRaw.slice(0, 200),
+        'FACTORY_FRONT_BUILD_HOST_MAP is not valid JSON: ' + String(err) + '. ' + 'Raw value: ' + mapRaw.slice(0, 200),
       ownerProjects,
     }
   }
@@ -197,7 +197,9 @@ export function resolveBuildHosts(ownerProjects, repoRoot) {
     return {
       noHost: true,
       reason:
-        'No buildable host found for owner projects: ' + ownerProjects.join(', ') + '. ' +
+        'No buildable host found for owner projects: ' +
+        ownerProjects.join(', ') +
+        '. ' +
         'The host map has no entry for these projects and no fallback ("*") is defined. ' +
         'Add entries to FACTORY_FRONT_BUILD_HOST_MAP.',
       ownerProjects,
@@ -229,10 +231,7 @@ export function resolveBuildHosts(ownerProjects, repoRoot) {
         try {
           const json = JSON.parse(readFileSync(candidate, 'utf8'))
           // Accepter 'build' ou 'build-angular' comme cible de build Angular.
-          if (
-            json.targets &&
-            (json.targets['build'] !== undefined || json.targets['build-angular'] !== undefined)
-          ) {
+          if (json.targets && (json.targets['build'] !== undefined || json.targets['build-angular'] !== undefined)) {
             hasBuildTarget = true
           }
         } catch {
@@ -247,9 +246,13 @@ export function resolveBuildHosts(ownerProjects, repoRoot) {
       // On l'accepte quand même (le dépôt peut avoir une structure non standard)
       // mais on loggue un avertissement.
       console.warn(
-        '[oracle-command] resolveBuildHosts: project.json not found for host "' + host + '" ' +
-        'in conventional paths (' + candidatePaths.map((p) => p.replace(repoRoot, '<root>')).join(', ') + '). ' +
-        'Accepting host tentatively — verify that it has a build target.'
+        '[oracle-command] resolveBuildHosts: project.json not found for host "' +
+          host +
+          '" ' +
+          'in conventional paths (' +
+          candidatePaths.map((p) => p.replace(repoRoot, '<root>')).join(', ') +
+          '). ' +
+          'Accepting host tentatively — verify that it has a build target.'
       )
       validHosts.push(host)
       continue
@@ -260,9 +263,11 @@ export function resolveBuildHosts(ownerProjects, repoRoot) {
     } else {
       invalidHosts.push(host)
       console.warn(
-        '[oracle-command] resolveBuildHosts: host "' + host + '" has no `build` or ' +
-        '`build-angular` target in its project.json. Excluding from build oracle scope. ' +
-        'Update FACTORY_FRONT_BUILD_HOST_MAP to use a host with a real build target.'
+        '[oracle-command] resolveBuildHosts: host "' +
+          host +
+          '" has no `build` or ' +
+          '`build-angular` target in its project.json. Excluding from build oracle scope. ' +
+          'Update FACTORY_FRONT_BUILD_HOST_MAP to use a host with a real build target.'
       )
     }
   }
@@ -271,10 +276,16 @@ export function resolveBuildHosts(ownerProjects, repoRoot) {
     return {
       noHost: true,
       reason:
-        'All resolved hosts (' + hosts.join(', ') + ') lack a `build` or `build-angular` ' +
+        'All resolved hosts (' +
+        hosts.join(', ') +
+        ') lack a `build` or `build-angular` ' +
         'target in their project.json. ' +
-        'Owner projects: ' + ownerProjects.join(', ') + '. ' +
-        'Excluded hosts: ' + invalidHosts.join(', ') + '. ' +
+        'Owner projects: ' +
+        ownerProjects.join(', ') +
+        '. ' +
+        'Excluded hosts: ' +
+        invalidHosts.join(', ') +
+        '. ' +
         'Update FACTORY_FRONT_BUILD_HOST_MAP to reference apps with real build targets.',
       ownerProjects,
     }
@@ -436,7 +447,9 @@ export function buildOracleCommand(oracle, files, repoRoot) {
       return {
         noHost: true,
         reason:
-          'No Nx owner project found for modified files: ' + files.join(', ') + '. ' +
+          'No Nx owner project found for modified files: ' +
+          files.join(', ') +
+          '. ' +
           'Modified files may be in root-level directories without a project.json.',
         ownerProjects: [],
       }
@@ -508,8 +521,9 @@ export function buildOracleCommand(oracle, files, repoRoot) {
   const target = extractTarget(oracle.command)
   if (!target) {
     console.warn(
-      '[oracle-command] Impossible d\'extraire la cible Nx depuis la commande template : ' +
-        oracle.command + '. ' +
+      "[oracle-command] Impossible d'extraire la cible Nx depuis la commande template : " +
+        oracle.command +
+        '. ' +
         'La commande template est retournée sans modification. ' +
         'Vérifier que FACTORY_COMMAND_FRONT contient `-t <cible>` ou `--target=<cible>`.'
     )
@@ -526,7 +540,8 @@ export function buildOracleCommand(oracle, files, repoRoot) {
     // On retourne la commande template pour ne pas bloquer le run.
     console.warn(
       '[oracle-command] Aucun projet Nx trouvé pour les fichiers modifiés : ' +
-        files.join(', ') + '. ' +
+        files.join(', ') +
+        '. ' +
         'La commande template est retournée sans modification.'
     )
     return oracle.command
@@ -539,8 +554,5 @@ export function buildOracleCommand(oracle, files, repoRoot) {
   // peuvent avoir été exécutés sur cet état modifié — sans `--skip-nx-cache`,
   // on tomberait dans le même piège que l'incident `affected --files` (216
   // projets tous en cache, executed: 0, garde A8 bloquante).
-  return 'pnpm nx run-many' +
-    ' --target=' + target +
-    ' --projects=' + projects.join(',') +
-    ' --skip-nx-cache'
+  return 'pnpm nx run-many' + ' --target=' + target + ' --projects=' + projects.join(',') + ' --skip-nx-cache'
 }

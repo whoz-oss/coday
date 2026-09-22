@@ -1,5 +1,14 @@
 function validateInterval(interval, index) {
-  if (!interval || typeof interval !== 'object' || Array.isArray(interval) || Object.keys(interval).some((key) => !['start', 'end'].includes(key)) || !Number.isFinite(interval.start) || !Number.isFinite(interval.end) || interval.start >= interval.end) throw new TypeError(`Invalid half-open interval at index ${index}`)
+  if (
+    !interval ||
+    typeof interval !== 'object' ||
+    Array.isArray(interval) ||
+    Object.keys(interval).some((key) => !['start', 'end'].includes(key)) ||
+    !Number.isFinite(interval.start) ||
+    !Number.isFinite(interval.end) ||
+    interval.start >= interval.end
+  )
+    throw new TypeError(`Invalid half-open interval at index ${index}`)
   return { start: interval.start, end: interval.end }
 }
 

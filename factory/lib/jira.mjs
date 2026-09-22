@@ -191,6 +191,8 @@ function formatCommentsSection(comments, omitted) {
  * Retourne un objet avec :
  *   - ticketContent    : le markdown construit depuis summary + description + AC + comments
  *   - summary          : le titre du ticket (fait factuel)
+ *   - epicKey          : clé du ticket parent/epic (ex. 'WZ-34386'), null si absent
+ *   - epicSummary      : titre du ticket parent/epic, null si absent
  *   - fieldCount       : nombre de champs non vides parmi les trois (fait factuel)
  *   - commentCount     : nombre total de commentaires sur le ticket
  *   - commentsIncluded : nombre de commentaires inclus dans ticketContent
@@ -232,6 +234,11 @@ export async function fetchJiraTicket(ticketId, jiraBaseUrl, jiraEmail, jiraApiT
   const fields = data.fields ?? {}
 
   const summary = fields.summary ?? ''
+
+  // Ticket parent (Epic ou hiérarchie Jira)
+  const parent = fields.parent ?? null
+  const epicKey = parent?.key ?? null
+  const epicSummary = parent?.fields?.summary ?? null
 
   // Description : ADF (Jira v3) ou texte brut (fallback)
   let description = ''
@@ -282,6 +289,8 @@ export async function fetchJiraTicket(ticketId, jiraBaseUrl, jiraEmail, jiraApiT
   return {
     ticketContent,
     summary,
+    epicKey,
+    epicSummary,
     fieldCount,
     commentCount,
     commentsIncluded,

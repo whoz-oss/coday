@@ -9,17 +9,31 @@ export const WORKFLOW_RELATION_ERROR_CODES = Object.freeze({
 function optionalId(value, path) {
   if (value === undefined) return { ok: true, value: undefined }
   const validated = validateWorkflowProjectionId(value, path)
-  return validated.ok ? { ok: true, value } : { ok: false, error: { code: WORKFLOW_RELATION_ERROR_CODES.INVALID_RELATIONS, details: validated.error } }
+  return validated.ok
+    ? { ok: true, value }
+    : { ok: false, error: { code: WORKFLOW_RELATION_ERROR_CODES.INVALID_RELATIONS, details: validated.error } }
 }
 
 export function validateWorkflowRelationsInput(relations) {
   if (relations === undefined) return { ok: true, relations: {} }
-  if (!relations || typeof relations !== 'object' || Array.isArray(relations) || Object.keys(relations).some((key) => !['parentWorkflowId', 'groupId'].includes(key))) return { ok: false, error: { code: WORKFLOW_RELATION_ERROR_CODES.INVALID_RELATIONS } }
+  if (
+    !relations ||
+    typeof relations !== 'object' ||
+    Array.isArray(relations) ||
+    Object.keys(relations).some((key) => !['parentWorkflowId', 'groupId'].includes(key))
+  )
+    return { ok: false, error: { code: WORKFLOW_RELATION_ERROR_CODES.INVALID_RELATIONS } }
   const parent = optionalId(relations.parentWorkflowId, 'relations.parentWorkflowId')
   if (!parent.ok) return parent
   const group = optionalId(relations.groupId, 'relations.groupId')
   if (!group.ok) return group
-  return { ok: true, relations: { ...(parent.value ? { parentWorkflowId: parent.value } : {}), ...(group.value ? { groupId: group.value } : {}) } }
+  return {
+    ok: true,
+    relations: {
+      ...(parent.value ? { parentWorkflowId: parent.value } : {}),
+      ...(group.value ? { groupId: group.value } : {}),
+    },
+  }
 }
 
 export function independentWorkflowRelations(workflowId) {

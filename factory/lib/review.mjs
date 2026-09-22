@@ -120,15 +120,15 @@ const FORBIDDEN_REVIEWER_FIELDS = ['revisionBudget', 'revision', 'attempt', 'max
  * @enum {string}
  */
 export const PARSE_ERROR_CODES = /** @type {const} */ ({
-  NOT_AN_OBJECT:          'NOT_AN_OBJECT',
-  FORBIDDEN_FIELD:        'FORBIDDEN_FIELD',
-  INVALID_REVIEWER_ID:    'INVALID_REVIEWER_ID',
-  INVALID_SUBJECT_TYPE:   'INVALID_SUBJECT_TYPE',
-  INVALID_VERDICT:        'INVALID_VERDICT',
-  INVALID_SCORES:         'INVALID_SCORES',
-  INVALID_FINDINGS:       'INVALID_FINDINGS',
-  INVALID_SENSITIVE_AREAS:'INVALID_SENSITIVE_AREAS',
-  INVALID_ARTIFACT:       'INVALID_ARTIFACT',
+  NOT_AN_OBJECT: 'NOT_AN_OBJECT',
+  FORBIDDEN_FIELD: 'FORBIDDEN_FIELD',
+  INVALID_REVIEWER_ID: 'INVALID_REVIEWER_ID',
+  INVALID_SUBJECT_TYPE: 'INVALID_SUBJECT_TYPE',
+  INVALID_VERDICT: 'INVALID_VERDICT',
+  INVALID_SCORES: 'INVALID_SCORES',
+  INVALID_FINDINGS: 'INVALID_FINDINGS',
+  INVALID_SENSITIVE_AREAS: 'INVALID_SENSITIVE_AREAS',
+  INVALID_ARTIFACT: 'INVALID_ARTIFACT',
 })
 
 // ---------------------------------------------------------------------------
@@ -247,9 +247,7 @@ export function parseReviewResult(raw, config) {
 
   // --- reviewerId (lu en premier pour l'inclure dans les échecs ultérieurs) ---
   const reviewerId = r['reviewerId']
-  const rid = typeof reviewerId === 'string' && reviewerId.trim() !== ''
-    ? reviewerId.trim()
-    : undefined
+  const rid = typeof reviewerId === 'string' && reviewerId.trim() !== '' ? reviewerId.trim() : undefined
 
   if (rid === undefined) {
     return fail(undefined, PARSE_ERROR_CODES.INVALID_REVIEWER_ID)
@@ -305,8 +303,7 @@ export function parseReviewResult(raw, config) {
     seenAxisIds.add(axisId)
 
     const score = ss['score']
-    if (typeof score !== 'number' || !Number.isFinite(score) ||
-        score < SCORE_MIN || score > SCORE_MAX) {
+    if (typeof score !== 'number' || !Number.isFinite(score) || score < SCORE_MIN || score > SCORE_MAX) {
       return fail(rid, PARSE_ERROR_CODES.INVALID_SCORES)
     }
 
@@ -548,7 +545,10 @@ export function aggregateReviews(outcomes, config) {
     verdict = 'reject'
   } else {
     for (const r of valid) {
-      if (r.verdict === 'reject') { verdict = 'reject'; break }
+      if (r.verdict === 'reject') {
+        verdict = 'reject'
+        break
+      }
       if (r.verdict === 'request-changes' && verdict !== 'reject') verdict = 'request-changes'
     }
     // Escalation : finding sévère déclaré malgré verdict lénient.
@@ -562,13 +562,15 @@ export function aggregateReviews(outcomes, config) {
   /** @type {Record<string, number>} */
   const axisScores = {}
   for (const axis of config.axes) {
-    const vals = valid.flatMap((r) => r.scores)
+    const vals = valid
+      .flatMap((r) => r.scores)
       .filter((s) => s.axisId === axis.id)
       .map((s) => s.score)
     if (vals.length > 0) axisScores[axis.id] = vals.reduce((a, b) => a + b, 0) / vals.length
   }
 
-  let weightedSum = 0, totalWeight = 0
+  let weightedSum = 0,
+    totalWeight = 0
   for (const axis of config.axes) {
     const score = axisScores[axis.id]
     if (score !== undefined) {
@@ -656,22 +658,22 @@ export function aggregateReviews(outcomes, config) {
  */
 export function toReviewFacts(aggregate, revisionMeta) {
   return {
-    reviewVerdict:        aggregate.verdict,
-    reviewVetoFired:      aggregate.vetoFired,
-    reviewVetoAxes:       aggregate.vetoAxes,
+    reviewVerdict: aggregate.verdict,
+    reviewVetoFired: aggregate.vetoFired,
+    reviewVetoAxes: aggregate.vetoAxes,
     reviewAggregateScore: aggregate.aggregateScore,
-    reviewAxisScores:     aggregate.axisScores,
-    reviewFindingCounts:  aggregate.findingCounts,
+    reviewAxisScores: aggregate.axisScores,
+    reviewFindingCounts: aggregate.findingCounts,
     reviewSensitiveAreas: aggregate.sensitiveAreas,
-    reviewerCount:        aggregate.reviewerCount,
-    reviewerIds:          aggregate.reviewerIds,
-    invalidReviewerIds:   aggregate.invalidReviewerIds,
-    reviewErrorCodes:     aggregate.errorCodes,
-    artifactPaths:        aggregate.artifactDescriptors.map((d) => d.path),
-    artifactHashes:       aggregate.artifactDescriptors.map((d) => d.hash),
-    revision:             revisionMeta.revision,
-    attempt:              revisionMeta.attempt,
-    maxRevisions:         revisionMeta.maxRevisions,
-    maxAttempts:          revisionMeta.maxAttempts,
+    reviewerCount: aggregate.reviewerCount,
+    reviewerIds: aggregate.reviewerIds,
+    invalidReviewerIds: aggregate.invalidReviewerIds,
+    reviewErrorCodes: aggregate.errorCodes,
+    artifactPaths: aggregate.artifactDescriptors.map((d) => d.path),
+    artifactHashes: aggregate.artifactDescriptors.map((d) => d.hash),
+    revision: revisionMeta.revision,
+    attempt: revisionMeta.attempt,
+    maxRevisions: revisionMeta.maxRevisions,
+    maxAttempts: revisionMeta.maxAttempts,
   }
 }
