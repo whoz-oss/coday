@@ -1,0 +1,69 @@
+<div class="forge-activity">
+  <header class="forge-activity__header" style="cursor: pointer" (click)="storyRequested.emit()">
+    <span
+      class="forge-activity__status-badge"
+      [class.forge-activity__status-badge--running]="status() === 'RUNNING'"
+      [class.forge-activity__status-badge--idle]="status() === 'IDLE' || status() === 'PENDING'"
+      [class.forge-activity__status-badge--error]="status() === 'KILLED' || status() === 'ERROR'"
+    >
+      {{ statusLabel() }}
+    </span>
+
+    @if (ticketId()) {
+      <span class="forge-activity__ticket-id mono">{{ ticketId() }}</span>
+      @if (ticketLoading()) {
+        <span class="forge-activity__ticket-loading">…</span>
+      }
+      <span class="forge-activity__ticket-summary">{{ ticketInfo()?.summary ?? '' }}</span>
+    } @else {
+      <span class="forge-activity__case mono">{{ caseId() }}</span>
+    }
+
+    <a class="forge-activity__link" [href]="agentosLink()" target="_blank" (click)="$event.stopPropagation()"
+      >Voir dans AgentOS ↗</a
+    >
+    <button
+      type="button"
+      class="forge-activity__close"
+      (click)="$event.stopPropagation(); closeRequested.emit()"
+      aria-label="Fermer le run actif"
+    >
+      ×
+    </button>
+  </header>
+
+  <div class="forge-activity__feed">
+    @for (item of feedItems(); track item.id) {
+      @if (item.kind === 'message') {
+        <div class="forge-activity__item forge-activity__item--message">
+          <span class="forge-activity__role">{{ item.role }}</span>
+          <span class="forge-activity__text">{{ item.text }}</span>
+        </div>
+      } @else if (item.kind === 'tool') {
+        <div class="forge-activity__item forge-activity__item--tool">
+          <span class="forge-activity__tool-name">🔧 {{ item.toolName }}</span>
+          @if (item.duration) {
+            <span class="forge-activity__duration">({{ item.duration }})</span>
+          }
+        </div>
+      } @else if (item.kind === 'status') {
+        <div class="forge-activity__item forge-activity__item--status">
+          <span>▸ {{ item.text }}</span>
+        </div>
+      } @else if (item.kind === 'intention') {
+        <div class="forge-activity__item forge-activity__item--intention">
+          <span>💭 {{ item.text }}</span>
+        </div>
+      }
+    }
+    @if (streamingText()) {
+      <div class="forge-activity__item forge-activity__item--streaming">
+        <span class="forge-activity__role">Agent</span>
+        <span class="forge-activity__text">{{ streamingText() }}▌</span>
+      </div>
+    }
+    @if (feedItems().length === 0 && !streamingText()) {
+      <div class="forge-activity__empty">En attente de l’agent…</div>
+    }
+  </div>
+</div>
