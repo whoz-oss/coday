@@ -590,6 +590,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       try {
         const event = JSON.parse(raw) as CaseEvent
         this.zone.run(() => {
+          // A reconnection replays history: deduplicate before file refresh and stream side effects.
+          if (this.events().some((previous) => previous.id === event.id)) return
           const beforeLen = this.events().length
 
           // Pre-compute markdown HTML for MessageEvent before adding to signal.
@@ -601,7 +603,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             }
           }
 
-          this.events.update((prev) => (prev.some((e) => e.id === event.id) ? prev : [...prev, event]))
+          this.events.update((prev) => [...prev, event])
           const afterLen = this.events().length
 
           console.log('[AgentOS SSE] event processed', {

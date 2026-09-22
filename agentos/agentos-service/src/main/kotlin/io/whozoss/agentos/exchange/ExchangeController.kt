@@ -13,6 +13,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.sdk.api.exchange.ExchangeApi
 import io.whozoss.agentos.sdk.api.exchange.ExchangeCapability
 import io.whozoss.agentos.sdk.api.exchange.ExchangeDeleteResponse
+import io.whozoss.agentos.sdk.api.exchange.ExchangeDirectoryListing
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileContent
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileEntry
 import io.whozoss.agentos.sdk.api.exchange.ExchangeManifest
@@ -37,6 +38,7 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.StandardCharsets
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.NoSuchFileException
+import java.nio.file.NotDirectoryException
 import java.nio.file.Path
 import java.util.UUID
 
@@ -79,6 +81,22 @@ class ExchangeController(
     override fun getCaseFilesManifest(
         @PathVariable caseId: UUID,
     ): ExchangeManifest = manifestFor(caseRootFor(caseId), ExchangeScope.CASE, EntityType.CASE, caseId)
+
+    /**
+     * Browse one directory level of a case's files.
+     *
+     * Additive, and deliberately not part of the [ExchangeApi] contract: adding an abstract method
+     * to an interface that external consumers implement would break them at startup.
+     */
+    @GetMapping("/api/cases/{caseId}/files/directory", produces = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    @HideOnAccessDenied
+    fun browseCaseFiles(
+        @PathVariable caseId: UUID,
+        @RequestParam(required = false, defaultValue = "") path: String,
+        @RequestParam(required = false, defaultValue = "0") page: Int,
+        @RequestParam(required = false, defaultValue = "200") size: Int,
+    ): ExchangeDirectoryListing = listingFor(caseRootFor(caseId), path, page, size, EntityType.CASE, caseId)
 
     @GetMapping("/api/cases/{caseId}/files/content", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
@@ -140,6 +158,25 @@ class ExchangeController(
             namespaceId,
         )
 
+    /** Browse one directory level of a namespace's shared files. */
+    @GetMapping("/api/namespaces/{namespaceId}/files/directory", produces = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    @HideOnAccessDenied
+    fun browseNamespaceFiles(
+        @PathVariable namespaceId: UUID,
+        @RequestParam(required = false, defaultValue = "") path: String,
+        @RequestParam(required = false, defaultValue = "0") page: Int,
+        @RequestParam(required = false, defaultValue = "200") size: Int,
+    ): ExchangeDirectoryListing =
+        listingFor(
+            exchangeStorageService.namespaceRoot(namespaceId),
+            path,
+            page,
+            size,
+            EntityType.NAMESPACE,
+            namespaceId,
+        )
+
     @GetMapping("/api/namespaces/{namespaceId}/files/content", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
     @HideOnAccessDenied
@@ -194,7 +231,41 @@ class ExchangeController(
     // Helpers
     // ========================================
 
-    /** Build the manifest for a scope root, embedding the caller's server-computed capability. */
+    /**
+     * One page of one directory level, with the caller's capability attached.
+     *
+     * Bounds the requested page size: an unbounded one would let a client ask for the whole of a
+     * repository in a single response, which is the problem this endpoint exists to avoid.
+     */
+    private fun listingFor(
+        root: Path,
+        path: String,
+        page: Int,
+        size: Int,
+        entityType: EntityType,
+        entityId: UUID,
+    ): ExchangeDirectoryListing {
+        val pageSize = size.coerceIn(1, MAX_PAGE_SIZE)
+        val safePage = page.coerceAtLeast(0)
+        val (entries, total) =
+            try {
+                exchangeStorageService.listDirectory(root, path, safePage, pageSize)
+            } catch (e: NotDirectoryException) {
+                throw BadRequestException("Not a directory: $path")
+            } catch (e: NoSuchFileException) {
+                throw ResourceNotFoundException("Directory not found: $path")
+            }
+        return ExchangeDirectoryListing(
+            path = path.trim().trim('/'),
+            entries = entries,
+            totalEntries = total,
+            page = safePage,
+            pageSize = pageSize,
+            hasMore = (safePage.toLong() + 1) * pageSize < total,
+            capability = exchangeCapabilityService.capability(currentUserId(), entityType, entityId.toString()),
+        )
+    }
+
     private fun manifestFor(
         root: Path,
         scope: ExchangeScope,
@@ -245,10 +316,7 @@ class ExchangeController(
         return ExchangeDeleteResponse(true, "Deleted $path")
     }
 
-    /**
-     * Resolve the date-sharded case storage root. Loads the case once for its namespace and
-     * immutable creation timestamp (the shard key); 404s when the case does not exist.
-     */
+    /** Resolve the existing per-case date-sharded Exchange directory. */
     private fun caseRootFor(caseId: UUID): Path {
         val case = caseService.findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
         return exchangeStorageService.caseRoot(case.namespaceId, caseId, case.metadata.created)
@@ -343,5 +411,8 @@ class ExchangeController(
             .replace("\n", "")
             .ifBlank { "download" }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /** Upper bound on a requested page, so one call cannot ask for a whole repository. */
+        private const val MAX_PAGE_SIZE = 500
+    }
 }

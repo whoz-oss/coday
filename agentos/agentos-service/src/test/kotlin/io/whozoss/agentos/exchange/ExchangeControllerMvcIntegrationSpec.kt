@@ -5,12 +5,14 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.mockk.verify
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.sdk.api.exchange.ExchangeDirectoryEntry
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileContent
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileEntry
 import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
@@ -94,6 +96,42 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
     )
 
     init {
+
+        "GET case directory returns a bounded JSON page and the caller capability" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns false
+            every { exchangeStorageService.listDirectory(any(), "docs", 0, 500) } returns
+                (listOf(ExchangeDirectoryEntry(path = "docs/report.txt", name = "report.txt", directory = false)) to 700)
+
+            mockMvc.perform(get("/api/cases/$caseId/files/directory").param("path", "docs").param("page", "-5").param("size", "99999"))
+                .andExpect(status().isOk)
+                .andExpect(header().string("Content-Type", "application/json"))
+                .andExpect(jsonPath("$.entries[0].path").value("docs/report.txt"))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.pageSize").value(500))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.capability").value("READ"))
+            verify { exchangeStorageService.listDirectory(any(), "docs", 0, 500) }
+        }
+
+        "GET namespace directory returns no content when READ is denied" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns false
+            mockMvc.perform(get("/api/namespaces/$namespaceId/files/directory"))
+                .andExpect(status().isNotFound)
+        }
+
+        "GET case directory maps a vanished subdirectory to 404" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
+            every { exchangeStorageService.listDirectory(any(), "vanished", 0, 200) } throws NoSuchFileException("vanished")
+            mockMvc.perform(get("/api/cases/$caseId/files/directory").param("path", "vanished"))
+                .andExpect(status().isNotFound)
+        }
 
         // -------------------------------------------------------------------------
         // Case manifest — capability is server-computed and fail-closed

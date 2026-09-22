@@ -169,3 +169,21 @@ re-importing an agent keeps its exchange stance. Granted tool names follow `<con
 
 - Built-in integrations and tool resolution: [plugin-system.md](plugin-system.md)
 - Persistence roots and the `data/` layout: [../AGENTOS.md](../AGENTOS.md)
+
+## Directory browsing
+
+The Files drawer browses one directory level at a time. Both case and namespace scopes expose
+`GET .../files/directory?path=&page=0&size=200`, with directories first and an explicit `hasMore`
+flag. The server caps pages at 500 entries. Existing manifest endpoints remain recursive for
+consumers that need the full list, including **Download all**.
+
+Opening the next page keeps previous entries visible. Background refreshes preserve the current
+folder and loaded pages; a missing subfolder returns to the authorized root, while revoked scope
+access remains hidden. Download-all captures the starting scope so navigation cannot redirect an
+in-flight download to a different case.
+
+Git metadata is inaccessible through Exchange REST endpoints and agent file tools, including
+case-insensitive `.git` paths and symbolic-link aliases. Ordinary dotfiles remain available.
+Directory listings skip symlinks, and file-tool deny patterns apply to every path segment below
+the scope root. This protection does not require a Git integration or change the existing scope
+roots and authorization model.

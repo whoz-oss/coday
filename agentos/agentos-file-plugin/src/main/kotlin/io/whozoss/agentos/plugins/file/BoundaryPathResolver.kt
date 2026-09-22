@@ -9,7 +9,6 @@ import java.nio.file.attribute.BasicFileAttributes
 import kotlin.io.path.absolute
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
-import kotlin.io.path.name
 import kotlin.io.path.pathString
 
 /**
@@ -146,11 +145,20 @@ class BoundaryPathResolver(
             throw IllegalArgumentException("Invalid path: path escapes root boundary ($relativePath)")
         }
 
-        // 7. Deny-list validation
-        val fileName = canonicalCursor.name
-        for (pattern in denyPatterns) {
-            if (matchesPattern(fileName, pattern)) {
-                throw IllegalArgumentException("Access denied: file matches sensitive pattern ($pattern)")
+        // 7. Deny-list validation, on every segment below the root rather than the leaf alone.
+        //
+        // A directory name has to count as much as a file name: matching only the leaf lets
+        // `.git/config` through, because the tested name is `config`. That matters here because an
+        // exchange scope can be a Git worktree, where `.git` is a file whose rewrite repoints the
+        // worktree at another checkout, and no deny pattern could ever have covered it.
+        // Same hole for a directory named `.env` or `secrets.key`: only its children were reachable.
+        for (segment in rootCanonical.relativize(canonicalCursor)) {
+            val name = segment.pathString
+            if (name.isEmpty()) continue
+            for (pattern in denyPatterns) {
+                if (matchesPattern(name, pattern)) {
+                    throw IllegalArgumentException("Access denied: file matches sensitive pattern ($pattern)")
+                }
             }
         }
 

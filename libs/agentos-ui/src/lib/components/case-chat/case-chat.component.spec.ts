@@ -81,6 +81,41 @@ describe('CaseChatComponent — submit with attachments', () => {
 
   afterEach(() => TestBed.resetTestingModule())
 
+  it('does not refresh Files again when a reconnection replays tool and completion events', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+
+      emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+      emit('AgentFinishedEvent', 'finished-1')
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
+
+      for (let reconnect = 0; reconnect < 3; reconnect++) {
+        emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+        emit('AgentFinishedEvent', 'finished-1')
+      }
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
+
+      // Fresh activity still updates Files after the replay.
+      emit('ToolResponseEvent', 'tool-2', { toolName: 'case-exchange__editFiles' })
+      emit('AgentFinishedEvent', 'finished-2')
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(2)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(2)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
   it('uploads the attachments before sending, and appends the mention to the message', async () => {
     const ref = makeComponent()
     ref.instance['inputValue'].set('analyse this file')
