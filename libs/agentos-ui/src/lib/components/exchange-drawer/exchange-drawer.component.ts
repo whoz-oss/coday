@@ -8,7 +8,8 @@ import {
   output,
   viewChild,
 } from '@angular/core'
-import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { ExchangeDirectoryEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { ExchangePathSegment } from '../../services/exchange-state.service'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
 import { ExchangeFileRef, ExchangeScope, ExchangeScopeStatus } from '../../services/exchange-state.service'
 import { ExchangeContentViewerComponent } from '../exchange-content-viewer/exchange-content-viewer.component'
@@ -45,14 +46,22 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
 })
 export class ExchangeDrawerComponent {
   // ── Case scope ──────────────────────────────────────────────────────────────
-  readonly caseFiles = input<ExchangeFileEntry[]>([])
+  readonly caseFiles = input<ExchangeDirectoryEntry[]>([])
+  readonly caseFolders = input<ExchangeDirectoryEntry[]>([])
+  readonly caseBreadcrumb = input<ExchangePathSegment[]>([])
+  readonly caseHasMore = input<boolean>(false)
+  readonly caseLoadingMore = input<boolean>(false)
   readonly caseStatus = input.required<ExchangeScopeStatus>()
   readonly caseSectionVisible = input<boolean>(false)
   readonly canWriteCase = input<boolean>(false)
   readonly caseUploading = input<boolean>(false)
 
   // ── Namespace scope ──────────────────────────────────────────────────────────
-  readonly namespaceFiles = input<ExchangeFileEntry[]>([])
+  readonly namespaceFiles = input<ExchangeDirectoryEntry[]>([])
+  readonly namespaceFolders = input<ExchangeDirectoryEntry[]>([])
+  readonly namespaceBreadcrumb = input<ExchangePathSegment[]>([])
+  readonly namespaceHasMore = input<boolean>(false)
+  readonly namespaceLoadingMore = input<boolean>(false)
   readonly namespaceStatus = input.required<ExchangeScopeStatus>()
   readonly namespaceSectionVisible = input<boolean>(false)
   readonly canWriteNamespace = input<boolean>(false)
@@ -65,6 +74,9 @@ export class ExchangeDrawerComponent {
   readonly canViewSelected = input<boolean>(true)
 
   readonly fileSelected = output<ExchangeFileRef>()
+  /** A directory was opened, or a breadcrumb level was clicked. Empty path means the scope root. */
+  readonly folderOpened = output<{ scope: ExchangeScope; path: string }>()
+  readonly loadMoreRequested = output<ExchangeScope>()
   readonly uploadRequested = output<{ scope: ExchangeScope; files: File[] }>()
   readonly downloadRequested = output<ExchangeFileRef>()
   readonly downloadAllRequested = output<ExchangeScope>()
@@ -82,6 +94,10 @@ export class ExchangeDrawerComponent {
   protected readonly NAMESPACE = ExchangeFileEntryScopeEnum.NAMESPACE
 
   protected readonly caseRows = computed(() => this.caseFiles().map(ExchangeItemComponent.toRow))
+
+  protected onFolderOpen(scope: ExchangeScope, path: string): void {
+    this.folderOpened.emit({ scope, path })
+  }
   protected readonly namespaceRows = computed(() => this.namespaceFiles().map(ExchangeItemComponent.toRow))
 
   /** Path of the row that opened the viewer — focus returns to it on back (a11y). */

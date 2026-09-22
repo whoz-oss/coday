@@ -356,6 +356,92 @@ class BoundaryPathResolverSpec : StringSpec() {
             }
         }
 
+        "deny-list applies to a parent directory, not only to the leaf" {
+            // Matching the leaf alone let everything under a denied directory through: the tested
+            // name here would be "config", which no pattern covers.
+            val tempDir = Files.createTempDirectory("test")
+            try {
+                val resolver = BoundaryPathResolver(tempDir, listOf(".git"))
+                Files.createDirectories(tempDir.resolve(".git"))
+                tempDir.resolve(".git/config").writeText("[core]\n")
+
+                val exception = shouldThrow<IllegalArgumentException> {
+                    resolver.resolve(".git/config", createIntent = false)
+                }
+
+                exception.message shouldContain "Access denied"
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
+        "a worktree .git file cannot be rewritten through the deny-list" {
+            // In a linked worktree `.git` is a file holding the shared checkout's path. An agent
+            // holding write access to its case scope must not be able to repoint it.
+            val tempDir = Files.createTempDirectory("test")
+            try {
+                val resolver = BoundaryPathResolver(tempDir, listOf(".git"))
+                tempDir.resolve(".git").writeText("gitdir: /srv/checkout/.git/worktrees/case-1\n")
+
+                val exception = shouldThrow<IllegalArgumentException> {
+                    resolver.resolve(".git", createIntent = true)
+                }
+
+                exception.message shouldContain "Access denied"
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
+        "case variants of denied names cannot bypass reads or creation" {
+            val tempDir = Files.createTempDirectory("test")
+            try {
+                val resolver = BoundaryPathResolver(tempDir, listOf(".git"))
+                Files.createDirectories(tempDir.resolve("nested/.git"))
+                tempDir.resolve("nested/.git/config").writeText("private metadata")
+
+                for (path in listOf(".GIT", "nested/.GIT/config", "new/.GiT/config")) {
+                    for (createIntent in listOf(false, true)) {
+                        shouldThrow<IllegalArgumentException> {
+                            resolver.resolve(path, createIntent = createIntent)
+                        }.message shouldContain "Access denied"
+                    }
+                }
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
+        "aliases to denied metadata are refused even when the alias name is allowed" {
+            val tempDir = Files.createTempDirectory("test")
+            try {
+                val resolver = BoundaryPathResolver(tempDir, listOf(".git"))
+                Files.createDirectories(tempDir.resolve("nested/.git"))
+                tempDir.resolve("nested/.git/config").writeText("private metadata")
+                Files.createSymbolicLink(tempDir.resolve("config-link"), tempDir.resolve("nested/.git/config"))
+
+                shouldThrow<IllegalArgumentException> {
+                    resolver.resolve("config-link")
+                }.message shouldContain "Access denied"
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
+        "a file whose parent is not denied still resolves" {
+            // The segment check must not turn into a blanket refusal of nested paths.
+            val tempDir = Files.createTempDirectory("test")
+            try {
+                val resolver = BoundaryPathResolver(tempDir, listOf(".git"))
+                Files.createDirectories(tempDir.resolve("src/main"))
+                val file = tempDir.resolve("src/main/app.ts").also { it.writeText("x") }
+
+                resolver.resolve("src/main/app.ts", createIntent = false) shouldBe file.toRealPath()
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
         "missing intermediate directory with createIntent=true should append remaining segments" {
             val tempDir = Files.createTempDirectory("test")
             try {

@@ -5,8 +5,10 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.whozoss.agentos.git.GitMetadataEntries
 import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.time.Instant
 import java.util.UUID
 
@@ -21,7 +23,7 @@ class ExchangeStorageServiceSpec :
 
         fun newService(): ExchangeStorageService {
             val mountRoot = Files.createTempDirectory("exchange-test")
-            return ExchangeStorageService(ExchangeStorageConfigProperties(mountRoot = mountRoot.toString()))
+            return ExchangeStorageService(ExchangeStorageConfigProperties(mountRoot = mountRoot.toString()), listOf(GitMetadataEntries()))
         }
 
         val createdAt = Instant.parse("2025-12-15T10:30:00Z")
@@ -51,6 +53,23 @@ class ExchangeStorageServiceSpec :
             }
             // original content is preserved
             service.readContent(root, "dup.txt").content shouldBe "one"
+        }
+
+        "reads use the requested path even when a local migration marker exists" {
+            val service = newService()
+            val namespaceId = UUID.randomUUID()
+            val root = service.caseRoot(namespaceId, UUID.randomUUID(), createdAt)
+            service.writeNew(root, "repo/report.txt", "source".toByteArray(), ExchangeScope.CASE)
+            Files.writeString(service.namespaceRoot(namespaceId).parent.resolve(".exchange-repo-migration.json"), "{}")
+
+            shouldThrow<NoSuchFileException> { service.readContent(root, "report.txt") }
+            shouldThrow<NoSuchFileException> { service.readBytes(root, "report.txt") }
+            service.readContent(root, "repo/report.txt").content shouldBe "source"
+            service.readBytes(root, "repo/report.txt").first.toString(Charsets.UTF_8) shouldBe "source"
+
+            service.writeNew(root, "report.txt", "document".toByteArray(), ExchangeScope.CASE)
+            service.readContent(root, "report.txt").content shouldBe "document"
+            service.readContent(root, "repo/report.txt").content shouldBe "source"
         }
 
         "listManifest lists files under a case root with correct relative paths" {
@@ -143,6 +162,7 @@ class ExchangeStorageServiceSpec :
                         mountRoot = Files.createTempDirectory("exchange-test").toString(),
                         allowedUploadExtensions = emptySet(),
                     ),
+                    listOf(GitMetadataEntries()),
                 )
 
             service.isUploadAllowed("malware.exe") shouldBe true
@@ -164,6 +184,7 @@ class ExchangeStorageServiceSpec :
                         mountRoot = Files.createTempDirectory("exchange-test").toString(),
                         allowedUploadExtensions = setOf("PDF", "DOCX"),
                     ),
+                    listOf(GitMetadataEntries()),
                 )
 
             service.isUploadAllowed("report.pdf") shouldBe true
@@ -188,6 +209,7 @@ class ExchangeStorageServiceSpec :
                         mountRoot = Files.createTempDirectory("exchange-test").toString(),
                         readMaxSizeBytes = 4,
                     ),
+                    listOf(GitMetadataEntries()),
                 )
             val root = service.namespaceRoot(UUID.randomUUID())
             service.writeNew(root, "big.txt", "hello".toByteArray(), ExchangeScope.NAMESPACE)
