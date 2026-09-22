@@ -1,3 +1,5 @@
+import { CaseGitBadgeComponent } from '../../case-workspace/case-git-badge.component'
+import { WorkspaceView } from '../../../services/case-workspace.service'
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
 import { Case } from '@whoz-oss/agentos-api-client'
 import { CaseStatusGlyphComponent } from '../../case-status-glyph/case-status-glyph.component'
@@ -12,7 +14,7 @@ interface CaseGroup {
  * Slides in from the left. Contains search, grouped case list, and user menu.
  */
 @Component({
-  imports: [CaseStatusGlyphComponent],
+  imports: [CaseStatusGlyphComponent, CaseGitBadgeComponent],
   selector: 'agentos-shell-case-switcher-mobile',
   templateUrl: './shell-case-switcher-mobile.component.html',
   styleUrl: './shell-case-switcher-mobile.component.scss',
@@ -22,6 +24,7 @@ export class ShellCaseSwitcherMobileComponent {
   // ── Inputs ────────────────────────────────────────────
   readonly namespaceId = input<string | null | undefined>(null)
   readonly open = input.required<boolean>()
+  readonly workspaces = input<Record<string, WorkspaceView>>({})
   readonly subCaseCreateRequested = output<string>()
   readonly cases = input.required<(Case & { starred?: boolean })[]>()
   readonly activeCaseId = input.required<string | null>()

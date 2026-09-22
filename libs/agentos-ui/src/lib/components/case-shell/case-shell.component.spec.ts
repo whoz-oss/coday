@@ -1,3 +1,4 @@
+import { CaseWorkspaceService } from '../../services/case-workspace.service'
 import { ElementRef, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
@@ -52,6 +53,10 @@ describe('CaseShellComponent', () => {
 
     TestBed.configureTestingModule({
       providers: [
+        {
+          provide: CaseWorkspaceService,
+          useValue: { byRoot: signal({}), watchNamespace: () => EMPTY },
+        },
         { provide: Router, useValue: routerMock },
         {
           provide: ActivatedRoute,

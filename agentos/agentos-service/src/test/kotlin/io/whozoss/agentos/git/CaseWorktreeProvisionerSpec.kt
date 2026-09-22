@@ -148,13 +148,88 @@ class CaseWorktreeProvisionerSpec :
                 ),
             )
 
-        "only case deletion triggers cleanup" {
+        fun statusService(f: Fixture, settings: GitRepositorySettings, hosting: GitHostingProvider) = GitWorkspaceStatusService(
+            f.bindings,
+            mockk { every { findSettings(any()) } returns settings },
+            f.storage, runner,
+            mockk { every { resolve(any()) } returns GitCredentials.UsernamePassword("test", "unused") },
+            hosting, com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().findAndRegisterModules(),
+        )
+
+        "status follows the branch created by the agent and clears when detached again" {
+            val f = fixture()
+            val configured = settings(f.namespaceId, originRepository())
+            val root = rootCase(f.namespaceId, "Arbitrary title")
+            val ready = f.provisioner.ensureReady(binding(f, root, configured), configured, root)
+            val hosting = mockk<GitHostingProvider> { every { inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = "NONE") }
+            val status = statusService(f, configured, hosting)
+            val path = f.provisioner.worktreePath(root)
+            val detached = status.refresh(ready, path)
+            detached.branchName shouldBe null
+            status.summary(detached)!!.branchState shouldBe "DETACHED"
+            io.mockk.verify(exactly = 0) { hosting.inspect(any(), any(), any()) }
+            rawGit(path, "switch", "-c", "workflow/my-branch")
+            val local = status.refresh(detached, path)
+            local.branchName shouldBe "workflow/my-branch"
+            status.summary(local)!!.branchState shouldBe "LOCAL_ONLY"
+            io.mockk.verify { hosting.inspect(configured, "workflow/my-branch", null) }
+            rawGit(path, "push", "origin", "workflow/my-branch")
+            val pushed = status.refresh(local, path)
+            status.summary(pushed)!!.branchState shouldBe "PUSHED"
+            every { hosting.inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = "OPEN", prNumber = 42)
+            status.summary(status.refresh(pushed, path))!!.prState shouldBe "OPEN"
+            rawGit(path, "switch", "--detach", "HEAD")
+            val cleared = status.refresh(pushed, path)
+            cleared.branchName shouldBe null
+            status.summary(cleared)!!.prNumber shouldBe null
+        }
+
+        "a PR checkout alias passes its actual HEAD to the hosting provider and clears on another checkout" {
+            val f = fixture()
+            val origin = originRepository()
+            val configured = settings(f.namespaceId, origin)
+            val root = rootCase(f.namespaceId, "Review an existing PR")
+            val ready = f.provisioner.ensureReady(binding(f, root, configured), configured, root)
+            // The agent fetches an existing PR into an arbitrary local branch without an upstream.
+            rawGit(origin, "switch", "-c", "feature/source-branch")
+            advanceOrigin(origin)
+            val prHead = rawGit(origin, "rev-parse", "HEAD").trim()
+            val path = f.provisioner.worktreePath(root)
+            rawGit(path, "fetch", "origin", "feature/source-branch:pr-1301")
+            rawGit(path, "switch", "pr-1301")
+            val hosting = mockk<GitHostingProvider> {
+                every { inspect(configured, "pr-1301", prHead) } returns
+                    GitWorkspaceSummary(prState = "OPEN", prNumber = 1301, prHeadSha = prHead)
+                every { inspect(configured, "another-task", null) } returns GitWorkspaceSummary(prState = "NONE")
+            }
+            val status = statusService(f, configured, hosting)
+            val observed = status.refresh(ready, path)
+            observed.branchName shouldBe "pr-1301"
+            status.summary(observed)!!.let {
+                it.error shouldBe null
+                it.headSha shouldBe prHead
+                it.prNumber shouldBe 1301
+                it.prState shouldBe "OPEN"
+            }
+            io.mockk.verify(exactly = 1) { hosting.inspect(configured, "pr-1301", prHead) }
+            // The previous PR must not stick to the case after the agent switches elsewhere.
+            rawGit(path, "switch", "-c", "another-task", ready.baseSha!!)
+            val switched = status.refresh(observed, path)
+            switched.branchName shouldBe "another-task"
+            status.summary(switched)!!.prState shouldBe "NONE"
+            status.summary(switched)!!.prNumber shouldBe null
+        }
+
+        listOf("OPEN", "NONE", "UNKNOWN", "MERGED", "CLOSED_UNMERGED").forEach { prState ->
+            "only case deletion triggers cleanup, independently of PR state $prState" {
                 val f = fixture()
                 val configured = settings(f.namespaceId, originRepository())
                 var root = rootCase(f.namespaceId, "Delete")
                 val ready = f.provisioner.ensureReady(binding(f, root, configured), configured, root)
                 val path = f.provisioner.worktreePath(root)
                 rawGit(path, "switch", "-c", "workflow/keep-branch")
+                f.bindings.update(ready.copy(summaryJson = "{\"prState\":\"$prState\"}"))
+                val hosting = mockk<GitHostingProvider>() // Cleanup must never call the hosting provider.
                 val cases = mockk<io.whozoss.agentos.caseFlow.CaseRepository> {
                     every { findByIds(any(), any()) } answers { listOf(root) }
                     every { findIncludingRemovedByNamespace(any()) } answers { listOf(root) }
@@ -178,6 +253,8 @@ class CaseWorktreeProvisionerSpec :
                 rawGit(f.storage.namespaceGitDirectory(f.namespaceId), "rev-parse", "refs/heads/workflow/keep-branch").trim() shouldBe ready.baseSha
                 lifecycle.cleanupDeleted(root.id).status shouldBe CaseResourceStatus.REMOVED
                 io.mockk.verify(exactly = 0) { cases.save(any()) }
+                io.mockk.verify(exactly = 0) { hosting.inspect(any(), any(), any()) }
+            }
         }
 
         "surviving descendants keep the shared worktree after deletion of their root" {
@@ -242,6 +319,7 @@ class CaseWorktreeProvisionerSpec :
             val ready = f.provisioner.ensureReady(binding(f, root, configured), configured, root)
 
             ready.status shouldBe CaseResourceStatus.READY
+            ready.branchName shouldBe null
             val worktree = f.storage.caseRoot(f.namespaceId, root.id, root.metadata.created).resolve("repo")
             worktree.resolve("README.md").readText() shouldBe "v1\n"
             worktree.resolve(".git").exists() shouldBe true
@@ -258,6 +336,7 @@ class CaseWorktreeProvisionerSpec :
             val first = f.provisioner.ensureReady(created, configured, root)
             val second = f.provisioner.ensureReady(f.bindings.findByRootCaseId(root.id)!!, configured, root)
 
+            second.branchName shouldBe first.branchName
             second.baseSha shouldBe first.baseSha
         }
 
@@ -280,6 +359,7 @@ class CaseWorktreeProvisionerSpec :
             val retried = f.provisioner.ensureReady(f.bindings.findByRootCaseId(root.id)!!, configured, root)
 
             retried.baseSha shouldBe frozen
+            retried.branchName shouldBe first.branchName
         }
 
         "a new case fetches the latest remote base without changing an existing dirty worktree" {
@@ -318,6 +398,8 @@ class CaseWorktreeProvisionerSpec :
             val a = f.provisioner.ensureReady(binding(f, first, configured), configured, first)
             val b = f.provisioner.ensureReady(binding(f, second, configured), configured, second)
 
+            a.branchName shouldBe null
+            b.branchName shouldBe null
             rawGit(f.storage.namespaceGitDirectory(f.namespaceId), "for-each-ref", "--format=%(refname)", "refs/heads/").trim() shouldBe "refs/heads/main"
             f.storage.caseRoot(f.namespaceId, first.id, first.metadata.created) shouldNotBe
                 f.storage.caseRoot(f.namespaceId, second.id, second.metadata.created)

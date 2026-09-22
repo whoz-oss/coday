@@ -7,11 +7,14 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { GitWorkspaceSummary } from './git-workspace-summary'
 
 export interface CaseWorkspaceView {
+  branchName?: string
   cleanupReason?: string
   equipped: boolean
   failureReason?: string
+  git?: GitWorkspaceSummary
   recoveryRequired: boolean
   rootCaseId?: string
   status?: string

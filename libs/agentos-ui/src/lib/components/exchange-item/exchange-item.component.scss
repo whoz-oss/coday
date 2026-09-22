@@ -104,3 +104,47 @@
   gap: 0.125rem;
   flex-shrink: 0;
 }
+
+// Git decorations stay visible independently of the file actions.
+.exchange-item {
+  &[data-git-status='ADDED'],
+  &[data-git-status='UNTRACKED'] {
+    --git-color: var(--color-success, #34c759);
+  }
+  &[data-git-status='MODIFIED'],
+  &[data-git-status='TYPE_CHANGED'] {
+    --git-color: var(--color-warning, #ff9500);
+  }
+  &[data-git-status='DELETED'],
+  &[data-git-status='CONFLICTED'] {
+    --git-color: var(--color-error, #ff3b30);
+  }
+  &[data-git-status] .exchange-item__name,
+  &[data-git-status] .exchange-item__icon {
+    color: var(--git-color);
+  }
+  &--missing .exchange-item__name {
+    text-decoration: line-through;
+  }
+}
+
+.exchange-item__git-status {
+  flex-shrink: 0;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--git-color);
+  font: 600 11px var(--font-heading, monospace);
+  cursor: pointer;
+
+  &:hover {
+    border-color: currentColor;
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+  }
+  &:focus-visible {
+    outline: 2px solid var(--color-primary, #007aff);
+    outline-offset: 1px;
+  }
+}

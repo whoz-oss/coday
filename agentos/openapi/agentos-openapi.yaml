@@ -1085,6 +1085,49 @@ paths:
       summary: Stream case events via SSE
       tags:
       - sse
+  /api/cases/{caseId}/exchange/diff:
+    get:
+      operationId: caseDiffExchangeEnvironment
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileDiff"
+          description: OK
+      tags:
+      - exchange-environment-controller
+  /api/cases/{caseId}/exchange/environment:
+    get:
+      operationId: caseEnvironmentExchangeEnvironment
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeEnvironment"
+          description: OK
+      tags:
+      - exchange-environment-controller
   /api/cases/{caseId}/files:
     delete:
       description: "DELETE /api/cases/{caseId}/files — delete a file from the case-private\
@@ -1358,6 +1401,25 @@ paths:
   /api/cases/{caseId}/workspace/recover:
     post:
       operationId: recoverCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
+  /api/cases/{caseId}/workspace/refresh:
+    post:
+      operationId: refreshCaseWorkspace
       parameters:
       - in: path
         name: caseId
@@ -4029,12 +4091,16 @@ components:
     CaseWorkspaceView:
       type: object
       properties:
+        branchName:
+          type: string
         cleanupReason:
           type: string
         equipped:
           type: boolean
         failureReason:
           type: string
+        git:
+          $ref: "#/components/schemas/GitWorkspaceSummary"
         recoveryRequired:
           type: boolean
         rootCaseId:
@@ -4137,6 +4203,32 @@ components:
       required:
       - message
       - success
+    ExchangeDiffFile:
+      type: object
+      properties:
+        additions:
+          type: integer
+          format: int32
+        deletions:
+          type: integer
+          format: int32
+        path:
+          type: string
+        status:
+          type: string
+          enum:
+          - ADDED
+          - MODIFIED
+          - DELETED
+          - TYPE_CHANGED
+          - CONFLICTED
+          - UNTRACKED
+        untracked:
+          type: boolean
+      required:
+      - path
+      - status
+      - untracked
     ExchangeDirectoryEntry:
       type: object
       description: A file or sub-directory at one level of an exchange scope.
@@ -4210,6 +4302,30 @@ components:
       - pageSize
       - path
       - totalEntries
+    ExchangeEnvironment:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParticipatingAgent"
+        branch:
+          type: string
+        changes:
+          $ref: "#/components/schemas/ExchangeGitChanges"
+        equipped:
+          type: boolean
+        error:
+          type: string
+        git:
+          $ref: "#/components/schemas/GitWorkspaceSummary"
+        path:
+          type: string
+        status:
+          type: string
+      required:
+      - agents
+      - equipped
     ExchangeFileContent:
       type: object
       description: Text content and metadata of a single exchange file.
@@ -4230,6 +4346,15 @@ components:
       required:
       - content
       - size
+    ExchangeFileDiff:
+      type: object
+      properties:
+        message:
+          type: string
+        patch:
+          type: string
+      required:
+      - patch
     ExchangeFileEntry:
       type: object
       description: Metadata for a single file in an exchange scope.
@@ -4267,6 +4392,26 @@ components:
       - path
       - scope
       - size
+    ExchangeGitChanges:
+      type: object
+      properties:
+        additions:
+          type: integer
+          format: int32
+        base:
+          type: string
+        deletions:
+          type: integer
+          format: int32
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExchangeDiffFile"
+      required:
+      - additions
+      - base
+      - deletions
+      - files
     ExchangeManifest:
       type: object
       description: Files in an exchange scope plus the caller's capability.
@@ -4355,6 +4500,37 @@ components:
       required:
       - ids
       - withRemoved
+    GitWorkspaceSummary:
+      type: object
+      properties:
+        branchState:
+          type: string
+        dirty:
+          type: boolean
+        error:
+          type: string
+        headSha:
+          type: string
+        observedAt:
+          type: string
+          format: date-time
+        prHeadSha:
+          type: string
+        prNumber:
+          type: integer
+          format: int32
+        prState:
+          type: string
+        prUrl:
+          type: string
+        remoteSha:
+          type: string
+        unpushedCommits:
+          type: integer
+          format: int32
+      required:
+      - branchState
+      - prState
     GroupsByExternalIdsRequest:
       type: object
       properties:
@@ -4809,6 +4985,17 @@ components:
             format: uuid
       required:
       - authType
+      - name
+    ParticipatingAgent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
       - name
     PendingConfirmationEvent:
       allOf:

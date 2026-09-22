@@ -1,10 +1,15 @@
-<div class="exchange-item" [class.exchange-item--active]="active()">
+<div
+  class="exchange-item"
+  [class.exchange-item--active]="active()"
+  [class.exchange-item--missing]="row().missing"
+  [attr.data-git-status]="row().gitStatus ?? null"
+>
   <button
     class="exchange-item__main"
     type="button"
     [attr.data-exchange-path]="row().path"
     [attr.aria-current]="active() ? 'true' : null"
-    [attr.aria-label]="'View ' + row().filename"
+    [attr.aria-label]="(row().missing ? 'View deletion diff for ' : 'View ') + row().filename"
     (click)="viewRequested.emit()"
   >
     <span class="exchange-item__icon material-icons" aria-hidden="true">{{ row().icon }}</span>
@@ -19,20 +24,34 @@
     </span>
   </button>
 
-  <div class="exchange-item__actions">
-    <ds-icon-button
-      icon="download"
-      variant="default"
-      [title]="'Download ' + row().filename"
-      (action)="downloadRequested.emit()"
-    />
-    @if (canWrite()) {
+  @if (row().gitStatus; as status) {
+    <button
+      type="button"
+      class="exchange-item__git-status"
+      [title]="gitLabels[status].label + ' · branch and local changes · View diff'"
+      [attr.aria-label]="gitLabels[status].label + ': ' + row().filename + ' — View diff'"
+      (click)="diffRequested.emit()"
+    >
+      {{ gitLabels[status].code }}
+    </button>
+  }
+
+  @if (!row().missing) {
+    <div class="exchange-item__actions">
       <ds-icon-button
-        icon="delete"
-        variant="danger"
-        [title]="'Delete ' + row().filename"
-        (action)="deleteRequested.emit()"
+        icon="download"
+        variant="default"
+        [title]="'Download ' + row().filename"
+        (action)="downloadRequested.emit()"
       />
-    }
-  </div>
+      @if (canWrite()) {
+        <ds-icon-button
+          icon="delete"
+          variant="danger"
+          [title]="'Delete ' + row().filename"
+          (action)="deleteRequested.emit()"
+        />
+      }
+    </div>
+  }
 </div>

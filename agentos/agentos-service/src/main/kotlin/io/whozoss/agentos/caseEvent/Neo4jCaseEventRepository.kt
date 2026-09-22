@@ -27,6 +27,10 @@ open class Neo4jCaseEventRepository(
     private val mapper: CaseEventNodeMapper,
     private val childLinkService: Neo4jChildLinkService,
 ) : CaseEventRepository {
+    override fun participatingAgents(caseIds: Collection<UUID>): List<ParticipatingAgent> =
+        if (caseIds.isEmpty()) emptyList() else caseEventNodeNeo4jRepository.participatingAgents(caseIds.map { it.toString() })
+            .map { ParticipatingAgent(UUID.fromString(it["id"] as String), it["name"] as String) }.sortedBy { it.name }
+
     override fun save(entity: CaseEvent): CaseEvent =
         caseEventNodeNeo4jRepository
             .save(mapper.fromDomain(entity))

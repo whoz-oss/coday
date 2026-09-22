@@ -5,6 +5,8 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.mockk.every
 import io.mockk.verify
+import io.whozoss.agentos.caseEvent.CaseEventRepository
+import io.whozoss.agentos.caseEvent.ParticipatingAgent
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseCommandJournal
 import io.whozoss.agentos.caseFlow.CaseRepository
@@ -57,6 +59,8 @@ class WorkspaceControllersMvcSpec : StringSpec() {
     @MockkBean(relaxed = true) lateinit var storage: ExchangeStorageService
     @MockkBean(relaxed = true) lateinit var lifecycle: GitWorkspaceLifecycleService
     @MockkBean(relaxed = true) lateinit var journal: CaseCommandJournal
+    @MockkBean(relaxed = true) lateinit var events: CaseEventRepository
+    @MockkBean(relaxed = true) lateinit var diffs: ExchangeGitDiff
     @MockkBean(relaxed = true) lateinit var associations: GitRepositoryAssociationService
     @MockkBean(relaxed = true) lateinit var integrationConfigs: IntegrationConfigService
     @MockkBean(relaxed = true) lateinit var checkoutProvisioner: RepositoryCheckoutProvisioner
@@ -97,9 +101,9 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(jsonPath("$.branchName").doesNotExist())
         }
 
-        "a caller without case READ cannot inspect a workspace" {
+        "a caller without case READ cannot inspect workspace environment or diff" {
             val caseId = UUID.randomUUID()
-            listOf("workspace").forEach { suffix ->
+            listOf("workspace", "exchange/environment", "exchange/diff?path=secret.txt").forEach { suffix ->
                 mockMvc.perform(get("/api/cases/$caseId/$suffix"))
                     .andExpect(status().isForbidden)
             }
@@ -116,10 +120,10 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             verify(exactly = 0) { bindings.findByParent(namespaceId) }
         }
 
-        "case READ alone cannot retry or recover a workspace" {
+        "case READ alone cannot refresh retry or recover a workspace" {
             val caseId = UUID.randomUUID()
             allow(EntityType.CASE, caseId, Action.READ)
-            listOf("retry", "recover").forEach { action ->
+            listOf("refresh", "retry", "recover").forEach { action ->
                 mockMvc.perform(post("/api/cases/$caseId/workspace/$action"))
                     .andExpect(status().isForbidden)
             }
@@ -158,6 +162,38 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(jsonPath("$[0].rootCaseId").value(visible.id.toString()))
                 .andExpect(jsonPath("$[0].status").value("REQUESTED"))
             verify(exactly = 0) { cases.findByIds(listOf(hidden.id), any()) }
+        }
+
+        "environment aggregates only readable members of the same case family" {
+            val namespaceId = UUID.randomUUID()
+            val root = Case(namespaceId = namespaceId)
+            val visible = Case(namespaceId = namespaceId, parentCaseId = root.id)
+            val hidden = Case(namespaceId = namespaceId, parentCaseId = root.id)
+            val otherRoot = Case(namespaceId = namespaceId)
+            listOf(root, visible, hidden, otherRoot).forEach { stubCase(it) }
+            every { cases.findIncludingRemovedByNamespace(namespaceId) } returns listOf(root, visible, hidden, otherRoot)
+            allow(EntityType.CASE, root.id, Action.READ)
+            allow(EntityType.CASE, visible.id, Action.READ)
+            allow(EntityType.CASE, otherRoot.id, Action.READ)
+            val participants = listOf(ParticipatingAgent(UUID.randomUUID(), "Analyst"))
+            every { events.participatingAgents(listOf(root.id, visible.id)) } returns participants
+
+            mockMvc.perform(get("/api/cases/${visible.id}/exchange/environment"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.equipped").value(false))
+                .andExpect(jsonPath("$.agents.length()").value(1))
+                .andExpect(jsonPath("$.agents[0].name").value("Analyst"))
+            verify(exactly = 1) { events.participatingAgents(listOf(root.id, visible.id)) }
+            verify(exactly = 0) { events.participatingAgents(match { hidden.id in it || otherRoot.id in it }) }
+        }
+
+        "requesting a diff for a non-Git case returns not found" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            stubCase(case)
+            allow(EntityType.CASE, case.id, Action.READ)
+            mockMvc.perform(get("/api/cases/${case.id}/exchange/diff").param("path", "README.md"))
+                .andExpect(status().isNotFound)
         }
 
         "a writer can explicitly acknowledge setup replay and receives a JSON workspace" {

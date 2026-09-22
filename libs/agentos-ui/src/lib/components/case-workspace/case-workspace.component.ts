@@ -1,31 +1,62 @@
+import { DatePipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core'
 import { catchError, EMPTY, switchMap, timer } from 'rxjs'
 import { CaseWorkspaceService, WorkspaceAction, WorkspaceView } from '../../services/case-workspace.service'
 import { WorkspaceRetryRequest } from '@whoz-oss/agentos-api-client'
+import { CaseGitBadgeComponent } from './case-git-badge.component'
 import { CaseStateService } from '../../services/case-state.service'
 
 @Component({
   selector: 'agentos-case-workspace',
+  imports: [CaseGitBadgeComponent, DatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `@if (view(); as workspace) {
     @if (workspace.equipped) {
       <details class="workspace">
         <summary>
-          Workspace · {{ workspace.status }}
+          <agentos-case-git-badge [view]="workspace" /> Workspace · {{ workspace.status }}
           @if (workspace.recoveryRequired) {
             · Recovery required
           }
         </summary>
+        @if (workspace.branchName) {
+          <p>
+            Branch: {{ workspace.branchName }}
+            @switch (workspace.git?.branchState) {
+              @case ('LOCAL_ONLY') {
+                · Not pushed
+              }
+              @case ('PUSHED') {
+                · Pushed
+              }
+            }
+            @if (workspace.git?.prUrl) {
+              · <a [href]="workspace.git!.prUrl" target="_blank" rel="noopener noreferrer">Pull request</a>
+            }
+          </p>
+        }
+        @if (workspace.git; as git) {
+          @if (git.dirty) {
+            <p>Uncommitted changes</p>
+          }
+          @if (git.unpushedCommits) {
+            <p>{{ git.unpushedCommits }} unpushed commit(s)</p>
+          }
+          @if (git.observedAt) {
+            <p>Last checked: {{ git.observedAt | date: 'medium' }}</p>
+          }
+        }
         @if (workspace.rootCaseId !== caseId()) {
           <p>Shared with the root case. Workspace preparation is managed there.</p>
         }
-        @if (workspace.failureReason || workspace.cleanupReason) {
-          <p>{{ workspace.failureReason || workspace.cleanupReason }}</p>
+        @if (workspace.failureReason || workspace.cleanupReason || workspace.git?.error) {
+          <p>{{ workspace.failureReason || workspace.cleanupReason || workspace.git?.error }}</p>
         }
         @if (error()) {
           <p role="alert">{{ error() }}</p>
         }
         <div class="actions">
+          <button type="button" [disabled]="busy()" (click)="act('refresh')">Refresh status</button>
           @if (workspace.recoveryRequired) {
             <p>
               A previous command was interrupted. Review its effects before continuing. Resetting cancels its remaining

@@ -50,6 +50,7 @@ export class ExchangeShellComponent {
   })
 
   /** The case currently initialised, so an unrelated query-param change does not re-init. */
+  protected readonly environmentCaseId = signal<string | null>(null)
 
   private activeCaseId: string | null = null
 
@@ -62,6 +63,7 @@ export class ExchangeShellComponent {
     this.route.queryParams.pipe(takeUntilDestroyed()).subscribe((params) => {
       const namespaceId = params['ns'] as string | undefined
       const caseId = params['case'] as string | undefined
+      this.environmentCaseId.set(caseId ?? null)
       if (namespaceId && caseId) {
         // Guard on the case actually changing (like case-chat): a re-emission for some other query
         // param must not wipe the open file and double-refetch both manifests.

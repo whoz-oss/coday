@@ -34,6 +34,14 @@ class CaseWorkspaceController(
     fun list(@PathVariable namespaceId: UUID): List<CaseWorkspaceView> = bindings.findByParent(namespaceId)
         .filter { canRead(it.rootCaseId) }.map { get(it.rootCaseId) }
 
+    @PostMapping("/api/cases/{caseId}/workspace/refresh")
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
+    fun refresh(@PathVariable caseId: UUID): CaseWorkspaceView {
+        val root = roots.resolve(caseId)
+        root.binding?.let { status.refresh(it, root.repositoryPath.toAbsolutePath().normalize()) }
+        return get(caseId)
+    }
+
     @PostMapping("/api/cases/{caseId}/workspace/retry")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
     fun retry(@PathVariable caseId: UUID, @RequestBody(required = false) request: WorkspaceRetryRequest?): CaseWorkspaceView {

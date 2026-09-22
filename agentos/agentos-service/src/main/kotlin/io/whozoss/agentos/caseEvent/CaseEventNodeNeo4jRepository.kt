@@ -9,6 +9,18 @@ import org.springframework.transaction.annotation.Transactional
  * Spring Data Neo4j repository for [CaseEventNode].
  */
 interface CaseEventNodeNeo4jRepository : Neo4jRepository<CaseEventNode, String> {
+    @Transactional(readOnly = true)
+    @Query(
+        $$"""MATCH (e:CaseEvent)
+            WHERE e.caseId IN $caseIds AND (e:AgentRunningEvent OR e:AgentFinishedEvent)
+              AND (e.removed IS NULL OR e.removed = false)
+            WITH e ORDER BY e.timestamp DESC, e.id DESC
+            WITH e.agentId AS id, head(collect(e.agentName)) AS name
+            RETURN collect({id: id, name: name})
+        """,
+    )
+    fun participatingAgents(@Param("caseIds") caseIds: List<String>): List<Map<String, Any>>
+
     /**
      * Find all non-removed events for a case, ordered by timestamp then id.
      *
