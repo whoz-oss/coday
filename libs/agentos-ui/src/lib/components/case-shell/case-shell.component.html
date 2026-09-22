@@ -17,6 +17,7 @@
   <agentos-shell-case-switcher-mobile
     [open]="mobileDrawerOpen()"
     [cases]="cases()"
+    [workspaces]="workspaceService.byRoot()"
     [activeCaseId]="activeCaseId()"
     [userInitials]="userInitials()"
     [userName]="userName()"
@@ -43,6 +44,7 @@
     [showNsPicker]="showNsPicker()"
     [nsMenuOpen]="nsMenuOpen()"
     [cases]="cases()"
+    [workspaces]="workspaceService.byRoot()"
     [activeCaseId]="activeCaseId()"
     [userInitials]="userInitials()"
     [userName]="userName()"

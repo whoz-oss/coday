@@ -66,6 +66,7 @@ publishing {
 
 dependencies {
     implementation(libs.klogger)
+    implementation(libs.jackson.databind)
 
     // Annotation only: the service binds GitExecutionProperties from `agentos.git`, the GIT plugin
     // builds its own instance. Never bundled, like the annotation-only dependencies of the SDK.

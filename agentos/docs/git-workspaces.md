@@ -10,7 +10,7 @@ Case-family workspaces are behind `agentos.git.workspaces.enabled` (`AGENTOS_GIT
 
 When enabled, each **new root case** gets a worktree in `repo/` under its Case Exchange root. All descendants share the entire Case Exchange, including documents outside Git. Existing families are never retroactively equipped, and disabling automation does not disconnect existing workspaces. Persisted bindings retain the settings used to create them.
 
-**AgentOS does not create, name or rename working branches or pull requests.** A new worktree starts with a detached HEAD at the configured main branch's fetched commit. Agents create branches and PRs using their workflow tools. The case title has no effect on Git. Retrying preparation preserves any branch or local work already created by an agent.
+**AgentOS does not create, name or rename working branches or pull requests.** A new worktree starts with a detached HEAD at the configured main branch's fetched commit. Agents create branches and PRs using their workflow tools, such as the tools of a `GIT` integration. The case title has no effect on Git. Retrying preparation preserves any branch or local work already created by an agent.
 
 The root case owns the durable workspace. Killing or replacing a contributor conversation does not delete it. Factory controllers and contributors can be sub-cases of this durable root.
 
@@ -28,8 +28,6 @@ Agent execution uses the existing AgentOS runtime and in-memory command queue. M
 
 When case files are opened during worktree preparation, the drawer shows a spinner and an explanation instead of a file-loading error. It shares workspace status with the conversation banner and namespace list, and loads the files automatically when ready. Failed preparation remains an error, and leaving the case cancels the wait. Namespaces and cases without Git keep their normal file loading behavior.
 
-The conversation banner is reserved for preparation, failure and cleanup notices; preparation retry remains available when Files is closed.
-
 Provisioning and lifecycle coordination target **one AgentOS instance per workstream**. They are not a distributed lease protocol. Ordinary concurrent edits by agents sharing a worktree remain a workflow responsibility.
 
 ## Tools and configuration
@@ -40,7 +38,34 @@ A `GIT` integration only exists inside a Git workspace. It always targets the fa
 
 Before deleting a worktree, cleanup stops the processes still using it, found with `lsof`: background jobs, tmux shells or MCP servers started there, including jobs surviving an AgentOS restart. They receive SIGTERM, then SIGKILL after 5 seconds. Only processes of the service's own OS user are touched, never the service itself. Cleanup then checks again that nothing holds a file or working directory in the worktree; missing or inconclusive inspection blocks it. An MCP connection stopped this way is recreated at its next use. These tools remain trusted shell execution, not an OS sandbox.
 
-The namespace service account is used for managed clone/fetch. Agents' workflow tools and forge integrations remain responsible for branch creation, push and PR creation, using their configured authentication. No branch or PR creation endpoint is provided by the workspace feature.
+The namespace service account is used for managed clone/fetch and PR observation. Agents' workflow tools and forge integrations remain responsible for branch creation, push and PR creation, using their configured authentication. No branch or PR creation endpoint is provided by the workspace feature.
+
+### Git tools for agents
+
+A `GIT` integration, associated with an agent like any other integration, gives it these tools in its family's worktree:
+
+| Tool | Effect |
+| ---- | ------ |
+| `git_status` | Branch or detached HEAD, current commit, whether the branch was pushed, changed files |
+| `git_create_branch` | Creates a branch at the current commit and checks it out |
+| `git_commit` | Stages the given paths, or every change, and commits on the current branch |
+| `git_fetch` | Updates `origin/<branch>` (the main branch by default) without touching local work |
+| `git_push` | Pushes the current branch to the branch of the same name, optionally with a lease after a rebase |
+| `git_create_pull_request` | Opens a GitHub pull request from the pushed current branch |
+
+There is no worktree tool and no free Git command: the service alone creates and removes worktrees. Push, fetch and pull requests use the credentials of the user running the case, from the auth setting bound to the integration; there is no fallback to the namespace service account. Bind a setting in which each user holds their own token (OAuth, or a personal token per user): a shared static secret would make every user act with that same token. Commits are authored as that user, with the GitHub no-reply address of the token's account on GitHub, and the identity-provider email elsewhere. The main branch is never pushed, a commit requires a branch, and a pull request requires its branch to be pushed first.
+
+These tools run through the same hardened runner as the service: hooks, credential helpers and signing programs from the shared configuration never run, commands that may apply a filter first refuse executable filters, and push and fetch run in a private network context with an explicit URL, so an agent-written `pushurl`, `insteadOf` or credential helper never sees the user's token. The PR badge reflects a new push or pull request at the next observation pass.
+
+## Branch and PR observation
+
+The observer reads `HEAD` from the managed worktree's administrative directory. Detached HEAD means `branchName = null` and **no Git icon beside the case title**. After an agent checks out a branch, its name and status are observed. Switching back to detached HEAD clears the old branch/PR projection. The remote branch is fetched into a private `refs/agentos/observed/<root case id>` ref: observation never updates the agents' `refs/remotes/origin/*`, which `push --force-with-lease` uses as its expected value. The dirty-state check does not enter submodules, so their own filters never run in the service.
+
+The icon beside the root case title represents only a known associated PR: draft, open, merged or closed without merge. No PR icon appears for local branches, pushed branches without a PR, unavailable status or authentication errors. Its tooltip gives the PR number and state. The icon is independent of the runtime glyph and tree chevron, including root cases with children. The conversation banner is reserved for preparation, failure and cleanup notices; preparation retry remains available when Files is closed.
+
+The current hosting adapter observes GitHub.com PRs using the namespace service account and the [GitHub pull request API](https://docs.github.com/en/rest/pulls/pulls#list-pull-requests). Other Git hosts can still supply repositories; their PR state stays unknown until a hosting adapter is provided. API failures or incomplete results never mean that a PR is closed.
+
+A PR checked out under a local alias (for example `pr-1301`) is also recognized through GitHub's [commit-associated PRs](https://docs.github.com/en/rest/commits/commits#list-pull-requests-associated-with-a-commit), when exactly one PR targeting the configured repository has that exact head commit. PRs that merely contain the commit are excluded. This fallback accepts fork PRs, but does not associate the initial workspace base, the main branch or a detached HEAD. Ambiguous matches remain unknown. Without a matching remote branch name, the association requires an exact PR head: local commits or an outdated checkout can therefore leave it unresolved, and GitHub's commit endpoint may omit closed, unmerged PRs.
 
 ## Case deletion and worktree cleanup
 
@@ -56,9 +81,9 @@ All existing Case/Namespace permission checks apply.
 
 - `GET /api/cases/{caseId}/workspace`
 - `GET /api/namespaces/{namespaceId}/workspaces`
-- `POST /api/cases/{rootCaseId}/workspace/retry`
+- `POST /api/cases/{caseId}/workspace/{refresh|retry}`
 
-`retry` belongs to the root case and accepts `acknowledgeSetupReplay` (default false). Deletion continues to use the existing Case DELETE endpoint.
+`retry` belongs to the root case and accepts `acknowledgeSetupReplay` (default false). Refresh is available from each case. Deletion continues to use the existing Case DELETE endpoint.
 
 ## Deployment
 
@@ -74,14 +99,15 @@ The sweep runs on a dedicated `git-workspace` thread pool, never on Spring's sch
 long clone does not delay other scheduled work. An operator can pause it on a live instance through
 the `gitworkspaces` Actuator endpoint, registered only with the worker, over HTTP or JMX:
 
-- `GET /management/gitworkspaces` returns whether the worker is paused, and the item
-  in progress with its start time.
+- `GET /management/gitworkspaces` returns which phases are paused, and the item in progress with
+  its start time.
 - `POST /management/gitworkspaces/{phase}` with `{"action": "pause"}` or `{"action": "resume"}`,
-  where `phase` is `provisioning` or `all`.
+  where `phase` is `provisioning` (the worker), `monitor` (the status polling, which also runs
+  only with the worker) or `all`.
 
 A pause takes effect after the item in progress: a clone, worktree or setup already running is not
 interrupted. It applies to this instance only and is lost on restart. The
-`agentos.git.worker.paused` gauge reports it.
+`agentos.git.worker.paused` and `agentos.git.monitor.paused` gauges report it.
 
 Mount persistent storage for `/app/data` (Neo4j and Exchange), and keep the Exchange mount path stable. Git worktrees record absolute paths; moving the volume to another container path requires explicit repair. `AGENTOS_EXCHANGE_MOUNT_ROOT` selects the Exchange root. The default image uses `/app/data/exchange`.
 

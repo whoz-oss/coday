@@ -37,7 +37,7 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
             val root = cases.save(Case(namespaceId = ns.id, title = "Case title"))
             val value = bindings.create(CaseResourceBinding(rootCaseId = root.id, namespaceId = ns.id,
                 integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY,
-                settingsJson = "{}", setupStarted = true, setupCompleted = true))
+                settingsJson = "{}", branchName = "chosen-by-agent", setupStarted = true, setupCompleted = true))
             bindings.findByRootCaseId(root.id) shouldBe value
         }
 
