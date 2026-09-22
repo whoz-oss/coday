@@ -29,6 +29,11 @@ import java.util.UUID
 class IntegrationConfigServiceImpl(
     private val repository: IntegrationConfigRepository,
     private val mergeStrategy: IntegrationConfigMergeStrategy,
+    /**
+     * Type-specific policies, collected by Spring. Empty by default so a context without any
+     * — and every unit test building this service directly — behaves as before.
+     */
+    private val policies: List<IntegrationConfigPolicy> = emptyList(),
 ) : IntegrationConfigService {
     override fun create(entity: IntegrationConfig): IntegrationConfig {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
@@ -38,8 +43,11 @@ class IntegrationConfigServiceImpl(
             )
         }
         assertNamespaceSingletonRules(entity)
+        assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
-        return saveOrConflict(entity)
+        return saveOrConflict(entity).also { saved ->
+            policies.filter { it.supports(saved.integrationType) }.forEach { it.afterSave(saved) }
+        }
     }
 
     override fun update(entity: IntegrationConfig): IntegrationConfig {
@@ -52,8 +60,11 @@ class IntegrationConfigServiceImpl(
                 )
             }
         assertNamespaceSingletonRules(entity)
+        assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
-        return saveOrConflict(entity)
+        return saveOrConflict(entity).also { saved ->
+            policies.filter { it.supports(saved.integrationType) }.forEach { it.afterSave(saved) }
+        }
     }
 
     override fun findByIds(
@@ -262,6 +273,19 @@ class IntegrationConfigServiceImpl(
                         "('${existing.name}'). Update that one, or remove it first.",
                 )
             }
+    }
+
+    /**
+     * Apply the validation owned by this configuration's type.
+     *
+     * Without this, the generic CRUD accepts any JSON in `parameters` and a malformed association
+     * is stored with a 201, failing only when something later tries to use it. Validating here
+     * keeps the failure where the mistake was made.
+     */
+    private fun assertTypeSpecificRules(entity: IntegrationConfig) {
+        policies
+            .filter { it.supports(entity.integrationType) }
+            .forEach { it.validate(entity) }
     }
 
     private fun saveOrConflict(entity: IntegrationConfig): IntegrationConfig =

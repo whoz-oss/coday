@@ -450,6 +450,13 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceUserGroupsComponent
               ),
           },
+          // --- Git repository ---
+          {
+            path: ':namespaceId/git',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-git/namespace-git.component').then((m) => m.NamespaceGitComponent),
+          },
           // --- Members ---
           {
             path: ':namespaceId/members',

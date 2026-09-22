@@ -2106,6 +2106,67 @@ paths:
       summary: List namespace exchange files
       tags:
       - exchange-controller
+  /api/namespaces/{namespaceId}/git:
+    delete:
+      operationId: removeAssociationNamespaceGit
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamespaceGit"
+          description: OK
+      tags:
+      - namespace-git-controller
+    get:
+      operationId: getAssociationNamespaceGit
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamespaceGit"
+          description: OK
+      tags:
+      - namespace-git-controller
+    put:
+      operationId: setAssociationNamespaceGit
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamespaceGitRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamespaceGit"
+          description: OK
+      tags:
+      - namespace-git-controller
   /api/namespaces/{namespaceId}/members/{targetUserId}:
     delete:
       operationId: revokeMember
@@ -4279,6 +4340,41 @@ components:
             format: uuid
       required:
       - agentIds
+    NamespaceGit:
+      type: object
+      properties:
+        associated:
+          type: boolean
+        checkoutFailureReason:
+          type: string
+        checkoutStatus:
+          type: string
+        lastFetchedAt:
+          type: string
+          format: date-time
+        mainBranch:
+          type: string
+        repositoryUrl:
+          type: string
+        serviceAuthSettingId:
+          type: string
+          format: uuid
+      required:
+      - associated
+    NamespaceGitRequest:
+      type: object
+      properties:
+        mainBranch:
+          type: string
+        repositoryUrl:
+          type: string
+          minLength: 1
+        serviceAuthSettingId:
+          type: string
+          format: uuid
+      required:
+      - repositoryUrl
+      - serviceAuthSettingId
     NamespaceListItem:
       type: object
       properties:
