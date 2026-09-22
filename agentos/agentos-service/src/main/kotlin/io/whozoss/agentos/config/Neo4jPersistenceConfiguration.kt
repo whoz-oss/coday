@@ -327,12 +327,12 @@ class Neo4jPersistenceConfiguration {
      * populated before the rename.
      *
      * The legacy `maxTokens` property is left untouched on the node so that any tooling or
-     * rollback path that still reads it keeps working. SDN never writes `maxTokens` back
-     * (it is not declared in [io.whozoss.agentos.aiModel.AiModelNode]), so the orphaned
-     * property is harmless.
+     * rollback path that still reads it keeps working.
      *
-     * Idempotent: the `WHERE maxCompletionTokens IS NULL` guard ensures nodes that were
-     * already migrated (or created after the rename) are not touched.
+     * A separate marker prevents a later restart from restoring the legacy value when
+     * the user intentionally clears maxCompletionTokens to use the provider default.
+     * Models with an explicit completion limit are marked too, preserving that limit.
+     * SDN retains both unmapped properties when saving an AiModelNode.
      */
     @Bean
     fun migrateAiModelMaxTokens(neo4jClient: Neo4jClient): CommandLineRunner =
@@ -342,15 +342,16 @@ class Neo4jPersistenceConfiguration {
                     .query(
                         """
                         MATCH (m:AiModel)
-                        WHERE m.maxTokens IS NOT NULL AND m.maxCompletionTokens IS NULL
-                        SET m.maxCompletionTokens = m.maxTokens
+                        WHERE m.maxTokens IS NOT NULL AND coalesce(m.maxCompletionTokensMigrated, false) = false
+                        SET m.maxCompletionTokens = coalesce(m.maxCompletionTokens, m.maxTokens),
+                            m.maxCompletionTokensMigrated = true
                         RETURN count(m) AS migrated
                         """.trimIndent(),
                     ).fetch()
                     .one()
             val count = result.map { it["migrated"] as Long }.orElse(0L) ?: 0L
             if (count > 0L) {
-                logger.info { "[Migration] Copied maxTokens → maxCompletionTokens on $count AiModel node(s)" }
+                logger.info { "[Migration] Migrated maxTokens → maxCompletionTokens on $count AiModel node(s)" }
             } else {
                 logger.debug { "[Migration] No AiModel nodes needed maxTokens → maxCompletionTokens migration" }
             }
