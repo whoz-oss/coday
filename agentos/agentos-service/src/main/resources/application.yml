@@ -84,10 +84,10 @@ management:
       # Eureka health check URL is configured accordingly in application-whoz.yml.
       base-path: /management
       exposure:
-        include: health,info,metrics,prometheus,scheduler,jolokia
+        include: health,info,metrics,prometheus,scheduler,gitworkspaces,jolokia
     jmx:
       exposure:
-        include: health,info,metrics,scheduler
+        include: health,info,metrics,scheduler,gitworkspaces
   endpoint:
     health:
       # 'always' so that Eureka can read the health status without credentials.
