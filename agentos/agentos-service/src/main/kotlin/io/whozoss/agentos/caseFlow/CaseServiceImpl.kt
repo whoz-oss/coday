@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.factory.FactoryCheckpointClient
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
@@ -17,6 +18,8 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptCommandParser
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.prompt.ResolvedCommand
+import okhttp3.OkHttpClient
+import org.springframework.beans.factory.annotation.Value
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -63,8 +66,16 @@ class CaseServiceImpl(
     private val permissionService: PermissionService,
     private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
+    @Value("\${agentos.factory.base-url:}") private val factoryBaseUrl: String = "",
 ) : CaseService,
     SubCaseManager {
+    /**
+     * Shared HTTP client for Factory checkpoint calls. One instance per service
+     * (OkHttpClient is thread-safe and manages its own connection pool).
+     * Null-safe: the client is only used when [factoryBaseUrl] is non-blank and
+     * [CaseRuntime.factoryCheckpointClient] is wired.
+     */
+    private val factoryHttpClient: OkHttpClient by lazy { OkHttpClient() }
     /**
      * Coroutine scope used to run case execution loops and fire-and-forget
      * post-processing tasks (e.g. automatic naming) in the background.
@@ -247,14 +258,18 @@ class CaseServiceImpl(
     private fun buildRuntime(
         case: Case,
         inputEvents: List<CaseEvent> = emptyList(),
-    ): CaseRuntime =
-        CaseRuntime(
+    ): CaseRuntime {
+        val checkpointClient = if (factoryBaseUrl.isNotBlank()) {
+            FactoryCheckpointClient(factoryBaseUrl, factoryHttpClient, com.fasterxml.jackson.module.kotlin.jacksonObjectMapper())
+        } else null
+        return CaseRuntime(
             id = case.id,
             namespaceId = case.namespaceId,
             caseCreatedAt = case.metadata.created,
             updateStatusCallback = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
+            factoryCheckpointClient = checkpointClient,
             isAgentAuthorized = { agentName, userId ->
                 userId == null ||
                     agentConfigService
@@ -277,6 +292,7 @@ class CaseServiceImpl(
             inputEvents = inputEvents,
             initialStatus = case.status,
         ).also { startEvictionWatcher(case.id, it) }
+    }
 
     // ======================================================
     // Message handling (called by controller)

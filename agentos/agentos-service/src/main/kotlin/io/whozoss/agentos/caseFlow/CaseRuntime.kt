@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.caseEvent.DefaultCaseEventEmitter
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventList
+import io.whozoss.agentos.factory.FactoryCheckpointClient
 import io.whozoss.agentos.orchestration.CaseEventEmitter
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -15,11 +16,12 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
-import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.runBlocking
 import mu.KLogging
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
@@ -47,6 +49,10 @@ private data class PendingCommand(val content: List<MessageContent>)
  * @param isAgentAuthorized defensive check called when [processNextStep] encounters an
  *   [AgentSelectedEvent] emitted by an agent (redirect). Returns true if the target agent
  *   is accessible to the current user. Called at redirect time — not pre-computed.
+ * @param factoryCheckpointClient when non-null, answers to [QuestionEvent]s that carry a
+ *   [io.whozoss.agentos.sdk.caseEvent.FactoryCheckpointRef] are first validated against the
+ *   Factory before the [AnswerEvent] is persisted. Null disables Factory validation entirely
+ *   (all existing tests and non-Factory cases are unaffected).
  * @param runAgent fetches the named agent, runs it against the current event history,
  *   and pipes each produced event through [storeEvent]. The implementation is responsible
  *   for deciding whether to emit [AgentRunningEvent] by inspecting the event history
@@ -76,6 +82,7 @@ class CaseRuntime(
     inputEvents: List<CaseEvent> = emptyList(),
     initialStatus: CaseStatus = CaseStatus.PENDING,
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
+    private val factoryCheckpointClient: FactoryCheckpointClient? = null,
 ) : CaseEventEmitter by emitter {
     private val eventList = InMemoryCaseEventList(inputEvents)
 
@@ -234,6 +241,32 @@ class CaseRuntime(
                     if (answerText.isBlank()) {
                         logger.warn { "[CaseRuntime $id] Answer text is blank for question $answerToEventId" }
                     } else {
+                        // Factory gate: when the question carries a checkpoint reference,
+                        // submit the decision to the Factory BEFORE persisting the AnswerEvent.
+                        // A Factory rejection emits a WarnEvent so the user can retry; no
+                        // AnswerEvent is created and the agent is NOT resumed.
+                        val checkpoint = questionEvent.factoryCheckpoint
+                        if (checkpoint != null) {
+                            val factoryResult = factoryCheckpointClient?.let { client ->
+                                runBlocking { client.submitDecision(checkpoint, answerText, id.toString(), actor.id) }
+                            }
+                            if (factoryResult != null && factoryResult.isFailure) {
+                                val ex = factoryResult.exceptionOrNull()
+                                val reason = ex?.message ?: "Factory rejected the decision"
+                                logger.warn { "[CaseRuntime $id] Factory rejected answer for question $answerToEventId: $reason" }
+                                storeAndEmitEvent(
+                                    WarnEvent(
+                                        namespaceId = namespaceId,
+                                        caseId = id,
+                                        message = "The Factory could not accept your decision: $reason. Please try again.",
+                                    ),
+                                )
+                                return // do NOT create AnswerEvent; agent stays suspended
+                            }
+                            if (factoryCheckpointClient == null) {
+                                logger.warn { "[CaseRuntime $id] Question $answerToEventId has a Factory checkpoint but no FactoryCheckpointClient is wired — skipping Factory validation" }
+                            }
+                        }
                         storeAndEmitEvent(questionEvent.createAnswer(actor, answerText))
                         logger.info { "[CaseRuntime $id] Answer added for question: ${questionEvent.question}" }
                         return // answer is passive — waits for agent to process it
