@@ -362,20 +362,16 @@ class Neo4jPermissionRepository(
             throw e
         }
 
+    // No fail-closed catch: an empty map would read as "no current relation" and turn existing members into new users.
     override fun listRelationsForUsers(
         entityType: EntityType,
         entityId: String,
         userIds: Collection<String>,
     ): Map<String, PermissionRelation> {
         if (userIds.isEmpty()) return emptyMap()
-        return try {
-            permissionNodeRepository
-                .findRelationsForUsers(userIds, entityId, entityType.label)
-                .associate { row -> row.userId to row.relation }
-        } catch (e: Exception) {
-            logger.error(e) { "Error listing relations for users on $entityType:$entityId" }
-            emptyMap() // Fail-closed: return empty map on error
-        }
+        return permissionNodeRepository
+            .findRelationsForUsers(userIds, entityId, entityType.label)
+            .associate { row -> row["userId"] as String to PermissionRelation.valueOf(row["relation"] as String) }
     }
 
     override fun applyShareBatch(
