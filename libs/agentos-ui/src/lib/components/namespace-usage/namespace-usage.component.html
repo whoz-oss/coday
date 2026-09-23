@@ -1,0 +1,61 @@
+<section class="report">
+  <a routerLink="/agentos/namespaces">← Namespaces</a>
+  <h1>Usage and costs</h1>
+  <p>Recorded LLM usage across this namespace. Costs are estimates in the platform currency.</p>
+  <form (ngSubmit)="load()" class="filters">
+    <label>From (UTC)<input type="date" name="from" [(ngModel)]="from" required /></label>
+    <label>To (UTC)<input type="date" name="to" [(ngModel)]="to" required /></label>
+    <button type="submit">Refresh</button>
+  </form>
+  @if (error(); as message) {
+    <p role="alert">{{ message }}</p>
+  }
+  @if (loading()) {
+    <p role="status">Loading usage…</p>
+  } @else if (!error()) {
+    @for (
+      group of [
+        { title: 'By agent', rows: agents() },
+        { title: 'By model', rows: models() },
+      ];
+      track group.title
+    ) {
+      <h2>{{ group.title }}</h2>
+      @if (group.rows.length === 0) {
+        <p>No recorded usage for this period.</p>
+      } @else {
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Tokens</th>
+                <th scope="col">Input / output</th>
+                <th scope="col">Cache read / write</th>
+                <th scope="col">Estimated cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of group.rows; track row.key) {
+                <tr>
+                  <th scope="row">{{ row.key }}</th>
+                  <td>{{ row.aggregate.totalTokens | number }}</td>
+                  <td>{{ row.aggregate.inputTokens | number }} / {{ row.aggregate.outputTokens | number }}</td>
+                  <td>{{ row.aggregate.cacheReadTokens | number }} / {{ row.aggregate.cacheWriteTokens | number }}</td>
+                  <td>
+                    {{ row.aggregate.unknownCostCount > 0 ? 'At least ' : ''
+                    }}{{ row.aggregate.cost | number: '1.2-6' }}
+                    @if (row.aggregate.unknownCostCount > 0) {
+                      <small>{{ row.aggregate.unknownCostCount }} record(s) with unknown cost</small>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    }
+    <p>Unpriced usage is kept separate from known costs. Active agent runs appear here after they finish.</p>
+  }
+</section>

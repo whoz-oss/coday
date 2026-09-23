@@ -16,6 +16,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
 import java.util.UUID
 
@@ -23,7 +24,7 @@ import java.util.UUID
  * Internal tool that delegates one or more tasks to sub-agents by creating child [Case]s.
  *
  * All delegations are launched in parallel and the tool suspends until every sub-case
- * reaches [CaseStatus.IDLE] or a terminal status (or the global [timeoutMs] fires).
+ * reaches [CaseStatus.IDLE] or a terminal status (or its active execution deadline fires).
  * Results are aggregated into a JSON array — one entry per delegation — and returned
  * as a single [ToolExecutionResult]. The overall [ToolExecutionResult.success] is `true`
  * when at least one delegation succeeded.
@@ -37,8 +38,8 @@ import java.util.UUID
  * - `options` — optional list of choices for the pending question
  * - `error` — error description when success is false
  *
- * **Timeout** applies to the entire batch: all sub-cases must complete within [timeoutMs].
- * Sub-cases still running when the timeout fires are killed individually.
+ * **Timeout** applies independently to each sub-case, excluding human cost confirmation.
+ * Sub-cases still running when their active-time budget expires are killed individually.
  *
  * **Resume**: a delegation with a non-null [Delegation.subCaseId] resumes an existing
  * IDLE sub-case instead of creating a new one.
@@ -52,7 +53,7 @@ import java.util.UUID
  * @param namespaceId      Namespace both cases belong to.
  * @param allowedAgents    Allowlist of agent names this tool may delegate to.
  * @param loadCaseEvents   Lambda that loads persisted events for a case id.
- * @param timeoutMs        Max wall-clock time for the entire batch (default 5 min).
+ * @param timeoutMs        Max active time per delegation, excluding cost confirmation (default 5 min).
  */
 class DelegationTool(
     private val subCaseManager: SubCaseManager,
@@ -253,25 +254,19 @@ class DelegationTool(
         // Wait for the sub-case to reach IDLE or a terminal status, bounded by the
         // per-delegation timeout. On timeout the sub-case is killed and a failure
         // result is returned — sibling delegations running in parallel are unaffected.
-        val finalStatus =
-            try {
-                withTimeout(timeoutMs) {
-                    subRuntime.statusFlow
-                        .filter { it == CaseStatus.IDLE || it.isTerminal() }
-                        .first()
-                }
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                logger.warn { "[DelegationTool] Sub-case $subCaseId timed out after ${timeoutMs}ms, killing" }
-                runCatching { subCaseManager.killCase(subCaseId) }
-                    .onFailure { err -> logger.warn(err) { "[DelegationTool] Failed to kill sub-case $subCaseId after timeout" } }
-                return DelegationResult(
-                    agentName = agentName,
-                    subCaseId = subCaseId,
-                    success = false,
-                    error = "Sub-case timed out after ${timeoutMs / 1000}s.",
-                    errorType = "TIMEOUT",
-                )
-            }
+        val finalStatus = awaitDelegationStatus(subRuntime, timeoutMs) { subCaseManager.isCostPaused(subCaseId) }
+        if (finalStatus == null) {
+            logger.warn { "[DelegationTool] Sub-case $subCaseId exceeded ${timeoutMs}ms of active execution, killing" }
+            runCatching { subCaseManager.killCase(subCaseId) }
+                .onFailure { err -> logger.warn(err) { "[DelegationTool] Failed to kill sub-case $subCaseId after timeout" } }
+            return DelegationResult(
+                agentName = agentName,
+                subCaseId = subCaseId,
+                success = false,
+                error = "Sub-case timed out after ${timeoutMs / 1000}s of active execution.",
+                errorType = "TIMEOUT",
+            )
+        }
 
         if (finalStatus.isTerminal()) {
             logger.warn { "[DelegationTool] Sub-case $subCaseId ended with terminal status $finalStatus" }
@@ -371,4 +366,24 @@ class DelegationTool(
         private val objectMapper = jacksonObjectMapper()
         private const val EVENT_LOAD_TIMEOUT_MS = 10_000L
     }
+}
+
+/** A human confirmation is not agent execution time. Sample pauses at most once a second. */
+internal suspend fun awaitDelegationStatus(
+    runtime: io.whozoss.agentos.caseFlow.CaseRuntime,
+    timeoutMs: Long,
+    isPaused: () -> Boolean,
+): CaseStatus? {
+    var remaining = timeoutMs
+    while (remaining > 0) {
+        val pausedBefore = isPaused()
+        val slice = minOf(remaining, 1000L)
+        val status =
+            withTimeoutOrNull(slice) {
+                runtime.statusFlow.filter { it == CaseStatus.IDLE || it.isTerminal() }.first()
+            }
+        if (status != null) return status
+        if (!pausedBefore && !isPaused()) remaining -= slice
+    }
+    return null
 }

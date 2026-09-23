@@ -22,6 +22,7 @@ export class NamespaceItemComponent {
   readonly promptsRequested = output<Namespace>()
   readonly scheduledPromptsRequested = output<Namespace>()
   readonly userGroupsRequested = output<Namespace>()
+  readonly usageRequested = output<Namespace>()
   readonly membersRequested = output<Namespace>()
   readonly authSettingsRequested = output<Namespace>()
   readonly deleteRequested = output<Namespace>()

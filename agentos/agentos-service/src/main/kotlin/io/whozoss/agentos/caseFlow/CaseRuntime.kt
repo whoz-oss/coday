@@ -15,17 +15,19 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
-import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import mu.KLogging
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Holds a pending command to be executed sequentially after the current agent turn. */
-private data class PendingCommand(val content: List<MessageContent>)
+private data class PendingCommand(
+    val content: List<MessageContent>,
+)
 
 /**
  * Runtime execution engine for a case.
@@ -76,6 +78,12 @@ class CaseRuntime(
     inputEvents: List<CaseEvent> = emptyList(),
     initialStatus: CaseStatus = CaseStatus.PENDING,
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
+    /**
+     * Maximum number of internal steps per user message before the runtime transitions to
+     * [CaseStatus.ERROR]. Configurable via [io.whozoss.agentos.config.LimitsConfigProperties].
+     * Defaults to 100 to preserve the previous hardcoded value.
+     */
+    private val maxIterations: Int = 100,
 ) : CaseEventEmitter by emitter {
     private val eventList = InMemoryCaseEventList(inputEvents)
 
@@ -103,7 +111,6 @@ class CaseRuntime(
      */
     private val runInFlight = AtomicBoolean(false)
 
-    private val maxIterations = 100
     private var iterationCount = 0
 
     /**
@@ -331,13 +338,15 @@ class CaseRuntime(
                 StepResult.STOP -> return CaseStatus.KILLED
                 StepResult.AGENT_FINISHED -> {
                     if (interruptRequested.get()) return CaseStatus.IDLE
-                    val nextCommand = commandQueue.poll()
-                        ?: return CaseStatus.IDLE
+                    val nextCommand =
+                        commandQueue.poll()
+                            ?: return CaseStatus.IDLE
                     logger.info {
                         "[CaseRuntime $id] Draining command queue, ${commandQueue.size} command(s) remaining"
                     }
-                    val actor = resolveLastUserActor(eventList.getAll())
-                        ?: return CaseStatus.ERROR
+                    val actor =
+                        resolveLastUserActor(eventList.getAll())
+                            ?: return CaseStatus.ERROR
                     addUserMessage(actor, nextCommand.content)
                     iterationCount = 0
                 }
@@ -409,9 +418,10 @@ class CaseRuntime(
                     // current turn (strictly after the last user MessageEvent). The current
                     // event is included in the slice — intentional, see spec.
                     val sliceStart = (lastUserMessageIndex + 1).coerceAtLeast(0)
-                    val sameAgentSelectionCount = events
-                        .subList(sliceStart, events.size)
-                        .count { it is AgentSelectedEvent && it.agentName == event.agentName }
+                    val sameAgentSelectionCount =
+                        events
+                            .subList(sliceStart, events.size)
+                            .count { it is AgentSelectedEvent && it.agentName == event.agentName }
 
                     if (sameAgentSelectionCount >= MAX_SAME_AGENT_SELECTIONS_PER_TURN) {
                         logger.warn {
@@ -422,8 +432,9 @@ class CaseRuntime(
                             WarnEvent(
                                 namespaceId = namespaceId,
                                 caseId = id,
-                                message = "Agent ${event.agentName} could not complete the task, " +
-                                    "try rephrasing, precising or addressing another agent.",
+                                message =
+                                    "Agent ${event.agentName} could not complete the task, " +
+                                        "try rephrasing, precising or addressing another agent.",
                             ),
                         )
                         storeAndEmitEvent(
@@ -539,26 +550,30 @@ class CaseRuntime(
         // Find the first LEGITIMATE answer: paired by questionId AND from the right recipient.
         // The recipient check is intentionally inside this predicate — see KDoc for why moving
         // it outside causes a permanent-deadlock bug on shared cases.
-        val legitimateAnswerIndex = events.indexOfFirst { event ->
-            if (event !is AnswerEvent || event.questionId != lastQuestion.id) return@indexOfFirst false
-            val targetUserId = lastQuestion.userId
-                ?: return@indexOfFirst true // unaddressed question: any respondent qualifies
-            val respondentId = runCatching { UUID.fromString(event.actor.id) }.getOrElse {
-                logger.debug {
-                    "[CaseRuntime $id] AnswerEvent actor id '${event.actor.id}' is not a UUID — " +
-                        "does not qualify as a legitimate answer for question ${lastQuestion.id}"
-                }
-                return@indexOfFirst false
+        val legitimateAnswerIndex =
+            events.indexOfFirst { event ->
+                if (event !is AnswerEvent || event.questionId != lastQuestion.id) return@indexOfFirst false
+                val targetUserId =
+                    lastQuestion.userId
+                        ?: return@indexOfFirst true // unaddressed question: any respondent qualifies
+                val respondentId =
+                    runCatching { UUID.fromString(event.actor.id) }.getOrElse {
+                        logger.debug {
+                            "[CaseRuntime $id] AnswerEvent actor id '${event.actor.id}' is not a UUID — " +
+                                "does not qualify as a legitimate answer for question ${lastQuestion.id}"
+                        }
+                        return@indexOfFirst false
+                    }
+                respondentId == targetUserId
             }
-            respondentId == targetUserId
-        }
         if (legitimateAnswerIndex < 0) return null // no legitimate answer yet
 
         // OAuth guard: if any AgentFinishedEvent appears STRICTLY AFTER the legitimate
         // answer, the agent already handled it — do not wake up again.
-        val hasAgentFinishedAfterAnswer = events
-            .subList(legitimateAnswerIndex + 1, events.size)
-            .any { it is AgentFinishedEvent }
+        val hasAgentFinishedAfterAnswer =
+            events
+                .subList(legitimateAnswerIndex + 1, events.size)
+                .any { it is AgentFinishedEvent }
 
         return if (hasAgentFinishedAfterAnswer) null else lastQuestion
     }

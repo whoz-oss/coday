@@ -52,4 +52,7 @@ interface SubCaseManager {
      * Called by [DelegationTool] after a timeout to avoid leaving orphan runtimes in memory.
      */
     fun killCase(caseId: UUID)
+
+    /** Human cost confirmation time is excluded from delegation execution deadlines. */
+    fun isCostPaused(caseId: UUID): Boolean = false
 }
