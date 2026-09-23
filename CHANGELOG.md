@@ -1,3 +1,17 @@
+## 3.3.1 (2026-09-23)
+
+### 🩹 Fixes
+
+- revert requesty provider config mistakenly added to agents ([#1352](https://github.com/whoz-oss/coday/pull/1352))
+- revert requesty provider config mistakenly added to agents ([#1352](https://github.com/whoz-oss/coday/pull/1352), [#1353](https://github.com/whoz-oss/coday/pull/1353))
+- **agentos-service:** remove use of dynamic label on PermissionNodeNeo4jRepository.kt 34948 ([#1354](https://github.com/whoz-oss/coday/pull/1354))
+
+### ❤️ Thank You
+
+- leo
+- leo-punsola-whoz @leo-punsola-whoz
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 3.3.0 (2026-09-22)
 
 ### 🚀 Features
