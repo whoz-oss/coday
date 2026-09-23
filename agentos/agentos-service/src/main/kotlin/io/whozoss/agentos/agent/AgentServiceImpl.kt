@@ -791,6 +791,10 @@ class AgentServiceImpl(
             return null
         }
 
+        logger.info {
+            "Delegation timeout for ${config.name}: ${config.delegationTimeoutSeconds ?: agentConfigProperties.delegationTimeoutSeconds}s " +
+                "(source=${if (config.delegationTimeoutSeconds == null) "server" else "agent"})"
+        }
         logger.info { "Adding DelegationTool for agent '${config.name}' with allowedAgents=$allowedAgents" }
         return DelegationTool(
             subCaseManager = subCaseManager,
@@ -798,6 +802,7 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
             loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
+            timeoutMs = (config.delegationTimeoutSeconds ?: agentConfigProperties.delegationTimeoutSeconds).toLong() * 1_000L,
         )
     }
 

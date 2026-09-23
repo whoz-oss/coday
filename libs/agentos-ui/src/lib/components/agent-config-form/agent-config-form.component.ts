@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
+  AgentConfigDefaultsControllerService,
   AgentConfigExportService,
   IntegrationConfig,
   IntegrationTypeControllerService,
@@ -93,6 +94,9 @@ export class AgentConfigFormComponent implements OnInit {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
   private readonly agentConfigController = inject(AgentConfigControllerService)
+  private readonly defaultsController = inject(AgentConfigDefaultsControllerService)
+  protected readonly defaultDelegationTimeoutSeconds = signal<number | null>(null)
+
   private readonly exportService = inject(AgentConfigExportService)
   private readonly integrationConfigState = inject(IntegrationConfigStateService)
   private readonly integrationTypeController = inject(IntegrationTypeControllerService)
@@ -115,6 +119,9 @@ export class AgentConfigFormComponent implements OnInit {
     modelName: new FormControl<string | null>(null),
     instructions: new FormControl<string | null>(null),
     advancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
+    delegationTimeoutSeconds: new FormControl<number | null>(null, {
+      validators: [Validators.min(1), Validators.max(2147483647), Validators.pattern(/^\d+$/)],
+    }),
     enabled: new FormControl<boolean>(false, { nonNullable: true }),
   })
 
@@ -136,6 +143,15 @@ export class AgentConfigFormComponent implements OnInit {
 
   protected get advancedExecutionControl() {
     return this.form.controls.advancedExecution
+  }
+
+  protected get delegationTimeoutControl() {
+    return this.form.controls.delegationTimeoutSeconds
+  }
+
+  protected useDefaultDelegationTimeout(): void {
+    this.delegationTimeoutControl.setValue(null)
+    this.delegationTimeoutControl.markAsDirty()
   }
 
   protected get enabledControl() {
@@ -178,6 +194,13 @@ export class AgentConfigFormComponent implements OnInit {
   private existingConfig: AgentConfig | null = null
 
   ngOnInit(): void {
+    this.defaultsController
+      .getAgentConfigDefaults()
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        catchError(() => of(null))
+      )
+      .subscribe((defaults) => this.defaultDelegationTimeoutSeconds.set(defaults?.delegationTimeoutSeconds ?? null))
     const agentConfigId = this.route.snapshot.paramMap.get('agentConfigId')
     if (agentConfigId) {
       this.isEditMode.set(true)
@@ -214,6 +237,7 @@ export class AgentConfigFormComponent implements OnInit {
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
           this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
+          this.delegationTimeoutControl.setValue(config.delegationTimeoutSeconds ?? null)
           this.enabledControl.setValue(config.enabled ?? true)
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
@@ -444,6 +468,7 @@ export class AgentConfigFormComponent implements OnInit {
       advancedExecution: this.advancedExecutionControl.value,
       enabled: this.enabledControl.value,
       subAgents: this.buildSubAgentsPayload(),
+      delegationTimeoutSeconds: this.delegationTimeoutControl.value,
     } as AgentConfig
 
     const call$ = this.isEditMode()

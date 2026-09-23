@@ -1,5 +1,7 @@
 export * from './agent-config-controller.service'
 import { AgentConfigControllerService } from './agent-config-controller.service'
+export * from './agent-config-defaults-controller.service'
+import { AgentConfigDefaultsControllerService } from './agent-config-defaults-controller.service'
 export * from './ai-model-controller.service'
 import { AiModelControllerService } from './ai-model-controller.service'
 export * from './ai-provider-controller.service'
@@ -42,6 +44,7 @@ export * from './user-group-controller.service'
 import { UserGroupControllerService } from './user-group-controller.service'
 export const APIS = [
   AgentConfigControllerService,
+  AgentConfigDefaultsControllerService,
   AiModelControllerService,
   AiProviderControllerService,
   AuthSettingControllerService,

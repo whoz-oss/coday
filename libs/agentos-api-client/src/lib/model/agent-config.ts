@@ -12,6 +12,10 @@ export interface AgentConfig {
   advancedExecution?: boolean
   createdBy?: string
   createdOn?: string
+  /**
+   * Seconds allowed for each outgoing delegation, including nested work. Null or omitted inherits the server default; on PUT this clears an existing override.
+   */
+  delegationTimeoutSeconds?: number
   description?: string
   enabled?: boolean
   externalMetadata?: { [key: string]: any }
@@ -21,6 +25,7 @@ export interface AgentConfig {
   modelName?: string
   name: string
   namespaceId?: string
+  skillSelectors?: Array<string>
   subAgents?: Array<string>
   updatedBy?: string
   updatedOn?: string

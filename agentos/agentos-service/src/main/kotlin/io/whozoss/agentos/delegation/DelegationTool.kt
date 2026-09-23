@@ -23,7 +23,7 @@ import java.util.UUID
  * Internal tool that delegates one or more tasks to sub-agents by creating child [Case]s.
  *
  * All delegations are launched in parallel and the tool suspends until every sub-case
- * reaches [CaseStatus.IDLE] or a terminal status (or the global [timeoutMs] fires).
+ * reaches [CaseStatus.IDLE] or a terminal status (or its individual [timeoutMs] fires).
  * Results are aggregated into a JSON array — one entry per delegation — and returned
  * as a single [ToolExecutionResult]. The overall [ToolExecutionResult.success] is `true`
  * when at least one delegation succeeded.
@@ -37,7 +37,7 @@ import java.util.UUID
  * - `options` — optional list of choices for the pending question
  * - `error` — error description when success is false
  *
- * **Timeout** applies to the entire batch: all sub-cases must complete within [timeoutMs].
+ * **Timeout** applies independently to each sub-case while waiting for IDLE or a terminal status.
  * Sub-cases still running when the timeout fires are killed individually.
  *
  * **Resume**: a delegation with a non-null [Delegation.subCaseId] resumes an existing
@@ -52,7 +52,7 @@ import java.util.UUID
  * @param namespaceId      Namespace both cases belong to.
  * @param allowedAgents    Allowlist of agent names this tool may delegate to.
  * @param loadCaseEvents   Lambda that loads persisted events for a case id.
- * @param timeoutMs        Max wall-clock time for the entire batch (default 5 min).
+ * @param timeoutMs        Max wall-clock waiting time per delegation, including nested work.
  */
 class DelegationTool(
     private val subCaseManager: SubCaseManager,
@@ -60,7 +60,7 @@ class DelegationTool(
     private val namespaceId: UUID,
     private val allowedAgents: List<String>,
     private val loadCaseEvents: suspend (UUID) -> List<CaseEvent>,
-    private val timeoutMs: Long = 5 * 60 * 1_000L,
+    private val timeoutMs: Long,
     private val eventLoadTimeoutMs: Long = EVENT_LOAD_TIMEOUT_MS,
 ) : StandardTool<DelegationTool.Args> {
     /**
