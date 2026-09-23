@@ -431,6 +431,7 @@ class ScheduledPromptExecutor(
             message = "@$agentName $promptContent",
             scheduledPromptId = scheduledPrompt.id,
             userExternalId = user.externalId,
+            preferredLanguage = user.preferredLanguage?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -470,6 +471,12 @@ class ScheduledPromptExecutor(
     /**
      * Create a [Case], grant ADMIN to the target user, and inject the prompt message.
      * Returns the created [Case] id.
+     *
+     * When [UserRunContext.preferredLanguage] is set, it is merged into the [sessionContext]
+     * under the key `"preferredLanguage"`. [AgentAdvanced.buildUserFacingGuidelines] reads
+     * this key as a higher-priority signal than the LLM-based language detection, ensuring
+     * the agent responds in the user's stored language even when the scheduled prompt itself
+     * contains no user messages to detect language from.
      */
     private fun createAndInjectCase(userRun: ScheduledPromptUserRun, context: UserRunContext): UUID {
         val case = caseService.create(
@@ -485,11 +492,19 @@ class ScheduledPromptExecutor(
             case.id.toString(),
             PermissionRelation.ADMIN,
         )
+        // Merge preferredLanguage into the session context so the agent can pick it up
+        // without an LLM language-detection call. Caller-supplied sessionContext entries
+        // take precedence; preferredLanguage is only added when not already present.
+        val effectiveSessionContext: Map<String, Any?>? = when {
+            context.preferredLanguage == null -> context.sessionContext
+            context.sessionContext == null -> mapOf("preferredLanguage" to context.preferredLanguage)
+            else -> mapOf("preferredLanguage" to context.preferredLanguage) + context.sessionContext
+        }
         caseService.addMessage(
             caseId = case.id,
             actor = context.actor,
             content = listOf(MessageContent.Text(context.message)),
-            sessionContext = context.sessionContext,
+            sessionContext = effectiveSessionContext,
         )
         logger.info {
             "[Executor] UserRun=${userRun.id} — Case ${case.id} created and message injected for user=${userRun.userId}"
@@ -505,6 +520,7 @@ class ScheduledPromptExecutor(
         val message: String,
         val scheduledPromptId: UUID,
         val userExternalId: String,
+        val preferredLanguage: String? = null,
         val sessionContext: Map<String, Any?>? = null,
     )
 
