@@ -1,3 +1,14 @@
+## 2.2.0 (2026-09-23)
+
+### 🚀 Features
+
+- wz-34857 - blacklist in redirect tool plugin ([#1347](https://github.com/whoz-oss/coday/pull/1347), [#1357](https://github.com/whoz-oss/coday/pull/1357))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 2.1.1 (2026-09-18)
 
 ### 🩹 Fixes
