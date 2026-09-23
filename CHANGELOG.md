@@ -1,3 +1,15 @@
+## 3.5.0 (2026-09-23)
+
+### 🚀 Features
+
+- introduce UsageRecord entity, persistence, service and controller ([#1309](https://github.com/whoz-oss/coday/pull/1309))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+- vincent-audibert-whoz
+
 ## 3.4.0 (2026-09-23)
 
 ### 🚀 Features
