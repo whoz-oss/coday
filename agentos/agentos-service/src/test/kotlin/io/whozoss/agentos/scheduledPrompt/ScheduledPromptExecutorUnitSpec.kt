@@ -12,6 +12,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -308,7 +309,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
                 every { it.findActiveRuntime(caseId) } returns null
             }
-            val permissionService = mockk<PermissionService>(relaxed = true)
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
+            }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
             }
@@ -448,6 +451,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.create(any()) } returns createdCase
                 every { it.findActiveRuntime(caseId) } returns runtime
             }
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
+            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -456,7 +462,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = mockk(relaxed = true),
+                permissionService = permissionService,
                 userService = userService,
             ).processUserRun(userRun)
 
@@ -489,6 +495,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.create(any()) } returns createdCase
                 every { it.findActiveRuntime(caseId) } returns runtime
             }
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
+            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -497,7 +506,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = mockk(relaxed = true),
+                permissionService = permissionService,
                 userService = userService,
             ).processUserRun(userRun)
 
@@ -539,6 +548,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.create(any()) } returns createdCase
                 every { it.findActiveRuntime(caseId) } returns runtime
             }
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
+            }
 
             ScheduledPromptExecutor(
                 scheduledPromptRepository = makeSpRepo(sp),
@@ -547,7 +559,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = mockk(relaxed = true),
+                permissionService = permissionService,
                 userService = userService,
                 properties = shortTimeoutProperties,
                 clock = clock,
@@ -586,6 +598,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.findActiveRuntime(caseId) } returns null
                 every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
             }
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
+            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -594,7 +609,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = mockk(relaxed = true),
+                permissionService = permissionService,
                 userService = userService,
             ).processUserRun(userRun)
 
@@ -633,6 +648,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val provider = mockk<UserContextProvider>().also {
                 every { it.provideUserContext(user1.externalId, namespaceId) } returns UserContextResult.Success(expectedContext)
             }
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
+            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -641,7 +659,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = mockk(relaxed = true),
+                permissionService = permissionService,
                 userService = userService,
                 userContextProvider = provider,
             ).processUserRun(userRun)
@@ -1200,6 +1218,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val provider = mockk<UserContextProvider>().also {
                 every { it.provideUserContext(user1.externalId, namespaceId) } returns UserContextResult.Success(null)
             }
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
+            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -1208,7 +1229,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = mockk(relaxed = true),
+                permissionService = permissionService,
                 userService = userService,
                 userContextProvider = provider,
             ).processUserRun(userRun)
@@ -1224,6 +1245,102 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                     content = any(),
                 )
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // Phase B — access check before Case creation
+        // -------------------------------------------------------------------------
+
+        "Phase B: user no longer has READ access to AgentConfig — UserRun marked DONE, no Case created" {
+            // Simulates a user who lost access to the agent between materialisation and execution
+            // (e.g. left the group, group soft-deleted, deployment removed).
+            // Expected: UserRun is DONE (not FAILED), no Case is created.
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+            val caseService = mockk<CaseService>(relaxed = true)
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every {
+                    it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ)
+                } returns false
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = permissionService,
+                userService = userService,
+            ).processUserRun(userRun)
+
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.DONE
+            updated.error shouldBe null
+            verify(exactly = 0) { caseService.create(any()) }
+        }
+
+        "Phase B: user still has READ access to AgentConfig — Case is created normally" {
+            // Confirms the happy path is unaffected by the access check.
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every {
+                    it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ)
+                } returns true
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = permissionService,
+                userService = userService,
+            ).processUserRun(userRun)
+
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.DONE
+            verify(exactly = 1) { caseService.create(any()) }
         }
 
         "Phase B: agent config not found marks UserRun FAILED" {

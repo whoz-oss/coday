@@ -4,6 +4,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -384,6 +385,20 @@ class ScheduledPromptExecutor(
                                 " userId=${userRun.userId} — no sessionContext will be injected. Check provider configuration."
                         }
                     }
+                    val hasAccess = permissionService.hasPermission(
+                        userRun.userId.toString(),
+                        EntityType.AGENT_CONFIG,
+                        runContext.agentConfigId.toString(),
+                        Action.READ,
+                    )
+                    if (!hasAccess) {
+                        logger.info {
+                            "[Executor] UserRun=${userRun.id} — user=${userRun.userId} no longer has READ access" +
+                                " to AgentConfig=${runContext.agentConfigId}, marking DONE without creating a Case"
+                        }
+                        userRunRepository.markTerminal(userRun.id, UserRunStatus.DONE, Instant.now(clock))
+                        return
+                    }
                     val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = result.sessionContext))
                     awaitLaunch(userRun.id, caseId)
                 }
@@ -430,6 +445,7 @@ class ScheduledPromptExecutor(
             actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
             message = "@$agentName $promptContent",
             scheduledPromptId = scheduledPrompt.id,
+            agentConfigId = scheduledPrompt.agentConfigId,
             userExternalId = user.externalId,
         )
     }
@@ -504,6 +520,7 @@ class ScheduledPromptExecutor(
         val actor: Actor,
         val message: String,
         val scheduledPromptId: UUID,
+        val agentConfigId: UUID,
         val userExternalId: String,
         val sessionContext: Map<String, Any?>? = null,
     )
