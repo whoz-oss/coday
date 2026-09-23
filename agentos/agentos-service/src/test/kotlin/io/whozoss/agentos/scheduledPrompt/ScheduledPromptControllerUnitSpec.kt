@@ -444,6 +444,22 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         controller.getById(id).lastRunAt shouldBe lastRun
     }
 
+    "toDto maps removed as null for active entity" {
+        val id = UUID.randomUUID()
+        val entity = sp(id = id)
+        every { service.findById(id, withRemoved = true) } returns entity
+        every { service.findByIdWithContent(id, withRemoved = true) } returns Pair(entity, promptContent)
+        controller.getById(id).removed shouldBe null
+    }
+
+    "toDto maps removed as true for soft-deleted entity" {
+        val id = UUID.randomUUID()
+        val entity = sp(id = id).let { it.copy(metadata = it.metadata.copy(removed = true)) }
+        every { service.findById(id, withRemoved = true) } returns entity
+        every { service.findByIdWithContent(id, withRemoved = true) } returns Pair(entity, promptContent)
+        controller.getById(id).removed shouldBe true
+    }
+
     "toDto maps lastRunAt as null when not yet run" {
         val id = UUID.randomUUID()
         val entity = sp(id = id, lastRunAt = null)

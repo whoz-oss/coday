@@ -13,6 +13,7 @@ import io.whozoss.agentos.util.toSlug
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -116,8 +117,8 @@ class ScheduledPromptServiceImpl(
             .filter { agentConfigId == null || it.agentConfigId == agentConfigId }
             .sortedBy { it.name }
 
-    override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<ScheduledPrompt> =
-        repository.findByScope(namespaceId, userId, agentConfigIds)
+    override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?, withRemoved: Boolean, modifiedSince: Instant?): List<ScheduledPrompt> =
+        repository.findByScope(namespaceId, userId, agentConfigIds, withRemoved, modifiedSince)
 
     override fun enable(id: UUID): ScheduledPrompt {
         val existing = repository.findById(id)

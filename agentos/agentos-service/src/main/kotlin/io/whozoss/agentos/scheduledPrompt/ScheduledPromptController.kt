@@ -128,7 +128,7 @@ class ScheduledPromptController(
             userExternalId = request.userExternalId,
         )
         return scheduledPromptService
-            .findByScope(scope.namespaceId, scope.userId, request.agentConfigIds)
+            .findByScope(scope.namespaceId, scope.userId, request.agentConfigIds, request.withRemoved, request.modifiedSince)
             .let { scheduledPromptService.withContent(it) }
             .map { (sp, content) -> toDto(sp, content) }
     }
@@ -285,4 +285,5 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
         createdOn = entity.metadata.created,
         updatedBy = entity.metadata.modifiedBy,
         updatedOn = entity.metadata.modified,
+        removed = entity.metadata.removed.takeIf { it },
     )
