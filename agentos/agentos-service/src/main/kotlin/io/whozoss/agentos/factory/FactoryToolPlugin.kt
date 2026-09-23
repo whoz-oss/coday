@@ -16,6 +16,7 @@ class FactoryToolPlugin(
     private val objectMapper: ObjectMapper,
     @Value("\${agentos.factory.base-url:http://localhost:3141}") private val baseUrl: String,
     @Value("\${agentos.factory.runtime-id:agentos-primary}") private val runtimeId: String = "agentos-primary",
+    private val stepResultBindings: FactoryStepResultBindingRegistry = FactoryStepResultBindingRegistry(),
 ) : ToolPlugin {
     override val integrationType = "FACTORY"
     override val configSchema: JsonNode? = null
@@ -33,6 +34,7 @@ class FactoryToolPlugin(
             FactoryStartWorkflowTool(baseUrl, httpClient, objectMapper, runtimeId),
             FactoryRecordAgentResultTool(baseUrl, httpClient, objectMapper, runtimeId),
             FactoryRecordArtifactTool(baseUrl, httpClient, objectMapper, runtimeId),
+            FactorySubmitStepResultTool(baseUrl, httpClient, objectMapper, stepResultBindings),
             FactoryRequestHumanDecisionTool(baseUrl, httpClient, objectMapper, runtimeId),
             FactoryRequestTransitionTool(baseUrl, httpClient, objectMapper, runtimeId),
             FactoryTransitionWorkflowTool(baseUrl, httpClient, objectMapper, runtimeId),

@@ -4,6 +4,7 @@ import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.factory.FactoryCheckpointClient
+import io.whozoss.agentos.factory.FactoryStepResultBindingRegistry
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
@@ -66,6 +67,7 @@ class CaseServiceImpl(
     private val permissionService: PermissionService,
     private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
+    private val factoryStepResultBindings: FactoryStepResultBindingRegistry = FactoryStepResultBindingRegistry(),
     @Value("\${agentos.factory.base-url:}") private val factoryBaseUrl: String = "",
 ) : CaseService,
     SubCaseManager {
@@ -707,6 +709,10 @@ class CaseServiceImpl(
         // Trigger post-processing on turn completion so processors can refine their
         // work with the full agent response available (e.g. naming refinement on 2nd turn).
         if (newStatus == CaseStatus.IDLE) {
+            // IDLE can be observed before the Factory-bound turn starts, and may also
+            // occur between turns. The binding is consumed by FACTORY__submit_step_result
+            // or removed on expiry/kill/terminal status; clearing it on IDLE races with
+            // the agent's first tool call and causes STRUCTURED_RESULT_MISSING.
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
                 triggerNamingIfNeeded(
@@ -771,6 +777,7 @@ class CaseServiceImpl(
     }
 
     private fun killSingleCase(caseId: UUID) {
+        factoryStepResultBindings.remove(caseId)
         logger.info { "Killing case: $caseId" }
         activeRuntimes[caseId]?.requestKill()
         handleStatusChange(caseId, CaseStatus.KILLED)
