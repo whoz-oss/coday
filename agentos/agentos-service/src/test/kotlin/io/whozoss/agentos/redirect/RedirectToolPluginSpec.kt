@@ -6,6 +6,8 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -208,6 +210,45 @@ class RedirectToolPluginSpec : StringSpec({
         val tools = plugin.provideTools(config = null, context = null)
 
         tools.shouldBeEmpty()
+    }
+
+    // -------------------------------------------------------------------------
+    // Blacklist (deniedAgents config param)
+    // -------------------------------------------------------------------------
+
+    "provideTools excludes agents listed in deniedAgents config" {
+        val agents = listOf(
+            agentConfig("AgentA", "Does A"),
+            agentConfig("AgentB", "Does B"),
+            agentConfig("AgentC", "Does C"),
+        )
+        val plugin = pluginWithAgents(agents)
+
+        val tool = plugin.provideTools(config = configWithDenied("AgentB"), context = context(userId = userId)).first() as RedirectTool
+        tool.eligibleAgents.map { it.name } shouldBe listOf("AgentA", "AgentC")
+    }
+
+    "provideTools deniedAgents exclusion is case-insensitive" {
+        val agents = listOf(
+            agentConfig("AgentA", "Does A"),
+            agentConfig("AgentB", "Does B"),
+        )
+        val plugin = pluginWithAgents(agents)
+
+        val tool = plugin.provideTools(config = configWithDenied("agentb"), context = context(userId = userId)).first() as RedirectTool
+        tool.eligibleAgents.map { it.name } shouldBe listOf("AgentA")
+    }
+
+    "provideTools keeps all agents when deniedAgents is absent from config" {
+        val agents = listOf(
+            agentConfig("AgentA", "Does A"),
+            agentConfig("AgentB", "Does B"),
+        )
+        val plugin = pluginWithAgents(agents)
+        val config = jacksonObjectMapper().readTree("""{"agents":["*"]}""")
+
+        val tool = plugin.provideTools(config = config, context = context(userId = userId)).first() as RedirectTool
+        tool.eligibleAgents.map { it.name } shouldBe listOf("AgentA", "AgentB")
     }
 
     // -------------------------------------------------------------------------
