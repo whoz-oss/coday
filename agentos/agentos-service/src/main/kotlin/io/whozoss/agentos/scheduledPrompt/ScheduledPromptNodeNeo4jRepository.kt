@@ -90,7 +90,7 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
     /**
      * Find scheduled prompts at an exact scope level, optionally filtered by agentConfigIds.
      * When [withRemoved] is true, soft-deleted entries are included.
-     * When [modifiedSince] is provided, only entries modified after that instant are returned.
+     * When [updatedSince] is provided, only entries modified after that instant are returned.
      */
     @Query(
         $$"""
@@ -99,7 +99,7 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
               AND (sp.namespaceId = $namespaceId OR ($namespaceId IS NULL AND sp.namespaceId IS NULL))
               AND (sp.userId = $userId OR ($userId IS NULL AND sp.userId IS NULL))
               AND ($agentConfigIds IS NULL OR sp.agentConfigId IN $agentConfigIds)
-              AND ($modifiedSince IS NULL OR sp.modified > $modifiedSince)
+              AND ($updatedSince IS NULL OR sp.modified > $updatedSince)
             RETURN sp ORDER BY sp.name ASC
             """,
     )
@@ -108,7 +108,7 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
         userId: String?,
         agentConfigIds: List<String>?,
         withRemoved: Boolean = false,
-        modifiedSince: Instant? = null,
+        updatedSince: Instant? = null,
     ): List<ScheduledPromptNode>
 
     /**
@@ -145,7 +145,7 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
      * Targeted update of the enabled flag — does NOT touch any other field.
      * Safe to call concurrently: only touches `enabled`, leaves `nextRunAt` and all
      * other properties untouched, so it cannot overwrite a concurrent advance of nextRunAt.
-     * Also bumps `modified` so delta-sync clients observe the change via [findByScope] with `modifiedSince`.
+     * Also bumps `modified` so delta-sync clients observe the change via [findByScope] with `updatedSince`.
      */
     @Query(
         $$"""
@@ -159,7 +159,7 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
     /**
      * Disable all non-removed scheduled prompts referencing the given agentConfigId.
      * Also bumps `modified` on each affected node so delta-sync clients observe the change
-     * via [findByScope] with `modifiedSince`.
+     * via [findByScope] with `updatedSince`.
      * Returns the number of nodes updated.
      */
     @Query(
@@ -194,7 +194,7 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
      * and soft-delete their linked Prompts in the same query.
      *
      * Also bumps `modified` on each affected ScheduledPrompt and Prompt so that delta-sync
-     * clients observe tombstoned entries via [findByScope] with `modifiedSince`.
+     * clients observe tombstoned entries via [findByScope] with `updatedSince`.
      *
      * Uses OPTIONAL MATCH for the Prompt so that the ScheduledPrompt is always soft-deleted even when
      * its linked Prompt is already removed or missing (orphaned ScheduledPrompt). The Prompt SET clause

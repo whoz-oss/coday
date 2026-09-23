@@ -128,7 +128,7 @@ class ScheduledPromptController(
             userExternalId = request.userExternalId,
         )
         return scheduledPromptService
-            .findByScope(scope.namespaceId, scope.userId, request.agentConfigIds, request.withRemoved, request.modifiedSince)
+            .findByScope(scope.namespaceId, scope.userId, request.agentConfigIds, request.withRemoved, request.updatedSince)
             .let { scheduledPromptService.withContent(it) }
             .map { (sp, content) -> toDto(sp, content) }
     }

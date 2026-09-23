@@ -34,9 +34,9 @@ import java.util.UUID
  *
  * [withRemoved] — when true, soft-deleted (tombstoned) entries are included in the result.
  * Tombstoned entries are identified by [ScheduledPromptDto.removed] == true.
- * Use together with [modifiedSince] to discover deletions during a delta-sync poll.
+ * Use together with [updatedSince] to discover deletions during a delta-sync poll.
  *
- * [modifiedSince] — returns only entries whose modification timestamp is strictly after the
+ * [updatedSince] — returns only entries whose modification timestamp is strictly after the
  * given instant (exclusive). Intended as a delta-sync cursor: a client stores the timestamp
  * of its last successful poll and passes it on the next call to receive only changes.
  * Note that `nextRunAt` and `lastRunAt` updates are **not** reflected in the modification
@@ -56,7 +56,7 @@ data class ScheduledPromptSearchRequest(
     val agentConfigIds: List<UUID>? = null,
     @field:Schema(defaultValue = "false")
     val withRemoved: Boolean = false,
-    val modifiedSince: Instant? = null,
+    val updatedSince: Instant? = null,
 ) {
     @get:AssertTrue(message = "namespaceId and namespaceExternalId cannot both be provided")
     @get:JsonIgnore
