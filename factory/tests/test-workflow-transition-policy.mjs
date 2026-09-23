@@ -38,4 +38,11 @@ const applied=applyWorkflowTransition(snapshot(),definition,request(),'2026-01-0
 assert.equal(applied.revision,3);assert.equal(applied.instance.steps.find(s=>s.id==='review').status,'ready');assert.equal(applied.instance.status,'ready');assert.equal(snapshot().instance.revision,2)
 assert.equal(validateWorkflowTransitionRequest({...request(),requestId:undefined},'wf-1').ok,true)
 assert.equal(validateWorkflowTransitionRequest({...request()},'wf-1').error.code,'UNTRUSTED_REQUEST_ID')
+const retryEvidence={evidenceId:'retry-approved',namespaceId,workflowId:'wf-1',stepId:'build',kind:'human-decision',outcome:'pass',source:{kind:'factory-human',actorId:'benjamin.valdes'}}
+const retrySnapshot=snapshot('blocked');retrySnapshot.revision=7;retrySnapshot.instance.revision=7;retrySnapshot.instance.status='blocked';retrySnapshot.instance.controllerExecution={caseId:'case-1'}
+const retryRequest=request({expectedRevision:7,requestedStatus:'ready',evidenceIds:['retry-approved']})
+const retryExecution={namespaceId,kind:'factory-control-plane',runtimeId:'factory-dashboard',agentId:'factory-runner',actorId:'benjamin.valdes',caseId:'case-1'}
+assert.equal(decide({request:retryRequest,snapshot:retrySnapshot,evidence:[retryEvidence],execution:retryExecution}).allowed,true)
+assert.equal(decide({request:retryRequest,snapshot:retrySnapshot,evidence:[retryEvidence],execution:{...retryExecution,actorId:undefined}}).code,'ACTOR_NOT_AUTHORIZED')
+assert.equal(decide({request:{...retryRequest,expectedRevision:6},snapshot:retrySnapshot,evidence:[retryEvidence],execution:retryExecution}).code,'REVISION_CONFLICT')
 console.log('workflow transition policy source tests: OK')

@@ -397,7 +397,6 @@ class AgentServiceImpl(
                     queryUserTools +
                     skillTools,
                     buildWorkUnitEnvironmentTools(agentConfig, context, toolContext) +
-                    queryUserTools +
                     factoryTools,
             )
 

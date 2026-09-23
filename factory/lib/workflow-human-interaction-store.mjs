@@ -26,6 +26,8 @@ const semanticHash = (input) =>
           kind: input.kind,
           prompt: input.prompt,
           actions: input.actions,
+          interactionType: input.interactionType,
+          reasonCode: input.reasonCode,
         })
       )
     )
@@ -84,7 +86,11 @@ export class WorkflowHumanInteractionStore {
         const current = projected.get(event.interaction?.interactionId)
         if (current?.status === 'opening') {
           const revision = openedRevision(event)
-          if (!Number.isSafeInteger(revision) || revision <= current.expectedRevision)
+          const validRevision =
+            current.interactionType === 'retry'
+              ? revision === current.expectedRevision
+              : revision > current.expectedRevision
+          if (!Number.isSafeInteger(revision) || !validRevision)
             throw new WorkflowHumanInteractionError('CORRUPT_INTERACTION_STORAGE')
           projected.set(event.interaction.interactionId, { ...current, status: 'open', revision })
         } else if (!current) {
@@ -117,6 +123,67 @@ export class WorkflowHumanInteractionStore {
     return [...projected.values()]
       .filter((item) => !openOnly || item.status === 'open')
       .sort((a, b) => a.openedAt.localeCompare(b.openedAt) || a.interactionId.localeCompare(b.interactionId))
+  }
+  async reconcileOpen(namespaceId, storageId, input, snapshot, { workflowFacts = [] } = {}) {
+    return this._locked(`${namespaceId}\0${storageId}`, async () => {
+      const items = await this.list(namespaceId, storageId)
+      const candidates = items.filter(
+        (item) =>
+          item.workflowId === input.workflowId &&
+          item.stepId === input.stepId &&
+          ['opening', 'aborted'].includes(item.status)
+      )
+      if (candidates.length === 0) throw new WorkflowHumanInteractionError('INTERACTION_RECOVERY_NOT_FOUND')
+      if (candidates.length !== 1) throw new WorkflowHumanInteractionError('INTERACTION_RECOVERY_AMBIGUOUS')
+      const opening = candidates[0]
+      if (opening.semanticHash !== semanticHash(input))
+        throw new WorkflowHumanInteractionError('IDEMPOTENCY_KEY_COLLISION')
+      const step = snapshot?.instance?.steps?.find((candidate) => candidate.id === opening.stepId)
+      if (!Number.isSafeInteger(snapshot?.revision) || !step)
+        throw new WorkflowHumanInteractionError('INTERACTION_RECOVERY_SNAPSHOT_INVALID')
+      if (step.status === 'ready') {
+        if (snapshot.revision !== opening.expectedRevision)
+          throw new WorkflowHumanInteractionError('INTERACTION_RECOVERY_REVISION_DIVERGED')
+        if (opening.status === 'opening') {
+          await append(this.path(namespaceId, storageId), {
+            event: 'interaction_open_aborted',
+            interactionId: opening.interactionId,
+            errorCode: 'RECOVERED_OPENING_WITH_READY_STEP',
+            recoveredAt: new Date().toISOString(),
+          })
+        }
+        return { status: 'reopen', abandonedInteraction: opening }
+      }
+      if (opening.status !== 'opening')
+        throw new WorkflowHumanInteractionError('INTERACTION_RECOVERY_STATE_DIVERGED')
+      if (step.status !== 'waiting_human')
+        throw new WorkflowHumanInteractionError('INTERACTION_RECOVERY_STATE_DIVERGED')
+      if (snapshot.revision <= opening.expectedRevision)
+        throw new WorkflowHumanInteractionError('INTERACTION_RECOVERY_REVISION_DIVERGED')
+      const provesTransition = workflowFacts.some(
+        (fact) =>
+          fact?.kind === 'transition_accepted' &&
+          fact?.revision === snapshot.revision &&
+          fact?.transitionDelta?.steps?.some(
+            (change) =>
+              change.stepId === opening.stepId &&
+              change.status?.from === 'ready' &&
+              change.status?.to === 'waiting_human'
+          )
+      )
+      if (!provesTransition)
+        throw new WorkflowHumanInteractionError('INTERACTION_RECOVERY_TRANSITION_UNPROVEN')
+      await append(this.path(namespaceId, storageId), {
+        event: 'interaction_opened',
+        interaction: { ...opening, revision: snapshot.revision },
+        revision: snapshot.revision,
+        recovery: 'authoritative-workflow-transition',
+      })
+      return {
+        status: 'open',
+        interaction: { ...opening, status: 'open', revision: snapshot.revision },
+      }
+    })
   }
   async open(namespaceId, storageId, input, transition) {
     const actionsValid =
@@ -183,6 +250,8 @@ export class WorkflowHumanInteractionStore {
         kind: input.kind,
         prompt: input.prompt,
         actions: normalized.actions,
+        ...(input.interactionType ? { interactionType: input.interactionType } : {}),
+        ...(input.reasonCode ? { reasonCode: input.reasonCode } : {}),
         idempotencyKey: input.idempotencyKey,
         semanticHash: hash,
         openedAt: new Date().toISOString(),

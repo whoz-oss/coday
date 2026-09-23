@@ -12,6 +12,7 @@ import { setActiveCaseId, clearActiveCaseId } from './active-case.mjs'
 
 const BASE_URL = process.env.AGENTOS_URL ?? 'http://localhost:8124'
 const FACTORY_USER = process.env.FACTORY_USER ?? 'benjamin.valdes'
+const FACTORY_AGENTOS_BINDING_SECRET = process.env.FACTORY_AGENTOS_BINDING_SECRET
 
 // --------------------------------------------------------------------------
 // Utilitaire HTTP de base
@@ -84,6 +85,12 @@ export async function createCase(namespaceId, title) {
  */
 export async function postMessage(caseId, content) {
   await request('POST', `/api/cases/${caseId}/messages`, { content })
+}
+
+export async function bindFactoryStepResult(caseId, binding) {
+  if (!FACTORY_AGENTOS_BINDING_SECRET) throw new Error('FACTORY_AGENTOS_BINDING_SECRET is required')
+  const response = await fetch(`${BASE_URL}/internal/factory/cases/${encodeURIComponent(caseId)}/step-result-binding`, {method:'PUT',headers:{'content-type':'application/json','x-factory-agentos-secret':FACTORY_AGENTOS_BINDING_SECRET},body:JSON.stringify(binding)})
+  if (!response.ok) throw new Error(`AgentOS Factory binding rejected with HTTP ${response.status}`)
 }
 
 /**
@@ -273,8 +280,9 @@ function normalizeRoot(p) {
  * @returns {Promise<{ ok: boolean, reason: string|null, rootPath: string|null }>}
  */
 export async function preflightWorkspace(namespaceId, agent, repoRoot) {
+  if (JSON.stringify(agent.integrations?.FACTORY) !== JSON.stringify(['submit_step_result'])) return { ok:false, reason:'FACTORY must grant exactly submit_step_result.', rootPath:null }
   /** Clés réservées : résolues par le service, jamais par une IntegrationConfig. */
-  const RESERVED = new Set(['QUERY_USER', 'CASE_FILE_EXCHANGE', 'NAMESPACE_FILE_EXCHANGE'])
+  const RESERVED = new Set(['QUERY_USER', 'CASE_FILE_EXCHANGE', 'NAMESPACE_FILE_EXCHANGE', 'FACTORY'])
 
   const declared = Object.keys(agent.integrations ?? {}).filter((k) => !RESERVED.has(k))
   if (declared.length === 0) {
@@ -376,7 +384,7 @@ export async function preflightWorkspace(namespaceId, agent, repoRoot) {
  * the canonical repo root, QUERY_USER explicitly disabled, no extra powers.
  */
 export async function preflightWritableWorkspace(namespaceId, agent, repoRoot) {
-  const reserved = new Set(['QUERY_USER', 'CASE_FILE_EXCHANGE', 'NAMESPACE_FILE_EXCHANGE'])
+  const reserved = new Set(['QUERY_USER', 'CASE_FILE_EXCHANGE', 'NAMESPACE_FILE_EXCHANGE', 'FACTORY'])
   if (!Array.isArray(agent.integrations?.QUERY_USER) || agent.integrations.QUERY_USER.length !== 0)
     return {
       ok: false,
@@ -384,6 +392,7 @@ export async function preflightWritableWorkspace(namespaceId, agent, repoRoot) {
       rootPath: null,
       integration: null,
     }
+  if (JSON.stringify(agent.integrations?.FACTORY) !== JSON.stringify(['submit_step_result'])) return { ok:false, reason:'FACTORY must grant exactly submit_step_result.', rootPath:null, integration:null }
   const names = Object.keys(agent.integrations ?? {}).filter((name) => !reserved.has(name))
   if (names.length !== 1)
     return {
@@ -431,7 +440,7 @@ export async function preflightWritableWorkspace(namespaceId, agent, repoRoot) {
  * @returns {Promise<{ ok: boolean, reason: string|null, rootPath: string|null, integration: object|null }>}
  */
 export async function preflightReadOnlyWorkspace(namespaceId, agent, repoRoot) {
-  const RESERVED = new Set(['QUERY_USER', 'CASE_FILE_EXCHANGE', 'NAMESPACE_FILE_EXCHANGE'])
+  const RESERVED = new Set(['QUERY_USER', 'CASE_FILE_EXCHANGE', 'NAMESPACE_FILE_EXCHANGE', 'FACTORY'])
   const declared = Object.keys(agent.integrations ?? {})
   if (!Array.isArray(agent.integrations?.QUERY_USER) || agent.integrations.QUERY_USER.length !== 0) {
     return {
@@ -441,6 +450,7 @@ export async function preflightReadOnlyWorkspace(namespaceId, agent, repoRoot) {
       integration: null,
     }
   }
+  if (JSON.stringify(agent.integrations?.FACTORY) !== JSON.stringify(['submit_step_result'])) return { ok:false, reason:'FACTORY must grant exactly submit_step_result.', rootPath:null, integration:null }
   const nonReserved = declared.filter((name) => !RESERVED.has(name))
   if (nonReserved.length !== 1) {
     return {

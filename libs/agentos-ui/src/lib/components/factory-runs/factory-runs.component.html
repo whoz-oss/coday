@@ -164,7 +164,11 @@
                   [namespaceId]="namespaceId()!"
                   [timing]="workflowProjectionState.timings()[workflow.workflowId]"
                   [pending]="workflowPending(workflow.workflowId)"
+                  [selectedStepId]="selectedWorkflowStepId(workflow.workflowId)"
+                  (selectedStepIdChange)="selectWorkflowStep(workflow.workflowId, $event)"
                   (removeRequested)="workflowProjectionState.remove($event)"
+                  (governedActionCompleted)="onGovernedActionCompleted($event)"
+                  (authoritativeRefreshRequested)="workflowProjectionState.refresh()"
                 />
               </div>
             }

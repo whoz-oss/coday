@@ -18,7 +18,8 @@ export const WORKFLOW_DEFINITION_ERROR_CODES = Object.freeze({
 
 const SAFE_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
-const DEFINITION_FIELDS = new Set(['schemaVersion', 'workflowType', 'version', 'title', 'steps'])
+const DEFINITION_FIELDS = new Set(['schemaVersion', 'workflowType', 'version', 'title', 'trustedExecution', 'steps'])
+const TRUSTED_EXECUTION_FIELDS = new Set(['allowedPaths'])
 const STEP_FIELDS = new Set(['id', 'name', 'responsibility', 'dependsOn'])
 const RESPONSIBILITY_FIELDS = new Set(['kind', 'name'])
 const KINDS = new Set(WORKFLOW_DEFINITION_RESPONSIBILITIES)
@@ -45,6 +46,19 @@ export function validateWorkflowDefinition(input) {
     return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, 'version')
   const title = text(input.title, 'title')
   if (!title.ok) return title
+  let trustedExecution
+  if (input.trustedExecution !== undefined) {
+    if (!input.trustedExecution || typeof input.trustedExecution !== 'object' || Array.isArray(input.trustedExecution) || Object.keys(input.trustedExecution).some((field) => !TRUSTED_EXECUTION_FIELDS.has(field)) || !Array.isArray(input.trustedExecution.allowedPaths) || input.trustedExecution.allowedPaths.length === 0)
+      return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, 'trustedExecution')
+    const allowedPaths=[]
+    for (let index=0;index<input.trustedExecution.allowedPaths.length;index++) {
+      const path=input.trustedExecution.allowedPaths[index]
+      if (typeof path !== 'string' || !path || path.startsWith('/') || path.includes('\\') || path.split('/').includes('..') || path.includes('\0'))
+        return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, `trustedExecution.allowedPaths[${index}]`)
+      allowedPaths.push(path)
+    }
+    trustedExecution={allowedPaths}
+  }
   if (!Array.isArray(input.steps) || input.steps.length === 0 || input.steps.length > 500)
     return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, 'steps')
   const ids = new Set(),
@@ -128,6 +142,7 @@ export function validateWorkflowDefinition(input) {
       workflowType: input.workflowType,
       version: input.version,
       title: input.title,
+      ...(trustedExecution ? { trustedExecution } : {}),
       steps,
     },
   }

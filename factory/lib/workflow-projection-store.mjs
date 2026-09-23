@@ -265,6 +265,16 @@ export class WorkflowProjectionStore {
     const snapshot = await this._readSnapshot(paths)
     return snapshot ? { state: 'existing', workflowId, snapshot } : { state: 'absent', workflowId }
   }
+  async facts(namespaceId, workflowId) {
+    const paths = this.paths(namespaceId, workflowId)
+    await this._recover(paths)
+    try {
+      return (await readFile(paths.events, 'utf8')).split('\n').filter(Boolean).map(JSON.parse)
+    } catch (error) {
+      if (error?.code === 'ENOENT') return []
+      throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.CORRUPT_STORAGE, {}, error)
+    }
+  }
   async timing(namespaceId, workflowId, now = new Date()) {
     const paths = this.paths(namespaceId, workflowId)
     await this._recover(paths)

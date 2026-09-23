@@ -7,7 +7,10 @@ import { FactoryRunSummary } from '../../services/factory-api.service'
 import { FactoryStateService } from '../../services/factory-state.service'
 import { FactoryRunDetailComponent } from '../factory-run-detail/factory-run-detail.component'
 import { FactoryLaunchComponent } from '../factory-launch/factory-launch.component'
-import { FactoryWorkflowProjectionComponent } from '../factory-workflow-projection/factory-workflow-projection.component'
+import {
+  FactoryWorkflowProjectionComponent,
+  GovernedActionCompleted,
+} from '../factory-workflow-projection/factory-workflow-projection.component'
 import { FactoryWorkflowProjectionStateService } from '../../services/factory-workflow-projection-state.service'
 
 @Component({
@@ -68,6 +71,8 @@ export class FactoryRunsComponent {
   /** Whether the launch form is open. */
   protected readonly showLaunchForm = signal(false)
   protected readonly workflowMode = signal<'active' | 'removed'>('active')
+  private readonly selectedStepByWorkflow = signal<Record<string, string>>({})
+  private readonly pendingStepAdvancement = signal<Record<string, GovernedActionCompleted>>({})
 
   constructor() {
     effect(() => {
@@ -108,6 +113,32 @@ export class FactoryRunsComponent {
       this.namespaceId()
       this.showLaunchForm.set(false)
     })
+
+    effect(() => {
+      const workflows = this.workflowProjectionState.workflows()
+      const pending = this.pendingStepAdvancement()
+      for (const [workflowId, intent] of Object.entries(pending)) {
+        const workflow = workflows.find((item) => item.workflowId === workflowId)
+        if (!workflow || workflow.revision <= intent.revision) continue
+        const steps = workflow.projection.steps
+        const currentIndex = steps.findIndex((step) => step.id === intent.stepId)
+        const current = currentIndex >= 0 ? steps[currentIndex] : null
+        if (current && ['ready', 'waiting_human', 'blocked'].includes(current.status)) {
+          this.selectWorkflowStep(workflowId, current.id)
+        } else if (currentIndex >= 0) {
+          const next = steps
+            .slice(currentIndex + 1)
+            .find((step) => ['ready', 'waiting_human', 'blocked'].includes(step.status))
+          if (next) this.selectWorkflowStep(workflowId, next.id)
+        } else if (steps[0]) {
+          this.selectWorkflowStep(workflowId, steps[0].id)
+        }
+        this.pendingStepAdvancement.update((value) => {
+          const { [workflowId]: _consumed, ...rest } = value
+          return rest
+        })
+      }
+    })
   }
 
   protected openLaunchForm(): void {
@@ -122,6 +153,19 @@ export class FactoryRunsComponent {
 
   protected workflowPending(workflowId: string): boolean {
     return this.workflowProjectionState.actionWorkflowId() === workflowId
+  }
+
+  protected selectedWorkflowStepId(workflowId: string): string | null {
+    return this.selectedStepByWorkflow()[workflowId] ?? null
+  }
+
+  protected selectWorkflowStep(workflowId: string, stepId: string): void {
+    this.selectedStepByWorkflow.update((selection) => ({ ...selection, [workflowId]: stepId }))
+  }
+
+  protected onGovernedActionCompleted(intent: GovernedActionCompleted): void {
+    this.pendingStepAdvancement.update((pending) => ({ ...pending, [intent.workflowId]: intent }))
+    this.workflowProjectionState.refresh()
   }
 
   /**

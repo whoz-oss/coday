@@ -98,6 +98,7 @@ export const transitionScopeHash = (namespaceId, request, execution) =>
           kind: execution.kind,
           runtimeId: execution.runtimeId,
           agentId: execution.agentId,
+          actorId: execution.actorId,
           caseId: execution.caseId,
           threadId: execution.threadId,
         },
@@ -132,20 +133,35 @@ export function evaluateHumanCheckpointOpen({ request, snapshot, definition, exe
   )
   if (missing.length)
     return deny('DEPENDENCIES_NOT_SATISFIED', 'dependencies_not_completed', { missingEvidence: missing })
+  if (request.requestedStatus !== 'waiting_human' || request.evidenceIds.length !== 0)
+    return deny('ACTOR_NOT_AUTHORIZED', 'human_gate_opener_can_only_open_checkpoint')
+  const factoryHumanGate =
+    execution.kind === 'factory-human-gate' &&
+    execution.runtimeId === 'factory-dashboard' &&
+    execution.agentId === 'factory-runner' &&
+    execution.actorId === undefined
   const controller = instance.controllerExecution ?? snapshot.controllerExecution
-  if (
-    !controller ||
-    controller.kind !== execution.kind ||
-    controller.runtimeId !== execution.runtimeId ||
-    controller.agentId !== execution.agentId ||
-    controller.caseId !== execution.caseId ||
-    controller.threadId !== execution.threadId
-  )
-    return deny('ACTOR_NOT_AUTHORIZED', 'execution_does_not_control_workflow')
+  const originalController =
+    controller &&
+    controller.kind === execution.kind &&
+    controller.runtimeId === execution.runtimeId &&
+    controller.agentId === execution.agentId &&
+    controller.caseId === execution.caseId &&
+    controller.threadId === execution.threadId
+  if (!factoryHumanGate && !originalController)
+    return deny('ACTOR_NOT_AUTHORIZED', 'execution_cannot_open_human_gate')
   return { allowed: true }
 }
 
 export function evaluateHumanResolutionTransition({ request, snapshot, definition, evidence, execution }) {
+  if (
+    execution.kind === 'factory-human-gate' ||
+    execution.kind !== 'factory-human' ||
+    execution.runtimeId !== 'factory-dashboard' ||
+    typeof execution.actorId !== 'string' ||
+    execution.actorId.length === 0
+  )
+    return deny('ACTOR_NOT_AUTHORIZED', 'human_resolution_requires_authenticated_human')
   const current = snapshot?.instance?.steps?.find((step) => step.id === request.stepId)
   if (current?.status !== 'waiting_human') return deny('INTERACTION_STALE', 'human_step_is_not_waiting')
   if (!['completed', 'failed'].includes(request.requestedStatus))
@@ -242,10 +258,20 @@ export function evaluateWorkflowTransition({ request, snapshot, definition, evid
     execution.runtimeId === 'factory-dashboard' &&
     typeof execution.actorId === 'string' &&
     execution.actorId.length > 0
+  const factoryRetry =
+    declared.responsibility.kind === 'agent' &&
+    current.status === 'blocked' &&
+    request.requestedStatus === 'ready' &&
+    execution.kind === 'factory-control-plane' &&
+    execution.runtimeId === 'factory-dashboard' &&
+    execution.agentId === 'factory-runner' &&
+    typeof execution.actorId === 'string' &&
+    execution.actorId.length > 0
   if (declared.responsibility.kind !== 'agent' && !factoryOracle && !factoryHuman)
     return deny('ACTOR_NOT_AUTHORIZED', 'runtime_cannot_transition_step_responsibility')
   if (
     declared.responsibility.kind === 'agent' &&
+    !factoryRetry &&
     declared.responsibility.name &&
     declared.responsibility.name !== execution.agentId
   )
@@ -262,6 +288,25 @@ export function evaluateWorkflowTransition({ request, snapshot, definition, evid
     )
       return deny('EVIDENCE_SCOPE_MISMATCH', 'evidence_scope_mismatch')
     selected.push(item)
+  }
+  if (request.requestedStatus === 'blocked' && declared.responsibility.kind === 'agent') {
+    const negative=selected.find((e)=>e.kind==='agent-result'&&['fail','indeterminate'].includes(e.outcome)&&e.source?.kind===execution.kind&&e.source?.runtimeId===execution.runtimeId&&e.source?.agentId===execution.agentId&&e.source?.caseId===execution.caseId&&e.source?.threadId===execution.threadId)
+    if(!negative)return deny('NEGATIVE_EVIDENCE_REQUIRED','matching_agent_result_negative_required',{missingEvidence:['agent-result:fail-or-indeterminate']})
+  }
+  if (request.requestedStatus === 'ready' && current.status === 'blocked') {
+    const controller=instance.controllerExecution??snapshot.controllerExecution
+    if(
+      execution.kind!=='factory-control-plane'||
+      execution.runtimeId!=='factory-dashboard'||
+      execution.agentId!=='factory-runner'||
+      typeof execution.actorId!=='string'||
+      execution.actorId.length===0||
+      !controller||
+      controller.caseId!==execution.caseId
+    )
+      return deny('ACTOR_NOT_AUTHORIZED','manual_retry_requires_factory_controller_and_human_actor')
+    const retry=selected.find((e)=>e.kind==='human-decision'&&e.outcome==='pass'&&e.source?.kind==='factory-human'&&typeof e.source?.actorId==='string'&&e.source.actorId.length>0)
+    if(!retry)return deny('RETRY_EVIDENCE_REQUIRED','trusted_manual_retry_evidence_required',{missingEvidence:['human-decision:pass']})
   }
   if (request.requestedStatus === 'completed') {
     if (factoryHuman) {
