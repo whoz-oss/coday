@@ -237,14 +237,7 @@ class AgentAdvanced(
                     ),
                 )
             } catch (e: Exception) {
-                logger.error(e) { "Error during agent execution" }
-                emit(
-                    WarnEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        message = "Error during agent execution: ${e.message}",
-                    ),
-                )
+                handleGenericAgentException(this@AgentAdvanced, e, namespaceId, caseId, logger)
             }
         }
 
@@ -1041,8 +1034,8 @@ class AgentAdvanced(
         if (isTruncated(lastFinishReason)) {
             val msg =
                 "LLM response was truncated (finish_reason=$lastFinishReason). " +
-                    "The configured maxTokens limit may be too low. " +
-                    "Consider increasing the model's maxTokens configuration."
+                    "The configured maxCompletionTokens limit may be too low. " +
+                    "Consider increasing the model's maxCompletionTokens configuration."
             logger.warn { "[$name] $msg" }
             emitEvent(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = msg))
         }

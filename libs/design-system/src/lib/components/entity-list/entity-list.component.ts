@@ -74,6 +74,15 @@ export class EntityListComponent implements AfterViewInit, OnDestroy {
   readonly disableInternalFilter = input<boolean>(false)
   readonly toolbarOnly = input<boolean>(false)
   /**
+   * When true, the content area is replaced by skeleton card placeholders.
+   * The toolbar remains visible. Use while data is being fetched.
+   */
+  readonly loading = input<boolean>(false)
+  /**
+   * Number of skeleton cards to render while loading. Defaults to 6.
+   */
+  readonly loadingSkeletonCount = input<number>(6)
+  /**
    * When true, keep rendering the grouped (accordion) view while a search is active,
    * showing only the groups that still have matching items (a group with no match is
    * dropped, since [groupedItems] never creates an empty group). Default false keeps the
@@ -97,6 +106,9 @@ export class EntityListComponent implements AfterViewInit, OnDestroy {
   private observer?: IntersectionObserver
 
   protected readonly isSearchActive = computed(() => this.searchQuery().trim().length > 0)
+
+  /** Array of the requested length used to drive @for skeleton rendering. */
+  protected readonly skeletonItems = computed(() => Array.from({ length: this.loadingSkeletonCount() }))
 
   protected readonly isPaged = computed(() => this.pageSize() > 0)
 

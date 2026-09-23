@@ -27,6 +27,7 @@ export class ShellCaseSwitcherMobileComponent {
   readonly userName = input.required<string>()
   readonly isAdmin = input.required<boolean>()
   readonly isDark = input.required<boolean>()
+  readonly showToolCalls = input.required<boolean>()
 
   // ── Internal state ────────────────────────────────────────
   protected readonly filterQuery = signal('')
@@ -65,6 +66,7 @@ export class ShellCaseSwitcherMobileComponent {
   readonly navigateTo = output<string>()
   readonly themeToggled = output<void>()
   readonly logsToggled = output<void>()
+  readonly toolCallsToggled = output<void>()
 
   // ── Handlers ────────────────────────────────────────────
   protected onCaseSelect(id: string): void {
@@ -108,6 +110,11 @@ export class ShellCaseSwitcherMobileComponent {
   protected onMenuLogsToggle(): void {
     this.userMenuOpen.set(false)
     this.logsToggled.emit()
+  }
+
+  protected onMenuToolCallsToggle(): void {
+    this.userMenuOpen.set(false)
+    this.toolCallsToggled.emit()
   }
 
   // ── Date helpers ──────────────────────────────────────────
