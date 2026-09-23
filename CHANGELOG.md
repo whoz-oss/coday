@@ -1,3 +1,15 @@
+## 2.2.1 (2026-09-23)
+
+### 🩹 Fixes
+
+- **agentos-service:** remove use of dynamic label on PermissionNodeNeo4jRepository.kt 34948 ([#1354](https://github.com/whoz-oss/coday/pull/1354), [#1371](https://github.com/whoz-oss/coday/pull/1371))
+- **agentos-service:** #34892 inject redirect guideline into planning prompt ([#1359](https://github.com/whoz-oss/coday/pull/1359), [#34892](https://github.com/whoz-oss/coday/issues/34892))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 2.2.0 (2026-09-23)
 
 ### 🚀 Features
