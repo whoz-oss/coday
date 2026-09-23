@@ -130,6 +130,19 @@
               rows="4"
             ></textarea>
           </div>
+
+          <div class="user-profile__field">
+            <label class="user-profile__label" for="up-preferredLanguage">Language</label>
+            <select
+              id="up-preferredLanguage"
+              class="user-profile__input user-profile__select"
+              formControlName="preferredLanguage"
+            >
+              @for (option of languageOptions; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+          </div>
         </div>
 
         <div class="user-profile__actions">
@@ -172,6 +185,11 @@
           <div class="user-profile__field user-profile__field--bio">
             <span class="user-profile__label">Bio</span>
             <span class="user-profile__value">{{ user.bio || '—' }}</span>
+          </div>
+
+          <div class="user-profile__field">
+            <span class="user-profile__label">Language</span>
+            <span class="user-profile__value">{{ user.preferredLanguage || '—' }}</span>
           </div>
         </div>
 

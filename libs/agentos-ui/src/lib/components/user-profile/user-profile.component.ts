@@ -87,10 +87,28 @@ export class UserProfileComponent implements OnInit {
     { value: 'newline', label: 'New line' },
   ]
 
+  /**
+   * Supported language options offered in the dropdown.
+   * Extend this list to add more locales — the backend accepts any valid BCP 47 tag.
+   */
+  protected readonly languageOptions: ReadonlyArray<{ value: string; label: string }> = [
+    { value: '', label: 'No preference (English fallback)' },
+    { value: 'fr', label: 'French' },
+    { value: 'de', label: 'German' },
+    { value: 'es', label: 'Spanish' },
+    { value: 'pt', label: 'Portuguese' },
+    { value: 'it', label: 'Italian' },
+    { value: 'nl', label: 'Dutch' },
+    { value: 'pl', label: 'Polish' },
+    { value: 'ja', label: 'Japanese' },
+    { value: 'zh', label: 'Chinese' },
+  ]
+
   protected readonly form = new FormGroup({
     firstname: new FormControl<string>('', { nonNullable: true }),
     lastname: new FormControl<string>('', { nonNullable: true }),
     bio: new FormControl<string>('', { nonNullable: true }),
+    preferredLanguage: new FormControl<string>('', { nonNullable: true }),
   })
 
   /**
@@ -189,11 +207,13 @@ export class UserProfileComponent implements OnInit {
   protected save(): void {
     if (this.isSaving()) return
     this.isSaving.set(true)
+    const lang = this.form.controls.preferredLanguage.value.trim()
     this.userState
       .updateMe({
         firstname: this.form.controls.firstname.value.trim() || undefined,
         lastname: this.form.controls.lastname.value.trim() || undefined,
         bio: this.form.controls.bio.value.trim() || undefined,
+        preferredLanguage: lang || undefined,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -272,6 +292,7 @@ export class UserProfileComponent implements OnInit {
       firstname: user.firstname ?? '',
       lastname: user.lastname ?? '',
       bio: user.bio ?? '',
+      preferredLanguage: user.preferredLanguage ?? '',
     })
   }
 }
