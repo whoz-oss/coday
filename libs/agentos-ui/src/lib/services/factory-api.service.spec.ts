@@ -63,6 +63,38 @@ describe('FactoryApiService', () => {
     })
   })
 
+  describe('governed workflow recovery', () => {
+    it('lists step evidence and submits exact retry and continue payloads', () => {
+      service.listWorkflowEvidence('namespace-1', 'workflow/1', 'step-1').subscribe()
+      const evidence = http.expectOne(
+        (r) =>
+          r.url === '/api/factory/workflows/workflow%2F1/evidence' &&
+          r.params.get('namespaceId') === 'namespace-1' &&
+          r.params.get('stepId') === 'step-1'
+      )
+      expect(evidence.request.method).toBe('GET')
+      evidence.flush({ data: { namespaceId: 'namespace-1', workflowId: 'workflow/1', items: [] } })
+
+      const retryPayload = {
+        namespaceId: 'namespace-1',
+        stepId: 'step-1',
+        expectedRevision: 7,
+        reasonCode: 'RESULT_NOT_JSON',
+      }
+      service.requestWorkflowRetry('workflow/1', retryPayload).subscribe()
+      const retry = http.expectOne('/api/factory/workflows/workflow%2F1/retries')
+      expect(retry.request.method).toBe('POST')
+      expect(retry.request.body).toEqual(retryPayload)
+      retry.flush({ data: { status: 'WAITING_HUMAN' } })
+
+      service.continueWorkflow('namespace-1', 'workflow/1').subscribe()
+      const continuation = http.expectOne('/api/factory/workflows/workflow%2F1/continue')
+      expect(continuation.request.method).toBe('POST')
+      expect(continuation.request.body).toEqual({ namespaceId: 'namespace-1' })
+      continuation.flush({ data: { status: 'RUNNING' } })
+    })
+  })
+
   describe('stopRun', () => {
     it('POSTs to /api/factory/runs/:id/stop', () => {
       service.stopRun('run-abc').subscribe()

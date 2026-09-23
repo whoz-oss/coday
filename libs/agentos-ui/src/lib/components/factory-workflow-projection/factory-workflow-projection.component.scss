@@ -116,6 +116,46 @@ dd {
 .workflow-projection__selected-step p {
   margin: 0.35rem 0 0;
 }
+.workflow-projection__governed-action {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-primary, #007aff);
+  border-left-width: 0.25rem;
+  border-radius: 0.5rem;
+  background: var(--color-bg-secondary, var(--color-surface-secondary, #f3f4f6));
+}
+.workflow-projection__governed-action p {
+  margin: 0.5rem 0;
+}
+.workflow-projection__governed-action textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 5rem;
+  margin-top: 0.35rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border, var(--color-divider, #d1d5db));
+  border-radius: 0.35rem;
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #111827);
+}
+.workflow-projection__action-context {
+  color: var(--color-text-secondary, #4b5563);
+  font-size: 0.8125rem;
+}
+.workflow-projection__decision {
+  min-width: 8rem;
+  min-height: 2.5rem;
+  padding-inline: 1rem;
+  font-weight: 650;
+}
+.workflow-projection__decision--primary {
+  background: var(--color-primary, #007aff);
+  color: var(--color-on-primary, #fff);
+}
+.workflow-projection__decision--reject {
+  border-color: var(--color-error, #b91c1c);
+  color: var(--color-error, #b91c1c);
+}
 .workflow-projection__metrics {
   margin-top: 1rem;
   padding: 0.75rem;
@@ -211,9 +251,13 @@ dd {
 }
 .workflow-projection__dialog-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1rem;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-divider, #d1d5db);
 }
 .sr-only {
   position: absolute;

@@ -25,7 +25,7 @@
       <dt>Schema</dt>
       <dd>v{{ snapshot().projection.schemaVersion }}</dd>
     </div>
-    @if (snapshot().controllerExecution; as execution) {
+    @if (durableController(); as execution) {
       <div>
         <dt>Controlling runtime</dt>
         <dd>
@@ -157,6 +157,117 @@
     }
   }
 
+  @if (v2Projection() && selectedStep(); as step) {
+    <section class="workflow-projection__governed-action" aria-labelledby="governed-action-title" aria-live="polite">
+      @if (selectedOpenInteraction(); as interaction) {
+        <h4 id="governed-action-title">Human decision required</h4>
+        <p class="workflow-projection__action-context">
+          <strong>{{ step.name }}</strong> · {{ displayStatus(step.status) }}
+        </p>
+        <p>{{ interaction.prompt }}</p>
+        @if (interaction.kind === 'text') {
+          <label [for]="'human-reply-' + interaction.interactionId">Response</label>
+          <textarea
+            [id]="'human-reply-' + interaction.interactionId"
+            [ngModel]="replyText()"
+            (ngModelChange)="replyText.set($event)"
+            [disabled]="!!replyingInteractionId()"
+          ></textarea>
+        }
+        <div class="workflow-projection__dialog-actions">
+          @for (action of interaction.actions; track action.id) {
+            <button
+              [attr.mat-flat-button]="
+                action.requestedStatus === 'completed' || action.requestedStatus === 'ready' ? '' : null
+              "
+              [attr.mat-stroked-button]="
+                action.requestedStatus !== 'completed' && action.requestedStatus !== 'ready' ? '' : null
+              "
+              type="button"
+              class="workflow-projection__decision"
+              [class.workflow-projection__decision--primary]="
+                action.requestedStatus === 'completed' || action.requestedStatus === 'ready'
+              "
+              [class.workflow-projection__decision--reject]="
+                action.requestedStatus === 'failed' ||
+                action.requestedStatus === 'cancelled' ||
+                action.id.toLowerCase().includes('reject')
+              "
+              [disabled]="!!replyingInteractionId()"
+              (click)="reply(interaction, action.id)"
+            >
+              {{ action.label }}
+            </button>
+          }
+        </div>
+        @if (replyingInteractionId() === interaction.interactionId) {
+          <p role="status">Recording decision and evaluating policy…</p>
+        }
+        @if (interactionError()) {
+          <p role="alert">{{ interactionError() }}</p>
+        }
+      } @else if (interactionLoading() && (step.status === 'waiting_human' || step.status === 'blocked')) {
+        <h4 id="governed-action-title">Human decision required</h4>
+        <p role="status">Loading available actions…</p>
+      } @else if (blockedAgentStep()) {
+        <h4 id="governed-action-title">Action required</h4>
+        <p class="workflow-projection__action-context">
+          <strong>{{ step.name }}</strong> · {{ displayStatus(step.status) }}
+        </p>
+        @if (evidenceLoading()) {
+          <p role="status">Loading authoritative failure evidence…</p>
+        } @else if (retryReasonCode(); as reasonCode) {
+          <p>
+            <strong>Reason code:</strong> <code>{{ reasonCode }}</code>
+          </p>
+        } @else {
+          <p>Authoritative negative evidence is unavailable or malformed. Retry cannot be requested.</p>
+        }
+        @if (evidenceError()) {
+          <p role="alert">{{ evidenceError() }}</p>
+        }
+        @if (retryError()) {
+          <p role="alert">{{ retryError() }}</p>
+        }
+        <button
+          mat-flat-button
+          type="button"
+          [disabled]="retryPending() || evidenceLoading() || !retryReasonCode()"
+          (click)="requestRetry()"
+        >
+          Request retry
+        </button>
+        @if (retryPending()) {
+          <p role="status">Requesting governed retry…</p>
+        }
+      } @else if (step.status === 'ready' && mode() === 'active') {
+        <h4 id="governed-action-title">Ready to continue</h4>
+        <p class="workflow-projection__action-context">
+          <strong>{{ step.name }}</strong> · {{ displayStatus(step.status) }}
+        </p>
+        <p>The governed step is ready. Continuing remains an explicit human action.</p>
+        @if (continueError()) {
+          <p role="alert">{{ continueError() }}</p>
+        }
+        <button mat-flat-button type="button" [disabled]="continuePending()" (click)="continueRun()">
+          Continue run
+        </button>
+        @if (continuePending()) {
+          <p role="status">Continuing workflow…</p>
+        }
+      } @else if (interactionError() && (step.status === 'waiting_human' || step.status === 'blocked')) {
+        <h4 id="governed-action-title">Human decision required</h4>
+        <p role="alert">{{ interactionError() }}</p>
+      } @else {
+        <h4 id="governed-action-title">No action required</h4>
+        <p class="workflow-projection__action-context">
+          <strong>{{ step.name }}</strong> · {{ displayStatus(step.status) }}
+        </p>
+        <p>This step does not currently require a governed human action.</p>
+      }
+    </section>
+  }
+
   <section class="workflow-projection__metrics" aria-labelledby="operational-metrics-title">
     <div class="workflow-projection__metrics-heading">
       <div>
@@ -242,50 +353,13 @@
     }
   </section>
 
-  @if (selectedStep()?.status === 'waiting_human') {
-    <section class="workflow-projection__human-gate" aria-live="polite">
-      <h4>Human decision required</h4>
-      @if (interactionLoading()) {
-        <p role="status">Loading available actions…</p>
-      }
-      @if (interactionError()) {
-        <p role="alert">{{ interactionError() }}</p>
-      }
-      @for (interaction of interactions(); track interaction.interactionId) {
-        @if (interaction.stepId === selectedStep()?.id) {
-          <p>{{ interaction.prompt }}</p>
-          @if (interaction.kind === 'text') {
-            <label [for]="'human-reply-' + interaction.interactionId">Response</label>
-            <textarea
-              [id]="'human-reply-' + interaction.interactionId"
-              [ngModel]="replyText()"
-              (ngModelChange)="replyText.set($event)"
-              [disabled]="!!replyingInteractionId()"
-            ></textarea>
-          }
-          <div class="workflow-projection__dialog-actions">
-            @for (action of interaction.actions; track action.id) {
-              <button
-                type="button"
-                class="workflow-projection__button"
-                [disabled]="!!replyingInteractionId()"
-                (click)="reply(interaction, action.id)"
-              >
-                {{ action.label }}
-              </button>
-            }
-          </div>
-          @if (replyingInteractionId() === interaction.interactionId) {
-            <p role="status">Recording decision and evaluating policy…</p>
-          }
-        }
-      }
-    </section>
-  }
-
   <section class="workflow-projection__selected-step" aria-labelledby="delivery-title">
     <h4 id="delivery-title">Delivery pipeline</h4>
-    <agentos-delivery-panel [delivery]="delivery()" [loading]="deliveryLoading()" [error]="deliveryError()" />
+    @if (!snapshot().instance?.deliveryRef) {
+      <p>Delivery not initialized</p>
+    } @else {
+      <agentos-delivery-panel [delivery]="delivery()" [loading]="deliveryLoading()" [error]="deliveryError()" />
+    }
   </section>
 
   <footer class="workflow-projection__actions">

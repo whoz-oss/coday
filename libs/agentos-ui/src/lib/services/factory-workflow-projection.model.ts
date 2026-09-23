@@ -64,8 +64,51 @@ export interface WorkflowProjectionSnapshotDto {
   workflowId: string
   revision: number
   projectionHash: string
+  /** Latest observed execution; retained as a compatibility fallback only. */
   controllerExecution?: WorkflowControllerExecution
+  /** Durable governed workflow identity and controlling execution. */
+  instance?: {
+    controllerExecution?: WorkflowControllerExecution
+    deliveryRef?: {
+      deliveryId: string
+      definitionHash?: string
+    } | null
+    [key: string]: unknown
+  }
   projection: WorkflowProjection
+}
+
+export function durableControllerExecution(
+  snapshot: WorkflowProjectionSnapshotDto
+): WorkflowControllerExecution | undefined {
+  return snapshot.instance?.controllerExecution ?? snapshot.controllerExecution
+}
+
+export interface WorkflowEvidenceDto {
+  evidenceId: string
+  workflowId: string
+  stepId: string
+  kind: string
+  outcome: string
+  facts?: Record<string, unknown>
+  timestamp?: string
+  recordedAt?: string
+}
+export interface WorkflowEvidenceListDto {
+  data: { namespaceId: string; workflowId: string; items: WorkflowEvidenceDto[] }
+}
+
+export function latestNegativeAgentResultReason(evidence: WorkflowEvidenceDto[], stepId: string): string | null {
+  const latest = evidence
+    .filter(
+      (item) =>
+        item.stepId === stepId &&
+        item.kind === 'agent-result' &&
+        (item.outcome === 'fail' || item.outcome === 'indeterminate')
+    )
+    .at(-1)
+  const reasonCode = latest?.facts?.['resultCode']
+  return typeof reasonCode === 'string' && reasonCode.length > 0 ? reasonCode : null
 }
 
 export type WorkflowProjectionCollectionState = 'active' | 'removed'
@@ -179,6 +222,8 @@ export interface WorkflowHumanInteraction {
   actions: WorkflowHumanInteractionAction[]
   openedAt: string
   status: 'open' | 'replied'
+  interactionType?: string
+  reasonCode?: string
 }
 export interface WorkflowHumanInteractionListDto {
   data: { namespaceId: string; workflowId: string; items: WorkflowHumanInteraction[] }
@@ -193,6 +238,13 @@ export interface WorkflowHumanReplyDto {
     projection: WorkflowProjection
     runtimeNotification: 'not-configured'
   }
+}
+
+export interface WorkflowRetryResponseDto {
+  data: { status: string; interaction?: WorkflowHumanInteraction; code?: string }
+}
+export interface WorkflowContinueResponseDto {
+  data: { status: string; code?: string; details?: string }
 }
 
 export interface WorkflowProjectionUpdatedEvent {

@@ -8,10 +8,13 @@ import { WorkflowEvidenceStore } from '../lib/workflow-evidence-store.mjs'
 const workflowId='governed-1', stepId='implement', source={runtimeId:'agentos-primary',kind:'agentos',agentId:'ProductEngineer',caseId:'case-1',actorId:'user-1'}
 const agent={workflowId,stepId,kind:'agent-result',outcome:'pass',facts:{resultCode:'DONE',attempt:1},idempotencyKey:'turn-1'}
 assert.equal(validateWorkflowEvidenceInput(agent,workflowId).ok,true)
+const finalized=validateWorkflowEvidenceInput({...agent,facts:{...agent.facts,finalizationTurns:1}},workflowId)
+assert.equal(finalized.ok,true)
+assert.equal(finalized.value.facts.finalizationTurns,1)
 assert.equal(validateWorkflowEvidenceInput({workflowId,stepId,kind:'artifact',artifactRef:'opaque://result',artifactHash:`sha256:${'a'.repeat(64)}`},workflowId).ok,true)
 for(const invalid of [
  {...agent,evidenceId:'model-id'}, {...agent,namespaceId:'model-ns'}, {...agent,source}, {...agent,observedAt:new Date().toISOString()},
- {...agent,facts:{summary:'raw LLM prose'}}, {...agent,payload:{anything:true}},
+ {...agent,facts:{summary:'raw LLM prose'}}, {...agent,facts:{...agent.facts,finalizationTurns:1.5}}, {...agent,payload:{anything:true}},
  {workflowId,stepId,kind:'artifact',artifactRef:'path-only'}, {workflowId,stepId,kind:'artifact',artifactRef:'x',artifactHash:'a'.repeat(64)},
 ]) assert.equal(validateWorkflowEvidenceInput(invalid,workflowId).ok,false)
 
@@ -30,7 +33,7 @@ try{
  assert.deepEqual((await restarted.list('11111111-1111-4111-8111-111111111111','storage',{stepId})).map(e=>e.evidenceId),[first.evidence.evidenceId])
  assert.deepEqual(await restarted.list('22222222-2222-4222-8222-222222222222','storage'),[])
  const lines=(await readFile(restarted.path('11111111-1111-4111-8111-111111111111','storage'),'utf8')).trim().split('\n').map(JSON.parse)
- for(const line of lines){assert.equal('payload' in line,false);assert.equal('summary' in line,false);assert.equal('idempotencyKey' in line,false);assert.deepEqual(Object.keys(line.facts??{}).every(key=>['resultCode','category','attempt','durationMs','itemCount'].includes(key)),true)}
+ for(const line of lines){assert.equal('payload' in line,false);assert.equal('summary' in line,false);assert.equal('idempotencyKey' in line,false);assert.deepEqual(Object.keys(line.facts??{}).every(key=>['resultCode','category','attempt','durationMs','itemCount','finalizationTurns'].includes(key)),true)}
  // createWorkflowEvidence freezes its root and source, then the store shallow-spreads
  // that root into a detached mutable record: the returned root is assignable while its
  // shared source remains frozen. Neither kind of attempted change may alter durable JSONL.

@@ -9,6 +9,9 @@ import {
   WorkflowProjectionTimingDto,
   WorkflowHumanInteractionListDto,
   WorkflowHumanReplyDto,
+  WorkflowEvidenceListDto,
+  WorkflowRetryResponseDto,
+  WorkflowContinueResponseDto,
   WorkUnitEnvironmentResponseDto,
 } from './factory-workflow-projection.model'
 import { FactoryDeliveryResponseDto, FactoryDeliveryStage } from './factory-delivery.model'
@@ -244,6 +247,31 @@ export class FactoryApiService {
       `/api/factory/workflows/${encodeURIComponent(workflowId)}/environment/reconcile`,
       {},
       { headers: { 'X-Factory-Namespace-Id': namespaceId, 'X-Factory-Case-Id': caseId } }
+    )
+  }
+
+  listWorkflowEvidence(namespaceId: string, workflowId: string, stepId?: string): Observable<WorkflowEvidenceListDto> {
+    let params = new HttpParams().set('namespaceId', namespaceId)
+    if (stepId) params = params.set('stepId', stepId)
+    return this.http.get<WorkflowEvidenceListDto>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/evidence`, {
+      params,
+    })
+  }
+
+  requestWorkflowRetry(
+    workflowId: string,
+    request: { namespaceId: string; stepId: string; expectedRevision: number; reasonCode: string }
+  ): Observable<WorkflowRetryResponseDto> {
+    return this.http.post<WorkflowRetryResponseDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/retries`,
+      request
+    )
+  }
+
+  continueWorkflow(namespaceId: string, workflowId: string): Observable<WorkflowContinueResponseDto> {
+    return this.http.post<WorkflowContinueResponseDto>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/continue`,
+      { namespaceId }
     )
   }
 

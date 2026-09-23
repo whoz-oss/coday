@@ -11,8 +11,12 @@ import {
   viewChild,
 } from '@angular/core'
 import { FormsModule } from '@angular/forms'
+import { MatButtonModule } from '@angular/material/button'
 import {
   agentOsControllerUrl,
+  durableControllerExecution,
+  latestNegativeAgentResultReason,
+  WorkflowEvidenceDto,
   WorkflowProjectionSnapshotDto,
   WorkflowProjectionTimingState,
   WorkflowProjectionV2,
@@ -30,11 +34,16 @@ import {
 } from '../../services/factory-operational-metrics.model'
 
 export type WorkflowProjectionCardMode = 'active' | 'removed'
+export interface GovernedActionCompleted {
+  workflowId: string
+  stepId: string
+  revision: number
+}
 type ConfirmationKind = 'remove' | 'purge'
 
 @Component({
   selector: 'agentos-factory-workflow-projection',
-  imports: [FormsModule, FactoryTemporalLanesComponent, DeliveryPanelComponent],
+  imports: [FormsModule, MatButtonModule, FactoryTemporalLanesComponent, DeliveryPanelComponent],
   templateUrl: './factory-workflow-projection.component.html',
   styleUrl: './factory-workflow-projection.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,10 +55,11 @@ export class FactoryWorkflowProjectionComponent {
   readonly pending = input(false)
   readonly timing = input<WorkflowProjectionTimingState>()
   readonly namespaceId = input.required<string>()
+  readonly selectedStepId = input<string | null>(null)
+  readonly selectedStepIdChange = output<string>()
   protected readonly v2Projection = computed(() =>
     this.snapshot().projection.schemaVersion === '2' ? (this.snapshot().projection as WorkflowProjectionV2) : null
   )
-  protected readonly selectedStepId = signal<string | null>(null)
   protected readonly selectedStep = computed(() => {
     const steps = this.snapshot().projection.steps
     return steps.find((step) => step.id === this.selectedStepId()) ?? steps[0] ?? null
@@ -57,12 +67,16 @@ export class FactoryWorkflowProjectionComponent {
   protected readonly selectedStepTiming = computed(() =>
     this.timing()?.timing.steps.find((step) => step.stepId === this.selectedStep()?.id)
   )
-  protected readonly controllerUrl = computed(() =>
-    agentOsControllerUrl(this.namespaceId(), this.snapshot().controllerExecution)
+  private readonly selectedV2Step = computed(
+    () => this.v2Projection()?.steps.find((step) => step.id === this.selectedStep()?.id) ?? null
   )
+  protected readonly durableController = computed(() => durableControllerExecution(this.snapshot()))
+  protected readonly controllerUrl = computed(() => agentOsControllerUrl(this.namespaceId(), this.durableController()))
   readonly removeRequested = output<string>()
   readonly restoreRequested = output<string>()
   readonly purgeRequested = output<string>()
+  readonly authoritativeRefreshRequested = output<void>()
+  readonly governedActionCompleted = output<GovernedActionCompleted>()
   protected readonly confirmation = signal<ConfirmationKind | null>(null)
   protected readonly purgeText = signal('')
   protected readonly purgeMatches = computed(() => {
@@ -75,6 +89,27 @@ export class FactoryWorkflowProjectionComponent {
   protected readonly interactionError = signal<string | null>(null)
   protected readonly replyingInteractionId = signal<string | null>(null)
   protected readonly replyText = signal('')
+  protected readonly evidence = signal<WorkflowEvidenceDto[]>([])
+  protected readonly evidenceLoading = signal(false)
+  protected readonly evidenceError = signal<string | null>(null)
+  protected readonly retryPending = signal(false)
+  protected readonly retryError = signal<string | null>(null)
+  protected readonly continuePending = signal(false)
+  protected readonly continueError = signal<string | null>(null)
+  protected readonly retryReasonCode = computed(() => {
+    const step = this.selectedStep()
+    return step ? latestNegativeAgentResultReason(this.evidence(), step.id) : null
+  })
+  protected readonly blockedAgentStep = computed(() => {
+    const step = this.selectedV2Step()
+    return step?.status === 'blocked' && step.responsibility.kind === 'agent'
+  })
+  protected readonly selectedOpenInteraction = computed(() => {
+    const stepId = this.selectedStep()?.id
+    return (
+      this.interactions().find((interaction) => interaction.stepId === stepId && interaction.status === 'open') ?? null
+    )
+  })
   protected readonly environment = signal<WorkUnitEnvironmentDto | null>(null)
   protected readonly environmentLoading = signal(false)
   protected readonly environmentError = signal<string | null>(null)
@@ -91,13 +126,21 @@ export class FactoryWorkflowProjectionComponent {
       const snapshot = this.snapshot(),
         namespaceId = this.namespaceId()
       this.loadMetrics(namespaceId, snapshot.workflowId, this.metricsScope())
-      if (snapshot.projection.steps.some((step) => step.status === 'waiting_human'))
+      const selectedStep = this.selectedV2Step()
+      if (snapshot.projection.steps.some((step) => step.status === 'waiting_human' || step.status === 'blocked'))
         this.loadInteractions(namespaceId, snapshot.workflowId)
       else this.interactions.set([])
-      const execution = snapshot.controllerExecution
+      if (selectedStep?.status === 'blocked' && selectedStep.responsibility.kind === 'agent')
+        this.loadEvidence(namespaceId, snapshot.workflowId, selectedStep.id)
+      else {
+        this.evidence.set([])
+        this.evidenceError.set(null)
+      }
+      const execution = durableControllerExecution(snapshot)
       if (execution?.kind === 'agentos') {
         this.loadEnvironment(namespaceId, snapshot.workflowId, execution.caseId)
-        this.loadDelivery(namespaceId, snapshot.workflowId, execution.caseId)
+        if (snapshot.instance?.deliveryRef) this.loadDelivery(namespaceId, snapshot.workflowId, execution.caseId)
+        else this.clearDelivery()
       } else {
         this.environment.set(null)
         this.environmentError.set('Environment binding is only available for AgentOS-controlled workflows.')
@@ -169,6 +212,12 @@ export class FactoryWorkflowProjectionComponent {
     })
   }
 
+  private clearDelivery(): void {
+    this.delivery.set(null)
+    this.deliveryLoading.set(false)
+    this.deliveryError.set(null)
+  }
+
   private loadDelivery(namespaceId: string, workflowId: string, caseId: string): void {
     this.deliveryLoading.set(true)
     this.deliveryError.set(null)
@@ -188,7 +237,7 @@ export class FactoryWorkflowProjectionComponent {
   }
 
   protected reconcileEnvironment(): void {
-    const execution = this.snapshot().controllerExecution
+    const execution = this.durableController()
     if (execution?.kind !== 'agentos') return
     this.environmentLoading.set(true)
     this.api.reconcileWorkflowEnvironment(this.namespaceId(), this.snapshot().workflowId, execution.caseId).subscribe({
@@ -200,6 +249,22 @@ export class FactoryWorkflowProjectionComponent {
       error: (error) => {
         this.environmentLoading.set(false)
         this.environmentError.set(error?.error?.error?.code ?? 'OWNERSHIP_UNCERTAIN')
+      },
+    })
+  }
+
+  private loadEvidence(namespaceId: string, workflowId: string, stepId: string): void {
+    this.evidenceLoading.set(true)
+    this.evidenceError.set(null)
+    this.api.listWorkflowEvidence(namespaceId, workflowId, stepId).subscribe({
+      next: ({ data }) => {
+        this.evidence.set(data.items)
+        this.evidenceLoading.set(false)
+      },
+      error: (error) => {
+        this.evidence.set([])
+        this.evidenceError.set(this.apiError(error, 'Retry evidence is unavailable.'))
+        this.evidenceLoading.set(false)
       },
     })
   }
@@ -233,7 +298,8 @@ export class FactoryWorkflowProjectionComponent {
         next: () => {
           this.replyingInteractionId.set(null)
           this.replyText.set('')
-          this.interactions.update((items) => items.filter((item) => item.interactionId !== interaction.interactionId))
+          this.loadInteractions(this.namespaceId(), interaction.workflowId)
+          this.emitGovernedActionCompleted(interaction.stepId)
         },
         error: (error) => {
           this.replyingInteractionId.set(null)
@@ -242,8 +308,79 @@ export class FactoryWorkflowProjectionComponent {
       })
   }
 
+  protected requestRetry(): void {
+    const step = this.selectedStep(),
+      reasonCode = this.retryReasonCode()
+    if (!this.blockedAgentStep() || !step || !reasonCode || this.retryPending()) return
+    this.retryPending.set(true)
+    this.retryError.set(null)
+    this.api
+      .requestWorkflowRetry(this.snapshot().workflowId, {
+        namespaceId: this.namespaceId(),
+        stepId: step.id,
+        expectedRevision: this.snapshot().revision,
+        reasonCode,
+      })
+      .subscribe({
+        next: () => {
+          this.retryPending.set(false)
+          this.loadInteractions(this.namespaceId(), this.snapshot().workflowId)
+          this.emitGovernedActionCompleted(step.id)
+        },
+        error: (error) => {
+          this.retryPending.set(false)
+          this.retryError.set(this.apiError(error, 'Retry request failed.'))
+        },
+      })
+  }
+
+  protected continueRun(): void {
+    if (this.continuePending()) return
+    this.continuePending.set(true)
+    this.continueError.set(null)
+    this.api.continueWorkflow(this.namespaceId(), this.snapshot().workflowId).subscribe({
+      next: ({ data }) => {
+        this.continuePending.set(false)
+        if (data.status === 'BLOCKED' || data.status === 'FAILED') {
+          this.continueError.set(this.boundedBusinessError(data.code, data.details, 'Continue request was blocked.'))
+          return
+        }
+        const stepId = this.selectedStep()?.id
+        if (stepId) this.emitGovernedActionCompleted(stepId)
+        else this.authoritativeRefreshRequested.emit()
+      },
+      error: (error) => {
+        this.continuePending.set(false)
+        this.continueError.set(this.apiError(error, 'Continue request failed.'))
+      },
+    })
+  }
+
+  private emitGovernedActionCompleted(stepId: string): void {
+    const snapshot = this.snapshot()
+    this.governedActionCompleted.emit({ workflowId: snapshot.workflowId, stepId, revision: snapshot.revision })
+  }
+
+  private boundedBusinessError(code: string | undefined, details: string | undefined, fallback: string): string {
+    return (
+      [code, details]
+        .filter(Boolean)
+        .join(': ')
+        .replace(/[\r\n\t]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .slice(0, 300) || fallback
+    )
+  }
+
+  private apiError(error: unknown, fallback: string): string {
+    const value = error as { error?: { error?: { code?: string; message?: string } } }
+    const code = value?.error?.error?.code
+    const message = value?.error?.error?.message
+    return [code, message].filter(Boolean).join(': ').slice(0, 300) || fallback
+  }
+
   protected selectStep(stepId: string): void {
-    this.selectedStepId.set(stepId)
+    this.selectedStepIdChange.emit(stepId)
   }
   protected formatDuration(durationMs: number): string {
     const seconds = Math.round(durationMs / 1000)

@@ -1,12 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { By } from '@angular/platform-browser'
 import { FactoryWorkflowProjectionComponent } from './factory-workflow-projection.component'
-import { WorkflowProjectionSnapshotDto } from '../../services/factory-workflow-projection.model'
+import {
+  durableControllerExecution,
+  latestNegativeAgentResultReason,
+  WorkflowProjectionSnapshotDto,
+} from '../../services/factory-workflow-projection.model'
 import { FactoryApiService } from '../../services/factory-api.service'
 import { of } from 'rxjs'
 
 describe('FactoryWorkflowProjectionComponent', () => {
   let fixture: ComponentFixture<FactoryWorkflowProjectionComponent>
+  let api: Record<string, jest.Mock>
   const projection: WorkflowProjectionSnapshotDto = {
     workflowId: 'workflow-1',
     revision: 3,
@@ -75,22 +80,83 @@ describe('FactoryWorkflowProjectionComponent', () => {
         rollbackRate: { available: false as const, reason: 'rollback_rate_not_implemented' },
       },
     }
+    api = {
+      getWorkflowOperationalMetrics: jest.fn(() => of({ data: metrics })),
+      listWorkflowHumanInteractions: jest.fn(() => of({ data: { items: [] } })),
+      listWorkflowEvidence: jest.fn(() => of({ data: { items: [] } })),
+      requestWorkflowRetry: jest.fn(() => of({ data: { status: 'WAITING_HUMAN' } })),
+      continueWorkflow: jest.fn(() => of({ data: { status: 'RUNNING' } })),
+      getWorkflowEnvironment: jest.fn(() => of({ data: null })),
+      getDelivery: jest.fn(() => of({ data: null })),
+    }
     await TestBed.configureTestingModule({
       imports: [FactoryWorkflowProjectionComponent],
-      providers: [
-        {
-          provide: FactoryApiService,
-          useValue: {
-            getWorkflowOperationalMetrics: () => of({ data: metrics }),
-            listWorkflowHumanInteractions: () => of({ data: { items: [] } }),
-          },
-        },
-      ],
+      providers: [{ provide: FactoryApiService, useValue: api }],
     }).compileComponents()
     fixture = TestBed.createComponent(FactoryWorkflowProjectionComponent)
     fixture.componentRef.setInput('snapshot', projection)
     fixture.componentRef.setInput('namespaceId', '11111111-1111-4111-8111-111111111111')
     fixture.detectChanges()
+  })
+
+  it('prefers the durable instance controller and falls back for legacy snapshots', () => {
+    const legacy = {
+      kind: 'agentos' as const,
+      runtimeId: 'worker',
+      caseId: 'worker-case',
+      agentId: 'Worker',
+      observedAt: '2026-01-01T00:00:00Z',
+    }
+    const durable = { ...legacy, runtimeId: 'controller', caseId: 'controller-case', agentId: 'ProductEngineer' }
+    expect(
+      durableControllerExecution({
+        ...projection,
+        controllerExecution: legacy,
+        instance: { controllerExecution: durable },
+      })
+    ).toBe(durable)
+    expect(durableControllerExecution({ ...projection, controllerExecution: legacy })).toBe(legacy)
+  })
+
+  it('derives only the latest valid negative agent result reason', () => {
+    expect(
+      latestNegativeAgentResultReason(
+        [
+          {
+            evidenceId: '1',
+            workflowId: 'workflow-1',
+            stepId: 'execute',
+            kind: 'agent-result',
+            outcome: 'fail',
+            facts: { resultCode: 'OLD' },
+          },
+          {
+            evidenceId: '2',
+            workflowId: 'workflow-1',
+            stepId: 'execute',
+            kind: 'agent-result',
+            outcome: 'indeterminate',
+            facts: { resultCode: 'EXACT_REASON' },
+          },
+        ],
+        'execute'
+      )
+    ).toBe('EXACT_REASON')
+    expect(
+      latestNegativeAgentResultReason(
+        [
+          {
+            evidenceId: '3',
+            workflowId: 'workflow-1',
+            stepId: 'execute',
+            kind: 'agent-result',
+            outcome: 'fail',
+            facts: { resultCode: 42 },
+          },
+        ],
+        'execute'
+      )
+    ).toBeNull()
   })
 
   it('renders generic metadata and ordered steps with dependencies', () => {
@@ -153,6 +219,155 @@ describe('FactoryWorkflowProjectionComponent', () => {
     expect(text).toContain('Unavailable')
     expect(text).not.toContain('LLM usage')
     expect(text).not.toContain('Rollback rate')
+  })
+
+  it('requests retry with authoritative revision and exact evidence reason, then reloads interactions', () => {
+    const governed: WorkflowProjectionSnapshotDto = {
+      ...projection,
+      revision: 9,
+      projection: {
+        ...projection.projection,
+        schemaVersion: '2',
+        status: 'blocked',
+        steps: [
+          { id: 'execute', name: 'Execute', status: 'blocked', dependsOn: [], responsibility: { kind: 'agent' } },
+        ],
+      },
+    }
+    api['listWorkflowEvidence'].mockReturnValue(
+      of({
+        data: {
+          items: [
+            {
+              evidenceId: 'e1',
+              workflowId: 'workflow-1',
+              stepId: 'execute',
+              kind: 'agent-result',
+              outcome: 'fail',
+              facts: { resultCode: 'RESULT_NOT_JSON' },
+            },
+          ],
+        },
+      })
+    )
+    fixture.componentRef.setInput('snapshot', governed)
+    fixture.detectChanges()
+    const button = [...fixture.nativeElement.querySelectorAll('button')].find((item: HTMLButtonElement) =>
+      item.textContent.includes('Request retry')
+    ) as HTMLButtonElement
+    expect(button.disabled).toBe(false)
+    button.click()
+    expect(api['requestWorkflowRetry']).toHaveBeenCalledWith('workflow-1', {
+      namespaceId: '11111111-1111-4111-8111-111111111111',
+      stepId: 'execute',
+      expectedRevision: 9,
+      reasonCode: 'RESULT_NOT_JSON',
+    })
+    expect(api['listWorkflowHumanInteractions']).toHaveBeenCalledTimes(2)
+  })
+
+  it('prioritizes an open human interaction over blocked retry and renders one action surface', () => {
+    const governed: WorkflowProjectionSnapshotDto = {
+      ...projection,
+      projection: {
+        ...projection.projection,
+        schemaVersion: '2',
+        status: 'blocked',
+        steps: [
+          { id: 'execute', name: 'Execute', status: 'blocked', dependsOn: [], responsibility: { kind: 'agent' } },
+        ],
+      },
+    }
+    api['listWorkflowHumanInteractions'].mockReturnValue(
+      of({
+        data: {
+          items: [
+            {
+              interactionId: 'decision-1',
+              workflowId: 'workflow-1',
+              stepId: 'execute',
+              expectedRevision: 3,
+              revision: 3,
+              kind: 'approval',
+              prompt: 'Approve retry?',
+              status: 'open',
+              openedAt: '2026-01-01T00:00:00Z',
+              actions: [
+                { id: 'approve', label: 'Approve', requestedStatus: 'ready' },
+                { id: 'reject', label: 'Reject', requestedStatus: 'failed' },
+              ],
+            },
+          ],
+        },
+      })
+    )
+    fixture.componentRef.setInput('snapshot', governed)
+    fixture.detectChanges()
+    expect(fixture.nativeElement.textContent).toContain('Human decision required')
+    expect(fixture.nativeElement.textContent).not.toContain('Action required')
+    expect(fixture.nativeElement.querySelectorAll('.workflow-projection__governed-action')).toHaveLength(1)
+    expect(
+      [...fixture.nativeElement.querySelectorAll('button')].filter((button: HTMLButtonElement) =>
+        button.textContent.includes('Request retry')
+      )
+    ).toHaveLength(0)
+  })
+
+  it('keeps retry disabled without valid evidence and exposes continue only for ready steps', () => {
+    const v2 = {
+      ...projection,
+      projection: {
+        ...projection.projection,
+        schemaVersion: '2' as const,
+        status: 'blocked' as const,
+        steps: [
+          {
+            id: 'execute',
+            name: 'Execute',
+            status: 'blocked' as const,
+            dependsOn: [],
+            responsibility: { kind: 'agent' as const },
+          },
+        ],
+      },
+    }
+    fixture.componentRef.setInput('snapshot', v2)
+    fixture.detectChanges()
+    let action = [...fixture.nativeElement.querySelectorAll('button')].find((item: HTMLButtonElement) =>
+      item.textContent.includes('Request retry')
+    ) as HTMLButtonElement
+    expect(action.disabled).toBe(true)
+    fixture.componentRef.setInput('snapshot', {
+      ...v2,
+      projection: { ...v2.projection, status: 'ready', steps: [{ ...v2.projection.steps[0], status: 'ready' }] },
+    })
+    fixture.detectChanges()
+    action = [...fixture.nativeElement.querySelectorAll('button')].find((item: HTMLButtonElement) =>
+      item.textContent.includes('Continue run')
+    ) as HTMLButtonElement
+    action.click()
+    expect(api['continueWorkflow']).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'workflow-1')
+  })
+
+  it('does not request Delivery for an uninitialized workflow and clears its presentation', () => {
+    const controlled: WorkflowProjectionSnapshotDto = {
+      ...projection,
+      instance: {
+        controllerExecution: {
+          runtimeId: 'controller',
+          kind: 'agentos',
+          caseId: 'case-1',
+          agentId: 'controller',
+          observedAt: '2026-01-01T00:00:00Z',
+        },
+        deliveryRef: null,
+      },
+    }
+    fixture.componentRef.setInput('snapshot', controlled)
+    fixture.detectChanges()
+    expect(api['getDelivery']).not.toHaveBeenCalled()
+    expect(fixture.nativeElement.textContent).toContain('Delivery not initialized')
+    expect(fixture.nativeElement.textContent).not.toContain('INVALID_DELIVERY_SNAPSHOT')
   })
 
   it('renders an honest empty step state', () => {

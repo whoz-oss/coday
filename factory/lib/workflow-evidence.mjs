@@ -45,6 +45,11 @@ const FACT_KEYS = new Set([
   'interactionId',
   'actionId',
   'decisionTextHash',
+  'briefHash',
+  'claimsHash',
+  'diffHash',
+  'reviewPackageHash',
+  'finalizationTurns',
 ])
 
 function invalid(path, reason = 'invalid_value') {
