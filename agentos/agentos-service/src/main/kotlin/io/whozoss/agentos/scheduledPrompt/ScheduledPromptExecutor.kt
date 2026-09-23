@@ -436,7 +436,7 @@ class ScheduledPromptExecutor(
             namespaceId = namespaceId,
             caseTitle = scheduledPrompt.name,
             actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
-            message = "@$agentName $promptContent",
+            promptContent = promptContent,
             scheduledPromptId = scheduledPrompt.id,
             agentConfigId = scheduledPrompt.agentConfigId,
             agentName = agentName,
@@ -512,13 +512,15 @@ class ScheduledPromptExecutor(
         val namespaceId: UUID,
         val caseTitle: String,
         val actor: Actor,
-        val message: String,
+        val promptContent: String,
         val scheduledPromptId: UUID,
         val agentConfigId: UUID,
         val agentName: String,
         val userExternalId: String,
         val sessionContext: Map<String, Any?>? = null,
-    )
+    ) {
+        val message: String get() = "@$agentName $promptContent"
+    }
 
     // -------------------------------------------------------------------------
     // Case completion
