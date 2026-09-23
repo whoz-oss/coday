@@ -126,14 +126,14 @@ class ScheduledPromptExecutor(
     private val scheduledPromptRepository: ScheduledPromptRepository,
     private val runRepository: ScheduledPromptRunRepository,
     private val userRunRepository: ScheduledPromptUserRunRepository,
+    private val userService: UserService,
     private val promptService: PromptService,
     private val agentConfigService: AgentConfigService,
-    private val caseService: CaseService,
     private val permissionService: PermissionService,
-    private val userService: UserService,
+    private val userContextProvider: UserContextProvider? = null,
+    private val caseService: CaseService,
     private val properties: SchedulerProperties,
     private val clock: Clock,
-    private val userContextProvider: UserContextProvider? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     /**
      * Evaluates whether Phase B is allowed to poll the database and dispatch UserRuns.
@@ -362,6 +362,14 @@ class ScheduledPromptExecutor(
         // check for an existing Case before creating one, making execution effectively-once.
         try {
             val runContext = resolveRunContext(userRun)
+            if (!hasAgentAccess(userRun.userId, runContext.agentConfigId)) {
+                logger.info {
+                    "[Executor] UserRun=${userRun.id} — user=${userRun.userId} no longer has READ access" +
+                        " to AgentConfig=${runContext.agentConfigId}, marking DONE without creating a Case"
+                }
+                userRunRepository.markTerminal(userRun.id, UserRunStatus.DONE, Instant.now(clock))
+                return
+            }
             when (val result = resolveUserContext(
                 userRun = userRun,
                 userExternalId = runContext.userExternalId,
@@ -384,20 +392,6 @@ class ScheduledPromptExecutor(
                             "[Executor] UserContextProvider returned Success(null) for UserRun=${userRun.id}" +
                                 " userId=${userRun.userId} — no sessionContext will be injected. Check provider configuration."
                         }
-                    }
-                    val hasAccess = permissionService.hasPermission(
-                        userRun.userId.toString(),
-                        EntityType.AGENT_CONFIG,
-                        runContext.agentConfigId.toString(),
-                        Action.READ,
-                    )
-                    if (!hasAccess) {
-                        logger.info {
-                            "[Executor] UserRun=${userRun.id} — user=${userRun.userId} no longer has READ access" +
-                                " to AgentConfig=${runContext.agentConfigId}, marking DONE without creating a Case"
-                        }
-                        userRunRepository.markTerminal(userRun.id, UserRunStatus.DONE, Instant.now(clock))
-                        return
                     }
                     val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = result.sessionContext))
                     awaitLaunch(userRun.id, caseId)
@@ -603,6 +597,22 @@ class ScheduledPromptExecutor(
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Returns true if [userId] still has READ access to [agentConfigId].
+     *
+     * Called just before [createAndInjectCase] to guard against users who lost access
+     * between materialisation (PENDING UserRun creation) and execution (Case creation).
+     * Uses [PermissionService.hasPermission] which covers direct and transitive namespace
+     * access, and is fail-closed (returns false on any error).
+     */
+    private fun hasAgentAccess(userId: UUID, agentConfigId: UUID): Boolean =
+        permissionService.hasPermission(
+            userId.toString(),
+            EntityType.AGENT_CONFIG,
+            agentConfigId.toString(),
+            Action.READ,
+        )
 
     private fun markFailed(userRunId: UUID, now: Instant, error: String) {
         runCatching {

@@ -152,14 +152,14 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         scheduledPromptRepository = spRepo,
         runRepository = runRepo,
         userRunRepository = userRunRepo,
+        userService = userService,
         promptService = promptService,
         agentConfigService = agentConfigService,
-        caseService = caseService,
         permissionService = permissionService,
-        userService = userService,
+        userContextProvider = userContextProvider,
+        caseService = caseService,
         properties = properties,
         clock = clock,
-        userContextProvider = userContextProvider,
     )
 
     init {
@@ -556,11 +556,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 scheduledPromptRepository = makeSpRepo(sp),
                 runRepository = runRepo,
                 userRunRepository = userRunRepo,
+                userService = userService,
                 promptService = promptService,
                 agentConfigService = agentConfigService,
-                caseService = caseService,
                 permissionService = permissionService,
-                userService = userService,
+                caseService = caseService,
                 properties = shortTimeoutProperties,
                 clock = clock,
             ).processUserRun(userRun)
@@ -699,6 +699,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val provider = mockk<UserContextProvider>().also {
                 every { it.provideUserContext(any(), any()) } throws RuntimeException("Copilot unreachable")
             }
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
+            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -707,7 +710,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
+                permissionService = permissionService,
                 userService = userService,
                 userContextProvider = provider,
             ).processUserRun(userRun)
@@ -739,6 +742,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.provideUserContext(any(), any()) } returns
                     UserContextResult.PermanentFailure("User not found in external system (404)")
             }
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
+            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -747,7 +753,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
+                permissionService = permissionService,
                 userService = userService,
                 userContextProvider = provider,
             ).processUserRun(userRun)
@@ -779,6 +785,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.provideUserContext(any(), any()) } returns
                     UserContextResult.TransientFailure("External service timeout (503)")
             }
+            val permissionService = mockk<PermissionService>(relaxed = true).also {
+                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
+            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -787,7 +796,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = mockk(relaxed = true),
-                permissionService = mockk(relaxed = true),
+                permissionService = permissionService,
                 userService = userService,
                 userContextProvider = provider,
             ).processUserRun(userRun)
@@ -971,11 +980,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 scheduledPromptRepository = makeSpRepo(sp),
                 runRepository = runRepo,
                 userRunRepository = userRunRepo,
+                userService = userService,
                 promptService = promptService,
                 agentConfigService = agentConfigService,
-                caseService = caseService,
                 permissionService = mockk(relaxed = true),
-                userService = userService,
+                caseService = caseService,
                 properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
                 clock = clock,
                 dispatcher = testDispatcher,
@@ -1031,11 +1040,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 scheduledPromptRepository = makeSpRepo(sp),
                 runRepository = runRepo,
                 userRunRepository = userRunRepo,
+                userService = userService,
                 promptService = promptService,
                 agentConfigService = agentConfigService,
-                caseService = caseService,
                 permissionService = mockk(relaxed = true),
-                userService = userService,
+                caseService = caseService,
                 properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
                 clock = clock,
                 dispatcher = testDispatcher,
@@ -1098,11 +1107,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 scheduledPromptRepository = makeSpRepo(sp),
                 runRepository = runRepo,
                 userRunRepository = userRunRepo,
+                userService = userService,
                 promptService = promptService,
                 agentConfigService = agentConfigService,
-                caseService = caseService,
                 permissionService = mockk(relaxed = true),
-                userService = userService,
+                caseService = caseService,
                 properties = SchedulerProperties(batchSize = 10, leaseMinutes = 30L, emptyPollDelayMs = 10L),
                 clock = clock,
                 dispatcher = testDispatcher,
@@ -1160,11 +1169,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 scheduledPromptRepository = makeSpRepo(sp),
                 runRepository = runRepo,
                 userRunRepository = spyUserRunRepo,
+                userService = mockk(relaxed = true),
                 promptService = mockk(relaxed = true),
                 agentConfigService = mockk(relaxed = true),
-                caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
-                userService = mockk(relaxed = true),
+                caseService = mockk(relaxed = true),
                 properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, pausedPollDelayMs = 10L),
                 clock = clock,
                 dispatcher = testDispatcher,
