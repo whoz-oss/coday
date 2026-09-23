@@ -3428,9 +3428,9 @@ components:
           agentId:
             type: string
             format: uuid
-          agentName:
-            type: string
           llmModel:
+            type: string
+          agentName:
             type: string
           llmProvider:
             type: string
