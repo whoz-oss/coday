@@ -4,7 +4,6 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -362,7 +361,7 @@ class ScheduledPromptExecutor(
         // check for an existing Case before creating one, making execution effectively-once.
         try {
             val runContext = resolveRunContext(userRun)
-            if (!hasAgentAccess(userRun.userId, runContext.agentConfigId)) {
+            if (!hasAgentAccess(userRun.userId, runContext.agentName, runContext.namespaceId)) {
                 logger.info {
                     "[Executor] UserRun=${userRun.id} — user=${userRun.userId} no longer has READ access" +
                         " to AgentConfig=${runContext.agentConfigId}, marking DONE without creating a Case"
@@ -440,6 +439,7 @@ class ScheduledPromptExecutor(
             message = "@$agentName $promptContent",
             scheduledPromptId = scheduledPrompt.id,
             agentConfigId = scheduledPrompt.agentConfigId,
+            agentName = agentName,
             userExternalId = user.externalId,
         )
     }
@@ -515,6 +515,7 @@ class ScheduledPromptExecutor(
         val message: String,
         val scheduledPromptId: UUID,
         val agentConfigId: UUID,
+        val agentName: String,
         val userExternalId: String,
         val sessionContext: Map<String, Any?>? = null,
     )
@@ -599,20 +600,23 @@ class ScheduledPromptExecutor(
     // -------------------------------------------------------------------------
 
     /**
-     * Returns true if [userId] still has READ access to [agentConfigId].
+     * Returns true if [userId] still has access to the agent via the deployment graph
+     * in [namespaceId].
+     *
+     * Uses the same [AgentConfigService.findDeployedByNamespaceIdAndUserIdAndName] query as
+     * the interactive @mention flow, ensuring symmetric access semantics: a user can only
+     * receive a scheduled conversation if they would also be able to invoke the agent manually.
      *
      * Called just before [createAndInjectCase] to guard against users who lost access
      * between materialisation (PENDING UserRun creation) and execution (Case creation).
-     * Uses [PermissionService.hasPermission] which covers direct and transitive namespace
-     * access, and is fail-closed (returns false on any error).
      */
-    private fun hasAgentAccess(userId: UUID, agentConfigId: UUID): Boolean =
-        permissionService.hasPermission(
-            userId.toString(),
-            EntityType.AGENT_CONFIG,
-            agentConfigId.toString(),
-            Action.READ,
-        )
+    private fun hasAgentAccess(userId: UUID, agentName: String, namespaceId: UUID): Boolean =
+        agentConfigService
+            .findDeployedByNamespaceIdAndUserIdAndName(
+                namespaceId = namespaceId,
+                userId = userId,
+                agentName = agentName,
+            ).isNotEmpty()
 
     private fun markFailed(userRunId: UUID, now: Instant, error: String) {
         runCatching {

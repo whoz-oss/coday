@@ -12,7 +12,6 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -117,6 +116,28 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         namespaceId = namespaceId,
         name = name,
     )
+
+    /** Stubs deployed access via the same query used by the interactive @mention flow. */
+    private fun AgentConfigService.stubDeployedAccess(agentName: String = "weekly-agent") {
+        every {
+            findDeployedByNamespaceIdAndUserIdAndName(
+                namespaceId = namespaceId,
+                userId = userId1,
+                agentName = agentName,
+            )
+        } returns listOf(makeAgentConfig(agentName))
+    }
+
+    /** Stubs no deployed access — user has lost access to the agent. */
+    private fun AgentConfigService.stubNoDeployedAccess(agentName: String = "weekly-agent") {
+        every {
+            findDeployedByNamespaceIdAndUserIdAndName(
+                namespaceId = namespaceId,
+                userId = userId1,
+                agentName = agentName,
+            )
+        } returns emptyList()
+    }
 
     private fun makeIdleRuntime(): CaseRuntime {
         val rt = mockk<CaseRuntime>(relaxed = true)
@@ -299,6 +320,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig(name = "weekly-agent")
+                it.stubDeployedAccess("weekly-agent")
             }
             val createdCase = Case(
                 metadata = EntityMetadata(id = caseId),
@@ -309,9 +331,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
                 every { it.findActiveRuntime(caseId) } returns null
             }
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
-            }
+            val permissionService = mockk<PermissionService>(relaxed = true)
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
             }
@@ -439,6 +459,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -451,9 +472,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.create(any()) } returns createdCase
                 every { it.findActiveRuntime(caseId) } returns runtime
             }
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
-            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -462,7 +480,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = permissionService,
+                permissionService = mockk(relaxed = true),
                 userService = userService,
             ).processUserRun(userRun)
 
@@ -483,6 +501,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -495,9 +514,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.create(any()) } returns createdCase
                 every { it.findActiveRuntime(caseId) } returns runtime
             }
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
-            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -506,7 +522,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = permissionService,
+                permissionService = mockk(relaxed = true),
                 userService = userService,
             ).processUserRun(userRun)
 
@@ -535,6 +551,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -548,9 +565,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.create(any()) } returns createdCase
                 every { it.findActiveRuntime(caseId) } returns runtime
             }
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
-            }
 
             ScheduledPromptExecutor(
                 scheduledPromptRepository = makeSpRepo(sp),
@@ -559,7 +573,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 userService = userService,
                 promptService = promptService,
                 agentConfigService = agentConfigService,
-                permissionService = permissionService,
+                permissionService = mockk(relaxed = true),
                 caseService = caseService,
                 properties = shortTimeoutProperties,
                 clock = clock,
@@ -587,6 +601,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -598,9 +613,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.findActiveRuntime(caseId) } returns null
                 every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
             }
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
-            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -609,7 +621,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = permissionService,
+                permissionService = mockk(relaxed = true),
                 userService = userService,
             ).processUserRun(userRun)
 
@@ -634,6 +646,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -648,10 +661,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val provider = mockk<UserContextProvider>().also {
                 every { it.provideUserContext(user1.externalId, namespaceId) } returns UserContextResult.Success(expectedContext)
             }
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
-            }
-
             executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
@@ -659,7 +668,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = permissionService,
+                permissionService = mockk(relaxed = true),
                 userService = userService,
                 userContextProvider = provider,
             ).processUserRun(userRun)
@@ -692,6 +701,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -699,10 +709,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val provider = mockk<UserContextProvider>().also {
                 every { it.provideUserContext(any(), any()) } throws RuntimeException("Copilot unreachable")
             }
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
-            }
-
             executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
@@ -710,7 +716,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = mockk(relaxed = true),
-                permissionService = permissionService,
+                permissionService = mockk(relaxed = true),
                 userService = userService,
                 userContextProvider = provider,
             ).processUserRun(userRun)
@@ -734,6 +740,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -742,10 +749,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.provideUserContext(any(), any()) } returns
                     UserContextResult.PermanentFailure("User not found in external system (404)")
             }
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
-            }
-
             executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
@@ -753,7 +756,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = mockk(relaxed = true),
-                permissionService = permissionService,
+                permissionService = mockk(relaxed = true),
                 userService = userService,
                 userContextProvider = provider,
             ).processUserRun(userRun)
@@ -777,6 +780,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -785,10 +789,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.provideUserContext(any(), any()) } returns
                     UserContextResult.TransientFailure("External service timeout (503)")
             }
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
-            }
-
             executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
@@ -796,7 +796,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = mockk(relaxed = true),
-                permissionService = permissionService,
+                permissionService = mockk(relaxed = true),
                 userService = userService,
                 userContextProvider = provider,
             ).processUserRun(userRun)
@@ -888,6 +888,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -951,6 +952,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(makeAgentConfig())
             }
             val userService = mockk<UserService>().also { svc ->
                 userIds.forEach { uid ->
@@ -1018,6 +1020,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(makeAgentConfig())
             }
             val userService = mockk<UserService>().also { svc ->
                 every { svc.findById(userId1) } returns user1
@@ -1077,6 +1080,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(makeAgentConfig())
             }
             val userService = mockk<UserService>().also { svc ->
                 normalUserIds.forEach { uid ->
@@ -1213,6 +1217,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -1227,10 +1232,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val provider = mockk<UserContextProvider>().also {
                 every { it.provideUserContext(user1.externalId, namespaceId) } returns UserContextResult.Success(null)
             }
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every { it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ) } returns true
-            }
-
             executor(
                 spRepo = makeSpRepo(sp),
                 runRepo = runRepo,
@@ -1238,7 +1239,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = permissionService,
+                permissionService = mockk(relaxed = true),
                 userService = userService,
                 userContextProvider = provider,
             ).processUserRun(userRun)
@@ -1260,10 +1261,10 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         // Phase B — access check before Case creation
         // -------------------------------------------------------------------------
 
-        "Phase B: user no longer has READ access to AgentConfig — UserRun marked DONE, no Case created" {
-            // Simulates a user who lost access to the agent between materialisation and execution
-            // (e.g. left the group, group soft-deleted, deployment removed).
-            // Expected: UserRun is DONE (not FAILED), no Case is created.
+        "Phase B: user no longer in deployment graph — UserRun marked DONE, no Case created" {
+            // Simulates a user who lost deployment access between materialisation and execution
+            // (e.g. left the group, group soft-deleted, DEPLOYED_TO edge removed).
+            // Uses the same findDeployedByNamespaceIdAndUserIdAndName check as the @mention flow.
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
@@ -1277,16 +1278,12 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubNoDeployedAccess()  // user lost deployment access
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
             }
             val caseService = mockk<CaseService>(relaxed = true)
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every {
-                    it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ)
-                } returns false
-            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -1295,7 +1292,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = permissionService,
+                permissionService = mockk(relaxed = true),
                 userService = userService,
             ).processUserRun(userRun)
 
@@ -1305,8 +1302,8 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             verify(exactly = 0) { caseService.create(any()) }
         }
 
-        "Phase B: user still has READ access to AgentConfig — Case is created normally" {
-            // Confirms the happy path is unaffected by the access check.
+        "Phase B: user still in deployment graph — Case is created normally" {
+            // Confirms the happy path: deployment access still present, Case created.
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
@@ -1320,6 +1317,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()  // user still in deployment graph
             }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
@@ -1330,11 +1328,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.findActiveRuntime(caseId) } returns null
                 every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
             }
-            val permissionService = mockk<PermissionService>(relaxed = true).also {
-                every {
-                    it.hasPermission(userId1.toString(), EntityType.AGENT_CONFIG, agentId.toString(), Action.READ)
-                } returns true
-            }
 
             executor(
                 spRepo = makeSpRepo(sp),
@@ -1343,7 +1336,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 caseService = caseService,
-                permissionService = permissionService,
+                permissionService = mockk(relaxed = true),
                 userService = userService,
             ).processUserRun(userRun)
 
