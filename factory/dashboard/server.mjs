@@ -72,6 +72,10 @@ import { handleDeliveryOperationRequest } from './delivery-operation-routes.mjs'
 import { FactoryOperationalMetricsService } from '../lib/factory-operational-metrics-service.mjs'
 import { handleWorkflowOperationalMetricsRequest } from './workflow-operational-metrics-routes.mjs'
 import { WorkflowResumeDispatchStore } from '../lib/workflow-resume-dispatch-store.mjs'
+import { createFactoryFrontendRunner } from '../lib/factory-frontend-composition.mjs'
+import { handleFactoryFrontendRunRequest } from './factory-frontend-run-routes.mjs'
+import { AgentStepResultStore } from '../lib/agent-step-result-store.mjs'
+import { handleAgentStepResultRequest } from './agent-step-result-routes.mjs'
 // New route modules
 import { send, readBody } from './http-utils.mjs'
 import { createAgentOsProxy } from './agentos-proxy.mjs'
@@ -102,6 +106,7 @@ const workflowProjectionStore = new WorkflowProjectionStore(FACTORY_DATA_ROOT)
 const workflowProjectionSseHub = new WorkflowProjectionSseHub()
 const workflowDefinitionRegistry = new WorkflowDefinitionRegistry(join(__dirname, '..', 'workflows'))
 const workflowEvidenceStore = new WorkflowEvidenceStore(FACTORY_DATA_ROOT)
+const agentStepResultStore = new AgentStepResultStore(FACTORY_DATA_ROOT)
 const workflowHumanInteractionStore = new WorkflowHumanInteractionStore(FACTORY_DATA_ROOT)
 const workflowResumeDispatchStore = new WorkflowResumeDispatchStore(FACTORY_DATA_ROOT)
 const FACTORY_REPO_ROOT = process.env.FACTORY_REPO_ROOT
@@ -152,8 +157,8 @@ const deliveryOperationController = deliveryController ? new DeliveryOperationCo
 }) : null
 // Oracle definitions are supplied by the trusted composition root. The repository
 // currently publishes no production oracle; source tests inject their fixture registry.
-const FACTORY_ORACLE_DEFINITIONS_ROOT = process.env.FACTORY_ORACLE_DEFINITIONS_ROOT
-const oracleDefinitionRegistry = FACTORY_ORACLE_DEFINITIONS_ROOT ? new OracleDefinitionRegistry(FACTORY_ORACLE_DEFINITIONS_ROOT) : null
+const FACTORY_ORACLE_DEFINITIONS_ROOT = process.env.FACTORY_ORACLE_DEFINITIONS_ROOT ?? join(__dirname, '..', 'oracles')
+const oracleDefinitionRegistry = new OracleDefinitionRegistry(FACTORY_ORACLE_DEFINITIONS_ROOT)
 // Trusted control-plane configuration: never inferred from cwd or namespace configPath.
 const FACTORY_ORACLE_REPO_ROOT = process.env.FACTORY_ORACLE_REPO_ROOT
 const FACTORY_ORACLE_NAMESPACE_ID = process.env.FACTORY_ORACLE_NAMESPACE_ID
@@ -200,6 +205,18 @@ const RESOLVED_FACTORY_USER = FACTORY_USER ?? _codayJira?.codayUsername ?? undef
 // ---------------------------------------------------------------------------
 
 const proxy = createAgentOsProxy({ agentosUrl: AGENTOS_URL, resolvedFactoryUser: RESOLVED_FACTORY_USER })
+const factoryFrontendRunner = createFactoryFrontendRunner({
+  dataRoot: FACTORY_DATA_ROOT,
+  workflowRoot: join(__dirname, '..', 'workflows'),
+  projectionStore: workflowProjectionStore,
+  evidenceStore: workflowEvidenceStore,
+  humanInteractionStore: workflowHumanInteractionStore,
+  definitionRegistry: workflowDefinitionRegistry,
+  oracleRegistry: oracleDefinitionRegistry,
+  workUnitEnvironmentStore,
+  resultStore: agentStepResultStore,
+  notifier: workflowProjectionSseHub,
+})
 
 const runRouter = createRunRouter({
   runsDir: RUNS_DIR,
@@ -272,6 +289,10 @@ const server = createServer(async (req, res) => {
   })) return
 
   if (await handleWorkflowDefinitionRequest({ method, path, send: sendFn, registry: workflowDefinitionRegistry, log: console })) return
+
+  if (await handleAgentStepResultRequest({ method, path, headers: req.headers, readBody: readBodyFn, send: sendFn, resultStore: agentStepResultStore, log: console })) return
+
+  if (await handleFactoryFrontendRunRequest({ method, path, readBody: readBodyFn, send: sendFn, runner: factoryFrontendRunner, log: console })) return
 
   if (await handleWorkflowOracleRequest({ method, path, readBody: readBodyFn, send: sendFn, projectionStore: workflowProjectionStore, evidenceStore: workflowEvidenceStore, definitionRegistry: workflowDefinitionRegistry, oracleRegistry: oracleDefinitionRegistry, repoRoot: FACTORY_ORACLE_REPO_ROOT, log: console })) return
 
@@ -388,6 +409,7 @@ const server = createServer(async (req, res) => {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   await workflowProjectionStore.initialize()
+  await agentStepResultStore.initialize()
   await workflowDefinitionRegistry.initialize()
   if (workUnitEnvironmentController) await workUnitEnvironmentController.initialize()
   if (deliveryController) await deliveryController.initialize()
