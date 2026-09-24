@@ -1,3 +1,13 @@
+## 3.7.0 (2026-09-24)
+
+### 🚀 Features
+
+- wz-34403 - use preferred language in scheduled cases ([#1378](https://github.com/whoz-oss/coday/pull/1378))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.6.2 (2026-09-24)
 
 ### 🩹 Fixes
