@@ -44,16 +44,38 @@ class AgentIntentionGenerator {
                 lastToolResponse?.success == false -> "Last tool '${lastToolResponse.toolName}' FAILED: ${(lastToolResponse.output as? MessageContent.Text)?.content}"
                 else -> ""
             }
+        val redirectGuideline = context.redirectGuideline.orEmpty()
+        // Built as a standalone leading-newline-prefixed block (empty string when absent) so it
+        // composes into the prompt without leaving a residual double blank line — mirrors how
+        // executionState above is computed as a val and simply interpolated.
+        val redirectGuidelineBlock =
+            if (redirectGuideline.isNotBlank()) {
+                """
+### Redirect Guideline
+Use the following guideline to know how and when to redirect to another agent:
+<redirect_guideline>
+$redirectGuideline
+</redirect_guideline>"""
+            } else {
+                ""
+            }
+        val handoffGuidelineReference =
+            if (redirectGuideline.isNotBlank()) {
+                "switch to the correct agent based on the guidelines inside <redirect_guideline> and if none can do the action use"
+            } else {
+                "switch to the correct agent and if none can do the action use"
+            }
         val prompt =
             """
 Available agents and tools:
 <${agentName}_tools>
 $toolsDescription
 - $ANSWER_TOOL: produce the final answer to the user (use this when no more tool calls are needed)
-<\${agentName}_Tools>
+</${agentName}_tools>
 
 
 $executionState
+$redirectGuidelineBlock
 
 ### Objective
 Based on the full conversation history and current context, your objective is to determine the single most appropriate **next action**.
@@ -76,7 +98,7 @@ Before generating the output, analyze the situation using the following logic:
 
 **3. Verify Capabilities (Agent Handoff):**
 *   Does the **Current Active Agent** possess the tool required for the next action?
-    *   **NO:** The next action must be to switch to the correct agent and if none can do the action to use `${ANSWER_TOOL}`.
+    *   **NO:** The next action must be to $handoffGuidelineReference `${ANSWER_TOOL}`.
     *   **YES:** Proceed to the next check.
 
 **4. Check Data Prerequisites:**

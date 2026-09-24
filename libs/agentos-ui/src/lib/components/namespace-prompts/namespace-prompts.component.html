@@ -1,6 +1,7 @@
 <ds-entity-list
   title="Prompts"
   [items]="(promptItems$ | async) ?? []"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No prompts defined yet. Add one above."
   cardMinWidth="400px"

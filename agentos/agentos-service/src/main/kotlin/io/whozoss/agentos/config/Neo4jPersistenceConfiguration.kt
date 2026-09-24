@@ -55,6 +55,13 @@ import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunNodeNeo4jRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRunRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptUserRunNodeNeo4jRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptUserRunRepository
+import io.whozoss.agentos.skill.FilesystemSkillRepository
+import io.whozoss.agentos.skill.Neo4jSkillRepository
+import io.whozoss.agentos.skill.SkillNodeNeo4jRepository
+import io.whozoss.agentos.skill.SkillRepository
+import io.whozoss.agentos.usage.Neo4jUsageRecordRepository
+import io.whozoss.agentos.usage.UsageRecordNodeNeo4jRepository
+import io.whozoss.agentos.usage.UsageRecordRepository
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
@@ -111,10 +118,12 @@ import java.time.ZoneOffset
         "io.whozoss.agentos.integrationConfig",
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.prompt",
+        "io.whozoss.agentos.skill",
         "io.whozoss.agentos.userGroup",
         "io.whozoss.agentos.authSetting",
         "io.whozoss.agentos.credential",
         "io.whozoss.agentos.scheduledPrompt",
+        "io.whozoss.agentos.usage",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -296,6 +305,39 @@ class Neo4jPersistenceConfiguration {
         )
     }
 
+    /**
+     * Inner Neo4j-backed bean, declared explicitly so that Spring AOP can proxy it and honour
+     * the [org.springframework.transaction.annotation.Transactional] boundaries declared on
+     * [Neo4jSkillRepository.save] and [Neo4jSkillRepository.deleteByParent].
+     *
+     * If this bean were constructed inline (via `Neo4jSkillRepository(...)` inside the outer
+     * factory method), it would not be managed by Spring and the AOP proxy would never be
+     * applied, silently disabling rollback semantics. This matters for [Neo4jSkillRepository.save]
+     * in particular: it creates the Skill node then the BELONGS_TO edge to the namespace as two
+     * separate Neo4j operations — without a transaction, a failure on the edge step would leave
+     * an orphan Skill node behind.
+     */
+    @Bean
+    fun neo4jSkillRepositoryDelegate(
+        skillNodeNeo4jRepository: SkillNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): Neo4jSkillRepository = Neo4jSkillRepository(skillNodeNeo4jRepository, childLinkService)
+
+    @Bean
+    @Primary
+    fun neo4jSkillRepository(
+        neo4jSkillRepositoryDelegate: Neo4jSkillRepository,
+        namespaceRepository: NamespaceRepository,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
+    ): SkillRepository {
+        logger.info { "[Persistence] Neo4jSkillRepository active (filesystem augmentation enabled)" }
+        return FilesystemSkillRepository(
+            delegate = neo4jSkillRepositoryDelegate,
+            namespaceRepository = namespaceRepository,
+            yamlMapper = yamlMapper,
+        )
+    }
+
     @Bean
     fun neo4jScheduledPromptRepository(
         scheduledPromptNodeNeo4jRepository: ScheduledPromptNodeNeo4jRepository,
@@ -323,12 +365,56 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
+    fun neo4jUsageRecordRepository(
+        usageRecordNodeNeo4jRepository: UsageRecordNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): UsageRecordRepository {
+        logger.info { "[Persistence] Neo4jUsageRecordRepository active" }
+        return Neo4jUsageRecordRepository(usageRecordNodeNeo4jRepository, childLinkService)
+    }
+
+    @Bean
     fun neo4jScheduledPromptUserRunRepository(
         scheduledPromptUserRunNodeNeo4jRepository: ScheduledPromptUserRunNodeNeo4jRepository,
     ): ScheduledPromptUserRunRepository {
         logger.info { "[Persistence] Neo4jScheduledPromptUserRunRepository active" }
         return Neo4jScheduledPromptUserRunRepository(scheduledPromptUserRunNodeNeo4jRepository)
     }
+
+    /**
+     * One-time migration: copies `maxTokens → maxCompletionTokens` on AiModel nodes that were
+     * populated before the rename.
+     *
+     * The legacy `maxTokens` property is left untouched on the node so that any tooling or
+     * rollback path that still reads it keeps working.
+     *
+     * A separate marker prevents a later restart from restoring the legacy value when
+     * the user intentionally clears maxCompletionTokens to use the provider default.
+     * Models with an explicit completion limit are marked too, preserving that limit.
+     * SDN retains both unmapped properties when saving an AiModelNode.
+     */
+    @Bean
+    fun migrateAiModelMaxTokens(neo4jClient: Neo4jClient): CommandLineRunner =
+        CommandLineRunner {
+            val result =
+                neo4jClient
+                    .query(
+                        """
+                        MATCH (m:AiModel)
+                        WHERE m.maxTokens IS NOT NULL AND coalesce(m.maxCompletionTokensMigrated, false) = false
+                        SET m.maxCompletionTokens = coalesce(m.maxCompletionTokens, m.maxTokens),
+                            m.maxCompletionTokensMigrated = true
+                        RETURN count(m) AS migrated
+                        """.trimIndent(),
+                    ).fetch()
+                    .one()
+            val count = result.map { it["migrated"] as Long }.orElse(0L) ?: 0L
+            if (count > 0L) {
+                logger.info { "[Migration] Migrated maxTokens → maxCompletionTokens on $count AiModel node(s)" }
+            } else {
+                logger.debug { "[Migration] No AiModel nodes needed maxTokens → maxCompletionTokens migration" }
+            }
+        }
 
     /**
      * One-time migration: converts legacy `[:STARRED]` plain edges to

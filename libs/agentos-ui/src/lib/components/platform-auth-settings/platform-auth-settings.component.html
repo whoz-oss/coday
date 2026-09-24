@@ -1,6 +1,7 @@
 <ds-entity-list
   title="Platform Auth Settings"
   [items]="(settingItems$ | async) ?? []"
+  [loading]="isLoading()"
   [showCreate]="true"
   emptyMessage="No platform auth settings defined yet. Add one above."
   cardMinWidth="400px"

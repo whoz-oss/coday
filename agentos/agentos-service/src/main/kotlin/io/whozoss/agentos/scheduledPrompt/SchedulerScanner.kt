@@ -13,6 +13,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.util.concurrent.atomic.AtomicBoolean
 
+
 /**
  * Periodic scanner that discovers [ScheduledPrompt]s due for execution and claims them.
  *
@@ -32,8 +33,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * so a dead producer is detected within one tick.
  *
  * Phase B (UserRun consumption) is handled by [ScheduledPromptExecutor], which runs a
- * continuous producer + channel + worker-pool loop started by `@PostConstruct` and stopped
- * by `@PreDestroy`. There is no consume tick in this scanner.
+ * continuous DB poller + worker-pool loop started by `@PostConstruct`. There is no consume
+ * tick in this scanner.
  *
  * [tickClaim] uses Spring's `@Scheduled(fixedDelay)` to ensure no tick overlaps with its
  * own successor. No fire-and-forget coroutines are used at the Scanner level.
@@ -53,11 +54,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * and materialize). [recoverOrphanedClaimedRuns] marks such runs FAILED at the start of
  * each tick, unblocking the [ScheduledPromptRunRepository.hasActive] overlap guard.
  *
- * A RUNNING Run whose UserRuns are all terminal but whose parent was never closed is
- * handled by [recoverOrphanedRunningRuns], also called at the start of each tick.
- * This covers the crash window between the [ScheduledPromptUserRunRepository.markTerminal]
- * call of the last UserRun and the closure of the parent Run, which is now performed
- * exclusively by [recoverOrphanedRunningRuns] on each tick.
+ * A RUNNING Run whose UserRuns are all terminal but whose completion check was never
+ * called is handled by [recoverOrphanedRunningRuns], also called at the start of each
+ * tick. This covers the crash window between [ScheduledPromptUserRunRepository.markTerminal]
+ * and [ScheduledPromptExecutor.checkCompletion].
  *
  * The [clock] is injected so tests can freeze time.
  *
@@ -75,7 +75,16 @@ class SchedulerScanner(
     private val clock: Clock,
     private val nextRunCalculatorService: NextRunCalculatorService,
     private val executor: ScheduledPromptExecutor,
+    private val executionWindowService: ExecutionWindowService,
 ) {
+    /**
+     * Tracks whether the scheduler was last seen inside or outside the execution window,
+     * so WINDOW_OPEN / WINDOW_CLOSE transitions are logged exactly once per transition
+     * rather than on every tick.
+     * Initialised to `null` — unknown until the first tick evaluation.
+     */
+    private var lastWindowState: Boolean? = null
+
     /** When true, tickClaim() exits immediately without processing. */
     private val claimPaused = AtomicBoolean(false)
 
@@ -108,29 +117,63 @@ class SchedulerScanner(
      * Fully blocking — materialize runs synchronously within the tick.
      * Spring fixedDelay guarantees no overlap between ticks.
      *
-     * When [claimPaused] the tick is a no-op — the scheduling thread still fires
-     * but [processClaim] is not called.
+     * Guards (evaluated in order):
+     * 1. [claimPaused] — operator pause via [pauseClaim] / [SchedulerEndpoint].
+     * 2. [ExecutionWindowService.isWithinWindow] — time-window guard; logs WINDOW_OPEN /
+     *    WINDOW_CLOSE on transitions and REQUEST_HELD when outside the window.
+     *
+     * When outside the execution window, due prompts are not dispatched and nextRunAt is
+     * not advanced — they accumulate and are processed at the next window open, including
+     * after a service restart (state is not persisted; the window is re-evaluated from
+     * config + current time on every tick).
+     *
+     * Note: the time-window guard applies only to this tick (Phase A). Phase B (UserRun
+     * consumption) runs continuously via [ScheduledPromptExecutor]'s internal loop — already
+     * materialised UserRuns are always consumed to completion even after the window closes.
+     * The volume of in-flight work is bounded by [SchedulerProperties.batchSize] (max UserRuns
+     * claimed per poller iteration) and [SchedulerProperties.channelCapacity] (max UserRuns
+     * buffered in the handoff channel between the poller and the workers).
      */
     @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
     fun tickClaim() {
         when {
             claimPaused.get() -> logger.debug { "[SchedulerScanner] tickClaim PAUSED — skipping" }
-            else -> processClaim()
+            else -> if (checkExecutionWindow()) processClaim()
         }
     }
 
     /**
-     * Watchdog: restarts the consumer loop if it died unexpectedly.
-     * Runs on the same interval as [tickClaim] so a dead producer is detected within one tick.
-     * Safe: Spring guarantees @PostConstruct on all beans completes before @Scheduled ticks fire,
-     * so executor.scope is always initialized when this first runs.
+     * Evaluates the execution window and emits transition log events.
+     *
+     * Returns `true` when the scheduler is allowed to dispatch (inside the window or no
+     * window configured). Returns `false` when outside the window — the caller must skip
+     * processing.
+     *
+     * Logs:
+     * - `WINDOW_OPEN`  on the first tick after entering the window.
+     * - `WINDOW_CLOSE` on the first tick after leaving the window.
+     * - `REQUEST_HELD` on every tick while outside the window (indicates pending work is waiting).
      */
-    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
-    fun tickWatchdog() {
-        if (!executor.isRunning()) {
-            logger.error { "[SchedulerScanner] consumer loop is dead — restarting automatically" }
-            executor.restart()
+    private fun checkExecutionWindow(): Boolean {
+        val now = Instant.now(clock)
+        val inWindow = executionWindowService.isWithinExecutionWindow(now)
+
+        when {
+            inWindow && lastWindowState != true -> {
+                logger.info { "[SchedulerScanner] WINDOW_OPEN — scheduler resuming dispatch (${now.atZone(ZoneOffset.UTC).toLocalTime()} UTC)" }
+                lastWindowState = true
+            }
+            !inWindow && lastWindowState != false -> {
+                logger.info { "[SchedulerScanner] WINDOW_CLOSE — scheduler pausing dispatch (${now.atZone(ZoneOffset.UTC).toLocalTime()} UTC)" }
+                lastWindowState = false
+            }
         }
+
+        if (!inWindow) {
+            logger.debug { "[SchedulerScanner] REQUEST_HELD — outside execution window, due prompts will wait" }
+        }
+
+        return inWindow
     }
 
     /**
@@ -149,9 +192,9 @@ class SchedulerScanner(
             logger.error(e) { "[SchedulerScanner] recoverOrphanedClaimedRuns failed — continuing tick" }
         }
 
-        // Sweep: close RUNNING runs whose UserRuns are all settled but whose parent was
-        // never closed. This handles the crash window between the last markTerminal() call
-        // and the closure of the parent Run by recoverOrphanedRunningRuns.
+        // Sweep: close RUNNING runs whose UserRuns are all settled but whose completion
+        // check was missed. This handles the crash window between markTerminal() and
+        // checkCompletion() in ScheduledPromptExecutor.
         runCatching { recoverOrphanedRunningRuns(now) }.onFailure { e ->
             logger.error(e) { "[SchedulerScanner] recoverOrphanedRunningRuns failed — continuing tick" }
         }
@@ -200,12 +243,12 @@ class SchedulerScanner(
     }
 
     /**
-     * Close RUNNING Runs whose UserRuns are all settled but whose parent was never closed.
+     * Close RUNNING Runs whose UserRuns are all settled but whose completion check was missed.
      *
      * This handles the crash window where the last [ScheduledPromptUserRunRepository.markTerminal]
-     * completed but the instance crashed before the parent Run could be transitioned.
-     * Without this sweep, the Run would stay RUNNING forever — no subsequent event will
-     * re-trigger the closure.
+     * completed but the instance crashed before [ScheduledPromptExecutor]'s `checkCompletion()`
+     * could transition the parent Run. Without this sweep, the Run would stay RUNNING forever
+     * — no subsequent UserRun closure will re-trigger the check.
      *
      * Uses a single [ScheduledPromptRunRepository.findSettledRunning] query that filters
      * directly in the database: only RUNNING Runs with no UserRun in PENDING or RUNNING
@@ -223,10 +266,24 @@ class SchedulerScanner(
                 else -> RunStatus.DONE
             }
             runRepository.updateStatus(run.id, finalStatus, now)
-            logger.info {
-                "[SchedulerScanner] RUNNING run=${run.id} sp=${run.scheduledPromptId} " +
-                    "— all UserRuns settled, closing as $finalStatus"
+            logger.warn {
+                "[SchedulerScanner] Orphaned RUNNING run=${run.id} sp=${run.scheduledPromptId} " +
+                    "— all UserRuns settled, closing as $finalStatus (crash recovery)"
             }
+        }
+    }
+
+    /**
+     * Watchdog: restarts the consumer loop if it died unexpectedly.
+     * Runs on the same interval as [tickClaim] so a dead producer is detected within one tick.
+     * Safe: Spring guarantees @PostConstruct on all beans completes before @Scheduled ticks fire,
+     * so executor.scope is always initialized when this first runs.
+     */
+    @Scheduled(fixedDelayString = "\${agentos.prompt.scheduler.tick-interval-ms:30000}")
+    fun tickWatchdog() {
+        if (!executor.isRunning()) {
+            logger.error { "[SchedulerScanner] consumer loop is dead — restarting automatically" }
+            executor.restart()
         }
     }
 

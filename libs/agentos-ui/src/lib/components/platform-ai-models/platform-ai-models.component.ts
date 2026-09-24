@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import {
@@ -39,18 +39,21 @@ export class PlatformAiModelsComponent {
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
+  protected readonly isLoading = signal(true)
+
   /**
    * Raw models and their parent providers loaded in parallel.
    * Providers are scoped to platform level (namespaceId='none') so group labels
    * resolve correctly without falling back to UUIDs.
    */
   private readonly data$: Observable<[AiModel[], AiProvider[]]> = this.refresh$.pipe(
-    switchMap(() =>
-      combineLatest([
+    switchMap(() => {
+      this.isLoading.set(true)
+      return combineLatest([
         this.aiModelController.listPlatformLevelAiModel(),
         this.aiProviderController.listAiProvider('none'),
       ])
-    )
+    })
   )
 
   /** Mapped to EntityListItem[] with groupKey/groupLabel for ds-entity-list grouping. */
@@ -73,8 +76,12 @@ export class PlatformAiModelsComponent {
   private modelsById = new Map<string, AiModel>()
 
   constructor() {
-    this.data$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(([models]) => {
-      this.modelsById = new Map(models.map((m: AiModel) => [m.id ?? '', m]))
+    this.data$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: ([models]) => {
+        this.modelsById = new Map(models.map((m: AiModel) => [m.id ?? '', m]))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
 

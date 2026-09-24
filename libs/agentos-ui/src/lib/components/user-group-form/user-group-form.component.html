@@ -35,8 +35,7 @@
           <span class="user-group-form__label-hint">Agents this group can use</span>
         </legend>
         <p class="user-group-form__section-hint">
-          Pick from platform agents and this namespace's agents. An agent already deployed to another group in this
-          namespace is unavailable here.
+          Pick from platform agents and this namespace's agents. An agent can be shared by multiple groups.
         </p>
 
         @if (platformAgents().length === 0 && namespaceAgents().length === 0) {
@@ -134,17 +133,13 @@
 
 <!-- Agent checkbox row (shared by the platform + namespace groups) -->
 <ng-template #agentRow let-agent>
-  <label class="user-group-form__agent" [class.user-group-form__agent--disabled]="isAgentDisabled(agent)">
+  <label class="user-group-form__agent">
     <input
       type="checkbox"
       class="user-group-form__agent-checkbox"
       [checked]="isAgentSelected(agent)"
-      [disabled]="isAgentDisabled(agent)"
       (change)="toggleAgent(agent)"
     />
     <span class="user-group-form__agent-name">{{ agent.name }}</span>
-    @if (isAgentDisabled(agent)) {
-      <span class="user-group-form__agent-note">in {{ agentOwnerGroup(agent) }}</span>
-    }
   </label>
 </ng-template>

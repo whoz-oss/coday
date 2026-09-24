@@ -415,6 +415,23 @@ abstract class AbstractScheduledPromptUserRunPersistenceSpec : StringSpec() {
             claimed.first().runId shouldBe runId
         }
 
+        "claimBatch sets startedAt on the claimed UserRun" {
+            val runId = UUID.randomUUID()
+            val fixture = setupDeployment(listOf("alice@example.com"))
+            userRunRepo.materialize(runId, fixture.agent.id, fixture.ns.id)
+
+            val before = Instant.now()
+            val claimed = userRunRepo.claimBatch(Duration.ofMinutes(30), 10)
+            val after = Instant.now()
+
+            claimed.size shouldBe 1
+            val startedAt = claimed.first().startedAt
+            startedAt.shouldNotBeNull()
+            // startedAt must be between the instants captured before and after the claim
+            startedAt!!.isBefore(after.plusMillis(1)) shouldBe true
+            startedAt.isAfter(before.minusMillis(1)) shouldBe true
+        }
+
         "claimBatch does not return DONE or FAILED entries" {
             val runId = UUID.randomUUID()
             val fixture = setupDeployment(listOf("alice@example.com", "bob@example.com"))

@@ -100,6 +100,17 @@ open class Neo4jScheduledPromptRepository(
     override fun updateEnabled(id: UUID, enabled: Boolean) =
         neo4jRepository.updateEnabled(id.toString(), enabled)
 
+    override fun disableByAgentConfigId(agentConfigId: UUID): Int =
+        neo4jRepository.disableByAgentConfigId(agentConfigId.toString())
+            .also { count -> logger.debug { "[Neo4jScheduledPromptRepository] Disabled $count scheduled prompts for agentConfigId=$agentConfigId" } }
+
+    override fun existsActiveByPromptTemplateId(promptTemplateId: UUID): Boolean =
+        neo4jRepository.existsActiveByPromptTemplateId(promptTemplateId.toString())
+
+    override fun softDeleteWithPromptsByAgentConfigId(agentConfigId: UUID): Int =
+        neo4jRepository.softDeleteWithPromptsByAgentConfigId(agentConfigId.toString())
+            .also { count -> logger.debug { "[Neo4jScheduledPromptRepository] Soft-deleted $count scheduled prompt(s) and their linked prompts for agentConfigId=$agentConfigId" } }
+
     @Transactional
     open override fun deleteByParent(parentId: UUID): Int {
         val active = neo4jRepository.findActiveByNamespaceId(parentId.toString())
