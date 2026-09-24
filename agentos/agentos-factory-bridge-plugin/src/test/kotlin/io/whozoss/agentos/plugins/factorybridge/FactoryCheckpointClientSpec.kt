@@ -6,7 +6,6 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
-import io.whozoss.agentos.sdk.caseEvent.FactoryCheckpointRef
 import okhttp3.OkHttpClient
 import java.net.InetSocketAddress
 

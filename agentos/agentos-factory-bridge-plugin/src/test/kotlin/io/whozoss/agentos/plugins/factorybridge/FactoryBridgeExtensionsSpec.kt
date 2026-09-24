@@ -8,7 +8,6 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
-import io.whozoss.agentos.sdk.caseEvent.FactoryCheckpointRef
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -25,7 +24,6 @@ class FactoryBridgeExtensionsSpec : StringSpec({
     fun question(
         namespaceId: UUID,
         caseId: UUID,
-        checkpoint: FactoryCheckpointRef?,
     ) = QuestionEvent(
         metadata = EntityMetadata(),
         namespaceId = namespaceId,
@@ -33,7 +31,6 @@ class FactoryBridgeExtensionsSpec : StringSpec({
         agentId = UUID.randomUUID(),
         agentName = "ProductEngineer",
         question = "Approve?",
-        factoryCheckpoint = checkpoint,
     )
 
     "answer interceptor accepts questions without a checkpoint without performing any HTTP call" {
@@ -43,7 +40,7 @@ class FactoryBridgeExtensionsSpec : StringSpec({
         val result =
             interceptor.interceptAnswer(
                 UUID.randomUUID(),
-                question(namespaceId, UUID.randomUUID(), checkpoint = null),
+                question(namespaceId, UUID.randomUUID()),
                 "approve",
                 Actor("user-1", "User", ActorRole.USER),
             )
@@ -60,12 +57,15 @@ class FactoryBridgeExtensionsSpec : StringSpec({
         }
         server.start()
         try {
-            val interceptor = FactoryAnswerInterceptor { FactoryTestFixtures.services("http://127.0.0.1:${server.address.port}") }
+            val services = FactoryTestFixtures.services("http://127.0.0.1:${server.address.port}")
+            val interceptor = FactoryAnswerInterceptor { services }
             val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            services.pendingCheckpoints[caseId] = FactoryCheckpointRef("wf-1", "gate-1", 4L)
             val result =
                 interceptor.interceptAnswer(
-                    UUID.randomUUID(),
-                    question(namespaceId, UUID.randomUUID(), FactoryCheckpointRef("wf-1", "gate-1", 4L)),
+                    caseId,
+                    question(namespaceId, caseId),
                     "approve",
                     Actor("user-1", "User", ActorRole.USER),
                 )
@@ -85,12 +85,15 @@ class FactoryBridgeExtensionsSpec : StringSpec({
         }
         server.start()
         try {
-            val interceptor = FactoryAnswerInterceptor { FactoryTestFixtures.services("http://127.0.0.1:${server.address.port}") }
+            val services = FactoryTestFixtures.services("http://127.0.0.1:${server.address.port}")
+            val interceptor = FactoryAnswerInterceptor { services }
             val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            services.pendingCheckpoints[caseId] = FactoryCheckpointRef("wf-1", "gate-1", 4L)
             val result =
                 interceptor.interceptAnswer(
-                    UUID.randomUUID(),
-                    question(namespaceId, UUID.randomUUID(), FactoryCheckpointRef("wf-1", "gate-1", 4L)),
+                    caseId,
+                    question(namespaceId, caseId),
                     "approve",
                     Actor("user-1", "User", ActorRole.USER),
                 )

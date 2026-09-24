@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import okhttp3.OkHttpClient
 import java.net.InetSocketAddress
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 private class Suspended : RuntimeException("suspended")
 
@@ -73,12 +74,14 @@ class FactoryRequestHumanDecisionToolSpec : StringSpec({
         server.start()
         try {
             var awaited: FactoryAwaitAnswer? = null
+            val pendingCheckpoints = ConcurrentHashMap<UUID, FactoryCheckpointRef>()
             val tool =
                 FactoryRequestHumanDecisionTool(
                     "http://127.0.0.1:${server.address.port}",
                     OkHttpClient(),
                     mapper,
                     "runtime-configured",
+                    pendingCheckpoints = pendingCheckpoints,
                 ) { await ->
                     awaited = await
                     throw Suspended()
@@ -102,9 +105,10 @@ class FactoryRequestHumanDecisionToolSpec : StringSpec({
             await.options shouldBe listOf("Approve", "Reject")
             await.questionType shouldBe QuestionType.SINGLE_CHOICE
             await.userId shouldBe toolContext.userId
-            await.factoryCheckpoint.workflowId shouldBe "wf-1"
-            await.factoryCheckpoint.interactionId shouldBe "gate-1"
-            await.factoryCheckpoint.interactionRevision shouldBe 4L
+            val checkpoint = pendingCheckpoints[toolContext.caseEvents.single().caseId]!!
+            checkpoint.workflowId shouldBe "wf-1"
+            checkpoint.interactionId shouldBe "gate-1"
+            checkpoint.interactionRevision shouldBe 4L
         } finally {
             server.stop(0)
         }

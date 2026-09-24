@@ -34,7 +34,7 @@ internal fun buildFactoryTools(services: FactoryBridgeServices): List<StandardTo
         FactoryRecordAgentResultTool(baseUrl, httpClient, objectMapper, runtimeId),
         FactoryRecordArtifactTool(baseUrl, httpClient, objectMapper, runtimeId),
         FactorySubmitStepResultTool(baseUrl, httpClient, objectMapper, services.stepResultBindings),
-        FactoryRequestHumanDecisionTool(baseUrl, httpClient, objectMapper, runtimeId),
+        FactoryRequestHumanDecisionTool(baseUrl, httpClient, objectMapper, runtimeId, services.pendingCheckpoints),
         FactoryRequestTransitionTool(baseUrl, httpClient, objectMapper, runtimeId),
         FactoryTransitionWorkflowTool(baseUrl, httpClient, objectMapper, runtimeId),
         FactoryPublishProjectionTool(baseUrl, httpClient, objectMapper, runtimeId),

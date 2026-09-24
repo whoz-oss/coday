@@ -32,8 +32,7 @@ import java.util.UUID
  *
  * Verifies that the four SPI extension points default to safe no-op behavior and that
  * [CaseRuntime] invokes the answer interceptor and lifecycle observer at the right time,
- * while leaving existing behavior (including the Factory checkpoint gate) untouched when
- * no hook is registered.
+ * while leaving existing behavior untouched when no hook is registered.
  */
 class SpiHooksIntegrationSpec : StringSpec({
 

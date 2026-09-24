@@ -3,8 +3,8 @@ package io.whozoss.agentos.plugins.factorybridge.tools
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.plugins.factorybridge.FactoryAnswerAwaiter
 import io.whozoss.agentos.plugins.factorybridge.FactoryAwaitAnswer
+import io.whozoss.agentos.plugins.factorybridge.FactoryCheckpointRef
 import io.whozoss.agentos.plugins.factorybridge.HostAgentInterruptAwaiter
-import io.whozoss.agentos.sdk.caseEvent.FactoryCheckpointRef
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -16,12 +16,20 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class FactoryRequestHumanDecisionTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,
     private val objectMapper: ObjectMapper,
     private val runtimeId: String,
+    /**
+     * Open human-checkpoint interactions shared at plugin level, keyed by controlling case id.
+     * The reference is registered here before the run suspends so [io.whozoss.agentos.plugins.factorybridge.FactoryAnswerInterceptor]
+     * can submit the user's decision once the answer arrives — no Factory type ever crosses the host boundary.
+     */
+    private val pendingCheckpoints: MutableMap<UUID, FactoryCheckpointRef> = ConcurrentHashMap(),
     private val awaiter: FactoryAnswerAwaiter = HostAgentInterruptAwaiter,
 ) : StandardTool<FactoryRequestHumanDecisionTool.Input> {
     data class Action(val id: String, val label: String, val requestedStatus: String)
@@ -85,14 +93,15 @@ class FactoryRequestHumanDecisionTool(
                 is OpenOutcome.Error -> return failure(opened.code, opened.message)
                 is OpenOutcome.Opened -> opened.reference
             }
-        // Throws — suspends the agent until the user decides. Never returns.
+        // Register the checkpoint in the plugin-level registry so the answer interceptor can
+        // submit the user's decision once it arrives, then suspend the run. Throws — never returns.
+        pendingCheckpoints[caseIds.single()] = reference
         awaiter.awaitAnswer(
             FactoryAwaitAnswer(
                 question = input.prompt,
                 options = input.actions.map { it.label },
                 questionType = QuestionType.SINGLE_CHOICE,
                 userId = context.userId,
-                factoryCheckpoint = reference,
             ),
         )
     }

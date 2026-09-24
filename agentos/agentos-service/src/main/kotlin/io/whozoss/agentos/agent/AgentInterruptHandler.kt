@@ -173,9 +173,6 @@ suspend fun FlowCollector<CaseEvent>.emitInterruptAndFinishEvents(
                     // ToolContext.userId (set by AgentSimple/AgentAdvanced from their own userId
                     // constructor parameter). No fallback: null in → null out.
                     userId = e.userId,
-                    // Propagate the Factory checkpoint reference so CaseRuntime can validate
-                    // the answer against the Factory before persisting the AnswerEvent.
-                    factoryCheckpoint = e.factoryCheckpoint,
                 ),
             )
         }
