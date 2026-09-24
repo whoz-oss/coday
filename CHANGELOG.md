@@ -1,3 +1,15 @@
+## 3.8.0 (2026-09-24)
+
+### 🚀 Features
+
+- **agentos-service:** improve intention and recall available agents ([4fac9d2f](https://github.com/whoz-oss/coday/commit/4fac9d2f))
+- **agentos-service:** improve intention and recall available agents ([#1383](https://github.com/whoz-oss/coday/pull/1383))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 3.7.1 (2026-09-24)
 
 ### 🩹 Fixes
