@@ -104,11 +104,28 @@
           </ul>
         }
 
-        <ds-autocomplete-input
-          [dataSource]="memberDataSource"
-          placeholder="Add a member…"
-          (itemSelected)="onMemberSelected($event)"
-        />
+        <div class="user-group-form__member-add">
+          <input
+            class="user-group-form__input"
+            [class.user-group-form__input--invalid]="!!memberInputError()"
+            type="text"
+            placeholder="Enter external ID or email…"
+            [value]="memberInputValue()"
+            (input)="onMemberInputChange($any($event.target).value)"
+            (keydown)="onMemberInputKeydown($event)"
+            autocomplete="off"
+          />
+          <button
+            class="user-group-form__btn user-group-form__btn--secondary"
+            type="button"
+            (click)="addMemberFromInput()"
+          >
+            Add
+          </button>
+        </div>
+        @if (memberInputError()) {
+          <span class="user-group-form__field-error">{{ memberInputError() }}</span>
+        }
       </fieldset>
 
       <!-- Error message -->
