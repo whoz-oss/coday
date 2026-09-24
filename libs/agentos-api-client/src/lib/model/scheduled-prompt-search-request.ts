@@ -10,8 +10,10 @@
 
 export interface ScheduledPromptSearchRequest {
   agentConfigIds?: Array<string>
+  modifiedSince?: string
   namespaceExternalId?: string | null
   namespaceId?: string | null
   userExternalId?: string | null
   userId?: string | null
+  withRemoved?: boolean
 }

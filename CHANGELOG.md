@@ -1,3 +1,23 @@
+## 3.6.1 (2026-09-24)
+
+### 🩹 Fixes
+
+- #WZ-34777 guard case creation against users who lost agent access ([#1373](https://github.com/whoz-oss/coday/pull/1373))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 3.6.0 (2026-09-24)
+
+### 🚀 Features
+
+- #1375 delta-sync support for ScheduledPrompts (withRemoved, modifiedSince) ([#1376](https://github.com/whoz-oss/coday/pull/1376), [#1375](https://github.com/whoz-oss/coday/issues/1375))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-de-armey-whoz
+
 ## 3.5.0 (2026-09-23)
 
 ### 🚀 Features

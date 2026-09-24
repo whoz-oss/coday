@@ -125,14 +125,14 @@ class ScheduledPromptExecutor(
     private val scheduledPromptRepository: ScheduledPromptRepository,
     private val runRepository: ScheduledPromptRunRepository,
     private val userRunRepository: ScheduledPromptUserRunRepository,
+    private val userService: UserService,
     private val promptService: PromptService,
     private val agentConfigService: AgentConfigService,
-    private val caseService: CaseService,
     private val permissionService: PermissionService,
-    private val userService: UserService,
+    private val userContextProvider: UserContextProvider? = null,
+    private val caseService: CaseService,
     private val properties: SchedulerProperties,
     private val clock: Clock,
-    private val userContextProvider: UserContextProvider? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     /**
      * Evaluates whether Phase B is allowed to poll the database and dispatch UserRuns.
@@ -373,6 +373,14 @@ class ScheduledPromptExecutor(
         // check for an existing Case before creating one, making execution effectively-once.
         try {
             val runContext = resolveRunContext(userRun)
+            if (!hasAgentAccess(userRun.userId, runContext.agentName, runContext.namespaceId)) {
+                logger.info {
+                    "[Executor] UserRun=${userRun.id} — user=${userRun.userId} no longer has READ access" +
+                        " to AgentConfig=${runContext.agentConfigId}, marking DONE without creating a Case"
+                }
+                userRunRepository.markTerminal(userRun.id, UserRunStatus.DONE, Instant.now(clock))
+                return
+            }
             when (
                 val result =
                     resolveUserContext(
@@ -455,8 +463,10 @@ class ScheduledPromptExecutor(
             namespaceId = namespaceId,
             caseTitle = scheduledPrompt.name,
             actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
-            message = "@$agentName $promptContent",
+            promptContent = promptContent,
             scheduledPromptId = scheduledPrompt.id,
+            agentConfigId = scheduledPrompt.agentConfigId,
+            agentName = agentName,
             userExternalId = user.externalId,
             preferredLanguage = user.preferredLanguage?.takeIf { it.isNotBlank() },
         )
@@ -552,12 +562,16 @@ class ScheduledPromptExecutor(
         val namespaceId: UUID,
         val caseTitle: String,
         val actor: Actor,
-        val message: String,
+        val promptContent: String,
         val scheduledPromptId: UUID,
+        val agentConfigId: UUID,
+        val agentName: String,
         val userExternalId: String,
         val preferredLanguage: String? = null,
         val sessionContext: Map<String, Any?>? = null,
-    )
+    ) {
+        val message: String get() = "@$agentName $promptContent"
+    }
 
     // -------------------------------------------------------------------------
     // Case completion
@@ -653,6 +667,25 @@ class ScheduledPromptExecutor(
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Returns true if [userId] still has access to the agent via the deployment graph
+     * in [namespaceId].
+     *
+     * Uses the same [AgentConfigService.findDeployedByNamespaceIdAndUserIdAndName] query as
+     * the interactive @mention flow, ensuring symmetric access semantics: a user can only
+     * receive a scheduled conversation if they would also be able to invoke the agent manually.
+     *
+     * Called just before [createAndInjectCase] to guard against users who lost access
+     * between materialisation (PENDING UserRun creation) and execution (Case creation).
+     */
+    private fun hasAgentAccess(userId: UUID, agentName: String, namespaceId: UUID): Boolean =
+        agentConfigService
+            .findDeployedByNamespaceIdAndUserIdAndName(
+                namespaceId = namespaceId,
+                userId = userId,
+                agentName = agentName,
+            ).isNotEmpty()
 
     private fun markFailed(
         userRunId: UUID,

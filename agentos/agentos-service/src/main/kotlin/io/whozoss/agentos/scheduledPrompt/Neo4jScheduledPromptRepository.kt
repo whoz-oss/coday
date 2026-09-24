@@ -68,12 +68,14 @@ open class Neo4jScheduledPromptRepository(
     override fun findEffective(namespaceId: UUID, userId: UUID): List<ScheduledPrompt> =
         neo4jRepository.findEffective(namespaceId.toString(), userId.toString()).map { it.toDomain() }
 
-    override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<ScheduledPrompt> =
+    override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?, withRemoved: Boolean, modifiedSince: Instant?): List<ScheduledPrompt> =
         neo4jRepository
             .findByScope(
                 namespaceId = namespaceId?.toString(),
                 userId = userId?.toString(),
                 agentConfigIds = agentConfigIds?.map { it.toString() }?.takeIf { it.isNotEmpty() },
+                withRemoved = withRemoved,
+                modifiedSince = modifiedSince,
             ).map { it.toDomain() }
 
     override fun delete(id: UUID): Boolean =
