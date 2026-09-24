@@ -1,3 +1,13 @@
+## 3.6.1 (2026-09-24)
+
+### 🩹 Fixes
+
+- #WZ-34777 guard case creation against users who lost agent access ([#1373](https://github.com/whoz-oss/coday/pull/1373))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
 ## 3.6.0 (2026-09-24)
 
 ### 🚀 Features
