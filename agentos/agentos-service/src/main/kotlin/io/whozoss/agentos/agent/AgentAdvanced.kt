@@ -2,6 +2,7 @@ package io.whozoss.agentos.agent
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agent.AgentIntentionGenerator.Companion.ANSWER_TOOL
+import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -1079,7 +1080,7 @@ class AgentAdvanced(
             .filterIsInstance<MessageEvent>()
             .firstOrNull { it.actor.role == ActorRole.USER }
             ?.sessionContext
-            ?.get("preferredLanguage")
+            ?.get(SessionContextKeys.PREFERRED_LANGUAGE)
             ?.let { it as? String }
             ?.takeIf { it.isNotBlank() }
 
