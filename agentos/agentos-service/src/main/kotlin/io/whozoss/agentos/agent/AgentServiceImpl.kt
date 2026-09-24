@@ -395,7 +395,7 @@ class AgentServiceImpl(
                     ) +
                     buildExchangeTools(agentConfig, context, toolContext) +
                     queryUserTools +
-                    skillTools,
+                    skillTools +
                     buildWorkUnitEnvironmentTools(agentConfig, context, toolContext) +
                     factoryTools,
             )
@@ -807,7 +807,7 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
             loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
-            timeoutMs = agentConfigProperties.delegationTimeoutMinutes * 60 * 1_000L,
+            timeoutMs = agentConfigProperties.delegationTimeoutMinutes.toLong() * 60 * 1_000L,
         )
     }
 

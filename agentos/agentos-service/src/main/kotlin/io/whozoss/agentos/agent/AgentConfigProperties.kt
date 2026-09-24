@@ -20,11 +20,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *
  * [imageCharCost] and [maxAttachedImages] bound how tool-response images are replayed
  * into an agent's LLM context (see [AgentAdvancedContext]).
+ * [delegationTimeoutMinutes] bounds how long a delegation may run before its sub-case is killed.
  *
  * Override with environment variables (Spring Boot relaxed binding):
  * - AGENTOS_DEFAULTS_AGENT_NAME
  * - AGENTOS_DEFAULTS_IMAGE_CHAR_COST
  * - AGENTOS_DEFAULTS_MAX_ATTACHED_IMAGES
+ * - AGENTOS_DEFAULTS_DELEGATION_TIMEOUT_MINUTES
  *
  * Example (application.yml):
  * ```yaml
@@ -33,6 +35,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     agent-name: copilot
  *     image-char-cost: 6000
  *     max-attached-images: 20
+ *     delegation-timeout-minutes: 15
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.defaults")
@@ -47,4 +50,10 @@ data class AgentConfigProperties(
     val imageCharCost: Int = 6_000,
     /** Maximum images attached as Media across the whole prompt, newest first. */
     val maxAttachedImages: Int = 20,
-)
+    /** Maximum wall-clock time for each outgoing delegation, in minutes. */
+    val delegationTimeoutMinutes: Long = 15,
+) {
+    init {
+        require(delegationTimeoutMinutes > 0) { "agentos.defaults.delegation-timeout-minutes must be positive" }
+    }
+}
