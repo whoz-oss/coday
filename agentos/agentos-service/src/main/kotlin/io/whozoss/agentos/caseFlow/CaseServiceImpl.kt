@@ -54,6 +54,14 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Core case orchestration service.
+ *
+ * Carries no integration-specific logic: integrations plug in exclusively through the
+ * SDK SPI hooks injected below — [AnswerInterceptor], [CaseLifecycleObserver],
+ * [ExternalExecutionContextProvider] and [ToolGrantPolicy] — so all integration
+ * behaviour lives outside this service.
+ */
 @Service
 class CaseServiceImpl(
     private val agentService: AgentService,
@@ -70,6 +78,7 @@ class CaseServiceImpl(
     /**
      * Optional SPI hooks consulted for every answer before an [io.whozoss.agentos.sdk.caseEvent.AnswerEvent]
      * is persisted. Empty by default (Spring injects all registered beans): no interception.
+     * Integrations register their own interceptors here rather than being wired into the core.
      */
     private val answerInterceptors: List<AnswerInterceptor> = emptyList(),
     /**

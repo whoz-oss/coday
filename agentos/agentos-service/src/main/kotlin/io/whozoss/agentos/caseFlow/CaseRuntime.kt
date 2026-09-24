@@ -53,6 +53,8 @@ private data class PendingCommand(val content: List<MessageContent>)
  * @param answerInterceptors optional SPI hooks consulted for every answer to a [QuestionEvent]
  *   before the [AnswerEvent] is persisted. Empty by default: no interception, behavior unchanged.
  *   A rejection emits a [WarnEvent] and skips the [AnswerEvent].
+ *   This is the sole extension point for integration-specific answer gating: no
+ *   integration concept is modelled in this runtime.
  * @param lifecycleObservers optional SPI observers notified when an event produced by this
  *   runtime has been stored ([CaseLifecycleObserver.onEventStored]). Empty by default: no-op.
  *   Status-transition notifications are handled by the service (see `CaseServiceImpl`).

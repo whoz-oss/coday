@@ -285,6 +285,10 @@ data class ThinkingEvent(
  *   Null means the question is addressed to any user of the case.
  * @param questionType Controls how the UI should render the response input.
  *   [QuestionType.OPEN_CHOICE] requires [options] to be non-null and non-empty.
+ *
+ * Integration-specific answer validation is intentionally NOT modelled on this event:
+ * integrations gate answers through the [io.whozoss.agentos.sdk.spi.AnswerInterceptor]
+ * SPI, so the SDK stays free of any integration-specific concept.
  */
 data class QuestionEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
