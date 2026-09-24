@@ -1,11 +1,13 @@
 package io.whozoss.agentos.user
 
+import io.kotest.core.annotation.EnabledIf
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.whozoss.agentos.persistence.neo4j.DockerAvailableCondition
 import io.whozoss.agentos.persistence.neo4j.Neo4jContainerSpec
 import io.whozoss.agentos.persistence.neo4j.Neo4jContainerSupport
 import org.neo4j.driver.Driver
@@ -23,6 +25,7 @@ import org.springframework.test.context.DynamicPropertySource
  */
 @SpringBootTest
 @ActiveProfiles("test", "neo4j")
+@EnabledIf(DockerAvailableCondition::class)
 class Neo4jUserIdentityResolutionSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
