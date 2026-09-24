@@ -84,7 +84,7 @@
 
 import { parseReviewResult, aggregateReviews, toReviewFacts } from './review.mjs'
 import { extractJsonFragment } from './plan.mjs'
-import { registerActiveCase, unregisterActiveCase } from './active-case.mjs'
+import { registerActiveCase, unregisterActiveCase } from '../runtime/factory-operational.mjs'
 
 // ---------------------------------------------------------------------------
 // Constantes

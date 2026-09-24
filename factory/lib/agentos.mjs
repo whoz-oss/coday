@@ -8,7 +8,7 @@
  */
 
 import { realpathSync } from 'node:fs'
-import { setActiveCaseId, clearActiveCaseId } from './active-case.mjs'
+import { setActiveCaseId, clearActiveCaseId } from '../runtime/factory-operational.mjs'
 
 const BASE_URL = process.env.AGENTOS_URL ?? 'http://localhost:8124'
 const FACTORY_USER = process.env.FACTORY_USER ?? 'benjamin.valdes'

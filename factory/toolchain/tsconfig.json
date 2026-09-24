@@ -13,5 +13,5 @@
     "types": ["node"],
     "useUnknownInCatchVariables": true
   },
-  "include": ["../src/lib/active-case.ts", "../src/entrypoints/active-case-contract.ts"]
+  "include": ["../src/**/*.ts"]
 }

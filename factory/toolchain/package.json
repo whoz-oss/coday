@@ -6,8 +6,9 @@
   "scripts": {
     "build": "node build.mjs",
     "test:active-case-runtime": "node ../tests/typescript-active-case-runtime.mjs",
+    "test:operational": "node ../tests/typescript-factory-operational.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit",
-    "verify:generated": "node ../tests/typescript-active-case-runtime.mjs --verify-generated"
+    "verify:generated": "node ../tests/typescript-factory-operational.mjs"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

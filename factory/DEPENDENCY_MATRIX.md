@@ -1,5 +1,15 @@
 # Matrice des dépendances de la Factory
 
+## Cluster shutdown opérationnel
+
+| Depuis | Vers | Statut | Contrainte |
+|---|---|---|---|
+| Application shutdown TS | `CaseTerminator` et callbacks injectés | Autorisé | aucune importation AgentOS/registry/gate |
+| Adaptateur HTTP AgentOS | `fetch` | Borné | timeout, un seul essai, aucun retry |
+| Adaptateur process | SIGTERM / exit | Borné | composition explicite |
+| `run.mjs` | bundle + autorités legacy registry/gate | Temporaire | évite toute duplication de `_currentRun` et des gates |
+| Bundle opérationnel | `agentos.mjs` | Interdit | le bundle ne charge pas le client complet |
+
 ## Légende
 
 - **Autorisé** : dépendance conforme à l'architecture.
@@ -50,4 +60,4 @@ Les imports statiques internes doivent être fermés dans l'artefact ou résolus
 
 ## Coexistence et rollback
 
-Pendant le Stage 2, les consommateurs historiques continuent à importer les `.mjs` actuels. Le nouveau cluster active-case est fermé dans son bundle autonome et ne bascule pas ces consommateurs. La source TypeScript fait autorité pour ce cluster, tandis que `lib/active-case.mjs` reste l'autorité legacy ; la duplication n'est pas encore supprimée.
+Le cluster opérationnel bascule `run.mjs` et `lib/agentos.mjs` sur le même registre du bundle généré. `lib/active-case.mjs` reste présent tant que tous ses importeurs directs ne sont pas migrés. L'autonomie complète est différée : `_currentRun` et les gates restent dans leurs modules legacy et sont injectés, afin de préserver l'unicité réelle de ces états.

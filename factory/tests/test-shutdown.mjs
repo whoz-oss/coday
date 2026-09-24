@@ -27,7 +27,7 @@ import {
   setActiveCaseId,
   clearActiveCaseId,
   getActiveCaseId,
-} from '../lib/active-case.mjs'
+} from '../runtime/factory-operational.mjs'
 
 // ---------------------------------------------------------------------------
 // Runner minimal

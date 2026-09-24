@@ -2,12 +2,18 @@
 
 Ce document distingue ce qui fait autorité aujourd'hui, pendant la migration et dans l'architecture cible. Il évite qu'un fichier généré, une documentation ou deux implémentations coexistantes soient modifiés comme des sources concurrentes.
 
+## Stage shutdown opérationnel
+
+`factory/src/entrypoints/factory-operational.ts` est la source du bundle généré `factory/runtime/factory-operational.mjs`. Ce bundle porte l'unique registre active-case consommé par `run.mjs` et `lib/agentos.mjs`; il n'importe jamais l'ensemble de `agentos.mjs`.
+
+La frontière reste volontairement hybride : `_currentRun` demeure exclusivement dans `lib/registry.mjs` et les résolveurs de gates dans `lib/review-gate.mjs`. `run.mjs` et la façade legacy `lib/shutdown.mjs` injectent ces instances existantes dans l'application de shutdown. Aucune copie TypeScript concurrente n'existe. Le bundle n'est donc pas autonome pour ces deux états tant que leurs autorités legacy ne sont pas migrées.
+
 ## Autorités actuelles
 
 | Domaine | Source d'autorité actuelle | Notes |
 |---|---|---|
 | Runtime legacy | Fichiers `.mjs` historiques exécutés sous `factory/` | Ils restent canoniques pour les consommateurs non basculés au Stage 2. |
-| Nouveau cluster active-case | `factory/src/lib/active-case.ts` et `factory/src/entrypoints/active-case-contract.ts` | Autorité TypeScript du nouvel entrypoint fermé. |
+| Cluster opérationnel shutdown/active-case | `factory/src/` et `factory/src/entrypoints/factory-operational.ts` | Autorité TypeScript; le bundle généré est partagé par les consommateurs migrés. |
 | Contrats et invariants des modules | Comportement des `.mjs`, complété par `factory/lib/README.md` | En cas de conflit, le runtime observé prime ; le conflit documentaire doit être corrigé. |
 | Dispatch et workflows disponibles | `factory/run.mjs` et modules référencés | La structure illustrative d'un README n'est pas exhaustive. |
 | Commandes oracle | Modules de domaine/oracle concernés | Ni l'agent ni sa prose ne peuvent remplacer cette autorité. |
@@ -25,7 +31,7 @@ Ce document distingue ce qui fait autorité aujourd'hui, pendant la migration et
 | JavaScript runtime | Artefact ESM généré à partir des sources TypeScript | Exécutable et distribuable, mais non édité comme source. |
 | Règles de compilation | `factory/toolchain/tsconfig.json`, `build.mjs` et manifeste npm isolé | Stage 1 : strict, `tsc --noEmit`, esbuild, sans héritage racine/pnpm/Nx. |
 | Compatibilité runtime | Node `>=22.12.0` et bundle ESM autonome | Fixé pour le Stage 1. |
-| Artefact runtime active-case Stage 2 | `factory/runtime/active-case-contract.mjs` | Généré, versionné, autonome et non éditable manuellement. |
+| Artefact runtime opérationnel | `factory/runtime/factory-operational.mjs` | Généré, non éditable manuellement; autonomie partielle car run/gates restent injectés depuis legacy. |
 | Diagnostics de build | Sourcemap et metafile sous `factory/dist/` | Non runtime, ignorés et régénérables. |
 | Assets et imports dynamiques | Règles de packaging Factory | À préciser quand un module candidat en introduira. |
 
@@ -37,7 +43,7 @@ Ce document distingue ce qui fait autorité aujourd'hui, pendant la migration et
 4. Un import ne doit jamais choisir implicitement entre deux implémentations selon la disponibilité d'un outil ou de `node_modules`.
 5. La documentation décrit la bascule, mais ne la réalise pas.
 
-Au Stage 2, le cluster fermé `src/entrypoints/active-case-contract.ts` + `src/lib/active-case.ts` est sous autorité TypeScript et produit l'artefact versionné `runtime/active-case-contract.mjs`. Les consommateurs historiques ne sont pas basculés : `lib/active-case.mjs` reste leur autorité runtime. La duplication historique existe donc encore explicitement à ce stade.
+Dans ce stage, `src/lib/active-case.ts` est l'autorité du registre chargé par `run.mjs` et `lib/agentos.mjs` via `runtime/factory-operational.mjs`. `lib/active-case.mjs` reste provisoirement présent pour ses importeurs directs non migrés; ces chemins legacy constituent une limite explicite et ne doivent pas être décrits comme une autorité unique à l'échelle de toute la Factory.
 
 ## Conflits et résolution
 

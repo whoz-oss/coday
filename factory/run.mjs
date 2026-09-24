@@ -41,7 +41,15 @@
 
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { initShutdownHandler, markCompleted } from './lib/shutdown.mjs'
+import {
+  createAgentOsHttpCaseTerminator,
+  createShutdownController,
+  getActiveCaseIds,
+  installSigtermHandler,
+  processExit,
+} from './runtime/factory-operational.mjs'
+import { endRun, getCurrentRun } from './lib/registry.mjs'
+import { rejectAllPendingGates } from './lib/review-gate.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -197,8 +205,21 @@ async function main() {
     process.exit(1)
   }
 
-  // Enregistrement du handler SIGTERM avant le lancement.
-  initShutdownHandler({ log })
+  // Composition legacy sans duplication d'état : registry/review-gate restent
+  // les autorités, tandis que le registre active-case vient du bundle partagé.
+  const shutdownController = createShutdownController({
+    activeCaseIds: getActiveCaseIds,
+    caseTerminator: createAgentOsHttpCaseTerminator({
+      baseUrl: process.env.AGENTOS_URL ?? 'http://localhost:8124',
+      userId: process.env.FACTORY_USER ?? 'benjamin.valdes',
+    }),
+    currentRun: getCurrentRun,
+    endRun,
+    rejectPendingGates: rejectAllPendingGates,
+    warn: (message) => log.error(message),
+    exit: processExit(),
+  })
+  installSigtermHandler(shutdownController)
 
   log.info(`Démarrage du ${category} : ${displayName}`)
 
@@ -211,7 +232,7 @@ async function main() {
     process.exit(1)
   }
 
-  markCompleted()
+  shutdownController.markCompleted()
 
   const { allPass, filePath } = result ?? {}
 

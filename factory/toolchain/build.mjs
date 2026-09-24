@@ -6,20 +6,16 @@ import { build } from 'esbuild'
 const toolchainDirectory = dirname(fileURLToPath(import.meta.url))
 const factoryDirectory = resolve(toolchainDirectory, '..')
 const runtimeDirectory = resolve(factoryDirectory, 'runtime')
-const diagnosticsDirectory = resolve(factoryDirectory, 'dist/active-case-contract')
-const runtimeFile = resolve(runtimeDirectory, 'active-case-contract.mjs')
+const diagnosticsDirectory = resolve(factoryDirectory, 'dist/factory-operational')
+const runtimeFile = resolve(runtimeDirectory, 'factory-operational.mjs')
 const temporaryRuntimeFile = `${runtimeFile}.tmp`
-const sourcemapPath = resolve(diagnosticsDirectory, 'active-case-contract.mjs.map')
-const metafilePath = resolve(diagnosticsDirectory, 'active-case-contract.meta.json')
+const sourcemapPath = resolve(diagnosticsDirectory, 'factory-operational.mjs.map')
+const metafilePath = resolve(diagnosticsDirectory, 'factory-operational.meta.json')
 
-await Promise.all([
-  mkdir(runtimeDirectory, { recursive: true }),
-  mkdir(diagnosticsDirectory, { recursive: true }),
-])
-
+await Promise.all([mkdir(runtimeDirectory, { recursive: true }), mkdir(diagnosticsDirectory, { recursive: true })])
 try {
   const result = await build({
-    entryPoints: [resolve(factoryDirectory, 'src/entrypoints/active-case-contract.ts')],
+    entryPoints: [resolve(factoryDirectory, 'src/entrypoints/factory-operational.ts')],
     outfile: temporaryRuntimeFile,
     bundle: true,
     format: 'esm',
@@ -32,16 +28,12 @@ try {
     sourcesContent: false,
     metafile: true,
     legalComments: 'none',
-    banner: { js: '// GENERATED FILE — DO NOT EDIT. Source: factory/src/entrypoints/active-case-contract.ts' },
+    banner: { js: '// GENERATED FILE — DO NOT EDIT. Source: factory/src/entrypoints/factory-operational.ts' },
   })
-
   await rename(`${temporaryRuntimeFile}.map`, sourcemapPath)
   await writeFile(metafilePath, `${JSON.stringify(result.metafile, null, 2)}\n`, 'utf8')
   await rename(temporaryRuntimeFile, runtimeFile)
 } catch (error) {
-  await Promise.all([
-    rm(temporaryRuntimeFile, { force: true }),
-    rm(`${temporaryRuntimeFile}.map`, { force: true }),
-  ])
+  await Promise.all([rm(temporaryRuntimeFile, { force: true }), rm(`${temporaryRuntimeFile}.map`, { force: true })])
   throw error
 }

@@ -26,7 +26,7 @@ import { PARSE_ERROR_CODES } from '../lib/review.mjs'
 import {
   getActiveCaseIds,
   unregisterActiveCase,
-} from '../lib/active-case.mjs'
+} from '../runtime/factory-operational.mjs'
 
 // ---------------------------------------------------------------------------
 // Runner minimal

@@ -1,5 +1,9 @@
 # ADR — Migration TypeScript de la Factory
 
+## Stage : shutdown opérationnel
+
+Décision : extraire une application de shutdown pure et injectée, un port minimal `CaseTerminator`, un adaptateur HTTP borné sans retry et un adaptateur process. Le bundle partagé généré est `runtime/factory-operational.mjs`. L’unicité d’état prime sur l’autonomie : le run courant et les gates restent injectés depuis leurs modules legacy, sans réimplémentation TypeScript. `lib/shutdown.mjs` n’est plus une autorité d’état, seulement une façade de composition compatible.
+
 - **Statut** : accepté ; Stage 2 par entrypoint/cluster fermé
 - **Portée** : Factory uniquement
 - **Implémentation** : toolchain isolée et entrypoint TypeScript active-case, sans bascule des consommateurs historiques

@@ -9,7 +9,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { extractJsonFragment } from './plan.mjs'
 import { preflightReadOnlyAgent } from './review-engine.mjs'
-import { registerActiveCase, unregisterActiveCase } from './active-case.mjs'
+import { registerActiveCase, unregisterActiveCase } from '../runtime/factory-operational.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RUNS_DIR = join(__dirname, '..', 'runs')

@@ -48,7 +48,7 @@
  */
 
 import { createCase, runAgentTurn, killCase } from './agentos.mjs'
-import { registerActiveCase, unregisterActiveCase } from './active-case.mjs'
+import { registerActiveCase, unregisterActiveCase } from '../runtime/factory-operational.mjs'
 
 // ---------------------------------------------------------------------------
 // Constantes
