@@ -389,6 +389,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val promptService = mockk<PromptService>().also {
                 every { it.findById(promptTemplateId) } returns null
             }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
             }
@@ -398,7 +401,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 runRepo = runRepo,
                 userRunRepo = userRunRepo,
                 promptService = promptService,
-                agentConfigService = mockk(relaxed = true),
+                agentConfigService = agentConfigService,
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
@@ -421,6 +424,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val promptService = mockk<PromptService>().also {
                 every { it.findById(promptTemplateId) } returns makePromptTemplate(content = "")
             }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
             }
@@ -430,7 +436,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 runRepo = runRepo,
                 userRunRepo = userRunRepo,
                 promptService = promptService,
-                agentConfigService = mockk(relaxed = true),
+                agentConfigService = agentConfigService,
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
@@ -646,6 +652,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userWithLanguage = user1.copy(preferredLanguage = "fr")
             val userService = mockk<UserService>().also {
@@ -695,6 +702,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             // user1 has no preferredLanguage (null)
             val userService = mockk<UserService>().also {
@@ -745,6 +753,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
             }
             val userWithLanguage = user1.copy(preferredLanguage = "fr")
             val userService = mockk<UserService>().also {
