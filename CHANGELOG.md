@@ -1,3 +1,13 @@
+## 3.6.0 (2026-09-24)
+
+### 🚀 Features
+
+- #1375 delta-sync support for ScheduledPrompts (withRemoved, modifiedSince) ([#1376](https://github.com/whoz-oss/coday/pull/1376), [#1375](https://github.com/whoz-oss/coday/issues/1375))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-de-armey-whoz
+
 ## 3.5.0 (2026-09-23)
 
 ### 🚀 Features
