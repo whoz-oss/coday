@@ -1,4 +1,4 @@
-function sendError(send, status, code, message) { return send(status, { error: { code, message } }) }
+import { sendError } from './http-utils.mjs'
 
 export async function handleWorkflowDefinitionRequest({ method, path, send, registry, log = console }) {
   const collection = path === '/api/factory/workflow-definitions'

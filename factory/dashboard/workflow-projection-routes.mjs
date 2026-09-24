@@ -2,6 +2,7 @@ import {
   WORKFLOW_STORE_ERROR_CODES,
   WorkflowProjectionStoreError,
 } from '../lib/workflow-projection-store.mjs'
+import { sendError as errorResponse } from './http-utils.mjs'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const EXECUTION_FIELDS = new Set(['namespaceId', 'runtimeId', 'kind', 'actorId', 'agentId', 'caseId', 'threadId'])
@@ -9,10 +10,6 @@ const ATTRIBUTION_FIELDS = ['actorId', 'agentId', 'caseId', 'threadId']
 const SAFE_ATTRIBUTION = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,255}$/
 const LIFECYCLE_FIELDS = new Set(['actorId'])
 const LIFECYCLE_EVENTS = Object.freeze({ remove: 'workflow-projection-removed', restore: 'workflow-projection-restored', purge: 'workflow-projection-purged' })
-
-function errorResponse(send, status, code, message) {
-  return send(status, { error: { code, message } })
-}
 
 export function validateWorkflowNamespaceId(namespaceId) {
   return typeof namespaceId === 'string' && UUID.test(namespaceId)

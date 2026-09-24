@@ -1,3 +1,5 @@
+import { sendError } from './http-utils.mjs'
+
 const status = {
   RESULT_SCHEMA_INVALID: 400,
   RESULT_CAPABILITY_INVALID: 401,
@@ -16,7 +18,7 @@ export async function handleAgentStepResultRequest({
 }) {
   if (path !== '/api/factory/agent-step-results') return false
   if (method !== 'POST') {
-    send(405, { error: { code: 'METHOD_NOT_ALLOWED' } })
+    sendError(send, 405, 'METHOD_NOT_ALLOWED')
     return true
   }
   try {
@@ -31,7 +33,7 @@ export async function handleAgentStepResultRequest({
       Object.keys(body).some((key) => !allowed.has(key)) ||
       typeof body.attemptId !== 'string'
     ) {
-      send(400, { error: { code: 'INVALID_RESULT_REQUEST' } })
+      sendError(send, 400, 'INVALID_RESULT_REQUEST')
       return true
     }
     const result = await resultStore.submit(token, body.result, {
@@ -45,7 +47,7 @@ export async function handleAgentStepResultRequest({
         code: result.code,
         status: status[result.code] ?? 409,
       })
-      send(status[result.code] ?? 409, { error: { code: result.code } })
+      sendError(send, status[result.code] ?? 409, result.code)
       return true
     }
     send(result.idempotent ? 200 : 201, {
@@ -53,7 +55,7 @@ export async function handleAgentStepResultRequest({
     })
   } catch (cause) {
     log.error?.('Structured step result rejected', { code: cause?.code ?? 'STEP_RESULT_SUBMISSION_FAILED' })
-    send(500, { error: { code: 'STEP_RESULT_SUBMISSION_FAILED' } })
+    sendError(send, 500, 'STEP_RESULT_SUBMISSION_FAILED')
   }
   return true
 }

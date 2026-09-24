@@ -30,6 +30,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import { sendError } from './http-utils.mjs'
 
 // ---------------------------------------------------------------------------
 // Pure JSONL helpers (exported for backward compatibility)
@@ -436,7 +437,7 @@ export function createRunRouter({
     if (method === 'POST' && path === '/api/runs') {
       const body = await readBody()
       const result = launchRun(body)
-      if (result.error) return sendFn(400, { error: result.error }), true
+      if (result.error) return sendError(sendFn, 400, 'INVALID_RUN_REQUEST', result.error), true
       return sendFn(202, result), true
     }
 
@@ -444,7 +445,7 @@ export function createRunRouter({
     const detailMatch = path.match(/^\/api\/runs\/([^/]+)$/)
     if (method === 'GET' && detailMatch) {
       const detail = detailRun(detailMatch[1])
-      if (!detail) return sendFn(404, { error: 'Run introuvable' }), true
+      if (!detail) return sendError(sendFn, 404, 'RUN_NOT_FOUND', 'Run introuvable'), true
       return sendFn(200, detail), true
     }
 
@@ -468,7 +469,7 @@ export function createRunRouter({
     if (method === 'POST' && path === '/api/factory/runs') {
       const body = await readBody()
       const result = launchRun(body)
-      if (result.error) return sendFn(400, { error: result.error }), true
+      if (result.error) return sendError(sendFn, 400, 'INVALID_RUN_REQUEST', result.error), true
       const pid = result.pid
       const deadline = Date.now() + 3000
       const runId = await new Promise((resolve) => {
@@ -488,7 +489,7 @@ export function createRunRouter({
     const factoryDetailMatch = path.match(/^\/api\/factory\/runs\/([^/]+)$/)
     if (method === 'GET' && factoryDetailMatch) {
       const detail = detailRun(factoryDetailMatch[1])
-      if (!detail) return sendFn(404, { error: 'Run introuvable' }), true
+      if (!detail) return sendError(sendFn, 404, 'RUN_NOT_FOUND', 'Run introuvable'), true
       return sendFn(200, detail), true
     }
 
@@ -502,12 +503,12 @@ export function createRunRouter({
         if (existsSync(jsonlPath)) {
           const lines = parseJsonl(jsonlPath)
           const hasEnd = lines.some((l) => l.kind === 'run_end')
-          if (hasEnd) return sendFn(410, { error: 'Run already finished.' }), true
+          if (hasEnd) return sendError(sendFn, 410, 'RUN_ALREADY_FINISHED', 'Run already finished.'), true
         }
-        return sendFn(404, { error: 'Run not found.' }), true
+        return sendError(sendFn, 404, 'RUN_NOT_FOUND', 'Run not found.'), true
       }
-      if (!entry.child) return sendFn(410, { error: 'Run already finished.' }), true
-      if (entry.stopping) return sendFn(409, { error: 'Stop already requested.' }), true
+      if (!entry.child) return sendError(sendFn, 410, 'RUN_ALREADY_FINISHED', 'Run already finished.'), true
+      if (entry.stopping) return sendError(sendFn, 409, 'STOP_ALREADY_REQUESTED', 'Stop already requested.'), true
       entry.stopping = true
       try { entry.child.kill('SIGTERM') } catch { /* child may have already exited */ }
       return sendFn(202, { runId, stopping: true }), true
@@ -558,7 +559,7 @@ export function createRunRouter({
         }
         return sendFn(200, { status: 'terminal', humanDecision: null, reason: 'No active review gate for this run.' }), true
       }
-      return sendFn(404, { error: 'Run not found.' }), true
+      return sendError(sendFn, 404, 'RUN_NOT_FOUND', 'Run not found.'), true
     }
 
     // POST /api/factory/runs/:id/review-gate/reply
@@ -567,16 +568,16 @@ export function createRunRouter({
       const runId = factoryGateReplyMatch[1]
       const body = await readBody()
       if (typeof body.gateInstanceId !== 'string' || !body.gateInstanceId) {
-        return sendFn(400, { error: 'gateInstanceId is required.' }), true
+        return sendError(sendFn, 400, 'INVALID_GATE_REPLY', 'gateInstanceId is required.'), true
       }
       if (typeof body.decision !== 'string' || !body.decision) {
-        return sendFn(400, { error: 'decision is required.' }), true
+        return sendError(sendFn, 400, 'INVALID_GATE_REPLY', 'decision is required.'), true
       }
       if (body.message !== undefined && typeof body.message !== 'string') {
-        return sendFn(400, { error: 'message must be a string.' }), true
+        return sendError(sendFn, 400, 'INVALID_GATE_REPLY', 'message must be a string.'), true
       }
       const result = writeGateReply(runId, body.gateInstanceId, body.decision, body.message ?? '')
-      if (!result.ok) return sendFn(result.status ?? 400, { error: result.error }), true
+      if (!result.ok) return sendError(sendFn, result.status ?? 400, 'INVALID_GATE_REPLY', String(result.error)), true
       return sendFn(200, { ok: true, decision: body.decision }), true
     }
 
@@ -590,16 +591,12 @@ export function createRunRouter({
 
     // GET /api/review-gate — DEPRECATED: 410 Gone
     if (method === 'GET' && path === '/api/review-gate') {
-      return sendFn(410, {
-        error: 'DEPRECATED: global /api/review-gate removed. Use GET /api/factory/runs/:runId/review-gate instead.',
-      }), true
+      return sendError(sendFn, 410, 'DEPRECATED_ROUTE', 'DEPRECATED: global /api/review-gate removed. Use GET /api/factory/runs/:runId/review-gate instead.'), true
     }
 
     // POST /api/review-gate/reply — DEPRECATED: 410 Gone
     if (method === 'POST' && path === '/api/review-gate/reply') {
-      return sendFn(410, {
-        error: 'DEPRECATED: global /api/review-gate/reply removed. Use POST /api/factory/runs/:runId/review-gate/reply instead.',
-      }), true
+      return sendError(sendFn, 410, 'DEPRECATED_ROUTE', 'DEPRECATED: global /api/review-gate/reply removed. Use POST /api/factory/runs/:runId/review-gate/reply instead.'), true
     }
 
     return false

@@ -1,13 +1,10 @@
 import { WorkflowProjectionStoreError, WORKFLOW_STORE_ERROR_CODES } from '../lib/workflow-projection-store.mjs'
 import { validateWorkflowNamespaceId } from './workflow-projection-routes.mjs'
 import { NAMESPACE_METRICS_SCOPES, parseNamespaceMetricsLimit } from '../lib/factory-operational-metrics-namespace-projector.mjs'
+import { sendError as errorResponse } from './http-utils.mjs'
 
 const SCOPES = new Set(['self', 'descendants'])
 const NAMESPACE_SCOPES = new Set(NAMESPACE_METRICS_SCOPES)
-
-function errorResponse(send, status, code, message) {
-  return send(status, { error: { code, message } })
-}
 
 function parseObservedAt(value, clock) {
   const candidate = value ?? clock.now()

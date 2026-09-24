@@ -4,9 +4,9 @@ import { WorkflowHumanInteractionError } from '../lib/workflow-human-interaction
 import { validateWorkflowEvidenceInput } from '../lib/workflow-evidence.mjs'
 import { validateWorkflowTransitionRequest } from '../lib/workflow-transition-policy.mjs'
 import { validateWorkflowNamespaceId } from './workflow-projection-routes.mjs'
+import { sendError } from './http-utils.mjs'
 const SAFE_ACTOR=/^[A-Za-z0-9][A-Za-z0-9._:@-]{0,255}$/
 const ALLOWED_OPEN=new Set(['stepId','expectedRevision','prompt','actions','idempotencyKey'])
-const sendError=(send,status,code,message)=>send(status,{error:{code,message}})
 const interactionStatus=code=>code==='INTERACTION_NOT_FOUND'||code==='WORKFLOW_NOT_FOUND'?404:code==='UNAUTHENTICATED_ACTOR'||code==='TRUST_CONTEXT_UNAVAILABLE'?401:['INVALID_REPLY','INVALID_INTERACTION','ACTION_NOT_ALLOWED'].includes(code)?400:409
 const openBody=body=>body&&typeof body==='object'&&!Array.isArray(body)&&!Object.keys(body).some(key=>!ALLOWED_OPEN.has(key))&&typeof body.stepId==='string'&&Number.isSafeInteger(body.expectedRevision)&&body.expectedRevision>=1&&typeof body.prompt==='string'&&body.prompt.length>0&&body.prompt.length<=2000&&typeof body.idempotencyKey==='string'&&body.idempotencyKey.length>0&&body.idempotencyKey.length<=128&&!/[\r\n]/.test(body.idempotencyKey)&&Array.isArray(body.actions)&&body.actions.length===2&&body.actions.every(action=>action&&typeof action==='object'&&!Array.isArray(action)&&!Object.keys(action).some(key=>!['id','label'].includes(key))&&['approve','reject'].includes(action.id)&&typeof action.label==='string'&&action.label.length>0&&action.label.length<=128)&&new Set(body.actions.map(action=>action.id)).size===2
 export async function handleWorkflowHumanInteractionRequest({method,path,url,readBody,send,projectionStore,interactionStore,evidenceStore,definitionRegistry,identity,controllerIdentity,resumeDispatcher,notifier,log=console}){
