@@ -241,8 +241,9 @@ export class ExchangeStateService {
       : this.controller.downloadNamespaceFileExchange(id, path)
     // The generated method is typed Observable<string> but requests responseType:'blob'
     // (Accept '*/*'), so at runtime it yields a Blob.
+    const blobDownload$ = download$ as unknown as Observable<Blob>
     return new Promise((resolve) => {
-      ;(download$ as unknown as Observable<Blob>).subscribe({
+      blobDownload$.subscribe({
         next: (body) => {
           this.saveBlob(body, filename)
           resolve({ success: true })

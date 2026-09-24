@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.sdk.caseEvent.FactoryCheckpointRef
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import java.util.UUID
 
@@ -86,5 +87,12 @@ sealed class AgentInterrupt(
         val options: List<String>? = null,
         val questionType: QuestionType = QuestionType.FREE_TEXT,
         val userId: UUID? = null,
+        /**
+         * When non-null, the user's answer must be submitted to the Factory and accepted
+         * before [io.whozoss.agentos.sdk.caseEvent.AnswerEvent] is persisted and the
+         * agent is resumed. Set by [io.whozoss.agentos.factory.FactoryRequestHumanDecisionTool]
+         * from the Factory interaction-open response. Null for ordinary questions.
+         */
+        val factoryCheckpoint: FactoryCheckpointRef? = null,
     ) : AgentInterrupt("Awaiting user answer")
 }

@@ -37,26 +37,6 @@ export class NamespaceFormComponent implements OnInit {
     defaultAgentName: new FormControl<string>('', { nonNullable: true }),
   })
 
-  protected get nameControl() {
-    return this.form.controls.name
-  }
-
-  protected get descriptionControl() {
-    return this.form.controls.description
-  }
-
-  protected get configPathControl() {
-    return this.form.controls.configPath
-  }
-
-  protected get externalIdControl() {
-    return this.form.controls.externalId
-  }
-
-  protected get defaultAgentNameControl() {
-    return this.form.controls.defaultAgentName
-  }
-
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
@@ -80,11 +60,13 @@ export class NamespaceFormComponent implements OnInit {
       .subscribe({
         next: (ns) => {
           this.existingNamespace = ns
-          this.nameControl.setValue(ns.name)
-          this.descriptionControl.setValue(ns.description ?? '')
-          this.configPathControl.setValue(ns.configPath ?? '')
-          this.externalIdControl.setValue(ns.externalId ?? '')
-          this.defaultAgentNameControl.setValue(ns.defaultAgentName ?? '')
+          this.form.setValue({
+            name: ns.name,
+            description: ns.description ?? '',
+            configPath: ns.configPath ?? '',
+            externalId: ns.externalId ?? '',
+            defaultAgentName: ns.defaultAgentName ?? '',
+          })
           this.isLoading.set(false)
         },
         error: () => {
@@ -95,21 +77,27 @@ export class NamespaceFormComponent implements OnInit {
   }
 
   protected submit(): void {
-    if (this.nameControl.invalid || this.isSubmitting()) return
+    if (this.form.controls.name.invalid || this.isSubmitting()) return
+
+    // Guard explicite avant d'utiliser l'id en mode édition
+    if (this.isEditMode() && !this.existingNamespace?.id) {
+      this.isSubmitting.set(false)
+      return
+    }
 
     this.isSubmitting.set(true)
 
     const payload: Namespace = {
       ...this.existingNamespace,
-      name: this.nameControl.value.trim(),
-      description: this.descriptionControl.value.trim() || undefined,
-      configPath: this.configPathControl.value.trim() || undefined,
-      externalId: this.externalIdControl.value.trim() || undefined,
-      defaultAgentName: this.defaultAgentNameControl.value.trim() || undefined,
+      name: this.form.controls.name.value.trim(),
+      description: this.form.controls.description.value.trim() || undefined,
+      configPath: this.form.controls.configPath.value.trim() || undefined,
+      externalId: this.form.controls.externalId.value.trim() || undefined,
+      defaultAgentName: this.form.controls.defaultAgentName.value.trim() || undefined,
     }
 
     const call$ = this.isEditMode()
-      ? this.namespaceController.updateNamespace(this.existingNamespace!.id ?? '', payload)
+      ? this.namespaceController.updateNamespace(this.existingNamespace!.id!, payload)
       : this.namespaceController.createNamespace(payload)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({

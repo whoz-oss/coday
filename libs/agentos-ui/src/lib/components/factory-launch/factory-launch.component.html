@@ -1,0 +1,279 @@
+<div class="factory-launch">
+  <header class="factory-launch__header">
+    <button class="factory-launch__back" type="button" (click)="cancel()" aria-label="Back to runs list">
+      <span aria-hidden="true">&larr;</span> Runs
+    </button>
+    <h1 class="factory-launch__title">New run</h1>
+  </header>
+
+  <form class="factory-launch__form" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <!-- Workflow -->
+    <div class="factory-launch__field factory-launch__field--half">
+      <label class="factory-launch__label" for="fl-workflow">Workflow</label>
+      <select id="fl-workflow" class="factory-launch__select" formControlName="workflow">
+        <optgroup label="Workflows">
+          <option value="fix-loop">fix-loop &mdash; single editor</option>
+          <option value="us-loop">us-loop &mdash; analyst + editor</option>
+        </optgroup>
+        <optgroup label="Diagnostics">
+          <option value="agentos-smoke">agentos-smoke &mdash; validate AgentOS chain</option>
+          <option value="backend-oracle-check">backend-oracle-check &mdash; compile backend</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <!-- Domain -->
+    <div class="factory-launch__field factory-launch__field--half">
+      <label class="factory-launch__label" for="fl-domain">Domain</label>
+      <select id="fl-domain" class="factory-launch__select" formControlName="domain">
+        <option value="front">front</option>
+        <option value="back">back</option>
+      </select>
+    </div>
+
+    <!-- Agent (fix-loop / agentos-smoke) -->
+    @if (isSingleAgent()) {
+      <div class="factory-launch__field factory-launch__field--half">
+        <label class="factory-launch__label" for="fl-agent">
+          Agent <span class="factory-launch__req" aria-hidden="true">*</span>
+        </label>
+        @if (agentsLoading()) {
+          <p class="factory-launch__hint" role="status">Loading agents&hellip;</p>
+        } @else if (!agentsManual()) {
+          <select id="fl-agent" class="factory-launch__select" formControlName="agent">
+            <option value="">-- choose --</option>
+            @for (agent of usableAgents(); track agent.name) {
+              <option [value]="agent.name">{{ agentLabel(agent) }}</option>
+            }
+            @if (otherAgents().length > 0) {
+              <optgroup label="Not usable as phase role">
+                @for (agent of otherAgents(); track agent.name) {
+                  <option [value]="agent.name">{{ agentLabel(agent) }}</option>
+                }
+              </optgroup>
+            }
+          </select>
+          @if (agentsError()) {
+            <p class="factory-launch__hint factory-launch__hint--warn" role="alert">{{ agentsError() }}</p>
+          }
+        } @else {
+          <!-- Manual fallback when AgentOS is unreachable -->
+          <input
+            id="fl-agent"
+            class="factory-launch__input"
+            type="text"
+            placeholder="factory-editor"
+            formControlName="agent"
+            autocomplete="off"
+          />
+          @if (agentsError()) {
+            <p class="factory-launch__hint factory-launch__hint--warn" role="alert">{{ agentsError() }}</p>
+          }
+        }
+      </div>
+    }
+
+    <!-- Analyst + Editor (us-loop) -->
+    @if (isTwoAgent()) {
+      <div class="factory-launch__field factory-launch__field--half">
+        <label class="factory-launch__label" for="fl-analyst">
+          Analyst <span class="factory-launch__req" aria-hidden="true">*</span>
+          <span class="factory-launch__opt">(required for root verification)</span>
+        </label>
+        @if (agentsLoading()) {
+          <p class="factory-launch__hint" role="status">Loading agents&hellip;</p>
+        } @else if (!agentsManual()) {
+          <select id="fl-analyst" class="factory-launch__select" formControlName="analyst">
+            <option value="">-- choose (or use default) --</option>
+            @for (agent of usableAgents(); track agent.name) {
+              <option [value]="agent.name">{{ agentLabel(agent) }}</option>
+            }
+            @if (otherAgents().length > 0) {
+              <optgroup label="Not usable as phase role">
+                @for (agent of otherAgents(); track agent.name) {
+                  <option [value]="agent.name">{{ agentLabel(agent) }}</option>
+                }
+              </optgroup>
+            }
+          </select>
+          @if (agentsError()) {
+            <p class="factory-launch__hint factory-launch__hint--warn" role="alert">{{ agentsError() }}</p>
+          }
+        } @else {
+          <!-- Manual fallback when AgentOS is unreachable -->
+          <input
+            id="fl-analyst"
+            class="factory-launch__input"
+            type="text"
+            placeholder="factory-analyst"
+            formControlName="analyst"
+            autocomplete="off"
+          />
+          @if (agentsError()) {
+            <p class="factory-launch__hint factory-launch__hint--warn" role="alert">{{ agentsError() }}</p>
+          }
+        }
+      </div>
+      <div class="factory-launch__field factory-launch__field--half">
+        <label class="factory-launch__label" for="fl-editor">
+          Editor <span class="factory-launch__req" aria-hidden="true">*</span>
+          <span class="factory-launch__opt">(required for root verification)</span>
+        </label>
+        @if (agentsLoading()) {
+          <p class="factory-launch__hint" role="status">Loading agents&hellip;</p>
+        } @else if (!agentsManual()) {
+          <select id="fl-editor" class="factory-launch__select" formControlName="editor">
+            <option value="">-- choose (or use default) --</option>
+            @for (agent of usableAgents(); track agent.name) {
+              <option [value]="agent.name">{{ agentLabel(agent) }}</option>
+            }
+            @if (otherAgents().length > 0) {
+              <optgroup label="Not usable as phase role">
+                @for (agent of otherAgents(); track agent.name) {
+                  <option [value]="agent.name">{{ agentLabel(agent) }}</option>
+                }
+              </optgroup>
+            }
+          </select>
+          @if (agentsError()) {
+            <p class="factory-launch__hint factory-launch__hint--warn" role="alert">{{ agentsError() }}</p>
+          }
+        } @else {
+          <!-- Manual fallback when AgentOS is unreachable -->
+          <input
+            id="fl-editor"
+            class="factory-launch__input"
+            type="text"
+            placeholder="factory-editor"
+            formControlName="editor"
+            autocomplete="off"
+          />
+          @if (agentsError()) {
+            <p class="factory-launch__hint factory-launch__hint--warn" role="alert">{{ agentsError() }}</p>
+          }
+        }
+      </div>
+    }
+
+    <!-- Task -->
+    <div class="factory-launch__field factory-launch__field--full">
+      <label class="factory-launch__label" for="fl-task">
+        Task <span class="factory-launch__req" aria-hidden="true">*</span>
+      </label>
+      <textarea
+        id="fl-task"
+        class="factory-launch__textarea"
+        rows="4"
+        placeholder="Describe the change to make&hellip;"
+        formControlName="task"
+      ></textarea>
+    </div>
+
+    <!-- Scope -->
+    <div class="factory-launch__field factory-launch__field--full">
+      <label class="factory-launch__label" for="fl-scope">
+        Scope <span class="factory-launch__opt">(optional &mdash; files or folders the agent may touch)</span>
+      </label>
+      <textarea
+        id="fl-scope"
+        class="factory-launch__textarea"
+        rows="2"
+        placeholder="apps/client/src/app/components/..."
+        formControlName="scope"
+      ></textarea>
+    </div>
+
+    <!-- Jira ticket -->
+    <div class="factory-launch__field factory-launch__field--half">
+      <label class="factory-launch__label" for="fl-ticket">
+        Jira ticket <span class="factory-launch__opt">(optional)</span>
+      </label>
+      <input
+        id="fl-ticket"
+        class="factory-launch__input"
+        type="text"
+        placeholder="PROJ-1234 or full URL"
+        formControlName="ticket"
+        autocomplete="off"
+      />
+    </div>
+
+    <!-- Oracle command -->
+    <div class="factory-launch__field factory-launch__field--half">
+      <label class="factory-launch__label" for="fl-command">
+        Oracle command <span class="factory-launch__opt">(optional &mdash; default for domain if empty)</span>
+      </label>
+      <input
+        id="fl-command"
+        class="factory-launch__input"
+        type="text"
+        placeholder="pnpm nx affected -t frontend-test"
+        formControlName="command"
+        autocomplete="off"
+      />
+    </div>
+
+    <!-- Target repo -->
+    <div class="factory-launch__field factory-launch__field--full">
+      @if (namespaceRoot(); as root) {
+        <!-- Derived from namespace configPath (parent directory) — show as readonly info -->
+        <p class="factory-launch__hint factory-launch__hint--info" role="status">
+          Repository root: <code>{{ root }}</code>
+          <span class="factory-launch__opt">(derived from namespace config path)</span>
+        </p>
+      } @else {
+        <label class="factory-launch__label" for="fl-root">
+          Target repo (FACTORY_ROOT)
+          @if (!rootLoading() && !derivedRoot() && !rootError()) {
+            <span class="factory-launch__opt">(auto-derived from agent integration when possible)</span>
+          }
+        </label>
+        @if (rootLoading()) {
+          <p class="factory-launch__hint" role="status">Deriving repository root from agent integration&hellip;</p>
+        } @else {
+          <input
+            id="fl-root"
+            class="factory-launch__input"
+            type="text"
+            placeholder="/path/to/repo"
+            formControlName="root"
+            autocomplete="off"
+          />
+          @if (rootError()) {
+            <p class="factory-launch__hint factory-launch__hint--warn" role="alert">{{ rootError() }}</p>
+          }
+          @if (rootMismatch()) {
+            <p class="factory-launch__hint factory-launch__hint--warn" role="alert">
+              Root mismatch: the agent's FILE_ACCESS integration points to &ldquo;{{ derivedRoot() }}&rdquo; but you
+              entered a different path. Clear the field or match the agent's root to launch.
+            </p>
+          }
+          @if (!derivedRoot() && !rootError() && !form.controls.root.value.trim()) {
+            <p class="factory-launch__hint factory-launch__hint--warn" role="alert">
+              No repository root configured. Set a Repository root on the namespace or enter one manually.
+            </p>
+          }
+        }
+      }
+    </div>
+
+    <!-- Launch error -->
+    @if (launchError()) {
+      <div class="factory-launch__field factory-launch__field--full">
+        <p class="factory-launch__error" role="alert">{{ launchError() }}</p>
+      </div>
+    }
+
+    <!-- Actions -->
+    <div class="factory-launch__actions">
+      <button class="factory-launch__btn factory-launch__btn--primary" type="submit" [disabled]="!canSubmit()">
+        @if (isLaunching()) {
+          Launching&hellip;
+        } @else {
+          Launch
+        }
+      </button>
+      <button class="factory-launch__btn" type="button" (click)="cancel()" [disabled]="isLaunching()">Cancel</button>
+    </div>
+  </form>
+</div>

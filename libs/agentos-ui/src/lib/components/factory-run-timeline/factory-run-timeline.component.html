@@ -1,0 +1,82 @@
+@if (lanes().length) {
+  <section class="timeline" aria-label="Factory run timeline">
+    <header class="timeline__header">
+      <span>Timeline &middot; {{ lanes().length }} actors &middot; {{ phases().length }} phases</span>
+      <span class="timeline__legend"><i class="timeline__legend-line"></i> elapsed +{{ nowLabel() }}</span>
+    </header>
+    <div class="timeline__canvas">
+      <div class="timeline__row timeline__row--axis">
+        <div class="timeline__gutter">Actor</div>
+        <div class="timeline__track timeline__track--axis">
+          <div class="timeline__plot">
+            @for (tick of ticks(); track tick.offset) {
+              <span
+                class="timeline__tick-label"
+                [class.timeline__tick-label--last]="tick.isLast"
+                [style.left]="tick.left"
+                >{{ tick.label }}</span
+              >
+            }
+            <i class="timeline__playhead-caret" [style.left]="nowLeft()"></i>
+          </div>
+        </div>
+      </div>
+      @for (lane of lanes(); track trackLane($index, lane)) {
+        <div class="timeline__row" [style.--lane-height.px]="lane.height">
+          <div class="timeline__gutter timeline__gutter--lane">
+            <span class="timeline__kind" [class.timeline__kind--agent]="lane.kind === 'agent'">{{ lane.kind }}</span>
+            <strong>{{ lane.actor }}</strong
+            ><small>{{ lane.phases.length }} phase{{ lane.phases.length === 1 ? '' : 's' }}</small>
+          </div>
+          <div class="timeline__track" [style.height.px]="lane.height">
+            <div class="timeline__plot">
+              @for (tick of ticks(); track tick.offset) {
+                <i class="timeline__grid-line" [style.left]="tick.left"></i>
+              }
+              <i class="timeline__playhead" [style.left]="nowLeft()"></i
+              ><i class="timeline__spine" [style.top.px]="lane.spineTop"></i>
+              @for (bar of lane.bars; track trackBar($index, bar)) {
+                <button
+                  type="button"
+                  class="timeline__bar"
+                  [class]="'timeline__bar timeline__bar--' + bar.item.status"
+                  [class.is-selected]="selectedPhaseIndex() === bar.item.phaseIndex"
+                  [class.timeline__bar--compact]="bar.compact"
+                  [class.timeline__bar--compact-right]="bar.compact && bar.compactGrow === 'right'"
+                  [class.timeline__bar--compact-center]="bar.compact && bar.compactGrow === 'center'"
+                  [class.timeline__bar--compact-left]="bar.compact && bar.compactGrow === 'left'"
+                  [style.left]="bar.compact ? bar.compactAnchor : bar.left"
+                  [style.width]="bar.compact ? null : bar.width"
+                  [style.top.px]="bar.top"
+                  [style.height.px]="30"
+                  [attr.aria-pressed]="selectedPhaseIndex() === bar.item.phaseIndex"
+                  [attr.aria-label]="bar.item.phase.name + ', ' + bar.duration"
+                  (click)="select(bar.item.phaseIndex)"
+                >
+                  <i></i>
+                  @if (bar.wide) {
+                    <span>{{ bar.item.phase.name }}</span
+                    ><small>{{ bar.duration }}</small>
+                  }
+                </button>
+                @if (!bar.wide) {
+                  <span
+                    class="timeline__callout"
+                    [class]="'timeline__callout timeline__callout--' + bar.item.status"
+                    [class.timeline__callout--flipped]="bar.calloutFlipped"
+                    [style.left]="bar.calloutFlipped ? null : bar.calloutOffset"
+                    [style.right]="bar.calloutFlipped ? bar.calloutOffset : null"
+                    [style.top.px]="bar.calloutTop"
+                    ><i></i>{{ bar.item.phase.name }} &middot; {{ bar.duration }}</span
+                  >
+                }
+              }
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  </section>
+} @else {
+  <p class="timeline__empty">Timeline unavailable because phase timestamps were not recorded.</p>
+}

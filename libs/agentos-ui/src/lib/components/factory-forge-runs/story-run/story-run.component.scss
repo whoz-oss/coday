@@ -1,0 +1,474 @@
+@use '../_forge-tokens' as forge;
+
+:host {
+  @include forge.host;
+  @include forge.corners;
+
+  container-type: inline-size;
+}
+
+.blueprint {
+  @include forge.blueprint;
+}
+.mono {
+  @include forge.mono(12px);
+}
+
+.kicker {
+  @include forge.kicker;
+
+  &--accent {
+    color: var(--sf-accent-ink);
+  }
+  &--human {
+    color: #6f4a10;
+  }
+  &--pale {
+    color: var(--color-accent-300, #b9cee0);
+  }
+}
+
+.chip {
+  @include forge.chip;
+
+  &--sm {
+    font-size: 9.5px;
+    padding: 1px 7px;
+  }
+  &--human {
+    background: #f4e8d2;
+    color: #6f4a10;
+  }
+}
+
+.action {
+  @include forge.action-button;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ── Écran ──────────────────────────────────────────────────────────────────── */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 26px 28px;
+
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px 24px;
+  }
+
+  &__title {
+    margin: 0;
+    font-family: var(--sf-heading);
+    font-size: 30px;
+    font-weight: 600;
+  }
+
+  &__subtitle {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: var(--sf-muted);
+  }
+
+  &__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 20px;
+    margin: 0;
+
+    dt {
+      @include forge.kicker;
+      font-size: 10px;
+    }
+    dd {
+      margin: 0;
+      font-size: 13px;
+    }
+  }
+}
+
+.interrupted {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--sf-muted);
+  background: repeating-linear-gradient(45deg, #e7e7ea, #e7e7ea 6px, #dcdcdf 6px, #dcdcdf 12px);
+  font-size: 13px;
+}
+
+.plate {
+  padding: 18px 20px;
+  max-width: 1280px;
+
+  &--query {
+    border-color: #6f4a10;
+  }
+}
+
+/* ── Question de l'agent ────────────────────────────────────────────────────── */
+
+.query {
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px 14px;
+  }
+
+  &__where {
+    font-size: 12.5px;
+    color: var(--sf-muted);
+  }
+
+  &__text {
+    margin: 10px 0 0;
+    max-width: 80ch;
+    font-size: 14px;
+    line-height: 1.6;
+    text-wrap: pretty;
+  }
+
+  &__note {
+    margin: 10px 0 0;
+    font-size: 11.5px;
+    color: var(--sf-muted);
+  }
+}
+
+/* ── Volet de l'étape ─────────────────────────────────────────────────────────────── */
+
+.detail {
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--sf-rule);
+  }
+
+  &__name {
+    margin: 0;
+    font-family: var(--sf-heading);
+    font-size: 24px;
+    font-weight: 600;
+  }
+
+  &__level {
+    padding: 1px 8px;
+    border: 1px solid var(--sf-line);
+    font-family: var(--sf-heading);
+    font-size: 10.5px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--sf-muted);
+  }
+
+  &__owner {
+    margin-left: auto;
+    font-size: 12.5px;
+    color: var(--sf-muted);
+  }
+
+  &__lead {
+    margin: 12px 0 0;
+    max-width: 82ch;
+    font-size: 14px;
+    line-height: 1.6;
+    text-wrap: pretty;
+  }
+
+  &__out {
+    margin: 16px 0 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--sf-line);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--sf-muted);
+  }
+}
+
+.counters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 14px 0 0;
+  border: 1px solid var(--sf-line);
+
+  > div {
+    flex: 1 1 120px;
+    padding: 9px 14px;
+    border-right: 1px solid var(--sf-line);
+  }
+
+  dt {
+    @include forge.kicker;
+    font-size: 10px;
+  }
+
+  dd {
+    margin: 0;
+    font-family: var(--sf-heading);
+    font-size: 17px;
+    font-weight: 600;
+  }
+}
+
+.empty {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px dashed var(--sf-line);
+  font-size: 13px;
+  color: var(--sf-muted);
+}
+
+/* ── Sous-étapes ─────────────────────────────────────────────────────────────────────── */
+
+.group {
+  margin-top: 18px;
+
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--sf-line);
+
+    h3 {
+      margin: 0;
+      font-family: var(--sf-heading);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: var(--sf-accent-ink);
+    }
+
+    span {
+      font-size: 11.5px;
+      color: var(--sf-muted);
+    }
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+}
+
+.substep {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 13px 15px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--sf-accent-wash);
+  }
+
+  @include forge.focus-ring;
+
+  &__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  &__label {
+    font-family: var(--sf-heading);
+    font-size: 17px;
+    font-weight: 600;
+  }
+
+  &__actor {
+    font-family: var(--sf-heading);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--sf-accent-ink);
+  }
+
+  &__does {
+    margin-top: 4px;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+
+  &__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 9px;
+    padding-top: 8px;
+    border-top: 1px solid var(--sf-line);
+  }
+
+  &__metric {
+    font-size: 11.5px;
+    color: var(--color-accent-800, #2d4761);
+  }
+
+  &__more {
+    font-family: var(--sf-heading);
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--sf-accent-ink);
+  }
+}
+
+.delta {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 11.5px;
+
+  &__before,
+  &__after {
+    flex: 1;
+    padding: 4px 7px;
+  }
+
+  &__before {
+    background: var(--color-neutral-200, #e7e7ea);
+    color: var(--sf-muted);
+  }
+}
+
+.decision {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid #6f4a10;
+  background: #f9f3e7;
+
+  p {
+    margin: 7px 0 0;
+    max-width: 78ch;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+}
+
+/* ── Tiroir de preuves ──────────────────────────────────────────────────────────── */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgb(29 31 32 / 38%);
+  z-index: 40;
+}
+
+.drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(470px, 92vw);
+  z-index: 41;
+  padding: 26px 26px 32px;
+  background: var(--sf-accent-deep);
+  color: var(--sf-bg);
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg, 0 18px 40px rgb(29 31 32 / 22%));
+
+  &__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--sf-accent-ink);
+
+    h3 {
+      margin: 2px 0 0;
+      font-family: var(--sf-heading);
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    p {
+      margin: 2px 0 0;
+      font-size: 12.5px;
+      color: var(--color-accent-200, #d5e2ee);
+    }
+  }
+
+  &__close {
+    padding: 0 4px;
+    background: transparent;
+    border: none;
+    font-family: var(--sf-heading);
+    font-size: 24px;
+    line-height: 1;
+    color: var(--color-accent-200, #d5e2ee);
+    cursor: pointer;
+
+    &:hover {
+      color: var(--sf-bg);
+    }
+
+    @include forge.focus-ring;
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    margin: 18px 0 0;
+
+    > div {
+      display: grid;
+      gap: 2px;
+      padding-bottom: 9px;
+      border-bottom: 1px solid var(--color-accent-800, #2d4761);
+    }
+
+    dt {
+      @include forge.kicker(var(--color-accent-300, #b9cee0));
+
+      font-size: 10px;
+      letter-spacing: 0.14em;
+    }
+
+    dd {
+      @include forge.mono(12px);
+
+      margin: 0;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  &__note {
+    margin: 18px 0 0;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--color-accent-200, #d5e2ee);
+  }
+}
+
+@container (max-width: 780px) {
+  .screen {
+    padding: 20px 16px;
+  }
+  .detail__owner {
+    margin-left: 0;
+  }
+}

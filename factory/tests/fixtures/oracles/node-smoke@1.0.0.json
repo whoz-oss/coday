@@ -1,0 +1,17 @@
+{
+  "applicable": {
+    "stepIds": ["verify-code"],
+    "workflowTypes": ["oracle-smoke"]
+  },
+  "argv": ["node", "factory/tests/fixtures/oracle-process/pass.mjs"],
+  "cwd": "repo-root",
+  "domain": "factory",
+  "id": "node-smoke",
+  "schemaVersion": "1",
+  "success": {
+    "requireWork": true,
+    "rule": "exit-code"
+  },
+  "timeoutMs": 10000,
+  "version": "1.0.0"
+}

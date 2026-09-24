@@ -245,6 +245,13 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformAgentConfigsComponent
               ),
           },
+          // --- Factory runs (namespace selected through ?ns= query state) ---
+          {
+            path: 'factory',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/factory-runs/factory-runs.component').then((m) => m.FactoryRunsComponent),
+          },
           // --- User profile ---
           {
             path: 'me',

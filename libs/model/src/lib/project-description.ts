@@ -5,8 +5,25 @@ import { AiProviderConfig } from './ai-provider-config'
 import { PromptChain } from './prompt-chain'
 import { McpConfig } from './mcp-server-config'
 
+export interface FactoryProjectConfig {
+  /** Transitional Express adapter; disabled unless explicitly true. */
+  enabled?: boolean
+  /** Trusted Factory dashboard origin, for example http://127.0.0.1:3141. */
+  baseUrl?: string
+  /** Trusted AgentOS namespace UUID used by Factory storage and SSE. */
+  namespaceId?: string
+  /** Trusted runtime registry key. Defaults to coday-express-transitional. Never model-authored. */
+  runtimeId?: string
+}
+
 export interface ProjectDescription extends WithDocs {
   ai?: AiProviderConfig[]
+
+  /**
+   * Transitional Express-to-Factory adapter configuration.
+   * The durable implementation remains the AgentOS FactoryPublishProjectionTool.
+   */
+  factory?: FactoryProjectConfig
 
   /**
    * MCP (Model Context Protocol) server configurations

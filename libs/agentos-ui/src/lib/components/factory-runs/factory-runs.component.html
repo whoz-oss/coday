@@ -1,0 +1,196 @@
+<section class="factory-runs" aria-labelledby="factory-runs-title">
+  @if (showLaunchForm() && namespaceId()) {
+    <agentos-factory-launch
+      [namespaceId]="namespaceId()!"
+      [namespace]="selectedNamespace()"
+      (launched)="onLaunched($event)"
+      (cancelled)="onLaunchCancelled()"
+    />
+  } @else {
+    <header class="factory-runs__header">
+      @if (!isEmbedded()) {
+        <div>
+          <h1 id="factory-runs-title">Factory runs</h1>
+          @if (namespaceName(); as name) {
+            <p>Runs for {{ name }}.</p>
+          }
+        </div>
+      } @else {
+        <!-- Spacer so actions stay right-aligned when the heading is hidden -->
+        <div aria-hidden="true"></div>
+      }
+      <!-- Legacy Factory actions hidden — Forge UI takes over -->
+      <div class="factory-runs__actions"></div>
+    </header>
+
+    @if (!namespaceId()) {
+      <p class="factory-runs__notice" role="status">Choose a namespace to view its Factory runs.</p>
+    } @else if (namespacesLoading()) {
+      <p class="factory-runs__notice" role="status">Loading namespaces&hellip;</p>
+    } @else if (!namespaceAvailable()) {
+      <p class="factory-runs__notice" role="alert">This namespace is unavailable or you do not have access to it.</p>
+    } @else if (state.loading()) {
+      <p class="factory-runs__notice" role="status">Loading Factory runs&hellip;</p>
+    } @else if (state.error(); as error) {
+      <div class="factory-runs__notice" role="alert">
+        <p>{{ error }}</p>
+        <button type="button" class="factory-runs__refresh" (click)="state.refresh()">Try again</button>
+      </div>
+    } @else if (state.runs().length === 0) {
+      <!-- Legacy empty state hidden — Forge UI displayed below -->
+    } @else {
+      <div class="factory-runs__table-wrap">
+        <table>
+          <caption class="sr-only">
+            Factory runs for
+            {{
+              namespaceName()
+            }}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Run</th>
+              <th scope="col">Status</th>
+              <th scope="col">Started</th>
+              <th scope="col">Ended</th>
+              <th scope="col">Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (run of state.runs(); track run.runId) {
+              <tr [class.factory-runs__row--selected]="selectedRunId() === run.runId">
+                <th scope="row">
+                  <a
+                    href="javascript:void(0)"
+                    (click)="selectRun(run.runId)"
+                    [attr.aria-current]="selectedRunId() === run.runId ? 'true' : null"
+                    >{{ runTitle(run) }}</a
+                  >
+                  <span class="factory-runs__context">{{ runContext(run) }}</span>
+                </th>
+                <td>
+                  <span [class]="'factory-runs__status ' + statusClass(run.status)">{{ run.status }}</span>
+                </td>
+                <td>{{ formatDate(run.startedAt) }}</td>
+                <td>{{ formatDate(run.endedAt) }}</td>
+                <td>{{ formatDuration(run.durationMs) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    @if (selectedRunId() && namespaceAvailable()) {
+      @if (state.detailLoading()) {
+        <p class="factory-runs__notice" role="status">Loading Factory run detail&hellip;</p>
+      } @else if (state.namespaceMismatch()) {
+        <p class="factory-runs__notice" role="alert">This run does not belong to the selected namespace.</p>
+      } @else if (state.detailError(); as detailError) {
+        <p class="factory-runs__notice" role="alert">{{ detailError }}</p>
+      } @else if (state.selectedRun(); as run) {
+        <agentos-factory-run-detail
+          [run]="run"
+          [selectedPhaseIndex]="selectedPhaseIndex()"
+          (phaseSelected)="selectPhase($event)"
+        />
+      }
+    }
+
+    @if (namespaceAvailable()) {
+      <section class="factory-runs__workflows" aria-labelledby="generic-workflows-title">
+        <header class="factory-runs__section-header">
+          <div>
+            <h2 id="generic-workflows-title">Generic workflows</h2>
+            <p>Namespace-scoped, HTTP-authoritative workflow projections.</p>
+          </div>
+          <button type="button" class="factory-runs__refresh" (click)="workflowProjectionState.refresh()">
+            Refresh
+          </button>
+        </header>
+        <p class="factory-runs__sync" role="status">Synchronization: {{ workflowProjectionState.synchronization() }}</p>
+        <div class="factory-runs__workflow-tabs" role="group" aria-label="Workflow view">
+          <button type="button" [attr.aria-pressed]="workflowMode() === 'active'" (click)="workflowMode.set('active')">
+            Active workflows
+          </button>
+          <button
+            type="button"
+            [attr.aria-pressed]="workflowMode() === 'removed'"
+            (click)="workflowMode.set('removed')"
+          >
+            Removed workflows ({{ workflowProjectionState.removedWorkflows().length }})
+          </button>
+        </div>
+        @if (workflowProjectionState.actionError(); as actionError) {
+          <p class="factory-runs__notice" role="alert">{{ actionError }}</p>
+        }
+        @if (workflowProjectionState.loading()) {
+          <p class="factory-runs__notice" role="status">Loading generic workflows&hellip;</p>
+        } @else if (workflowProjectionState.error(); as workflowError) {
+          <p class="factory-runs__notice" role="alert">{{ workflowError }}</p>
+        } @else if (workflowMode() === 'active') {
+          @if (workflowProjectionState.workflows().length === 0) {
+            <p class="factory-runs__notice" role="status">
+              No active generic workflows are projected for this namespace.
+            </p>
+          }
+          <div class="factory-runs__workflow-cockpit">
+            <nav class="factory-runs__workflow-list" aria-label="Active workflows">
+              @for (workflow of workflowProjectionState.workflows(); track workflow.workflowId) {
+                <button
+                  type="button"
+                  class="factory-runs__workflow-item"
+                  [class.factory-runs__workflow-item--selected]="selectedWorkflow()?.workflowId === workflow.workflowId"
+                  [attr.aria-current]="selectedWorkflow()?.workflowId === workflow.workflowId ? 'true' : null"
+                  (click)="workflowProjectionState.selectWorkflow(workflow.workflowId)"
+                >
+                  <strong>{{ workflow.projection.title }}</strong>
+                  <span
+                    >{{ workflow.projection.workflowType }} · v{{ workflow.projection.schemaVersion }} · revision
+                    {{ workflow.revision }}</span
+                  >
+                  <span>Status: {{ workflow.projection.status.replace('_', ' ') }}</span>
+                  <span>{{ workflowStepSummary(workflow) }}</span>
+                  @if (workflowProjectionState.timings()[workflow.workflowId]; as timing) {
+                    <span>Elapsed: {{ formatDuration(timing.timing.totalElapsedMs) }}</span>
+                  }
+                </button>
+              }
+            </nav>
+            @if (selectedWorkflow(); as workflow) {
+              <div class="factory-runs__workflow-detail">
+                <agentos-factory-workflow-projection
+                  [snapshot]="workflow"
+                  [namespaceId]="namespaceId()!"
+                  [timing]="workflowProjectionState.timings()[workflow.workflowId]"
+                  [pending]="workflowPending(workflow.workflowId)"
+                  [selectedStepId]="selectedWorkflowStepId(workflow.workflowId)"
+                  (selectedStepIdChange)="selectWorkflowStep(workflow.workflowId, $event)"
+                  (removeRequested)="workflowProjectionState.remove($event)"
+                  (governedActionCompleted)="onGovernedActionCompleted($event)"
+                  (authoritativeRefreshRequested)="workflowProjectionState.refresh()"
+                />
+              </div>
+            }
+          </div>
+        } @else {
+          @if (workflowProjectionState.removedWorkflows().length === 0) {
+            <p class="factory-runs__notice" role="status">No removed workflows.</p>
+          }
+          <div class="factory-runs__workflow-list">
+            @for (workflow of workflowProjectionState.removedWorkflows(); track workflow.workflowId) {
+              <agentos-factory-workflow-projection
+                [snapshot]="workflow"
+                [namespaceId]="namespaceId()!"
+                mode="removed"
+                [pending]="workflowPending(workflow.workflowId)"
+                (restoreRequested)="workflowProjectionState.restore($event)"
+                (purgeRequested)="workflowProjectionState.purge($event)"
+              />
+            }
+          </div>
+        }
+      </section>
+    }
+  }
+</section>

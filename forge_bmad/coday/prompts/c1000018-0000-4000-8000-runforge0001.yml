@@ -1,0 +1,11 @@
+name: run-forge
+description: Start or resume the approval-gated BMAD Story workflow through the generic Factory run protocol.
+commands:
+  - |
+    @ProductEngineer Apply /run-factory with --workflow=bmad-story to this Forge/BMAD input. Preserve the Forge Run Protocol, deterministic forge-run-recon, workstream confirmation, explicit human confirmation, and every BMAD gate:
+    {{PARAMETERS}}
+webhookEnabled: false
+source: project
+createdBy: benjamin.valdes
+id: c1000018-0000-4000-8000-runforge0001
+createdAt: 2026-09-01T00:00:00.000Z

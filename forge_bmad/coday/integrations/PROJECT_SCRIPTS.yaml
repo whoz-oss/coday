@@ -1,0 +1,271 @@
+# This file was exported from a persisted IntegrationConfig. Paths under `parameters`
+# (e.g. workingDirectory, rootPath, cwd, args) are absolute and specific to the machine
+# that entered them.
+#
+# To make this file portable across developer machines, replace the part of each path
+# that matches the namespace's configPath with the token {{NAMESPACE_CONFIG_PATH}}.
+# It is resolved automatically at load time, only for files placed in
+# {configPath}/integrations/ (configs created through the API are not affected).
+#
+# Example: workingDirectory: /home/alice/repos/myproject
+#       -> workingDirectory: "{{NAMESPACE_CONFIG_PATH}}/.."
+#
+# Relative path segments following the token are kept as-is, not normalised:
+# "{{NAMESPACE_CONFIG_PATH}}/../scripts" works.
+#
+# Ported from the `scripts` section of coday.yaml (BASH plugin equivalent of the
+# legacy AssistantTools scripts). Keep both in sync manually until coday.yaml's
+# `scripts` mechanism is retired.
+name: "PROJECT_SCRIPTS"
+integrationType: "BASH"
+parameters:
+  workingDirectory: "{{NAMESPACE_CONFIG_PATH}}/.."
+  defaultTimeoutSeconds: 60
+  tools:
+    - name: "forge-run-recon"
+      description: |
+        Read-only deterministic reconnaissance for one Forge Run ticket. It validates
+        normalized Jira input (including optional ordered Gate markers), local evidence,
+        and registered BMad paths before an approval-gated next action is proposed.
+      parametersDescription: |
+        Required: --input <raw positional Forge Run input> and --jira-result <JSON>.
+        Found Jira results may include optional unique, ordered, non-contiguous gate_markers (gate_1 through gate_4).
+        Use {"status":"not_requested"} when no ticket/Jira read is requested for free-text intent.
+        Optional: --project-root <absolute-repository-root>.
+      command: "npx --yes --package ts-node@10.9.2 --package typescript@5.9.3 ts-node --project coday/scripts/tsconfig.json coday/scripts/forge-run-recon.ts PARAMETERS"
+    - name: "forge-workflow-sync"
+      description: |
+        Synchronizes one atomically updated authoritative Forge BMAD run YAML into
+        the generic WorkflowProjection store. Reads the route's data.changed result
+        to report published versus unchanged. Best-effort: publication errors do not
+        fail the agent workflow.
+      parametersDescription: |
+        Required positional argument: <TICKET_ID> (for example WZ-123).
+        Required env: NAMESPACE_ID or FACTORY_NAMESPACE_ID.
+        Optional env: FACTORY_SERVER_URL (default: http://localhost:3141).
+      command: "npx --yes --package ts-node@10.9.2 --package typescript@5.9.3 ts-node --project coday/scripts/tsconfig.json coday/scripts/forge-workflow-sync.ts PARAMETERS"
+      timeoutSeconds: 30
+
+    - name: "forge-gate2-record"
+      description: |
+        Records Gate 2 (Epic spec validated) in the Forge Factory ledger.
+        Must be called after the Epic spec file is finalized and G1 is approved.
+        Validates the spec against the Factory policy (scope patterns, oracle catalog)
+        and writes a g2_evaluated event to the JSONL ledger.
+        Returns idempotent if called again with the same spec hash.
+      parametersDescription: |
+        Required: --run-id <epic_runId> --spec-path <absolute-path-to-spec.md>
+        Optional: --namespace-id <uuid> (defaults to FACTORY_NAMESPACE_ID env var)
+        Example:
+          --run-id epic_fd71b96e-ad36-425b-ad0b-00eb45bebddc \
+          --spec-path /Users/.../sprint/forge/specs/WZ-34386.md
+      command: "npx --yes --package ts-node@10.9.2 --package typescript@5.9.3 ts-node --project coday/scripts/tsconfig.json coday/scripts/forge-gate2-record.ts PARAMETERS"
+      timeoutSeconds: 30
+
+    - name: "forge-factory-launch"
+      description: |
+        Creates a Forge EpicRun ledger in the target repository (forge/factory-runs/).
+        Calls the Factory server (running on Coday, default port 3141) via HTTP.
+        Invoke only after forge-run-recon has returned a confirmed mode and the human
+        has explicitly approved launching the Factory workflow.
+        The Factory server must be running: node factory/dashboard/server.mjs on Coday.
+      parametersDescription: |
+        Required: --request '<json>'
+        The JSON must contain:
+          roots.repoRoot: absolute path to the target repository (e.g. /Users/.../sprint)
+          epic: { id: "WZ-XXX", kind: "Epic" }
+          stories: [ { id: "WZ-YYY", kind: "Story" } ]
+        Optional env: FACTORY_URL (default: http://localhost:3141)
+        Example:
+          --request '{"roots":{"repoRoot":"/Users/.../sprint"},"epic":{"id":"WZ-123","kind":"Epic"},"stories":[{"id":"WZ-124","kind":"Story"}]}'
+      command: "npx --yes --package ts-node@10.9.2 --package typescript@5.9.3 ts-node --project coday/scripts/tsconfig.json coday/scripts/forge-factory-launch.ts PARAMETERS"
+      timeoutSeconds: 30
+
+    - name: "FORGE_COST__report"
+      description: |
+        Capture a Coday thread cost snapshot into a Forge run record at gate termination.
+        Captures cumulative thread.price only; it is not a gate or run total.
+      parametersDescription: |
+        Required: --forge-run-id <UUID v4>, --gate-attempt-started-at <ISO>,
+        and --thread-id <string>.
+      command: "npx --yes --package ts-node@10.9.2 --package typescript@5.9.3 ts-node --project forge/costs/tsconfig.json forge/costs/forge-cost-report.ts PARAMETERS"
+      path: null
+      timeoutSeconds: 60
+
+    - name: "build-frontend"
+      description: |
+        Builds the frontend, aphrodite and admin apps but does not run the tests.
+      command: "pnpm nx run-many --target=build --projects=aphrodite,admin,copilot-chat"
+      path: null
+      timeoutSeconds: 900
+
+    - name: "build-backend"
+      description: |
+        Builds the backend but does not run the tests.
+      command: "./gradlew build -x test"
+      path: "backend"
+      timeoutSeconds: 900
+
+    - name: "build-cli"
+      description: |
+        Builds the CLI but does not run the tests.
+      command: "pnpm nx run cli:build"
+      path: null
+      timeoutSeconds: 900
+
+    - name: "run-cypress-test"
+      description: |
+        Builds the frontend/e2e add and runs the cypress tests matching the given expression. Beware all cypress tests are run from `frontend` folder !
+      parametersDescription: |
+        Expression to run a specific spec file, ex: FILE_NAME can be run with argument `**/$FILE_NAME`
+      command: "(pnpm nx run e2e:e2e --spec PARAMETERS) || (cat frontend/apps/e2e/logs/cypress-log.txt 1>&2)"
+      path: null
+      timeoutSeconds: 900
+
+    - name: "run-playwright-test"
+      description: |
+        Runs a Playwright E2E test using nx. Use this for e2e-playwright and e2e-playwright-agentic projects.
+        The full command is passed as parameter, including the E2E_ENVIRONMENT variable and --grep filter.
+      parametersDescription: |
+        Full nx run command with environment and grep filter.
+
+        ### Examples
+
+        To run a standard E2E test:
+        `E2E_ENVIRONMENT=sprint-rc npx nx run e2e-playwright:e2e --grep "exact test name"`
+
+        To run an Agentic Studio E2E test:
+        `E2E_ENVIRONMENT=sprint-rc npx nx run e2e-playwright-agentic:e2e --grep "exact test name"`
+      command: "PARAMETERS"
+      path: null
+      timeoutSeconds: 900
+
+    - name: "run-frontend-test"
+      description: |
+        Runs a frontend test with nx. You must beforehand search the nx project name, and if needed, read the test file to run.
+          - extract from the test file path the directory name under `src` : that is the project name
+          - search the related `project.json` file to identify the related project, usually at same level as 'src' directory in the test file path.
+      parametersDescription: |
+        Parameter should be the nx project or lib to test
+
+        ### Examples
+
+        To run the `frontend/apps/pso-admin/src/app/app.component.spec.ts`, the project is `pso-admin` (as parent of `src`), so the parameter is then:
+        `pso-admin`
+        
+        To run the `frontend/libs/copilot-feature-chat` tests for the whole lib, the parameters are then:
+        `copilot-feature-chat`
+      command: "pnpm nx run PARAMETERS:frontend-test"
+      path: null
+      timeoutSeconds: 900
+
+    - name: "run-nx-generator"
+      description: |
+        Runs an Nx workspace generator to scaffold new libraries, components, or other workspace
+        artifacts using the project's custom generators.
+      parametersDescription: |
+        Full generator invocation arguments (everything after `pnpm nx g`), e.g.:
+        `@whoz/tools-workspace-plugin:whoz-component-lib --name=my-great-lib --path=aphrodite/feature`
+        
+        Whoz workspace generators are defined in `tools/workspace-plugin/generators.json`.
+        Available generators include: `whoz-component-lib`, `whoz-directive-lib`, `whoz-lib-track`,
+        `whoz-model-lib`, `whoz-pipe-lib`, `access-modifiers`.
+      command: "pnpm nx g PARAMETERS"
+      path: null
+      timeoutSeconds: 900
+
+    - name: "run-nx-reset"
+      description: |
+        Clears the Nx cache and daemon state. Use when cache seems stale or the daemon is
+        misbehaving. Equivalent to `nx reset`.
+      command: "pnpm nx reset"
+      path: null
+      timeoutSeconds: 120
+
+    - name: "run-nx-lint"
+      description: |
+        Runs ESLint on a specific Nx project via the `lint` target. Reports lint errors and
+        warnings for frontend and tools projects.
+      parametersDescription: |
+        The Nx project name to lint, e.g.: `aphrodite`, `copilot-chat`, `my-feature-lib`
+      command: "pnpm nx run PARAMETERS:lint"
+      path: null
+      timeoutSeconds: 900
+
+    - name: "run-tsc-check"
+      description: |
+        Runs TypeScript strict type-checking (`tsc --noEmit`) on a specific frontend library
+        using its `tsconfig.lib.json`. Use this during strict-mode migrations to iterate on
+        type errors without going through the user. Returns only errors from the target lib.
+      parametersDescription: |
+        Relative path from the repo root to the tsconfig.lib.json, e.g.:
+        `frontend/libs/shared/feature/autocomplete/tsconfig.lib.json`
+      command: "pnpm tsc --noEmit -p PARAMETERS 2>&1 | grep $(dirname PARAMETERS | sed 's|frontend/||') || true"
+      path: null
+      timeoutSeconds: 120
+
+    - name: "run-agentic-coverage"
+      description: |
+        Computes the live agentic E2E capability coverage by static analysis of the
+        e2e-playwright-agentic specs and capability files, and writes the full report to
+        frontend/apps/e2e-dashboard/src/assets/agentic-coverage.json (a throwaway scratch file in this
+        Coday checkout). After running this, READ that JSON file to get the coverage. Read-only: runs no
+        test, makes no LLM call. This is how to get current coverage -- no coverage JSON is committed.
+      command: "pnpm nx run tools-e2e:exec-generate-agentic-coverage"
+      path: null
+      timeoutSeconds: 120
+
+    - name: "gradle"
+      description: |
+        Run Gradle commands for Kotlin/Java projects in the backend/ directory.
+        
+        The command runs from backend/ directory with optimized flags:
+        --no-build-cache, --no-configuration-cache, --no-daemon
+      parametersDescription: |
+        Gradle task with arguments. Examples:
+        - ":caerus-service:test"
+        - ":copilot-service:test --tests ChatClientProviderTest"
+        - ":prometheus:test"
+        - "build" (all services)
+      command: "./gradlew PARAMETERS --no-build-cache --no-configuration-cache --no-daemon"
+      path: "backend"
+      timeoutSeconds: 900
+
+    - name: "run-backend-test"
+      description: |
+        Runs the gradlew wrapper from `backend` directory, to run a single test class. You must beforehand read the test file to run and determine the gradle application it belongs to by looking to `./backend/settings.gradle` file.
+
+        ### Interpreting Results:
+        - A successful build (indicated by "BUILD SUCCESSFUL" at the end) means all tests passed
+        - If tests fail, specific error messages will be shown in the output
+        - The output may be very verbose with dependency transformations and build tasks
+        - There may not be explicit "TEST PASSED" messages for successful tests
+        - For Gradle, absence of test failure messages indicates success
+      parametersDescription: |
+        Parameters are expected in this form:
+        `<path-to-subproject>:test --tests "<fully-qualified-test-class-name>"`
+
+        ### Parameters:
+
+        1. **`<path-to-subproject>`**:
+          - This is the path to the specific Gradle subproject where your tests are located.
+          - For example, if your test is in the `casting/service` directory, and the subproject is named `casting-service`, you specify `casting-service`.
+          - The command is run from `backend` directory, no need to specify it here.
+
+        2. **`:test` task**:
+          - This is the Gradle task that runs the tests. It is often named `test` by default.
+
+        3. **`--tests "<fully-qualified-test-class-name>"`**:
+          - This flag allows you to specify the fully qualified name of the test class you want to run.
+          - The fully qualified name includes the package and the class name.
+          - For example, `io.biznet.casting.service.talent.SkillGapServiceSpec`.
+
+        ### Example:
+          Let's say you have a test class located in `backend/casting/service/src/test/kotlin/io/biznet/casting/service/talent/SkillGapServiceSpec.kt`, and your subproject is named `casting-service`.
+
+        The parameters would be:
+
+          `:casting-service:test --tests "io.biznet.casting.service.talent.SkillGapServiceSpec"`
+      command: "./gradlew PARAMETERS"
+      path: "backend"
+      timeoutSeconds: 900

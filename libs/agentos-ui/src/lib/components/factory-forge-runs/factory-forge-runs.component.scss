@@ -1,0 +1,709 @@
+@use './_forge-tokens' as forge;
+
+:host {
+  @include forge.host;
+  @include forge.corners;
+
+  min-height: 100%;
+  background: var(--sf-bg);
+  container-type: inline-size;
+}
+
+.blueprint {
+  @include forge.blueprint;
+}
+.mono {
+  @include forge.mono(11.5px);
+}
+
+.kicker {
+  @include forge.kicker;
+
+  &--accent {
+    color: var(--sf-accent-ink);
+  }
+}
+
+.chip {
+  @include forge.chip;
+}
+
+.flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+/* ── Barre d'application ──────────────────────────────────────────────────── */
+
+.appbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 12px 28px;
+  border-bottom: 1px solid var(--sf-rule);
+
+  &__left {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 16px;
+  }
+
+  &__brand {
+    font-family: var(--sf-heading);
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  &__root {
+    @include forge.kicker;
+    @include forge.focus-ring;
+
+    padding: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--sf-accent-ink);
+    }
+  }
+
+  &__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin: 0;
+
+    > div {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    dt {
+      font-size: 12px;
+      color: var(--sf-muted);
+    }
+
+    dd {
+      margin: 0;
+    }
+  }
+}
+
+.switcher {
+  display: flex;
+  gap: 6px;
+
+  &__item {
+    @include forge.focus-ring;
+
+    position: relative;
+    padding: 5px 12px 7px;
+    background: transparent;
+    border: 1px solid var(--sf-line);
+    font-family: var(--sf-heading);
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    color: var(--sf-ink);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--sf-accent-wash);
+    }
+
+    /* Sélection : un filet accent, pas un fond — la barre reste un tracé. */
+    &--active::after {
+      content: '';
+      position: absolute;
+      inset: auto 6px 3px;
+      height: 3px;
+      background: var(--sf-accent);
+    }
+  }
+}
+
+/* ── Fil d'ariane ──────────────────────────────────────────────────────────── */
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 28px;
+  border-bottom: 1px solid var(--sf-line);
+
+  &__link {
+    @include forge.focus-ring;
+
+    padding: 0;
+    background: transparent;
+    border: none;
+    font-family: var(--sf-heading);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    color: var(--sf-accent-ink);
+    cursor: pointer;
+
+    &:first-child {
+      text-transform: uppercase;
+    }
+    &:hover {
+      color: var(--sf-accent-deep);
+    }
+  }
+
+  &__sep {
+    color: var(--sf-muted);
+  }
+
+  &__current {
+    font-family: var(--sf-heading);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+  }
+}
+
+/* ── Écrans 00 et 01 ──────────────────────────────────────────────────────────── */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 26px 28px;
+
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+  }
+
+  &__status {
+    padding: 24px 0;
+    font-size: 14px;
+    color: var(--sf-muted);
+
+    &--error {
+      color: var(--color-danger-600, #b91c1c);
+    }
+    &--empty {
+      font-style: italic;
+    }
+  }
+
+  &__title {
+    margin: 0;
+    font-family: var(--sf-heading);
+    font-size: 30px;
+    font-weight: 600;
+  }
+
+  &__subtitle {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: var(--sf-muted);
+  }
+
+  &__lead {
+    margin: 4px 0 0;
+    max-width: 80ch;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--sf-muted);
+    text-wrap: pretty;
+  }
+
+  &__hint {
+    font-size: 12.5px;
+    color: var(--sf-muted);
+  }
+}
+
+/* ── Boutons d'action ───────────────────────────────────────────────────────── */
+
+/* Même mécanique que btn-refresh de l'ancien diagramme. */
+.btn-launch {
+  @include forge.action-button;
+
+  /* Accent léger pour qu'il se distingue du contexte blueprint. */
+  border-color: var(--sf-accent-line);
+  color: var(--sf-accent-deep);
+
+  &:hover:not(:disabled) {
+    background: var(--sf-accent-wash);
+  }
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+/* ── Cartes de workstream ───────────────────────────────────────────────────── */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  max-width: 1240px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 18px 20px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--sf-accent-wash);
+  }
+
+  @include forge.focus-ring;
+
+  &__name {
+    margin-top: 2px;
+    font-family: var(--sf-heading);
+    font-size: 25px;
+    font-weight: 600;
+  }
+
+  &__subject {
+    font-size: 13px;
+    color: var(--sf-muted);
+  }
+
+  &__lead {
+    margin-top: 10px;
+    font-size: 13px;
+    line-height: 1.55;
+    text-wrap: pretty;
+  }
+
+  .flags {
+    margin-top: 12px;
+  }
+
+  &__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--sf-line);
+    font-size: 12px;
+    color: var(--sf-muted);
+  }
+}
+
+/* ── Onglets du sujet ───────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 2px;
+  border-bottom: 1px solid var(--sf-rule);
+
+  &__tab {
+    @include forge.focus-ring;
+
+    padding: 7px 15px;
+    background: transparent;
+    border: 1px solid var(--sf-line);
+    border-bottom: none;
+    font-family: var(--sf-heading);
+    font-size: 13.5px;
+    letter-spacing: 0.06em;
+    color: var(--sf-ink);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--sf-accent-wash);
+    }
+
+    /* Onglet actif : filet plein et lavis accent. */
+    &--active {
+      border-color: var(--sf-rule);
+      background: var(--sf-accent-wash);
+    }
+  }
+
+  &__count {
+    color: var(--sf-muted);
+  }
+
+  &__soon {
+    padding: 6px 14px;
+    border: 1px dashed var(--sf-line);
+    border-bottom: none;
+    font-family: var(--sf-heading);
+    font-size: 13px;
+    font-style: italic;
+    letter-spacing: 0.06em;
+    color: var(--sf-muted);
+  }
+}
+
+/* ── Barres d'Epic ─────────────────────────────────────────────────────────── */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 1240px;
+}
+
+.row {
+  display: block;
+  padding: 14px 18px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--sf-accent-wash);
+  }
+
+  @include forge.focus-ring;
+
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  &__identity {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  &__key {
+    font-family: var(--sf-heading);
+    font-size: 20px;
+    font-weight: 600;
+  }
+
+  &__title {
+    font-size: 13px;
+    color: var(--sf-muted);
+  }
+
+  &__bar {
+    display: block;
+    margin-top: 12px;
+  }
+}
+
+/* ── Comptes rendus & décisions ─────────────────────────────────────────────── */
+
+.docs {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 1000px;
+
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &__head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--sf-rule);
+
+    h2 {
+      margin: 0;
+      font-family: var(--sf-heading);
+      font-size: 12.5px;
+      font-weight: 600;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    span {
+      font-size: 12px;
+      color: var(--sf-muted);
+    }
+  }
+}
+
+.doc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding: 12px 15px;
+
+  &__title {
+    margin: 0;
+    font-family: var(--sf-heading);
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  &__meta {
+    margin: 0;
+    font-size: 12px;
+    color: var(--sf-muted);
+  }
+
+  &__tag {
+    padding: 1px 8px;
+    border: 1px solid var(--sf-accent-line);
+    background: var(--sf-accent-wash);
+    font-family: var(--sf-heading);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent-800, #2d4761);
+  }
+}
+
+/* ── Dialog : Lancer un run Forge ─────────────────────────────────── */
+
+/* Fond obscurcissant. */
+.dialog-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgb(29 31 32 / 38%);
+  z-index: 50;
+}
+
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 51;
+  width: min(480px, 92vw);
+  padding: 28px 30px 26px;
+  background: var(--sf-bg);
+  box-shadow: var(--shadow-lg, 0 18px 40px rgb(29 31 32 / 22%));
+
+  &__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--sf-rule);
+  }
+
+  &__title {
+    margin: 0;
+    font-family: var(--sf-heading);
+    font-size: 22px;
+    font-weight: 600;
+  }
+
+  &__close {
+    padding: 0 4px;
+    background: transparent;
+    border: none;
+    font-family: var(--sf-heading);
+    font-size: 22px;
+    line-height: 1;
+    color: var(--sf-muted);
+    cursor: pointer;
+
+    &:hover {
+      color: var(--sf-ink);
+    }
+
+    @include forge.focus-ring;
+  }
+
+  &__lead {
+    margin: 14px 0 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--sf-muted);
+  }
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 18px;
+  }
+
+  &__label {
+    @include forge.kicker;
+  }
+
+  &__input {
+    padding: 8px 12px;
+    border: 1px solid var(--sf-rule);
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    color: var(--sf-ink);
+
+    @include forge.focus-ring;
+
+    &::placeholder {
+      color: var(--sf-muted);
+    }
+  }
+
+  &__actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+  }
+}
+
+.btn-cancel {
+  @include forge.action-button;
+}
+
+.ws-form {
+  max-width: 480px;
+  padding: 20px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  &__label {
+    @include forge.kicker;
+  }
+
+  &__input {
+    padding: 7px 10px;
+    border: 1px solid var(--sf-rule);
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    color: var(--sf-ink);
+
+    @include forge.focus-ring;
+
+    &::placeholder {
+      color: var(--sf-muted);
+    }
+  }
+
+  &__error {
+    margin: 0;
+    font-size: 13px;
+    color: var(--color-danger-600, #b91c1c);
+  }
+
+  &__actions {
+    display: flex;
+    gap: 10px;
+  }
+}
+
+.btn-refresh {
+  @include forge.action-button;
+}
+
+.story-g1-gate {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 28px;
+  background: var(--sf-accent-wash);
+  border-bottom: 1px solid var(--sf-accent-line);
+
+  &__label {
+    margin: 0;
+    font-size: 13px;
+    color: var(--sf-accent-deep);
+    font-family: var(--sf-heading);
+    letter-spacing: 0.04em;
+  }
+
+  &__error {
+    margin: 0;
+    font-size: 12px;
+    color: var(--color-danger-600, #b91c1c);
+  }
+}
+
+.screen__refresh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 28px 16px;
+  gap: 12px;
+}
+
+.screen__epic-context {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.screen__epic-key {
+  font-family: var(--sf-mono, monospace);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--sf-ink);
+}
+
+.screen__epic-summary {
+  font-size: 14px;
+  color: var(--sf-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 500px;
+}
+
+@container (max-width: 780px) {
+  .appbar,
+  .crumbs {
+    padding-inline: 16px;
+  }
+
+  .screen {
+    padding: 20px 16px;
+  }
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -20,6 +20,7 @@ import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
+import io.whozoss.agentos.factory.FactoryToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
@@ -84,6 +85,8 @@ class AgentServiceImpl(
     private val skillToolGrantService: SkillToolGrantService,
     private val agentConfigProperties: AgentConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
+    private val factoryToolGrantService: FactoryToolGrantService,
+    private val factoryEnvironmentBindingService: io.whozoss.agentos.factory.FactoryEnvironmentBindingService,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -374,6 +377,10 @@ class AgentServiceImpl(
             } else {
                 emptyList()
             }
+        val factoryTools =
+            if (factoryToolGrantService.isGranted(agentConfig.integrations)) {
+                factoryToolGrantService.grantTools(toolContext, agentConfig.integrations)
+            } else emptyList()
         val tools =
             toolResolverService.dedupToolsByName(
                 baseTools +
@@ -389,6 +396,8 @@ class AgentServiceImpl(
                     buildExchangeTools(agentConfig, context, toolContext) +
                     queryUserTools +
                     skillTools,
+                    buildWorkUnitEnvironmentTools(agentConfig, context, toolContext) +
+                    factoryTools,
             )
 
         val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
@@ -798,6 +807,7 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
             loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
+            timeoutMs = agentConfigProperties.delegationTimeoutMinutes * 60 * 1_000L,
         )
     }
 
@@ -908,6 +918,18 @@ class AgentServiceImpl(
         return tools
     }
 
+    /** Grants work-unit FILE_ACCESS only from a trusted case/workflow binding and an explicit allowlist. */
+    private fun buildWorkUnitEnvironmentTools(
+        config: AgentConfig,
+        context: AgentExecutionContext,
+        toolContext: ToolContext,
+    ): List<StandardTool<*>> {
+        val declaration = config.integrations?.get(WORK_UNIT_FILE_ACCESS)
+        if (config.integrations?.containsKey(WORK_UNIT_FILE_ACCESS) != true || declaration.isNullOrEmpty()) return emptyList()
+        val caseId = context.caseId?.toString() ?: return emptyList()
+        return factoryEnvironmentBindingService.grantTools(context.workflowId, caseId, declaration, toolContext)
+    }
+
     /**
      * Static-secret fallback used when no per-user Credential row exists: synthesised in memory
      * from the resolved [setting], never persisted. OAuth types are never synthesised — their
@@ -920,6 +942,7 @@ class AgentServiceImpl(
         if (setting.authType in OAUTH_AUTH_TYPES) null else staticCredentialFactory.fromAuthSetting(userId, setting)
 
     companion object : KLogging() {
+        private const val WORK_UNIT_FILE_ACCESS = "WORK_UNIT_FILE_ACCESS"
         private val OAUTH_AUTH_TYPES =
             setOf(
                 AuthType.OAUTH_DISCOVERABLE,

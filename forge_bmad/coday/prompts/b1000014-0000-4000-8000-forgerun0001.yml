@@ -1,0 +1,11 @@
+name: forge-run
+description: Backward-compatible spelling for /run-forge; starts or resumes one approval-gated BMAD Story workflow.
+commands:
+  - |
+    @ProductEngineer Treat this legacy /forge-run invocation as /run-factory --workflow=bmad-story. Preserve the Forge Run Protocol, deterministic forge-run-recon, workstream confirmation, explicit human confirmation, and every BMAD gate:
+    {{PARAMETERS}}
+webhookEnabled: false
+source: project
+createdBy: patrice.lamarque
+id: b1000014-0000-4000-8000-forgerun0001
+createdAt: 2026-09-01T00:00:00.000Z

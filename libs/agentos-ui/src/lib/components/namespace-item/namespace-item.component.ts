@@ -21,6 +21,7 @@ export class NamespaceItemComponent {
   readonly agentConfigsRequested = output<Namespace>()
   readonly promptsRequested = output<Namespace>()
   readonly scheduledPromptsRequested = output<Namespace>()
+  readonly factoryRunsRequested = output<Namespace>()
   readonly userGroupsRequested = output<Namespace>()
   readonly membersRequested = output<Namespace>()
   readonly authSettingsRequested = output<Namespace>()
@@ -54,6 +55,9 @@ export class NamespaceItemComponent {
   }
   protected onScheduledPrompts(): void {
     this.scheduledPromptsRequested.emit(this.namespace())
+  }
+  protected onFactoryRuns(): void {
+    this.factoryRunsRequested.emit(this.namespace())
   }
   protected onUserGroups(): void {
     this.userGroupsRequested.emit(this.namespace())

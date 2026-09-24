@@ -1,0 +1,19 @@
+import { WorkUnitEnvironmentService } from '../lib/work-unit-environment-service.mjs'
+import { WorkUnitEnvironmentController, handleWorkUnitEnvironmentRequest } from '../lib/work-unit-environment-controller.mjs'
+
+let passed=0,failed=0;const expect=(name,actual,expected)=>{const ok=JSON.stringify(actual)===JSON.stringify(expected);console.log(`${ok?'✓':'✗'} ${name}`);if(!ok)console.log({actual,expected});ok?passed++:failed++}
+const ns='11111111-1111-4111-8111-111111111111',caseA='22222222-2222-4222-8222-222222222222',caseB='33333333-3333-4333-8333-333333333333',sha='a'.repeat(40)
+function harness(){let revision=0;const snapshots=[];const store={async read(_n,id){return snapshots.find(x=>x.environment.environmentId===id)??null},async list(_n,{states}={}){return snapshots.filter(x=>!states||states.includes(x.environment.lifecycleState))},async reserve(environment){const snapshot={revision:++revision,environment};snapshots.push(snapshot);return{ok:true,snapshot}},async transition(_n,id,environment){const index=snapshots.findIndex(x=>x.environment.environmentId===id);const snapshot={revision:++revision,environment};snapshots[index]=snapshot;return{ok:true,changed:true,snapshot}}};const git={async provisionWorktree(input,onReady){await onReady({...input,repoRoot:'/repo',worktreePath:input.worktreePath,baseCommit:sha,integrationBranch:input.integrationBranch});return{...input,baseCommit:sha,headCommit:sha}},async reconcile(environment){return{status:'owned',...environment,headCommit:sha}}};return{store,git,service:new WorkUnitEnvironmentService({store,git,clock:()=>new Date('2026-01-01T00:00:00.000Z')})}}
+const h=harness(),base={workflowId:'wf-1',workUnitId:'unit-1',namespaceId:ns,repoRoot:'/repo',integrationBranch:'main',branch:'feature/unit-1',worktreePath:'/worktrees/wf-1-unit-1',createdBy:'factory'}
+const first=await h.service.provision({...base,environmentId:'env-1'});await h.service.bindParentCase(ns,'env-1',caseA);const conflict=await h.service.provision({...base,environmentId:'env-1',branch:'feature/other'})
+expect('immutable identity rejects conflicting replay',[first.ok,conflict.error.code],[true,'ENVIRONMENT_IDENTITY_CONFLICT'])
+await h.service.provision({...base,workflowId:'wf-2',workUnitId:'unit-2',environmentId:'env-2',branch:'feature/unit-2',worktreePath:'/worktrees/wf-2-unit-2'});const writer=await h.service.bindParentCase(ns,'env-2',caseA)
+expect('one active writer per controlling case',writer.error.code,'WRITER_ALREADY_ACTIVE')
+const env1=await h.store.read(ns,'env-1');env1.environmentHash='f'.repeat(64)
+const workflowStore={async read(_ns,id){return id==='wf-3'?{instance:{controllerExecution:{kind:'agentos',caseId:caseB}}}:{instance:{controllerExecution:{kind:'agentos',caseId:caseA},environmentRef:{environmentId:'env-1',environmentHash:'f'.repeat(64)}}}},async bindEnvironment(){return{ok:true}}}
+const controller=new WorkUnitEnvironmentController({store:h.store,git:h.git,workflowStore,policy:{resolve:async()=>({repoRoot:'/repo',worktreePath:'/worktrees/policy-owned'})}})
+const rejected=await controller.provision({namespaceId:ns,caseId:caseB,createdBy:'factory',body:{workflowId:'wf-3',workUnitId:'unit-3',integrationBranch:'main',branch:'feature/unit-3',repoRoot:'/attacker'}})
+expect('client root fields are rejected',rejected.error.code,'INVALID_ENVIRONMENT_REQUEST')
+let response;await handleWorkUnitEnvironmentRequest({method:'GET',path:'/api/factory/workflows/wf-1/environment',url:new URL('http://local/api/factory/workflows/wf-1/environment'),readBody:async()=>({}),send:(status,body)=>response={status,body},controller,identity:async()=>({namespaceId:ns,caseId:caseB,actorId:'factory'}),log:{error(){}}})
+expect('wrong case cannot inspect root',[response.status,response.body.error.code],[409,'ENVIRONMENT_NOT_BOUND'])
+console.log(`\nResult: ${passed} passed, ${failed} failed`);process.exit(failed?1:0)

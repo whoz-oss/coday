@@ -1,0 +1,2605 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Factory</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>%E2%9A%A1</text></svg>"
+    />
+    <style>
+      :root {
+        --bg: #0b0d13;
+        --surface: #141720;
+        --surface-2: #1b1f2b;
+        --border: #262b3a;
+        --border-soft: #1e222e;
+        --text: #e5e9f0;
+        --text-dim: #9aa3b8;
+        --muted: #6b7385;
+
+        --pass: #34d399;
+        --pass-bg: #06281e;
+        --fail: #f87171;
+        --fail-bg: #2e1010;
+        --running: #fbbf24;
+        --running-bg: #2c1e02;
+        --crashed: #6b7280;
+        --crashed-bg: #1a1d26;
+        --warn: #fb923c;
+
+        --agent: #a5b4fc;
+        --agent-bg: #1a1b3d;
+        --code: #5eead4;
+        --code-bg: #04292a;
+
+        --accent: #6366f1;
+        --accent-hover: #818cf8;
+
+        --lane-h: 46px;
+        --label-w: 190px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a {
+        color: var(--accent-hover);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+
+      ::-webkit-scrollbar {
+        width: 9px;
+        height: 9px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 5px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #333949;
+      }
+
+      /* ---------------------------------------------------------------- header */
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 20px;
+        height: 46px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+        position: sticky;
+        top: 0;
+        z-index: 40;
+      }
+      .topbar .brand {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .topbar .crumb {
+        color: var(--muted);
+      }
+      .topbar .crumb b {
+        color: var(--text-dim);
+        font-weight: 500;
+      }
+      .topbar .spacer {
+        flex: 1;
+      }
+      .topbar .live {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        color: var(--pass);
+        font-size: 11px;
+      }
+      .topbar .live.on {
+        display: flex;
+      }
+      .topbar .live .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--pass);
+        animation: pulse 1.6s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+
+      .btn {
+        padding: 5px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--surface-2);
+        color: var(--text-dim);
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+        transition: all 0.12s;
+        white-space: nowrap;
+      }
+      .btn:hover {
+        background: var(--border);
+        color: var(--text);
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+      .btn.primary:hover {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+      }
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .btn.sm {
+        padding: 3px 9px;
+        font-size: 11px;
+      }
+
+      .main {
+        width: 100%;
+        padding: 20px;
+        margin: 0;
+      }
+
+      /* --------------------------------------------------------------- badges */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 1px 7px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+      }
+      .badge.pass {
+        background: var(--pass-bg);
+        color: var(--pass);
+      }
+      .badge.fail {
+        background: var(--fail-bg);
+        color: var(--fail);
+      }
+      .badge.running {
+        background: var(--running-bg);
+        color: var(--running);
+      }
+      .badge.crashed {
+        background: var(--crashed-bg);
+        color: var(--crashed);
+      }
+      .badge.agent {
+        background: var(--agent-bg);
+        color: var(--agent);
+      }
+      .badge.code {
+        background: var(--code-bg);
+        color: var(--code);
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 8px;
+        border-radius: 5px;
+        background: var(--surface-2);
+        border: 1px solid var(--border-soft);
+        color: var(--text-dim);
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .chip .k {
+        color: var(--muted);
+      }
+      .chip.warn {
+        border-color: #4a2c10;
+        background: #24170a;
+        color: var(--warn);
+      }
+      .chip.bad {
+        border-color: #4a1a1a;
+        background: var(--fail-bg);
+        color: var(--fail);
+      }
+      .chip.good {
+        border-color: #10402f;
+        background: var(--pass-bg);
+        color: var(--pass);
+      }
+
+      /* ---------------------------------------------------------------- table */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th {
+        text-align: left;
+        padding: 7px 10px;
+        color: var(--muted);
+        font-weight: 500;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        border-bottom: 1px solid var(--border);
+      }
+      td {
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--border-soft);
+        vertical-align: middle;
+      }
+      tbody tr {
+        cursor: pointer;
+        transition: background 0.1s;
+      }
+      tbody tr:hover td {
+        background: var(--surface);
+      }
+      .cell-dim {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .ctx-cell {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+
+      .section-title {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--text-dim);
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .section-title .count {
+        background: var(--surface-2);
+        border: 1px solid var(--border-soft);
+        border-radius: 9px;
+        padding: 0 7px;
+        font-size: 10px;
+        color: var(--muted);
+        letter-spacing: 0;
+      }
+      .link-btn {
+        font-size: 11px;
+        color: var(--muted);
+        cursor: pointer;
+        border: none;
+        background: none;
+        font-family: inherit;
+        text-transform: none;
+        letter-spacing: 0;
+        padding: 0;
+      }
+      .link-btn:hover {
+        color: var(--text);
+      }
+
+      .empty {
+        color: var(--muted);
+        text-align: center;
+        padding: 40px;
+      }
+
+      /* ------------------------------------------------------------ run header */
+      .run-head {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        padding-bottom: 14px;
+        margin-bottom: 14px;
+        border-bottom: 1px solid var(--border);
+      }
+      .run-head .title {
+        flex: 1;
+        min-width: 0;
+      }
+      .run-head .title h2 {
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 5px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .run-head .metrics {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      /* --------------------------------------------------------------- gantt */
+      .gantt {
+        --timeline-ink: #172033;
+        --timeline-muted: #64748b;
+        --timeline-border: #d9e1ec;
+        --timeline-grid: #e9eef5;
+        --timeline-surface: #ffffff;
+        --timeline-subtle: #f6f8fb;
+        border: 1px solid var(--timeline-border);
+        border-radius: 12px;
+        background: var(--timeline-surface);
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.09);
+        overflow-x: auto;
+        margin-bottom: 16px;
+        -webkit-overflow-scrolling: touch;
+      }
+      .gantt-inner {
+        width: 100%;
+        min-width: 0;
+      }
+      .gantt-axis {
+        display: grid;
+        grid-template-columns: minmax(140px, var(--label-w)) minmax(0, 1fr);
+        border-bottom: 1px solid var(--timeline-border);
+        background: var(--timeline-subtle);
+        height: 32px;
+      }
+      .gantt-axis .axis-corner {
+        border-right: 1px solid var(--timeline-border);
+        display: flex;
+        align-items: center;
+        padding-left: 14px;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--timeline-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .gantt-axis .axis-track {
+        position: relative;
+        overflow: hidden;
+      }
+      .axis-tick {
+        position: absolute;
+        top: 0;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        font-size: 10px;
+        font-variant-numeric: tabular-nums;
+        color: var(--timeline-muted);
+        padding-left: 6px;
+        border-left: 1px solid var(--timeline-grid);
+        white-space: nowrap;
+      }
+
+      .lane {
+        display: grid;
+        grid-template-columns: minmax(140px, var(--label-w)) minmax(0, 1fr);
+        border-bottom: 1px solid var(--timeline-grid);
+        min-height: 56px;
+      }
+      .lane:last-child {
+        border-bottom: none;
+      }
+      .lane-label {
+        border-right: 1px solid var(--timeline-border);
+        padding: 10px 14px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 2px;
+        overflow: hidden;
+        background: linear-gradient(90deg, #fff 0%, #fbfcfe 100%);
+      }
+      .lane-label .nm {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--timeline-ink);
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .lane-label .sub {
+        font-size: 10px;
+        color: var(--timeline-muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .gantt .badge.code {
+        background: #e4f7f4;
+        color: #0f766e;
+      }
+      .gantt .badge.agent {
+        background: #eef2ff;
+        color: #4338ca;
+      }
+      .lane-track {
+        position: relative;
+        background: linear-gradient(90deg, rgba(248, 250, 252, 0.78), #fff 18%, #fff);
+      }
+      .lane-grid {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .lane-grid span {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-left: 1px dashed var(--timeline-grid);
+      }
+
+      .bar {
+        position: absolute;
+        top: 12px;
+        height: 32px;
+        border-radius: 7px;
+        border: 1px solid;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 9px;
+        cursor: pointer;
+        overflow: hidden;
+        font-family: inherit;
+        font-size: 11px;
+        line-height: 1;
+        white-space: nowrap;
+        transition:
+          transform 0.12s,
+          box-shadow 0.12s,
+          filter 0.12s;
+        min-width: 6px;
+      }
+      .bar::before {
+        content: '';
+        flex: 0 0 7px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.65);
+      }
+      .bar:hover {
+        filter: saturate(1.12);
+        transform: translateY(-1px);
+        box-shadow: 0 5px 10px rgba(15, 23, 42, 0.14);
+      }
+      .bar:focus-visible {
+        outline: 3px solid #2563eb;
+        outline-offset: 2px;
+        z-index: 1;
+      }
+      .bar.selected {
+        box-shadow:
+          0 0 0 2px #fff,
+          0 0 0 4px var(--accent);
+        z-index: 1;
+      }
+      .bar.pass {
+        background: #eaf8f1;
+        border-color: #9ddbbb;
+        color: #18734d;
+      }
+      .bar.fail {
+        background: #fff0f0;
+        border-color: #f0aaaa;
+        color: #b42318;
+      }
+      .bar.running {
+        background: #fff7e4;
+        border-color: #f2ca72;
+        color: #9a6700;
+        background-image: repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 7px,
+          rgba(180, 113, 0, 0.07) 7px,
+          rgba(180, 113, 0, 0.07) 14px
+        );
+        animation: slide 1.1s linear infinite;
+      }
+      @keyframes slide {
+        to {
+          background-position: 20px 0;
+        }
+      }
+      .bar .bar-name {
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .bar .bar-dur {
+        color: currentColor;
+        opacity: 0.78;
+        font-size: 10px;
+        margin-left: auto;
+        font-variant-numeric: tabular-nums;
+      }
+      .bar .bar-flag {
+        font-size: 11px;
+      }
+      .bar.compact {
+        min-width: 0;
+        padding-inline: 5px;
+        gap: 3px;
+        border-radius: 4px;
+      }
+      .bar.compact .bar-dur::before {
+        display: none;
+      }
+      .bar.compact .bar-name {
+        font-size: 10px;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      @media (max-width: 680px) {
+        .gantt {
+          --label-w: 154px;
+          border-radius: 10px;
+        }
+        .gantt-inner {
+          min-width: 590px;
+        }
+        .lane-label {
+          padding-inline: 10px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .bar.running {
+          animation: none;
+        }
+        .bar {
+          transition: none;
+        }
+      }
+
+      /* --------------------------------------------------------- phase panel */
+      .panel {
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background: var(--surface);
+        margin-bottom: 16px;
+        overflow: hidden;
+      }
+      .panel-head {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 11px 14px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface-2);
+      }
+      .panel-head .pname {
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .panel-head .spacer {
+        flex: 1;
+      }
+      .panel-body {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+      }
+      .panel-col {
+        padding: 14px;
+        min-width: 0;
+      }
+      .panel-col + .panel-col {
+        border-left: 1px solid var(--border);
+      }
+      .panel-col > h4 {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+        margin-bottom: 9px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .src-tag {
+        font-size: 9px;
+        padding: 0 5px;
+        border-radius: 3px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        letter-spacing: 0;
+        text-transform: none;
+      }
+
+      .fgroup {
+        margin-bottom: 13px;
+      }
+      .fgroup:last-child {
+        margin-bottom: 0;
+      }
+      .fgroup > .gt {
+        font-size: 10px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 5px;
+        padding-bottom: 3px;
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .facts {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 3px 14px;
+      }
+      .fk {
+        color: var(--muted);
+      }
+      .fv {
+        word-break: break-word;
+      }
+      .fv.list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+      }
+      .tag {
+        display: inline-block;
+        padding: 0 6px;
+        background: var(--surface-2);
+        border: 1px solid var(--border-soft);
+        border-radius: 3px;
+        font-size: 10px;
+        color: var(--text-dim);
+      }
+      .tag.path {
+        color: var(--text);
+      }
+      .nil {
+        color: var(--muted);
+      }
+      .yes {
+        color: var(--pass);
+      }
+      .no {
+        color: var(--fail);
+      }
+
+      .brief {
+        background: var(--bg);
+        border: 1px solid var(--border-soft);
+        border-radius: 6px;
+        padding: 10px 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 11.5px;
+        line-height: 1.6;
+        color: var(--text-dim);
+        max-height: 240px;
+        overflow-y: auto;
+        margin-bottom: 12px;
+      }
+      .brief.reply {
+        color: var(--text);
+      }
+
+      .evlist {
+        display: flex;
+        flex-direction: column;
+        max-height: 340px;
+        overflow-y: auto;
+      }
+      .ev {
+        display: grid;
+        grid-template-columns: 58px 130px 1fr;
+        gap: 8px;
+        padding: 3px 0;
+        border-bottom: 1px solid var(--border-soft);
+        cursor: pointer;
+        font-size: 11px;
+      }
+      .ev:hover {
+        background: var(--surface-2);
+      }
+      .ev .t {
+        color: var(--muted);
+      }
+      .ev .ty {
+        color: var(--agent);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .ev .ty.tool {
+        color: var(--code);
+      }
+      .ev .ty.err {
+        color: var(--fail);
+      }
+      .ev .sm {
+        color: var(--text-dim);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .ev-json {
+        grid-column: 1 / -1;
+        background: var(--bg);
+        border-radius: 4px;
+        padding: 7px 9px;
+        margin: 4px 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-size: 10px;
+        color: var(--text-dim);
+        max-height: 220px;
+        overflow-y: auto;
+      }
+
+      /* ------------------------------------------------------------- log box */
+      .log-box {
+        background: #06080d;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        padding: 11px 13px;
+        max-height: 380px;
+        overflow-y: auto;
+        font-size: 11.5px;
+        line-height: 1.5;
+      }
+      .log-line {
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .log-line.err {
+        color: var(--fail);
+      }
+      .log-line.pass {
+        color: var(--pass);
+      }
+      .log-line.info {
+        color: var(--muted);
+      }
+
+      /* ------------------------------------------------------------- formul. */
+      .form-section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 18px;
+      }
+      .form-section h2 {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 14px;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 11px;
+      }
+      .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .form-field.full {
+        grid-column: 1 / -1;
+      }
+      label {
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      label .req {
+        color: var(--fail);
+      }
+      label .opt {
+        color: var(--muted);
+        font-weight: 400;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      input,
+      select,
+      textarea {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        padding: 6px 9px;
+        font-family: inherit;
+        font-size: 12px;
+        outline: none;
+        transition: border-color 0.12s;
+      }
+      input:focus,
+      select:focus,
+      textarea:focus {
+        border-color: var(--accent);
+      }
+      textarea {
+        resize: vertical;
+        min-height: 70px;
+      }
+      select option {
+        background: var(--surface);
+      }
+      .form-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 14px;
+      }
+
+      .spin {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* -------------------------------------------------- coherent dashboard skin */
+      :root {
+        --bg: #f4f6f9;
+        --surface: #ffffff;
+        --surface-2: #f8fafc;
+        --border: #d9e1ea;
+        --border-soft: #e9eef3;
+        --text: #182235;
+        --text-dim: #4c5b70;
+        --muted: #718096;
+        --accent: #315ccf;
+        --accent-hover: #244bb1;
+        --pass: #137a4d;
+        --pass-bg: #e9f8ef;
+        --fail: #b42318;
+        --fail-bg: #fff0ef;
+        --running: #9a6700;
+        --running-bg: #fff6df;
+        --crashed: #526174;
+        --crashed-bg: #edf1f5;
+        --warn: #a85608;
+        --agent: #4f46b5;
+        --agent-bg: #eef0ff;
+        --code: #08746d;
+        --code-bg: #e4f7f4;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+      }
+      button,
+      input,
+      select,
+      textarea,
+      .bar,
+      .btn {
+        font-family: inherit;
+      }
+      a {
+        color: #244bb1;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #c5d0dc;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #9cabbc;
+      }
+      .topbar {
+        height: 56px;
+        padding-inline: clamp(16px, 3vw, 32px);
+        background: rgba(255, 255, 255, 0.94);
+        border-color: var(--border);
+        box-shadow: 0 1px 0 rgba(24, 34, 53, 0.03);
+        backdrop-filter: blur(12px);
+      }
+      .topbar .brand {
+        color: var(--text);
+        font-size: 14px;
+      }
+      .topbar .crumb {
+        color: var(--muted);
+      }
+      .topbar .crumb b {
+        color: var(--text-dim);
+      }
+      .topbar .live {
+        color: var(--pass);
+        font-weight: 600;
+      }
+      .topbar .live .dot {
+        background: var(--pass);
+      }
+      .main {
+        width: 100%;
+        margin: 0;
+        padding: clamp(18px, 3vw, 32px);
+      }
+      .btn {
+        border-color: #cbd6e2;
+        background: #fff;
+        color: #344256;
+        border-radius: 7px;
+        font-weight: 600;
+        box-shadow: 0 1px 1px rgba(24, 34, 53, 0.03);
+      }
+      .btn:hover:not(:disabled) {
+        background: #f1f5f9;
+        border-color: #aebdcd;
+        color: var(--text);
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .btn.primary:hover:not(:disabled) {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+      }
+      .btn:focus-visible,
+      .link-btn:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible {
+        outline: 3px solid rgba(49, 92, 207, 0.32);
+        outline-offset: 2px;
+      }
+      .badge {
+        border: 1px solid transparent;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 10px;
+      }
+      .badge.pass {
+        border-color: #b6e4c8;
+      }
+      .badge.fail {
+        border-color: #f3bfba;
+      }
+      .badge.running {
+        border-color: #efcf82;
+      }
+      .badge.crashed {
+        border-color: #d6dee8;
+      }
+      .badge.agent {
+        border-color: #d6d9ff;
+      }
+      .badge.code {
+        border-color: #b6e5df;
+      }
+      .chip {
+        background: #fff;
+        border-color: #d8e1ea;
+        color: #415168;
+        border-radius: 999px;
+        padding: 3px 9px;
+      }
+      .chip .k {
+        color: var(--muted);
+      }
+      .chip.warn {
+        background: #fff8e8;
+        border-color: #f0d49b;
+        color: #8a5007;
+      }
+      .chip.bad {
+        background: var(--fail-bg);
+        border-color: #efbbb7;
+        color: var(--fail);
+      }
+      .chip.good {
+        background: var(--pass-bg);
+        border-color: #b6e4c8;
+        color: var(--pass);
+      }
+      .section-title {
+        color: #344256;
+        font-size: 11px;
+        margin-bottom: 12px;
+      }
+      .section-title .count {
+        background: #eef2f6;
+        border-color: #dce4ed;
+        color: #536276;
+      }
+      .link-btn {
+        color: #315ccf;
+        font-weight: 600;
+      }
+      table {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      th {
+        background: #f8fafc;
+        color: #65748a;
+        border-color: var(--border);
+      }
+      td {
+        border-color: var(--border-soft);
+      }
+      tbody tr:hover td {
+        background: #f6f9fc;
+      }
+      .cell-dim,
+      .empty,
+      .nil {
+        color: var(--muted);
+      }
+      .run-head {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 4px rgba(24, 34, 53, 0.03);
+      }
+      .run-head .title h2 {
+        font-size: 17px;
+        letter-spacing: -0.015em;
+      }
+      .run-head .metrics {
+        gap: 7px;
+      }
+      .gantt {
+        margin-bottom: 18px;
+        box-shadow: 0 2px 8px rgba(24, 34, 53, 0.05);
+      }
+      .gantt-axis {
+        height: 36px;
+      }
+      .lane {
+        min-height: 58px;
+      }
+      .lane-track {
+        overflow: hidden;
+      }
+      .panel,
+      .form-section {
+        border-color: var(--border);
+        border-radius: 12px;
+        background: var(--surface);
+        box-shadow: 0 2px 6px rgba(24, 34, 53, 0.035);
+      }
+      .panel-head {
+        background: #f8fafc;
+        border-color: var(--border);
+        padding: 12px 16px;
+      }
+      .panel-body {
+        background: #fff;
+      }
+      .panel-col {
+        padding: 16px;
+      }
+      .panel-col + .panel-col {
+        border-color: var(--border);
+      }
+      .panel-col > h4,
+      .fgroup > .gt {
+        color: #66768b;
+      }
+      .fgroup > .gt {
+        border-color: var(--border-soft);
+      }
+      .fk {
+        color: #718096;
+      }
+      .tag {
+        background: #f6f8fb;
+        border-color: #dfe6ee;
+        color: #415168;
+      }
+      .tag.path {
+        color: #26364b;
+      }
+      .brief,
+      .ev-json {
+        background: #f7f9fb;
+        border-color: #dce4ed;
+        color: #415168;
+      }
+      .brief.reply {
+        color: #26364b;
+      }
+      .ev {
+        border-color: var(--border-soft);
+      }
+      .ev:hover {
+        background: #f7f9fb;
+      }
+      .ev .t {
+        color: var(--muted);
+      }
+      .log-box {
+        background: #172033;
+        border-color: #253249;
+        color: #dbe6f2;
+        border-radius: 12px;
+        box-shadow: 0 2px 6px rgba(24, 34, 53, 0.08);
+      }
+      .form-section {
+        padding: clamp(18px, 3vw, 28px);
+      }
+      input,
+      select,
+      textarea {
+        background: #fff;
+        border-color: #cbd6e2;
+        color: var(--text);
+        border-radius: 7px;
+        padding: 8px 10px;
+      }
+      input:focus,
+      select:focus,
+      textarea:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(49, 92, 207, 0.13);
+      }
+      select option {
+        background: #fff;
+      }
+      @media (max-width: 760px) {
+        .topbar {
+          gap: 7px;
+        }
+        .topbar .crumb {
+          display: none;
+        }
+        .main {
+          padding: 16px;
+        }
+        .run-head {
+          padding: 14px;
+        }
+        .panel-body,
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+        .panel-col + .panel-col {
+          border-left: 0;
+          border-top: 1px solid var(--border);
+        }
+        .form-field.full {
+          grid-column: auto;
+        }
+        .ev {
+          grid-template-columns: 52px 94px minmax(0, 1fr);
+        }
+      }
+      @media (max-width: 480px) {
+        .topbar .btn {
+          padding-inline: 9px;
+        }
+        .topbar .brand {
+          font-size: 13px;
+        }
+        .run-head .title h2 {
+          white-space: normal;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <span class="brand">⚡ Factory</span>
+      <span class="crumb" id="crumb"></span>
+      <div class="spacer"></div>
+      <span class="live" id="live-indicator"><span class="dot"></span> live</span>
+      <button class="btn" onclick="showView('list')">Runs</button>
+      <button class="btn primary" onclick="showView('new')">+ Run</button>
+    </div>
+
+    <div class="main">
+      <!-- ================================================== VUE : liste -->
+      <div id="view-list">
+        <div class="section-title">
+          Runs <span class="count" id="run-count">0</span>
+          <button class="link-btn" onclick="loadRuns()">&#x21bb; actualiser</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 70px">Statut</th>
+              <th style="width: 90px">Workflow</th>
+              <th>Contexte</th>
+              <th style="width: 150px">Début</th>
+              <th style="width: 70px">Durée</th>
+              <th style="width: 60px">Phases</th>
+            </tr>
+          </thead>
+          <tbody id="runs-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- ================================================== VUE : détail -->
+      <div id="view-detail" style="display: none">
+        <div class="run-head" id="run-head"></div>
+        <div id="gantt-host"></div>
+        <div id="panel-host"></div>
+        <div id="log-section" style="display: none">
+          <div class="section-title">Sortie de l'orchestrateur</div>
+          <div class="log-box" id="log-box"></div>
+        </div>
+      </div>
+
+      <!-- ================================================== VUE : nouveau -->
+      <div id="view-new" style="display: none">
+        <div class="form-section">
+          <h2>Lancer un run</h2>
+          <div class="form-grid">
+            <div class="form-field">
+              <label>Namespace ID <span class="req">*</span></label>
+              <input id="f-namespace" type="text" placeholder="47642116-93fd-4e57-..." oninput="onNamespaceChange()" />
+            </div>
+            <div class="form-field">
+              <label>Workflow / Diagnostic</label>
+              <select id="f-workflow" onchange="onWorkflowChange()">
+                <optgroup label="Workflows (livraison)">
+                  <option value="fix-loop">fix-loop — éditeur seul</option>
+                  <option value="us-loop">us-loop — analyste + éditeur</option>
+                </optgroup>
+                <optgroup label="Diagnostics (plomberie)">
+                  <option value="agentos-smoke">agentos-smoke — valider la chaîne AgentOS</option>
+                  <option value="backend-oracle-check">backend-oracle-check — compiler le backend</option>
+                </optgroup>
+              </select>
+            </div>
+            <div class="form-field" id="field-agent">
+              <label>Agent <span class="req">*</span></label>
+              <select id="f-agent">
+                <option value="">-- saisir le namespace d'abord --</option>
+              </select>
+              <input id="f-agent-text" type="text" placeholder="factory-editor" style="display: none" />
+            </div>
+            <div class="form-field" id="field-analyst" style="display: none">
+              <label>Analyste <span class="opt">— défaut factory-analyst</span></label>
+              <input id="f-analyst" type="text" placeholder="factory-analyst" />
+            </div>
+            <div class="form-field" id="field-editor" style="display: none">
+              <label>Éditeur <span class="opt">— défaut factory-editor</span></label>
+              <input id="f-editor" type="text" placeholder="factory-editor" />
+            </div>
+            <div class="form-field">
+              <label>Domaine</label>
+              <select id="f-domain">
+                <option value="front">front</option>
+                <option value="back">back</option>
+              </select>
+            </div>
+            <div class="form-field full">
+              <label>Tâche <span class="opt">— optionnel si un ticket est fourni</span></label>
+              <textarea id="f-task" placeholder="Décrire la modification à effectuer..."></textarea>
+            </div>
+            <div class="form-field full">
+              <label>Périmètre <span class="opt">— optionnel, mais c'est ce qui a manqué au run raté F17</span></label>
+              <textarea id="f-scope" placeholder="Fichiers ou dossiers autorisés..."></textarea>
+            </div>
+            <div class="form-field">
+              <label>Ticket Jira <span class="opt">— optionnel</span></label>
+              <input id="f-ticket" type="text" placeholder="PROJ-1234 ou URL complète" />
+              <!-- L'état des credentials Jira est injecté ici par initJiraStatus() au
+               chargement de la page, depuis le champ jiraConfigured de /api/config.
+               Les credentials eux-mêmes ne transitent plus jamais par le formulaire. -->
+              <div id="jira-status"></div>
+            </div>
+            <div class="form-field full">
+              <label
+                >Repo cible (FACTORY_ROOT)
+                <span class="opt"
+                  >— vide = repo de la factory. Doit être identique au rootPath de FACTORY_FILES</span
+                ></label
+              >
+              <input id="f-root" type="text" placeholder="/Users/benjamin.valdes/Workspace/biznet.io/app/version" />
+            </div>
+            <div class="form-field full">
+              <label>Commande oracle <span class="opt">— vide = commande par défaut du domaine</span></label>
+              <input id="f-command" type="text" placeholder="pnpm nx affected -t frontend-test" />
+            </div>
+            <div class="form-field">
+              <label>AgentOS URL</label>
+              <input id="f-agentos" type="text" value="http://localhost:8124" />
+            </div>
+            <div class="form-field">
+              <label>Utilisateur</label>
+              <input id="f-user" type="text" value="benjamin.valdes" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn" onclick="showView('list')">Annuler</button>
+            <button class="btn primary" id="btn-launch" onclick="launchRun()">Lancer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ===========================================================================
+      // État global
+      // ===========================================================================
+      let currentRunId = null
+      let currentRun = null
+      let selectedPhase = null
+      let sseSource = null
+      let refreshTimer = null
+      let agentosUrl = 'http://localhost:8124'
+
+      /** Cache des événements AgentOS par caseId. Vidé à chaque changement de run. */
+      let eventsCache = new Map()
+
+      /** Cache du contenu de ticket Jira par ticketId. Vidé à chaque changement de run. */
+      let ticketCache = new Map()
+
+      /** caseId du panneau actuellement ouvert — ancrage du dépliage JSON d'un événement. */
+      let openCaseId = null
+
+      // ===========================================================================
+      // Classification des faits
+      //
+      // Les faits du registre sont regroupés par nature plutôt que rendus à plat.
+      // Un `exitCode` et un `anchored` n'ont pas le même poids : le premier EST le
+      // verdict, le second est une note de fiabilité de la mesure. Les mélanger dans
+      // une grille uniforme, c'est perdre l'information de hiérarchie.
+      //
+      // Tout fait inconnu tombe dans "Autres" — le défaut est la VISIBILITÉ, jamais
+      // le silence. Un nouveau fait ajouté par un workflow apparaîtra sans qu'on ait
+      // à toucher à cette table.
+      // ===========================================================================
+      const FACT_GROUPS = [
+        { title: 'Verdict', keys: ['exitCode', 'timedOut', 'command', 'commandDurationMs', 'tasks', 'domain'] },
+        {
+          title: 'Fichiers',
+          keys: [
+            'filesModified',
+            'filesUntracked',
+            'plannedFiles',
+            'missingFiles',
+            'actualFiles',
+            'unplannedFiles',
+            'untouchedPlannedFiles',
+            'claimsMatch',
+            'fileCount',
+            'wroteNothing',
+          ],
+        },
+        {
+          title: 'Tour d\u2019agent',
+          keys: [
+            'caseId',
+            'agentStatus',
+            'caseStatus',
+            'agentsSelected',
+            'agentTurns',
+            'toolCallCount',
+            'failedToolCalls',
+            'killedByBudget',
+            'anchored',
+            'expectedAgent',
+          ],
+        },
+        {
+          title: 'Contexte',
+          keys: [
+            'agentName',
+            'analystName',
+            'editorName',
+            'subAgents',
+            'analystSubAgents',
+            'editorSubAgents',
+            'rootPath',
+            'ticketId',
+            'summary',
+            'revision',
+            'attempt',
+          ],
+        },
+      ]
+
+      /** Faits dont la seule présence justifie un signal visuel sur la barre. */
+      const FLAGS = [
+        { key: 'wroteNothing', when: (v) => v === true, icon: '\u2298', label: 'aucune écriture', level: 'bad' },
+        { key: 'timedOut', when: (v) => v === true, icon: '\u23f1', label: 'timeout', level: 'bad' },
+        { key: 'killedByBudget', when: (v) => v === true, icon: '\u2620', label: 'tué par budget', level: 'bad' },
+        { key: 'claimsMatch', when: (v) => v === false, icon: '\u2260', label: 'plan ≠ diff', level: 'warn' },
+        {
+          key: 'missingFiles',
+          when: (v) => Array.isArray(v) && v.length > 0,
+          icon: '\u2717',
+          label: 'fichiers absents',
+          level: 'bad',
+        },
+      ]
+
+      /**
+       * Détecte un « succès vide » : verdict positif sur une commande qui n'a rien
+       * exécuté (tout servi par le cache).
+       *
+       * C'est la matérialisation à l'écran de la garde F10 : un `exitCode: 0` obtenu
+       * sur un cache est vrai et vide. `countTaskOutcomes` produit déjà le compte côté
+       * orchestrateur ; ici on le rend visible sans avoir à déplier la phase.
+       */
+      function emptySuccess(phase) {
+        if (phase.status !== 'pass') return false
+        const t = phase.facts?.tasks
+        if (!t) return false
+        return (t.executed ?? 0) === 0
+      }
+
+      // ===========================================================================
+      // Navigation
+      // ===========================================================================
+      function showView(view, runId) {
+        for (const v of ['list', 'detail', 'new']) {
+          document.getElementById('view-' + v).style.display = 'none'
+        }
+        document.getElementById('view-' + view).style.display = ''
+
+        clearTimeout(refreshTimer)
+        if (sseSource) {
+          sseSource.close()
+          sseSource = null
+        }
+        setLive(false)
+
+        const crumb = document.getElementById('crumb')
+        if (view === 'list') {
+          crumb.textContent = ''
+          currentRunId = null
+          loadRuns()
+        } else if (view === 'detail' && runId) {
+          if (runId !== currentRunId) {
+            selectedPhase = null
+            eventsCache = new Map()
+            ticketCache = new Map()
+          }
+          currentRunId = runId
+          crumb.innerHTML = '› <b>' + esc(runId) + '</b>'
+          loadDetail(runId)
+        } else if (view === 'new') {
+          crumb.innerHTML = '› <b>nouveau run</b>'
+        }
+      }
+
+      function setLive(on) {
+        document.getElementById('live-indicator').classList.toggle('on', on)
+      }
+
+      // ===========================================================================
+      // Vue liste
+      // ===========================================================================
+      async function loadRuns() {
+        const runs = await api('GET', '/api/runs')
+        const tbody = document.getElementById('runs-tbody')
+        document.getElementById('run-count').textContent = runs.length
+
+        if (runs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty">Aucun run enregistré.</td></tr>'
+          return
+        }
+
+        tbody.innerHTML = runs
+          .map((r) => {
+            const c = r.context ?? {}
+            const chips = []
+            if (c.ticketId) chips.push(chip('\ud83c\udfab', c.ticketId))
+            if (c.domain) chips.push(chip('', c.domain))
+            if (c.rootPath) chips.push(chip('\ud83d\udcc1', basename(c.rootPath)))
+            if (c.roles?.length) chips.push(chip('\ud83e\udd16', c.roles.join(' + ')))
+            return (
+              "<tr onclick=\"showView('detail','" +
+              r.runId +
+              '\')">' +
+              '<td><span class="badge ' +
+              r.status +
+              '">' +
+              r.status +
+              '</span></td>' +
+              '<td>' +
+              esc(r.workflow) +
+              '</td>' +
+              '<td><div class="ctx-cell">' +
+              (chips.join('') || '<span class="nil">—</span>') +
+              '</div></td>' +
+              '<td class="cell-dim">' +
+              (r.startedAt ? fmtDate(r.startedAt) : '—') +
+              '</td>' +
+              '<td>' +
+              (r.durationMs ? fmtDur(r.durationMs) : r.status === 'running' ? '<span class="spin">⧗</span>' : '—') +
+              '</td>' +
+              '<td class="cell-dim">' +
+              r.phaseCount +
+              '</td>' +
+              '</tr>'
+            )
+          })
+          .join('')
+
+        if (runs.some((r) => r.status === 'running')) {
+          setLive(true)
+          refreshTimer = setTimeout(loadRuns, 3000)
+        }
+      }
+
+      function chip(icon, text) {
+        return '<span class="chip">' + (icon ? icon + ' ' : '') + esc(String(text)) + '</span>'
+      }
+
+      function basename(p) {
+        return String(p).replace(/\/+$/, '').split('/').pop()
+      }
+
+      // ===========================================================================
+      // Vue détail
+      // ===========================================================================
+      async function loadDetail(runId) {
+        const run = await api('GET', '/api/runs/' + runId)
+        if (!run) return
+        currentRun = run
+
+        renderRunHead(run)
+        renderGantt(run)
+        renderPanel()
+
+        const logSection = document.getElementById('log-section')
+        if (run.status === 'running') {
+          setLive(true)
+          logSection.style.display = ''
+          const logBox = document.getElementById('log-box')
+          logBox.innerHTML = (run.logLines ?? []).map(fmtLogLine).join('')
+          logBox.scrollTop = logBox.scrollHeight
+
+          // Fermer l'éventuel EventSource précédent avant d'en ouvrir un nouveau.
+          // Sans ce garde, chaque refresh de 4 secondes ouvrait un EventSource
+          // supplémentaire sans fermer l'ancien : ils s'accumulaient, déclenchaient
+          // chacun leur propre loadDetail() sur data.done, et la vue alternait
+          // entre le run courant et le précédent.
+          if (sseSource) {
+            sseSource.close()
+            sseSource = null
+          }
+
+          sseSource = new EventSource('/api/runs/' + runId + '/stream')
+          sseSource.onmessage = (e) => {
+            const data = JSON.parse(e.data)
+            if (data.done) {
+              sseSource.close()
+              sseSource = null
+              setLive(false)
+              clearTimeout(refreshTimer)
+              loadDetail(runId)
+              return
+            }
+            if (data.line !== undefined) {
+              logBox.insertAdjacentHTML('beforeend', fmtLogLine(data.line))
+              logBox.scrollTop = logBox.scrollHeight
+            }
+          }
+          sseSource.onerror = () => {
+            // Le stream s'est coupé (redémarrage serveur, réseau). On ferme proprement
+            // et on laisse le refreshTimer reprendre la main au prochain tick.
+            sseSource.close()
+            sseSource = null
+          }
+          // Le registre grossit en parallèle du flux stdout : on rafraîchit le Gantt
+          // périodiquement pour voir les phases apparaître.
+          // Le refreshTimer appelle loadDetail, qui ferme l'ancien EventSource avant
+          // d'en ouvrir un nouveau — le garde ci-dessus garantit qu'il n'y en a jamais
+          // deux ouverts simultanément.
+          refreshTimer = setTimeout(() => loadDetail(runId), 4000)
+        } else {
+          logSection.style.display = 'none'
+        }
+      }
+
+      function renderRunHead(run) {
+        const c = run.context ?? {}
+
+        // Agrégats calculés depuis les faits déjà enregistrés — rien de nouveau n'est
+        // inventé, on somme ce qui est là.
+        let toolCalls = 0
+        let agentTurns = 0
+        const touched = new Set()
+        for (const p of run.phases) {
+          const f = p.facts ?? {}
+          toolCalls += f.toolCallCount ?? 0
+          agentTurns += f.agentTurns ?? 0
+          for (const x of f.filesModified ?? []) touched.add(x)
+          for (const x of f.filesUntracked ?? []) touched.add(x)
+        }
+
+        const title = c.ticketSummary
+          ? (c.ticketId ? c.ticketId + ' — ' : '') + c.ticketSummary
+          : run.workflow + ' — ' + run.runId
+
+        const metrics = []
+        metrics.push('<span class="badge ' + run.status + '">' + run.status + '</span>')
+        metrics.push(chip('', run.workflow))
+        if (run.startedAt) metrics.push(chip('\ud83d\udd52', fmtDate(run.startedAt)))
+        metrics.push(chip('\u23f1', run.durationMs ? fmtDur(run.durationMs) : '—'))
+        metrics.push(chip('\ud83d\udd27', toolCalls + ' outils'))
+        metrics.push(chip('\ud83d\udcdd', touched.size + ' fichiers'))
+        metrics.push(chip('\u21ba', agentTurns + ' tours'))
+
+        // Le coût n'est PAS affiché. AgentOS ne produit ni tokens ni prix — ni sur
+        // AgentFinishedEvent, ni en métrique. Afficher "$0.00" affirmerait une mesure
+        // qui n'existe pas. La place reste libre pour le jour où le back la fournira.
+
+        const ctx = []
+        if (c.domain) ctx.push(chip('', 'domaine ' + c.domain))
+        if (c.rootPath)
+          ctx.push(
+            '<span class="chip" title="' +
+              esc(c.rootPath) +
+              '">\ud83d\udcc1 <span class="k">repo</span> ' +
+              esc(basename(c.rootPath)) +
+              '</span>'
+          )
+        if (c.command)
+          ctx.push(
+            '<span class="chip" title="' +
+              esc(c.command) +
+              '">\u2699 <span class="k">oracle</span> ' +
+              esc(truncate(c.command, 46)) +
+              '</span>'
+          )
+        if (c.roles?.length) ctx.push(chip('\ud83e\udd16', c.roles.join(' + ')))
+
+        document.getElementById('run-head').innerHTML =
+          '<div class="title">' +
+          '<h2 title="' +
+          esc(title) +
+          '">' +
+          esc(title) +
+          '</h2>' +
+          '<div class="metrics">' +
+          metrics.join('') +
+          '</div>' +
+          (ctx.length ? '<div class="metrics" style="margin-top:6px">' + ctx.join('') + '</div>' : '') +
+          '</div>'
+      }
+
+      // ---------------------------------------------------------------------------
+      // Gantt
+      // ---------------------------------------------------------------------------
+
+      /**
+       * Attribue une phase à un couloir.
+       *
+       * Les phases `code` sont celles de l'orchestrateur lui-même — préflight, gates,
+       * oracle. Les phases `agent` vont dans le couloir du rôle qui a effectivement
+       * travaillé, lu dans `agentsSelected` (le fait constaté), et non dans le nom du
+       * rôle demandé. C'est la même distinction que fait le contrôle a posteriori de
+       * substitution d'agent : ce qui compte est qui a répondu, pas qui était prévu.
+       */
+      function laneOf(phase) {
+        if (phase.phaseKind !== 'agent') return { id: '__orchestrator', name: 'orchestrateur', kind: 'code' }
+        const f = phase.facts ?? {}
+        const who =
+          (f.agentsSelected ?? [])[0] ?? f.agentName ?? (phase.name.startsWith('analyse') ? 'analyste' : 'agent')
+        return { id: who, name: who, kind: 'agent' }
+      }
+
+      function renderGantt(run) {
+        const host = document.getElementById('gantt-host')
+        const phases = run.phases.filter((p) => p.startedAt)
+
+        if (phases.length === 0) {
+          host.innerHTML = '<div class="panel"><div class="empty">Aucune phase enregistrée.</div></div>'
+          return
+        }
+
+        // Une seule échelle pour tous les couloirs. Les horodatages du registre sont
+        // suffisants : l'origine est le début du run, ou la première phase horodatée
+        // pour les anciens registres qui n'auraient pas ce champ.
+        const timeline = buildGlobalTimeline(run, phases)
+        const { t0, span } = timeline
+
+        // Couloirs, dans l'ordre d'apparition, orchestrateur en tête.
+        const lanes = []
+        const laneIndex = new Map()
+        for (const p of phases) {
+          const l = laneOf(p)
+          if (!laneIndex.has(l.id)) {
+            laneIndex.set(l.id, lanes.length)
+            lanes.push({ ...l, phases: [] })
+          }
+          lanes[laneIndex.get(l.id)].phases.push(p)
+        }
+        lanes.sort((a, b) => (a.id === '__orchestrator' ? -1 : b.id === '__orchestrator' ? 1 : 0))
+
+        // Anchors use the same warped coordinate map as bars. They are elapsed-time
+        // anchors, not a claim that pixel distance remains perfectly linear.
+        const ticks = timeline.anchors
+        const gridHtml = ticks.map((t) => '<span style="left:' + t.pct + '%"></span>').join('')
+
+        const axisHtml =
+          '<div class="gantt-axis">' +
+          '<div class="axis-corner">acteur · temps</div>' +
+          '<div class="axis-track">' +
+          ticks.map((t) => '<div class="axis-tick" style="left:' + t.pct + '%">' + t.label + '</div>').join('') +
+          '</div></div>'
+
+        const lanesHtml = lanes
+          .map((lane) => {
+            const sub = laneSubtitle(lane, run)
+            const layout = layoutLaneBars(lane.phases, timeline, run)
+            const bars = layout.items.map((item) => renderBar(item.phase, item, run)).join('')
+            return (
+              '<div class="lane" style="min-height:' +
+              layout.height +
+              'px">' +
+              '<div class="lane-label">' +
+              '<div class="nm"><span class="badge ' +
+              lane.kind +
+              '">' +
+              (lane.kind === 'code' ? 'code' : 'agent') +
+              '</span>' +
+              esc(lane.id === '__orchestrator' ? 'orchestrateur' : lane.name) +
+              '</div>' +
+              (sub ? '<div class="sub" title="' + esc(sub) + '">' + esc(sub) + '</div>' : '') +
+              '</div>' +
+              '<div class="lane-track"><div class="lane-grid">' +
+              gridHtml +
+              '</div>' +
+              bars +
+              '</div>' +
+              '</div>'
+            )
+          })
+          .join('')
+
+        const ganttHtml = '<div class="gantt"><div class="gantt-inner">' + axisHtml + lanesHtml + '</div></div>'
+        host.innerHTML = ganttHtml
+        return ganttHtml
+      }
+
+      /**
+       * Sous-titre d'un couloir.
+       *
+       * SSSF affiche le modèle LLM du rôle à cet endroit. AgentOS ne le remonte pas
+       * dans les événements que l'orchestrateur enregistre : on affiche donc ce qu'on
+       * sait réellement — le périmètre d'écriture pour l'orchestrateur, le nombre de
+       * phases pour un rôle. Pas de modèle inventé.
+       */
+      function laneSubtitle(lane, run) {
+        if (lane.id === '__orchestrator') {
+          return run.context?.command ? truncate(run.context.command, 34) : 'gates + oracle'
+        }
+        const n = lane.phases.length
+        return n + ' phase' + (n > 1 ? 's' : '')
+      }
+
+      /**
+       * Layout visuel sans collision pour un couloir de la timeline.
+       *
+       * Chaque phase garde exactement son x de début chronologique. Une largeur
+       * minimale ne déplace jamais une barre : si elle ne tient pas avant la phase
+       * suivante, la phase courte devient un marqueur. Les collisions restantes vont
+       * dans des sous-lignes déterministes (ordre : début, fin, nom).
+       */
+      function timelineBounds(run, phases, now = Date.now()) {
+        const starts = phases.map((p) => new Date(p.startedAt).getTime()).filter(Number.isFinite)
+        const runStart = new Date(run.startedAt).getTime()
+        const t0 = Number.isFinite(runStart) ? runStart : Math.min(...starts)
+        const runEnd = Number.isFinite(run.durationMs) ? t0 + run.durationMs : t0
+        const phaseEnd = phases.reduce((latest, phase) => {
+          const start = new Date(phase.startedAt).getTime()
+          const duration = phase.durationMs ?? (run.status === 'running' ? Math.max(now - start, 0) : 0)
+          return Math.max(latest, start + duration)
+        }, t0)
+        return { t0, span: Math.max(phaseEnd, runEnd) - t0 || 1000 }
+      }
+
+      function buildGlobalTimeline(run, phases, now = Date.now()) {
+        const { t0, span } = timelineBounds(run, phases, now)
+        const ordered = [...phases].sort(
+          (a, b) => new Date(a.startedAt) - new Date(b.startedAt) || a.name.localeCompare(b.name)
+        )
+        const minimumGapMs = span * 0.025
+        const starts = new Map()
+        let previous = -Infinity
+        for (const phase of ordered) {
+          const actual = new Date(phase.startedAt).getTime() - t0
+          const warped = Math.max(actual, previous + minimumGapMs)
+          starts.set(phase.name, warped)
+          previous = warped
+        }
+        const end = Math.max(span, previous)
+        const positions = new Map([...starts].map(([name, offset]) => [name, (offset / end) * 100]))
+        const anchors = ordered.map((phase) => ({
+          pct: positions.get(phase.name),
+          label: fmtDur(new Date(phase.startedAt).getTime() - t0),
+        }))
+        return { t0, span: end, positions, anchors }
+      }
+
+      function layoutLaneBars(phases, timeline, run, now = Date.now()) {
+        const minWidth = 2.1
+        const gap = 0.4
+        const sorted = phases
+          .map((phase) => {
+            const start = new Date(phase.startedAt).getTime()
+            const duration = phase.durationMs ?? (run.status === 'running' ? Math.max(now - start, 0) : 0)
+            return {
+              phase,
+              start,
+              end: start + duration,
+              left: timeline.positions.get(phase.name),
+              naturalWidth: (duration / timeline.span) * 100,
+            }
+          })
+          .sort((a, b) => a.start - b.start || a.end - b.end || a.phase.name.localeCompare(b.phase.name))
+        const rows = []
+        const items = []
+        for (const item of sorted) {
+          // Keep the entire chip inside the plot. At the far edge its readable
+          // width may shrink, but its shared global start coordinate never moves.
+          const width = Math.max(0.5, Math.min(Math.max(item.naturalWidth, minWidth), 100 - item.left))
+          const compact = item.naturalWidth < minWidth || width < minWidth
+          let row = rows.findIndex((state) => item.start >= state.actualEnd && item.left >= state.visualRight + gap)
+          if (row === -1) {
+            row = rows.length
+            rows.push({ actualEnd: -Infinity, visualRight: -Infinity })
+          }
+          rows[row].actualEnd = item.end
+          rows[row].visualRight = item.left + width
+          items.push({ phase: item.phase, left: item.left, width, compact, top: 12 + row * 38, row })
+        }
+        return { items, height: Math.max(56, 24 + rows.length * 38) }
+      }
+
+      function renderBar(p, layout, run) {
+        const { left, width, top, compact } = layout
+        const status = p.status === 'pass' ? 'pass' : p.durationMs == null ? 'running' : 'fail'
+
+        const flags = collectFlags(p)
+        if (emptySuccess(p))
+          flags.push({
+            icon: '\u26a0',
+            label: 'succ\u00e8s vide \u2014 aucune t\u00e2che ex\u00e9cut\u00e9e',
+            level: 'warn',
+          })
+
+        const tip =
+          p.name +
+          ' — ' +
+          (p.durationMs ? fmtDur(p.durationMs) : 'en cours') +
+          (flags.length ? '\n' + flags.map((f) => f.icon + ' ' + f.label).join('\n') : '')
+
+        const sel = selectedPhase === p.name ? ' selected' : ''
+        const wide = width > 9 || compact
+
+        const stateLabel = status === 'pass' ? 'réussie' : status === 'fail' ? 'échouée' : 'en cours'
+
+        return (
+          '<button type="button" class="bar ' +
+          status +
+          (compact ? ' compact' : '') +
+          sel +
+          '" style="left:' +
+          left.toFixed(3) +
+          '%;width:' +
+          width.toFixed(3) +
+          '%;top:' +
+          top +
+          'px"' +
+          ' title="' +
+          esc(tip) +
+          '" aria-label="Phase ' +
+          esc(p.name) +
+          ', ' +
+          stateLabel +
+          ', ' +
+          esc(p.durationMs ? fmtDur(p.durationMs) : 'en cours') +
+          '" aria-pressed="' +
+          (selectedPhase === p.name) +
+          '"' +
+          ' onclick="selectPhase(\'' +
+          esc(p.name) +
+          '\')">' +
+          '<span class="sr-only">' +
+          stateLabel +
+          ' : </span>' +
+          (wide ? '<span class="bar-name">' + esc(p.name) + '</span>' : '') +
+          flags.map((f) => '<span class="bar-flag" aria-hidden="true">' + f.icon + '</span>').join('') +
+          (wide && p.durationMs ? '<span class="bar-dur">' + fmtDur(p.durationMs) + '</span>' : '') +
+          '</button>'
+        )
+      }
+
+      function collectFlags(p) {
+        const out = []
+        const f = p.facts ?? {}
+        for (const flag of FLAGS) {
+          if (flag.key in f && flag.when(f[flag.key])) out.push(flag)
+        }
+        return out
+      }
+
+      function buildTicks(span) {
+        const targets = [1e3, 2e3, 5e3, 1e4, 15e3, 3e4, 6e4, 12e4, 3e5, 6e5, 12e5, 18e5]
+        const step = targets.find((t) => span / t <= 10) ?? Math.ceil(span / 8)
+        const out = []
+        for (let t = 0; t <= span; t += step) {
+          out.push({ pct: (t / span) * 100, label: fmtDur(t) })
+        }
+        return out
+      }
+
+      // ---------------------------------------------------------------------------
+      // Panneau de phase
+      // ---------------------------------------------------------------------------
+      function selectPhase(name) {
+        selectedPhase = selectedPhase === name ? null : name
+        renderGantt(currentRun)
+        renderPanel()
+        if (selectedPhase) {
+          document.getElementById('panel-host').scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        }
+      }
+
+      function renderPanel() {
+        const host = document.getElementById('panel-host')
+        if (!selectedPhase || !currentRun) {
+          host.innerHTML = '<div class="panel"><div class="empty">Sélectionner une phase dans la timeline.</div></div>'
+          return
+        }
+
+        const p = currentRun.phases.find((x) => x.name === selectedPhase)
+        if (!p) {
+          host.innerHTML = ''
+          return
+        }
+
+        const f = p.facts ?? {}
+        const caseId = f.caseId ?? null
+
+        openCaseId = caseId
+
+        const flags = collectFlags(p)
+        if (emptySuccess(p))
+          flags.push({
+            icon: '\u26a0',
+            label: 'succ\u00e8s vide \u2014 aucune t\u00e2che ex\u00e9cut\u00e9e',
+            level: 'warn',
+          })
+
+        const head =
+          '<div class="panel-head">' +
+          '<span class="badge ' +
+          p.phaseKind +
+          '">' +
+          p.phaseKind +
+          '</span>' +
+          '<span class="pname">' +
+          esc(p.name) +
+          '</span>' +
+          '<span class="badge ' +
+          p.status +
+          '">' +
+          p.status +
+          '</span>' +
+          '<span class="chip">\u23f1 ' +
+          (p.durationMs ? fmtDur(p.durationMs) : 'en cours') +
+          '</span>' +
+          flags.map((x) => '<span class="chip ' + x.level + '">' + x.icon + ' ' + esc(x.label) + '</span>').join('') +
+          '<span class="spacer"></span>' +
+          // Le lien profond exige `ns` en plus de `case`. Le registre ne porte pas le
+          // namespaceId ; il est posé après coup par loadNarrative(), qui le lit sur
+          // les événements du case. Tant qu'il n'est pas connu, pas de lien plutôt
+          // qu'un lien incomplet qui mènerait à un écran vide.
+          (caseId ? '<span id="case-link-host"></span>' : '') +
+          '</div>'
+
+        const factsCol =
+          '<div class="panel-col">' +
+          '<h4>Faits <span class="src-tag">registre</span></h4>' +
+          renderFactGroups(f) +
+          '</div>'
+
+        // Cas spécial : phase fetch-ticket (phaseKind=code, mais avec un ticketId dans les faits).
+        //
+        // Les autres phases code (preflight, plan-gate, verify, claims-gate) n'ont effectivement
+        // rien d'autre que leurs faits. fetch-ticket est différente : elle a récupéré un contenu
+        // Jira qui a voyagé en mémoire vers le brief de l'analyste, sans jamais être enregistré
+        // (invariant du registre). C'est précisément ce contenu qui est le plus utile pour
+        // diagnostiquer un plan d'analyste hors sujet. On va donc le chercher à la source.
+        const ticketId = f.ticketId ?? null
+        const isFetchTicket = p.phaseKind === 'code' && ticketId
+
+        let narrCol
+        if (isFetchTicket) {
+          // La colonne droite affiche le contenu du ticket Jira récupéré maintenant.
+          // L'étiquette de source est intentionnellement différente des deux autres :
+          //   - "registre" : immuable, enregistré au moment du run
+          //   - "AgentOS, non enregistré" : immuable (le case ne change pas), non persisté
+          //   - "Jira, récupéré maintenant" : MUTABLE — le ticket peut avoir changé
+          // Cette distinction est la raison de l'avertissement affiché dans le panneau.
+          narrCol =
+            '<div class="panel-col">' +
+            '<h4>Contenu du ticket <span class="src-tag" style="border-color:#4a3010;color:#fb923c">Jira, récupéré maintenant</span></h4>' +
+            '<div id="ticket-' +
+            esc(ticketId) +
+            '"><span class="nil">Chargement…</span></div>' +
+            '</div>'
+        } else if (caseId) {
+          narrCol =
+            '<div class="panel-col">' +
+            '<h4>Conversation <span class="src-tag">AgentOS, non enregistré</span></h4>' +
+            '<div id="narr-' +
+            caseId +
+            '"><span class="nil">Chargement…</span></div>' +
+            '</div>'
+        } else {
+          narrCol =
+            '<div class="panel-col">' +
+            '<h4>Conversation <span class="src-tag">AgentOS, non enregistré</span></h4>' +
+            '<span class="nil">Phase de code — aucun case AgentOS. ' +
+            'Les commandes exécutées et leur verdict sont entièrement dans les faits.</span>' +
+            '</div>'
+        }
+
+        host.innerHTML = '<div class="panel">' + head + '<div class="panel-body">' + factsCol + narrCol + '</div></div>'
+
+        if (isFetchTicket) loadTicketContent(ticketId, p)
+        else if (caseId) loadNarrative(caseId)
+      }
+
+      function renderFactGroups(f) {
+        const keys = new Set(Object.keys(f))
+        const blocks = []
+
+        for (const g of FACT_GROUPS) {
+          const present = g.keys.filter((k) => keys.has(k))
+          if (present.length === 0) continue
+          for (const k of present) keys.delete(k)
+          blocks.push(
+            factBlock(
+              g.title,
+              present.map((k) => [k, f[k]])
+            )
+          )
+        }
+
+        // Tout ce qui n'est pas classé reste visible. Le défaut est la visibilité :
+        // un fait ajouté par un workflow ne doit pas disparaître faute d'être prévu ici.
+        if (keys.size > 0) {
+          blocks.push(
+            factBlock(
+              'Autres',
+              [...keys].map((k) => [k, f[k]])
+            )
+          )
+        }
+
+        return blocks.join('') || '<span class="nil">Aucun fait enregistré.</span>'
+      }
+
+      function factBlock(title, entries) {
+        const rows = entries.map(([k, v]) => '<span class="fk">' + esc(k) + '</span>' + renderValue(k, v)).join('')
+        return (
+          '<div class="fgroup"><div class="gt">' + esc(title) + '</div>' + '<div class="facts">' + rows + '</div></div>'
+        )
+      }
+
+      function renderValue(key, v) {
+        if (Array.isArray(v)) {
+          if (v.length === 0) return '<span class="fv nil">(vide)</span>'
+          const cls = key.toLowerCase().includes('file') ? 'tag path' : 'tag'
+          return (
+            '<div class="fv list">' +
+            v.map((x) => '<span class="' + cls + '">' + esc(String(x)) + '</span>').join('') +
+            '</div>'
+          )
+        }
+        if (v !== null && typeof v === 'object') {
+          const e = Object.entries(v)
+          if (e.length === 0) return '<span class="fv nil">(vide)</span>'
+          return (
+            '<div class="fv list">' +
+            e.map(([k, val]) => '<span class="tag">' + esc(k) + ': ' + esc(String(val)) + '</span>').join('') +
+            '</div>'
+          )
+        }
+        if (typeof v === 'boolean') {
+          return '<span class="fv ' + (v ? 'yes' : 'no') + '">' + v + '</span>'
+        }
+        if (key.endsWith('DurationMs') || key === 'durationMs') {
+          return '<span class="fv">' + fmtDur(v) + '</span>'
+        }
+        return '<span class="fv">' + esc(String(v)) + '</span>'
+      }
+
+      // ---------------------------------------------------------------------------
+      // Contenu de ticket Jira — chargé depuis l'API Jira via le proxy du dashboard.
+      //
+      // AVERTISSEMENT DE MUTABILITÉ (invariant de l'écran)
+      // --------------------------------------------------
+      // Un case AgentOS est immuable : ce qu'on affiche est exactement ce qui s'est
+      // passé. Un ticket Jira ne l'est pas. S'il a été modifié entre le run et
+      // l'affichage, le panneau montre autre chose que ce que l'analyste a lu.
+      // L'avertissement ci-dessous est la condition qui rend l'affichage acceptable :
+      // sans lui, on afficherait quelque chose qui ressemble à une preuve et n'en
+      // est pas une.
+      // ---------------------------------------------------------------------------
+      async function loadTicketContent(ticketId, phase) {
+        const host = document.getElementById('ticket-' + ticketId)
+        if (!host) return
+
+        let data = ticketCache.get(ticketId)
+        if (!data) {
+          try {
+            data = await api('GET', '/api/jira/' + encodeURIComponent(ticketId))
+            ticketCache.set(ticketId, data)
+          } catch (err) {
+            // L'erreur peut être un 501 (credentials manquants) ou un 502 (Jira injoignable).
+            // Dans les deux cas, on affiche le message du serveur dans le panneau —
+            // pas une erreur console silencieuse. Un 501 est une instruction de
+            // configuration, pas une panne ; le ton doit être lisible.
+            host.innerHTML =
+              '<div style="background:var(--surface-2);border:1px solid #4a3010;border-radius:6px;padding:12px 14px;color:var(--warn);line-height:1.6">' +
+              '<strong>Contenu du ticket non disponible</strong><br>' +
+              esc(String(err.message ?? err)) +
+              '</div>'
+            return
+          }
+        }
+        if (!document.getElementById('ticket-' + ticketId)) return
+
+        // Date du run : startedAt de la phase fetch-ticket, pour l'avertissement.
+        const runDate = phase.startedAt ? fmtDate(phase.startedAt) : 'date inconnue'
+
+        // Avertissement de mutabilité — obligatoire (voir commentaire au-dessus).
+        // L'horodatage fetchedAt vient du serveur (moment de la récupération).
+        const fetchedAt = data.fetchedAt ? fmtDate(data.fetchedAt) : 'maintenant'
+        const warning =
+          '<div style="background:#1e1507;border:1px solid #4a3010;border-radius:6px;padding:9px 12px;margin-bottom:12px;color:var(--warn);font-size:11px;line-height:1.6">' +
+          '⚠️ Récupéré depuis Jira le ' +
+          esc(fetchedAt) +
+          ' — peut différer de ce qui a été transmis à l’analyste le ' +
+          esc(runDate) +
+          '. Un ticket Jira est mutable : cette vue n’est pas une preuve de ce que l’analyste a reçu.' +
+          '</div>'
+
+        // Le contenu est du markdown en texte brut venant d'une source externe.
+        // On l'affiche monospace préformaté avec échappement — pas de rendu HTML.
+        // Une source externe ne doit pas pouvoir injecter quoi que ce soit dans la page.
+        const content =
+          '<pre style="background:var(--bg);border:1px solid var(--border-soft);border-radius:6px;padding:10px 12px;white-space:pre-wrap;word-break:break-word;font-size:11.5px;line-height:1.6;color:var(--text-dim);max-height:420px;overflow-y:auto;font-family:inherit">' +
+          esc(data.ticketContent) +
+          '</pre>'
+
+        host.innerHTML = warning + content
+      }
+
+      // ---------------------------------------------------------------------------
+      // Récit : brief, réponse, événements — chargés depuis AgentOS
+      //
+      // Rien de ce qui suit n'est ni enregistré ni mis en cache sur disque. C'est le
+      // choix O-B : le registre porte les faits, AgentOS porte le récit, l'écran les
+      // juxtapose sans les confondre.
+      // ---------------------------------------------------------------------------
+      async function loadNarrative(caseId) {
+        const host = document.getElementById('narr-' + caseId)
+        if (!host) return
+
+        let events = eventsCache.get(caseId)
+        if (!events) {
+          try {
+            events = await api('GET', '/api/cases/' + caseId + '/events')
+            eventsCache.set(caseId, events)
+          } catch (err) {
+            host.innerHTML = '<span class="nil">AgentOS injoignable — ' + esc(String(err.message ?? err)) + '</span>'
+            return
+          }
+        }
+        if (!document.getElementById('narr-' + caseId)) return
+
+        // Le namespaceId n'existe pas dans le registre — il est porté par chaque
+        // CaseEvent. On le lit ici pour construire le lien profond complet.
+        const nsId = events.find((e) => e.namespaceId)?.namespaceId
+        const linkHost = document.getElementById('case-link-host')
+        if (linkHost && nsId) {
+          linkHost.innerHTML =
+            '<a class="btn sm" target="_blank" href="' +
+            agentosUrl +
+            '/agentos/home?ns=' +
+            nsId +
+            '&case=' +
+            caseId +
+            '">case ↗</a>'
+        }
+
+        const brief = firstUserMessage(events)
+        const reply = lastAgentMessage(events)
+
+        const html =
+          (brief
+            ? '<div class="gt" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Brief envoyé</div>' +
+              '<div class="brief">' +
+              esc(brief) +
+              '</div>'
+            : '') +
+          (reply
+            ? '<div class="gt" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Réponse de l\'agent</div>' +
+              '<div class="brief reply">' +
+              esc(reply) +
+              '</div>'
+            : '') +
+          '<div class="gt" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Événements (' +
+          events.length +
+          ')</div>' +
+          '<div class="evlist">' +
+          events.map(renderEvent).join('') +
+          '</div>'
+
+        document.getElementById('narr-' + caseId).innerHTML = html
+      }
+
+      function firstUserMessage(events) {
+        const e = events.find((x) => x.type === 'MessageEvent' && x.actor?.role === 'USER')
+        return e ? messageText(e) : null
+      }
+
+      function lastAgentMessage(events) {
+        const list = events.filter((x) => x.type === 'MessageEvent' && x.actor?.role === 'AGENT')
+        return list.length ? messageText(list[list.length - 1]) : null
+      }
+
+      function messageText(e) {
+        return (e.content ?? [])
+          .filter((p) => typeof p.content === 'string')
+          .map((p) => p.content)
+          .join('')
+      }
+
+      /** Résumé d'une ligne d'événement, par type. Inconnu → clés brutes. */
+      function eventSummary(e) {
+        switch (e.type) {
+          case 'MessageEvent':
+            return (e.actor?.displayName ?? e.actor?.role ?? '') + ' · ' + truncate(messageText(e), 120)
+          case 'ToolRequestEvent':
+            return e.toolName + '(' + truncate(JSON.stringify(e.args ?? {}), 90) + ')'
+          case 'ToolResponseEvent':
+            return (
+              (e.success === false ? '✗ ' : '✓ ') +
+              (e.toolName ?? '') +
+              (e.durationMs != null ? ' · ' + fmtDur(e.durationMs) : '')
+            )
+          case 'AgentSelectedEvent':
+            return e.agentName ?? ''
+          case 'AgentRunningEvent':
+            return [e.agentName, e.llmProvider, e.llmModel].filter(Boolean).join(' · ')
+          case 'AgentFinishedEvent':
+            return [e.agentName, e.llmProvider, e.llmModel].filter(Boolean).join(' · ')
+          case 'CaseStatusEvent':
+            return e.status ?? ''
+          case 'IntentionGeneratedEvent':
+            return (e.toolName ? '→ ' + e.toolName + ' · ' : '') + truncate(e.intention ?? '', 110)
+          case 'QuestionEvent':
+            return truncate(e.question ?? '', 120)
+          case 'AnswerEvent':
+            return truncate(e.answer ?? '', 120)
+          case 'ErrorEvent':
+          case 'WarnEvent':
+            return truncate(e.message ?? '', 120)
+          default: {
+            const skip = new Set(['id', 'caseId', 'namespaceId', 'timestamp', 'type', 'metadata'])
+            return Object.keys(e)
+              .filter((k) => !skip.has(k))
+              .join(', ')
+          }
+        }
+      }
+
+      function eventClass(e) {
+        if (e.type === 'ErrorEvent' || e.success === false) return 'err'
+        if (e.type.startsWith('Tool')) return 'tool'
+        return ''
+      }
+
+      function renderEvent(e, i) {
+        return (
+          '<div class="ev" onclick="toggleEventJson(this,' +
+          i +
+          ')">' +
+          '<span class="t">' +
+          fmtTime(e.timestamp) +
+          '</span>' +
+          '<span class="ty ' +
+          eventClass(e) +
+          '">' +
+          esc(e.type.replace(/Event$/, '')) +
+          '</span>' +
+          '<span class="sm">' +
+          esc(eventSummary(e)) +
+          '</span>' +
+          '</div>'
+        )
+      }
+
+      function toggleEventJson(el, index) {
+        const existing = el.nextElementSibling
+        if (existing && existing.classList.contains('ev-json')) {
+          existing.remove()
+          return
+        }
+        const e = (eventsCache.get(openCaseId) ?? [])[index]
+        if (!e) return
+        el.insertAdjacentHTML('afterend', '<div class="ev-json">' + esc(JSON.stringify(e, null, 2)) + '</div>')
+      }
+
+      // ===========================================================================
+      // Vue nouveau run
+      // ===========================================================================
+      let agentLoadTimer = null
+
+      /**
+       * Bascule l'affichage des champs de rôle selon le workflow/diagnostic choisi.
+       *
+       * `us-loop` ne lit PAS `FACTORY_AGENT`. Laisser le champ unique visible
+       * donnerait l'illusion que le rôle sélectionné est celui qui travaille.
+       * `backend-oracle-check` n'utilise aucun agent.
+       */
+      function onWorkflowChange() {
+        const wf = document.getElementById('f-workflow').value
+        const two = wf === 'us-loop'
+        const noAgent = wf === 'backend-oracle-check'
+        document.getElementById('field-agent').style.display = two || noAgent ? 'none' : ''
+        document.getElementById('field-analyst').style.display = two ? '' : 'none'
+        document.getElementById('field-editor').style.display = two ? '' : 'none'
+      }
+
+      function onNamespaceChange() {
+        clearTimeout(agentLoadTimer)
+        agentLoadTimer = setTimeout(loadAgents, 600)
+      }
+
+      async function loadAgents() {
+        const nsId = document.getElementById('f-namespace').value.trim()
+        const sel = document.getElementById('f-agent')
+        const txt = document.getElementById('f-agent-text')
+
+        if (!nsId) {
+          sel.innerHTML = '<option value="">-- saisir le namespace d\'abord --</option>'
+          sel.style.display = ''
+          txt.style.display = 'none'
+          return
+        }
+
+        sel.innerHTML = '<option value="">Chargement...</option>'
+        try {
+          const agents = await api('GET', '/api/agents?namespaceId=' + encodeURIComponent(nsId))
+          const usable = agents.filter((a) => a.enabled !== false && !a.subAgents?.length)
+          const others = agents.filter((a) => !usable.includes(a))
+          sel.innerHTML =
+            '<option value="">-- choisir --</option>' +
+            usable.map((a) => '<option value="' + esc(a.name) + '">' + esc(a.name) + '</option>').join('') +
+            (others.length
+              ? '<optgroup label="Non utilisables comme rôle de phase">' +
+                others.map((a) => '<option value="' + esc(a.name) + '">' + esc(a.name) + '</option>').join('') +
+                '</optgroup>'
+              : '')
+          sel.style.display = ''
+          txt.style.display = 'none'
+        } catch {
+          sel.style.display = 'none'
+          txt.style.display = ''
+          txt.placeholder = 'AgentOS indisponible — saisir le nom manuellement'
+        }
+      }
+
+      function getAgentValue() {
+        const sel = document.getElementById('f-agent')
+        const txt = document.getElementById('f-agent-text')
+        return sel.style.display !== 'none' ? sel.value : txt.value.trim()
+      }
+
+      async function launchRun() {
+        const btn = document.getElementById('btn-launch')
+        btn.disabled = true
+        btn.textContent = 'Lancement...'
+
+        const workflow = document.getElementById('f-workflow').value
+        const two = workflow === 'us-loop'
+        const noAgent = workflow === 'backend-oracle-check'
+        const cmd = document.getElementById('f-command').value.trim()
+        const domain = document.getElementById('f-domain').value
+
+        const body = {
+          workflow,
+          FACTORY_NAMESPACE_ID: document.getElementById('f-namespace').value.trim() || undefined,
+          FACTORY_AGENT: two || noAgent ? undefined : getAgentValue(),
+          FACTORY_AGENT_ANALYST: two ? document.getElementById('f-analyst').value.trim() || undefined : undefined,
+          FACTORY_AGENT_EDITOR: two ? document.getElementById('f-editor').value.trim() || undefined : undefined,
+          FACTORY_DOMAIN: domain,
+          FACTORY_TASK: document.getElementById('f-task').value.trim(),
+          FACTORY_SCOPE: document.getElementById('f-scope').value.trim() || undefined,
+          FACTORY_TICKET: document.getElementById('f-ticket').value.trim() || undefined,
+          FACTORY_ROOT: document.getElementById('f-root').value.trim() || undefined,
+          FACTORY_COMMAND_FRONT: cmd && domain === 'front' ? cmd : undefined,
+          FACTORY_COMMAND_BACK: cmd && domain === 'back' ? cmd : undefined,
+          AGENTOS_URL: document.getElementById('f-agentos').value.trim(),
+          FACTORY_USER: document.getElementById('f-user').value.trim(),
+        }
+
+        try {
+          await api('POST', '/api/runs', body)
+          setTimeout(() => showView('list'), 800)
+        } catch (err) {
+          alert('Erreur : ' + err.message)
+        } finally {
+          btn.disabled = false
+          btn.textContent = 'Lancer'
+        }
+      }
+
+      // ===========================================================================
+      // Utilitaires
+      // ===========================================================================
+      async function api(method, path, body) {
+        const opts = { method, headers: { 'Content-Type': 'application/json' } }
+        if (body) opts.body = JSON.stringify(body)
+        const res = await fetch(path, opts)
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }))
+          throw new Error(err.error ?? res.statusText)
+        }
+        return res.json()
+      }
+
+      function fmtDate(iso) {
+        const d = new Date(iso)
+        return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString('fr-FR')
+      }
+
+      function fmtTime(iso) {
+        if (!iso) return ''
+        return new Date(iso).toLocaleTimeString('fr-FR')
+      }
+
+      function fmtDur(ms) {
+        if (ms == null) return '—'
+        if (ms < 1000) return ms + 'ms'
+        if (ms < 60000) return (ms / 1000).toFixed(1) + 's'
+        const m = Math.floor(ms / 60000)
+        const s = Math.round((ms % 60000) / 1000)
+        return m + 'm' + String(s).padStart(2, '0') + 's'
+      }
+
+      function truncate(s, n) {
+        s = String(s ?? '')
+        return s.length <= n ? s : s.slice(0, n) + '…'
+      }
+
+      function fmtLogLine(line) {
+        const cls =
+          line.startsWith('[stderr]') || line.includes('❌')
+            ? 'err'
+            : line.includes('✅')
+              ? 'pass'
+              : line.includes('Registre') || line.includes('Résultat')
+                ? 'info'
+                : ''
+        return '<div class="log-line ' + cls + '">' + esc(line) + '</div>'
+      }
+
+      function esc(s) {
+        return String(s ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;')
+      }
+
+      // ===========================================================================
+      // Init
+      // ===========================================================================
+
+      /**
+       * Affiche l'état de la configuration Jira sous le champ Ticket.
+       *
+       * Deux états possibles, lus depuis le booléen `jiraConfigured` de /api/config :
+       *
+       * - vrai  : mention discrète indiquant que les credentials sont prêts côté serveur.
+       * - faux  : instruction expliquant comment relancer le serveur avec les variables
+       *           manquantes. Le ton est celui d'une instruction, pas d'une erreur :
+       *           ce n'est pas une panne, c'est une configuration absente.
+       *
+       * Les valeurs des credentials ne sont jamais affichées, même partiellement.
+       */
+      function initJiraStatus(jiraConfigured) {
+        const host = document.getElementById('jira-status')
+        if (!host) return
+        if (jiraConfigured) {
+          host.innerHTML =
+            '<span class="chip good" style="margin-top:4px">' + 'Credentials Jira configurés côté serveur' + '</span>'
+        } else {
+          host.innerHTML =
+            '<span class="chip warn" style="margin-top:4px">' +
+            'Credentials Jira absents — renseigner un ticket échouera. ' +
+            'Relancez le serveur avec : ' +
+            'JIRA_BASE_URL=… JIRA_EMAIL=… JIRA_API_TOKEN=… node factory/dashboard/server.mjs' +
+            '</span>'
+        }
+      }
+
+      api('GET', '/api/config')
+        .then((c) => {
+          agentosUrl = c.agentosUrl ?? agentosUrl
+          document.getElementById('f-agentos').value = agentosUrl
+          if (c.factoryUser) document.getElementById('f-user').value = c.factoryUser
+          initJiraStatus(c.jiraConfigured ?? false)
+        })
+        .catch(() => {})
+
+      onWorkflowChange()
+      showView('list')
+    </script>
+  </body>
+</html>
