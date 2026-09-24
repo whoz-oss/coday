@@ -1,3 +1,13 @@
+## 3.7.1 (2026-09-24)
+
+### 🩹 Fixes
+
+- wz-34403 - fix case title and first message translation ([#1382](https://github.com/whoz-oss/coday/pull/1382))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.7.0 (2026-09-24)
 
 ### 🚀 Features
