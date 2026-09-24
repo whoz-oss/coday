@@ -14,14 +14,17 @@ import { CaseEvent } from '../lib/model/case-event'
  *
  * Protocol (from CaseEventSseController.kt):
  * - SSE event id   → CaseEvent UUID
- * - SSE event name → CaseEvent type discriminant (e.g. "MessageEvent", "ThinkingEvent")
- * - SSE event data → JSON-serialized CaseEvent subtype (polymorphic via @JsonTypeInfo)
+ * - SSE event name → stable "case-event" channel
+ * - SSE event data → JSON-serialized CaseEvent subtype (polymorphic via `type`)
+ *
+ * BREAKING protocol: clients must listen to "case-event" and discriminate payloads
+ * through `data.type`; individual CaseEvent type names are no longer SSE channels.
  *
  * Usage:
  *   const events$ = this.caseEventSse.connect(caseId)
  *   events$.subscribe(event => { ... })
  *
- * The Observable completes when the EventSource closes (normal end or error).
+ * The native EventSource reconnection policy is preserved on transient transport errors.
  * Subscribers can narrow the type via the `type` discriminant field:
  *   if (event.type === 'MESSAGE') { const msg = event as MessageEvent }
  */
@@ -33,8 +36,8 @@ export class CaseEventSseService {
   /**
    * Open an SSE connection for the given case and return an Observable of CaseEvents.
    *
-   * The Observable completes when the server closes the stream.
-   * It errors if the EventSource fails to connect or emits an error event.
+   * EventSource reconnects automatically after transient transport failures; this
+   * Observable remains subscribed until its consumer unsubscribes.
    *
    * Runs EventSource callbacks outside NgZone for performance,
    * then re-enters the zone to emit — ensuring Angular change detection fires.
@@ -45,7 +48,7 @@ export class CaseEventSseService {
     return new Observable<CaseEvent>((subscriber) => {
       const source = this.zone.runOutsideAngular(() => new EventSource(url))
 
-      source.onmessage = (event: MessageEvent) => {
+      const onCaseEvent = (event: MessageEvent) => {
         try {
           const parsed = JSON.parse(event.data) as CaseEvent
           this.zone.run(() => subscriber.next(parsed))
@@ -54,13 +57,12 @@ export class CaseEventSseService {
         }
       }
 
-      source.onerror = (_event: Event) => {
-        if (source.readyState === EventSource.CLOSED) {
-          this.zone.run(() => subscriber.complete())
-        } else {
-          this.zone.run(() => subscriber.error(new Error(`SSE connection error for case ${caseId}`)))
-        }
-        source.close()
+      source.addEventListener('case-event', onCaseEvent)
+
+      source.onerror = () => {
+        // Do not close or error the Observable here: EventSource reconnects by design.
+        // A server-side saturation invalidation intentionally reaches this path so that
+        // the browser reconnects and receives the durable replay.
       }
 
       return () => source.close()

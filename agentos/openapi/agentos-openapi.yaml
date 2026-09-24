@@ -1064,9 +1064,9 @@ paths:
       - case-controller
   /api/cases/{caseId}/events:
     get:
-      description: "Server-Sent Events stream emitting all events generated during\
-        \ case execution. Use the browser EventSource API to consume this endpoint,\
-        \ not a regular HTTP client."
+      description: "BREAKING SSE protocol: every domain frame uses `event: case-event`;\
+        \ consumers discriminate the JSON CaseEvent payload through `data.type`.\
+        \ includePreviousEvents defaults to true so reconnecting clients replay durable history."
       operationId: streamEventsCaseEventSse
       parameters:
       - in: path
@@ -1080,13 +1080,13 @@ paths:
         required: false
         schema:
           type: boolean
+          default: true
       responses:
         "200":
           content:
             text/event-stream: {}
-          description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
-            \ (MessageEvent, ToolRequestEvent, etc.) with a \"type\" discriminant\
-            \ field."
+          description: "BREAKING SSE stream — every frame is named `case-event` and carries\
+            \ a JSON-serialized CaseEvent subtype with a \"type\" discriminant field."
       summary: Stream case events via SSE
       tags:
       - sse
