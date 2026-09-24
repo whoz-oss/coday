@@ -259,9 +259,13 @@ try {
 
   {
     const run = registry.createRun('test-shutdown-append')
-    registry.endRun(run, 'pass')
-    const lines = readFileSync(run.filePath, 'utf8').trim().split('\n')
+    expect('endCurrentRunOnce : premier append = true', registry.endCurrentRunOnce('pass'), true)
+    expect('endCurrentRunOnce : second append = false', registry.endCurrentRunOnce('fail'), false)
+    expect('getCurrentRun conserve le run fermé', registry.getCurrentRun() === run, true)
+    const source = readFileSync(run.filePath, 'utf8')
+    const lines = source.trim().split('\n')
     expect('JSONL : 2 lignes (run_start + run_end)', lines.length, 2)
+    expect('JSONL se termine par newline', source.endsWith('\n'), true)
     expect('JSONL ligne 0 : kind = run_start', JSON.parse(lines[0]).kind, 'run_start')
     expect('JSONL ligne 1 : kind = run_end', JSON.parse(lines[1]).kind, 'run_end')
   }

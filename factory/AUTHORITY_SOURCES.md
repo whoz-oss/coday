@@ -6,14 +6,14 @@ Ce document distingue ce qui fait autorité aujourd'hui, pendant la migration et
 
 `factory/src/entrypoints/factory-operational.ts` est la source du bundle généré `factory/runtime/factory-operational.mjs`. Ce bundle porte l'unique registre active-case consommé par `run.mjs` et `lib/agentos.mjs`; il n'importe jamais l'ensemble de `agentos.mjs`.
 
-La frontière reste volontairement hybride : `_currentRun` demeure exclusivement dans `lib/registry.mjs` et les résolveurs de gates dans `lib/review-gate.mjs`. `run.mjs` et la façade legacy `lib/shutdown.mjs` injectent ces instances existantes dans l'application de shutdown. Aucune copie TypeScript concurrente n'existe. Le bundle n'est donc pas autonome pour ces deux états tant que leurs autorités legacy ne sont pas migrées.
+Depuis le Stage 4B, le run courant et l’état once-only sont exclusivement dans `src/lib/registry.ts`, fermé dans le bundle opérationnel. `lib/registry.mjs` ne contient aucun état et réexporte ce bundle pour préserver les importeurs legacy. Les résolveurs de gates restent dans `lib/review-gate.mjs` et sont injectés dans l’application de shutdown. L’artefact existant reste périmé jusqu’à sa reconstruction par la toolchain isolée.
 
 ## Autorités actuelles
 
 | Domaine | Source d'autorité actuelle | Notes |
 |---|---|---|
 | Runtime legacy | Fichiers `.mjs` historiques exécutés sous `factory/` | Ils restent canoniques pour les consommateurs non basculés au Stage 2. |
-| Cluster opérationnel shutdown/active-case | `factory/src/` et `factory/src/entrypoints/factory-operational.ts` | Autorité TypeScript; le bundle généré est partagé par les consommateurs migrés. |
+| Cluster opérationnel shutdown/active-case/registry | `factory/src/` et `factory/src/entrypoints/factory-operational.ts` | Autorité TypeScript; le bundle généré est partagé, la façade registry est stateless. |
 | Contrats et invariants des modules | Comportement des `.mjs`, complété par `factory/lib/README.md` | En cas de conflit, le runtime observé prime ; le conflit documentaire doit être corrigé. |
 | Dispatch et workflows disponibles | `factory/run.mjs` et modules référencés | La structure illustrative d'un README n'est pas exhaustive. |
 | Commandes oracle | Modules de domaine/oracle concernés | Ni l'agent ni sa prose ne peuvent remplacer cette autorité. |

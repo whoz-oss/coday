@@ -8,9 +8,14 @@ import { pathToFileURL } from 'node:url'
 const artifactPath = resolve(import.meta.dirname, '../runtime/factory-operational.mjs')
 const metafilePath = resolve(import.meta.dirname, '../dist/factory-operational/factory-operational.meta.json')
 const activeCaseSource = '../src/lib/active-case.ts'
+const registrySource = '../src/lib/registry.ts'
 const expectedActiveCaseExports = [
   'clearActiveCaseId', 'getActiveCaseId', 'getActiveCaseIds', 'registerActiveCase',
   'setActiveCaseId', 'unregisterActiveCase',
+]
+const expectedRegistryExports = [
+  'createRun', 'startPhase', 'passPhase', 'failPhase', 'endRun',
+  'endCurrentRunOnce', 'getCurrentRun',
 ]
 
 async function importFresh(modulePath, observabilityFile) {
@@ -41,16 +46,22 @@ async function exerciseActiveCase(module) {
 const temporaryDirectory = await mkdtemp(join(tmpdir(), 'factory-operational-'))
 const previousObservabilityFile = process.env.FACTORY_ACTIVE_CASE_FILE
 try {
-  const module = await importFresh(artifactPath)
+  const module = await import(pathToFileURL(artifactPath).href)
   await exerciseActiveCase(module)
+  for (const name of expectedRegistryExports) assert.equal(typeof module[name], 'function', `missing ${name}`)
+
+  const facade = await import('../lib/registry.mjs')
+  for (const name of expectedRegistryExports) assert.equal(facade[name], module[name], `${name} facade identity mismatch`)
 
   const calls = []
   module.registerActiveCase('case-a')
   const controller = module.createShutdownController({
     activeCaseIds: module.getActiveCaseIds,
     caseTerminator: { terminate: async (id) => calls.push(['terminate', id]) },
-    currentRun: () => ({ filePath: '/tmp/run', _startedAt: 0 }),
-    endRun: (_run, status, facts) => calls.push(['endRun', status, facts]),
+    endCurrentRunOnce: (status, facts) => {
+      calls.push(['endCurrentRunOnce', status, facts])
+      return true
+    },
     rejectPendingGates: () => calls.push(['reject']),
     warn: () => {},
     exit: (code) => calls.push(['exit', code]),
@@ -59,7 +70,7 @@ try {
   await controller.handle('SIGTERM')
   module.unregisterActiveCase('case-a')
   assert.equal(calls.filter(([name]) => name === 'terminate').length, 1, 'shutdown is not idempotent')
-  assert.equal(calls.filter(([name]) => name === 'endRun').length, 1, 'run ended more than once')
+  assert.equal(calls.filter(([name]) => name === 'endCurrentRunOnce').length, 1, 'run ended more than once')
   assert.equal(calls.at(-1)?.[1], 1, 'shutdown did not request exit code 1')
 
   const observabilityFile = join(temporaryDirectory, 'active-case.txt')
@@ -82,6 +93,8 @@ try {
   const metafile = JSON.parse(await readFile(metafilePath, 'utf8'))
   const activeCaseInputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(activeCaseSource))
   assert.equal(activeCaseInputs.length, 1, 'active-case source must be included exactly once in the operational bundle')
+  const registryInputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(registrySource))
+  assert.equal(registryInputs.length, 1, 'registry source must be included exactly once in the operational bundle')
 } finally {
   if (previousObservabilityFile === undefined) delete process.env.FACTORY_ACTIVE_CASE_FILE
   else process.env.FACTORY_ACTIVE_CASE_FILE = previousObservabilityFile

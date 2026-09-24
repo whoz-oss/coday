@@ -1,10 +1,12 @@
 # ADR — Migration TypeScript de la Factory
 
-## Stage : shutdown opérationnel
+## Stage : registre opérationnel (Stage 4B)
 
-Décision : extraire une application de shutdown pure et injectée, un port minimal `CaseTerminator`, un adaptateur HTTP borné sans retry et un adaptateur process. Le bundle partagé généré est `runtime/factory-operational.mjs`. L’unicité d’état prime sur l’autonomie : le run courant et les gates restent injectés depuis leurs modules legacy, sans réimplémentation TypeScript. `lib/shutdown.mjs` n’est plus une autorité d’état, seulement une façade de composition compatible.
+Décision : `src/lib/registry.ts` est l’unique implémentation stateful du registre. Il est fermé dans `runtime/factory-operational.mjs`; `lib/registry.mjs` est une façade ESM de réexport sans état. Le bundle partagé fournit aussi `endCurrentRunOnce`, dont l’état de clôture est associé aux run IDs et n’est validé qu’après append réussi. L’artefact runtime doit être reconstruit par la toolchain isolée avant validation ; il n’est jamais édité à la main.
 
-- **Statut** : accepté ; Stage 4A, prototype active-case retiré
+Décision antérieure : extraire une application de shutdown pure et injectée, un port minimal `CaseTerminator`, un adaptateur HTTP borné sans retry et un adaptateur process. Le bundle partagé généré est `runtime/factory-operational.mjs`. L’unicité d’état prime sur l’autonomie : le run courant et les gates restent injectés depuis leurs modules legacy, sans réimplémentation TypeScript. `lib/shutdown.mjs` n’est plus une autorité d’état, seulement une façade de composition compatible.
+
+- **Statut** : accepté ; Stage 4B, registry migré, bundle à reconstruire
 - **Portée** : Factory uniquement
 - **Implémentation** : toolchain isolée et bundle opérationnel TypeScript unique
 

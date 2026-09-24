@@ -8,7 +8,7 @@ Aucun module n'écrit de prose LLM dans le registre ni ne dépend de l'état de 
 
 Les `.mjs` décrits ici restent aujourd'hui les sources runtime d'autorité. La cible actée est constituée de sources TypeScript strictes compilées par une toolchain Factory isolée vers un artefact JavaScript ESM autonome, exécutable sans pnpm, Nx, compilateur ni `node_modules`.
 
-Depuis le Stage 4A, `src/lib/active-case.ts` est l'unique source d'autorité active-case. Tous les consommateurs utilisent l'unique artefact généré `runtime/factory-operational.mjs`; l'ancien module `active-case.mjs` et le bundle de contrat dédié ont été supprimés.
+Depuis le Stage 4A, `src/lib/active-case.ts` est l'unique source d'autorité active-case. Depuis le Stage 4B, `src/lib/registry.ts` est l’unique implémentation stateful du registre ; `lib/registry.mjs` est une façade de réexport sans état vers `runtime/factory-operational.mjs`. L’artefact doit être reconstruit par la toolchain isolée après modification des sources.
 
 Documents de référence : [ADR de migration](../ADR_TYPESCRIPT_MIGRATION.md), [architecture](../ARCHITECTURE.md), [sources d'autorité](../AUTHORITY_SOURCES.md) et [matrice des dépendances](../DEPENDENCY_MATRIX.md). Le Stage 2 fixe Node 22.12, esbuild ESM monofichier, l'artefact runtime versionné sous `runtime/` et les diagnostics sous `dist/`.
 
@@ -272,15 +272,17 @@ Registre JSONL des runs de l'orchestrateur. Un fichier par run, une ligne JSON p
 | `startPhase(run, name, kind)` | Écrit immédiatement une ligne `phase` avec `status: fail`. |
 | `passPhase(phase, facts?)` | Écrit une ligne `phase_end` avec `status: pass`. |
 | `failPhase(phase, facts?)` | Écrit une ligne `phase_end` avec `status: fail`. |
-| `endRun(run, status, facts?)` | Écrit la ligne finale `run_end`. |
-| `getCurrentRun()` | Retourne le run courant ou null. Utilisé par `shutdown.mjs`. |
+| `endRun(run, status, facts?)` | Écrit la ligne finale `run_end` (API legacy compatible, non idempotente). |
+| `endCurrentRunOnce(status, facts?)` | Clôt le run courant au plus une fois et retourne si l’append a eu lieu. |
+| `getCurrentRun()` | Retourne le dernier run créé, même après sa clôture. |
 
 **Invariants**
 
 1. **Statut `fail` par défaut.** `startPhase` écrit `fail` immédiatement. Si l'orchestrateur plante avant `passPhase`, le registre reste honnête.
 2. **Aucune prose LLM.** Seuls des faits sont écrits : noms, statuts, durées, fichiers modifiés, codes de sortie, compteurs.
 3. **Champs non réinscriptibles.** Les faits de l'appelant sont placés sous la clé `facts`, jamais à la racine. `kind`, `name`, `status`, `durationMs` ne peuvent pas être écrasés.
-4. **Append pur.** `appendFileSync` à chaque écriture. Jamais de réécriture.
+4. **Append pur.** `appendFileSync` à chaque écriture, avec newline. Jamais de réécriture ; les erreurs I/O remontent.
+5. **Clôture once-only liée au run.** Un run ID n’est marqué fermé qu’après réussite de l’append ; un échec peut donc être retenté.
 
 Les fichiers sont créés dans `factory/runs/`. Le runId est de la forme `20240115T143022Z-a3f7` : tri alphabétique = tri chronologique.
 

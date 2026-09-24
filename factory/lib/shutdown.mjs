@@ -8,11 +8,11 @@
 import {
   createAgentOsHttpCaseTerminator,
   createShutdownController,
+  endCurrentRunOnce,
   getActiveCaseIds,
   installSigtermHandler,
   processExit,
 } from '../runtime/factory-operational.mjs'
-import { endRun, getCurrentRun } from './registry.mjs'
 import { rejectAllPendingGates } from './review-gate.mjs'
 
 let controller = null
@@ -25,8 +25,7 @@ export function initShutdownHandler({ log } = {}) {
       baseUrl: process.env.AGENTOS_URL ?? 'http://localhost:8124',
       userId: process.env.FACTORY_USER ?? 'benjamin.valdes',
     }),
-    currentRun: getCurrentRun,
-    endRun,
+    endCurrentRunOnce,
     rejectPendingGates: rejectAllPendingGates,
     warn,
     exit: processExit(),

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
+    "check": "npm run typecheck",
     "test:operational": "node ../tests/typescript-factory-operational.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "verify:generated": "node ../tests/typescript-factory-operational.mjs"

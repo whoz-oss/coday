@@ -1,15 +1,9 @@
 import type { CaseTerminator } from '../ports/case-terminator.js'
 
-export interface CurrentRun {
-  filePath: string
-  _startedAt: number
-}
-
 export interface ShutdownDependencies {
   activeCaseIds(): string[]
   caseTerminator: CaseTerminator
-  currentRun(): CurrentRun | null
-  endRun(run: CurrentRun, status: 'fail', facts: Record<string, unknown>): void
+  endCurrentRunOnce(status: 'fail', facts: Record<string, unknown>): boolean
   rejectPendingGates(): void
   warn(message: string): void
   exit(code: number): void
@@ -48,10 +42,9 @@ export function createShutdownController(deps: ShutdownDependencies): ShutdownCo
         })
       )
 
-      const run = deps.currentRun()
-      if (run && !completed) {
+      if (!completed) {
         try {
-          deps.endRun(run, 'fail', { checkoutMayBeIntermediate: hadActiveCases, terminatedBySignal: signal })
+          deps.endCurrentRunOnce('fail', { checkoutMayBeIntermediate: hadActiveCases, terminatedBySignal: signal })
         } catch (error) {
           deps.warn(`[shutdown] Erreur lors de la finalisation du run : ${String(error)}`)
         }

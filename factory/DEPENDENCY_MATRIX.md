@@ -7,7 +7,7 @@
 | Application shutdown TS | `CaseTerminator` et callbacks injectés | Autorisé | aucune importation AgentOS/registry/gate |
 | Adaptateur HTTP AgentOS | `fetch` | Borné | timeout, un seul essai, aucun retry |
 | Adaptateur process | SIGTERM / exit | Borné | composition explicite |
-| `run.mjs` | bundle + autorités legacy registry/gate | Temporaire | évite toute duplication de `_currentRun` et des gates |
+| `run.mjs` | bundle + autorité legacy gate | Autorisé | registry et active-case proviennent directement du bundle; aucune duplication d’état |
 | Bundle opérationnel | `agentos.mjs` | Interdit | le bundle ne charge pas le client complet |
 
 ## Légende
@@ -42,7 +42,8 @@
 | Module Factory | Autre module Factory | Autorisé | Import ESM explicite, sans cycle non maîtrisé ; fermeture à traiter au packaging. |
 | Artefact ESM | Sources `.ts` ou `.mjs` du checkout au runtime | Interdit | L'artefact livré ne doit pas compléter son code depuis les sources. |
 | Entrypoint opérationnel | `src/lib/active-case.ts` | Build uniquement | Import NodeNext fermé dans l'unique bundle monofichier. |
-| Bundle opérationnel versionné | Imports `node:*` | Autorisé | Seuls imports runtime externes ; aucune résolution source/toolchain/node_modules ; active-case inclus exactement une fois. |
+| Bundle opérationnel versionné | Imports `node:*` | Autorisé | Seuls imports runtime externes ; aucune résolution source/toolchain/node_modules ; active-case et registry inclus exactement une fois. |
+| `lib/registry.mjs` | Bundle opérationnel | Autorisé | Façade ESM de réexport strictement sans état. |
 
 ## Autonomie runtime
 

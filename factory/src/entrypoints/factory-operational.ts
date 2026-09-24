@@ -1,6 +1,7 @@
 export * from '../lib/active-case.js'
+export * from '../lib/registry.js'
 export { createShutdownController } from '../application/shutdown.js'
 export { createAgentOsHttpCaseTerminator } from '../adapters/agentos-http-case-terminator.js'
 export { installSigtermHandler, processExit } from '../adapters/process-shutdown.js'
 export type { CaseTerminator } from '../ports/case-terminator.js'
-export type { CurrentRun, ShutdownController, ShutdownDependencies } from '../application/shutdown.js'
+export type { ShutdownController, ShutdownDependencies } from '../application/shutdown.js'

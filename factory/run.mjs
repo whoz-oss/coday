@@ -44,11 +44,11 @@ import { fileURLToPath } from 'node:url'
 import {
   createAgentOsHttpCaseTerminator,
   createShutdownController,
+  endCurrentRunOnce,
   getActiveCaseIds,
   installSigtermHandler,
   processExit,
 } from './runtime/factory-operational.mjs'
-import { endRun, getCurrentRun } from './lib/registry.mjs'
 import { rejectAllPendingGates } from './lib/review-gate.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -205,16 +205,15 @@ async function main() {
     process.exit(1)
   }
 
-  // Composition legacy sans duplication d'état : registry/review-gate restent
-  // les autorités, tandis que le registre active-case vient du bundle partagé.
+  // Composition sans duplication d'état : registry et active-case viennent du
+  // bundle partagé ; review-gate reste injecté depuis son autorité legacy.
   const shutdownController = createShutdownController({
     activeCaseIds: getActiveCaseIds,
     caseTerminator: createAgentOsHttpCaseTerminator({
       baseUrl: process.env.AGENTOS_URL ?? 'http://localhost:8124',
       userId: process.env.FACTORY_USER ?? 'benjamin.valdes',
     }),
-    currentRun: getCurrentRun,
-    endRun,
+    endCurrentRunOnce,
     rejectPendingGates: rejectAllPendingGates,
     warn: (message) => log.error(message),
     exit: processExit(),
