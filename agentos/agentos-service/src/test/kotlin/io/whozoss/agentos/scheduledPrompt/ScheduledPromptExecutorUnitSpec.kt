@@ -17,6 +17,7 @@ import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
+import io.whozoss.agentos.prompt.PromptTranslation
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
@@ -632,6 +633,186 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             ).processUserRun(userRun)
 
             caseSlot.captured.scheduledPromptId shouldBe sp.id
+        }
+
+        // -------------------------------------------------------------------------
+        // Phase B — prompt translation
+        // -------------------------------------------------------------------------
+
+        "Phase B: prompt content and case title are translated when user has preferredLanguage" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            // Prompt with sourceLanguage="en", title mirrors scheduledPrompt.name
+            val prompt = makePromptTemplate().copy(
+                sourceLanguage = "en",
+                title = sp.name,
+            )
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns prompt
+                every {
+                    it.translate(
+                        id = promptTemplateId,
+                        targetLanguage = "it",
+                        callerNamespaceId = namespaceId,
+                    )
+                } returns PromptTranslation(
+                    title = "Sintesi settimanale",
+                    content = listOf("Esegui il report settimanale."),
+                )
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
+            }
+            val userWithLanguage = user1.copy(preferredLanguage = "it")
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns userWithLanguage
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseSlot = slot<Case>()
+            val contentSlot = slot<List<MessageContent>>()
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(capture(caseSlot)) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            // Case title should be the translated scheduledPrompt name
+            caseSlot.captured.title shouldBe "Sintesi settimanale"
+
+            // Message content should be the translated prompt content
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = capture(contentSlot),
+                    sessionContext = any(),
+                )
+            }
+            val text = contentSlot.captured.filterIsInstance<MessageContent.Text>().first().content
+            text shouldBe "@weekly-agent Esegui il report settimanale."
+        }
+
+        "Phase B: translation is skipped when preferredLanguage matches prompt sourceLanguage" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate().copy(sourceLanguage = "en")
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
+            }
+            // User's preferredLanguage matches the prompt's sourceLanguage
+            val userWithEnglish = user1.copy(preferredLanguage = "en")
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns userWithEnglish
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            // translate() must never be called — same language, no translation needed
+            verify(exactly = 0) { promptService.translate(any(), any(), any()) }
+        }
+
+        "Phase B: translation failure falls back to original content and title" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate().copy(
+                    sourceLanguage = "en",
+                    title = sp.name,
+                )
+                every {
+                    it.translate(any(), any(), any())
+                } throws RuntimeException("No AI model configured")
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
+            }
+            val userWithLanguage = user1.copy(preferredLanguage = "it")
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns userWithLanguage
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseSlot = slot<Case>()
+            val contentSlot = slot<List<MessageContent>>()
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(capture(caseSlot)) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            // Falls back to original English title and content — UserRun still completes
+            caseSlot.captured.title shouldBe sp.name
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = capture(contentSlot),
+                    sessionContext = any(),
+                )
+            }
+            val text = contentSlot.captured.filterIsInstance<MessageContent.Text>().first().content
+            text shouldBe "@weekly-agent Run your weekly digest report."
+            val updated = userRunRepo.all().first { it.id == userRun.id }
+            updated.status shouldBe UserRunStatus.DONE
         }
 
         // -------------------------------------------------------------------------

@@ -459,16 +459,27 @@ class ScheduledPromptExecutor(
             checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
                 "AgentConfig ${scheduledPrompt.agentConfigId} not found"
             }
+        val preferredLanguage = user.preferredLanguage?.takeIf { it.isNotBlank() }
+        val (effectivePromptContent, effectiveCaseTitle) =
+            translatePromptForUser(
+                prompt = prompt,
+                defaultContent = promptContent,
+                defaultTitle = scheduledPrompt.name,
+                preferredLanguage = preferredLanguage,
+                namespaceId = namespaceId,
+                userExternalId = user.externalId,
+            )
+
         return UserRunContext(
             namespaceId = namespaceId,
-            caseTitle = scheduledPrompt.name,
+            caseTitle = effectiveCaseTitle,
             actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
-            promptContent = promptContent,
+            promptContent = effectivePromptContent,
             scheduledPromptId = scheduledPrompt.id,
             agentConfigId = scheduledPrompt.agentConfigId,
             agentName = agentName,
             userExternalId = user.externalId,
-            preferredLanguage = user.preferredLanguage?.takeIf { it.isNotBlank() },
+            preferredLanguage = preferredLanguage,
         )
     }
 
@@ -669,6 +680,66 @@ class ScheduledPromptExecutor(
     // -------------------------------------------------------------------------
 
     /**
+     * Translates the prompt content and title into the user's preferred language.
+     *
+     * Uses a single [PromptService.translate] call which returns both content and title
+     * together, benefiting from the [io.whozoss.agentos.prompt.PromptTranslationService]
+     * Caffeine cache. Translation is skipped entirely when [preferredLanguage] is null or
+     * already matches [io.whozoss.agentos.prompt.Prompt.sourceLanguage].
+     *
+     * @return a pair of (effectiveContent, effectiveTitle) — always non-null; falls back
+     *   to [defaultContent] / [defaultTitle] when translation fails or is not needed.
+     */
+    private fun translatePromptForUser(
+        prompt: io.whozoss.agentos.prompt.Prompt,
+        defaultContent: String,
+        defaultTitle: String,
+        preferredLanguage: String?,
+        namespaceId: UUID,
+        userExternalId: String,
+    ): Pair<String, String> {
+        val needsTranslation =
+            preferredLanguage != null &&
+                !preferredLanguage.equals(prompt.sourceLanguage, ignoreCase = true)
+
+        val translation =
+            if (needsTranslation) {
+                runCatching {
+                    promptService.translate(
+                        id = prompt.id,
+                        targetLanguage = preferredLanguage!!,
+                        callerNamespaceId = namespaceId,
+                    )
+                }.onSuccess {
+                    logger.info {
+                        "[Executor] Prompt translated for user=$userExternalId" +
+                            " (promptId=${prompt.id})"
+                    }
+                }.onFailure { e ->
+                    logger.warn(e) {
+                        "[Executor] Prompt translation failed for user=$userExternalId" +
+                            " (promptId=${prompt.id})" +
+                            " — using original content and title"
+                    }
+                }.getOrNull()
+            } else {
+                null
+            }
+
+        val effectiveContent =
+            translation
+                ?.content
+                ?.firstOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?: defaultContent
+        val effectiveTitle =
+            translation?.title?.takeIf { it.isNotBlank() }
+                ?: defaultTitle
+
+        return effectiveContent to effectiveTitle
+    }
+
+    /**
      * Returns true if [userId] still has access to the agent via the deployment graph
      * in [namespaceId].
      *
@@ -679,7 +750,11 @@ class ScheduledPromptExecutor(
      * Called just before [createAndInjectCase] to guard against users who lost access
      * between materialisation (PENDING UserRun creation) and execution (Case creation).
      */
-    private fun hasAgentAccess(userId: UUID, agentName: String, namespaceId: UUID): Boolean =
+    private fun hasAgentAccess(
+        userId: UUID,
+        agentName: String,
+        namespaceId: UUID,
+    ): Boolean =
         agentConfigService
             .findDeployedByNamespaceIdAndUserIdAndName(
                 namespaceId = namespaceId,
