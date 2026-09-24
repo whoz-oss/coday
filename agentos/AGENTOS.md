@@ -79,30 +79,38 @@ class MyPlugin : AgentPlugin() {
 }
 ```
 
-## Persistence (WZ-28667)
+## Persistence
 
-AgentOS uses **file-system persistence by default**. Data survives restarts.
+AgentOS persists all its entities in **Neo4j**. Two modes are available, selected via
+`agentos.persistence.mode` / `AGENTOS_PERSISTENCE_MODE`:
+
+| Mode | Engine | Neo4j server required |
+|---|---|---|
+| `embedded-neo4j` (**default**) | In-process engine, Bolt on `localhost:7688` | No — no Docker needed |
+| `neo4j` | Standalone server (`spring.neo4j.*`) | Yes |
+
+```bash
+# switch to a standalone Neo4j server
+export AGENTOS_PERSISTENCE_MODE=neo4j
+
+# or application.yml
+agentos.persistence.mode: neo4j
+```
+
+These are the only two modes: the value is bound to a `PersistenceMode` enum, so any other value
+fails at startup. The historical `in-memory` mode no longer exists.
 
 ```
 data/                                  # AGENTOS_PERSISTENCE_DATA_DIR (default: data/)
-  cases/<projectId>/<caseId>.json
-  case-events/<caseId>/<eventId>.json
-  namespaces/all/<namespaceId>.json
+  neo4j/                               # embedded Neo4j database files (embedded-neo4j mode)
 
 data/exchange/                         # AGENTOS_EXCHANGE_MOUNT_ROOT (default: data/exchange/), see docs/file-exchange.md
   <namespaceId>/cases/<YYYY>/<MM>/<DD>/<caseId>/   # case-scoped file exchange (read/write)
   <namespaceId>/shared/                            # namespace-shared file exchange (read; read/write for namespace admins)
 ```
 
-To switch to **in-memory** mode (data lost on restart):
-
-```bash
-# env var
-export AGENTOS_PERSISTENCE_MODE=in-memory
-
-# or application.yml
-agentos.persistence.mode: in-memory
-```
+See [docs/neo4j-persistence.md](docs/neo4j-persistence.md) for the wiring, node mapping
+conventions and testing strategy.
 
 ## Spring AI Configuration
 
@@ -201,6 +209,7 @@ repositories {
 ## Detailed Documentation
 
 - **Full architecture**: [docs/ARCHITECTURE.md](docs/to-rework/ARCHITECTURE.md)
+- **Persistence** (modes, Spring wiring, node mapping, testing): [docs/neo4j-persistence.md](docs/neo4j-persistence.md)
 - **File exchange** (storage layout, configuration, REST API, agent tools): [docs/file-exchange.md](docs/file-exchange.md)
 
 ---

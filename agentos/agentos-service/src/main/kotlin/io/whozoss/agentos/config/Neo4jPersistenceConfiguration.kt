@@ -71,7 +71,6 @@ import io.whozoss.agentos.userGroup.UserGroupRepository
 import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.CommandLineRunner
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -86,12 +85,16 @@ import java.time.ZoneOffset
 /**
  * Registers Neo4j-backed repository beans.
  *
- * Active for both persistence modes that use a live Neo4j engine:
- * - `neo4j`           standalone server (Docker / remote); Driver from Spring Boot auto-config
- * - `embedded-neo4j`  in-process engine; Driver from EmbeddedNeo4jConfiguration
+ * Always active: both supported persistence modes run on a live Neo4j engine and therefore
+ * need exactly the same beans.
+ * - `embedded-neo4j` (default) in-process engine; Driver from [EmbeddedNeo4jConfiguration]
+ * - `neo4j`                    standalone server (Docker / remote); Driver from Spring Boot auto-config
  *
  * In both cases a Driver bean is present before this configuration runs,
- * so Spring Data Neo4j SDN repositories resolve correctly.
+ * so Spring Data Neo4j SDN repositories resolve correctly. The only mode-dependent
+ * decision left is whether to start the in-process engine, which is handled by the
+ * [org.springframework.boot.autoconfigure.condition.ConditionalOnProperty] on
+ * [EmbeddedNeo4jConfiguration].
  *
  * For `neo4j` mode configure:
  *   spring.neo4j.uri / spring.neo4j.authentication.*
@@ -101,10 +104,6 @@ import java.time.ZoneOffset
 @Configuration
 @EnableNeo4jAuditing
 @EnableConfigurationProperties(PersistenceConfigProperties::class)
-@ConditionalOnExpression(
-    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
-)
 @EnableNeo4jRepositories(
     basePackages = [
         "io.whozoss.agentos.agentConfig",
