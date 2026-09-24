@@ -1,0 +1,19 @@
+{
+  "name": "@coday/factory-toolchain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test:stage1": "node ../tests/typescript-stage1-active-case.mjs",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "esbuild": "0.24.2",
+    "typescript": "5.7.2"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

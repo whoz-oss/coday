@@ -1,8 +1,8 @@
 # ADR — Migration TypeScript de la Factory
 
-- **Statut** : accepté pour le Stage 0A documentaire
+- **Statut** : accepté ; Stage 1 minimal en coexistence
 - **Portée** : Factory uniquement
-- **Implémentation** : différée aux stages ultérieurs
+- **Implémentation** : toolchain isolée et premier module préparatoire, sans bascule runtime
 
 ## Contexte
 
@@ -16,7 +16,9 @@ Les sources cibles de la Factory seront écrites en **TypeScript strict**. Une *
 
 L'artefact livré devra s'exécuter avec Node sans pnpm, Nx, compilateur TypeScript, bundler ni `node_modules`. La construction de cet artefact pourra avoir des dépendances, mais elles appartiendront exclusivement à la toolchain de build de la Factory. Cette toolchain ne devra jamais utiliser la santé, les dépendances installées, les scripts ou le graphe Nx du produit mesuré comme précondition.
 
-Cette décision ne choisit pas encore la version minimale de Node, les outils exacts, l'emplacement de l'artefact, ni les politiques détaillées de sourcemaps, assets et imports dynamiques. Ces décisions sont réservées au Stage 0B.
+L'étude Stage 0B validée fixe pour le Stage 1 minimal : Node `>=22.12.0`, vérification stricte par `tsc --noEmit`, bundle ESM autonome par esbuild, et dépendances npm isolées sous `factory/toolchain`. La configuration n'hérite d'aucun `tsconfig` racine et n'utilise ni pnpm ni Nx.
+
+Le bundle préparatoire est généré dans `factory/dist/stage-1/active-case.mjs`, avec sourcemap externe sans `sourcesContent` et metafile de build. Les modules `node:*` restent externes, le code applicatif est bundlé et le splitting est désactivé. Cet artefact n'est pas chargé par le runtime au Stage 1.
 
 ## Frontière Factory / AgentOS
 
@@ -42,7 +44,7 @@ Pour chaque module migré, le changement d'autorité doit être explicite, atomi
 
 `factory/lib/active-case.mjs` est le premier candidat proposé. Sa surface est réduite, son état et ses invariants sont bornés, et ses dépendances sont limitées. Il permet de valider la chaîne source stricte → artefact ESM → exécution autonome avant de migrer des modules réseau ou d'orchestration plus complexes.
 
-Le Stage 0A ne renomme, ne duplique et ne modifie pas ce module.
+Le Stage 1 porte fidèlement ce module dans `factory/src/lib/active-case.ts` et produit un artefact préparatoire. Il ne renomme ni ne modifie le `.mjs` canonique, et ne modifie aucun de ses consommateurs. Le test source `factory/tests/typescript-stage1-active-case.mjs` vérifie le contrat et l'autonomie de l'artefact après une construction explicitement demandée.
 
 ## Rollback
 
@@ -59,11 +61,15 @@ Les registres et preuves produits avant le rollback restent des données histori
 
 Le typage strict devient la cible des sources sans compromettre l'autonomie runtime. Le coût accepté est une séparation explicite entre source, build et artefact, ainsi qu'une période contrôlée de coexistence. Tout choix futur qui impose pnpm, Nx, TypeScript, un bundler ou `node_modules` au runtime contredirait cette ADR.
 
-## Questions réservées au Stage 0B
+## Décisions Stage 0B appliquées au Stage 1
 
-- version minimale de Node supportée ;
-- compilateur, vérificateur et éventuel bundler exacts ;
-- emplacement, nommage et stratégie de publication de l'artefact ;
-- présence, format et distribution des sourcemaps ;
-- traitement des assets non JavaScript ;
-- règles relatives aux imports dynamiques et à leur inclusion dans l'artefact.
+- Node minimum : `22.12.0` ;
+- vérification : TypeScript strict avec `tsc --noEmit` ;
+- assemblage : esbuild vers un bundle ESM autonome ;
+- isolation : manifeste, lockfile et `node_modules` propres à `factory/toolchain` ;
+- artefact : `factory/dist/stage-1/active-case.mjs` ;
+- diagnostic : sourcemap externe sans sources embarquées et metafile JSON ;
+- packaging : imports `node:*` externes, splitting désactivé ;
+- autorité : aucune bascule runtime au Stage 1.
+
+Le traitement des assets et imports dynamiques sera précisé lorsqu'un module candidat en introduira ; `active-case` n'en contient pas.

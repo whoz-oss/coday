@@ -1,0 +1,10 @@
+# Le répertoire des runs est ignoré volontairement.
+# ATTENTION : ne pas renommer ce répertoire en `data/` ou `logs/` !
+# Le .gitignore racine contient les lignes `data` et `logs` SANS slash de tête,
+# ce qui les fait matcher à n'importe quelle profondeur dans l'arbre.
+# `runs/` est précisément nommé ainsi pour éviter ce conflit silencieux.
+runs/
+
+# Dépendances et artefacts de la toolchain TypeScript Factory isolée.
+toolchain/node_modules/
+dist/

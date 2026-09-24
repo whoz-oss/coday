@@ -6,7 +6,7 @@ Ce document distingue ce qui fait autorité aujourd'hui, pendant la migration et
 
 | Domaine | Source d'autorité actuelle | Notes |
 |---|---|---|
-| Comportement runtime | Fichiers `.mjs` exécutés sous `factory/` | Ils restent canoniques pendant le Stage 0A. |
+| Comportement runtime | Fichiers `.mjs` exécutés sous `factory/` | Ils restent canoniques pendant le Stage 1 préparatoire. |
 | Contrats et invariants des modules | Comportement des `.mjs`, complété par `factory/lib/README.md` | En cas de conflit, le runtime observé prime ; le conflit documentaire doit être corrigé. |
 | Dispatch et workflows disponibles | `factory/run.mjs` et modules référencés | La structure illustrative d'un README n'est pas exhaustive. |
 | Commandes oracle | Modules de domaine/oracle concernés | Ni l'agent ni sa prose ne peuvent remplacer cette autorité. |
@@ -14,7 +14,7 @@ Ce document distingue ce qui fait autorité aujourd'hui, pendant la migration et
 | État du checkout mesuré | Système de fichiers et Git observés par les modules de mesure | Les affirmations d'un agent ne font pas autorité. |
 | État et événements AgentOS | API AgentOS derrière l'adaptateur Factory | L'ordre et les statuts suivent le contrat backend documenté. |
 | Faits d'un run | Registre JSONL append-only et artefacts référencés | La prose LLM n'est pas une preuve. |
-| Décision de migration | `ADR_TYPESCRIPT_MIGRATION.md` | Elle fixe la cible, pas les outils du Stage 0B. |
+| Décision de migration | `ADR_TYPESCRIPT_MIGRATION.md` | Elle fixe la cible et les décisions Stage 0B appliquées au Stage 1. |
 
 ## Autorités futures
 
@@ -22,9 +22,10 @@ Ce document distingue ce qui fait autorité aujourd'hui, pendant la migration et
 |---|---|---|
 | Code maintenu d'un module migré | Source TypeScript stricte `.ts` | Devient canonique uniquement après bascule explicite. |
 | JavaScript runtime | Artefact ESM généré à partir des sources TypeScript | Exécutable et distribuable, mais non édité comme source. |
-| Règles de compilation | Configuration isolée de la toolchain Factory | À définir au Stage 0B ; extérieure au produit mesuré. |
-| Compatibilité runtime | Contrat Node minimum et politique d'artefact | À décider au Stage 0B. |
-| Assets, sourcemaps, imports dynamiques | Règles de packaging Factory | À décider au Stage 0B. |
+| Règles de compilation | `factory/toolchain/tsconfig.json`, `build.mjs` et manifeste npm isolé | Stage 1 : strict, `tsc --noEmit`, esbuild, sans héritage racine/pnpm/Nx. |
+| Compatibilité runtime | Node `>=22.12.0` et bundle ESM autonome | Fixé pour le Stage 1. |
+| Artefact préparatoire Stage 1 | `factory/dist/stage-1/active-case.mjs` et fichiers de diagnostic générés | Non canonique et non chargé au runtime avant bascule. |
+| Assets et imports dynamiques | Règles de packaging Factory | À préciser quand un module candidat en introduira. |
 
 ## Règles pendant la coexistence `.mjs` / `.ts`
 
@@ -34,7 +35,7 @@ Ce document distingue ce qui fait autorité aujourd'hui, pendant la migration et
 4. Un import ne doit jamais choisir implicitement entre deux implémentations selon la disponibilité d'un outil ou de `node_modules`.
 5. La documentation décrit la bascule, mais ne la réalise pas.
 
-Le premier candidat prévu est `factory/lib/active-case.mjs`. Il reste toutefois entièrement sous l'autorité actuelle au Stage 0A.
+Le premier candidat est `factory/lib/active-case.mjs`. Au Stage 1, `factory/src/lib/active-case.ts` et son bundle sont une traduction préparatoire contrôlée : le `.mjs` existant reste entièrement sous l'autorité actuelle, et ses consommateurs restent inchangés.
 
 ## Conflits et résolution
 
