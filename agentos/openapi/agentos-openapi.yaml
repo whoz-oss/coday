@@ -1065,9 +1065,9 @@ paths:
       - case-controller
   /api/cases/{caseId}/events:
     get:
-      description: "BREAKING SSE protocol: every domain frame uses `event: case-event`;\
-        \ consumers discriminate the JSON CaseEvent payload through `data.type`.\
-        \ includePreviousEvents defaults to true so reconnecting clients replay durable history."
+      description: "BREAKING: every SSE frame uses the stable event name 'case-event'.\
+        \ Its JSON CaseEvent payload carries the subtype in its 'type' discriminant.\
+        \ includePreviousEvents defaults to true."
       operationId: streamEventsCaseEventSse
       parameters:
       - in: path
@@ -1086,8 +1086,8 @@ paths:
         "200":
           content:
             text/event-stream: {}
-          description: "BREAKING SSE stream — every frame is named `case-event` and carries\
-            \ a JSON-serialized CaseEvent subtype with a \"type\" discriminant field."
+          description: SSE stream — every event is named 'case-event' and carries
+            a JSON-serialized CaseEvent subtype with a 'type' discriminant.
       summary: Stream case events via SSE
       tags:
       - sse
