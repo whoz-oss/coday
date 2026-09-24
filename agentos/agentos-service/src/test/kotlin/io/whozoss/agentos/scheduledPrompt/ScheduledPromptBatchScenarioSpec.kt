@@ -146,6 +146,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             clock = clock,
             nextRunCalculatorService = NextRunCalculatorService(clock = clock),
             executor = executor,
+            executionWindowService = ExecutionWindowService(properties),
         )
         return scanner to executor
     }
@@ -159,15 +160,23 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
      */
     private fun eventuallyIdleCaseService(): CaseService {
         val runtimeMap = mutableMapOf<UUID, CaseRuntime>()
+        val caseMap = mutableMapOf<UUID, Case>()
         return mockk<CaseService>(relaxed = true).also { svc ->
             every { svc.create(any()) } answers {
                 val id = UUID.randomUUID()
                 val flow = MutableStateFlow(CaseStatus.IDLE)
                 val rt = mockk<CaseRuntime>(relaxed = true).also { every { it.statusFlow } returns flow }
                 runtimeMap[id] = rt
-                Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId)
+                val created = Case(metadata = EntityMetadata(id = id), namespaceId = namespaceId, status = CaseStatus.IDLE)
+                caseMap[id] = created
+                created
             }
             every { svc.findActiveRuntime(any()) } answers { runtimeMap[firstArg<UUID>()] }
+            every { svc.findById(any(), any()) } answers { caseMap[firstArg<UUID>()] }
+            every { svc.findByIds(any(), any()) } answers {
+                val ids = firstArg<Collection<UUID>>()
+                ids.mapNotNull { caseMap[it] }
+            }
         }
     }
 
@@ -343,6 +352,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
                 executor = executor,
+                executionWindowService = ExecutionWindowService(smallBatchProperties),
             )
 
             // Phase A

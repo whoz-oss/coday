@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { Prompt } from '@whoz-oss/agentos-api-client'
@@ -31,8 +31,15 @@ export class PlatformPromptsComponent {
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
+  protected readonly isLoading = signal(true)
+
   /** Raw platform prompts, kept for delete lookups. */
-  private readonly prompts$ = this.refresh$.pipe(switchMap(() => this.promptState.listPlatform()))
+  private readonly prompts$ = this.refresh$.pipe(
+    switchMap(() => {
+      this.isLoading.set(true)
+      return this.promptState.listPlatform()
+    })
+  )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly promptItems$ = this.prompts$.pipe(
@@ -51,8 +58,12 @@ export class PlatformPromptsComponent {
   private promptsById = new Map<string, Prompt>()
 
   constructor() {
-    this.prompts$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((prompts) => {
-      this.promptsById = new Map(prompts.map((p: Prompt) => [p.id ?? '', p]))
+    this.prompts$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (prompts) => {
+        this.promptsById = new Map(prompts.map((p: Prompt) => [p.id ?? '', p]))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
 

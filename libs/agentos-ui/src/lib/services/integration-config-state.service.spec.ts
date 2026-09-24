@@ -13,6 +13,12 @@ describe('IntegrationConfigStateService', () => {
   const ITEM_ID = '22222222-2222-2222-2222-222222222222'
   const ME_ID = '33333333-3333-3333-3333-333333333333'
 
+  const platformConfig: IntegrationConfig = {
+    id: 'platform-1',
+    name: 'Company Slack',
+    integrationType: 'slack',
+  }
+
   const nsConfig: IntegrationConfig = {
     id: 'ns-1',
     namespaceId: NS_ID,
@@ -40,11 +46,11 @@ describe('IntegrationConfigStateService', () => {
   beforeEach(() => {
     nsController = {
       // Unified `listIntegrationConfig(namespaceId, userId)` returns a flat array.
-      // The mock dispatches by query params : userId omitted →
-      // NS-shared layer ; namespaceId === 'none' → user-global ; both → user × ns.
+      // Distinct rows for all four scopes, including the caller's default listing.
       listIntegrationConfig: jest.fn().mockImplementation((namespaceId?: string, userId?: string) => {
+        if (namespaceId === undefined) return of([userGlobalConfig, userOnNsConfig])
         if (!userId) {
-          return of([nsConfig])
+          return of(namespaceId === 'none' ? [platformConfig] : [nsConfig])
         }
         if (namespaceId === 'none') {
           return of([userGlobalConfig])
@@ -73,10 +79,12 @@ describe('IntegrationConfigStateService', () => {
   })
 
   describe('vm$', () => {
-    it('merges the 3 sources into a structured view model and hides the "none" / "me" sentinels', async () => {
+    it('merges the 4 sources into a structured view model and hides the "none" / "me" sentinels', async () => {
       service.setNamespace(NS_ID)
       const vm = await firstValueFrom(service.vm$)
 
+      expect(vm.platform).toEqual([platformConfig])
+      expect(nsController.listIntegrationConfig).toHaveBeenCalledWith('none')
       expect(vm.namespace).toEqual([nsConfig])
       expect(vm.userOnNs).toEqual([userOnNsConfig])
       expect(vm.userGlobal).toEqual([userGlobalConfig])
@@ -85,6 +93,11 @@ describe('IntegrationConfigStateService', () => {
       expect(nsController.listIntegrationConfig).toHaveBeenCalledWith(NS_ID, 'me')
       expect(nsController.listIntegrationConfig).toHaveBeenCalledWith('none', 'me')
     })
+  })
+
+  it('loads only platform configs with an explicit namespace sentinel', async () => {
+    expect(await firstValueFrom(service.loadPlatformConfigs())).toEqual([platformConfig])
+    expect(nsController.listIntegrationConfig).toHaveBeenCalledWith('none')
   })
 
   describe('loadUserConfigs wrapper', () => {
@@ -144,7 +157,7 @@ describe('IntegrationConfigStateService', () => {
   })
 
   describe('refresh after mutation', () => {
-    it('refetches the 3 sources after a successful create', async () => {
+    it('refetches the 4 sources after a successful create', async () => {
       service.setNamespace(NS_ID)
       const sub = service.vm$.subscribe()
       const initialCalls = nsController.listIntegrationConfig.mock.calls.length

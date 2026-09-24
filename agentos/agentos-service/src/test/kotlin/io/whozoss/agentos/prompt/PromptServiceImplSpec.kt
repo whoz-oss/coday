@@ -14,9 +14,20 @@ import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.scheduledPrompt.InMemoryScheduledPromptRepository
+import io.whozoss.agentos.scheduledPrompt.Planning
+import io.whozoss.agentos.scheduledPrompt.Recurrence
+import io.whozoss.agentos.scheduledPrompt.ScheduledPrompt
+import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
+import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
 import java.util.UUID
 
 /**
@@ -32,8 +43,10 @@ class PromptServiceImplSpec : StringSpec() {
     private val agentConfigService = mockk<AgentConfigService>(relaxed = true)
     private val translationService = mockk<PromptTranslationService>(relaxed = true)
 
-    private fun newService(): PromptServiceImpl =
-        PromptServiceImpl(InMemoryPromptRepository(), agentConfigService, translationService)
+    private fun newService(
+        spRepo: InMemoryScheduledPromptRepository = InMemoryScheduledPromptRepository(),
+    ): PromptServiceImpl =
+        PromptServiceImpl(InMemoryPromptRepository(), agentConfigService, translationService, spRepo)
 
     /** Returns both the service and its backing repository, for tests that need to seed a
      *  filesystem-backed prompt (version == null) directly via [InMemoryPromptRepository.seedRaw]. */
@@ -62,8 +75,31 @@ class PromptServiceImplSpec : StringSpec() {
 
     private fun newServiceWithRepo(): Pair<PromptServiceImpl, InMemoryPromptRepository> {
         val repo = InMemoryPromptRepository()
-        return PromptServiceImpl(repo, agentConfigService, translationService) to repo
+        return PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository()) to repo
     }
+
+    private fun scheduledPrompt(
+        promptTemplateId: UUID,
+        namespaceId: UUID = UUID.randomUUID(),
+        agentConfigId: UUID = UUID.randomUUID(),
+    ) = ScheduledPrompt(
+        metadata = EntityMetadata(id = UUID.randomUUID()),
+        namespaceId = namespaceId,
+        agentConfigId = agentConfigId,
+        promptTemplateId = promptTemplateId,
+        name = "sp-${UUID.randomUUID()}",
+        recurrence = Recurrence(
+            unit = SchedulerUnit.WEEK,
+            days = listOf(DayOfWeek.MONDAY),
+            timeUtc = LocalTime.of(8, 0),
+        ),
+        planning = Planning(
+            startDate = LocalDate.of(2026, 1, 1),
+            endType = SchedulerEndType.NEVER,
+        ),
+        enabled = true,
+        nextRunAt = Instant.parse("2026-01-05T08:00:00Z"),
+    )
 
     private fun prompt(
         namespaceId: UUID? = UUID.randomUUID(),
@@ -375,6 +411,35 @@ class PromptServiceImplSpec : StringSpec() {
         "delete on a normal persisted prompt is unaffected by the filesystem guard" {
             val service = newService()
             val saved = service.create(prompt(name = "Persisted"))
+
+            service.delete(saved.id) shouldBe true
+            service.findById(saved.id).shouldBeNull()
+        }
+
+        "delete throws ConflictException when Prompt is referenced by an active ScheduledPrompt" {
+            val spRepo = InMemoryScheduledPromptRepository()
+            val service = newService(spRepo)
+            val saved = service.create(prompt())
+            spRepo.save(scheduledPrompt(promptTemplateId = saved.id))
+
+            shouldThrow<ConflictException> { service.delete(saved.id) }
+        }
+
+        "delete succeeds when Prompt is referenced only by removed ScheduledPrompts" {
+            val spRepo = InMemoryScheduledPromptRepository()
+            val service = newService(spRepo)
+            val saved = service.create(prompt())
+            val sp = spRepo.save(scheduledPrompt(promptTemplateId = saved.id))
+            spRepo.delete(sp.metadata.id)
+
+            service.delete(saved.id) shouldBe true
+            service.findById(saved.id).shouldBeNull()
+        }
+
+        "delete succeeds when Prompt is not referenced by any ScheduledPrompt" {
+            val spRepo = InMemoryScheduledPromptRepository()
+            val service = newService(spRepo)
+            val saved = service.create(prompt())
 
             service.delete(saved.id) shouldBe true
             service.findById(saved.id).shouldBeNull()
@@ -821,7 +886,7 @@ class PromptServiceImplSpec : StringSpec() {
 
         "translate persists new translations so subsequent calls are cache hits" {
             val repo = InMemoryPromptRepository()
-            val service = PromptServiceImpl(repo, agentConfigService, translationService)
+            val service = PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository())
             val nsId = UUID.randomUUID()
             val saved = service.create(
                 prompt(namespaceId = nsId, title = "Review profile", content = listOf("Hello"), sourceLanguage = "en"),
@@ -863,7 +928,7 @@ class PromptServiceImplSpec : StringSpec() {
 
         "translate uses cached content and only calls LLM for title when content is already cached" {
             val repo = InMemoryPromptRepository()
-            val service = PromptServiceImpl(repo, agentConfigService, translationService)
+            val service = PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository())
             val nsId = UUID.randomUUID()
             val cachedContent = mapOf("fr" to listOf("Bonjour"))
             val saved = service.create(
@@ -890,7 +955,7 @@ class PromptServiceImplSpec : StringSpec() {
 
         "translate accumulates translations for multiple languages" {
             val repo = InMemoryPromptRepository()
-            val service = PromptServiceImpl(repo, agentConfigService, translationService)
+            val service = PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository())
             val nsId = UUID.randomUUID()
             val saved = service.create(
                 prompt(namespaceId = nsId, title = null, content = listOf("Hello"), sourceLanguage = "en"),

@@ -38,6 +38,7 @@ import org.springframework.stereotype.Component
 class SchedulerEndpoint(
     private val schedulerScanner: SchedulerScanner,
     private val executor: ScheduledPromptExecutor,
+    private val executionWindowService: ExecutionWindowService
 ) {
     /**
      * Read current scheduler status.
@@ -50,6 +51,7 @@ class SchedulerEndpoint(
         mapOf(
             "claimPaused" to schedulerScanner.isClaimPaused(),
             "consumePaused" to executor.isConsumePaused(),
+            "withinExecutionWindow" to executionWindowService.isWithinExecutionWindow()
         )
 
     /**

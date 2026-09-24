@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { AiProvider, AiProviderControllerService } from '@whoz-oss/agentos-api-client'
@@ -31,8 +31,15 @@ export class PlatformAiProvidersComponent {
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
+  protected readonly isLoading = signal(true)
+
   /** Raw platform providers, kept for delete lookups. */
-  private readonly providers$ = this.refresh$.pipe(switchMap(() => this.aiProviderController.listAiProvider('none')))
+  private readonly providers$ = this.refresh$.pipe(
+    switchMap(() => {
+      this.isLoading.set(true)
+      return this.aiProviderController.listAiProvider('none')
+    })
+  )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly providerItems$ = this.providers$.pipe(
@@ -51,8 +58,12 @@ export class PlatformAiProvidersComponent {
   private providersById = new Map<string, AiProvider>()
 
   constructor() {
-    this.providers$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((providers) => {
-      this.providersById = new Map(providers.map((p: AiProvider) => [p.id ?? '', p]))
+    this.providers$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (providers) => {
+        this.providersById = new Map(providers.map((p: AiProvider) => [p.id ?? '', p]))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
 

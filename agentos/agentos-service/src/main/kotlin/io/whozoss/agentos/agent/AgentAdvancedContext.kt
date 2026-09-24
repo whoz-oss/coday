@@ -35,6 +35,13 @@ data class AgentAdvancedContext(
     val imageCharCost: Int = 6_000,
     /** Maximum images attached as Media across the whole prompt, newest first. Default mirrors [AgentConfigProperties.maxAttachedImages]. */
     val maxAttachedImages: Int = 20,
+    /**
+     * Merged redirect guideline text, injected into [AgentIntentionGenerator]'s planning prompt.
+     * Built by concatenating the `guideline` parameter of every REDIRECT integration config
+     * referenced by the agent (sorted by config name for determinism), or `null` when none of
+     * them carries a non-blank guideline. See [AgentServiceImpl.resolveRedirectGuideline].
+     */
+    val redirectGuideline: String? = null,
 ) {
     /**
      * Build the complete message list for a single LLM call.

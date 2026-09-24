@@ -13,6 +13,8 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
+import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
@@ -65,8 +67,12 @@ import java.util.UUID
  * claimed [ScheduledPromptUserRun] off for processing. When the batch is empty the poller
  * delays [SchedulerProperties.emptyPollDelayMs] before polling again, avoiding a busy-loop.
  * On database errors it applies exponential backoff (capped at 60 s). The poller respects
- * [consumePaused]: when paused it delays [SchedulerProperties.pausedPollDelayMs] per
- * iteration without touching the database.
+ * two pause conditions combined: [consumePaused] (operator pause via [SchedulerEndpoint])
+ * or outside the execution window ([ExecutionWindowService.isWithinWindow] returns false).
+ * In either case the poller delays [SchedulerProperties.pausedPollDelayMs] per iteration
+ * without touching the database. Workers drain whatever is already in the channel, then block on receive.
+ * At most [SchedulerProperties.channelCapacity] UserRuns may still be processed after the
+ * window closes — bounded and deliberate (no lease expiry risk, no duplicate execution).
  * The handoff channel is closed in the poller's `finally` block, guaranteeing that workers
  * exit their iteration loop cleanly regardless of how the poller stops.
  *
@@ -128,8 +134,13 @@ class ScheduledPromptExecutor(
     private val clock: Clock,
     private val userContextProvider: UserContextProvider? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /**
+     * Evaluates whether Phase B is allowed to poll the database and dispatch UserRuns.
+     * Injected by Spring as [ExecutionWindowService] — same window config as Phase A.
+     * Defaults to always-open so tests and non-windowed deployments are unaffected.
+     */
+    private val executionWindowService: ExecutionWindowService = ExecutionWindowService(SchedulerProperties()),
 ) {
-
     /** When true, the poller skips claimBatch and delays instead. */
     private val consumePaused = AtomicBoolean(false)
 
@@ -216,7 +227,7 @@ class ScheduledPromptExecutor(
             try {
                 while (isActive) {
                     when {
-                        consumePaused.get() -> delay(properties.pausedPollDelayMs)
+                        consumePaused.get() || !executionWindowService.isWithinExecutionWindow() -> delay(properties.pausedPollDelayMs)
                         else -> {
                             try {
                                 val batch = userRunRepository.claimBatch(leaseDuration, properties.batchSize)
@@ -349,9 +360,34 @@ class ScheduledPromptExecutor(
         // for the same user. A future improvement would store the userRunId on the Case and
         // check for an existing Case before creating one, making execution effectively-once.
         try {
-            val context = resolveContext(userRun)
-            val caseId = createAndInjectCase(userRun, context)
-            awaitLaunch(userRun.id, caseId)
+            val runContext = resolveRunContext(userRun)
+            when (val result = resolveUserContext(
+                userRun = userRun,
+                userExternalId = runContext.userExternalId,
+                namespaceId = runContext.namespaceId,
+            )) {
+                is UserContextResult.PermanentFailure -> {
+                    logger.error {
+                        "[Executor] UserRun=${userRun.id} user=${userRun.userId} — permanent context failure," +
+                            " marking FAILED. Reason: ${result.reason}"
+                    }
+                    markFailed(userRun.id, Instant.now(clock), result.reason)
+                }
+                is UserContextResult.TransientFailure -> logger.warn {
+                    "[Executor] UserRun=${userRun.id} user=${userRun.userId} — transient context failure," +
+                        " leaving RUNNING for lease-based reclaim. Reason: ${result.reason}"
+                }
+                is UserContextResult.Success -> {
+                    if (result.sessionContext == null && userContextProvider != null) {
+                        logger.warn {
+                            "[Executor] UserContextProvider returned Success(null) for UserRun=${userRun.id}" +
+                                " userId=${userRun.userId} — no sessionContext will be injected. Check provider configuration."
+                        }
+                    }
+                    val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = result.sessionContext))
+                    awaitLaunch(userRun.id, caseId)
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -361,11 +397,13 @@ class ScheduledPromptExecutor(
     }
 
     /**
-     * Resolve all data required to execute a [ScheduledPromptUserRun].
+     * Resolve all execution context for a [ScheduledPromptUserRun], except [UserRunContext.sessionContext]
+     * which is determined later by branching on [resolveSessionContext].
+     *
      * Throws [IllegalStateException] on any missing entity — propagates to the
      * try/catch in [processUserRun] which marks the UserRun FAILED.
      */
-    private fun resolveContext(userRun: ScheduledPromptUserRun): UserRunContext {
+    private fun resolveRunContext(userRun: ScheduledPromptUserRun): UserRunContext {
         val run = checkNotNull(runRepository.findById(userRun.runId)) {
             "Parent Run ${userRun.runId} not found"
         }
@@ -386,24 +424,47 @@ class ScheduledPromptExecutor(
         val agentName = checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
             "AgentConfig ${scheduledPrompt.agentConfigId} not found"
         }
-        val sessionContext = runCatching {
-            userContextProvider?.provideUserContext(
-                userExternalId = user.externalId,
-                namespaceId = namespaceId,
-            )
-        }.onFailure { e ->
-            logger.warn(e) {
-                "[Executor] Context enrichment failed for UserRun=${userRun.id} userId=${userRun.userId} — continuing without sessionContext"
-            }
-        }.getOrNull()
         return UserRunContext(
             namespaceId = namespaceId,
             caseTitle = scheduledPrompt.name,
             actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
             message = "@$agentName $promptContent",
             scheduledPromptId = scheduledPrompt.id,
-            sessionContext = sessionContext,
+            userExternalId = user.externalId,
         )
+    }
+
+    /**
+     * Resolves the user context for a [ScheduledPromptUserRun] by calling [userContextProvider].
+     *
+     * Pure — no side effects (no logging, no markFailed). The caller ([processUserRun])
+     * is responsible for acting on the outcome.
+     *
+     * Returns [UserContextResult.Success](null) when no provider is registered — execution
+     * continues without sessionContext, non-fatal.
+     *
+     * Unexpected exceptions from the provider are caught and returned as
+     * [UserContextResult.TransientFailure].
+     */
+    private fun resolveUserContext(
+        userRun: ScheduledPromptUserRun,
+        userExternalId: String,
+        namespaceId: UUID,
+    ): UserContextResult {
+        return userContextProvider?.let { provider ->
+            runCatching {
+                provider.provideUserContext(
+                    userExternalId = userExternalId,
+                    namespaceId = namespaceId,
+                )
+            }.getOrElse { e ->
+                logger.warn(e) {
+                    "[Executor] UserContextProvider threw unexpectedly for UserRun=${userRun.id} userId=${userRun.userId}" +
+                        " — treating as transient failure, lease will expire and UserRun will be reclaimed"
+                }
+                UserContextResult.TransientFailure(e.message ?: "Unexpected exception")
+            }
+        } ?: UserContextResult.Success(null)
     }
 
     /**
@@ -443,6 +504,7 @@ class ScheduledPromptExecutor(
         val actor: Actor,
         val message: String,
         val scheduledPromptId: UUID,
+        val userExternalId: String,
         val sessionContext: Map<String, Any?>? = null,
     )
 

@@ -117,7 +117,8 @@ class AuthSettingController(
             "Scope is inferred from the query params:\n\n" +
                 "| query                            | mode             | required permission                            |\n" +
                 "|----------------------------------|------------------|------------------------------------------------|\n" +
-                "| (no params)                      | platform         | authenticated                                  |\n" +
+                "| (no params)                      | all caller's     | authenticated                                  |\n" +
+                "| `?namespaceId=none` (no userId)  | platform         | authenticated                                  |\n" +
                 "| `?namespaceId=<uuid>`            | NS-shared        | READ on the namespace (empty list if missing)  |\n" +
                 "| `?namespaceId=<uuid>&userId=me`  | user \u00d7 namespace | authenticated                                  |\n" +
                 "| `?namespaceId=none&userId=me`    | user-global      | authenticated                                  |\n" +
