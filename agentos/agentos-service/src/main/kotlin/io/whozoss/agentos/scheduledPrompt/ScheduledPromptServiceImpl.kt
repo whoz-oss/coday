@@ -166,6 +166,9 @@ class ScheduledPromptServiceImpl(
                 userId = entity.userId,
                 agentConfigId = null,
                 name = promptName(entity.name),
+                // title mirrors scheduledPrompt.name so it can be auto-translated via
+                // PromptService.translate() and used as the case title in the user's language.
+                title = entity.name,
                 content = listOf(promptContent),
             ),
         )
@@ -179,6 +182,9 @@ class ScheduledPromptServiceImpl(
         promptService.update(
             existingPrompt.copy(
                 name = promptName(entity.name),
+                // Keep title in sync with scheduledPrompt.name — PromptServiceImpl.update
+                // clears translatedTitles automatically when title changes.
+                title = entity.name,
                 content = listOf(promptContent),
             ),
         )
