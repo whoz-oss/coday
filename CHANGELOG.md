@@ -1,3 +1,25 @@
+## 3.5.0 (2026-09-23)
+
+### 🚀 Features
+
+- introduce UsageRecord entity, persistence, service and controller ([#1309](https://github.com/whoz-oss/coday/pull/1309))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+- vincent-audibert-whoz
+
+## 3.4.0 (2026-09-23)
+
+### 🚀 Features
+
+- wz-34403 - add language support in agentOS ([#1374](https://github.com/whoz-oss/coday/pull/1374))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.3.1 (2026-09-23)
 
 ### 🩹 Fixes
