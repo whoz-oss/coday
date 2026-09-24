@@ -493,12 +493,13 @@ class ScheduledPromptExecutor(
             PermissionRelation.ADMIN,
         )
         // Merge preferredLanguage into the session context so the agent can pick it up
-        // without an LLM language-detection call. Caller-supplied sessionContext entries
-        // take precedence; preferredLanguage is only added when not already present.
-        val effectiveSessionContext: Map<String, Any?>? = when {
-            context.preferredLanguage == null -> context.sessionContext
-            context.sessionContext == null -> mapOf("preferredLanguage" to context.preferredLanguage)
-            else -> mapOf("preferredLanguage" to context.preferredLanguage) + context.sessionContext
+        // without an LLM language-detection call. The user's stored preferredLanguage is the
+        // authoritative source for language — it always wins over anything a UserContextProvider
+        // might put under the same key (providers supply business context, not language choice).
+        val effectiveSessionContext: Map<String, Any?>? = if (context.preferredLanguage == null) {
+            context.sessionContext
+        } else {
+            (context.sessionContext ?: emptyMap()) + mapOf("preferredLanguage" to context.preferredLanguage)
         }
         caseService.addMessage(
             caseId = case.id,

@@ -701,9 +701,10 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             }
         }
 
-        "Phase B: provider sessionContext entries take precedence over preferredLanguage" {
-            // When the UserContextProvider returns a sessionContext that already contains
-            // 'preferredLanguage', the provider value wins (it is merged first).
+        "Phase B: user preferredLanguage wins over provider sessionContext on key conflict" {
+            // The UserContextProvider supplies business context (talent profile, etc.), not
+            // language preference. If a provider happens to also send 'preferredLanguage',
+            // the user's stored setting must still win — it is the authoritative source.
             val sp = makeScheduledPrompt()
             val run = makeRun(sp).copy(status = RunStatus.RUNNING)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
@@ -728,7 +729,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.findActiveRuntime(caseId) } returns null
                 every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
             }
-            // Provider overrides preferredLanguage to "de"
+            // Provider also sends 'preferredLanguage' — should NOT override the user's stored value
             val providerContext = mapOf("preferredLanguage" to "de", "userContext" to mapOf("talentId" to "t1"))
             val provider = mockk<UserContextProvider>().also {
                 every { it.provideUserContext(userWithLanguage.externalId, namespaceId) } returns
@@ -756,8 +757,11 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                     sessionContext = capture(sessionContextSlot),
                 )
             }
-            // Provider's "de" wins over user's stored "fr"
-            sessionContextSlot.captured["preferredLanguage"] shouldBe "de"
+            // User's stored "fr" wins — provider cannot override language preference
+            sessionContextSlot.captured["preferredLanguage"] shouldBe "fr"
+            // Provider's other context is still present
+            @Suppress("UNCHECKED_CAST")
+            (sessionContextSlot.captured["userContext"] as Map<String, Any?>)["talentId"] shouldBe "t1"
         }
 
         "Phase B: sessionContext from UserContextProvider is forwarded to addMessage" {
