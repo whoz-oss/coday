@@ -278,23 +278,6 @@ data class ThinkingEvent(
 }
 
 /**
- * Opaque reference to a Factory human-checkpoint interaction that a [QuestionEvent] was
- * opened for. Carried on the [QuestionEvent] so that [CaseRuntime] can validate the
- * user's answer against the Factory before persisting the [AnswerEvent].
- *
- * All three fields are set from the Factory interaction-open response body and are
- * therefore server-authoritative — they are never supplied by the model.
- *
- * This data class is intentionally minimal: it carries only what is needed to call the
- * Factory reply endpoint. No Factory business logic leaks into the SDK beyond this struct.
- */
-data class FactoryCheckpointRef(
-    val workflowId: String,
-    val interactionId: String,
-    val interactionRevision: Long,
-)
-
-/**
  * Emitted when an agent asks a question to the user via a tool.
  * The user can respond asynchronously via an AnswerEvent.
  *
@@ -302,9 +285,6 @@ data class FactoryCheckpointRef(
  *   Null means the question is addressed to any user of the case.
  * @param questionType Controls how the UI should render the response input.
  *   [QuestionType.OPEN_CHOICE] requires [options] to be non-null and non-empty.
- * @param factoryCheckpoint When non-null, the user's answer must be validated against the
- *   Factory before [AnswerEvent] is persisted and the agent is resumed. Null for all
- *   ordinary (non-Factory) questions.
  */
 data class QuestionEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -318,7 +298,6 @@ data class QuestionEvent(
     val questionType: QuestionType = QuestionType.FREE_TEXT,
     /** Identifies the specific user this question is directed at. Null = any user. */
     val userId: UUID? = null,
-    val factoryCheckpoint: FactoryCheckpointRef? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.QUESTION
 

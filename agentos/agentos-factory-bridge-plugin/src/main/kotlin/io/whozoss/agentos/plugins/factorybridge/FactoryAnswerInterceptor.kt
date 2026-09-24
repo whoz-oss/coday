@@ -13,11 +13,13 @@ import java.util.UUID
  * Validates a user's answer against the Factory before the runtime persists the
  * [io.whozoss.agentos.sdk.caseEvent.AnswerEvent].
  *
- * Questions without a [QuestionEvent.factoryCheckpoint] are passed through untouched
- * (the safe default), so ordinary questions are unaffected. When a checkpoint is present,
- * the decision is submitted to the Factory interaction-reply endpoint; a Factory rejection
- * surfaces as [AnswerInterceptResult.Reject] so the runtime keeps the agent suspended and
- * the user can retry.
+ * The Factory checkpoint is held entirely inside the plugin ([FactoryBridgeServices.pendingCheckpoints]):
+ * [io.whozoss.agentos.plugins.factorybridge.tools.FactoryRequestHumanDecisionTool] registers it when it
+ * opens an interaction, and this interceptor consumes it when the user answers. Cases without an open
+ * checkpoint are passed through untouched (the safe default), so ordinary questions are unaffected.
+ * When a checkpoint is present, the decision is submitted to the Factory interaction-reply endpoint; a
+ * Factory rejection surfaces as [AnswerInterceptResult.Reject] so the runtime keeps the agent suspended
+ * and the user can retry.
  *
  * The interface is synchronous, mirroring
  * `io.whozoss.agentos.caseFlow.CaseRuntime.addUserMessage`, so the suspend client call is
@@ -40,7 +42,7 @@ class FactoryAnswerInterceptor
             answerText: String,
             actor: Actor,
         ): AnswerInterceptResult {
-            val checkpoint = questionEvent.factoryCheckpoint ?: return AnswerInterceptResult.Accept
+            val checkpoint = services().pendingCheckpoints.remove(caseId) ?: return AnswerInterceptResult.Accept
             val result =
                 runBlocking {
                     checkpointClient.submitDecision(

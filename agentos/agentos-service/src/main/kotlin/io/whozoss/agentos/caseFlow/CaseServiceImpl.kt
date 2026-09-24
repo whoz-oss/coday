@@ -3,8 +3,6 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
-import io.whozoss.agentos.factory.FactoryCheckpointClient
-import io.whozoss.agentos.factory.FactoryStepResultBindingRegistry
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
@@ -19,8 +17,6 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptCommandParser
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.prompt.ResolvedCommand
-import okhttp3.OkHttpClient
-import org.springframework.beans.factory.annotation.Value
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -71,8 +67,6 @@ class CaseServiceImpl(
     private val permissionService: PermissionService,
     private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
-    private val factoryStepResultBindings: FactoryStepResultBindingRegistry = FactoryStepResultBindingRegistry(),
-    @Value("\${agentos.factory.base-url:}") private val factoryBaseUrl: String = "",
     /**
      * Optional SPI hooks consulted for every answer before an [io.whozoss.agentos.sdk.caseEvent.AnswerEvent]
      * is persisted. Empty by default (Spring injects all registered beans): no interception.
@@ -95,13 +89,6 @@ class CaseServiceImpl(
     private val toolGrantPolicies: List<ToolGrantPolicy> = emptyList(),
 ) : CaseService,
     SubCaseManager {
-    /**
-     * Shared HTTP client for Factory checkpoint calls. One instance per service
-     * (OkHttpClient is thread-safe and manages its own connection pool).
-     * Null-safe: the client is only used when [factoryBaseUrl] is non-blank and
-     * [CaseRuntime.factoryCheckpointClient] is wired.
-     */
-    private val factoryHttpClient: OkHttpClient by lazy { OkHttpClient() }
     /**
      * Coroutine scope used to run case execution loops and fire-and-forget
      * post-processing tasks (e.g. automatic naming) in the background.
@@ -285,9 +272,6 @@ class CaseServiceImpl(
         case: Case,
         inputEvents: List<CaseEvent> = emptyList(),
     ): CaseRuntime {
-        val checkpointClient = if (factoryBaseUrl.isNotBlank()) {
-            FactoryCheckpointClient(factoryBaseUrl, factoryHttpClient, com.fasterxml.jackson.module.kotlin.jacksonObjectMapper())
-        } else null
         return CaseRuntime(
             id = case.id,
             namespaceId = case.namespaceId,
@@ -295,7 +279,6 @@ class CaseServiceImpl(
             updateStatusCallback = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
-            factoryCheckpointClient = checkpointClient,
             answerInterceptors = answerInterceptors,
             lifecycleObservers = lifecycleObservers,
             isAgentAuthorized = { agentName, userId ->
@@ -786,10 +769,8 @@ class CaseServiceImpl(
         // Trigger post-processing on turn completion so processors can refine their
         // work with the full agent response available (e.g. naming refinement on 2nd turn).
         if (newStatus == CaseStatus.IDLE) {
-            // IDLE can be observed before the Factory-bound turn starts, and may also
-            // occur between turns. The binding is consumed by FACTORY__submit_step_result
-            // or removed on expiry/kill/terminal status; clearing it on IDLE races with
-            // the agent's first tool call and causes STRUCTURED_RESULT_MISSING.
+            // IDLE can be observed between turns; the runtime stays alive so the
+            // naming trigger below can refine the case name with the full response.
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
                 triggerNamingIfNeeded(
@@ -854,7 +835,6 @@ class CaseServiceImpl(
     }
 
     private fun killSingleCase(caseId: UUID) {
-        factoryStepResultBindings.remove(caseId)
         logger.info { "Killing case: $caseId" }
         activeRuntimes[caseId]?.requestKill()
         handleStatusChange(caseId, CaseStatus.KILLED)

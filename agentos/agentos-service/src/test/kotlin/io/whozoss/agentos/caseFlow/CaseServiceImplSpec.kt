@@ -374,7 +374,6 @@ class CaseServiceImplSpec :
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
                 CaseServiceImpl(
-                    factoryBaseUrl = "",
                     agentService = agentService,
                     agentConfigService = allowAllAgentConfigService,
                     agentConfigProperties = AgentConfigProperties(),

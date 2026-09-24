@@ -1,6 +1,5 @@
 package io.whozoss.agentos.plugins.factorybridge
 
-import io.whozoss.agentos.sdk.caseEvent.FactoryCheckpointRef
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import java.util.UUID
 
@@ -14,6 +13,10 @@ import java.util.UUID
  * (duplicating it would produce two distinct classes across the PF4J classloader
  * boundary and the host's typed `catch` would miss it).
  *
+ * The Factory checkpoint itself never crosses the host boundary: the tool registers it in
+ * [FactoryBridgeServices.pendingCheckpoints] before suspending, and [FactoryAnswerInterceptor]
+ * consumes it by case id when the answer arrives.
+ *
  * The plugin therefore routes the signal through [FactoryAnswerAwaiter]. The default
  * [HostAgentInterruptAwaiter] resolves and raises the host's own `AgentInterrupt.AwaitAnswer`
  * instance by reflection. When the host runtime is not present (unit tests, standalone
@@ -25,7 +28,6 @@ data class FactoryAwaitAnswer(
     val options: List<String>? = null,
     val questionType: QuestionType = QuestionType.FREE_TEXT,
     val userId: UUID? = null,
-    val factoryCheckpoint: FactoryCheckpointRef,
 )
 
 /**
@@ -62,14 +64,12 @@ object HostAgentInterruptAwaiter : FactoryAnswerAwaiter {
                     List::class.java,
                     QuestionType::class.java,
                     UUID::class.java,
-                    FactoryCheckpointRef::class.java,
                 )
             constructor.newInstance(
                 await.question,
                 await.options,
                 await.questionType,
                 await.userId,
-                await.factoryCheckpoint,
             ) as Throwable
         }.getOrNull()
         throw hostInterrupt ?: FactoryAwaitAnswerInterrupt(await)

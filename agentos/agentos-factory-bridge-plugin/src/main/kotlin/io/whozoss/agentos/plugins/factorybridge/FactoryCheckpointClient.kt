@@ -1,7 +1,6 @@
 package io.whozoss.agentos.plugins.factorybridge
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.sdk.caseEvent.FactoryCheckpointRef
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import mu.KLogging
