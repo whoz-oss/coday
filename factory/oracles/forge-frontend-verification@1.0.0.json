@@ -1,0 +1,17 @@
+{
+  "applicable": {
+    "stepIds": ["frontend-verification"],
+    "workflowTypes": ["bmad-story-frontend"]
+  },
+  "argv": ["node", "factory/oracles/run-frontend-verification.mjs"],
+  "cwd": "repo-root",
+  "domain": "frontend",
+  "id": "forge-frontend-verification",
+  "schemaVersion": "1",
+  "success": {
+    "requireWork": true,
+    "rule": "exit-code"
+  },
+  "timeoutMs": 1800000,
+  "version": "1.0.0"
+}

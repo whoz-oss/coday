@@ -17,8 +17,19 @@ Si `pnpm install` est cassé, si `node_modules/` est corrompu, si le
 Il n'a aucune dépendance externe : uniquement les modules natifs Node (`fs`,
 `path`, `child_process`, `crypto`) et le `fetch` global (Node 18+).
 
-Aucun `package.json`, aucun `project.json` Nx, aucune compilation TypeScript.
-Les fichiers `.mjs` sont exécutés directement par `node`.
+Aujourd'hui, les fichiers `.mjs` sont exécutés directement par `node` et la Factory ne dépend d'aucun projet Nx du produit.
+
+La cible actée de migration est différente sans changer cet invariant : des sources TypeScript strictes seront compilées par une toolchain Factory isolée vers un artefact JavaScript ESM autonome. Au runtime, cet artefact ne requerra ni pnpm, ni Nx, ni compilateur, ni `node_modules`. La coexistence `.mjs`/`.ts` sera temporaire et contrôlée ; aucun code n'est migré au Stage 0A.
+
+## Architecture et migration TypeScript
+
+- [ADR_TYPESCRIPT_MIGRATION.md](ADR_TYPESCRIPT_MIGRATION.md) — décision, coexistence, premier candidat et rollback.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — frontières, bounded contexts et architecture runtime/build cible.
+- [AUTHORITY_SOURCES.md](AUTHORITY_SOURCES.md) — sources d'autorité actuelles et futures, résolution des conflits.
+- [DEPENDENCY_MATRIX.md](DEPENDENCY_MATRIX.md) — dépendances autorisées, bornées ou interdites.
+- [lib/README.md](lib/README.md) — responsabilités et invariants des modules actuels.
+
+Le Stage 0B devra encore fixer le minimum Node, les outils exacts, l'emplacement de l'artefact et les politiques de sourcemaps, assets et imports dynamiques.
 
 ## Lancer un workflow (livraison)
 

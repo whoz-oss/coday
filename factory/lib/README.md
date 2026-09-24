@@ -4,6 +4,14 @@ Ce répertoire contient les douze modules qui composent l'orchestrateur factory.
 Chaque module a une responsabilité unique et des frontières explicites.
 Aucun module n'écrit de prose LLM dans le registre ni ne dépend de l'état de ce qu'il mesure.
 
+## Statut dans la migration TypeScript
+
+Les `.mjs` décrits ici restent aujourd'hui les sources runtime d'autorité. La cible actée est constituée de sources TypeScript strictes compilées par une toolchain Factory isolée vers un artefact JavaScript ESM autonome, exécutable sans pnpm, Nx, compilateur ni `node_modules`.
+
+La coexistence `.mjs`/`.ts` sera temporaire : avant une bascule explicite, le `.mjs` reste canonique ; après celle-ci, le `.ts` devient canonique et son JavaScript est généré. `active-case.mjs` est le premier candidat proposé, sans modification au Stage 0A.
+
+Documents de référence : [ADR de migration](../ADR_TYPESCRIPT_MIGRATION.md), [architecture](../ARCHITECTURE.md), [sources d'autorité](../AUTHORITY_SOURCES.md) et [matrice des dépendances](../DEPENDENCY_MATRIX.md). Les choix de minimum Node, outils, emplacement d'artefact, sourcemaps, assets et imports dynamiques restent ouverts pour le Stage 0B.
+
 ---
 
 ## Vue d'ensemble — composition dans le workflow
