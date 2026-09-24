@@ -1,10 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
-import {
-  AgentConfigControllerService,
-  NamespaceMembershipControllerService,
-  UserGroupControllerService,
-} from '@whoz-oss/agentos-api-client'
+import { AgentConfigControllerService, UserGroupControllerService } from '@whoz-oss/agentos-api-client'
 import { of } from 'rxjs'
 import { UserGroupFormComponent } from './user-group-form.component'
 
@@ -67,7 +63,6 @@ describe('UserGroupFormComponent agent sharing', () => {
               .mockReturnValue(of([{ id: 'platform-agent', name: 'Platform assistant' }])),
           },
         },
-        { provide: NamespaceMembershipControllerService, useValue: { getMembersNamespaceMembership: () => of([]) } },
       ],
     })
   })
