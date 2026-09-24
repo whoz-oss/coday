@@ -16,6 +16,9 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import io.whozoss.agentos.sdk.spi.AnswerInterceptResult
+import io.whozoss.agentos.sdk.spi.AnswerInterceptor
+import io.whozoss.agentos.sdk.spi.CaseLifecycleObserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,6 +56,12 @@ private data class PendingCommand(val content: List<MessageContent>)
  *   [io.whozoss.agentos.sdk.caseEvent.FactoryCheckpointRef] are first validated against the
  *   Factory before the [AnswerEvent] is persisted. Null disables Factory validation entirely
  *   (all existing tests and non-Factory cases are unaffected).
+ * @param answerInterceptors optional SPI hooks consulted for every answer to a [QuestionEvent]
+ *   before the [AnswerEvent] is persisted. Empty by default: no interception, behavior unchanged.
+ *   A rejection emits a [WarnEvent] and skips both the Factory gate and the [AnswerEvent].
+ * @param lifecycleObservers optional SPI observers notified when an event produced by this
+ *   runtime has been stored ([CaseLifecycleObserver.onEventStored]). Empty by default: no-op.
+ *   Status-transition notifications are handled by the service (see `CaseServiceImpl`).
  * @param runAgent fetches the named agent, runs it against the current event history,
  *   and pipes each produced event through [storeEvent]. The implementation is responsible
  *   for deciding whether to emit [AgentRunningEvent] by inspecting the event history
@@ -83,6 +92,8 @@ class CaseRuntime(
     initialStatus: CaseStatus = CaseStatus.PENDING,
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
     private val factoryCheckpointClient: FactoryCheckpointClient? = null,
+    private val answerInterceptors: List<AnswerInterceptor> = emptyList(),
+    private val lifecycleObservers: List<CaseLifecycleObserver> = emptyList(),
 ) : CaseEventEmitter by emitter {
     private val eventList = InMemoryCaseEventList(inputEvents)
 
@@ -188,6 +199,23 @@ class CaseRuntime(
         val saved = storeEvent(event)
         eventList.add(saved)
         emit(saved)
+        notifyEventStored(saved)
+    }
+
+    /**
+     * Notify registered [CaseLifecycleObserver]s that [event] has been stored.
+     * Observers are notifications only: a faulty hook is logged and never breaks execution.
+     */
+    private fun notifyEventStored(event: CaseEvent) {
+        if (lifecycleObservers.isEmpty()) return
+        lifecycleObservers.forEach { observer ->
+            runCatching { observer.onEventStored(id, event) }
+                .onFailure { error ->
+                    logger.warn(error) {
+                        "[CaseRuntime $id] CaseLifecycleObserver ${observer::class.simpleName} failed on event ${event.id}"
+                    }
+                }
+        }
     }
 
     /**
@@ -241,6 +269,32 @@ class CaseRuntime(
                     if (answerText.isBlank()) {
                         logger.warn { "[CaseRuntime $id] Answer text is blank for question $answerToEventId" }
                     } else {
+                        // SPI gate: let registered interceptors validate the answer before it is
+                        // persisted. Empty by default, so existing behavior is unchanged. A rejection
+                        // surfaces a WarnEvent and skips both the Factory gate and the AnswerEvent.
+                        for (interceptor in answerInterceptors) {
+                            val result =
+                                runCatching { interceptor.interceptAnswer(id, questionEvent, answerText, actor) }
+                                    .onFailure { error ->
+                                        logger.warn(error) {
+                                            "[CaseRuntime $id] AnswerInterceptor ${interceptor::class.simpleName} " +
+                                                "threw for question $answerToEventId, ignoring"
+                                        }
+                                    }.getOrElse { AnswerInterceptResult.Accept }
+                            if (result is AnswerInterceptResult.Reject) {
+                                logger.warn {
+                                    "[CaseRuntime $id] Answer rejected by interceptor for question $answerToEventId: ${result.reason}"
+                                }
+                                storeAndEmitEvent(
+                                    WarnEvent(
+                                        namespaceId = namespaceId,
+                                        caseId = id,
+                                        message = "Answer rejected: ${result.reason}. Please try again.",
+                                    ),
+                                )
+                                return // do NOT create AnswerEvent; agent stays suspended
+                            }
+                        }
                         // Factory gate: when the question carries a checkpoint reference,
                         // submit the decision to the Factory BEFORE persisting the AnswerEvent.
                         // A Factory rejection emits a WarnEvent so the user can retry; no

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.spi.ToolGrantPolicy
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.time.Instant
 import java.util.UUID
@@ -25,6 +26,8 @@ import java.util.UUID
  *   Used by [io.whozoss.agentos.auth.OAuthFlowService] to emit [io.whozoss.agentos.sdk.caseEvent.QuestionEvent]s
  *   during interactive OAuth flows. Returns the persisted event (with stable id).
  *   Null when running outside a live case (e.g. definition resolution for a debug endpoint).
+ * @param toolGrantPolicies Optional SPI policies evaluated against each resolved tool before
+ *   the agent is granted it. Empty by default: pass-through, no filtering.
  */
 data class AgentExecutionContext(
     val namespaceId: UUID,
@@ -35,6 +38,7 @@ data class AgentExecutionContext(
     val workflowId: String? = null,
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     val emitEvent: ((CaseEvent) -> CaseEvent)? = null,
+    val toolGrantPolicies: List<ToolGrantPolicy> = emptyList(),
 ) {
     fun toToolContext(
         userExternalId: String?,

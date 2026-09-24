@@ -35,6 +35,8 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.spi.ToolGrantDecision
+import io.whozoss.agentos.sdk.spi.ToolGrantPolicy
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.skill.Skill
@@ -382,22 +384,27 @@ class AgentServiceImpl(
                 factoryToolGrantService.grantTools(toolContext, agentConfig.integrations)
             } else emptyList()
         val tools =
-            toolResolverService.dedupToolsByName(
-                baseTools +
-                    listOfNotNull(
-                        subCaseManager?.let {
-                            buildDelegationTools(
-                                config = agentConfig,
-                                context = context,
-                                subCaseManager = it,
-                            )
-                        },
-                    ) +
-                    buildExchangeTools(agentConfig, context, toolContext) +
-                    queryUserTools +
-                    skillTools +
-                    buildWorkUnitEnvironmentTools(agentConfig, context, toolContext) +
-                    factoryTools,
+            applyToolGrantPolicies(
+                tools =
+                    toolResolverService.dedupToolsByName(
+                        baseTools +
+                            listOfNotNull(
+                                subCaseManager?.let {
+                                    buildDelegationTools(
+                                        config = agentConfig,
+                                        context = context,
+                                        subCaseManager = it,
+                                    )
+                                },
+                            ) +
+                            buildExchangeTools(agentConfig, context, toolContext) +
+                            queryUserTools +
+                            skillTools +
+                            buildWorkUnitEnvironmentTools(agentConfig, context, toolContext) +
+                            factoryTools,
+                    ),
+                context = toolContext,
+                policies = context.toolGrantPolicies,
             )
 
         val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
@@ -452,6 +459,41 @@ class AgentServiceImpl(
             .mapNotNull { it.parameters?.get(RedirectToolPlugin.GUIDELINE_PARAM)?.asText()?.takeIf { g -> g.isNotBlank() } }
             .joinToString("\n\n")
             .takeUnless { it.isBlank() }
+
+    /**
+     * Filters [tools] through the optional SPI [policies] carried by the execution context.
+     *
+     * Neutral pass-through: when [policies] is empty the list is returned unchanged, so
+     * existing behavior is fully preserved. A tool is granted only when no policy denies it;
+     * an [ToolGrantDecision.AllowOnly] decision also denies every tool it does not list.
+     * A faulty policy is logged and treated as [ToolGrantDecision.Neutral] — it can never
+     * silently strip tools from an agent run.
+     */
+    private fun applyToolGrantPolicies(
+        tools: List<StandardTool<*>>,
+        context: ToolContext,
+        policies: List<ToolGrantPolicy>,
+    ): List<StandardTool<*>> {
+        if (policies.isEmpty()) return tools
+        return tools.filter { tool ->
+            var granted = true
+            for (policy in policies) {
+                val decision =
+                    runCatching { policy.evaluateToolGrant(context.agentName, tool.name, context) }
+                        .onFailure { error ->
+                            logger.warn(error) {
+                                "[ToolGrantPolicy] ${policy::class.simpleName} failed for tool '${tool.name}', ignoring"
+                            }
+                        }.getOrElse { ToolGrantDecision.Neutral }
+                when (decision) {
+                    is ToolGrantDecision.Neutral -> Unit
+                    is ToolGrantDecision.AllowOnly -> if (tool.name !in decision.toolNames) granted = false
+                    is ToolGrantDecision.Deny -> if (tool.name in decision.toolNames) granted = false
+                }
+            }
+            granted
+        }
+    }
 
     /**
      * Phase 2: instantiate a live [Agent] from a [ResolvedAgentDefinition].
