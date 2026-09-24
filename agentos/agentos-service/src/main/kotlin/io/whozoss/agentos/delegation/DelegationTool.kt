@@ -227,7 +227,7 @@ class DelegationTool(
         val resumed = delegation.subCaseId != null
         val subRuntime = runCatching {
             delegation.subCaseId?.let { subCaseId ->
-                subCaseManager.resumeSubCase(subCaseId, agentName, delegation.task, userId, allowedAgents)
+                subCaseManager.resumeSubCase(subCaseId, parentCaseId, agentName, delegation.task, userId, allowedAgents)
             } ?: subCaseManager.startSubCase(parentCaseId, namespaceId, agentName, delegation.task, userId)
         }.getOrElse { error ->
             logger.warn(error) { "[DelegationTool] Failed to start sub-case for '$agentName'" }

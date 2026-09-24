@@ -2015,6 +2015,145 @@ class CaseServiceImplSpec :
                 .any { it.message.contains("Prompt resolution failed") } shouldBe true
         }
 
+        // -------------------------------------------------------------------------
+        // resumeSubCase: security — ownership and namespace checks
+        // -------------------------------------------------------------------------
+
+        "resumeSubCase rejects a sub-case that belongs to a different parent" {
+            // Confused-deputy scenario: an agent obtains a subCaseId that belongs to
+            // another parent and tries to inject a message into it.
+            val service = buildService()
+
+            val legitimateParent = service.create(Case(namespaceId = namespaceId))
+            val attackingParent = service.create(Case(namespaceId = namespaceId))
+
+            // Sub-case is a child of legitimateParent, not attackingParent
+            val subCase = service.create(
+                Case(namespaceId = namespaceId, parentCaseId = legitimateParent.id, status = CaseStatus.IDLE),
+            )
+
+            shouldThrow<IllegalStateException> {
+                service.resumeSubCase(
+                    subCaseId = subCase.id,
+                    parentCaseId = attackingParent.id, // wrong parent
+                    agentName = agentName,
+                    task = "injected task",
+                    userId = userId,
+                    allowedAgents = listOf(agentName),
+                )
+            }
+        }
+
+        "resumeSubCase rejects a sub-case from a different namespace" {
+            // Cross-tenant scenario: a sub-case exists in namespaceId but the parent
+            // case lives in a different namespace. The check must reject this even
+            // though the parentCaseId relationship is correctly set.
+            val otherNamespaceId = UUID.randomUUID()
+
+            // Build a service that also knows about the second namespace
+            val otherNamespace = Namespace(
+                metadata = EntityMetadata(id = otherNamespaceId),
+                name = "other-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val dualNamespaceService = mockk<NamespaceService> {
+                every { findById(namespaceId) } returns namespace
+                every { findById(otherNamespaceId) } returns otherNamespace
+            }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
+            }
+            val caseRepository = InMemoryCaseRepository()
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = CaseServiceImpl(
+                agentService = agentService,
+                agentConfigService = allowAllAgentConfigService,
+                agentConfigProperties = AgentConfigProperties(agentName = agentName),
+                caseRepository = caseRepository,
+                caseEventService = caseEventService,
+                userService = mockk {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                },
+                namespaceService = dualNamespaceService,
+                caseConfig = CaseConfigProperties(),
+                permissionService = permissionService,
+                promptService = promptService,
+                caseNamingService = noOpCaseNamingService,
+            )
+
+            // Parent lives in namespaceId
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            // Sub-case lives in otherNamespaceId but has parentCaseId pointing to parentCase
+            // (simulates a case that was created with a cross-namespace parentCaseId,
+            // or a namespace field that was tampered with)
+            val foreignSubCase = service.create(
+                Case(namespaceId = otherNamespaceId, parentCaseId = parentCase.id, status = CaseStatus.IDLE),
+            )
+
+            shouldThrow<IllegalStateException> {
+                service.resumeSubCase(
+                    subCaseId = foreignSubCase.id,
+                    parentCaseId = parentCase.id,
+                    agentName = agentName,
+                    task = "cross-tenant injection",
+                    userId = userId,
+                    allowedAgents = listOf(agentName),
+                )
+            }
+        }
+
+        "resumeSubCase rejects a top-level case (parentCaseId is null)" {
+            // A top-level case has no parent. Passing any parentCaseId must be rejected
+            // because the ownership check (subCase.parentCaseId == parentCaseId) will
+            // never hold when subCase.parentCaseId is null.
+            val service = buildService()
+
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            val topLevelCase = service.create(Case(namespaceId = namespaceId, status = CaseStatus.IDLE))
+            // topLevelCase.parentCaseId is null — it is not a sub-case of anything
+
+            shouldThrow<IllegalStateException> {
+                service.resumeSubCase(
+                    subCaseId = topLevelCase.id,
+                    parentCaseId = parentCase.id, // parentCase is unrelated
+                    agentName = agentName,
+                    task = "trying to resume a top-level case",
+                    userId = userId,
+                    allowedAgents = listOf(agentName),
+                )
+            }
+        }
+
+        "resumeSubCase succeeds for a legitimate parent resuming its own IDLE sub-case" {
+            // Non-regression: the happy path must still work after adding the new checks.
+            val service = buildService()
+
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            // Create the sub-case directly in IDLE status to skip a full agent run
+            val subCase = service.create(
+                Case(namespaceId = namespaceId, parentCaseId = parentCase.id, status = CaseStatus.IDLE),
+            )
+
+            // resumeSubCase must not throw and must return a live runtime
+            val runtime = service.resumeSubCase(
+                subCaseId = subCase.id,
+                parentCaseId = parentCase.id,
+                agentName = agentName,
+                task = "legitimate follow-up",
+                userId = userId,
+                allowedAgents = listOf(agentName),
+            )
+
+            runtime.id shouldBe subCase.id
+        }
+
         "rehydrated case with AgentRunningEvent as last event runs agent exactly once and reaches IDLE" {
             // Regression: when a case is rehydrated from persistence after a crash,
             // the last persisted event may be an AgentRunningEvent (emitted by runAgent

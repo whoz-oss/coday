@@ -35,7 +35,7 @@ class DelegationToolLifecycleUnitSpec : StringSpec({
             startFailure?.let { throw it }
             return runtime
         }
-        override fun resumeSubCase(subCaseId: UUID, agentName: String, task: String, userId: UUID, allowedAgents: List<String>): CaseRuntime {
+        override fun resumeSubCase(subCaseId: UUID, parentCaseId: UUID, agentName: String, task: String, userId: UUID, allowedAgents: List<String>): CaseRuntime {
             resumed = true
             return runtime
         }

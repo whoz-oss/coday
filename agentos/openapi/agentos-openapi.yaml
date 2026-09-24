@@ -1065,9 +1065,9 @@ paths:
       - case-controller
   /api/cases/{caseId}/events:
     get:
-      description: "BREAKING: every SSE frame uses the stable event name 'case-event'.\
-        \ Its JSON CaseEvent payload carries the subtype in its 'type' discriminant.\
-        \ includePreviousEvents defaults to true."
+      description: "Every SSE frame uses the stable event name 'case-event'. Its\
+        \ JSON CaseEvent payload carries the subtype in its 'type' discriminant. includePreviousEvents\
+        \ defaults to true."
       operationId: streamEventsCaseEventSse
       parameters:
       - in: path

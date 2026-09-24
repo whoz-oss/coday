@@ -64,7 +64,7 @@ class CaseEventSseController(
         tags = ["sse"],
         summary = "Stream case events via SSE",
         description =
-            "BREAKING: every SSE frame uses the stable event name 'case-event'. " +
+            "Every SSE frame uses the stable event name 'case-event'. " +
                 "Its JSON CaseEvent payload carries the subtype in its 'type' discriminant. " +
                 "includePreviousEvents defaults to true.",
         responses = [
@@ -132,10 +132,11 @@ class CaseEventSseController(
         val invalidated = AtomicBoolean(false)
 
         fun invalidateForSaturation(cause: Throwable) {
-            if (!invalidated.compareAndSet(false, true)) return
-            logger.warn(cause) { "SSE live buffer saturated for case $caseId; closing connection for durable replay" }
-            emitter.completeWithError(cause)
-            scope.cancel()
+            if (invalidated.compareAndSet(false, true)) {
+                logger.warn(cause) { "SSE live buffer saturated for case $caseId; closing connection for durable replay" }
+                emitter.completeWithError(cause)
+                scope.cancel()
+            }
         }
 
         // UNDISTPATCHED subscribes to the hot SharedFlow before the repository replay starts.
@@ -210,6 +211,10 @@ class CaseEventSseController(
                     emitter.send(SseEmitter.event().comment("keep-alive"))
                 } catch (e: Exception) {
                     logger.debug { "Heartbeat write failed for case $caseId — client likely disconnected" }
+                    // A failed keep-alive write is the most reliable signal of client disconnection:
+                    // SseEmitter does not always fire onError/onCompletion on a broken pipe.
+                    // Cancelling the whole scope also tears down the startCaseJob collector and
+                    // releases its SharedFlow subscription in CaseRuntime, preventing a coroutine leak.
                     scope.cancel()
                 }
             }

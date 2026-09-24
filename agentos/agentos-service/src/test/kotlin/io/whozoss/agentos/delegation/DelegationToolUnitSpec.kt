@@ -323,7 +323,7 @@ class DelegationToolUnitSpec :
             val events = listOf(agentMessage("resumed result"))
             val tool = makeTool(launcher, events)
 
-            every { launcher.resumeSubCase(subCaseId, "sub-agent", "follow-up", userId, allowedAgents) } returns runtime
+            every { launcher.resumeSubCase(subCaseId, parentCaseId, "sub-agent", "follow-up", userId, allowedAgents) } returns runtime
 
             val result =
                 tool.execute(
