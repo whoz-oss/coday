@@ -8,7 +8,7 @@ Aucun module n'écrit de prose LLM dans le registre ni ne dépend de l'état de 
 
 Les `.mjs` décrits ici restent aujourd'hui les sources runtime d'autorité. La cible actée est constituée de sources TypeScript strictes compilées par une toolchain Factory isolée vers un artefact JavaScript ESM autonome, exécutable sans pnpm, Nx, compilateur ni `node_modules`.
 
-Au Stage 2, le nouveau cluster fermé active-case a pour autorité `src/lib/active-case.ts` et `src/entrypoints/active-case-contract.ts`; son bundle généré et versionné est `runtime/active-case-contract.mjs`. Aucun consommateur historique n'est basculé : ce répertoire, notamment `active-case.mjs`, reste l'autorité du runtime legacy. La duplication historique est assumée et n'est pas supprimée à ce stade.
+Depuis le Stage 4A, `src/lib/active-case.ts` est l'unique source d'autorité active-case. Tous les consommateurs utilisent l'unique artefact généré `runtime/factory-operational.mjs`; l'ancien module `active-case.mjs` et le bundle de contrat dédié ont été supprimés.
 
 Documents de référence : [ADR de migration](../ADR_TYPESCRIPT_MIGRATION.md), [architecture](../ARCHITECTURE.md), [sources d'autorité](../AUTHORITY_SOURCES.md) et [matrice des dépendances](../DEPENDENCY_MATRIX.md). Le Stage 2 fixe Node 22.12, esbuild ESM monofichier, l'artefact runtime versionné sous `runtime/` et les diagnostics sous `dist/`.
 
@@ -20,7 +20,7 @@ Documents de référence : [ADR de migration](../ADR_TYPESCRIPT_MIGRATION.md), [
 run.mjs (point d'entrée, hors lib/)
   │
   ├── shutdown.mjs          ← enregistre SIGTERM avant tout
-  │     └── active-case.mjs ← lit les cases actifs
+  │     └── runtime/factory-operational.mjs ← lit les cases actifs
   │     └── agentos.mjs     ← tue les cases actifs
   │     └── registry.mjs    ← écrit run_end en fail
   │
@@ -33,7 +33,7 @@ run.mjs (point d'entrée, hors lib/)
         ├── oracle-command.mjs    ← buildOracleCommand (résolution projets Nx)
         ├── oracle.mjs            ← runCommand / snapshotDiff / diffSince / countTaskOutcomes
         ├── agentos.mjs           ← createCase / runAgentTurn / preflightAgent / preflightWorkspace
-        │     └── active-case.mjs ← setActiveCaseId / clearActiveCaseId
+        │     └── runtime/factory-operational.mjs ← registre active-case unique
         │
         └── (boucle de revue)
               ├── review.mjs              ← parseReviewResult / aggregateReviews / toReviewFacts
@@ -56,9 +56,9 @@ Séquence typique d'une phase agent dans un workflow :
 
 ## Modules
 
-### active-case.mjs
+### active-case (source `src/lib/active-case.ts`)
 
-Registre en mémoire des cases AgentOS en cours de polling dans le processus courant.
+Registre en mémoire des cases AgentOS en cours de polling dans le processus courant, livré uniquement dans `runtime/factory-operational.mjs`.
 
 Existe pour briser la dépendance circulaire `agentos → shutdown → agentos`.
 Sans ce module, `shutdown.mjs` devrait importer `agentos.mjs`, qui importe

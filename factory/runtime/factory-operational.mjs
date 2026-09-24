@@ -54,14 +54,16 @@ function createShutdownController(deps) {
       deps.rejectPendingGates();
       const caseIds = deps.activeCaseIds();
       const hadActiveCases = caseIds.length > 0;
-      await Promise.allSettled(caseIds.map(async (caseId) => {
-        try {
-          await deps.caseTerminator.terminate(caseId);
-          deps.warn(`[shutdown] Case ${caseId} tu\xE9.`);
-        } catch (error) {
-          deps.warn(`[shutdown] Erreur lors du kill du case ${caseId} : ${String(error)}`);
-        }
-      }));
+      await Promise.allSettled(
+        caseIds.map(async (caseId) => {
+          try {
+            await deps.caseTerminator.terminate(caseId);
+            deps.warn(`[shutdown] Case ${caseId} tu\xE9.`);
+          } catch (error) {
+            deps.warn(`[shutdown] Erreur lors du kill du case ${caseId} : ${String(error)}`);
+          }
+        })
+      );
       const run = deps.currentRun();
       if (run && !completed) {
         try {

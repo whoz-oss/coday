@@ -4,9 +4,9 @@
 
 Décision : extraire une application de shutdown pure et injectée, un port minimal `CaseTerminator`, un adaptateur HTTP borné sans retry et un adaptateur process. Le bundle partagé généré est `runtime/factory-operational.mjs`. L’unicité d’état prime sur l’autonomie : le run courant et les gates restent injectés depuis leurs modules legacy, sans réimplémentation TypeScript. `lib/shutdown.mjs` n’est plus une autorité d’état, seulement une façade de composition compatible.
 
-- **Statut** : accepté ; Stage 2 par entrypoint/cluster fermé
+- **Statut** : accepté ; Stage 4A, prototype active-case retiré
 - **Portée** : Factory uniquement
-- **Implémentation** : toolchain isolée et entrypoint TypeScript active-case, sans bascule des consommateurs historiques
+- **Implémentation** : toolchain isolée et bundle opérationnel TypeScript unique
 
 ## Contexte
 
@@ -22,7 +22,7 @@ L'artefact livré devra s'exécuter avec Node sans pnpm, Nx, compilateur TypeScr
 
 L'étude Stage 0B validée fixe pour le Stage 1 minimal : Node `>=22.12.0`, vérification stricte par `tsc --noEmit`, bundle ESM autonome par esbuild, et dépendances npm isolées sous `factory/toolchain`. La configuration n'hérite d'aucun `tsconfig` racine et n'utilise ni pnpm ni Nx.
 
-Au Stage 2, `factory/src/entrypoints/active-case-contract.ts` ferme le cluster autour de `active-case`, importe `../lib/active-case.js` selon NodeNext et exerce son contrat public. Esbuild produit le bundle ESM monofichier versionné `factory/runtime/active-case-contract.mjs`, cible Node 22.12, splitting désactivé et imports `node:*` externes. Le bundle est écrit atomiquement et porte un en-tête GENERATED/DO NOT EDIT. Sourcemap sans `sourcesContent` et metafile restent sous `factory/dist/` comme diagnostics non runtime.
+Le Stage 4A consolide ce cluster dans `factory/src/entrypoints/factory-operational.ts`. Esbuild produit l'unique bundle ESM monofichier versionné `factory/runtime/factory-operational.mjs`, cible Node 22.12, splitting désactivé et imports `node:*` externes. Le bundle est écrit atomiquement et porte un en-tête GENERATED/DO NOT EDIT. Sourcemap sans `sourcesContent` et metafile restent sous `factory/dist/` comme diagnostics non runtime.
 
 ## Frontière Factory / AgentOS
 
@@ -48,7 +48,7 @@ Pour chaque module migré, le changement d'autorité doit être explicite, atomi
 
 `factory/lib/active-case.mjs` est le premier candidat proposé. Sa surface est réduite, son état et ses invariants sont bornés, et ses dépendances sont limitées. Il permet de valider la chaîne source stricte → artefact ESM → exécution autonome avant de migrer des modules réseau ou d'orchestration plus complexes.
 
-Le Stage 1 a porté fidèlement ce module dans `factory/src/lib/active-case.ts`. Le Stage 2 donne autorité TypeScript au nouveau cluster fermé exposé par `factory/src/entrypoints/active-case-contract.ts`, mais ne bascule aucun consommateur historique : `factory/lib/active-case.mjs` reste l'autorité du runtime legacy. Le test `factory/tests/typescript-active-case-runtime.mjs` vérifie contrat, autonomie, relocalisation, observabilité et fraîcheur du bundle après une construction explicitement demandée. Cette étape ne prétend pas supprimer la duplication historique.
+Le Stage 1 a porté fidèlement ce module dans `factory/src/lib/active-case.ts`. Après bascule opérationnelle, le Stage 4A retire le prototype et le contrat runtime dédiés : cette source TypeScript est désormais l'unique autorité et `factory/runtime/factory-operational.mjs` l'unique artefact runtime. Le test opérationnel TypeScript concentre les garanties de contrat, idempotence, snapshot, API legacy, observabilité, relocalisation, imports externes et inclusion unique dans le metafile.
 
 ## Rollback
 
@@ -65,15 +65,15 @@ Les registres et preuves produits avant le rollback restent des données histori
 
 Le typage strict devient la cible des sources sans compromettre l'autonomie runtime. Le coût accepté est une séparation explicite entre source, build et artefact, ainsi qu'une période contrôlée de coexistence. Tout choix futur qui impose pnpm, Nx, TypeScript, un bundler ou `node_modules` au runtime contredirait cette ADR.
 
-## Décisions appliquées au Stage 2
+## Décisions appliquées jusqu'au Stage 4A
 
 - Node minimum : `22.12.0` ;
 - vérification : TypeScript strict avec `tsc --noEmit` ;
 - assemblage : esbuild vers un bundle ESM autonome ;
 - isolation : manifeste, lockfile et `node_modules` propres à `factory/toolchain` ;
-- artefact runtime versionné : `factory/runtime/active-case-contract.mjs` ;
+- artefact runtime versionné unique : `factory/runtime/factory-operational.mjs` ;
 - diagnostics : sourcemap externe sans sources embarquées et metafile JSON sous `factory/dist/` ;
 - packaging : imports `node:*` externes, splitting désactivé, écriture atomique et en-tête généré ;
-- autorité : TypeScript pour le nouveau cluster ; `.mjs` historique pour les consommateurs legacy non basculés.
+- autorité active-case : `factory/src/lib/active-case.ts`, sans prototype `.mjs` concurrent.
 
 Le traitement des assets et imports dynamiques sera précisé lorsqu'un module candidat en introduira ; `active-case` n'en contient pas.

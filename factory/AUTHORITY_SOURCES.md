@@ -43,7 +43,7 @@ La frontière reste volontairement hybride : `_currentRun` demeure exclusivement
 4. Un import ne doit jamais choisir implicitement entre deux implémentations selon la disponibilité d'un outil ou de `node_modules`.
 5. La documentation décrit la bascule, mais ne la réalise pas.
 
-Dans ce stage, `src/lib/active-case.ts` est l'autorité du registre chargé par `run.mjs` et `lib/agentos.mjs` via `runtime/factory-operational.mjs`. `lib/active-case.mjs` reste provisoirement présent pour ses importeurs directs non migrés; ces chemins legacy constituent une limite explicite et ne doivent pas être décrits comme une autorité unique à l'échelle de toute la Factory.
+Depuis le Stage 4A, `src/lib/active-case.ts` est l'unique source d'autorité du registre et `runtime/factory-operational.mjs` son unique artefact runtime. Le prototype `lib/active-case.mjs`, l'entrypoint et le bundle de contrat dédiés ont été supprimés après bascule de tous les importeurs.
 
 ## Conflits et résolution
 

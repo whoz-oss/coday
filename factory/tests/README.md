@@ -192,16 +192,17 @@ node factory/tests/test-us-loop.mjs
 
 ---
 
-### `typescript-active-case-runtime.mjs`
+### `typescript-factory-operational.mjs`
 
-**Catégorie** : contrat du bundle runtime généré (hors-ligne, build préalable requis)
+**Catégorie** : contrat de l'unique bundle runtime généré (hors-ligne, build préalable requis)
 
-Vérifie l'exécution et la relocalisation de `runtime/active-case-contract.mjs`, son observabilité fichier, l'absence d'import externe non-`node:*`, l'absence de références aux sources/toolchain et sa fraîcheur par rapport aux sources et au build. Le mode `--verify-generated` ne vérifie que la présence et la fraîcheur déterministe par timestamps.
+Vérifie le contrat opérationnel et toutes les garanties active-case : exports, idempotence, snapshots, API legacy, observabilité fichier, relocalisation, absence d'import externe non-`node:*` et inclusion unique de la source active-case dans le metafile.
 
 ```bash
 cd factory/toolchain
-npm run verify:generated
-npm run test:active-case-runtime
+npm run build
+npm run typecheck
+npm run test:operational
 ```
 
 Le bundle est versionné mais généré : ne jamais l'éditer manuellement.

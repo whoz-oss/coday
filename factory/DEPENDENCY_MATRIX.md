@@ -41,8 +41,8 @@
 | Agents/LLM | Choix ou verdict d'oracle | Interdit | Les agents ne se jugent pas eux-mêmes. |
 | Module Factory | Autre module Factory | Autorisé | Import ESM explicite, sans cycle non maîtrisé ; fermeture à traiter au packaging. |
 | Artefact ESM | Sources `.ts` ou `.mjs` du checkout au runtime | Interdit | L'artefact livré ne doit pas compléter son code depuis les sources. |
-| Entrypoint active-case Stage 2 | `src/lib/active-case.ts` | Build uniquement | Import NodeNext `../lib/active-case.js`, fermé dans le bundle monofichier. |
-| Bundle active-case versionné | Imports `node:*` | Autorisé | Seuls imports runtime externes ; aucune résolution source/toolchain/node_modules. |
+| Entrypoint opérationnel | `src/lib/active-case.ts` | Build uniquement | Import NodeNext fermé dans l'unique bundle monofichier. |
+| Bundle opérationnel versionné | Imports `node:*` | Autorisé | Seuls imports runtime externes ; aucune résolution source/toolchain/node_modules ; active-case inclus exactement une fois. |
 
 ## Autonomie runtime
 
@@ -60,4 +60,4 @@ Les imports statiques internes doivent être fermés dans l'artefact ou résolus
 
 ## Coexistence et rollback
 
-Le cluster opérationnel bascule `run.mjs` et `lib/agentos.mjs` sur le même registre du bundle généré. `lib/active-case.mjs` reste présent tant que tous ses importeurs directs ne sont pas migrés. L'autonomie complète est différée : `_currentRun` et les gates restent dans leurs modules legacy et sont injectés, afin de préserver l'unicité réelle de ces états.
+Le cluster opérationnel charge `run.mjs` et `lib/agentos.mjs` sur le même registre du bundle généré. Depuis le Stage 4A, aucun prototype active-case séparé ne subsiste. L'autonomie complète est différée : `_currentRun` et les gates restent dans leurs modules legacy et sont injectés, afin de préserver l'unicité réelle de ces états.
