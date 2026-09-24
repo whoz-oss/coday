@@ -53,6 +53,20 @@ try {
   const facade = await import('../lib/registry.mjs')
   for (const name of expectedRegistryExports) assert.equal(facade[name], module[name], `${name} facade identity mismatch`)
 
+  // AgentRuntimeGateway isolation: the operational bundle must expose the port factory
+  // and every legacy-compatible AgentOS operation the facade delegates to.
+  const expectedAgentOsExports = [
+    'createAgentOsRuntimeAdapter', 'createAgentOsHttpClient', 'getAgentOsRuntimeAdapter',
+    'createCase', 'postMessage', 'bindFactoryStepResult', 'getCase', 'listEvents',
+    'killCase', 'listAgents', 'preflightAgent', 'listIntegrations',
+    'preflightWorkspace', 'preflightWritableWorkspace', 'preflightReadOnlyWorkspace', 'runAgentTurn',
+  ]
+  for (const name of expectedAgentOsExports) assert.equal(typeof module[name], 'function', `missing ${name}`)
+  const agentOsFacade = await import('../lib/agentos.mjs')
+  for (const name of expectedAgentOsExports.filter((n) => n !== 'createAgentOsRuntimeAdapter' && n !== 'createAgentOsHttpClient' && n !== 'getAgentOsRuntimeAdapter')) {
+    assert.equal(agentOsFacade[name], module[name], `${name} AgentOS facade identity mismatch`)
+  }
+
   const calls = []
   module.registerActiveCase('case-a')
   const controller = module.createShutdownController({
@@ -95,6 +109,10 @@ try {
   assert.equal(activeCaseInputs.length, 1, 'active-case source must be included exactly once in the operational bundle')
   const registryInputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(registrySource))
   assert.equal(registryInputs.length, 1, 'registry source must be included exactly once in the operational bundle')
+  const adapterInputs = Object.keys(metafile.inputs).filter((input) => input.includes('src/adapters/agentos/'))
+  assert.equal(adapterInputs.length, 6, 'AgentOS adapter sources must be included exactly once each in the operational bundle')
+  const gatewayPortInputs = Object.keys(metafile.inputs).filter((input) => input.endsWith('src/ports/agent-runtime-gateway.ts'))
+  assert.equal(gatewayPortInputs.length, 1, 'agent-runtime-gateway port must be included exactly once in the operational bundle')
 } finally {
   if (previousObservabilityFile === undefined) delete process.env.FACTORY_ACTIVE_CASE_FILE
   else process.env.FACTORY_ACTIVE_CASE_FILE = previousObservabilityFile

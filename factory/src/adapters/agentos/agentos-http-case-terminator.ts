@@ -1,4 +1,4 @@
-import type { CaseTerminator } from '../ports/case-terminator.js'
+import type { CaseTerminator } from '../../ports/case-terminator.js'
 
 export interface AgentOsCaseTerminatorOptions {
   baseUrl: string
