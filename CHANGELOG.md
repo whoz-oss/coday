@@ -1,3 +1,45 @@
+## 3.7.0 (2026-09-24)
+
+### 🚀 Features
+
+- wz-34403 - use preferred language in scheduled cases ([#1378](https://github.com/whoz-oss/coday/pull/1378))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.6.2 (2026-09-24)
+
+### 🩹 Fixes
+
+- add Neo4j index on ScheduledPrompt.modified ([d7be44e8](https://github.com/whoz-oss/coday/commit/d7be44e8))
+- add Neo4j index on ScheduledPrompt.modified ([#1381](https://github.com/whoz-oss/coday/pull/1381))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-de-armey-whoz
+- mathieu_dearmey @mathieu-de-armey-whoz
+
+## 3.6.1 (2026-09-24)
+
+### 🩹 Fixes
+
+- #WZ-34777 guard case creation against users who lost agent access ([#1373](https://github.com/whoz-oss/coday/pull/1373))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 3.6.0 (2026-09-24)
+
+### 🚀 Features
+
+- #1375 delta-sync support for ScheduledPrompts (withRemoved, modifiedSince) ([#1376](https://github.com/whoz-oss/coday/pull/1376), [#1375](https://github.com/whoz-oss/coday/issues/1375))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-de-armey-whoz
+
 ## 3.5.0 (2026-09-23)
 
 ### 🚀 Features

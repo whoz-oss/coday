@@ -4955,6 +4955,8 @@ components:
           minLength: 1
         recurrence:
           $ref: "#/components/schemas/Recurrence"
+        removed:
+          type: boolean
         updatedBy:
           type: string
         updatedOn:
@@ -4972,6 +4974,7 @@ components:
       - planning
       - promptContent
       - recurrence
+      - removed
     ScheduledPromptEffectiveRequest:
       type: object
       properties:
@@ -4997,6 +5000,9 @@ components:
           items:
             type: string
             format: uuid
+        modifiedSince:
+          type: string
+          format: date-time
         namespaceExternalId:
           type:
           - string
@@ -5015,6 +5021,9 @@ components:
           - string
           - "null"
           format: uuid
+        withRemoved:
+          type: boolean
+          default: false
     Skill:
       type: object
       properties:

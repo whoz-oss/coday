@@ -4,6 +4,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -14,7 +15,6 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
-import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.concurrent.atomic.AtomicBoolean
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
@@ -39,6 +38,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Executes [ScheduledPromptRun]s in two phases.
@@ -125,14 +125,14 @@ class ScheduledPromptExecutor(
     private val scheduledPromptRepository: ScheduledPromptRepository,
     private val runRepository: ScheduledPromptRunRepository,
     private val userRunRepository: ScheduledPromptUserRunRepository,
+    private val userService: UserService,
     private val promptService: PromptService,
     private val agentConfigService: AgentConfigService,
-    private val caseService: CaseService,
     private val permissionService: PermissionService,
-    private val userService: UserService,
+    private val userContextProvider: UserContextProvider? = null,
+    private val caseService: CaseService,
     private val properties: SchedulerProperties,
     private val clock: Clock,
-    private val userContextProvider: UserContextProvider? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     /**
      * Evaluates whether Phase B is allowed to poll the database and dispatch UserRuns.
@@ -187,7 +187,9 @@ class ScheduledPromptExecutor(
         val newScope = CoroutineScope(SupervisorJob())
         scope = newScope
         newScope.launch(dispatcher) { startProcessingLoop() }
-        logger.info { "[Executor] started (workers=${properties.workerCount}, batchSize=${properties.batchSize}, channelCapacity=${properties.channelCapacity})" }
+        logger.info {
+            "[Executor] started (workers=${properties.workerCount}, batchSize=${properties.batchSize}, channelCapacity=${properties.channelCapacity})"
+        }
     }
 
     @PreDestroy
@@ -227,7 +229,10 @@ class ScheduledPromptExecutor(
             try {
                 while (isActive) {
                     when {
-                        consumePaused.get() || !executionWindowService.isWithinExecutionWindow() -> delay(properties.pausedPollDelayMs)
+                        consumePaused.get() || !executionWindowService.isWithinExecutionWindow() -> {
+                            delay(properties.pausedPollDelayMs)
+                        }
+
                         else -> {
                             try {
                                 val batch = userRunRepository.claimBatch(leaseDuration, properties.batchSize)
@@ -310,21 +315,28 @@ class ScheduledPromptExecutor(
      * `runCatching` so one failure does not block other prompts in the same tick.
      */
     @Transactional
-    fun materialize(run: ScheduledPromptRun, scheduledPrompt: ScheduledPrompt) {
+    fun materialize(
+        run: ScheduledPromptRun,
+        scheduledPrompt: ScheduledPrompt,
+    ) {
         logger.info {
             "[Executor] Phase A: materialising run=${run.id} sp=${scheduledPrompt.id}"
         }
 
         val namespaceId = scheduledPrompt.namespaceId
-        val count = when {
-            namespaceId == null -> {
-                logger.debug {
-                    "[Executor] Platform-scope sp=${scheduledPrompt.id} — no users to materialise"
+        val count =
+            when {
+                namespaceId == null -> {
+                    logger.debug {
+                        "[Executor] Platform-scope sp=${scheduledPrompt.id} — no users to materialise"
+                    }
+                    0
                 }
-                0
+
+                else -> {
+                    userRunRepository.materialize(run.id, scheduledPrompt.agentConfigId, namespaceId)
+                }
             }
-            else -> userRunRepository.materialize(run.id, scheduledPrompt.agentConfigId, namespaceId)
-        }
 
         val finalStatus = if (count > 0) RunStatus.RUNNING else RunStatus.DONE
         runRepository.updateStatus(run.id, finalStatus, if (count == 0) Instant.now(clock) else null)
@@ -361,11 +373,22 @@ class ScheduledPromptExecutor(
         // check for an existing Case before creating one, making execution effectively-once.
         try {
             val runContext = resolveRunContext(userRun)
-            when (val result = resolveUserContext(
-                userRun = userRun,
-                userExternalId = runContext.userExternalId,
-                namespaceId = runContext.namespaceId,
-            )) {
+            if (!hasAgentAccess(userRun.userId, runContext.agentName, runContext.namespaceId)) {
+                logger.info {
+                    "[Executor] UserRun=${userRun.id} — user=${userRun.userId} no longer has READ access" +
+                        " to AgentConfig=${runContext.agentConfigId}, marking DONE without creating a Case"
+                }
+                userRunRepository.markTerminal(userRun.id, UserRunStatus.DONE, Instant.now(clock))
+                return
+            }
+            when (
+                val result =
+                    resolveUserContext(
+                        userRun = userRun,
+                        userExternalId = runContext.userExternalId,
+                        namespaceId = runContext.namespaceId,
+                    )
+            ) {
                 is UserContextResult.PermanentFailure -> {
                     logger.error {
                         "[Executor] UserRun=${userRun.id} user=${userRun.userId} — permanent context failure," +
@@ -373,10 +396,14 @@ class ScheduledPromptExecutor(
                     }
                     markFailed(userRun.id, Instant.now(clock), result.reason)
                 }
-                is UserContextResult.TransientFailure -> logger.warn {
-                    "[Executor] UserRun=${userRun.id} user=${userRun.userId} — transient context failure," +
-                        " leaving RUNNING for lease-based reclaim. Reason: ${result.reason}"
+
+                is UserContextResult.TransientFailure -> {
+                    logger.warn {
+                        "[Executor] UserRun=${userRun.id} user=${userRun.userId} — transient context failure," +
+                            " leaving RUNNING for lease-based reclaim. Reason: ${result.reason}"
+                    }
                 }
+
                 is UserContextResult.Success -> {
                     if (result.sessionContext == null && userContextProvider != null) {
                         logger.warn {
@@ -404,33 +431,44 @@ class ScheduledPromptExecutor(
      * try/catch in [processUserRun] which marks the UserRun FAILED.
      */
     private fun resolveRunContext(userRun: ScheduledPromptUserRun): UserRunContext {
-        val run = checkNotNull(runRepository.findById(userRun.runId)) {
-            "Parent Run ${userRun.runId} not found"
-        }
-        val scheduledPrompt = scheduledPromptRepository.findByIds(listOf(run.scheduledPromptId))
-            .firstOrNull()
-            ?: error("ScheduledPrompt ${run.scheduledPromptId} not found")
-        val namespaceId = checkNotNull(scheduledPrompt.namespaceId) {
-            "Platform-scope ScheduledPrompt cannot be executed per-user"
-        }
-        val user = checkNotNull(userService.findById(userRun.userId)) {
-            "User ${userRun.userId} not found"
-        }
-        val prompt = checkNotNull(promptService.findById(scheduledPrompt.promptTemplateId)) {
-            "PromptTemplate ${scheduledPrompt.promptTemplateId} not found"
-        }
-        val promptContent = prompt.content.firstOrNull()?.takeIf { it.isNotBlank() }
-            ?: error("PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content")
-        val agentName = checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
-            "AgentConfig ${scheduledPrompt.agentConfigId} not found"
-        }
+        val run =
+            checkNotNull(runRepository.findById(userRun.runId)) {
+                "Parent Run ${userRun.runId} not found"
+            }
+        val scheduledPrompt =
+            scheduledPromptRepository
+                .findByIds(listOf(run.scheduledPromptId))
+                .firstOrNull()
+                ?: error("ScheduledPrompt ${run.scheduledPromptId} not found")
+        val namespaceId =
+            checkNotNull(scheduledPrompt.namespaceId) {
+                "Platform-scope ScheduledPrompt cannot be executed per-user"
+            }
+        val user =
+            checkNotNull(userService.findById(userRun.userId)) {
+                "User ${userRun.userId} not found"
+            }
+        val prompt =
+            checkNotNull(promptService.findById(scheduledPrompt.promptTemplateId)) {
+                "PromptTemplate ${scheduledPrompt.promptTemplateId} not found"
+            }
+        val promptContent =
+            prompt.content.firstOrNull()?.takeIf { it.isNotBlank() }
+                ?: error("PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content")
+        val agentName =
+            checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
+                "AgentConfig ${scheduledPrompt.agentConfigId} not found"
+            }
         return UserRunContext(
             namespaceId = namespaceId,
             caseTitle = scheduledPrompt.name,
             actor = Actor(id = userRun.userId.toString(), displayName = user.displayName(), role = ActorRole.USER),
-            message = "@$agentName $promptContent",
+            promptContent = promptContent,
             scheduledPromptId = scheduledPrompt.id,
+            agentConfigId = scheduledPrompt.agentConfigId,
+            agentName = agentName,
             userExternalId = user.externalId,
+            preferredLanguage = user.preferredLanguage?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -450,8 +488,8 @@ class ScheduledPromptExecutor(
         userRun: ScheduledPromptUserRun,
         userExternalId: String,
         namespaceId: UUID,
-    ): UserContextResult {
-        return userContextProvider?.let { provider ->
+    ): UserContextResult =
+        userContextProvider?.let { provider ->
             runCatching {
                 provider.provideUserContext(
                     userExternalId = userExternalId,
@@ -465,31 +503,53 @@ class ScheduledPromptExecutor(
                 UserContextResult.TransientFailure(e.message ?: "Unexpected exception")
             }
         } ?: UserContextResult.Success(null)
-    }
 
     /**
      * Create a [Case], grant ADMIN to the target user, and inject the prompt message.
      * Returns the created [Case] id.
+     *
+     * When [UserRunContext.preferredLanguage] is set, it is merged into the [sessionContext]
+     * under the key `"preferredLanguage"`. [AgentAdvanced.buildUserFacingGuidelines] reads
+     * this key as a higher-priority signal than the LLM-based language detection, ensuring
+     * the agent responds in the user's stored language even when the scheduled prompt itself
+     * contains no user messages to detect language from.
      */
-    private fun createAndInjectCase(userRun: ScheduledPromptUserRun, context: UserRunContext): UUID {
-        val case = caseService.create(
-            Case(
-                namespaceId = context.namespaceId,
-                title = context.caseTitle,
-                scheduledPromptId = context.scheduledPromptId,
-            ),
-        )
+    private fun createAndInjectCase(
+        userRun: ScheduledPromptUserRun,
+        context: UserRunContext,
+    ): UUID {
+        val case =
+            caseService.create(
+                Case(
+                    namespaceId = context.namespaceId,
+                    title = context.caseTitle,
+                    scheduledPromptId = context.scheduledPromptId,
+                ),
+            )
         permissionService.grantPermission(
             userRun.userId.toString(),
             EntityType.CASE,
             case.id.toString(),
             PermissionRelation.ADMIN,
         )
+        // Merge preferredLanguage into the session context so the agent can pick it up
+        // without an LLM language-detection call. The user's stored preferredLanguage is the
+        // authoritative source for language — it always wins over anything a UserContextProvider
+        // might put under the same key (providers supply business context, not language choice).
+        val effectiveSessionContext: Map<String, Any?>? =
+            if (context.preferredLanguage == null) {
+                context.sessionContext
+            } else {
+                (
+                    context.sessionContext
+                        ?: emptyMap()
+                ) + mapOf(SessionContextKeys.PREFERRED_LANGUAGE to context.preferredLanguage)
+            }
         caseService.addMessage(
             caseId = case.id,
             actor = context.actor,
             content = listOf(MessageContent.Text(context.message)),
-            sessionContext = context.sessionContext,
+            sessionContext = effectiveSessionContext,
         )
         logger.info {
             "[Executor] UserRun=${userRun.id} — Case ${case.id} created and message injected for user=${userRun.userId}"
@@ -502,11 +562,16 @@ class ScheduledPromptExecutor(
         val namespaceId: UUID,
         val caseTitle: String,
         val actor: Actor,
-        val message: String,
+        val promptContent: String,
         val scheduledPromptId: UUID,
+        val agentConfigId: UUID,
+        val agentName: String,
         val userExternalId: String,
+        val preferredLanguage: String? = null,
         val sessionContext: Map<String, Any?>? = null,
-    )
+    ) {
+        val message: String get() = "@$agentName $promptContent"
+    }
 
     // -------------------------------------------------------------------------
     // Case completion
@@ -516,7 +581,10 @@ class ScheduledPromptExecutor(
      * Await the Case launch and close the UserRun based on the observed [CaseStatus].
      * If no active runtime is found, the Case already reached a terminal status.
      */
-    private suspend fun awaitLaunch(userRunId: UUID, caseId: UUID) {
+    private suspend fun awaitLaunch(
+        userRunId: UUID,
+        caseId: UUID,
+    ) {
         val runtime = caseService.findActiveRuntime(caseId)
         when {
             runtime == null -> closeUserRun(userRunId, caseService.findById(caseId)?.status, caseId)
@@ -553,15 +621,24 @@ class ScheduledPromptExecutor(
         val timeoutMs = Duration.ofSeconds(properties.launchTimeoutSeconds).toMillis()
         val currentStatus = runtime.statusFlow.value
 
-        val observedStatus = when {
-            currentStatus == CaseStatus.IDLE || currentStatus.isTerminal() -> currentStatus
-            else -> withTimeoutOrNull(timeoutMs) {
-                runtime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
+        val observedStatus =
+            when {
+                currentStatus == CaseStatus.IDLE || currentStatus.isTerminal() -> {
+                    currentStatus
+                }
+
+                else -> {
+                    withTimeoutOrNull(timeoutMs) {
+                        runtime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
+                    }
+                }
             }
-        }
 
         when {
-            observedStatus != null -> closeUserRun(userRunId, observedStatus, caseId)
+            observedStatus != null -> {
+                closeUserRun(userRunId, observedStatus, caseId)
+            }
+
             else -> {
                 userRunRepository.markTerminal(userRunId, UserRunStatus.TIMEOUT, Instant.now(clock))
                 logger.info {
@@ -574,7 +651,11 @@ class ScheduledPromptExecutor(
     /**
      * Close a UserRun based on the final [CaseStatus].
      */
-    private fun closeUserRun(userRunId: UUID, caseStatus: CaseStatus?, caseId: UUID) {
+    private fun closeUserRun(
+        userRunId: UUID,
+        caseStatus: CaseStatus?,
+        caseId: UUID,
+    ) {
         val now = Instant.now(clock)
         val (userRunStatus, error) = caseStatus.toUserRunOutcome()
         userRunRepository.markTerminal(userRunId, userRunStatus, now, error)
@@ -587,7 +668,30 @@ class ScheduledPromptExecutor(
     // Helpers
     // -------------------------------------------------------------------------
 
-    private fun markFailed(userRunId: UUID, now: Instant, error: String) {
+    /**
+     * Returns true if [userId] still has access to the agent via the deployment graph
+     * in [namespaceId].
+     *
+     * Uses the same [AgentConfigService.findDeployedByNamespaceIdAndUserIdAndName] query as
+     * the interactive @mention flow, ensuring symmetric access semantics: a user can only
+     * receive a scheduled conversation if they would also be able to invoke the agent manually.
+     *
+     * Called just before [createAndInjectCase] to guard against users who lost access
+     * between materialisation (PENDING UserRun creation) and execution (Case creation).
+     */
+    private fun hasAgentAccess(userId: UUID, agentName: String, namespaceId: UUID): Boolean =
+        agentConfigService
+            .findDeployedByNamespaceIdAndUserIdAndName(
+                namespaceId = namespaceId,
+                userId = userId,
+                agentName = agentName,
+            ).isNotEmpty()
+
+    private fun markFailed(
+        userRunId: UUID,
+        now: Instant,
+        error: String,
+    ) {
         runCatching {
             userRunRepository.markTerminal(userRunId, UserRunStatus.FAILED, now, error)
         }.onFailure { e ->
@@ -596,11 +700,15 @@ class ScheduledPromptExecutor(
     }
 
     companion object : KLogging() {
-        private fun CaseStatus?.toUserRunOutcome(): Pair<UserRunStatus, String?> = when (this) {
-            CaseStatus.KILLED, CaseStatus.ERROR ->
-                UserRunStatus.FAILED to "Case reached terminal status $this"
-            else ->
-                UserRunStatus.DONE to null
-        }
+        private fun CaseStatus?.toUserRunOutcome(): Pair<UserRunStatus, String?> =
+            when (this) {
+                CaseStatus.KILLED, CaseStatus.ERROR -> {
+                    UserRunStatus.FAILED to "Case reached terminal status $this"
+                }
+
+                else -> {
+                    UserRunStatus.DONE to null
+                }
+            }
     }
 }
