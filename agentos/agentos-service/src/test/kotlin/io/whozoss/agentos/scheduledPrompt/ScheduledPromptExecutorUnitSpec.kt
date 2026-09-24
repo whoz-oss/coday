@@ -389,6 +389,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val promptService = mockk<PromptService>().also {
                 every { it.findById(promptTemplateId) } returns null
             }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
             }
@@ -398,7 +401,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 runRepo = runRepo,
                 userRunRepo = userRunRepo,
                 promptService = promptService,
-                agentConfigService = mockk(relaxed = true),
+                agentConfigService = agentConfigService,
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
@@ -421,6 +424,9 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val promptService = mockk<PromptService>().also {
                 every { it.findById(promptTemplateId) } returns makePromptTemplate(content = "")
             }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+            }
             val userService = mockk<UserService>().also {
                 every { it.findById(userId1) } returns user1
             }
@@ -430,7 +436,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 runRepo = runRepo,
                 userRunRepo = userRunRepo,
                 promptService = promptService,
-                agentConfigService = mockk(relaxed = true),
+                agentConfigService = agentConfigService,
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
@@ -631,6 +637,168 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         // -------------------------------------------------------------------------
         // Phase B — UserContextProvider enrichment
         // -------------------------------------------------------------------------
+
+        "Phase B: preferredLanguage from user is injected into sessionContext when no provider" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
+            }
+            val userWithLanguage = user1.copy(preferredLanguage = "fr")
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns userWithLanguage
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            val sessionContextSlot = slot<Map<String, Any?>>()
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = any(),
+                    sessionContext = capture(sessionContextSlot),
+                )
+            }
+            sessionContextSlot.captured["preferredLanguage"] shouldBe "fr"
+        }
+
+        "Phase B: preferredLanguage is not injected when user has no preferredLanguage set" {
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
+            }
+            // user1 has no preferredLanguage (null)
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns user1
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+            ).processUserRun(userRun)
+
+            // addMessage must be called with null sessionContext (no language, no provider)
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = any(),
+                )
+            }
+        }
+
+        "Phase B: user preferredLanguage wins over provider sessionContext on key conflict" {
+            // The UserContextProvider supplies business context (talent profile, etc.), not
+            // language preference. If a provider happens to also send 'preferredLanguage',
+            // the user's stored setting must still win — it is the authoritative source.
+            val sp = makeScheduledPrompt()
+            val run = makeRun(sp).copy(status = RunStatus.RUNNING)
+            val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
+            val userRunRepo = makeUserRunRepo(setOf(userId1)).also {
+                it.materialize(run.id, agentId, namespaceId)
+            }
+            val userRun = userRunRepo.claimBatch(java.time.Duration.ofMinutes(30), 10).first()
+
+            val promptService = mockk<PromptService>().also {
+                every { it.findById(promptTemplateId) } returns makePromptTemplate()
+            }
+            val agentConfigService = mockk<AgentConfigService>().also {
+                every { it.findById(agentId) } returns makeAgentConfig()
+                it.stubDeployedAccess()
+            }
+            val userWithLanguage = user1.copy(preferredLanguage = "fr")
+            val userService = mockk<UserService>().also {
+                every { it.findById(userId1) } returns userWithLanguage
+            }
+            val createdCase = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+            val caseService = mockk<CaseService>(relaxed = true).also {
+                every { it.create(any()) } returns createdCase
+                every { it.findActiveRuntime(caseId) } returns null
+                every { it.findById(caseId) } returns createdCase.copy(status = CaseStatus.IDLE)
+            }
+            // Provider also sends 'preferredLanguage' — should NOT override the user's stored value
+            val providerContext = mapOf("preferredLanguage" to "de", "userContext" to mapOf("talentId" to "t1"))
+            val provider = mockk<UserContextProvider>().also {
+                every { it.provideUserContext(userWithLanguage.externalId, namespaceId) } returns
+                    UserContextResult.Success(providerContext)
+            }
+
+            executor(
+                spRepo = makeSpRepo(sp),
+                runRepo = runRepo,
+                userRunRepo = userRunRepo,
+                promptService = promptService,
+                agentConfigService = agentConfigService,
+                caseService = caseService,
+                permissionService = mockk(relaxed = true),
+                userService = userService,
+                userContextProvider = provider,
+            ).processUserRun(userRun)
+
+            val sessionContextSlot = slot<Map<String, Any?>>()
+            verify(exactly = 1) {
+                caseService.addMessage(
+                    caseId = caseId,
+                    actor = any(),
+                    content = any(),
+                    sessionContext = capture(sessionContextSlot),
+                )
+            }
+            // User's stored "fr" wins — provider cannot override language preference
+            sessionContextSlot.captured["preferredLanguage"] shouldBe "fr"
+            // Provider's other context is still present
+            @Suppress("UNCHECKED_CAST")
+            (sessionContextSlot.captured["userContext"] as Map<String, Any?>)["talentId"] shouldBe "t1"
+        }
 
         "Phase B: sessionContext from UserContextProvider is forwarded to addMessage" {
             val sp = makeScheduledPrompt()

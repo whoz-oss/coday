@@ -1,16 +1,35 @@
 package io.whozoss.agentos.agent
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.agent.AgentAdvanced.Companion.REPETITION_WINDOW
 import io.whozoss.agentos.agent.AgentIntentionGenerator.Companion.ANSWER_TOOL
+import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
-import io.whozoss.agentos.sdk.caseEvent.*
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
+import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
+import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.tool.*
-import io.whozoss.agentos.util.*
+import io.whozoss.agentos.sdk.tool.ConfirmationMode
+import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
+import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.util.AttemptFailure
+import io.whozoss.agentos.util.AttemptResult
+import io.whozoss.agentos.util.AttemptSuccess
+import io.whozoss.agentos.util.mapWhile
+import io.whozoss.agentos.util.retryWithFallback
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
@@ -20,7 +39,7 @@ import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
-import java.util.*
+import java.util.UUID
 
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -1022,7 +1041,9 @@ class AgentAdvanced(
             .asFlow()
             .takeWhile { shouldContinue() }
             .collect { response ->
-                val chunk = response.result.output.text?.takeIf { it.isNotEmpty() }
+                val chunk =
+                    response.result.output.text
+                        ?.takeIf { it.isNotEmpty() }
                 if (chunk != null) {
                     contentBuilder.append(chunk)
                     emitEvent(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
@@ -1054,6 +1075,15 @@ class AgentAdvanced(
         }
     }
 
+    private fun getSessionPreferredLanguage(events: List<CaseEvent>): String? =
+        events
+            .filterIsInstance<MessageEvent>()
+            .firstOrNull { it.actor.role == ActorRole.USER }
+            ?.sessionContext
+            ?.get(SessionContextKeys.PREFERRED_LANGUAGE)
+            ?.let { it as? String }
+            ?.takeIf { it.isNotBlank() }
+
     /**
      * Assembles the user-facing communication guidelines shared across any LLM-generated
      * text shown to the user (final response, confirmation prompts, re-ask questions).
@@ -1065,10 +1095,17 @@ class AgentAdvanced(
      * make a non-null result almost certain in practice).
      */
     internal fun buildUserFacingGuidelines(events: List<CaseEvent>): String? {
+        // Priority 1: LLM-based detection from user message text. When the user is actively
+        // writing, their actual language always takes precedence over any stored preference.
         val detectedLanguage = detectUserLanguage(events)
+
+        // Priority 2: preferredLanguage from the session context, evaluated lazily so the
+        // event list is not traversed at all when detection already produced a result.
+        val effectiveLanguage = detectedLanguage ?: getSessionPreferredLanguage(events)
+
         val lines =
             buildList {
-                detectedLanguage?.let {
+                effectiveLanguage?.let {
                     add(
                         "IMPORTANT: You MUST respond in $it. " +
                             "This is a hard constraint — do not switch language regardless of the language " +
@@ -1082,19 +1119,19 @@ class AgentAdvanced(
                 )
                 add(
                     "GENDER-NEUTRAL LANGUAGE — HARD CONSTRAINT (not a preference):\n" +
-                            "You must NEVER output any gendered pronoun or gendered possessive when referring to a person. " +
-                            "Forbidden tokens (case-insensitive): 'he', 'she', 'him', 'her', 'hers', 'his', 'himself', 'herself', " +
-                            "'il', 'elle', 'lui', 'son', 'sa', 'ses'.\n" +
-                            "Never infer or assume a person's gender from their name, profile, or any other indirect signal. " +
-                            "Always refer to a person by their name, their job title, or a neutral noun " +
-                            "('this person', 'the candidate', 'the profile', 'the talent' / 'cette personne', 'le profil', 'le talent', 'le candidat'). " +
-                            "When a pronoun is grammatically unavoidable in English, use singular 'they/their/them'. " +
-                            "In French, never use a gendered pronoun or gendered agreement — repeat the name or use a neutral noun instead, " +
-                            "and rephrase the sentence if needed to avoid gendered agreement.\n" +
-                            "This applies even if the user uses gendered pronouns: do NOT mirror them, and do NOT correct the user. " +
-                            "Simply respond in gender-neutral language.\n" +
-                            "FINAL CHECK: Before returning any response, scan your entire output for the forbidden tokens above. " +
-                            "If any of them refers to a person, rewrite that sentence using the person's name or a neutral noun before sending.",
+                        "You must NEVER output any gendered pronoun or gendered possessive when referring to a person. " +
+                        "Forbidden tokens (case-insensitive): 'he', 'she', 'him', 'her', 'hers', 'his', 'himself', 'herself', " +
+                        "'il', 'elle', 'lui', 'son', 'sa', 'ses'.\n" +
+                        "Never infer or assume a person's gender from their name, profile, or any other indirect signal. " +
+                        "Always refer to a person by their name, their job title, or a neutral noun " +
+                        "('this person', 'the candidate', 'the profile', 'the talent' / 'cette personne', 'le profil', 'le talent', 'le candidat'). " +
+                        "When a pronoun is grammatically unavoidable in English, use singular 'they/their/them'. " +
+                        "In French, never use a gendered pronoun or gendered agreement — repeat the name or use a neutral noun instead, " +
+                        "and rephrase the sentence if needed to avoid gendered agreement.\n" +
+                        "This applies even if the user uses gendered pronouns: do NOT mirror them, and do NOT correct the user. " +
+                        "Simply respond in gender-neutral language.\n" +
+                        "FINAL CHECK: Before returning any response, scan your entire output for the forbidden tokens above. " +
+                        "If any of them refers to a person, rewrite that sentence using the person's name or a neutral noun before sending.",
                 )
                 add(
                     "Do not reference technical IDs unless explicitly asked. Instead, use a readable format " +
@@ -1114,7 +1151,7 @@ class AgentAdvanced(
                         "broadening the scope of your reply; and begin every response immediately with the substance itself, " +
                         "a quick confirmation of the action taken, or a heading, never opening with a sentence that introduces, " +
                         "restates, or comments on the request, and skipping any overall preamble, summary, or account " +
-                        "of what you did or why."
+                        "of what you did or why.",
                 )
             }
         return lines.joinToString("\n").ifBlank { null }
@@ -1177,7 +1214,10 @@ class AgentAdvanced(
 
         val raw =
             runCatching {
-                context.chatClient.prompt(Prompt(listOf(UserMessage(prompt)))).call().content()
+                context.chatClient
+                    .prompt(Prompt(listOf(UserMessage(prompt))))
+                    .call()
+                    .content()
             }.getOrNull() ?: return null
 
         // Extract the language name from <language>...</language> tags.
@@ -1372,7 +1412,13 @@ Output requirements:
         }
     }
 
-    private fun callLlmForParameters(messages: List<Message>): String = stripJsonFence(context.chatClient.prompt(Prompt(messages)).call().content() ?: "{}")
+    private fun callLlmForParameters(messages: List<Message>): String =
+        stripJsonFence(
+            context.chatClient
+                .prompt(Prompt(messages))
+                .call()
+                .content() ?: "{}",
+        )
 
     private fun isValidJson(raw: String): Boolean =
         runCatching {
