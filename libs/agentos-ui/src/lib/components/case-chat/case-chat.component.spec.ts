@@ -269,15 +269,16 @@ describe('CaseChatComponent — submit with attachments', () => {
       toolMetadata: {},
     }
 
-    // This is the exact source used by the generic tool-card OUTPUT block.
-    expect(
-      ref.instance['extractToolOutput']({
-        requestId: toolRequestId,
-        toolName: request.toolName,
-        args: request.args,
-        response,
-      })
-    ).toBe(output)
+    // This is the exact source used by the generic tool-card OUTPUT block. Compare
+    // semantically because structured tool output is pretty-printed for display.
+    const extractedOutput = ref.instance['extractToolOutput']({
+      requestId: toolRequestId,
+      toolName: request.toolName,
+      args: request.args,
+      response,
+    })
+    expect(extractedOutput).not.toBeNull()
+    expect(JSON.parse(extractedOutput!)).toEqual(JSON.parse(output))
 
     ref.instance['events'].set([request, response])
 

@@ -415,9 +415,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         const requestId = e.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
           seenToolIds.add(requestId)
-          if (showToolCalls) {
-            items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
-          }
           const call = toolCallMap.get(requestId)!
           if (isCorrelatedDelegateTool(call.toolName, requestId, call.response, delegations)) {
             for (const delegation of delegations.filter((candidate) => candidate.toolRequestId === requestId)) {
@@ -426,7 +423,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
                 items.push({ kind: 'delegation', delegation })
               }
             }
-          } else items.push({ kind: 'tool', call })
+          } else if (showToolCalls) {
+            items.push({ kind: 'tool', call })
+          }
         }
         lastMessageRole = null
       } else if (e.type === 'SubCaseStartedEvent') {
