@@ -1,0 +1,11 @@
+name: 'Expose GitHub Actions Runtime'
+description: 'Exports ACTIONS_RESULTS_URL, ACTIONS_RUNTIME_TOKEN and NX_CACHE_BASE_SHA into the step environment'
+
+inputs:
+  base-ref:
+    description: 'Base branch ref for computing the merge-base SHA (e.g. master)'
+    required: true
+
+runs:
+  using: 'node24'
+  main: 'index.cjs'

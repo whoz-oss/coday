@@ -2,8 +2,8 @@
   "compilerOptions": {
     "declaration": true,
     "outDir": "../../dist/out-tsc",
-    "types": [],
-    "rootDir": ".."
+    "rootDir": "..",
+    "types": []
   },
   "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts"],
   "extends": "./tsconfig.json",
