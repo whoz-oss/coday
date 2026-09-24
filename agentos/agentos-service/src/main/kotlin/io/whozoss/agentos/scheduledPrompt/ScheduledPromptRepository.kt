@@ -34,7 +34,7 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
      * [agentConfigIds] is an optional filter; null or empty means no filter.
      * When [withRemoved] is true, soft-deleted entries are included.
      */
-    fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?, withRemoved: Boolean = false, updatedSince: Instant? = null): List<ScheduledPrompt>
+    fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?, withRemoved: Boolean = false, modifiedSince: Instant? = null): List<ScheduledPrompt>
 
     /**
      * Find all enabled scheduled prompts whose [ScheduledPrompt.nextRunAt] is at or before [now],

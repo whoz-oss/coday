@@ -117,8 +117,14 @@ class ScheduledPromptServiceImpl(
             .filter { agentConfigId == null || it.agentConfigId == agentConfigId }
             .sortedBy { it.name }
 
-    override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?, withRemoved: Boolean, updatedSince: Instant?): List<ScheduledPrompt> =
-        repository.findByScope(namespaceId, userId, agentConfigIds, withRemoved, updatedSince)
+    override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?, withRemoved: Boolean, modifiedSince: Instant?): List<ScheduledPrompt> =
+        repository.findByScope(
+            namespaceId = namespaceId,
+            userId = userId,
+            agentConfigIds = agentConfigIds,
+            withRemoved = withRemoved,
+            modifiedSince = modifiedSince,
+        )
 
     override fun enable(id: UUID): ScheduledPrompt {
         val existing = repository.findById(id)

@@ -13,7 +13,7 @@ import org.springframework.test.context.ActiveProfiles
  * ([io.whozoss.agentos.scheduledPrompt.ScheduledPromptNodeNeo4jRepository.softDeleteWithPromptsByAgentConfigId],
  * [io.whozoss.agentos.scheduledPrompt.ScheduledPromptNodeNeo4jRepository.disableByAgentConfigId])
  * bypassed `@LastModifiedDate` and left `sp.modified` stale, making the affected prompts
- * permanently invisible to any client polling with a `updatedSince` cursor.
+ * permanently invisible to any client polling with a `modifiedSince` cursor.
  */
 @SpringBootTest
 @ActiveProfiles("test", "embedded-neo4j")

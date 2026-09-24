@@ -4812,6 +4812,7 @@ components:
       - planning
       - promptContent
       - recurrence
+      - removed
     ScheduledPromptEffectiveRequest:
       type: object
       properties:
@@ -4837,6 +4838,9 @@ components:
           items:
             type: string
             format: uuid
+        modifiedSince:
+          type: string
+          format: date-time
         namespaceExternalId:
           type:
           - string
@@ -4846,9 +4850,6 @@ components:
           - string
           - "null"
           format: uuid
-        updatedSince:
-          type: string
-          format: date-time
         userExternalId:
           type:
           - string

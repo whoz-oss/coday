@@ -18,13 +18,13 @@ import java.util.UUID
  * Persistence contract tests for [ScheduledPromptRepository] custom Cypher queries.
  *
  * Covers the delta-sync invariant: raw-Cypher mutation methods that bypass `repository.save()`
- * must bump `sp.modified` so that a `updatedSince` cursor correctly surfaces the changes.
+ * must bump `sp.modified` so that a `modifiedSince` cursor correctly surfaces the changes.
  *
  * Specifically tested:
  * - [ScheduledPromptRepository.softDeleteWithPromptsByAgentConfigId]: tombstoned prompts are
- *   visible via `findByScope(withRemoved = true, updatedSince = cursor)` after the cascade delete.
+ *   visible via `findByScope(withRemoved = true, modifiedSince = cursor)` after the cascade delete.
  * - [ScheduledPromptRepository.disableByAgentConfigId]: disabled prompts surface via
- *   `findByScope(updatedSince = cursor)`.
+ *   `findByScope(modifiedSince = cursor)`.
  */
 abstract class AbstractScheduledPromptPersistenceSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
@@ -91,7 +91,7 @@ abstract class AbstractScheduledPromptPersistenceSpec : StringSpec() {
         // softDeleteWithPromptsByAgentConfigId — delta-sync invariant
         // -------------------------------------------------------------------------
 
-        "softDeleteWithPromptsByAgentConfigId bumps modified so tombstone is visible via updatedSince cursor" {
+        "softDeleteWithPromptsByAgentConfigId bumps modified so tombstone is visible via modifiedSince cursor" {
             val ns = namespaceRepo.save(namespace())
             val agentConfigId = UUID.randomUUID()
             insertScheduledPromptNode(ns.id, agentConfigId)
@@ -107,7 +107,7 @@ abstract class AbstractScheduledPromptPersistenceSpec : StringSpec() {
                 userId = null,
                 agentConfigIds = null,
                 withRemoved = true,
-                updatedSince = cursor,
+                modifiedSince = cursor,
             )
 
             results shouldHaveSize 1
@@ -126,7 +126,7 @@ abstract class AbstractScheduledPromptPersistenceSpec : StringSpec() {
                 userId = null,
                 agentConfigIds = null,
                 withRemoved = false,
-                updatedSince = null,
+                modifiedSince = null,
             ).shouldBeEmpty()
         }
 
@@ -134,7 +134,7 @@ abstract class AbstractScheduledPromptPersistenceSpec : StringSpec() {
         // disableByAgentConfigId — delta-sync invariant
         // -------------------------------------------------------------------------
 
-        "disableByAgentConfigId bumps modified so disabled prompt is visible via updatedSince cursor" {
+        "disableByAgentConfigId bumps modified so disabled prompt is visible via modifiedSince cursor" {
             val ns = namespaceRepo.save(namespace())
             val agentConfigId = UUID.randomUUID()
             insertScheduledPromptNode(ns.id, agentConfigId)
@@ -148,7 +148,7 @@ abstract class AbstractScheduledPromptPersistenceSpec : StringSpec() {
                 userId = null,
                 agentConfigIds = null,
                 withRemoved = false,
-                updatedSince = cursor,
+                modifiedSince = cursor,
             )
 
             results shouldHaveSize 1
@@ -156,10 +156,10 @@ abstract class AbstractScheduledPromptPersistenceSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // findByScope — updatedSince basic filtering
+        // findByScope — modifiedSince basic filtering
         // -------------------------------------------------------------------------
 
-        "findByScope with updatedSince excludes prompts modified before the cursor" {
+        "findByScope with modifiedSince excludes prompts modified before the cursor" {
             val ns = namespaceRepo.save(namespace())
             insertScheduledPromptNode(ns.id, UUID.randomUUID())
 
@@ -171,11 +171,11 @@ abstract class AbstractScheduledPromptPersistenceSpec : StringSpec() {
                 userId = null,
                 agentConfigIds = null,
                 withRemoved = false,
-                updatedSince = cursor,
+                modifiedSince = cursor,
             ).shouldBeEmpty()
         }
 
-        "findByScope with updatedSince=null returns all active prompts in scope" {
+        "findByScope with modifiedSince=null returns all active prompts in scope" {
             val ns = namespaceRepo.save(namespace())
             insertScheduledPromptNode(ns.id, UUID.randomUUID())
 
@@ -184,7 +184,7 @@ abstract class AbstractScheduledPromptPersistenceSpec : StringSpec() {
                 userId = null,
                 agentConfigIds = null,
                 withRemoved = false,
-                updatedSince = null,
+                modifiedSince = null,
             )
 
             results shouldHaveSize 1
