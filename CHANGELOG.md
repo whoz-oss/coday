@@ -1,3 +1,15 @@
+## 3.6.2 (2026-09-24)
+
+### 🩹 Fixes
+
+- add Neo4j index on ScheduledPrompt.modified ([d7be44e8](https://github.com/whoz-oss/coday/commit/d7be44e8))
+- add Neo4j index on ScheduledPrompt.modified ([#1381](https://github.com/whoz-oss/coday/pull/1381))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-de-armey-whoz
+- mathieu_dearmey @mathieu-de-armey-whoz
+
 ## 3.6.1 (2026-09-24)
 
 ### 🩹 Fixes
