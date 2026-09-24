@@ -8,9 +8,9 @@ Aucun module n'écrit de prose LLM dans le registre ni ne dépend de l'état de 
 
 Les `.mjs` décrits ici restent aujourd'hui les sources runtime d'autorité. La cible actée est constituée de sources TypeScript strictes compilées par une toolchain Factory isolée vers un artefact JavaScript ESM autonome, exécutable sans pnpm, Nx, compilateur ni `node_modules`.
 
-La coexistence `.mjs`/`.ts` sera temporaire : avant une bascule explicite, le `.mjs` reste canonique ; après celle-ci, le `.ts` devient canonique et son JavaScript est généré. `active-case.mjs` est le premier candidat proposé, sans modification au Stage 0A.
+Au Stage 2, le nouveau cluster fermé active-case a pour autorité `src/lib/active-case.ts` et `src/entrypoints/active-case-contract.ts`; son bundle généré et versionné est `runtime/active-case-contract.mjs`. Aucun consommateur historique n'est basculé : ce répertoire, notamment `active-case.mjs`, reste l'autorité du runtime legacy. La duplication historique est assumée et n'est pas supprimée à ce stade.
 
-Documents de référence : [ADR de migration](../ADR_TYPESCRIPT_MIGRATION.md), [architecture](../ARCHITECTURE.md), [sources d'autorité](../AUTHORITY_SOURCES.md) et [matrice des dépendances](../DEPENDENCY_MATRIX.md). Les choix de minimum Node, outils, emplacement d'artefact, sourcemaps, assets et imports dynamiques restent ouverts pour le Stage 0B.
+Documents de référence : [ADR de migration](../ADR_TYPESCRIPT_MIGRATION.md), [architecture](../ARCHITECTURE.md), [sources d'autorité](../AUTHORITY_SOURCES.md) et [matrice des dépendances](../DEPENDENCY_MATRIX.md). Le Stage 2 fixe Node 22.12, esbuild ESM monofichier, l'artefact runtime versionné sous `runtime/` et les diagnostics sous `dist/`.
 
 ---
 

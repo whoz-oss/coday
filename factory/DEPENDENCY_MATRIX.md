@@ -31,6 +31,8 @@
 | Agents/LLM | Choix ou verdict d'oracle | Interdit | Les agents ne se jugent pas eux-mêmes. |
 | Module Factory | Autre module Factory | Autorisé | Import ESM explicite, sans cycle non maîtrisé ; fermeture à traiter au packaging. |
 | Artefact ESM | Sources `.ts` ou `.mjs` du checkout au runtime | Interdit | L'artefact livré ne doit pas compléter son code depuis les sources. |
+| Entrypoint active-case Stage 2 | `src/lib/active-case.ts` | Build uniquement | Import NodeNext `../lib/active-case.js`, fermé dans le bundle monofichier. |
+| Bundle active-case versionné | Imports `node:*` | Autorisé | Seuls imports runtime externes ; aucune résolution source/toolchain/node_modules. |
 
 ## Autonomie runtime
 
@@ -48,4 +50,4 @@ Les imports statiques internes doivent être fermés dans l'artefact ou résolus
 
 ## Coexistence et rollback
 
-Pendant la coexistence, les `.mjs` actuels peuvent continuer à s'importer entre eux. Les sources `.ts` préparatoires ne sont pas une dépendance runtime. Le premier essai sur `active-case.mjs` devra préserver cette matrice et permettre un retour au chemin `.mjs` ou au dernier artefact sain sans build du produit.
+Pendant le Stage 2, les consommateurs historiques continuent à importer les `.mjs` actuels. Le nouveau cluster active-case est fermé dans son bundle autonome et ne bascule pas ces consommateurs. La source TypeScript fait autorité pour ce cluster, tandis que `lib/active-case.mjs` reste l'autorité legacy ; la duplication n'est pas encore supprimée.

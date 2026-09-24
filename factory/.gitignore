@@ -5,6 +5,8 @@
 # `runs/` est précisément nommé ainsi pour éviter ce conflit silencieux.
 runs/
 
-# Dépendances et artefacts de la toolchain TypeScript Factory isolée.
+# Dépendances et diagnostics de la toolchain TypeScript Factory isolée.
 toolchain/node_modules/
 dist/
+
+# factory/runtime/*.mjs est un artefact runtime généré et versionné : ne pas l'ignorer.

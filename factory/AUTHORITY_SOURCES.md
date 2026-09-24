@@ -6,7 +6,8 @@ Ce document distingue ce qui fait autorité aujourd'hui, pendant la migration et
 
 | Domaine | Source d'autorité actuelle | Notes |
 |---|---|---|
-| Comportement runtime | Fichiers `.mjs` exécutés sous `factory/` | Ils restent canoniques pendant le Stage 1 préparatoire. |
+| Runtime legacy | Fichiers `.mjs` historiques exécutés sous `factory/` | Ils restent canoniques pour les consommateurs non basculés au Stage 2. |
+| Nouveau cluster active-case | `factory/src/lib/active-case.ts` et `factory/src/entrypoints/active-case-contract.ts` | Autorité TypeScript du nouvel entrypoint fermé. |
 | Contrats et invariants des modules | Comportement des `.mjs`, complété par `factory/lib/README.md` | En cas de conflit, le runtime observé prime ; le conflit documentaire doit être corrigé. |
 | Dispatch et workflows disponibles | `factory/run.mjs` et modules référencés | La structure illustrative d'un README n'est pas exhaustive. |
 | Commandes oracle | Modules de domaine/oracle concernés | Ni l'agent ni sa prose ne peuvent remplacer cette autorité. |
@@ -24,7 +25,8 @@ Ce document distingue ce qui fait autorité aujourd'hui, pendant la migration et
 | JavaScript runtime | Artefact ESM généré à partir des sources TypeScript | Exécutable et distribuable, mais non édité comme source. |
 | Règles de compilation | `factory/toolchain/tsconfig.json`, `build.mjs` et manifeste npm isolé | Stage 1 : strict, `tsc --noEmit`, esbuild, sans héritage racine/pnpm/Nx. |
 | Compatibilité runtime | Node `>=22.12.0` et bundle ESM autonome | Fixé pour le Stage 1. |
-| Artefact préparatoire Stage 1 | `factory/dist/stage-1/active-case.mjs` et fichiers de diagnostic générés | Non canonique et non chargé au runtime avant bascule. |
+| Artefact runtime active-case Stage 2 | `factory/runtime/active-case-contract.mjs` | Généré, versionné, autonome et non éditable manuellement. |
+| Diagnostics de build | Sourcemap et metafile sous `factory/dist/` | Non runtime, ignorés et régénérables. |
 | Assets et imports dynamiques | Règles de packaging Factory | À préciser quand un module candidat en introduira. |
 
 ## Règles pendant la coexistence `.mjs` / `.ts`
@@ -35,7 +37,7 @@ Ce document distingue ce qui fait autorité aujourd'hui, pendant la migration et
 4. Un import ne doit jamais choisir implicitement entre deux implémentations selon la disponibilité d'un outil ou de `node_modules`.
 5. La documentation décrit la bascule, mais ne la réalise pas.
 
-Le premier candidat est `factory/lib/active-case.mjs`. Au Stage 1, `factory/src/lib/active-case.ts` et son bundle sont une traduction préparatoire contrôlée : le `.mjs` existant reste entièrement sous l'autorité actuelle, et ses consommateurs restent inchangés.
+Au Stage 2, le cluster fermé `src/entrypoints/active-case-contract.ts` + `src/lib/active-case.ts` est sous autorité TypeScript et produit l'artefact versionné `runtime/active-case-contract.mjs`. Les consommateurs historiques ne sont pas basculés : `lib/active-case.mjs` reste leur autorité runtime. La duplication historique existe donc encore explicitement à ce stade.
 
 ## Conflits et résolution
 

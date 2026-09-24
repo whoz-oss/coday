@@ -192,6 +192,22 @@ node factory/tests/test-us-loop.mjs
 
 ---
 
+### `typescript-active-case-runtime.mjs`
+
+**Catégorie** : contrat du bundle runtime généré (hors-ligne, build préalable requis)
+
+Vérifie l'exécution et la relocalisation de `runtime/active-case-contract.mjs`, son observabilité fichier, l'absence d'import externe non-`node:*`, l'absence de références aux sources/toolchain et sa fraîcheur par rapport aux sources et au build. Le mode `--verify-generated` ne vérifie que la présence et la fraîcheur déterministe par timestamps.
+
+```bash
+cd factory/toolchain
+npm run verify:generated
+npm run test:active-case-runtime
+```
+
+Le bundle est versionné mais généré : ne jamais l'éditer manuellement.
+
+---
+
 ## Test opérationnel
 
 ### `test-shutdown-operational.sh`

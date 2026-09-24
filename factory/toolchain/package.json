@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test:stage1": "node ../tests/typescript-stage1-active-case.mjs",
-    "typecheck": "tsc --project tsconfig.json --noEmit"
+    "test:active-case-runtime": "node ../tests/typescript-active-case-runtime.mjs",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "verify:generated": "node ../tests/typescript-active-case-runtime.mjs --verify-generated"
   },
   "devDependencies": {
     "@types/node": "22.10.2",
