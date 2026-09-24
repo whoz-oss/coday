@@ -379,6 +379,8 @@ export class ThreadUpdateEvent extends CodayEvent {
   name?: string
   summary?: string
   users?: ThreadUser[]
+  /** True when the thread data was persisted before this notification was emitted. */
+  metadataPersisted?: boolean
   static override type = 'thread_update'
 
   constructor(event: Partial<ThreadUpdateEvent>) {
@@ -387,6 +389,7 @@ export class ThreadUpdateEvent extends CodayEvent {
     this.name = event.name
     this.summary = event.summary
     this.users = event.users
+    this.metadataPersisted = event.metadataPersisted
   }
 }
 
