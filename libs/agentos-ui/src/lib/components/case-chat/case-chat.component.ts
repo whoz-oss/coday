@@ -542,8 +542,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
 
-    // NOTE: the backend sends named SSE events ("event: MessageEvent", "event: CaseStatusEvent", ...)
-    // In that case, `onmessage` is NOT called. We must subscribe to named events.
+    // BREAKING SSE protocol: every domain event uses the stable `case-event` channel.
+    // The JSON payload's `type` field is the sole CaseEvent subtype discriminant.
     const handler = (msg: globalThis.MessageEvent<string>) => {
       const receivedAt = performance.now()
       const sseEventName = (msg as unknown as { type?: string }).type
@@ -677,44 +677,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     }
 
-    const eventNames = [
-      'MessageEvent',
-      'CaseStatusEvent',
-      'CaseUpdatedEvent',
-      'AgentSelectedEvent',
-      'AgentRunningEvent',
-      'AgentFinishedEvent',
-      'ThinkingEvent',
-      'TextChunkEvent',
-      'ToolRequestEvent',
-      'ToolResponseEvent',
-      'PendingConfirmationEvent',
-      'ConfirmationResolvedEvent',
-      'ErrorEvent',
-      'WarnEvent',
-      'IntentionGeneratedEvent',
-      'QuestionEvent',
-      'AnswerEvent',
-    ] as const
-
-    // handle the different event names we see in the SSE stream
-    for (const name of eventNames) {
-      console.log('[AgentOS SSE] addEventListener', name)
-      this.eventSource.addEventListener(name, handler)
-    }
+    this.eventSource.addEventListener('case-event', handler)
 
     this.eventSource.onopen = () => {
       console.log('[AgentOS SSE] connection open', {
         readyState: this.eventSource?.readyState,
         at: new Date().toISOString(),
-      })
-    }
-
-    // Note: onmessage only fires for unnamed events. Keep it for debugging.
-    this.eventSource.onmessage = (msg) => {
-      console.log('[AgentOS SSE] onmessage (unnamed event) received', {
-        dataLength: msg.data?.length ?? 0,
-        dataPreview: msg.data?.slice(0, 120),
       })
     }
 
