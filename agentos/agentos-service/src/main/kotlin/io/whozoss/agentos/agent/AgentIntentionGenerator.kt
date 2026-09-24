@@ -8,6 +8,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.util.AttemptFailure
 import io.whozoss.agentos.util.AttemptSuccess
 import io.whozoss.agentos.util.retryWithFallback
@@ -29,6 +30,17 @@ class AgentIntentionGenerator {
         val toolNames = context.tools.map { it.name } + ANSWER_TOOL
         val toolsDescription = context.tools.joinToString("\n") { "- ${it.name}: ${it.description}" }
 
+        val redirectableAgentNames: List<String> = context.tools
+            .filterIsInstance<RedirectTool>()
+            .flatMap { it.eligibleAgents }
+            .map { it.name }
+            .filter { it != agentName }
+            .distinct()
+        val redirectableAgents: String = redirectableAgentNames
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString("\n") { "  - $it" }
+            ?: "  No other agent is available. Do not attempt a handoff — handle the request yourself or inform the user directly with `${ANSWER_TOOL}`."
+
         val isFirstIteration = events.none { it is ToolRequestEvent }
         val lastToolResponse = events.filterIsInstance<ToolResponseEvent>().lastOrNull()
         val lastToolRequestIndex = events.indexOfLast { it is ToolRequestEvent }
@@ -45,9 +57,7 @@ class AgentIntentionGenerator {
                 else -> ""
             }
         val redirectGuideline = context.redirectGuideline.orEmpty()
-        // Built as a standalone leading-newline-prefixed block (empty string when absent) so it
-        // composes into the prompt without leaving a residual double blank line — mirrors how
-        // executionState above is computed as a val and simply interpolated.
+
         val redirectGuidelineBlock =
             if (redirectGuideline.isNotBlank()) {
                 """
@@ -65,6 +75,9 @@ $redirectGuideline
             } else {
                 "switch to the correct agent and if none can do the action use"
             }
+
+        val intentionDescription = "[A thorough rationale justifying the action. Examining carefully the instruction and expectation with what is available and have been found. This situation requires careful reasoning: explain step by step WHY this specific next action is the right one, considering alternatives you discarded and why. Stay grounded in the conversation history — do not invent or assume technical details not explicitly present.]"
+
         val prompt =
             """
 Available agents and tools:
@@ -98,7 +111,10 @@ Before generating the output, analyze the situation using the following logic:
 
 **3. Verify Capabilities (Agent Handoff):**
 *   Does the **Current Active Agent** possess the tool required for the next action?
-    *   **NO:** The next action must be to $handoffGuidelineReference `${ANSWER_TOOL}`.
+    *   **NO:** The next action must be to $handoffGuidelineReference `${ANSWER_TOOL}` to warn the user. Be careful the guideline are defined globally and may refer to agents not available to the user. The agents actually available for redirection are:
+<AvailableAgentsForHandoff>
+$redirectableAgents
+</AvailableAgentsForHandoff>
     *   **YES:** Proceed to the next check.
 
 **4. Check Data Prerequisites:**
@@ -115,12 +131,12 @@ ${repetitionWarning ?: ""}
 ### Output Instructions
 You must respond with **exactly** this XML structure and **nothing else** — no prose, no markdown fences, no preamble (any deviation from the following expected xml would result in a error):
 
-<intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now. Stay high-level and general — do not invent, assume, or include any technical details (field names, IDs, values, tool parameters) that are not explicitly present in the conversation history.]</intention>
+<intention>$intentionDescription</intention>
 <toolName>[The exact name of the tool to be called]</toolName>
 
 You MUST start with the `<intention>` tag first, and THEN `<toolName>`. Do not reorder them.
 Do not wrap in code blocks. Do not add any text before or after the XML.
-            """.trimIndent()
+        """.trimIndent()
 
         logger.debug { "Intention generation: building messages for LLM" }
         logger.trace { "Intention prompt:\n$prompt" }
@@ -151,7 +167,7 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
                             append(
                                 """
                                 This does not match the expected XML output (${e.message}) that should correspond to the following:
-                                <intention>[A brief and concise rationale justifying the action. Explain "Why" this specific step is necessary right now]</intention>
+                                <intention>$intentionDescription</intention>
                                 <toolName>[The exact name of the tool to be called]</toolName>
                                 """.trimIndent()
                             )
