@@ -86,7 +86,7 @@ class CaseEventSseController(
     ): SseEmitter {
         logger.info { "Client connecting to event stream for case: $caseId" }
 
-        val emitter = SseEmitter(0L)
+        val emitter = SseEmitter(0L) // Infinite timeout
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
         startCaseJob(
@@ -96,11 +96,15 @@ class CaseEventSseController(
             emitter = emitter,
         )
 
+         // Heartbeat: periodically send an SSE comment frame so that a client
+         // disconnect is detected even when the case is IDLE and emits no events.
+         // Without this, the collector coroutine above stays suspended on collect()
+         // indefinitely, keeping the SharedFlow subscriber alive and blocking eviction.
         startHeartbeatJob(scope = scope, emitter = emitter, caseId = caseId)
 
         emitter.onCompletion {
             logger.debug { "SSE emitter completed for case $caseId" }
-            scope.cancel()
+            scope.cancel() // cancels all child jobs (collectorJob, heartbeatJob)
         }
         emitter.onTimeout {
             logger.debug { "SSE emitter timed out for case $caseId" }
@@ -164,6 +168,8 @@ class CaseEventSseController(
                 val emittedEventIds = mutableSetOf<UUID>()
 
                 if (includePreviousEvents) {
+                // Replay persisted history first so clients connecting mid-run
+                // or reconnecting after a disconnect receive the full sequence.
                     caseEventService.findByParent(caseId).forEach { event ->
                         sendIfNew(event, emittedEventIds, emitter)
                     }
@@ -185,6 +191,8 @@ class CaseEventSseController(
                     logger.trace { "Event ${event.type} sent to SSE for case $caseId" }
                 }
             } catch (e: CancellationException) {
+            // Normal path: collectorJob was cancelled because the client disconnected
+            // (onError/onCompletion fired and called scope.cancel()). Not an error.
                 logger.debug { "SSE collector cancelled for case $caseId" }
                 throw e
             } catch (error: Exception) {
