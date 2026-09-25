@@ -37,6 +37,13 @@ import { withTransaction } from './unit-of-work.js'
  * rollback-request decision is one immutable row, projected back into the live
  * operations and rollback requests exactly like the filesystem store.
  *
+ * Both tables are expected to be provisioned by the deployment schema: this
+ * adapter never issues DDL and only relies on their documented columns
+ * (`deliveries`: organization_id, workstream_id, namespace_id, delivery_id,
+ * revision, stage, payload, created_at, updated_at; `delivery_journal`:
+ * organization_id, workstream_id, namespace_id, delivery_id, record_sequence,
+ * record_id, record_type, payload, created_at).
+ *
  * Delivery stays at ledger level (the convergence forge-ledger is out of scope
  * for B3). Idempotency hashing, promotion policy, operation normalization /
  * identity derivation and the transition/record contracts are the shared pure

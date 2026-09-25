@@ -256,7 +256,6 @@ export class SqlWorkEnvironmentRepository implements WorkEnvironmentRepository {
     filter: { states?: readonly WorkUnitEnvironmentState[] } = {}
   ): Promise<EnvironmentSnapshot[]> {
     this.#assertNamespace(namespaceId)
-    this.paths(namespaceId, 'list-probe')
     const { rows } = await this.#client.query<EnvironmentRow>(
       `SELECT * FROM work_environments WHERE organization_id = $1 AND workstream_id = $2`,
       [this.#organizationId, this.#workstreamId]
@@ -298,6 +297,9 @@ export class SqlWorkEnvironmentRepository implements WorkEnvironmentRepository {
     options: { expectedRevision?: number; errorCode?: string } = {}
   ): Promise<StoreWriteResult | ValidationFailure> {
     this.#assertNamespace(namespaceId)
+    // `errorCode` annotates the filesystem event journal only; the SQL adapter
+    // records lifecycle rows without an event journal, so the option is a
+    // deliberate no-op and must not change the returned result.
     void options.errorCode
     return this.#locked(namespaceId, environmentId, () =>
       withTransaction(this.#client, async (tx) => {
