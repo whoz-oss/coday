@@ -66,4 +66,32 @@ describe('ThinkingLoaderComponent', () => {
     component.ngOnDestroy()
     expect(stopSpy).toHaveBeenCalled()
   })
+
+  describe('runningDelegations suffix', () => {
+    it('should NOT show the delegation suffix when runningDelegations is 0', () => {
+      component.runningDelegations = 0
+      fixture.detectChanges()
+      const suffix = fixture.nativeElement.querySelector('.delegation-suffix')
+      expect(suffix).toBeNull()
+    })
+
+    it('should show singular "sub-task" when runningDelegations is 1', () => {
+      component.runningDelegations = 1
+      fixture.detectChanges()
+      const suffix = fixture.nativeElement.querySelector('.delegation-suffix')
+      expect(suffix).toBeTruthy()
+      expect(suffix?.textContent).toContain('1')
+      expect(suffix?.textContent).toContain('sub-task')
+      expect(suffix?.textContent).not.toContain('sub-tasks')
+    })
+
+    it('should show plural "sub-tasks" when runningDelegations is 3', () => {
+      component.runningDelegations = 3
+      fixture.detectChanges()
+      const suffix = fixture.nativeElement.querySelector('.delegation-suffix')
+      expect(suffix).toBeTruthy()
+      expect(suffix?.textContent).toContain('3')
+      expect(suffix?.textContent).toContain('sub-tasks')
+    })
+  })
 })

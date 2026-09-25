@@ -36,8 +36,9 @@ class PromptServiceImpl(
     override fun create(entity: Prompt): Prompt {
         validate(entity)
         if (entity.agentConfigId != null) {
-            val agentConfig = agentConfigService.findById(entity.agentConfigId)
-                ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
+            val agentConfig =
+                agentConfigService.findById(entity.agentConfigId)
+                    ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
             if (agentConfig.isFilesystemOnly) {
                 throw UnprocessableEntityException(
                     "AgentConfig id=${entity.agentConfigId} is a filesystem-only agent and cannot be linked to a prompt",
@@ -53,8 +54,9 @@ class PromptServiceImpl(
 
     override fun update(entity: Prompt): Prompt {
         validate(entity)
-        val existing = repository.findByIds(listOf(entity.id)).firstOrNull()
-            ?: throw ResourceNotFoundException("Prompt not found: ${entity.id}")
+        val existing =
+            repository.findByIds(listOf(entity.id)).firstOrNull()
+                ?: throw ResourceNotFoundException("Prompt not found: ${entity.id}")
         rejectIfFilesystemBacked(existing, "updated")
         repository
             .findByTriple(entity.namespaceId, entity.userId, entity.name)
@@ -113,23 +115,30 @@ class PromptServiceImpl(
         targetLanguage: String,
         callerNamespaceId: UUID?,
     ): PromptTranslation {
-        val prompt = repository.findByIds(listOf(id)).firstOrNull()
-            ?: throw NoSuchElementException("Prompt $id not found")
+        logger.debug { "Translate prompts in $targetLanguage for namespace $callerNamespaceId" }
+
+        val prompt =
+            repository.findByIds(listOf(id)).firstOrNull()
+                ?: throw NoSuchElementException("Prompt $id not found")
 
         // Namespace-scoped prompts use their own namespaceId for model resolution;
         // platform prompts (namespaceId == null) require the caller to supply one.
-        val namespaceId = prompt.namespaceId
-            ?: callerNamespaceId
-            ?: throw BadRequestException(
-                "Prompt $id is platform-scoped: a namespaceId is required for AI model resolution",
-            )
+        val namespaceId =
+            prompt.namespaceId
+                ?: callerNamespaceId
+                ?: throw BadRequestException(
+                    "Prompt $id is platform-scoped: a namespaceId is required for AI model resolution",
+                )
 
         return when {
             // Short-circuit: requested language is the source — return originals as-is
-            targetLanguage == prompt.sourceLanguage ->
+            targetLanguage == prompt.sourceLanguage -> {
                 PromptTranslation(title = prompt.title, content = prompt.content)
+            }
 
-            else -> translateToForeignLanguage(prompt, targetLanguage, namespaceId)
+            else -> {
+                translateToForeignLanguage(prompt, targetLanguage, namespaceId)
+            }
         }
     }
 
@@ -143,10 +152,13 @@ class PromptServiceImpl(
 
         return when {
             // Full cache hit — no LLM call needed
-            cachedContent != null && (prompt.title == null || cachedTitle != null) ->
+            cachedContent != null && (prompt.title == null || cachedTitle != null) -> {
                 PromptTranslation(title = cachedTitle, content = cachedContent)
+            }
 
-            else -> translateAndPersist(prompt, targetLanguage, namespaceId, cachedTitle, cachedContent)
+            else -> {
+                translateAndPersist(prompt, targetLanguage, namespaceId, cachedTitle, cachedContent)
+            }
         }
     }
 
@@ -158,30 +170,41 @@ class PromptServiceImpl(
         cachedContent: List<String>?,
     ): PromptTranslation {
         // Translate only what is missing
-        val resolvedTitle: String? = when {
-            prompt.title == null -> null
-            cachedTitle != null -> cachedTitle
-            else -> translationService.translateTitle(
-                title = prompt.title,
+        val resolvedTitle: String? =
+            when {
+                prompt.title == null -> {
+                    null
+                }
+
+                cachedTitle != null -> {
+                    cachedTitle
+                }
+
+                else -> {
+                    translationService.translateTitle(
+                        title = prompt.title,
+                        sourceLanguage = prompt.sourceLanguage,
+                        targetLanguage = targetLanguage,
+                        namespaceId = namespaceId,
+                    )
+                }
+            }
+
+        val resolvedContent: List<String> =
+            cachedContent ?: translationService.translateContent(
+                content = prompt.content,
                 sourceLanguage = prompt.sourceLanguage,
                 targetLanguage = targetLanguage,
                 namespaceId = namespaceId,
             )
-        }
-
-        val resolvedContent: List<String> = cachedContent ?: translationService.translateContent(
-            content = prompt.content,
-            sourceLanguage = prompt.sourceLanguage,
-            targetLanguage = targetLanguage,
-            namespaceId = namespaceId,
-        )
 
         // Persist the newly generated translations
-        val updatedTitles = if (resolvedTitle != null) {
-            (prompt.translatedTitles ?: emptyMap()) + (targetLanguage to resolvedTitle)
-        } else {
-            prompt.translatedTitles
-        }
+        val updatedTitles =
+            if (resolvedTitle != null) {
+                (prompt.translatedTitles ?: emptyMap()) + (targetLanguage to resolvedTitle)
+            } else {
+                prompt.translatedTitles
+            }
         val updatedContent = (prompt.translatedContent ?: emptyMap()) + (targetLanguage to resolvedContent)
 
         repository.save(
@@ -229,7 +252,10 @@ class PromptServiceImpl(
      * and vice versa, unless sourceLanguage also changed (which invalidates both).
      * When [existing] is null the entity is returned unchanged (nothing to compare against).
      */
-    private fun clearTranslationsIfStale(entity: Prompt, existing: Prompt?): Prompt {
+    private fun clearTranslationsIfStale(
+        entity: Prompt,
+        existing: Prompt?,
+    ): Prompt {
         if (existing == null) return entity
         val sourceLanguageChanged = entity.sourceLanguage != existing.sourceLanguage
         val titleStale = sourceLanguageChanged || entity.title != existing.title
@@ -261,15 +287,21 @@ class PromptServiceImpl(
         }
     }
 
-    private fun validateAgentConfigScope(prompt: Prompt, agentConfig: AgentConfig) {
-        val validScope = when {
-            // Platform agent is always valid (accessible from any scope)
-            agentConfig.namespaceId == null -> true
-            // Same namespace
-            agentConfig.namespaceId == prompt.namespaceId -> true
-            // Everything else is cross-scope
-            else -> false
-        }
+    private fun validateAgentConfigScope(
+        prompt: Prompt,
+        agentConfig: AgentConfig,
+    ) {
+        val validScope =
+            when {
+                // Platform agent is always valid (accessible from any scope)
+                agentConfig.namespaceId == null -> true
+
+                // Same namespace
+                agentConfig.namespaceId == prompt.namespaceId -> true
+
+                // Everything else is cross-scope
+                else -> false
+            }
         if (!validScope) {
             throw BadRequestException(
                 "AgentConfig id=${prompt.agentConfigId} does not belong to the prompt's namespace",
@@ -314,7 +346,10 @@ class PromptServiceImpl(
      * persisted copy would then silently shadow the file-backed prompt it was meant to edit,
      * defeating the collision rule documented on [FilesystemPromptRepository].
      */
-    private fun rejectIfFilesystemBacked(existing: Prompt, action: String) {
+    private fun rejectIfFilesystemBacked(
+        existing: Prompt,
+        action: String,
+    ) {
         if (existing.metadata.version == null) {
             throw UnprocessableEntityException(
                 "Prompt id=${existing.id} is backed by a filesystem YAML file and cannot be $action via the API",
@@ -322,7 +357,10 @@ class PromptServiceImpl(
         }
     }
 
-    private fun rejectIfFilesystemBacked(id: UUID, action: String) {
+    private fun rejectIfFilesystemBacked(
+        id: UUID,
+        action: String,
+    ) {
         val existing = repository.findByIds(listOf(id)).firstOrNull() ?: return
         rejectIfFilesystemBacked(existing, action)
     }

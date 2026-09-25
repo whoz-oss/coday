@@ -13,6 +13,7 @@ import io.whozoss.agentos.util.toSlug
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -116,8 +117,14 @@ class ScheduledPromptServiceImpl(
             .filter { agentConfigId == null || it.agentConfigId == agentConfigId }
             .sortedBy { it.name }
 
-    override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<ScheduledPrompt> =
-        repository.findByScope(namespaceId, userId, agentConfigIds)
+    override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?, withRemoved: Boolean, modifiedSince: Instant?): List<ScheduledPrompt> =
+        repository.findByScope(
+            namespaceId = namespaceId,
+            userId = userId,
+            agentConfigIds = agentConfigIds,
+            withRemoved = withRemoved,
+            modifiedSince = modifiedSince,
+        )
 
     override fun enable(id: UUID): ScheduledPrompt {
         val existing = repository.findById(id)
@@ -159,6 +166,9 @@ class ScheduledPromptServiceImpl(
                 userId = entity.userId,
                 agentConfigId = null,
                 name = promptName(entity.name),
+                // title mirrors scheduledPrompt.name so it can be auto-translated via
+                // PromptService.translate() and used as the case title in the user's language.
+                title = entity.name,
                 content = listOf(promptContent),
             ),
         )
@@ -172,6 +182,9 @@ class ScheduledPromptServiceImpl(
         promptService.update(
             existingPrompt.copy(
                 name = promptName(entity.name),
+                // Keep title in sync with scheduledPrompt.name — PromptServiceImpl.update
+                // clears translatedTitles automatically when title changes.
+                title = entity.name,
                 content = listOf(promptContent),
             ),
         )

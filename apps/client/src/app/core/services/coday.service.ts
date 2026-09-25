@@ -135,12 +135,12 @@ export class CodayService implements OnDestroy {
    * the history over SSE. This call fills that gap by fetching the persisted
    * messages via REST and injecting them through the normal event pipeline.
    *
-   * IMPORTANT: InviteEvent and ChoiceEvent are intentionally skipped.
-   * These represent interactive prompts whose state lives only in the running
-   * backend instance. A historical InviteEvent is already answered — treating
-   * it as "pending" would corrupt currentInviteEventSubject and cause the
-   * frontend to build a stale AnswerEvent when the user replies, breaking
-   * the conversation flow. The live pending invite arrives via SSE only.
+   * IMPORTANT: InviteEvent and ChoiceEvent are injected as visible history messages
+   * but NEVER as active interactive prompts. Interactive state comes exclusively
+   * from the live SSE stream — never from the REST history snapshot.
+   * A historical InviteEvent is already answered: activating it would corrupt
+   * currentInviteEventSubject and cause the frontend to build a stale AnswerEvent,
+   * breaking the conversation flow.
    *
    * Uses addMessage() internally so duplicates from any SSE replay are silently skipped.
    */
@@ -148,7 +148,7 @@ export class CodayService implements OnDestroy {
     for (const raw of rawMessages) {
       const event = buildCodayEvent(raw)
       if (event) {
-        this.handleEvent(event)
+        this.handleEvent(event, true)
       }
     }
   }
@@ -183,7 +183,18 @@ export class CodayService implements OnDestroy {
     if (pendingInvite) {
       // There is a pending InviteEvent: build a proper AnswerEvent with the correct parentKey
       // so the backend's promptText() can match it via its filter on parentKey.
+      //
+      // NOTE: a waiting state without a timeout is structurally a deadlock in disguise.
+      // We set a 30 s safety timeout that releases the thinking state if no server event
+      // arrives. This covers network issues, server errors, or stale invites that somehow
+      // slipped through the fromHistory guard. 30 s is generous enough for normal latency.
+      this.clearThinkingTimeout()
       this.isThinkingSubject.next(true)
+      this.thinkingTimeout = setTimeout(() => {
+        this.thinkingTimeout = null
+        this.stopThinking()
+        console.warn('[CODAY] Safety timeout: no server response after 30 s, releasing thinking state')
+      }, 30_000)
       this.tabTitleService?.setSystemActive()
       this.currentInviteEventSubject.next(null)
 
@@ -222,8 +233,16 @@ export class CodayService implements OnDestroy {
     }
 
     if (this.currentChoiceEvent) {
-      // Immediately set thinking state to true to prevent further interactions
+      // NOTE: a waiting state without a timeout is structurally a deadlock in disguise.
+      // We set a 30 s safety timeout that releases the thinking state if no server event
+      // arrives (e.g. stale ChoiceEvent whose server-side observable is already resolved).
+      this.clearThinkingTimeout()
       this.isThinkingSubject.next(true)
+      this.thinkingTimeout = setTimeout(() => {
+        this.thinkingTimeout = null
+        this.stopThinking()
+        console.warn('[CODAY] Safety timeout: no server response after 30 s, releasing thinking state')
+      }, 30_000)
       this.tabTitleService?.setSystemActive()
 
       // Use the original ChoiceEvent to build proper answer with parentKey
@@ -304,9 +323,16 @@ export class CodayService implements OnDestroy {
   }
 
   /**
-   * Handle incoming Coday events
+   * Handle incoming Coday events.
+   *
+   * @param event The event to handle.
+   * @param fromHistory When true, the event originates from the REST history snapshot
+   *   rather than from the live SSE stream. In this mode, InviteEvent and ChoiceEvent
+   *   are rendered as visible history messages but NEVER activate the interactive
+   *   prompt state (currentInviteEventSubject / currentChoiceSubject).
+   *   Rule: interactive state comes exclusively from the live SSE stream.
    */
-  private handleEvent(event: CodayEvent): void {
+  private handleEvent(event: CodayEvent, fromHistory = false): void {
     // Route events tagged with a sub-thread ID to the sub-thread stream
     // so DelegationInlineComponent can pick them up in real-time.
     // Root thread events have threadId === currentThread or undefined.
@@ -341,11 +367,11 @@ export class CodayService implements OnDestroy {
     } else if (event instanceof ToolResponseEvent) {
       this.handleToolResponseEvent(event)
     } else if (event instanceof ChoiceEvent) {
-      this.handleChoiceEvent(event)
+      this.handleChoiceEvent(event, fromHistory)
     } else if (event instanceof HeartBeatEvent) {
       this.handleHeartBeatEvent(event)
     } else if (event instanceof InviteEvent) {
-      this.handleInviteEvent(event)
+      this.handleInviteEvent(event, fromHistory)
     } else if (event instanceof ThreadUpdateEvent) {
       this.handleThreadUpdateEvent(event)
     } else if (event instanceof DelegationEvent) {
@@ -432,6 +458,17 @@ export class CodayService implements OnDestroy {
       const matchesByOrder = !event.parentKey && event.date >= pendingInvite.date
       if (matchesByKey || matchesByOrder) {
         this.currentInviteEventSubject.next(null)
+      }
+    }
+
+    // Symmetrically, clear any pending choice that this answer resolves.
+    // Match by parentKey (new threads) or by chronological order (legacy threads).
+    if (this.currentChoiceEvent) {
+      const matchesByKey = !!event.parentKey && event.parentKey === this.currentChoiceEvent.timestamp
+      const matchesByOrder = !event.parentKey && event.date >= this.currentChoiceEvent.date
+      if (matchesByKey || matchesByOrder) {
+        this.currentChoiceEvent = null
+        this.currentChoiceSubject.next(null)
       }
     }
 
@@ -537,8 +574,43 @@ export class CodayService implements OnDestroy {
     this.addMessage(message)
   }
 
-  private handleChoiceEvent(event: ChoiceEvent): void {
+  private handleChoiceEvent(event: ChoiceEvent, fromHistory = false): void {
     this.stopThinking()
+
+    // Build the visible message (choice question shown in the conversation history).
+    const choiceMessage: ChatMessage = {
+      id: event.timestamp,
+      role: 'assistant',
+      speaker: 'Assistant',
+      content: [
+        {
+          type: 'text',
+          content: event.optionalQuestion ? `${event.optionalQuestion} ${event.invite}` : event.invite,
+        },
+      ],
+      timestamp: event.date,
+      type: 'text',
+    }
+    this.addMessage(choiceMessage)
+
+    // RULE: interactive state comes only from the live SSE stream, never from REST history.
+    // When fromHistory is true, stop here — the choice is already answered.
+    if (fromHistory) {
+      return
+    }
+
+    // Defense-in-depth: even on live SSE, skip if this choice is already answered
+    // (e.g. delayed SSE replay after the AnswerEvent already arrived).
+    const currentMessages = this.messagesSubject.value
+    const isAlreadyAnswered = currentMessages.some(
+      (m) =>
+        m.parentKey === event.timestamp || // explicit link via parentKey
+        (m.role === 'user' && m.timestamp > event.date) || // any user reply after the choice
+        (m.role === 'assistant' && m.timestamp > event.date) // conversation continued past this choice
+    )
+    if (isAlreadyAnswered) {
+      return
+    }
 
     this.currentChoiceEvent = event
 
@@ -558,7 +630,7 @@ export class CodayService implements OnDestroy {
     // HeartBeat events are just for connection keep-alive, no action needed
   }
 
-  private handleInviteEvent(event: InviteEvent): void {
+  private handleInviteEvent(event: InviteEvent, fromHistory = false): void {
     // IMMEDIATELY stop thinking state - this is critical for UX
     // User should be able to respond instantly when an invite arrives
     this.stopThinking()
@@ -590,13 +662,19 @@ export class CodayService implements OnDestroy {
       )
 
       if (!isAlreadyAnswered) {
+        // RULE: interactive state comes only from the live SSE stream, never from REST history.
+        if (!fromHistory) {
+          this.currentInviteEventSubject.next(event)
+          this.tabTitleService?.setSystemInactive()
+        }
+      }
+    } else {
+      // InviteEventDefault: main loop prompt, set as pending without displaying.
+      // RULE: only activate from live SSE stream.
+      if (!fromHistory) {
         this.currentInviteEventSubject.next(event)
         this.tabTitleService?.setSystemInactive()
       }
-    } else {
-      // InviteEventDefault: main loop prompt, set as pending without displaying
-      this.currentInviteEventSubject.next(event)
-      this.tabTitleService?.setSystemInactive()
     }
   }
 

@@ -580,6 +580,14 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             verify { promptService.create(match { it.content == listOf("My content") }) }
         }
 
+        "createWithPrompt sets prompt title to scheduledPrompt name" {
+            // The prompt title mirrors the scheduledPrompt name so it can be translated
+            // via PromptService.translate() and used as the case title in the user's language.
+            val svc = newService()
+            svc.createWithPrompt(sp(name = "Daily Digest"), "Hello")
+            verify { promptService.create(match { it.title == "Daily Digest" }) }
+        }
+
         "createWithPrompt returns saved entity and promptContent" {
             val svc = newService()
             val (saved, content) = svc.createWithPrompt(sp(name = "digest"), "Hello")
@@ -601,6 +609,15 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
             val saved = svc.create(sp(name = "original"))
             svc.updateWithPrompt(saved.copy(name = "New Name"), "Updated content")
             verify { promptService.update(match { it.name == "scheduled--new-name" && it.content == listOf("Updated content") }) }
+        }
+
+        "updateWithPrompt keeps prompt title in sync with scheduledPrompt name" {
+            // When the name changes, the prompt title must be updated so that any cached
+            // title translations are invalidated by PromptServiceImpl.clearTranslationsIfStale.
+            val svc = newService()
+            val saved = svc.create(sp(name = "original"))
+            svc.updateWithPrompt(saved.copy(name = "Renamed Digest"), "Updated content")
+            verify { promptService.update(match { it.title == "Renamed Digest" }) }
         }
 
         "updateWithPrompt throws ResourceNotFoundException when linked prompt not found" {

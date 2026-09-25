@@ -2901,6 +2901,168 @@ paths:
       summary: Update a Skill
       tags:
       - skill-controller
+  /api/usage-records/aggregate/by-agent:
+    get:
+      operationId: aggregateByAgentUsageRecord
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageAggregateByKey"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-case-tree/{rootCaseId}:
+    get:
+      operationId: aggregateByCaseTreeUsageRecord
+      parameters:
+      - in: path
+        name: rootCaseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-case/{caseId}:
+    get:
+      operationId: aggregateByCaseIdUsageRecord
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-model:
+    get:
+      operationId: aggregateByModelUsageRecord
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageAggregateByKey"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-user:
+    get:
+      operationId: aggregateByUserUsageRecord
+      parameters:
+      - in: query
+        name: userId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/by-case/{caseId}:
+    get:
+      operationId: listByCaseIdUsageRecord
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageRecord"
+          description: OK
+      tags:
+      - usage-record-controller
   /api/user-groups:
     get:
       operationId: findByNamespaceIdUserGroup
@@ -4809,6 +4971,8 @@ components:
           minLength: 1
         recurrence:
           $ref: "#/components/schemas/Recurrence"
+        removed:
+          type: boolean
         updatedBy:
           type: string
         updatedOn:
@@ -4826,6 +4990,7 @@ components:
       - planning
       - promptContent
       - recurrence
+      - removed
     ScheduledPromptEffectiveRequest:
       type: object
       properties:
@@ -4851,6 +5016,9 @@ components:
           items:
             type: string
             format: uuid
+        modifiedSince:
+          type: string
+          format: date-time
         namespaceExternalId:
           type:
           - string
@@ -4869,6 +5037,9 @@ components:
           - string
           - "null"
           format: uuid
+        withRemoved:
+          type: boolean
+          default: false
     Skill:
       type: object
       properties:
@@ -5043,6 +5214,120 @@ components:
           format: int64
       required:
       - unreadCount
+    UsageAggregate:
+      type: object
+      properties:
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        cost:
+          type: number
+          format: double
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        recordCount:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+        unknownCostCount:
+          type: integer
+          format: int64
+      required:
+      - cacheReadTokens
+      - cacheWriteTokens
+      - cost
+      - inputTokens
+      - outputTokens
+      - recordCount
+      - totalTokens
+      - unknownCostCount
+    UsageAggregateByKey:
+      type: object
+      properties:
+        aggregate:
+          $ref: "#/components/schemas/UsageAggregate"
+        key:
+          type: string
+      required:
+      - aggregate
+      - key
+    UsageRecord:
+      type: object
+      properties:
+        agentConfigId:
+          type: string
+          format: uuid
+        agentName:
+          type: string
+        apiModelName:
+          type: string
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type:
+          - number
+          - "null"
+          format: double
+        createdOn:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        inputTokens:
+          type: integer
+          format: int64
+        namespaceId:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+        outputTokens:
+          type: integer
+          format: int64
+        providerName:
+          type: string
+        source:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        totalTokens:
+          type: integer
+          format: int64
+        userId:
+          type: string
+          format: uuid
+      required:
+      - agentName
+      - cacheReadTokens
+      - cacheWriteTokens
+      - caseId
+      - createdOn
+      - id
+      - inputTokens
+      - namespaceId
+      - outcome
+      - outputTokens
+      - source
+      - timestamp
+      - totalTokens
     User:
       type: object
       properties:
@@ -5061,6 +5346,9 @@ components:
           type: boolean
         lastname:
           type: string
+        preferredLanguage:
+          type: string
+          pattern: "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
       required:
       - isAdmin
     UserGroupCreateRequest:
