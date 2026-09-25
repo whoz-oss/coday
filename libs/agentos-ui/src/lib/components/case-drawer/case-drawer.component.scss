@@ -281,7 +281,7 @@
     font-weight: 400;
   }
 
-  // The case status is shown even on the selected case.
+  // Case and PR statuses are shown together, including on the selected case.
   &__statuses {
     display: flex;
     align-items: center;
@@ -293,7 +293,7 @@
     @include ds.status-tag;
   }
 
-  // Swap the status indicator for actions while the row is hovered or focused.
+  // Swap both status indicators for actions while the row is hovered or focused.
   &__row:hover &__statuses,
   &__row:focus-within &__statuses {
     display: none;

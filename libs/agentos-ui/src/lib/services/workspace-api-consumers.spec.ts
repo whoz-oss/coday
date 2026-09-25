@@ -31,7 +31,7 @@ describe('Workspace API consumers', () => {
     expect(received).toHaveBeenCalledWith(view)
   })
 
-  it('decodes namespace workspace lists before updating workspace state', fakeAsync(() => {
+  it('decodes namespace workspace lists before updating PR badges', fakeAsync(() => {
     const service = TestBed.inject(CaseWorkspaceService)
     const subscription = service.watchNamespace('namespace').subscribe()
     tick(0)
@@ -42,14 +42,17 @@ describe('Workspace API consumers', () => {
     subscription.unsubscribe()
   }))
 
-  it.each<WorkspaceAction>(['retry'])('routes the typed %s action through the generated client', (action) => {
-    const service = TestBed.inject(CaseWorkspaceService)
-    service.act('root', action, { acknowledgeSetupReplay: true }).subscribe()
-    const request = http.expectOne(`/agentos-api/api/cases/root/workspace/${action}`)
-    expect(request.request.method).toBe('POST')
-    expect(request.request.responseType).toBe('json')
-    if (action === 'retry') expect(request.request.body).toEqual({ acknowledgeSetupReplay: true })
-    request.flush({ equipped: true, rootCaseId: 'root' })
-    expect(service.byRoot()['root']?.equipped).toBe(true)
-  })
+  it.each<WorkspaceAction>(['refresh', 'retry'])(
+    'routes the typed %s action through the generated client',
+    (action) => {
+      const service = TestBed.inject(CaseWorkspaceService)
+      service.act('root', action, { acknowledgeSetupReplay: true }).subscribe()
+      const request = http.expectOne(`/agentos-api/api/cases/root/workspace/${action}`)
+      expect(request.request.method).toBe('POST')
+      expect(request.request.responseType).toBe('json')
+      if (action === 'retry') expect(request.request.body).toEqual({ acknowledgeSetupReplay: true })
+      request.flush({ equipped: true, rootCaseId: 'root' })
+      expect(service.byRoot()['root']?.equipped).toBe(true)
+    }
+  )
 })

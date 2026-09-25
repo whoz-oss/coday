@@ -6,11 +6,13 @@ import java.nio.file.Path
 /**
  * A network command must never read the agent-writable repository config, even indirectly through
  * includes or newly introduced Git options. A fresh bare directory supplies that boundary. Fetch
- * shares only object storage, and publishes one explicitly requested ref with a compare-and-swap
- * after the credentialed process exits. No repository configuration is copied into this context.
+ * and push share only object storage, and publish one explicitly requested ref with a
+ * compare-and-swap after the credentialed process exits. No repository configuration is copied
+ * into this context.
  *
- * The server currently fetches one branch into an origin tracking ref or a frozen case base. Reject other forms
- * rather than interpreting remote names or options through untrusted repository configuration.
+ * Fetch brings one branch into an origin tracking ref, a frozen case base or an observation ref;
+ * push sends one local branch to the branch of the same name. Reject other forms rather than
+ * interpreting remote names or options through untrusted repository configuration.
  */
 internal class GitNetworkCommands(
     private val properties: GitExecutionProperties,
@@ -24,6 +26,7 @@ internal class GitNetworkCommands(
                 "clone" -> clone(invocation, temporary)
                 "ls-remote" -> lsRemote(invocation, temporary)
                 "fetch" -> fetch(invocation, temporary)
+                "push" -> push(invocation, temporary)
                 else -> error("Unsupported managed network command")
             }
         } catch (e: Exception) {
@@ -106,6 +109,70 @@ internal class GitNetworkCommands(
     }
 
     /**
+     * Push the commit of one local branch, resolved in the pinned common directory, to the branch
+     * of the same name at an explicit URL. The only accepted option is a lease on an explicit
+     * object ID (empty: the remote branch must not exist yet). After success the origin tracking
+     * ref is published without credentials; if an agent moved it meanwhile, it is left alone.
+     */
+    private fun push(invocation: GitInvocation, temporary: Path): GitCommandResult {
+        val separator = invocation.args.indexOf("--")
+        require(separator >= 0 && invocation.args.size == separator + 3) {
+            "Managed push requires an explicit URL and one branch refspec after --"
+        }
+        val options = invocation.args.subList(1, separator)
+        require(options.size <= 1 && options.all { it.startsWith(LEASE_OPTION) }) {
+            "Managed push accepts only an explicit lease option"
+        }
+        val url = invocation.args[separator + 1]
+        validateUrl(url)
+        val refspec = invocation.args[separator + 2].split(':')
+        require(refspec.size == 2 && refspec[0] == refspec[1] && refspec[0].startsWith("refs/heads/")) {
+            "Managed push sends refs/heads/<branch> to the branch of the same name"
+        }
+        val branch = refspec[0]
+        require('*' !in branch) { "Managed push requires an exact branch name" }
+        val common = requireNotNull(invocation.gitDir) { "Managed push requires a pinned common Git directory" }
+            .toAbsolutePath().normalize()
+        val format = output(execute(GitInvocation(listOf("rev-parse", "--show-object-format"), gitDir = common), emptyMap())).trim()
+        require(format in setOf("sha1", "sha256")) { "Unsupported repository object format" }
+        val expected = objectIdPattern(format)
+        val lease = options.singleOrNull()?.removePrefix(LEASE_OPTION)?.split(':', limit = 2)?.let { parts ->
+            require(parts.size == 2 && parts[0] == branch && (parts[1].isEmpty() || parts[1].matches(expected))) {
+                "The lease must name the pushed branch and an explicit object ID"
+            }
+            "$LEASE_OPTION$branch:${parts[1]}"
+        }
+        val context = createContext(temporary, format)
+        val environment = mapOf("GIT_OBJECT_DIRECTORY" to common.resolve("objects").toString())
+        output(execute(GitInvocation(listOf("check-ref-format", branch), gitDir = context), environment))
+        val sha = output(execute(GitInvocation(listOf("rev-parse", "--verify", "$branch^{commit}"), gitDir = common), emptyMap())).trim()
+        require(sha.matches(expected)) { "Invalid object ID for the pushed branch" }
+        val tracking = "refs/remotes/origin/" + branch.removePrefix("refs/heads/")
+        val old = execute(GitInvocation(listOf("rev-parse", "--verify", "--quiet", tracking), gitDir = common), emptyMap())
+        val previous = when {
+            old is GitCommandResult.Completed && old.successful -> output(old).trim()
+            else -> "0".repeat(if (format == "sha256") 64 else 40)
+        }
+        copyShallowBoundary(common, context, expected)
+        output(execute(GitInvocation(listOf("update-ref", branch, sha), gitDir = context), environment))
+        val pushed = execute(
+            invocation.copy(
+                args = listOf("push", "--porcelain", "--no-recurse-submodules") + listOfNotNull(lease) +
+                    listOf("--", url, "$branch:$branch"),
+                gitDir = context,
+                workTree = null,
+                workingDirectory = temporary,
+            ),
+            environment,
+        )
+        if (pushed !is GitCommandResult.Completed || !pushed.successful || pushed.truncated) return pushed
+        // Local publication has no credentials. An agent-created symbolic tracking ref is replaced,
+        // never followed, and a concurrent change is kept: the next fetch refreshes it.
+        execute(GitInvocation(listOf("update-ref", "--no-deref", tracking, sha, previous), gitDir = common), emptyMap())
+        return pushed
+    }
+
+    /**
      * Sharing objects alone does not advertise them to upload-pack. Give the private repository
      * recent commit tips so each new case can negotiate history it already has. Only validated
      * object IDs cross the boundary, never shared config, symbolic refs or agent ref names.
@@ -177,5 +244,7 @@ internal class GitNetworkCommands(
          * `push --force-with-lease` relies on.
          */
         val MANAGED_FETCH_DESTINATIONS = listOf("refs/remotes/origin/", "refs/agentos/base/", "refs/agentos/observed/")
+
+        const val LEASE_OPTION = "--force-with-lease="
     }
 }
