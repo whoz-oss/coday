@@ -1,6 +1,20 @@
 import { inject, Injectable, signal } from '@angular/core'
 import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
-import { catchError, defer, Observable, Subscription, tap, throwError } from 'rxjs'
+import {
+  catchError,
+  concatMap,
+  defer,
+  EMPTY,
+  endWith,
+  finalize,
+  ignoreElements,
+  Observable,
+  of,
+  shareReplay,
+  Subscription,
+  tap,
+  throwError,
+} from 'rxjs'
 
 /**
  * CaseStateService — reactive state for the case list within a namespace.
@@ -25,6 +39,9 @@ export class CaseStateService {
 
   /** Namespace of the currently held cases — used to detect a namespace switch. */
   private currentNamespaceId: string | null = null
+
+  /** Last queued save per case. Different cases can still save independently. */
+  private readonly pendingUpdates = new Map<string, { request: Observable<Case>; state: { confirmed: Case } }>()
 
   /**
    * Load (or reload) the cases the current user is directly related to in a namespace.
@@ -80,34 +97,67 @@ export class CaseStateService {
     })
   }
 
-  /**
-   * Rename a case. The title is applied optimistically to the list (so the drawer reflects it at
-   * once) and reverted locally if the request fails, exactly like [setStarred].
-   *
-   * Sends the whole resource: PUT /api/cases/{id} only honours `title` (namespaceId and status
-   * are mass-assignment guarded server-side), but the endpoint is @Valid and CaseDto.namespaceId
-   * is @NotNull, so a title-only body would be rejected with a 400.
-   *
-   * The response is deliberately ignored. Single-case endpoints build their DTO with a mapper
-   * that sets neither `favorite` nor `role`, so merging it back would silently un-star the case
-   * and drop the ADMIN-gated actions until the next full reload. No reload either: a title-only
-   * update does not bump `modified`, so the drawer's ordering is unaffected.
-   *
-   * Note the rename is not broadcast: the server emits no CaseUpdatedEvent on this path, so
-   * other clients only see the new title on their next list load.
-   */
+  /** Rename through the same queue as header edits to preserve save ordering. */
   renameCase(caseId: string, title: string): Observable<Case> {
-    // defer for the same reason as setStarred: the optimistic patch is tied to subscription.
+    return this.updateCaseFields(caseId, { title })
+  }
+
+  /**
+   * Save editable fields in order for each case. Wait for the previous save to settle
+   * before reading the current state or applying the optimistic patch, so a failed
+   * save can never become the rollback snapshot of the next one.
+   *
+   * Once subscribed, a save finishes even if its caller navigates away. Sharing the
+   * request also lets the next queued save await it without issuing it twice.
+   */
+  updateCaseFields(caseId: string, patch: { title?: string; runCostThreshold?: number }): Observable<Case> {
     return defer(() => {
+      const pending = this.pendingUpdates.get(caseId)
       const existing = this.cases().find((c) => c.id === caseId)
-      if (!existing) {
+      if (!existing && !pending) {
         return throwError(() => new Error(`[CaseState] Case ${caseId} is not in the current list`))
       }
-      const previousTitle = existing.title
-      this.patchTitle(caseId, title)
-      return this.caseController.updateCase(caseId, { ...existing, title }).pipe(
+      // Keep confirmed state outside the visible list, which navigation may replace
+      // while an already subscribed save is waiting in the queue.
+      const state = pending?.state ?? { confirmed: existing! }
+      const ready = pending
+        ? pending.request.pipe(
+            catchError(() => EMPTY),
+            ignoreElements(),
+            endWith(undefined)
+          )
+        : of(undefined)
+      const request = ready.pipe(
+        concatMap(() => this.saveCaseFields(caseId, patch, state)),
+        finalize(() => {
+          if (this.pendingUpdates.get(caseId)?.request === request) this.pendingUpdates.delete(caseId)
+        }),
+        shareReplay({ bufferSize: 1, refCount: false })
+      )
+      this.pendingUpdates.set(caseId, { request, state })
+      return request
+    })
+  }
+
+  private saveCaseFields(
+    caseId: string,
+    patch: { title?: string; runCostThreshold?: number },
+    state: { confirmed: Case }
+  ): Observable<Case> {
+    return defer(() => {
+      const existing = state.confirmed
+      const previous = { title: existing.title, runCostThreshold: existing.runCostThreshold }
+      this.patchFields(caseId, patch)
+      // Keep required fields such as namespaceId. Undefined values are omitted from
+      // JSON; the server treats an omitted threshold as "keep existing".
+      const payload: Case = { ...existing, ...patch }
+      return this.caseController.updateCase(caseId, payload).pipe(
+        tap((updated) => {
+          state.confirmed = { ...existing, title: updated.title, runCostThreshold: updated.runCostThreshold }
+          this.patchFields(caseId, { title: updated.title, runCostThreshold: updated.runCostThreshold })
+        }),
         catchError((err) => {
-          this.patchTitle(caseId, previousTitle)
+          this.patchFields(caseId, previous)
           return throwError(() => err)
         })
       )
@@ -117,6 +167,14 @@ export class CaseStateService {
   /** Set the favorite flag of a single case in-place (immutably, to re-emit the signal). */
   private patchFavorite(caseId: string, favorite: boolean): void {
     this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, favorite } : c)))
+  }
+
+  /**
+   * Apply a partial field patch to a single case in-place.
+   * Uses a mapped type to allow `undefined` for optional fields without carrying `null`.
+   */
+  private patchFields(caseId: string, patch: { title?: string; runCostThreshold?: number }): void {
+    this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, ...patch } : c)))
   }
 
   /**
