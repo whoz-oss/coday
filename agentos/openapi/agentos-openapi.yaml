@@ -791,6 +791,8 @@ paths:
                   - $ref: "#/components/schemas/MessageEvent"
                   - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                  - $ref: "#/components/schemas/SubCaseStartedEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
                   - $ref: "#/components/schemas/ToolRequestEvent"
@@ -830,6 +832,8 @@ paths:
                   - $ref: "#/components/schemas/MessageEvent"
                   - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                  - $ref: "#/components/schemas/SubCaseStartedEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
                   - $ref: "#/components/schemas/ToolRequestEvent"
@@ -867,6 +871,8 @@ paths:
                 - $ref: "#/components/schemas/MessageEvent"
                 - $ref: "#/components/schemas/PendingConfirmationEvent"
                 - $ref: "#/components/schemas/QuestionEvent"
+                - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                - $ref: "#/components/schemas/SubCaseStartedEvent"
                 - $ref: "#/components/schemas/TextChunkEvent"
                 - $ref: "#/components/schemas/ThinkingEvent"
                 - $ref: "#/components/schemas/ToolRequestEvent"
@@ -1059,9 +1065,9 @@ paths:
       - case-controller
   /api/cases/{caseId}/events:
     get:
-      description: "Server-Sent Events stream emitting all events generated during\
-        \ case execution. Use the browser EventSource API to consume this endpoint,\
-        \ not a regular HTTP client."
+      description: Every SSE frame uses the stable event name 'case-event'. Its JSON
+        CaseEvent payload carries the subtype in its 'type' discriminant. includePreviousEvents
+        defaults to true.
       operationId: streamEventsCaseEventSse
       parameters:
       - in: path
@@ -1075,13 +1081,13 @@ paths:
         required: false
         schema:
           type: boolean
+          default: true
       responses:
         "200":
           content:
             text/event-stream: {}
-          description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
-            \ (MessageEvent, ToolRequestEvent, etc.) with a \"type\" discriminant\
-            \ field."
+          description: SSE stream — every event is named 'case-event' and carries
+            a JSON-serialized CaseEvent subtype with a 'type' discriminant.
       summary: Stream case events via SSE
       tags:
       - sse
@@ -3921,6 +3927,8 @@ components:
           - PendingConfirmationEvent
           - ConfirmationResolvedEvent
           - CaseUpdatedEvent
+          - SubCaseStartedEvent
+          - SubCaseFinishedEvent
       required:
       - caseId
       - id
@@ -5062,6 +5070,75 @@ components:
       - body
       - description
       - name
+    SubCaseFinishedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentName:
+            type: string
+          delegationId:
+            type: string
+            format: uuid
+          errorType:
+            type: string
+          outcome:
+            type: string
+            enum:
+            - SUCCESS
+            - WAITING_USER
+            - ERROR
+            - TIMEOUT
+            - KILLED
+          subCaseId:
+            type: string
+            format: uuid
+          toolRequestId:
+            type: string
+      required:
+      - agentName
+      - caseId
+      - delegationId
+      - id
+      - metadata
+      - namespaceId
+      - outcome
+      - subCaseId
+      - timestamp
+      - toolRequestId
+      - type
+    SubCaseStartedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentName:
+            type: string
+          delegationId:
+            type: string
+            format: uuid
+          resumed:
+            type: boolean
+          subCaseId:
+            type: string
+            format: uuid
+          task:
+            type: string
+          toolRequestId:
+            type: string
+      required:
+      - agentName
+      - caseId
+      - delegationId
+      - id
+      - metadata
+      - namespaceId
+      - resumed
+      - subCaseId
+      - task
+      - timestamp
+      - toolRequestId
+      - type
     SyncUserRolesRequest:
       type: object
       properties:
