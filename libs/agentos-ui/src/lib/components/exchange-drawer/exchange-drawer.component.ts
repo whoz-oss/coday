@@ -6,8 +6,12 @@ import {
   inject,
   input,
   output,
+  signal,
   viewChild,
 } from '@angular/core'
+import { deletedFilesInDirectory, indexGitChanges } from '../../services/exchange-git-tree.utils'
+import { EnvironmentScope, ExchangeEnvironment } from '../../services/exchange-environment.service'
+import { ExchangeEnvironmentComponent } from '../exchange-environment/exchange-environment.component'
 import { ExchangeDirectoryEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ExchangePathSegment } from '../../services/exchange-state.service'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
@@ -34,6 +38,7 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
   selector: 'agentos-exchange-drawer',
   standalone: true,
   imports: [
+    ExchangeEnvironmentComponent,
     IconButtonComponent,
     SpinnerComponent,
     EmptyStateComponent,
@@ -45,6 +50,8 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ExchangeDrawerComponent {
+  readonly caseId = input<string | null>(null)
+  readonly environmentActive = input(false)
   // ── Case scope ──────────────────────────────────────────────────────────────
   readonly caseFiles = input<ExchangeDirectoryEntry[]>([])
   readonly caseFolders = input<ExchangeDirectoryEntry[]>([])
@@ -93,7 +100,45 @@ export class ExchangeDrawerComponent {
   protected readonly CASE = ExchangeFileEntryScopeEnum.CASE
   protected readonly NAMESPACE = ExchangeFileEntryScopeEnum.NAMESPACE
 
-  protected readonly caseRows = computed(() => this.caseFiles().map(ExchangeItemComponent.toRow))
+  private readonly environmentPanel = viewChild(ExchangeEnvironmentComponent)
+  private readonly environment = signal<{ scope: EnvironmentScope; view: ExchangeEnvironment | null } | null>(null)
+  protected onEnvironmentChanged(snapshot: { scope: EnvironmentScope; view: ExchangeEnvironment | null }): void {
+    this.environment.set(snapshot)
+  }
+  private readonly changes = computed(() => {
+    const snapshot = this.environment()
+    if (snapshot?.scope.id !== this.caseId() || this.caseStatus() !== 'ready') return []
+    const view = snapshot?.view
+    return view?.equipped && view.status === 'READY' && !view.error ? (view.changes?.files ?? []) : []
+  })
+  protected readonly gitTree = computed(() => indexGitChanges(this.changes()))
+  protected readonly caseRows = computed(() => {
+    const rows = this.caseFiles().map((file) => ({
+      ...ExchangeItemComponent.toRow(file),
+      gitStatus: this.gitTree().files.get(file.path)?.status,
+      missing: false,
+    }))
+    const directory = this.caseBreadcrumb().at(-1)?.path ?? ''
+    const deleted = deletedFilesInDirectory(
+      this.changes(),
+      directory,
+      this.caseFiles().map((f) => f.path),
+      this.caseFolders().map((f) => f.path)
+    ).map((file) => ({
+      path: file.path,
+      filename: file.name,
+      meta: 'Deleted · view diff',
+      icon: 'description',
+      gitStatus: file.status,
+      missing: true,
+    }))
+    return [...rows, ...deleted].sort((a, b) => a.filename.localeCompare(b.filename))
+  })
+  protected openFileDiff(ref: ExchangeFileRef): void {
+    if (ref.scope === this.CASE && ref.path.startsWith('repo/')) {
+      this.environmentPanel()?.openDiff(ref.path.slice('repo/'.length))
+    }
+  }
 
   protected onFolderOpen(scope: ExchangeScope, path: string): void {
     this.folderOpened.emit({ scope, path })

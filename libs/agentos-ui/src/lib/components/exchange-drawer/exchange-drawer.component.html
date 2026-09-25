@@ -45,6 +45,13 @@
             </div>
           </div>
 
+          @if (environmentActive() && caseId(); as id) {
+            <agentos-exchange-environment
+              [scope]="{ kind: 'cases', id: id }"
+              [canWrite]="canWriteCase()"
+              (environmentChanged)="onEnvironmentChanged($event)"
+            />
+          }
           @if (caseUploading()) {
             <p class="exchange-drawer__inflight">Uploading…</p>
           }
@@ -88,6 +95,17 @@
                       <button type="button" class="exchange-drawer__folder" (click)="onFolderOpen(CASE, folder.path)">
                         <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true">folder_open</span>
                         <span class="exchange-drawer__folder-name">{{ folder.name }}</span>
+                        @if (gitTree().folders.get(folder.path); as count) {
+                          <span
+                            class="exchange-drawer__git-dot"
+                            role="img"
+                            [attr.aria-label]="count + (count === 1 ? ' changed file' : ' changed files')"
+                            [title]="
+                              count + (count === 1 ? ' changed file' : ' changed files') + ' · branch and local changes'
+                            "
+                            >●</span
+                          >
+                        }
                         <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
                           >chevron_right</span
                         >
@@ -110,6 +128,7 @@
                   [canWrite]="canWriteCase()"
                   [activeFile]="activeFile()"
                   (fileSelected)="onFileSelected($event)"
+                  (diffRequested)="openFileDiff($event)"
                   (downloadRequested)="downloadRequested.emit($event)"
                   (deleteRequested)="deleteRequested.emit($event)"
                 />
