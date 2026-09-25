@@ -27,7 +27,8 @@ factory/infra/
     ├── V3__workflow_core.sql                # Jalon B2 workflow core extension (definitions/grants/steps/transitions)
     ├── V4__outbox_and_idempotency.sql       # Jalon B2 support tables (outbox + idempotency)
     ├── V5__evidence_and_interaction.sql     # Jalon B2 evidence & human interaction control plane
-    └── V6__artifacts_oracle_agentstep.sql   # Jalon B2 artifacts, oracle, agent-step attempts & worker/environment
+    ├── V6__artifacts_oracle_agentstep.sql   # Jalon B2 artifacts, oracle, agent-step attempts & worker/environment
+    └── V7__lease_protocol.sql                # Jalon C1 lease protocol (heartbeat, expiry) & monotone fencing token
 ```
 
 ## Start PostgreSQL + apply migrations
@@ -89,6 +90,11 @@ V<version>__<snake_case_description>.sql
   `agent_step_results` + `result_capabilities`) and the worker/environment
   reservation skeletons (`work_units`, `work_environments`, `workers`,
   `work_unit_leases`) (see below).
+* `V7__lease_protocol.sql` layers the Jalon C1 lease protocol on top of the V6
+  skeletons (ALTER-only): active lease lifecycle on `work_unit_leases`, worker
+  liveness/capabilities on `workers`, priority/deferral/attempt tracking on
+  `work_units`, and the base-guaranteed monotone fencing token sequence
+  `work_unit_lease_fencing_seq` (see below).
 * Flyway is the only migration authority. Do **not** modify a migration that has
   been applied to a shared database.
 
@@ -566,4 +572,133 @@ anti-purge rule), the append-only guarantees and the `updated_at` triggers:
 
 ```bash
 node factory/tests/test-v6-migration-schema.mjs
+```
+
+---
+
+## Schema overview — V7 lease protocol, heartbeat & monotone fencing (Jalon C1)
+
+V7 layers the Jalon C1 lease protocol on top of the V6 worker / environment
+reservation skeletons. It is **ALTER-only**: it never recreates a table and never
+drops or retypes a V1..V6 column — it only adds columns, indexes, CHECK
+constraints and a dedicated sequence. The three extended tables stay tenant-scoped
+(`organization_id NOT NULL DEFAULT 'default'` matching V1..V6).
+
+| Table | Columns added by V7 | Indexes added by V7 |
+|---|---|---|
+| `work_unit_leases` | `fencing_token BIGINT`, `acquired_at TIMESTAMPTZ`, `lease_expires_at TIMESTAMPTZ`, `heartbeat_at TIMESTAMPTZ`, `released_at TIMESTAMPTZ`, `expiry_reason VARCHAR(255)` | `idx_work_unit_leases_acquisition (organization_id, workstream_id, work_unit_id, status)`, `idx_work_unit_leases_expiry (organization_id, lease_expires_at)` |
+| `workers` | `last_heartbeat_at TIMESTAMPTZ`, `protocol_version VARCHAR(64)`, `capabilities JSONB NOT NULL DEFAULT '[]'::jsonb` | — (CHECK `jsonb_typeof(capabilities) = 'array'`) |
+| `work_units` | `priority INTEGER NOT NULL DEFAULT 0`, `not_before TIMESTAMPTZ` (nullable), `attempt_count INTEGER NOT NULL DEFAULT 0` | `idx_work_units_eligibility (organization_id, workstream_id, status, priority DESC, not_before)` |
+
+### `work_unit_leases` — active lease lifecycle
+
+V6 left `work_unit_leases` as a plain appointment log with no active mechanics
+(Amendment 6). V7 adds the lifecycle bookkeeping that makes a lease *active*:
+
+* `fencing_token BIGINT` — the monotone token (see below).
+* `acquired_at TIMESTAMPTZ` — when the worker took the lease.
+* `lease_expires_at TIMESTAMPTZ` — deadline after which the lease is reclamable.
+* `heartbeat_at TIMESTAMPTZ` — timestamp of the last successful heartbeat.
+* `released_at TIMESTAMPTZ` — when the worker (or the reaper) released it.
+* `expiry_reason VARCHAR(255)` — machine-readable reason for an `expired`
+  transition (e.g. `heartbeat_timeout`, `worker_lost`).
+
+All six columns are nullable so existing V6 rows survive the ALTER untouched.
+`idx_work_unit_leases_acquisition` serves the "is there an active lease for this
+work unit?" lookup (`… status = 'active'`), and `idx_work_unit_leases_expiry`
+serves the reaper scan over `lease_expires_at`.
+
+### Monotone fencing token — guaranteed by the database
+
+A fencing token must be strictly increasing even across concurrent transactions
+and worker nodes. A `MAX(token) + 1` read inside a transaction can hand the same
+token to two concurrent acquisitions, or an older token to the transaction that
+commits last — which defeats fencing entirely (a stale worker could then hold a
+valid-looking token and overwrite a fresh lease).
+
+V7 therefore introduces a dedicated PostgreSQL **sequence** as the single
+authoritative source of tokens:
+
+```sql
+CREATE SEQUENCE IF NOT EXISTS work_unit_lease_fencing_seq
+  START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+```
+
+* `nextval('work_unit_lease_fencing_seq')` is **non-transactional** (never rolled
+  back), concurrency-safe and always strictly increasing for a positive
+  `INCREMENT BY 1` — the core fencing property, enforced by the database itself.
+* The sequence is wired as the column default, so an insert that omits
+  `fencing_token` still receives a monotone value automatically:
+
+  ```sql
+  ALTER TABLE work_unit_leases
+    ALTER COLUMN fencing_token SET DEFAULT nextval('work_unit_lease_fencing_seq');
+  ```
+
+  A caller may still capture the token explicitly (`nextval(...)`) inside the
+  acquisition transaction; an explicit value always takes precedence.
+* `BIGINT` matches the 64-bit sequence range; `CACHE 1` avoids burning cached
+  values on a crash.
+
+The choice (a sequence rather than a table-based counter) is documented in the
+migration's SQL comments.
+
+### `workers` — liveness, protocol version & capabilities
+
+* `last_heartbeat_at TIMESTAMPTZ` — last heartbeat observed by the control plane;
+  a worker whose heartbeat is stale is reaped.
+* `protocol_version VARCHAR(64)` — the lease-protocol version the worker speaks,
+  for negotiation / rejecting incompatible nodes.
+* `capabilities JSONB NOT NULL DEFAULT '[]'::jsonb` — the capability keys the
+  worker declares (e.g. `["nodejs","docker"]`), constrained to a JSON array by
+  `workers_capabilities_array_check` and used for eligibility matching.
+
+### `work_units` — priority scheduling, deferral & attempt tracking
+
+* `priority INTEGER NOT NULL DEFAULT 0` — scheduling weight (higher first);
+  existing rows become immediately schedulable.
+* `not_before TIMESTAMPTZ` (nullable) — execution gate: the unit is not eligible
+  before this instant (`NULL` = eligible now).
+* `attempt_count INTEGER NOT NULL DEFAULT 0` — retry accounting, constrained by
+  `work_units_attempt_count_check CHECK (attempt_count >= 0)`.
+
+`idx_work_units_eligibility (organization_id, workstream_id, status, priority
+DESC, not_before)` backs the eligible-work-unit scan used by
+`SELECT … FOR UPDATE SKIP LOCKED`:
+
+```sql
+WHERE organization_id = ? AND workstream_id = ? AND status = 'created'
+  AND (not_before IS NULL OR not_before <= now())
+ORDER BY priority DESC, not_before
+```
+
+The index leads with the equality predicates and then carries the ordering
+columns, so the scan and its ordering are served from the index.
+
+### Design rationale
+
+* **C1 — base-guaranteed fencing:** the monotone token lives in a PostgreSQL
+  sequence (`nextval` is non-transactional), so token ordering can never be
+  broken by transaction interleaving — the database, not the application, is the
+  authority.
+* **C1 — heartbeat / expiry:** explicit `heartbeat_at`, `lease_expires_at`,
+  `released_at` and `expiry_reason` make lease liveness and reclamation
+  auditable and let a reaper reclaim expired leases deterministically.
+* **C1 — ordered, deferred scheduling:** `priority` / `not_before` express
+  scheduling order and time gating, served by a purpose-built eligibility index.
+* **Non-destructive extension:** V7 only ADDs (columns with `IF NOT EXISTS`,
+  indexes with `IF NOT EXISTS`, one sequence with `IF NOT EXISTS`, two additive
+  CHECK constraints); it never touches the V1..V6 tables' existing columns.
+
+### Validate the V7 migration offline
+
+The V7 migration is validated without PostgreSQL, Docker or the `pg` driver by
+parsing the cumulated V1 + V2 + V3 + V4 + V5 + V6 + V7 schema and asserting the
+added columns (type / NOT NULL / default), the added indexes (including
+`priority DESC`), the fencing-token sequence definition **and the strictly
+increasing behaviour of a `nextval` simulation**, the new CHECK constraints, and
+that tenant isolation and previous tables are preserved:
+
+```bash
+node factory/tests/test-v7-migration-schema.mjs
 ```
