@@ -23,10 +23,10 @@ const execution = {
 }
 
 const derived = createWorkflowInstance(command, definition, execution, '2026-01-01T00:00:00.000Z')
-assert.equal(derived.projection.steps.find((step) => step.id === 'implementation').responsibility.name, 'BmadBuilder')
+assert.equal(derived.projection.steps.find((step) => step.id === 'implementation').responsibility.name, 'ProductEngineer')
 assert.equal(derived.projection.steps.find((step) => step.id === 'ticket-analysis').status, 'ready')
 assert.equal(derived.projection.steps.find((step) => step.id === 'implementation').status, 'pending')
-assert.equal(derived.instance.definitionVersion, '1.0.0')
+assert.equal(derived.instance.definitionVersion, '1.1.0')
 assert.equal(derived.instance.definitionHash, definition.definitionHash)
 assert.deepEqual(derived.instance.relations, { rootWorkflowId: 'WZ-1' })
 

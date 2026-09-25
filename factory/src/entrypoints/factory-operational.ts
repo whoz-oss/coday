@@ -18,6 +18,11 @@ import {
 
 export * from '../lib/active-case.js'
 export * from '../lib/registry.js'
+export * from '../domain/workflow/workflow-definition.js'
+export * from '../domain/workflow/workflow-instance.js'
+export * from '../domain/workflow/workflow-transition-policy.js'
+export * from '../domain/evidence/workflow-evidence.js'
+export * from '../domain/interaction/workflow-human-interaction.js'
 export { createShutdownController } from '../application/shutdown.js'
 export { createAgentOsHttpCaseTerminator } from '../adapters/agentos/agentos-http-case-terminator.js'
 export { installSigtermHandler, processExit } from '../adapters/process-shutdown.js'
