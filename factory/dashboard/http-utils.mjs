@@ -15,6 +15,17 @@
 
 import { randomUUID } from 'node:crypto'
 
+import {
+  DEFAULT_FAKE_IDP_SECRET,
+  LocalDevMembershipResolver,
+  LOOPBACK_DEV_PRINCIPAL_ID,
+  hasProxySignature,
+  isPrincipalType,
+  resolveMembershipSync,
+  verifyJwt,
+  verifyProxyHeaders,
+} from '../src/domain/identity/index.ts'
+
 /** Canonical header used for request/response correlation. */
 export const CORRELATION_ID_HEADER = 'x-correlation-id'
 
@@ -174,20 +185,55 @@ export function isLoopbackAddress(address) {
 }
 
 /**
+ * Fallback membership resolver used when the composition root injects none.
+ * Guarantees memberships stay server-side even on the default code path.
+ */
+const DEFAULT_MEMBERSHIP_RESOLVER = new LocalDevMembershipResolver()
+
+/** Pick the principal id from verified JWT claims (`principalId` then `sub`). */
+function pickPrincipalId(claims) {
+  if (typeof claims?.principalId === 'string' && claims.principalId.length > 0) return claims.principalId
+  if (typeof claims?.sub === 'string' && claims.sub.length > 0) return claims.sub
+  return null
+}
+
+/**
  * Extract the trusted identity + security context at the HTTP boundary.
  *
  * Identity is never inferred from the message body or the working directory;
- * it comes only from the headers a trusted controller sets. The bind policy
- * (loopback-only by default) is threaded through so downstream handlers can
- * reason about the transport trust level.
+ * it comes only from a *verified* credential:
+ *
+ *   1. a valid `Authorization: Bearer <jwt>` verified against the Fake IdP;
+ *   2. otherwise signed proxy headers (`x-proxy-signature`, ...) verified
+ *      against the shared secret;
+ *   3. otherwise a loopback-dev context (unauthenticated local dev) or an
+ *      anonymous context (unauthenticated remote caller).
+ *
+ * Any identity header supplied WITHOUT a valid signature is ignored — in
+ * particular the `x-proxy-*` family — so a client cannot forge a principal.
+ * Memberships (`organizationId`, `workstreamId`, `squadId`, `roles`) are never
+ * read from client headers: they are resolved server-side from the principal
+ * by the injected `MembershipResolver`.
+ *
+ * The bind policy (loopback-only by default) is threaded through so downstream
+ * handlers can reason about the transport trust level; it may also carry the
+ * boundary's identity options non-enumerably (`bindPolicy.identity`).
+ *
+ * Impersonation / delegation is disabled by default (`impersonatedBy` and
+ * `delegationChain` are always `null`).
  *
  * @param {import('node:http').IncomingMessage} req
- * @param {{ trustMode?: string }} [bindPolicy]
+ * @param {{ trustMode?: string, identity?: { membershipResolver?: object, fakeIdpSecret?: string } }} [bindPolicy]
  * @returns {{
  *   namespaceId: string|null, caseId: string|null, actorId: string|null,
  *   authorityId: string|null, runtimeId: string|null, agentId: string|null,
- *   threadId: string|null, correlationId: string|null,
- *   trustMode: string, loopback: boolean,
+ *   threadId: string|null, trustMode: string, loopback: boolean,
+ *   principalId: string|null, principalType: 'human'|'service',
+ *   organizationId: string|null, workstreamId: string|null, squadId: string|null,
+ *   roles: string[], scopes: string[], correlationId: string|null,
+ *   authenticationMethod: 'jwt'|'proxy-signature'|'loopback-dev'|'anonymous',
+ *   serviceIdentityId: string|null,
+ *   impersonatedBy: null, delegationChain: null,
  * }}
  */
 export function extractTrustContext(req, bindPolicy = {}) {
@@ -196,7 +242,13 @@ export function extractTrustContext(req, bindPolicy = {}) {
     const value = Array.isArray(raw) ? raw[0] : raw
     return typeof value === 'string' && value.length > 0 ? value : null
   }
-  return {
+  const identityOptions = bindPolicy?.identity ?? {}
+  const membershipResolver = identityOptions.membershipResolver ?? DEFAULT_MEMBERSHIP_RESOLVER
+  const fakeIdpSecret = identityOptions.fakeIdpSecret ?? DEFAULT_FAKE_IDP_SECRET
+  const loopback = isLoopbackAddress(req?.socket?.remoteAddress)
+
+  // Legacy fields — semantics preserved for existing dashboard routes.
+  const legacy = {
     namespaceId: header('x-factory-namespace-id'),
     caseId: header('x-factory-case-id'),
     actorId: header('x-factory-actor-id'),
@@ -204,8 +256,84 @@ export function extractTrustContext(req, bindPolicy = {}) {
     runtimeId: header('x-factory-runtime-id'),
     agentId: header('x-factory-agent-id'),
     threadId: header('x-factory-thread-id'),
-    correlationId: header(CORRELATION_ID_HEADER),
     trustMode: bindPolicy?.trustMode ?? 'loopback-only',
-    loopback: isLoopbackAddress(req?.socket?.remoteAddress),
+    loopback,
+  }
+
+  // 1. JWT — `Authorization: Bearer <token>` verified against the Fake IdP.
+  let authenticationMethod = 'anonymous'
+  let principalId = null
+  let principalType = 'human'
+  let serviceIdentityId = null
+  let scopes = []
+
+  const authorization = header('authorization')
+  const bearerMatch = authorization ? /^Bearer\s+(.+)$/i.exec(authorization) : null
+  const jwt = bearerMatch ? bearerMatch[1].trim() : null
+  if (jwt) {
+    const verification = verifyJwt(jwt, fakeIdpSecret)
+    if (verification.valid && verification.claims) {
+      authenticationMethod = 'jwt'
+      principalId = pickPrincipalId(verification.claims)
+      principalType = isPrincipalType(verification.claims.principalType) ? verification.claims.principalType : 'human'
+      serviceIdentityId = typeof verification.claims.serviceIdentityId === 'string' ? verification.claims.serviceIdentityId : null
+      scopes = Array.isArray(verification.claims.scopes)
+        ? verification.claims.scopes.filter((scope) => typeof scope === 'string')
+        : []
+    }
+    // A present-but-invalid/expired/tampered token is ignored (never trusted);
+    // control falls through to proxy signature verification then to fallback.
+  }
+
+  // 2. Signed proxy headers — only trusted when the signature verifies.
+  if (authenticationMethod === 'anonymous' && hasProxySignature(req?.headers)) {
+    const verification = verifyProxyHeaders(req.headers, fakeIdpSecret)
+    if (verification.valid && verification.claims) {
+      authenticationMethod = 'proxy-signature'
+      principalId = verification.claims.principalId
+      principalType = isPrincipalType(verification.claims.principalType) ? verification.claims.principalType : 'human'
+      serviceIdentityId = verification.claims.serviceIdentityId ?? null
+      scopes = Array.isArray(verification.claims.scopes) ? verification.claims.scopes : []
+    }
+    // Unsigned or badly signed identity headers are discarded, not trusted.
+  }
+
+  // 3. Fallback — loopback development vs unauthenticated anonymous.
+  if (authenticationMethod === 'anonymous') {
+    if (loopback) {
+      authenticationMethod = 'loopback-dev'
+      principalId = header('x-factory-actor-id') ?? LOOPBACK_DEV_PRINCIPAL_ID
+      principalType = 'human'
+      serviceIdentityId = null
+      scopes = ['*']
+    } else {
+      authenticationMethod = 'anonymous'
+      principalId = null
+      principalType = 'human'
+      serviceIdentityId = null
+      scopes = []
+    }
+  }
+
+  // 4. Memberships are resolved server-side from the authenticated principal.
+  // Client headers (x-organization-id, x-workstream-id, x-roles, ...) are
+  // deliberately never consulted here.
+  const membership = resolveMembershipSync(membershipResolver, principalId, principalType)
+
+  return {
+    ...legacy,
+    principalId,
+    principalType,
+    organizationId: membership.organizationId ?? null,
+    workstreamId: membership.workstreamId ?? null,
+    squadId: membership.squadId ?? null,
+    roles: membership.roles ?? [],
+    scopes,
+    correlationId: resolveCorrelationId(req),
+    authenticationMethod,
+    serviceIdentityId,
+    // Impersonation / delegation disabled by default.
+    impersonatedBy: null,
+    delegationChain: null,
   }
 }
