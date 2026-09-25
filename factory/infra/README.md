@@ -23,7 +23,8 @@ factory/infra/
 ├── README.md                                # this file
 └── migrations/
     ├── V1__init_workflow_pilot_schema.sql   # pilot schema (definitions + instances)
-    └── V2__tenant_and_membership.sql        # Jalon B2 tenant & membership schema
+    ├── V2__tenant_and_membership.sql        # Jalon B2 tenant & membership schema
+    └── V3__workflow_core.sql                # Jalon B2 workflow core extension (definitions/grants/steps/transitions)
 ```
 
 ## Start PostgreSQL + apply migrations
@@ -68,6 +69,10 @@ V<version>__<snake_case_description>.sql
   `workstream_memberships`, `squad_memberships`, `repositories` and
   `workstream_repositories` (see the schema overview below). Data
   migration/cutover of the remaining aggregates is deferred to B3/B4.
+* `V3__workflow_core.sql` extends `workflow_definitions` with the visibility scope
+  (`visibility`, `owner_workstream_id`) and adds the workflow core tables
+  `workflow_definition_versions`, `workstream_workflow_grants`,
+  `workflow_step_states` and `workflow_transitions` (see below).
 * Flyway is the only migration authority. Do **not** modify a migration that has
   been applied to a shared database.
 
@@ -141,6 +146,38 @@ Mutable tables (`organizations`, `workstreams`, `squads`, `principals`,
 DEFAULT 1 CHECK (revision >= 1)` and an `updated_at` maintained by a
 `BEFORE UPDATE` trigger calling the shared `set_updated_at()` function.
 
+## Schema overview — V3 workflow core
+
+V3 extends the workflow pilot so the engine can persist visibility, explicit
+access grants and per-instance execution state. All new tables stay tenant-scoped
+(`organization_id NOT NULL DEFAULT 'default'`) and reuse the shared
+`set_updated_at()` function from V2.
+
+`workflow_definitions` gains:
+
+* `visibility VARCHAR(32) NOT NULL DEFAULT 'organization'`
+  (`CHECK (visibility IN ('platform', 'organization', 'workstream'))`).
+* `owner_workstream_id VARCHAR(255)` — nullable target workstream when
+  `visibility = 'workstream'`.
+
+| Table | Primary key | Notable constraints |
+|---|---|---|
+| `workflow_definition_versions` | `(organization_id, workflow_type, version, revision)` | composite FK → `workflow_definitions`; `revision >= 1`; `updated_at` trigger |
+| `workstream_workflow_grants` | `(organization_id, workstream_id, workflow_type)` | composite FK → `workstreams`; `version` optional pin; `enabled` / `configuration`; `updated_at` trigger |
+| `workflow_step_states` | `(organization_id, workstream_id, namespace_id, workflow_id, step_id)` | composite FK → `workflow_instances`; `revision >= 1`; `updated_at` trigger |
+| `workflow_transitions` | `(organization_id, workstream_id, namespace_id, workflow_id, transition_id)` | composite FK → `workflow_instances`; append-only (no `updated_at`) |
+
+**Amendment 1 (visibility & grants):** `workflow_definitions.visibility` scopes a
+definition to the platform, an organization or a single workstream, and
+`workstream_workflow_grants` records the explicit per-workstream access decisions
+(separately from the definition itself).
+
+**Amendment 8 (composite FKs for tenant isolation):**
+`workflow_step_states` and `workflow_transitions` reference
+`workflow_instances (organization_id, workstream_id, namespace_id, workflow_id)`
+with an `ON DELETE CASCADE` composite FK, so the database rejects any orphan or
+cross-tenant / cross-workstream child and purges children with their instance.
+
 ## Contract tests
 
 The shared contract suite runs the exact same assertions against the filesystem
@@ -157,6 +194,14 @@ uniqueness of FK targets, CHECK constraints and `updated_at` triggers:
 
 ```bash
 node factory/tests/test-v2-migration-schema.mjs
+```
+
+The V3 workflow core migration is validated the same way, on the cumulated
+V1 + V2 + V3 schema state (tables, columns, composite FKs, CHECK constraints,
+`updated_at` triggers and tenant isolation guarantees):
+
+```bash
+node factory/tests/test-v3-migration-schema.mjs
 ```
 
 A live PostgreSQL is never required for these tests. To validate the adapters
