@@ -151,3 +151,36 @@ export * from '../adapters/delivery/delivery-pr-adapter.js'
 export * from '../adapters/delivery/delivery-deployment-adapter.js'
 export * from '../application/delivery/delivery-controller.js'
 export * from '../application/delivery/delivery-operation-controller.js'
+
+// --------------------------------------------------------------------------
+// Forge/BMAD (tranche 9): pure domain, filesystem/HTTP adapters and trusted
+// application services.
+//
+// Le domaine (`domain/forge-bmad/*`) ne porte aucune dépendance node:fs, HTTP,
+// AgentOS ou Git CLI ; les lectures/écritures de fichiers et le client Jira
+// vivent dans `adapters/forge/` et `adapters/jira/`, et les services
+// d'orchestration dans `application/forge-bmad/`. Les façades
+// `factory/lib/forge-*.mjs` et `factory/lib/jira.mjs` réexportent la surface
+// ci-dessous sans dupliquer d'état.
+// --------------------------------------------------------------------------
+export * from '../domain/forge-bmad/types.js'
+export * from '../domain/forge-bmad/forge-roots.js'
+export * from '../domain/forge-bmad/forge-human-decision.js'
+export * from '../domain/forge-bmad/forge-spec.js'
+export * from '../domain/forge-bmad/forge-story-spec.js'
+export * from '../domain/forge-bmad/forge-bmad-parser.js'
+export * from '../domain/forge-bmad/forge-ledger.js'
+export * from '../domain/forge-bmad/forge-workflow-adapter.js'
+export * from '../domain/forge-bmad/jira.js'
+export * from '../adapters/forge/forge-roots-resolver.js'
+export * from '../adapters/forge/forge-bmad-file-reader.js'
+export * from '../adapters/forge/forge-spec-reader.js'
+export * from '../adapters/forge/forge-ledger-store.js'
+export * from '../adapters/jira/jira-client.js'
+export * from '../application/forge-bmad/forge-human-decision.js'
+export * from '../application/forge-bmad/forge-g2.js'
+export * from '../application/forge-bmad/forge-story-analysis.js'
+export * from '../application/forge-bmad/forge-story-edit.js'
+export * from '../application/forge-bmad/forge-story-oracles.js'
+export * from '../application/forge-bmad/forge-workflow-sync.js'
+export * from '../application/forge-bmad/forge-front-oracle-resolution.js'

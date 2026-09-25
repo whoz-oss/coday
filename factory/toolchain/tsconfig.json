@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "allowJs": true,
     "exactOptionalPropertyTypes": true,
     "forceConsistentCasingInFileNames": true,
     "lib": ["ES2022"],

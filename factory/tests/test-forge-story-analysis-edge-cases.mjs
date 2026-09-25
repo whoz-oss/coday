@@ -21,5 +21,5 @@ events=parseForgeLedger(run.filePath); const latest=projectForgeRun(events).stor
 assert.ok(!parseForgeLedger(run.filePath).some(event=>JSON.stringify(event).includes(message)),'artifact prose must not occur in any ledger line')
 const beforeSupplement=creates; await assert.rejects(()=>executeStoryAnalysis({roots,epicRunId:run.runId,storyRunId:story,namespaceId:'n',agentName:'a',expectedSpecHash:hash,supplement:'x'.repeat(4001),runtime}),/SUPPLEMENT_INVALID/); assert.equal(creates,beforeSupplement,'invalid supplement must reject before createCase')
 await assert.throws(()=>writeStoryAnalysisArtifact(roots.runStoreRoot,'../evil','exec_ok','prose'),/ARTIFACT_ID_INVALID/); await assert.throws(()=>writeStoryAnalysisArtifact(roots.runStoreRoot,'epic_ok','../evil','prose'),/ARTIFACT_ID_INVALID/)
-const dashboard=readFileSync(new URL('../dashboard/server.mjs',import.meta.url),'utf8'); assert.match(dashboard,/Unsupported Story analysis request field/); assert.match(dashboard,/namespaceId', 'agentName', 'expectedSpecHash', 'supplement/)
+const dashboard=readFileSync(new URL('../dashboard/forge-routes.mjs',import.meta.url),'utf8'); assert.match(dashboard,/Unsupported Story analysis request field/); assert.match(dashboard,/namespaceId', 'agentName', 'expectedSpecHash', 'supplement/)
 console.log('story analysis edge cases: ok')
