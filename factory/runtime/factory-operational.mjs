@@ -1747,6 +1747,80 @@ function createFilesystemOracleExecutionRepository(registry2) {
   return new FilesystemOracleExecutionRepository(registry2);
 }
 
+// ../src/adapters/persistence/filesystem-work-environment-repository.ts
+var FilesystemWorkEnvironmentRepository = class {
+  constructor(store) {
+    this.store = store;
+  }
+  paths(namespaceId, environmentId) {
+    return this.store.paths(namespaceId, environmentId);
+  }
+  read(namespaceId, environmentId) {
+    return this.store.read(namespaceId, environmentId);
+  }
+  list(namespaceId, filter) {
+    return this.store.list(namespaceId, filter);
+  }
+  reserve(environment) {
+    return this.store.reserve(environment);
+  }
+  transition(namespaceId, environmentId, next, options) {
+    return this.store.transition(namespaceId, environmentId, next, options);
+  }
+};
+function createFilesystemWorkEnvironmentRepository(store) {
+  return new FilesystemWorkEnvironmentRepository(store);
+}
+
+// ../src/adapters/persistence/filesystem-delivery-repository.ts
+var FilesystemDeliveryRepository = class {
+  constructor(store) {
+    this.store = store;
+  }
+  read(namespaceId, deliveryId) {
+    return this.store.read(namespaceId, deliveryId);
+  }
+  create(input) {
+    return this.store.create(input);
+  }
+  promote(input) {
+    return this.store.promote(input);
+  }
+  readWithOperations(namespaceId, deliveryId) {
+    return this.store.readWithOperations(namespaceId, deliveryId);
+  }
+  inspectDeliveryOperations(namespaceId, deliveryId) {
+    return this.store.inspectDeliveryOperations(namespaceId, deliveryId);
+  }
+  createRollbackRequest(input) {
+    return this.store.createRollbackRequest(input);
+  }
+  approveRollbackRequest(namespaceId, deliveryId, rollbackRequestId, approval) {
+    return this.store.approveRollbackRequest(namespaceId, deliveryId, rollbackRequestId, approval);
+  }
+  createDeliveryOperation(input) {
+    return this.store.createDeliveryOperation(input);
+  }
+  recordDeliveryOperation(namespaceId, deliveryId, operationId, transition, options) {
+    return this.store.recordDeliveryOperation(namespaceId, deliveryId, operationId, transition, options);
+  }
+  startDeliveryOperation(namespaceId, deliveryId, operationId, adapterCorrelation) {
+    return this.store.startDeliveryOperation(namespaceId, deliveryId, operationId, adapterCorrelation);
+  }
+  reconcileDeliveryOperation(namespaceId, deliveryId, operationId, observation) {
+    return this.store.reconcileDeliveryOperation(namespaceId, deliveryId, operationId, observation);
+  }
+  hasIndeterminateOperation(namespaceId, deliveryId) {
+    return this.store.hasIndeterminateOperation(namespaceId, deliveryId);
+  }
+  updateSnapshot(namespaceId, deliveryId, patch, operationInput) {
+    return this.store.updateSnapshot(namespaceId, deliveryId, patch, operationInput);
+  }
+};
+function createFilesystemDeliveryRepository(store) {
+  return new FilesystemDeliveryRepository(store);
+}
+
 // ../src/application/shutdown.ts
 function createShutdownController(deps) {
   let initiated = false;
@@ -9515,7 +9589,9 @@ export {
   FRONT_ORACLE_MAP_SCHEMA_VERSION,
   FilesystemAgentStepAttemptRepository,
   FilesystemAgentStepResultRepository,
+  FilesystemDeliveryRepository,
   FilesystemOracleExecutionRepository,
+  FilesystemWorkEnvironmentRepository,
   FilesystemWorkflowDefinitionRepository,
   FilesystemWorkflowEvidenceRepository,
   FilesystemWorkflowHumanInteractionRepository,
@@ -9603,8 +9679,10 @@ export {
   createEpicRun,
   createFilesystemAgentStepAttemptRepository,
   createFilesystemAgentStepResultRepository,
+  createFilesystemDeliveryRepository,
   createFilesystemOracleDefinitionSource,
   createFilesystemOracleExecutionRepository,
+  createFilesystemWorkEnvironmentRepository,
   createFilesystemWorkflowDefinitionRepository,
   createFilesystemWorkflowEvidenceRepository,
   createFilesystemWorkflowHumanInteractionRepository,

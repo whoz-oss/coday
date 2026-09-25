@@ -63,3 +63,15 @@ export {
   FilesystemOracleExecutionRepository,
   createFilesystemOracleExecutionRepository,
 } from './filesystem-oracle-execution-repository.js'
+
+export {
+  FilesystemWorkEnvironmentRepository,
+  createFilesystemWorkEnvironmentRepository,
+  type WorkUnitEnvironmentStoreLike,
+} from './filesystem-work-environment-repository.js'
+
+export {
+  FilesystemDeliveryRepository,
+  createFilesystemDeliveryRepository,
+  type DeliveryStoreLike,
+} from './filesystem-delivery-repository.js'

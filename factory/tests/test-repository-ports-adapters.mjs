@@ -10,7 +10,9 @@ import { join } from 'node:path'
 import {
   FilesystemAgentStepAttemptRepository,
   FilesystemAgentStepResultRepository,
+  FilesystemDeliveryRepository,
   FilesystemOracleExecutionRepository,
+  FilesystemWorkEnvironmentRepository,
   FilesystemWorkflowDefinitionRepository,
   FilesystemWorkflowEvidenceRepository,
   FilesystemWorkflowHumanInteractionRepository,
@@ -20,7 +22,9 @@ import {
 } from '../runtime/factory-operational.mjs'
 import { createAgentStepAttemptRepository } from '../lib/agent-step-attempt-store.mjs'
 import { createAgentStepResultRepository } from '../lib/agent-step-result-store.mjs'
+import { createDeliveryRepository } from '../lib/delivery-store.mjs'
 import { createOracleDefinitionRepository } from '../lib/oracle-definition.mjs'
+import { createWorkEnvironmentRepository } from '../lib/work-unit-environment-store.mjs'
 import { createWorkflowDefinitionRepository } from '../lib/workflow-definition-registry.mjs'
 import { createWorkflowEvidenceRepository } from '../lib/workflow-evidence-store.mjs'
 import { createWorkflowHumanInteractionRepository } from '../lib/workflow-human-interaction-store.mjs'
@@ -348,6 +352,204 @@ try {
     const found = await repository.get('adapter-smoke')
     assert.equal(found.domain, 'factory')
     assert.equal(await repository.get('missing'), null)
+  })
+
+  await scenario('work-environment adapter reserves, reads, lists and transitions', async () => {
+    const repository = await createWorkEnvironmentRepository(join(root, 'environment-adapter'))
+    assert.ok(repository instanceof FilesystemWorkEnvironmentRepository)
+    const caseId = '22222222-2222-4222-8222-222222222222'
+    const base = {
+      schemaVersion: '1',
+      environmentId: 'env-adapter',
+      workUnitId: 'unit-adapter',
+      namespaceId,
+      repoRoot: '/repo',
+      integrationBranch: 'main',
+      branch: 'feature/adapter',
+      worktreePath: '/worktrees/adapter',
+      baseCommit: 'a'.repeat(40),
+      createdAt: '2025-01-01T00:00:00.000Z',
+      createdBy: 'factory',
+      lifecycleState: 'provisioning',
+    }
+    const paths = repository.paths(namespaceId, 'env-adapter')
+    assert.ok(paths.snapshot.endsWith('environment.json'))
+    assert.ok(!paths.directory.endsWith('/env-adapter'))
+
+    const reserved = await repository.reserve(base)
+    assert.equal(reserved.ok, true)
+    assert.equal(reserved.snapshot.revision, 1)
+    assert.equal((await repository.read(namespaceId, 'env-adapter')).environment.lifecycleState, 'provisioning')
+    assert.equal((await repository.list(namespaceId)).length, 1)
+    assert.equal((await repository.list(namespaceId, { states: ['active'] })).length, 0)
+    assert.equal((await repository.list(namespaceId, { states: ['provisioning'] })).length, 1)
+
+    const rejected = await repository.reserve({ ...base, environmentId: 'bad id!' })
+    assert.equal(rejected.ok, false)
+
+    const active = await repository.transition(namespaceId, 'env-adapter', {
+      ...base,
+      lifecycleState: 'active',
+      parentCaseId: caseId,
+    })
+    assert.equal(active.ok, true)
+    assert.equal(active.snapshot.revision, 2)
+    assert.equal((await repository.read(namespaceId, 'env-adapter')).environment.lifecycleState, 'active')
+
+    const conflict = await repository.transition(
+      namespaceId,
+      'env-adapter',
+      { ...base, lifecycleState: 'completed', parentCaseId: caseId },
+      { expectedRevision: 99 }
+    )
+    assert.equal(conflict.error.code, 'REVISION_CONFLICT')
+    assert.equal(await repository.read(namespaceId, 'missing-env'), null)
+  })
+
+  await scenario('delivery adapter creates, promotes and projects operations', async () => {
+    const repository = createDeliveryRepository(join(root, 'delivery-adapter'))
+    assert.ok(repository instanceof FilesystemDeliveryRepository)
+    const deliveryId = 'wf-delivery-adapter'
+    const workflowId = 'wf-adapter'
+    const runtimeId = 'factory-dashboard'
+    const caseId = '22222222-2222-4222-8222-222222222222'
+    const environmentId = '33333333-3333-4333-8333-333333333333'
+    const sha = 'a'.repeat(40)
+    const digest = `sha256:${'b'.repeat(64)}`
+    const targetHash = `sha256:${'c'.repeat(64)}`
+    const now = new Date().toISOString()
+    const snapshot = {
+      schemaVersion: '1',
+      deliveryId,
+      namespaceId,
+      workflowId,
+      environmentId,
+      environmentHash: digest,
+      parentCaseId: caseId,
+      runtimeId,
+      worktreePath: '/repo',
+      branch: 'feature/adapter',
+      baseCommit: sha,
+      headCommit: sha,
+      definitionType: 'factory-delivery',
+      definitionVersion: '1.0.0',
+      definitionHash: digest,
+      stage: 'implementation-ready',
+      revision: 1,
+      evidenceIds: [],
+      createdAt: now,
+      updatedAt: now,
+      git: {},
+      artifact: {},
+      release: {},
+      deployment: {},
+      verification: {},
+      blockers: [],
+    }
+    const created = await repository.create(snapshot)
+    assert.equal(created.ok, true)
+    assert.equal((await repository.create(snapshot)).changed, false)
+    assert.equal((await repository.read(namespaceId, deliveryId)).stage, 'implementation-ready')
+
+    // Promotion is delegated to the store policy: an absent delivery fails closed.
+    const missing = await repository.promote({
+      namespaceId,
+      request: {
+        requestId: 'req-missing',
+        deliveryId: 'missing-delivery',
+        expectedRevision: 1,
+        requestedStage: 'artifact-ready',
+        evidenceIds: [],
+        idempotencyKey: 'promote-missing',
+      },
+      definition: {
+        schemaVersion: '1',
+        deliveryType: 'delivery',
+        version: '1.0.0',
+        checkpoints: [],
+        artifactPolicy: {},
+        promotionPolicy: {},
+        deploymentPolicy: {},
+        retentionPolicy: {},
+        definitionHash: digest,
+      },
+      evidence: [],
+      execution: { kind: 'factory-control-plane', namespaceId, workflowId, caseId, runtimeId },
+    })
+    assert.equal(missing.error.code, 'DELIVERY_NOT_FOUND')
+
+    const operationArgs = {
+      namespaceId,
+      workflowId,
+      deliveryId,
+      caseId,
+      runtimeId,
+      request: {
+        kind: 'deployment',
+        expectedRevision: 1,
+        idempotencyKey: 'deploy-once',
+        targetId: 'prod',
+        artifactRef: {
+          digest,
+          mediaType: 'application/zip',
+          producerRef: 'build',
+          buildRef: 'build-1',
+          sourceCommit: sha,
+        },
+        releaseRef: {
+          releaseId: 'release-1',
+          artifactDigest: digest,
+          sourceCommit: sha,
+          approvedEvidenceId: 'approval',
+        },
+      },
+      targetRef: { targetId: 'prod', targetHash, adapterId: 'test', adapterTargetRef: 'trusted' },
+      execution: { kind: 'factory-control-plane', actorId: 'factory' },
+    }
+    const operation = await repository.createDeliveryOperation(operationArgs)
+    assert.equal(operation.operation.state, 'pending')
+    assert.equal((await repository.createDeliveryOperation(operationArgs)).changed, false)
+    const started = await repository.startDeliveryOperation(
+      namespaceId,
+      deliveryId,
+      operation.operation.operationId,
+      'adapter-1'
+    )
+    assert.equal(started.operation.attempt, 1)
+    const indeterminate = await repository.recordDeliveryOperation(
+      namespaceId,
+      deliveryId,
+      operation.operation.operationId,
+      { state: 'indeterminate', error: { code: 'LOST_RESPONSE' } }
+    )
+    assert.equal(indeterminate.ok, true)
+    assert.equal(await repository.hasIndeterminateOperation(namespaceId, deliveryId), true)
+    const reconciled = await repository.reconcileDeliveryOperation(
+      namespaceId,
+      deliveryId,
+      operation.operation.operationId,
+      { state: 'succeeded', result: { deploymentId: 'd1' } }
+    )
+    assert.equal(reconciled.ok, true)
+    assert.equal(await repository.hasIndeterminateOperation(namespaceId, deliveryId), false)
+    const projection = await repository.inspectDeliveryOperations(namespaceId, deliveryId)
+    assert.equal(projection.operations[0].state, 'succeeded')
+    const withOperations = await repository.readWithOperations(namespaceId, deliveryId)
+    assert.equal(withOperations.revision, 1)
+    assert.equal(withOperations.deliveryOperations[0].state, 'succeeded')
+
+    const patched = await repository.updateSnapshot(
+      namespaceId,
+      deliveryId,
+      { git: { checkpoint: sha } },
+      {
+        kind: 'checkpoint',
+        idempotencyKey: 'checkpoint-1',
+        facts: { headCommit: sha },
+      }
+    )
+    assert.equal(patched.ok, true)
+    assert.equal((await repository.read(namespaceId, deliveryId)).git.checkpoint, sha)
   })
 } finally {
   await rm(root, { recursive: true, force: true })

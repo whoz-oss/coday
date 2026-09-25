@@ -44,3 +44,7 @@ export type {
 } from './agent-step-result-repository.js'
 
 export type { OracleExecutionRepository } from './oracle-execution-repository.js'
+
+export type { WorkEnvironmentRepository } from './work-environment-repository.js'
+
+export type { DeliveryRepository } from './delivery-repository.js'
