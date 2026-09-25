@@ -106,3 +106,29 @@ export {
   createSqlWorkflowInstanceRepository,
   type SqlWorkflowInstanceRepositoryOptions,
 } from './sql/sql-workflow-instance-repository.js'
+
+// The remaining SQL adapters are re-exported through the SQL barrel so the
+// persistence surface stays at parity with the filesystem adapters.
+export {
+  SqlWorkflowEvidenceRepository,
+  createSqlWorkflowEvidenceRepository,
+  type SqlWorkflowEvidenceRepositoryOptions,
+  SqlWorkflowHumanInteractionRepository,
+  createSqlWorkflowHumanInteractionRepository,
+  type SqlWorkflowHumanInteractionRepositoryOptions,
+  SqlAgentStepAttemptRepository,
+  createSqlAgentStepAttemptRepository,
+  type SqlAgentStepAttemptRepositoryOptions,
+  SqlAgentStepResultRepository,
+  createSqlAgentStepResultRepository,
+  type SqlAgentStepResultRepositoryOptions,
+  SqlOracleExecutionRepository,
+  createSqlOracleExecutionRepository,
+  type SqlOracleExecutionRepositoryOptions,
+  SqlWorkEnvironmentRepository,
+  createSqlWorkEnvironmentRepository,
+  type SqlWorkEnvironmentRepositoryOptions,
+  SqlDeliveryRepository,
+  createSqlDeliveryRepository,
+  type SqlDeliveryRepositoryOptions,
+} from './sql/index.js'
