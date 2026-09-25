@@ -19,6 +19,8 @@ export {
   type SqlQueryResult,
 } from './db.js'
 
+export { withTransaction, type TransactionalSqlClient, type TransactionalWork } from './unit-of-work.js'
+
 export {
   SqlWorkflowDefinitionRepository,
   createSqlWorkflowDefinitionRepository,
