@@ -2,7 +2,6 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.caseEvent.DefaultCaseEventEmitter
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventList
-import io.whozoss.agentos.factory.FactoryCheckpointClient
 import io.whozoss.agentos.orchestration.CaseEventEmitter
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -16,10 +15,12 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import io.whozoss.agentos.sdk.spi.AnswerInterceptResult
+import io.whozoss.agentos.sdk.spi.AnswerInterceptor
+import io.whozoss.agentos.sdk.spi.CaseLifecycleObserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import java.time.Instant
 import java.util.UUID
@@ -49,10 +50,14 @@ private data class PendingCommand(val content: List<MessageContent>)
  * @param isAgentAuthorized defensive check called when [processNextStep] encounters an
  *   [AgentSelectedEvent] emitted by an agent (redirect). Returns true if the target agent
  *   is accessible to the current user. Called at redirect time — not pre-computed.
- * @param factoryCheckpointClient when non-null, answers to [QuestionEvent]s that carry a
- *   [io.whozoss.agentos.sdk.caseEvent.FactoryCheckpointRef] are first validated against the
- *   Factory before the [AnswerEvent] is persisted. Null disables Factory validation entirely
- *   (all existing tests and non-Factory cases are unaffected).
+ * @param answerInterceptors optional SPI hooks consulted for every answer to a [QuestionEvent]
+ *   before the [AnswerEvent] is persisted. Empty by default: no interception, behavior unchanged.
+ *   A rejection emits a [WarnEvent] and skips the [AnswerEvent].
+ *   This is the sole extension point for integration-specific answer gating: no
+ *   integration concept is modelled in this runtime.
+ * @param lifecycleObservers optional SPI observers notified when an event produced by this
+ *   runtime has been stored ([CaseLifecycleObserver.onEventStored]). Empty by default: no-op.
+ *   Status-transition notifications are handled by the service (see `CaseServiceImpl`).
  * @param runAgent fetches the named agent, runs it against the current event history,
  *   and pipes each produced event through [storeEvent]. The implementation is responsible
  *   for deciding whether to emit [AgentRunningEvent] by inspecting the event history
@@ -82,7 +87,8 @@ class CaseRuntime(
     inputEvents: List<CaseEvent> = emptyList(),
     initialStatus: CaseStatus = CaseStatus.PENDING,
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
-    private val factoryCheckpointClient: FactoryCheckpointClient? = null,
+    private val answerInterceptors: List<AnswerInterceptor> = emptyList(),
+    private val lifecycleObservers: List<CaseLifecycleObserver> = emptyList(),
 ) : CaseEventEmitter by emitter {
     private val eventList = InMemoryCaseEventList(inputEvents)
 
@@ -188,6 +194,23 @@ class CaseRuntime(
         val saved = storeEvent(event)
         eventList.add(saved)
         emit(saved)
+        notifyEventStored(saved)
+    }
+
+    /**
+     * Notify registered [CaseLifecycleObserver]s that [event] has been stored.
+     * Observers are notifications only: a faulty hook is logged and never breaks execution.
+     */
+    private fun notifyEventStored(event: CaseEvent) {
+        if (lifecycleObservers.isEmpty()) return
+        lifecycleObservers.forEach { observer ->
+            runCatching { observer.onEventStored(id, event) }
+                .onFailure { error ->
+                    logger.warn(error) {
+                        "[CaseRuntime $id] CaseLifecycleObserver ${observer::class.simpleName} failed on event ${event.id}"
+                    }
+                }
+        }
     }
 
     /**
@@ -241,30 +264,30 @@ class CaseRuntime(
                     if (answerText.isBlank()) {
                         logger.warn { "[CaseRuntime $id] Answer text is blank for question $answerToEventId" }
                     } else {
-                        // Factory gate: when the question carries a checkpoint reference,
-                        // submit the decision to the Factory BEFORE persisting the AnswerEvent.
-                        // A Factory rejection emits a WarnEvent so the user can retry; no
-                        // AnswerEvent is created and the agent is NOT resumed.
-                        val checkpoint = questionEvent.factoryCheckpoint
-                        if (checkpoint != null) {
-                            val factoryResult = factoryCheckpointClient?.let { client ->
-                                runBlocking { client.submitDecision(checkpoint, answerText, id.toString(), actor.id) }
-                            }
-                            if (factoryResult != null && factoryResult.isFailure) {
-                                val ex = factoryResult.exceptionOrNull()
-                                val reason = ex?.message ?: "Factory rejected the decision"
-                                logger.warn { "[CaseRuntime $id] Factory rejected answer for question $answerToEventId: $reason" }
+                        // SPI gate: let registered interceptors validate the answer before it is
+                        // persisted. Empty by default, so existing behavior is unchanged. A rejection
+                        // surfaces a WarnEvent and skips the AnswerEvent.
+                        for (interceptor in answerInterceptors) {
+                            val result =
+                                runCatching { interceptor.interceptAnswer(id, questionEvent, answerText, actor) }
+                                    .onFailure { error ->
+                                        logger.warn(error) {
+                                            "[CaseRuntime $id] AnswerInterceptor ${interceptor::class.simpleName} " +
+                                                "threw for question $answerToEventId, ignoring"
+                                        }
+                                    }.getOrElse { AnswerInterceptResult.Accept }
+                            if (result is AnswerInterceptResult.Reject) {
+                                logger.warn {
+                                    "[CaseRuntime $id] Answer rejected by interceptor for question $answerToEventId: ${result.reason}"
+                                }
                                 storeAndEmitEvent(
                                     WarnEvent(
                                         namespaceId = namespaceId,
                                         caseId = id,
-                                        message = "The Factory could not accept your decision: $reason. Please try again.",
+                                        message = "Answer rejected: ${result.reason}. Please try again.",
                                     ),
                                 )
                                 return // do NOT create AnswerEvent; agent stays suspended
-                            }
-                            if (factoryCheckpointClient == null) {
-                                logger.warn { "[CaseRuntime $id] Question $answerToEventId has a Factory checkpoint but no FactoryCheckpointClient is wired — skipping Factory validation" }
                             }
                         }
                         storeAndEmitEvent(questionEvent.createAnswer(actor, answerText))

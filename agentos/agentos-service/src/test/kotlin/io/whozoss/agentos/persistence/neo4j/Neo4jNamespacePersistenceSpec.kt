@@ -1,5 +1,6 @@
 package io.whozoss.agentos.persistence.neo4j
 
+import io.kotest.core.annotation.EnabledIf
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
@@ -11,6 +12,7 @@ import org.springframework.test.context.DynamicPropertySource
  */
 @SpringBootTest
 @ActiveProfiles("test", "neo4j")
+@EnabledIf(DockerAvailableCondition::class)
 class Neo4jNamespacePersistenceSpec : AbstractNamespacePersistenceSpec() {
     companion object {
         @JvmStatic

@@ -3,8 +3,6 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
-import io.whozoss.agentos.factory.FactoryCheckpointClient
-import io.whozoss.agentos.factory.FactoryStepResultBindingRegistry
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
@@ -19,8 +17,6 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptCommandParser
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.prompt.ResolvedCommand
-import okhttp3.OkHttpClient
-import org.springframework.beans.factory.annotation.Value
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -34,6 +30,10 @@ import io.whozoss.agentos.sdk.caseEvent.TransientCaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.spi.AnswerInterceptor
+import io.whozoss.agentos.sdk.spi.CaseLifecycleObserver
+import io.whozoss.agentos.sdk.spi.ExternalExecutionContextProvider
+import io.whozoss.agentos.sdk.spi.ToolGrantPolicy
 import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +54,14 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Core case orchestration service.
+ *
+ * Carries no integration-specific logic: integrations plug in exclusively through the
+ * SDK SPI hooks injected below — [AnswerInterceptor], [CaseLifecycleObserver],
+ * [ExternalExecutionContextProvider] and [ToolGrantPolicy] — so all integration
+ * behaviour lives outside this service.
+ */
 @Service
 class CaseServiceImpl(
     private val agentService: AgentService,
@@ -67,17 +75,29 @@ class CaseServiceImpl(
     private val permissionService: PermissionService,
     private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
-    private val factoryStepResultBindings: FactoryStepResultBindingRegistry = FactoryStepResultBindingRegistry(),
-    @Value("\${agentos.factory.base-url:}") private val factoryBaseUrl: String = "",
+    /**
+     * Optional SPI hooks consulted for every answer before an [io.whozoss.agentos.sdk.caseEvent.AnswerEvent]
+     * is persisted. Empty by default (Spring injects all registered beans): no interception.
+     * Integrations register their own interceptors here rather than being wired into the core.
+     */
+    private val answerInterceptors: List<AnswerInterceptor> = emptyList(),
+    /**
+     * Optional SPI observers notified of case status transitions and stored events.
+     * Empty by default (Spring injects all registered beans): no observation.
+     */
+    private val lifecycleObservers: List<CaseLifecycleObserver> = emptyList(),
+    /**
+     * Optional SPI providers contributing external execution context to user messages.
+     * Empty by default (Spring injects all registered beans): no enrichment.
+     */
+    private val externalExecutionContextProviders: List<ExternalExecutionContextProvider> = emptyList(),
+    /**
+     * Optional SPI policies evaluated against the tools resolved for an agent run.
+     * Empty by default (Spring injects all registered beans): pass-through, no filtering.
+     */
+    private val toolGrantPolicies: List<ToolGrantPolicy> = emptyList(),
 ) : CaseService,
     SubCaseManager {
-    /**
-     * Shared HTTP client for Factory checkpoint calls. One instance per service
-     * (OkHttpClient is thread-safe and manages its own connection pool).
-     * Null-safe: the client is only used when [factoryBaseUrl] is non-blank and
-     * [CaseRuntime.factoryCheckpointClient] is wired.
-     */
-    private val factoryHttpClient: OkHttpClient by lazy { OkHttpClient() }
     /**
      * Coroutine scope used to run case execution loops and fire-and-forget
      * post-processing tasks (e.g. automatic naming) in the background.
@@ -261,9 +281,6 @@ class CaseServiceImpl(
         case: Case,
         inputEvents: List<CaseEvent> = emptyList(),
     ): CaseRuntime {
-        val checkpointClient = if (factoryBaseUrl.isNotBlank()) {
-            FactoryCheckpointClient(factoryBaseUrl, factoryHttpClient, com.fasterxml.jackson.module.kotlin.jacksonObjectMapper())
-        } else null
         return CaseRuntime(
             id = case.id,
             namespaceId = case.namespaceId,
@@ -271,7 +288,8 @@ class CaseServiceImpl(
             updateStatusCallback = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
-            factoryCheckpointClient = checkpointClient,
+            answerInterceptors = answerInterceptors,
+            lifecycleObservers = lifecycleObservers,
             isAgentAuthorized = { agentName, userId ->
                 userId == null ||
                     agentConfigService
@@ -309,6 +327,15 @@ class CaseServiceImpl(
     ) {
         val runtime = getCaseRuntime(caseId)
         val userId = actor.id.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        // SPI enrichment: merge any external execution context contributed by registered providers
+        // into the message session context. Empty provider list leaves sessionContext untouched.
+        val effectiveSessionContext =
+            resolveEffectiveSessionContext(
+                caseId = caseId,
+                namespaceId = runtime.namespaceId,
+                userId = userId,
+                sessionContext = sessionContext,
+            )
 
         // Resolve prompt commands — a single user input may expand to multiple sequential
         // commands (e.g. a /prompt alias). Each resolved command becomes a separate agent
@@ -329,7 +356,7 @@ class CaseServiceImpl(
                     }
                 } catch (e: PromptResolutionException) {
                     logger.warn(e) { "Prompt resolution failed for case $caseId: ${e.message}" }
-                    runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+                    runtime.addUserMessage(actor, content, answerToEventId, effectiveSessionContext)
                     runtime.emitEvent(
                         storeEvent(
                             WarnEvent(
@@ -371,7 +398,7 @@ class CaseServiceImpl(
 
         when {
             resolvedCommands.isNullOrEmpty() -> {
-                runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+                runtime.addUserMessage(actor, content, answerToEventId, effectiveSessionContext)
             }
 
             else -> {
@@ -382,7 +409,7 @@ class CaseServiceImpl(
                     actor,
                     listOf(MessageContent.Text(resolvedText(resolvedCommands.first()))) + nonTextContent,
                     answerToEventId,
-                    sessionContext,
+                    effectiveSessionContext,
                 )
                 resolvedCommands.drop(1).forEach { cmd ->
                     runtime.enqueueCommand(listOf(MessageContent.Text(resolvedText(cmd))))
@@ -396,6 +423,36 @@ class CaseServiceImpl(
         // Events are fetched fresh from the service so the newly stored MessageEvent is included.
         val case = findById(caseId) ?: return
         triggerNamingIfNeeded(case, caseEventService.findByParent(caseId)) { event -> runtime.emitEvent(event) }
+    }
+
+    /**
+     * Merges external execution context contributed by registered
+     * [ExternalExecutionContextProvider]s into the caller-supplied [sessionContext].
+     *
+     * Returns [sessionContext] unchanged when no provider is registered or when no provider
+     * contributes anything — so existing behavior is fully preserved. External entries win on
+     * key collision with the caller-supplied context. A faulty provider is logged and skipped.
+     */
+    private fun resolveEffectiveSessionContext(
+        caseId: UUID,
+        namespaceId: UUID,
+        userId: UUID?,
+        sessionContext: Map<String, Any?>?,
+    ): Map<String, Any?>? {
+        if (externalExecutionContextProviders.isEmpty()) return sessionContext
+        val externalContext =
+            externalExecutionContextProviders
+                .flatMap { provider ->
+                    runCatching { provider.provideExecutionContext(caseId, namespaceId, userId) }
+                        .onFailure { error ->
+                            logger.warn(error) {
+                                "ExternalExecutionContextProvider ${provider::class.simpleName} failed for case $caseId"
+                            }
+                        }.getOrElse { emptyMap() }
+                        .entries
+                }.associate { it.key to it.value }
+        if (externalContext.isEmpty()) return sessionContext
+        return (sessionContext ?: emptyMap()) + externalContext
     }
 
     // ======================================================
@@ -618,6 +675,7 @@ class CaseServiceImpl(
                 caseCreatedAt = runtime.caseCreatedAt,
                 userId = userId,
                 caseEventsProvider = eventsProvider,
+                toolGrantPolicies = toolGrantPolicies,
                 emitEvent = { event ->
                     val saved = storeEvent(event)
                     runtime.emitEvent(saved)
@@ -706,13 +764,22 @@ class CaseServiceImpl(
             logger.info { "Case $caseId status: $oldStatus -> $newStatus" }
         }
 
+        // SPI observation: notify registered observers of the transition. Notifications only —
+        // a faulty hook is logged and never breaks the status change.
+        lifecycleObservers.forEach { observer ->
+            runCatching { observer.onStatusChanged(caseId, oldStatus, newStatus) }
+                .onFailure { error ->
+                    logger.warn(error) {
+                        "CaseLifecycleObserver ${observer::class.simpleName} failed on status change of case $caseId"
+                    }
+                }
+        }
+
         // Trigger post-processing on turn completion so processors can refine their
         // work with the full agent response available (e.g. naming refinement on 2nd turn).
         if (newStatus == CaseStatus.IDLE) {
-            // IDLE can be observed before the Factory-bound turn starts, and may also
-            // occur between turns. The binding is consumed by FACTORY__submit_step_result
-            // or removed on expiry/kill/terminal status; clearing it on IDLE races with
-            // the agent's first tool call and causes STRUCTURED_RESULT_MISSING.
+            // IDLE can be observed between turns; the runtime stays alive so the
+            // naming trigger below can refine the case name with the full response.
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
                 triggerNamingIfNeeded(
@@ -777,7 +844,6 @@ class CaseServiceImpl(
     }
 
     private fun killSingleCase(caseId: UUID) {
-        factoryStepResultBindings.remove(caseId)
         logger.info { "Killing case: $caseId" }
         activeRuntimes[caseId]?.requestKill()
         handleStatusChange(caseId, CaseStatus.KILLED)

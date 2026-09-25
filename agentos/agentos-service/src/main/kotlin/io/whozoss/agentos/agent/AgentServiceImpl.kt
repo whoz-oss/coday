@@ -20,7 +20,6 @@ import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
-import io.whozoss.agentos.factory.FactoryToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
@@ -35,6 +34,8 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.spi.ToolGrantDecision
+import io.whozoss.agentos.sdk.spi.ToolGrantPolicy
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.skill.Skill
@@ -85,8 +86,6 @@ class AgentServiceImpl(
     private val skillToolGrantService: SkillToolGrantService,
     private val agentConfigProperties: AgentConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
-    private val factoryToolGrantService: FactoryToolGrantService,
-    private val factoryEnvironmentBindingService: io.whozoss.agentos.factory.FactoryEnvironmentBindingService,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -377,27 +376,26 @@ class AgentServiceImpl(
             } else {
                 emptyList()
             }
-        val factoryTools =
-            if (factoryToolGrantService.isGranted(agentConfig.integrations)) {
-                factoryToolGrantService.grantTools(toolContext, agentConfig.integrations)
-            } else emptyList()
         val tools =
-            toolResolverService.dedupToolsByName(
-                baseTools +
-                    listOfNotNull(
-                        subCaseManager?.let {
-                            buildDelegationTools(
-                                config = agentConfig,
-                                context = context,
-                                subCaseManager = it,
-                            )
-                        },
-                    ) +
-                    buildExchangeTools(agentConfig, context, toolContext) +
-                    queryUserTools +
-                    skillTools +
-                    buildWorkUnitEnvironmentTools(agentConfig, context, toolContext) +
-                    factoryTools,
+            applyToolGrantPolicies(
+                tools =
+                    toolResolverService.dedupToolsByName(
+                        baseTools +
+                            listOfNotNull(
+                                subCaseManager?.let {
+                                    buildDelegationTools(
+                                        config = agentConfig,
+                                        context = context,
+                                        subCaseManager = it,
+                                    )
+                                },
+                            ) +
+                            buildExchangeTools(agentConfig, context, toolContext) +
+                            queryUserTools +
+                            skillTools,
+                    ),
+                context = toolContext,
+                policies = context.toolGrantPolicies,
             )
 
         val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
@@ -452,6 +450,41 @@ class AgentServiceImpl(
             .mapNotNull { it.parameters?.get(RedirectToolPlugin.GUIDELINE_PARAM)?.asText()?.takeIf { g -> g.isNotBlank() } }
             .joinToString("\n\n")
             .takeUnless { it.isBlank() }
+
+    /**
+     * Filters [tools] through the optional SPI [policies] carried by the execution context.
+     *
+     * Neutral pass-through: when [policies] is empty the list is returned unchanged, so
+     * existing behavior is fully preserved. A tool is granted only when no policy denies it;
+     * an [ToolGrantDecision.AllowOnly] decision also denies every tool it does not list.
+     * A faulty policy is logged and treated as [ToolGrantDecision.Neutral] — it can never
+     * silently strip tools from an agent run.
+     */
+    private fun applyToolGrantPolicies(
+        tools: List<StandardTool<*>>,
+        context: ToolContext,
+        policies: List<ToolGrantPolicy>,
+    ): List<StandardTool<*>> {
+        if (policies.isEmpty()) return tools
+        return tools.filter { tool ->
+            var granted = true
+            for (policy in policies) {
+                val decision =
+                    runCatching { policy.evaluateToolGrant(context.agentName, tool.name, context) }
+                        .onFailure { error ->
+                            logger.warn(error) {
+                                "[ToolGrantPolicy] ${policy::class.simpleName} failed for tool '${tool.name}', ignoring"
+                            }
+                        }.getOrElse { ToolGrantDecision.Neutral }
+                when (decision) {
+                    is ToolGrantDecision.Neutral -> Unit
+                    is ToolGrantDecision.AllowOnly -> if (tool.name !in decision.toolNames) granted = false
+                    is ToolGrantDecision.Deny -> if (tool.name in decision.toolNames) granted = false
+                }
+            }
+            granted
+        }
+    }
 
     /**
      * Phase 2: instantiate a live [Agent] from a [ResolvedAgentDefinition].
@@ -918,18 +951,6 @@ class AgentServiceImpl(
         return tools
     }
 
-    /** Grants work-unit FILE_ACCESS only from a trusted case/workflow binding and an explicit allowlist. */
-    private fun buildWorkUnitEnvironmentTools(
-        config: AgentConfig,
-        context: AgentExecutionContext,
-        toolContext: ToolContext,
-    ): List<StandardTool<*>> {
-        val declaration = config.integrations?.get(WORK_UNIT_FILE_ACCESS)
-        if (config.integrations?.containsKey(WORK_UNIT_FILE_ACCESS) != true || declaration.isNullOrEmpty()) return emptyList()
-        val caseId = context.caseId?.toString() ?: return emptyList()
-        return factoryEnvironmentBindingService.grantTools(context.workflowId, caseId, declaration, toolContext)
-    }
-
     /**
      * Static-secret fallback used when no per-user Credential row exists: synthesised in memory
      * from the resolved [setting], never persisted. OAuth types are never synthesised — their
@@ -942,7 +963,6 @@ class AgentServiceImpl(
         if (setting.authType in OAUTH_AUTH_TYPES) null else staticCredentialFactory.fromAuthSetting(userId, setting)
 
     companion object : KLogging() {
-        private const val WORK_UNIT_FILE_ACCESS = "WORK_UNIT_FILE_ACCESS"
         private val OAUTH_AUTH_TYPES =
             setOf(
                 AuthType.OAUTH_DISCOVERABLE,
