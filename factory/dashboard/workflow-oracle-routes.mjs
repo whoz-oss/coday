@@ -3,7 +3,7 @@ import { executeOracle, oracleArtifact, oracleRootIdentity, validateOracleRoot }
 import { hashOracleDefinition } from '../lib/oracle-definition.mjs'
 import { createHash } from 'node:crypto'
 import { workflowProjectionStorageId } from '../lib/workflow-projection-store.mjs'
-const sendError=(send,status,code,message)=>send(status,{error:{code,message}})
+import { sendError } from './http-utils.mjs'
 export async function handleWorkflowOracleRequest({method,path,readBody,send,projectionStore,evidenceStore,definitionRegistry,oracleRegistry,repoRoot,log=console}){
  const m=path.match(/^\/api\/factory\/workflows\/([^/]+)\/steps\/([^/]+)\/oracles\/([^/]+)\/runs$/);if(!m)return false
  if(method!=='POST'){sendError(send,405,'METHOD_NOT_ALLOWED','Only POST is supported.');return true}

@@ -1,7 +1,7 @@
 import { validateWorkflowTransitionRequest } from '../lib/workflow-transition-policy.mjs'
 import { sanitizeWorkflowExecution } from './workflow-projection-routes.mjs'
 import { workflowProjectionStorageId } from '../lib/workflow-projection-store.mjs'
-const sendError=(send,status,code,message)=>send(status,{error:{code,message}})
+import { sendError } from './http-utils.mjs'
 const statusFor=(code)=>code==='WORKFLOW_NOT_FOUND'?404:['WORKFLOW_REMOVED','WORKFLOW_PURGED'].includes(code)?410:['INVALID_TRANSITION_REQUEST','UNTRUSTED_REQUEST_ID'].includes(code)?400:409
 export async function handleWorkflowTransitionRequest({method,path,readBody,send,store,evidenceStore,definitionRegistry,notifier,log=console}){
  const match=path.match(/^\/api\/factory\/workflows\/([^/]+)\/transitions$/);if(!match)return false

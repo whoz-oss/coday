@@ -2,9 +2,9 @@ import { validateWorkflowEvidenceInput } from '../lib/workflow-evidence.mjs'
 import { WorkflowEvidenceStoreError } from '../lib/workflow-evidence-store.mjs'
 import { workflowProjectionStorageId } from '../lib/workflow-projection-store.mjs'
 import { validateWorkflowNamespaceId, sanitizeWorkflowExecution } from './workflow-projection-routes.mjs'
+import { sendError } from './http-utils.mjs'
 
 const SAFE_ID=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
-const sendError=(send,status,code,message)=>send(status,{error:{code,message}})
 export async function handleWorkflowEvidenceRequest({method,path,url,readBody,send,projectionStore,evidenceStore,definitionRegistry,log=console}){
  const match=path.match(/^\/api\/factory\/workflows\/([^/]+)\/evidence$/); if(!match) return false
  const workflowId=decodeURIComponent(match[1])

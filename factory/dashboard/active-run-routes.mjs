@@ -1,14 +1,15 @@
 /**
  * Active-run routes — GET/POST/DELETE /api/factory/active-run
  *
- * Manages the active-run marker persisted at <repoRoot>/forge/active-run.json.
- * This file is shared across all users of the same namespace.
+ * Transport only: it parses the request, delegates to the active-run service,
+ * and maps the service result to a standardized response. Business logic lives
+ * in `active-run-service.mjs`.
  *
  * Returns true when the request was handled (matched route), false otherwise.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { sendError } from './http-utils.mjs'
+import { readActiveRun, writeActiveRun, clearActiveRun } from './active-run-service.mjs'
 
 /**
  * @param {{ method: string, path: string, url: URL, readBody: () => Promise<object>, send: (status: number, body: unknown) => void, proxy: object, log?: Console }} ctx
@@ -19,69 +20,34 @@ export async function handleActiveRunRequest({ method, path, url, readBody, send
 
   // GET /api/factory/active-run?namespaceId=<uuid>
   if (method === 'GET') {
-    const namespaceId = url.searchParams.get('namespaceId')
-    if (!namespaceId) return send(400, { error: 'namespaceId query param is required' }), true
-    try {
-      const namespace = await proxy.fetchNamespace(namespaceId)
-      if (!namespace) return send(404, { error: 'Namespace not found' }), true
-      const configPath = namespace.configPath
-      if (!configPath) return send(422, { error: 'Namespace has no configPath configured' }), true
-      const repoRoot = await proxy.resolveRepoRoot(namespaceId)
-      const filePath = join(repoRoot, 'forge', 'active-run.json')
-      if (!existsSync(filePath)) return send(200, null), true
-      const data = JSON.parse(readFileSync(filePath, 'utf8'))
-      return send(200, data), true
-    } catch (err) {
-      log.error?.('active-run GET error', err)
-      return send(500, { error: String(err) }), true
-    }
+    const result = await readActiveRun({ proxy, namespaceId: url.searchParams.get('namespaceId') })
+    return dispatch(result, send, 200, log), true
   }
 
-  // POST /api/factory/active-run
-  // Body: { namespaceId, caseId, ticketId }
+  // POST /api/factory/active-run  Body: { namespaceId, caseId, ticketId }
   if (method === 'POST') {
     const body = await readBody()
-    const { namespaceId, caseId, ticketId } = body
-    if (!namespaceId || !caseId) return send(400, { error: 'namespaceId and caseId are required' }), true
-    try {
-      const namespace = await proxy.fetchNamespace(namespaceId)
-      if (!namespace) return send(404, { error: 'Namespace not found' }), true
-      const configPath = namespace.configPath
-      if (!configPath) return send(422, { error: 'Namespace has no configPath configured' }), true
-      const repoRoot = await proxy.resolveRepoRoot(namespaceId)
-      const forgeDir = join(repoRoot, 'forge')
-      mkdirSync(forgeDir, { recursive: true })
-      const filePath = join(forgeDir, 'active-run.json')
-      const data = { caseId, ticketId: ticketId ?? null, launchedAt: new Date().toISOString() }
-      writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8')
-      return send(201, data), true
-    } catch (err) {
-      log.error?.('active-run POST error', err)
-      return send(500, { error: String(err) }), true
-    }
+    const result = await writeActiveRun({
+      proxy,
+      namespaceId: body.namespaceId,
+      caseId: body.caseId,
+      ticketId: body.ticketId,
+    })
+    return dispatch(result, send, 201, log), true
   }
 
   // DELETE /api/factory/active-run?namespaceId=<uuid>
   if (method === 'DELETE') {
-    const namespaceId = url.searchParams.get('namespaceId')
-    if (!namespaceId) return send(400, { error: 'namespaceId query param is required' }), true
-    try {
-      const namespace = await proxy.fetchNamespace(namespaceId)
-      if (!namespace) return send(404, { error: 'Namespace not found' }), true
-      const configPath = namespace.configPath
-      if (!configPath) return send(422, { error: 'Namespace has no configPath configured' }), true
-      const repoRoot = await proxy.resolveRepoRoot(namespaceId)
-      const filePath = join(repoRoot, 'forge', 'active-run.json')
-      if (existsSync(filePath)) {
-        const { unlinkSync } = await import('node:fs')
-        unlinkSync(filePath)
-      }
-      return send(204, ''), true
-    } catch (err) {
-      log.error?.('active-run DELETE error', err)
-      return send(500, { error: String(err) }), true
-    }
+    const result = await clearActiveRun({ proxy, namespaceId: url.searchParams.get('namespaceId') })
+    if (!result.ok) return dispatch(result, send, 200, log), true
+    return send(204, ''), true
   }
 
   return false
+}
+
+function dispatch(result, send, successStatus, log) {
+  if (result.ok) return send(successStatus, result.data)
+  if (result.status >= 500) log.error?.('active-run failure', { code: result.code, message: result.message })
+  return sendError(send, result.status, result.code, result.message)
 }

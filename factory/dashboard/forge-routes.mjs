@@ -15,7 +15,7 @@
  */
 
 import { join } from 'node:path'
-import { isAllowedStoryEditRequestBody } from './http-utils.mjs'
+import { sendError, isAllowedStoryEditRequestBody } from './http-utils.mjs'
 
 /**
  * @param {{
@@ -67,13 +67,13 @@ export async function handleForgeRunRequest({
   // ---------------------------------------------------------------------------
   if (method === 'GET' && (path === '/api/forge/runs' || path === '/api/factory/forge/runs')) {
     const namespaceId = url.searchParams.get('namespaceId')
-    if (!namespaceId) return send(400, { error: 'namespaceId query param is required' }), true
+    if (!namespaceId) return sendError(send, 400, 'MISSING_NAMESPACE_ID', 'namespaceId query param is required'), true
     try {
       const runStoreRoot = await proxy.resolveRunStoreRoot(namespaceId)
-      if (!runStoreRoot) return send(422, { error: 'Namespace not found or has no configPath configured' }), true
+      if (!runStoreRoot) return sendError(send, 422, 'NAMESPACE_REPO_UNAVAILABLE', 'Namespace not found or has no configPath configured'), true
       return send(200, listForgeRunProjections(runStoreRoot)), true
     } catch (err) {
-      return send(500, { error: String(err) }), true
+      return sendError(send, 500, 'FORGE_STORAGE_FAILURE', String(err)), true
     }
   }
 
@@ -83,26 +83,26 @@ export async function handleForgeRunRequest({
   const forgeStoryExecutionsMatch = path.match(/^\/api\/forge\/runs\/([^/]+)\/stories\/([^/]+)\/executions$/)
   if (forgeStoryExecutionsMatch) {
     const namespaceId = url.searchParams.get('namespaceId')
-    if (!namespaceId) return send(400, { error: 'namespaceId query param is required' }), true
+    if (!namespaceId) return sendError(send, 400, 'MISSING_NAMESPACE_ID', 'namespaceId query param is required'), true
 
     if (method === 'GET') {
       try {
         const runStoreRoot = await proxy.resolveRunStoreRoot(namespaceId)
-        if (!runStoreRoot) return send(422, { error: 'Namespace not found or has no configPath configured' }), true
+        if (!runStoreRoot) return sendError(send, 422, 'NAMESPACE_REPO_UNAVAILABLE', 'Namespace not found or has no configPath configured'), true
         const projection = projectForgeRun(parseForgeLedger(join(runStoreRoot, `${forgeStoryExecutionsMatch[1]}.jsonl`)))
         const story = projection?.stories.find((item) => item.runId === forgeStoryExecutionsMatch[2])
-        return story ? send(200, story.executions) : send(404, { error: 'Story run not found.' }), true
-      } catch (err) { return send(404, { error: String(err) }), true }
+        return story ? send(200, story.executions) : sendError(send, 404, 'STORY_RUN_NOT_FOUND', 'Story run not found.'), true
+      } catch (err) { return sendError(send, 404, 'STORY_RUN_NOT_FOUND', String(err)), true }
     }
 
     if (method === 'POST') {
       const body = await readBody()
       if (Object.keys(body).some((key) => !['namespaceId', 'agentName', 'expectedSpecHash', 'supplement'].includes(key))) {
-        return send(400, { error: 'Unsupported Story analysis request field.' }), true
+        return sendError(send, 400, 'INVALID_STORY_ANALYSIS_REQUEST', 'Unsupported Story analysis request field.'), true
       }
       try {
         const runStoreRoot = await proxy.resolveRunStoreRoot(namespaceId)
-        if (!runStoreRoot) return send(422, { error: 'Namespace not found or has no configPath configured' }), true
+        if (!runStoreRoot) return sendError(send, 422, 'NAMESPACE_REPO_UNAVAILABLE', 'Namespace not found or has no configPath configured'), true
         const events = parseForgeLedger(join(runStoreRoot, `${forgeStoryExecutionsMatch[1]}.jsonl`))
         const start = events.find((event) => event.event === 'run_started')
         const result = await executeStoryAnalysis({
@@ -115,7 +115,7 @@ export async function handleForgeRunRequest({
           expectedSpecHash: body.expectedSpecHash,
         })
         return send(201, result), true
-      } catch (error) { return send(409, { error: String(error.message ?? error) }), true }
+      } catch (error) { return sendError(send, 409, 'STORY_ANALYSIS_FAILED', String(error.message ?? error)), true }
     }
   }
 
@@ -125,28 +125,28 @@ export async function handleForgeRunRequest({
   const forgeStoryOraclesMatch = path.match(/^\/api\/forge\/runs\/([^/]+)\/stories\/([^/]+)\/oracles$/)
   if (forgeStoryOraclesMatch) {
     const namespaceId = url.searchParams.get('namespaceId')
-    if (!namespaceId) return send(400, { error: 'namespaceId query param is required' }), true
+    if (!namespaceId) return sendError(send, 400, 'MISSING_NAMESPACE_ID', 'namespaceId query param is required'), true
 
     if (method === 'GET') {
       try {
         const runStoreRoot = await proxy.resolveRunStoreRoot(namespaceId)
-        if (!runStoreRoot) return send(422, { error: 'Namespace not found or has no configPath configured' }), true
+        if (!runStoreRoot) return sendError(send, 422, 'NAMESPACE_REPO_UNAVAILABLE', 'Namespace not found or has no configPath configured'), true
         const projection = projectForgeRun(parseForgeLedger(join(runStoreRoot, `${forgeStoryOraclesMatch[1]}.jsonl`)))
         const story = projection?.stories.find((item) => item.runId === forgeStoryOraclesMatch[2])
-        return story ? send(200, story.oracleCampaigns) : send(404, { error: 'Story run not found.' }), true
-      } catch (err) { return send(404, { error: String(err) }), true }
+        return story ? send(200, story.oracleCampaigns) : sendError(send, 404, 'STORY_RUN_NOT_FOUND', 'Story run not found.'), true
+      } catch (err) { return sendError(send, 404, 'STORY_RUN_NOT_FOUND', String(err)), true }
     }
 
     if (method === 'POST') {
       const body = await readBody()
-      if (!isAllowedStoryOracleRequestBody(body)) return send(400, { error: 'Unsupported Story oracle request field.' }), true
+      if (!isAllowedStoryOracleRequestBody(body)) return sendError(send, 400, 'INVALID_STORY_ORACLE_REQUEST', 'Unsupported Story oracle request field.'), true
       try {
         const runStoreRoot = await proxy.resolveRunStoreRoot(namespaceId)
-        if (!runStoreRoot) return send(422, { error: 'Namespace not found or has no configPath configured' }), true
+        if (!runStoreRoot) return sendError(send, 422, 'NAMESPACE_REPO_UNAVAILABLE', 'Namespace not found or has no configPath configured'), true
         const events = parseForgeLedger(join(runStoreRoot, `${forgeStoryOraclesMatch[1]}.jsonl`))
         const start = events.find((event) => event.event === 'run_started')
         return send(201, await executeStoryOracles({ roots: start.roots, epicRunId: forgeStoryOraclesMatch[1], storyRunId: forgeStoryOraclesMatch[2], ...body })), true
-      } catch (error) { return send(409, { error: String(error.message ?? error) }), true }
+      } catch (error) { return sendError(send, 409, 'STORY_ANALYSIS_FAILED', String(error.message ?? error)), true }
     }
   }
 
@@ -156,29 +156,29 @@ export async function handleForgeRunRequest({
   const forgeStoryEditsMatch = path.match(/^\/api\/forge\/runs\/([^/]+)\/stories\/([^/]+)\/edits$/)
   if (forgeStoryEditsMatch) {
     const namespaceId = url.searchParams.get('namespaceId')
-    if (!namespaceId) return send(400, { error: 'namespaceId query param is required' }), true
+    if (!namespaceId) return sendError(send, 400, 'MISSING_NAMESPACE_ID', 'namespaceId query param is required'), true
 
     if (method === 'GET') {
       try {
         const runStoreRoot = await proxy.resolveRunStoreRoot(namespaceId)
-        if (!runStoreRoot) return send(422, { error: 'Namespace not found or has no configPath configured' }), true
+        if (!runStoreRoot) return sendError(send, 422, 'NAMESPACE_REPO_UNAVAILABLE', 'Namespace not found or has no configPath configured'), true
         const projection = projectForgeRun(parseForgeLedger(join(runStoreRoot, `${forgeStoryEditsMatch[1]}.jsonl`)))
         const story = projection?.stories.find((item) => item.runId === forgeStoryEditsMatch[2])
-        return story ? send(200, story.edits) : send(404, { error: 'Story run not found.' }), true
-      } catch (err) { return send(404, { error: String(err) }), true }
+        return story ? send(200, story.edits) : sendError(send, 404, 'STORY_RUN_NOT_FOUND', 'Story run not found.'), true
+      } catch (err) { return sendError(send, 404, 'STORY_RUN_NOT_FOUND', String(err)), true }
     }
 
     if (method === 'POST') {
       const body = await readBody()
-      if (!isAllowedStoryEditRequestBody(body)) return send(400, { error: 'Unsupported Story edit request field.' }), true
+      if (!isAllowedStoryEditRequestBody(body)) return sendError(send, 400, 'INVALID_STORY_EDIT_REQUEST', 'Unsupported Story edit request field.'), true
       try {
         const runStoreRoot = await proxy.resolveRunStoreRoot(namespaceId)
-        if (!runStoreRoot) return send(422, { error: 'Namespace not found or has no configPath configured' }), true
+        if (!runStoreRoot) return sendError(send, 422, 'NAMESPACE_REPO_UNAVAILABLE', 'Namespace not found or has no configPath configured'), true
         const events = parseForgeLedger(join(runStoreRoot, `${forgeStoryEditsMatch[1]}.jsonl`))
         const start = events.find((event) => event.event === 'run_started')
         const result = await executeStoryEdit({ roots: start.roots, epicRunId: forgeStoryEditsMatch[1], storyRunId: forgeStoryEditsMatch[2], ...body })
         return send(201, result), true
-      } catch (error) { return send(409, { error: String(error.message ?? error) }), true }
+      } catch (error) { return sendError(send, 409, 'STORY_ANALYSIS_FAILED', String(error.message ?? error)), true }
     }
   }
 
@@ -188,14 +188,14 @@ export async function handleForgeRunRequest({
   const forgeG1Match = path.match(/^\/api\/forge\/runs\/([^/]+)\/gates\/G1$/)
   if (method === 'GET' && forgeG1Match) {
     const namespaceId = url.searchParams.get('namespaceId')
-    if (!namespaceId) return send(400, { error: 'namespaceId query param is required' }), true
+    if (!namespaceId) return sendError(send, 400, 'MISSING_NAMESPACE_ID', 'namespaceId query param is required'), true
     try {
       const runStoreRoot = await proxy.resolveRunStoreRoot(namespaceId)
-      if (!runStoreRoot) return send(422, { error: 'Namespace not found or has no configPath configured' }), true
+      if (!runStoreRoot) return sendError(send, 422, 'NAMESPACE_REPO_UNAVAILABLE', 'Namespace not found or has no configPath configured'), true
       const projection = projectForgeRun(parseForgeLedger(join(runStoreRoot, `${forgeG1Match[1]}.jsonl`)))
-      if (!projection) return send(404, { error: 'Forge run not found.' }), true
+      if (!projection) return sendError(send, 404, 'FORGE_RUN_NOT_FOUND', 'Forge run not found.'), true
       return send(200, projection.gates.find((gate) => gate.gate === 'G1') ?? null), true
-    } catch (err) { return send(404, { error: String(err) }), true }
+    } catch (err) { return sendError(send, 404, 'STORY_RUN_NOT_FOUND', String(err)), true }
   }
 
   // ---------------------------------------------------------------------------
@@ -204,29 +204,29 @@ export async function handleForgeRunRequest({
   const forgeG2Match = path.match(/^\/api\/(?:factory\/)?forge\/runs\/([^/]+)\/gates\/G2$/)
   if (forgeG2Match) {
     const namespaceId = url.searchParams.get('namespaceId')
-    if (!namespaceId) return send(400, { error: 'namespaceId query param is required' }), true
+    if (!namespaceId) return sendError(send, 400, 'MISSING_NAMESPACE_ID', 'namespaceId query param is required'), true
 
     if (method === 'GET') {
       try {
         const runStoreRoot = await proxy.resolveRunStoreRoot(namespaceId)
-        if (!runStoreRoot) return send(422, { error: 'Namespace not found or has no configPath configured' }), true
+        if (!runStoreRoot) return sendError(send, 422, 'NAMESPACE_REPO_UNAVAILABLE', 'Namespace not found or has no configPath configured'), true
         const projection = projectForgeRun(parseForgeLedger(join(runStoreRoot, `${forgeG2Match[1]}.jsonl`)))
-        if (!projection) return send(404, { error: 'Forge run not found.' }), true
+        if (!projection) return sendError(send, 404, 'FORGE_RUN_NOT_FOUND', 'Forge run not found.'), true
         return send(200, projection.gates.find((gate) => gate.gate === 'G2') ?? { gate: 'G2', status: 'not_evaluated' }), true
-      } catch (err) { return send(404, { error: String(err) }), true }
+      } catch (err) { return sendError(send, 404, 'STORY_RUN_NOT_FOUND', String(err)), true }
     }
 
     if (method === 'POST') {
       const body = await readBody()
       try {
         const runStoreRoot = await proxy.resolveRunStoreRoot(namespaceId)
-        if (!runStoreRoot) return send(422, { error: 'Namespace not found or has no configPath configured' }), true
+        if (!runStoreRoot) return sendError(send, 422, 'NAMESPACE_REPO_UNAVAILABLE', 'Namespace not found or has no configPath configured'), true
         const events = parseForgeLedger(join(runStoreRoot, `${forgeG2Match[1]}.jsonl`))
         const start = events.find((event) => event.event === 'run_started' && event.runId === forgeG2Match[1])
-        if (!start?.roots) return send(409, { error: 'Forge run roots are missing from the ledger.' }), true
+        if (!start?.roots) return sendError(send, 409, 'FORGE_RUN_ROOTS_MISSING', 'Forge run roots are missing from the ledger.'), true
         const result = evaluateG2({ roots: start.roots, runId: forgeG2Match[1], specPath: body.specPath })
         return send(result.status === 'recorded' ? 201 : (result.status === 'conflict' ? 409 : 200), result), true
-      } catch (error) { return send(409, { error: String(error.message ?? error) }), true }
+      } catch (error) { return sendError(send, 409, 'STORY_ANALYSIS_FAILED', String(error.message ?? error)), true }
     }
   }
 
@@ -238,7 +238,7 @@ export async function handleForgeRunRequest({
   const forgeG1DecisionMatch = path.match(/^\/api\/(?:factory\/)?forge\/runs\/([^/]+)\/gates\/G1\/decision$/)
   if (method === 'POST' && forgeG1DecisionMatch) {
     const namespaceId = url.searchParams.get('namespaceId')
-    if (!namespaceId) return send(400, { error: 'namespaceId query param is required' }), true
+    if (!namespaceId) return sendError(send, 400, 'MISSING_NAMESPACE_ID', 'namespaceId query param is required'), true
     const body = await readBody()
     // actorId / authorityId are injected by the caller (from trusted headers in server.mjs)
     const actorId = body._actorId
@@ -251,11 +251,11 @@ export async function handleForgeRunRequest({
     }
     try {
       const runStoreRoot = await proxy.resolveRunStoreRoot(namespaceId)
-      if (!runStoreRoot) return send(422, { error: 'Namespace not found or has no configPath configured' }), true
+      if (!runStoreRoot) return sendError(send, 422, 'NAMESPACE_REPO_UNAVAILABLE', 'Namespace not found or has no configPath configured'), true
       const roots = { runStoreRoot }
       const result = await recordHumanDecision({ roots, runId: forgeG1DecisionMatch[1], decision: cleanBody, identityPort })
       return send(result.status === 'recorded' ? 201 : 200, result), true
-    } catch (error) { return send(409, { error: String(error.message ?? error) }), true }
+    } catch (error) { return sendError(send, 409, 'STORY_ANALYSIS_FAILED', String(error.message ?? error)), true }
   }
 
   // ---------------------------------------------------------------------------
@@ -264,10 +264,10 @@ export async function handleForgeRunRequest({
   // ---------------------------------------------------------------------------
   if (method === 'POST' && path === '/api/factory/forge/runs/create') {
     const body = await readBody()
-    if (!body.roots?.repoRoot) return send(400, { error: 'roots.repoRoot is required' }), true
-    if (!body.epic?.id || !body.epic?.kind) return send(400, { error: 'epic.id and epic.kind are required' }), true
+    if (!body.roots?.repoRoot) return sendError(send, 400, 'INVALID_FORGE_RUN_REQUEST', 'roots.repoRoot is required'), true
+    if (!body.epic?.id || !body.epic?.kind) return sendError(send, 400, 'INVALID_FORGE_RUN_REQUEST', 'epic.id and epic.kind are required'), true
     if (!Array.isArray(body.stories) || body.stories.length === 0) {
-      return send(400, { error: 'stories must be a non-empty array' }), true
+      return sendError(send, 400, 'INVALID_FORGE_RUN_REQUEST', 'stories must be a non-empty array'), true
     }
     try {
       const orchestratorRoot = body.roots.orchestratorRoot ?? orchestratorDir
@@ -286,7 +286,7 @@ export async function handleForgeRunRequest({
       })
       return send(201, { runId: result.runId, filePath: result.filePath }), true
     } catch (err) {
-      return send(400, { error: String(err.message ?? err) }), true
+      return sendError(send, 400, 'INVALID_FORGE_RUN_REQUEST', String(err.message ?? err)), true
     }
   }
 

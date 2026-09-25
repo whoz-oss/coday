@@ -1,6 +1,6 @@
 import { validateWorkflowTransitionRequest } from '../lib/workflow-transition-policy.mjs'
 import { workflowProjectionStorageId } from '../lib/workflow-projection-store.mjs'
-const sendError=(send,status,code,message)=>send(status,{error:{code,message}})
+import { sendError } from './http-utils.mjs'
 export async function handleWorkflowCodeTransitionRequest({method,path,readBody,send,store,evidenceStore,definitionRegistry,namespaceId,notifier,log=console}){
  const match=path.match(/^\/api\/factory\/workflows\/([^/]+)\/code-transitions$/);if(!match)return false
  if(method!=='POST'){sendError(send,405,'METHOD_NOT_ALLOWED','Only POST is supported.');return true}

@@ -1,4 +1,5 @@
-const error = (send, status, code) => send(status, { error: { code } })
+import { sendError as error } from './http-utils.mjs'
+
 const bounded = (value) =>
   String(value ?? '')
     .replace(/[\r\n\t]+/g, ' ')

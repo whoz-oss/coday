@@ -1,7 +1,6 @@
 import { validateWorkflowNamespaceId } from './workflow-projection-routes.mjs'
 import { SAFE_FORGE_TICKET_ID, sanitizeForgeSyncAttribution, syncForgeWorkflowProjection } from '../lib/forge-workflow-sync.mjs'
-
-function error(send, status, code, message) { send(status, { error: { code, message } }) }
+import { sendError as error } from './http-utils.mjs'
 
 /** Focused HTTP adapter; repoRoot is supplied only by the trusted namespace resolver. */
 export async function handleForgeWorkflowProjectionRequest({ method, path, url, readBody, send, resolveRepoRoot, store, notifier, sync = syncForgeWorkflowProjection, log = console }) {
